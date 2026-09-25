@@ -264,7 +264,11 @@ export async function openPortal() {
 }
 
 function saveStatus(d) {
-  const st = { active: Boolean(d.active), status: d.status, last4: d.last4, graceUntil: d.graceUntil || null, checked: Date.now() };
+  const st = {
+    active: Boolean(d.active), status: d.status, last4: d.last4, graceUntil: d.graceUntil || null,
+    cancelAtPeriodEnd: Boolean(d.cancelAtPeriodEnd), currentPeriodEnd: d.currentPeriodEnd || null, cancelAt: d.cancelAt || null,
+    checked: Date.now(),
+  };
   storage.set(LS.status, st);
   return st;
 }

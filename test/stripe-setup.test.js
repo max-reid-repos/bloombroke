@@ -14,6 +14,7 @@ function fakeStripe() {
     products: {
       list: () => db.products.filter((p) => p.active),
       async create(p) { const o = { id: id('prod'), active: true, ...p }; db.products.push(o); created.push('product'); return o; },
+      async update(pid, p) { const o = db.products.find((x) => x.id === pid); Object.assign(o, p); created.push('product.update'); return o; },
     },
     prices: {
       list: ({ product }) => db.prices.filter((p) => p.product === product && p.active),
@@ -39,7 +40,8 @@ test('stripe setup: creates product, $4.20 monthly price, portal and webhook onc
   assert.deepEqual(stripe.created, ['product', 'price', 'portal', 'endpoint']);
   const [product] = stripe.db.products;
   assert.equal(product.name, PRODUCT.name);
-  assert.equal(product.description, 'Bloombroke Pro, monthly subscription: price alerts and watchlist sync across devices.');
+  assert.equal(product.description, 'Bloombroke Pro, monthly subscription: watchlist and portfolio sync across devices and your own ticker tape.');
+  assert.doesNotMatch(product.description, /alert/i, 'no promise of price alerts');
   const [price] = stripe.db.prices;
   assert.equal(price.unit_amount, 420);
   assert.equal(price.currency, 'usd');
@@ -78,4 +80,16 @@ test('stripe setup: .env lines are replaced or appended, the rest kept', () => {
   assert.equal(upsertEnv('', { A: 'b' }), 'A=b\n');
   assert.throws(() => upsertEnv('', { A: 'two words' }));
   assert.throws(() => upsertEnv('', { A: 'x\nEVIL=1' }));
+});
+
+test('stripe setup: an existing product with the old description is updated once', async () => {
+  const stripe = fakeStripe();
+  stripe.db.products.push({ id: 'prod_old', active: true, name: 'Bloombroke Pro', description: 'Bloombroke Pro, monthly subscription: price alerts and watchlist sync across devices.', metadata: { site: 'bloombroke', product: 'pro' } });
+  const first = await setup({ stripe, env: { STRIPE_WEBHOOK_SECRET: 'whsec_x', PRO_SECRET: 'x'.repeat(40) } });
+  assert.ok(first.report.includes('product: found, description updated'));
+  assert.equal(stripe.db.products.length, 1);
+  assert.equal(stripe.db.products[0].description, PRODUCT.description);
+  const second = await setup({ stripe, env: { STRIPE_WEBHOOK_SECRET: 'whsec_x', PRO_SECRET: 'x'.repeat(40) } });
+  assert.ok(second.report.includes('product: found'));
+  assert.equal(stripe.created.filter((c) => c === 'product.update').length, 1, 'idempotent');
 });

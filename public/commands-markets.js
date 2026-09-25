@@ -1,5 +1,5 @@
 // Registry of the markets and macro commands (OPTIONS, ECONOMY, FEDPATH, BREADTH).
-// Same shape as commands.js: help text, examples and the screen. A screen's parse(args)
+// Same shape as commands.js: the screen. Help text and examples live in registry.js. A screen's parse(args)
 // returns args, { error }, or null (not this command). toInput(args) gives the clean URL
 // form, so "OPTIONS S&P 500" is saved as OPTIONS SPX.
 
@@ -9,13 +9,11 @@ import * as fedpath from './screens/fedpath.js';
 import * as breadth from './screens/breadth.js';
 
 export const MARKETS_EXTRA = [
-  { name: 'OPTIONS', group: 'Company', hint: 'Option chain: calls and puts by strike, 15 min delayed', usage: 'OPTIONS <ticker> [expiry]', example: 'OPTIONS AAPL', examples: ['OPTIONS AAPL', 'AAPL OPTIONS', 'OPTIONS SPY'], screen: options, takesArgs: true },
-  { name: 'ECONOMY', group: 'Markets', hint: 'US economy: jobs, inflation, growth, spending, with charts', usage: 'ECONOMY [indicator]', example: 'ECONOMY', examples: ['ECONOMY', 'ECONOMY UNRATE', 'ECONOMY CPI MAX'], screen: economy },
-  { name: 'BREADTH', group: 'Markets', hint: 'How many stocks rose and fell, by exchange and sector', usage: 'BREADTH', example: 'BREADTH', screen: breadth },
-  { name: 'FEDPATH', group: 'Rates and FX', hint: 'The Fed funds rate implied by futures, month by month', usage: 'FEDPATH', example: 'FEDPATH', screen: fedpath },
+  { name: 'OPTIONS', screen: options, takesArgs: true },
+  { name: 'ECONOMY', screen: economy },
+  { name: 'BREADTH', screen: breadth },
+  { name: 'FEDPATH', screen: fedpath },
 ];
-
-export const MARKETS_HELP = MARKETS_EXTRA.map(({ name, group, hint, usage, example, examples }) => ({ name, group, hint, usage, example, examples }));
 
 export const MARKETS_SCREENS = Object.fromEntries(MARKETS_EXTRA.map((c) => [c.name, c.screen]));
 

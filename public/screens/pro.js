@@ -7,8 +7,8 @@ import * as pro from '../pro.js';
 export const FEATURES = [
   ['Your own ticker tape', 'Put any ticker on the tape at the bottom: TAPE ADD AAPL.'],
   ['Sync across devices', 'Your watchlist, portfolio and tape follow your key to any browser.'],
-  ['Price alerts', 'Coming next.'],
 ];
+export const COMING_NEXT = 'Coming next: price alerts. Not part of Pro yet.';
 
 export const SAVE_LINE = 'Save this key. It is your login on any device.';
 export const OPERATOR = 'Bloombroke is run by Bloombroke, Singapore.';
@@ -54,9 +54,16 @@ export function keyFileText(key) {
   ].join('\n');
 }
 
+const day = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
 export function statusText(st, now = Date.now()) {
   if (!st) return 'NOT LOGGED IN';
-  if (st.status === 'active' || st.status === 'trialing') return 'ACTIVE';
+  if (st.status === 'active' || st.status === 'trialing') {
+    const end = st.cancelAt || (st.cancelAtPeriodEnd ? st.currentPeriodEnd : null);
+    if (end) return `Active until ${day(end)} (cancelled, will not renew)`;
+    if (st.currentPeriodEnd) return `Renews ${day(st.currentPeriodEnd)}`;
+    return 'ACTIVE';
+  }
   if (st.status === 'past_due') {
     if (!pro.statusActive(st, now)) return 'PAYMENT FAILED. PRO IS OFF';
     const d = st.graceUntil ? new Date(st.graceUntil).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase() : '';
@@ -72,6 +79,7 @@ function offerHtml() {
   return `<div class="money">
     <p class="fx-from">The terminal stays free. Pro adds:</p>
     <ul class="pro-list">${rows}</ul>
+    <p class="muted">${esc(COMING_NEXT)}</p>
     <p class="hero num"><span class="hero-value">${esc(pro.PRICE)}</span><span class="hero-unit">A MONTH</span></p>
     <p class="fx-to dim">Billed monthly in US dollars. Renews automatically. Cancel any time.</p>
   </div>`;

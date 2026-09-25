@@ -135,6 +135,7 @@ export async function licenceFromSession(session, { store, stripe, log = console
     licenceId,
     livemode: typeof session.livemode === 'boolean' ? session.livemode : null,
   });
+  out.licence = store.setBilling(out.licence.id, billingOf(sub));
   if (out.created || out.reactivated) {
     // Only the last 4 characters go to Stripe, so the dashboard can match a customer to a key.
     const metadata = { ...PRO_METADATA, licence_last4: out.licence.last4 };
@@ -149,6 +150,18 @@ export async function licenceFromSession(session, { store, stripe, log = console
     }
   }
   return out;
+}
+
+// Renewal facts of a subscription, times in ms. The period end sits on the items in
+// current API versions and on the subscription in older ones.
+export function billingOf(sub) {
+  const item = sub?.items?.data?.[0];
+  const end = item?.current_period_end ?? sub?.current_period_end;
+  return {
+    cancelAtPeriodEnd: Boolean(sub?.cancel_at_period_end),
+    currentPeriodEnd: Number.isFinite(end) ? end * 1000 : null,
+    cancelAt: Number.isFinite(sub?.cancel_at) ? sub.cancel_at * 1000 : null,
+  };
 }
 
 const ENDED = new Set(['canceled', 'incomplete_expired']);
@@ -171,8 +184,13 @@ async function refreshStatus(subId, { store, stripe }, { deleted = false } = {})
   const lic = store.findBySubscription(subId);
   if (!lic) return 'ignored'; // not a Pro subscription, or its checkout event has not come in yet
   // Events can arrive out of order, so the status is read from Stripe, not the payload.
-  const status = deleted ? 'canceled' : (await stripe.subscriptions.retrieve(subId)).status;
-  store.setStatus(lic.id, status);
+  if (deleted) {
+    store.setStatus(lic.id, 'canceled');
+    return 'updated';
+  }
+  const sub = await stripe.subscriptions.retrieve(subId);
+  store.setStatus(lic.id, sub.status);
+  store.setBilling(lic.id, billingOf(sub));
   return 'updated';
 }
 

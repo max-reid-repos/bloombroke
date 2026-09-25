@@ -10,6 +10,7 @@ import {
 } from '../public/pro.js';
 import {
   parseLogin, maskKey, keyFileText, statusText, SAVE_LINE, BUY_TERMS, OPERATOR, CONTACT, EXPERIMENTAL_LINE, DEMO_BANNER,
+  FEATURES, COMING_NEXT,
 } from '../public/screens/pro.js';
 import { normalizeKey as serverNormalize, generateKey } from '../pro/licence.js';
 
@@ -205,4 +206,15 @@ test('PRO screen: experimental notice before SUBSCRIBE, demo banner text', () =>
   assert.equal(EXPERIMENTAL_LINE, 'Bloombroke is an experimental project and may be discontinued at short notice. If it is, we cancel your subscription and refund the unused days.');
   assert.ok(BUY_TERMS.includes(EXPERIMENTAL_LINE));
   assert.equal(DEMO_BANNER, 'Demo checkout. No real money. Use card 4242 4242 4242 4242, any future date, any CVC.');
+});
+
+test('PRO screen: renewal line, and alerts only as coming next', () => {
+  const end = new Date(Date.UTC(2026, 9, 26, 12)).toISOString();
+  assert.equal(statusText({ status: 'active', cancelAtPeriodEnd: false, currentPeriodEnd: end }), 'Renews Oct 26');
+  assert.equal(statusText({ status: 'active', cancelAtPeriodEnd: true, currentPeriodEnd: end }), 'Active until Oct 26 (cancelled, will not renew)');
+  assert.equal(statusText({ status: 'active', cancelAtPeriodEnd: false, cancelAt: end, currentPeriodEnd: end }), 'Active until Oct 26 (cancelled, will not renew)');
+  assert.equal(statusText({ status: 'active' }), 'ACTIVE');
+  assert.ok(FEATURES.every(([name, text]) => !/alert/i.test(name + text)), 'Pro does not promise alerts');
+  assert.match(COMING_NEXT, /^Coming next: price alerts/);
+  for (const t of BUY_TERMS) assert.doesNotMatch(t, /alert/i);
 });

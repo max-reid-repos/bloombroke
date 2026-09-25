@@ -12,7 +12,7 @@ import {
   generateKey, normalizeKey, hashKey, last4, proAccess, KEY_RE, ALPHABET, GRACE_MS, REVEAL_MS,
   revealKeyFrom, encryptReveal, decryptReveal,
 } from '../pro/licence.js';
-import { checkoutParams, invoiceSubscriptionId, STRIPE_API_VERSION, WEBHOOK_EVENTS, stripeEnv } from '../pro/billing.js';
+import { checkoutParams, invoiceSubscriptionId, STRIPE_API_VERSION, WEBHOOK_EVENTS, stripeEnv, billingOf } from '../pro/billing.js';
 import { mountPro } from '../pro/routes.js';
 import { createLimiter, ipBucket } from '../pro/ratelimit.js';
 
@@ -231,7 +231,7 @@ test('migrations: applied once per database file', () => {
     assert.equal(a.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
     a.close();
     const b = openDb(file);
-    assert.equal(b.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 5);
+    assert.equal(b.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 6);
     assert.ok(b.prepare('PRAGMA table_info(licences)').all().some((c) => c.name === 'terms_accepted_at'));
     b.close();
   } finally {
@@ -848,4 +848,34 @@ test('daily purge: synced data goes 30 days after the subscription ended, not be
   t = T0 + 50 * DAY + 1;
   assert.equal(store.purgeEnded().docs, 1);
   assert.equal(has(canceledNew), false);
+});
+
+test('renewal: cancel_at_period_end and the period end follow Stripe into /status', async () => {
+  const s = await setup();
+  try {
+    const END = Math.floor(Date.UTC(2026, 9, 26, 12) / 1000);
+    s.stripe.subs.sub_30 = { id: 'sub_30', status: 'active', customer: 'cus_30', cancel_at_period_end: false, cancel_at: null, items: { data: [{ current_period_end: END }] } };
+    const sess = paidSession(30);
+    s.stripe.sessions[sess.id] = sess;
+    const c = await s.req('POST', '/api/pro/claim', { body: { session_id: sess.id } });
+    assert.equal(c.body.cancelAtPeriodEnd, false);
+    assert.equal(c.body.currentPeriodEnd, new Date(END * 1000).toISOString());
+    const H = { 'X-Pro-Key': c.body.key };
+    // Cancelled in the portal: Stripe keeps it active to the period end.
+    Object.assign(s.stripe.subs.sub_30, { cancel_at_period_end: true, cancel_at: END });
+    await s.sendEvent(evt('evt_30', 'customer.subscription.updated', { id: 'sub_30' }));
+    const st = (await s.req('GET', '/api/pro/status', { headers: H })).body;
+    assert.equal(st.active, true);
+    assert.equal(st.cancelAtPeriodEnd, true);
+    assert.equal(st.currentPeriodEnd, new Date(END * 1000).toISOString());
+    assert.equal(st.cancelAt, new Date(END * 1000).toISOString());
+    // Renewed again.
+    Object.assign(s.stripe.subs.sub_30, { cancel_at_period_end: false, cancel_at: null });
+    await s.sendEvent(evt('evt_31', 'customer.subscription.updated', { id: 'sub_30' }));
+    const back = (await s.req('GET', '/api/pro/status', { headers: H })).body;
+    assert.equal(back.cancelAtPeriodEnd, false);
+    assert.equal(back.cancelAt, undefined);
+    // Older payload shape: the period end on the subscription itself.
+    assert.deepEqual(billingOf({ cancel_at_period_end: true, current_period_end: END }), { cancelAtPeriodEnd: true, currentPeriodEnd: END * 1000, cancelAt: null });
+  } finally { await s.close(); }
 });

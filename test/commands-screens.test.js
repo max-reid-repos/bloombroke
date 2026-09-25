@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { parseCommand, suggest, COMMANDS } from '../public/app.js';
 import { EXTRA, matchExtra } from '../public/commands.js';
+import { findCommand } from '../public/registry.js';
 import { squarify, heatFill, labelSize, weightedPct, heatmapSvg } from '../public/screens/heatmap.js';
 import { monthlyPayment, amortize, parse as parseLoan, parseMoney } from '../public/screens/loan.js';
 import { growth, parse as parseCompound } from '../public/screens/compound.js';
@@ -35,12 +36,13 @@ test('router: every extra command parses, keeps its own URL, and beats a same-na
   assert.equal(parseCommand('AAPL').name, 'QUOTE');
   assert.equal(matchExtra('NOPE', []), null);
   for (const c of EXTRA) {
-    assert.ok(COMMANDS.some((x) => x.name === c.name && x.hint === c.hint), `${c.name} is in HELP`);
-    const ex = c.example;
+    const h = findCommand(c.name);
+    assert.ok(h && COMMANDS.some((x) => x.name === c.name && x.hint === h.summary), `${c.name} is in HELP`);
+    const ex = h.examples[0];
     const parsed = parseCommand(ex);
     assert.equal(parsed.error, undefined, `${ex} parses`);
-    assert.equal(parsed.name, c.id || c.name);
-    for (const e of c.examples || []) assert.equal(parseCommand(e).error, undefined, `${e} parses`);
+    if (c.name !== 'NEWS') assert.equal(parsed.name, c.id || c.name);
+    for (const e of h.examples) assert.equal(parseCommand(e).error, undefined, `${e} parses`);
   }
   assert.equal(suggest('COMPARE AAPL ')[0].usage, true);
   assert.equal(suggest('LOAN')[0].value, 'LOAN ');

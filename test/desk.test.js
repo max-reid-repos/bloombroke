@@ -140,7 +140,7 @@ test('DESK command: desks 1 to 4, RESET asks first when it comes from a link, F9
   assert.equal(reset.mutates, true, 'a reload or a shared link never resets by itself');
   assert.equal(reset.view, 'DESK');
   assert.equal(parseCommand('DESK 7').error, 'usage');
-  assert.equal(FKEYS.find((k) => k.key === 'F9').cmd, 'DESK');
+  assert.equal(FKEYS.find((k) => k.key === 'F3').cmd, 'DESK');
   assert.ok(COMMANDS.some((c) => c.name === 'DESK'));
   assert.equal(suggest('DES')[0].name, 'DESK');
   assert.equal(suggest('DESK 9')[0].usage, true);

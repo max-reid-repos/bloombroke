@@ -20,6 +20,8 @@
   <link rel="stylesheet" href="/commands.css">
   <link rel="stylesheet" href="/commands-markets.css">
   <link rel="stylesheet" href="/pro.css">
+  <link rel="stylesheet" href="/kit.css">
+  <link rel="stylesheet" href="/nav.css">
   <script type="module" src="/app.js"></script>
   <script defer data-website-id="dfid_RaIYVk8TuhGSz6fl2wpPa" data-domain="bloombroke.com" src="https://datafa.st/js/script.js"></script>
 </head>
@@ -43,22 +45,30 @@
         <span id="cursor" class="cursor" aria-hidden="true"></span>
         <span id="measure" class="measure" aria-hidden="true">M</span>
       </div>
-      <span class="cmd-keys" aria-hidden="true"><kbd>Enter</kbd> run <kbd>Tab</kbd> complete</span>
-      <button type="button" id="share" class="share" aria-label="Copy a link to this screen">SHARE</button>
+      <span class="cmd-keys" aria-hidden="true"><kbd>Enter</kbd> run <kbd>Tab</kbd> complete <kbd>Ctrl K</kbd> menu</span>
       <ul id="suggest" class="suggest" role="listbox" hidden></ul>
     </form>
   </div>
 
+  <div class="screenhead">
+    <a id="back" class="back" href="#" hidden aria-label="Back to the previous screen">&lt; BACK</a>
+    <h1 id="screen-title" class="screen-title"></h1>
+    <button type="button" id="head-star" class="star head-star" hidden aria-pressed="false"><span class="star-icon" aria-hidden="true">&#9734;</span><span class="offscreen"></span></button>
+    <p id="screen-sub" class="screen-sub"></p>
+    <div id="screen-actions" class="screen-actions"></div>
+    <button type="button" id="share" class="share" aria-label="Copy a link to this screen">SHARE</button>
+  </div>
+
+  <nav id="tickerbar" class="fnbar tickerbar" hidden aria-label="Stock functions"></nav>
+
   <main id="screen" class="screen" tabindex="-1" aria-live="polite"></main>
 
   <div class="dock">
+    <div id="tape-bar" class="tape" aria-label="Market ticker" hidden><div class="tape-track"></div></div>
     <div class="statusline" role="status" aria-live="polite">
-      <span id="status-msg" class="status-msg">READY</span>
-      <span class="status-note status-legal"><span class="legal-legend">RT REAL TIME. DLY DELAYED.</span><span class="legal-line legal-line-long">Information only. Not investment advice. Data may be delayed.</span><span class="legal-line legal-line-short">Info only, not advice.</span><a href="/terms">Terms</a></span>
+      <span id="status-msg" class="status-msg" title="RT REAL TIME. DLY DELAYED.">READY</span>
+      <span id="status-legal" class="status-legal"><span class="legal-line legal-line-long">Information only. Not investment advice. Data may be delayed.</span><span class="legal-line legal-line-short">Info only, not advice.</span><a href="/terms">Terms</a></span>
     </div>
-    <footer class="tape" aria-label="Market ticker">
-      <div class="tape-track" id="tape"></div>
-    </footer>
     <nav id="keybar" class="keybar" aria-label="Function keys"></nav>
   </div>
 </body>

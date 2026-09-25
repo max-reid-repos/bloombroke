@@ -23,7 +23,7 @@ import { createStripe, stripeEnv, PRO_METADATA, WEBHOOK_EVENTS } from '../pro/bi
 
 export const PRODUCT = {
   name: 'Bloombroke Pro',
-  description: 'Bloombroke Pro, monthly subscription: price alerts and watchlist sync across devices.',
+  description: 'Bloombroke Pro, monthly subscription: watchlist and portfolio sync across devices and your own ticker tape.',
 };
 export const PRICE = { unit_amount: 420, currency: 'usd', interval: 'month' };
 
@@ -43,8 +43,14 @@ export async function setup({ stripe, env = {}, publicUrl = 'https://bloombroke.
 
   // Product
   let product = (await all(stripe.products.list({ active: true, limit: 100 }))).find(isOurs);
-  if (product) report.push('product: found');
-  else {
+  if (product) {
+    if (product.description !== PRODUCT.description || product.name !== PRODUCT.name) {
+      product = await stripe.products.update(product.id, { name: PRODUCT.name, description: PRODUCT.description });
+      report.push('product: found, description updated');
+    } else {
+      report.push('product: found');
+    }
+  } else {
     product = await stripe.products.create({ ...PRODUCT, metadata: { ...PRO_METADATA } });
     report.push('product: created');
   }

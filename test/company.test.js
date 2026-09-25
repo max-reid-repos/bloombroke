@@ -15,6 +15,7 @@ import { makeScreen, withFund } from '../data/screen.js';
 import { parseCond, parseScreenArgs, applyScreen, needsCnbc, screenWords } from '../public/screener.js';
 import { parseCommand, suggest, tickerFunctions, FUNCTION_BAR, TICKER_FUNCTIONS, COMMANDS } from '../public/app.js';
 import { COMPANY, COMPANY_FUNCTIONS, matchCompany } from '../public/company.js';
+import { findCommand } from '../public/registry.js';
 import { parse as parseFilings, inputOf as filingsInput } from '../public/screens/filings.js';
 import { parse as parseExdiv } from '../public/screens/exdiv.js';
 import { priceText } from '../public/screens/ipos.js';
@@ -278,8 +279,9 @@ test('router: company commands, ticker first, function bar, help', () => {
   const bar = tickerFunctions('AAPL');
   assert.ok(bar.filter((f) => COMPANY_FUNCTIONS.includes(f.fn)).every((f) => f.ready && f.cmd === `AAPL ${f.fn}`));
   for (const c of COMPANY) {
-    assert.ok(COMMANDS.some((x) => x.name === c.name && x.hint === c.hint), `${c.name} is in HELP`);
-    for (const e of [c.example, ...(c.examples || [])]) {
+    const h = findCommand(c.name);
+    assert.ok(h && COMMANDS.some((x) => x.name === c.name && x.hint === h.summary), `${c.name} is in HELP`);
+    for (const e of h.examples) {
       const p = parseCommand(e);
       assert.equal(p.name, c.name, e);
       assert.equal(p.error, undefined, e);

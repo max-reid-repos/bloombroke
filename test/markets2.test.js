@@ -10,6 +10,7 @@ import { buildGrid, GRID_CELLS, makeBonds } from '../data/bonds.js';
 import { liveRates, crossRates, makeFxMatrix } from '../data/fxmatrix.js';
 import { parseCommand, suggest, COMMANDS, tickerFunctions, FUNCTION_BAR } from '../public/app.js';
 import { MARKETS_EXTRA, matchMarkets } from '../public/commands-markets.js';
+import { findCommand } from '../public/registry.js';
 import { parse as parseOptions, chainWindow, inTheMoney, fmtIv, expiryLabel, chainTable } from '../public/screens/options.js';
 import { parse as parseEconomy, fmtValue, periodLabel, sparkSvg } from '../public/screens/economy.js';
 import { monthLabel, stepPoints } from '../public/screens/fedpath.js';
@@ -373,8 +374,9 @@ test('router: the new commands parse, keep a clean URL, and sit in HELP', () => 
   assert.equal(parseCommand('FXMATRIX HEAT').args.mode, 'HEAT');
   assert.equal(matchMarkets('NOPE', []), null);
   for (const c of MARKETS_EXTRA) {
-    assert.ok(COMMANDS.some((x) => x.name === c.name && x.hint === c.hint), `${c.name} is in HELP`);
-    for (const e of c.examples || [c.example]) assert.equal(parseCommand(e).error, undefined, `${e} parses`);
+    const h = findCommand(c.name);
+    assert.ok(h && COMMANDS.some((x) => x.name === c.name && x.hint === h.summary), `${c.name} is in HELP`);
+    for (const e of h.examples) assert.equal(parseCommand(e).error, undefined, `${e} parses`);
   }
   assert.equal(suggest('OPTIONS ')[0].usage, true);
   assert.equal(suggest('OPT')[0].value, 'OPTIONS ');
