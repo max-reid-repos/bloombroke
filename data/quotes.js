@@ -187,8 +187,11 @@ export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache()
       const { value, stale, updated } = await list(FX_MAJORS);
       return { pairs: value, stale, updated };
     },
-    async getYields() {
-      const { value, stale, updated } = await list(YIELDS);
+    // RATES asks for its three; CURVE for the whole curve (CURVE_IDS). Both read the one
+    // shared batch, so the same yield has the same value, time and tag on both screens.
+    async getYields(ids = null) {
+      const items = ids ? ids.map(instrumentById).filter(Boolean).map((i) => ({ ...i, name: i.longName || i.name })) : YIELDS;
+      const { value, stale, updated } = await list(items);
       return { yields: value, stale, updated };
     },
     // Resolves to null for an unknown ticker.
@@ -253,4 +256,6 @@ export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache()
 // The most symbols one /api/quotes call takes.
 export const MAX_LIST = 60;
 
-export const { getQuotes, getFxMajors, getYields, getQuote, getQuoteList } = makeQuotes({ cache: createCache({ maxEntries: 2000 }) });
+// The one live instance: every screen that shows a registry quote reads this batch.
+export const sharedQuotes = makeQuotes({ cache: createCache({ maxEntries: 2000 }) });
+export const { getQuotes, getFxMajors, getYields, getQuote, getQuoteList } = sharedQuotes;

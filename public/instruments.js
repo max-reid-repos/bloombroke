@@ -95,6 +95,11 @@ export const INSTRUMENTS = [
   I('USDTHB', 'USD/THB', 'Currencies', 'fx', 'THB=', 2, { markets: false, base: 'USD', quote: 'THB', aliases: ['USD/THB', 'BAHT'] }),
   I('US2Y', 'US 2Y yield', 'Rates', 'yield', 'US2Y', 3, { markets: false, longName: 'US 2-year Treasury', term: '2Y' }),
   I('US30Y', 'US 30Y yield', 'Rates', 'yield', 'US30Y', 3, { markets: false, longName: 'US 30-year Treasury', term: '30Y' }),
+  // The rest of the Treasury curve (CURVE). In the one shared quote batch, so CURVE and
+  // RATES show the same yields with the same time and the same RT or DLY tag.
+  ...[['1M', '1-month'], ['3M', '3-month'], ['6M', '6-month'], ['1Y', '1-year'], ['3Y', '3-year'], ['7Y', '7-year'], ['20Y', '20-year']].map(([t, words]) => I(`US${t}`, `US ${t} yield`, 'Rates', 'yield', `US${t}`, 3, {
+    markets: false, longName: `US ${words} Treasury`, term: t,
+  })),
 
   // Rows on COMMODITIES, BONDS and CRYPTO. Each opens its own screen.
   I('BRENT', 'Oil (Brent)', 'Commodities', 'future', '@LCO.1', 2, { markets: false, aliases: ['BRENTOIL', 'BRENTCRUDE'] }),
@@ -144,6 +149,8 @@ export function instrumentBySrc(src) {
 // The FX majors on HOME, and the yields on RATES, in display order.
 export const FX_MAJOR_IDS = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'USDCNY', 'USDTHB'];
 export const YIELD_IDS = ['US2Y', 'US10Y', 'US30Y'];
+// The US Treasury curve, shortest first (CURVE).
+export const CURVE_IDS = ['US1M', 'US3M', 'US6M', 'US1Y', 'US2Y', 'US3Y', 'US5Y', 'US7Y', 'US10Y', 'US20Y', 'US30Y'];
 
 const BY_KEY = new Map();
 for (const inst of INSTRUMENTS) {

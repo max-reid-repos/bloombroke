@@ -1,9 +1,11 @@
-// CURVE: the US Treasury yield curve. Today from the CNBC quote service; one month and
-// one year ago from the US Treasury daily par yield curve CSV (both no key).
+// CURVE: the US Treasury yield curve. Today from the CNBC quote service, read from the
+// one shared quote batch (the same source, 15 s cache and RT or DLY flag as RATES, so a
+// yield never shows two times or two tags); one month and one year ago from the US
+// Treasury daily par yield curve CSV (both no key).
 
 import { createCache } from './cache.js';
-import { makeCnbcList, nyDay, iso } from './lists.js';
-import { UA } from './quotes.js';
+import { nyDay, iso } from './lists.js';
+import { UA, makeQuotes, sharedQuotes } from './quotes.js';
 import { monthBefore } from './sectors.js';
 
 export const TENORS = [
@@ -63,8 +65,12 @@ export function yearBefore(day) {
   return `${y - 1}-${String(m).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
 }
 
-export function makeCurve({ fetchImpl = globalThis.fetch, cache = createCache(), now = () => Date.now() } = {}) {
-  const today = makeCnbcList({ key: 'curve', items: TENORS.map(({ id, src }) => ({ id, src })), minRows: 8, fetchImpl, cache });
+export function makeCurve({ fetchImpl = globalThis.fetch, cache = createCache(), now = () => Date.now(), quotes = fetchImpl === globalThis.fetch ? sharedQuotes : makeQuotes({ fetchImpl, cache: createCache() }) } = {}) {
+  const today = async () => {
+    const { yields, stale, updated } = await quotes.getYields(TENORS.map((t) => t.src));
+    const byId = new Map(yields.map((y) => [y.id, y]));
+    return { rows: TENORS.map((t) => byId.get(t.src)).filter(Boolean).map((y) => ({ ...y, id: TENORS.find((t) => t.src === y.id).id })), stale, updated };
+  };
 
   const year = (y) => cache.cached(`tsy:${y}`, TSY_TTL, async () => {
     const res = await fetchImpl(treasuryCsvUrl(y), { headers: { 'User-Agent': UA, Accept: 'text/csv' }, signal: AbortSignal.timeout(12_000) });
@@ -85,15 +91,21 @@ export function makeCurve({ fetchImpl = globalThis.fetch, cache = createCache(),
     const latest = hist[hist.length - 1] || null;
     const nowRows = t.status === 'fulfilled' ? t.value.rows : [];
     const byId = new Map(nowRows.map((r) => [r.id, r]));
+    // The newest trade time across the curve (bills can trade hours apart from notes).
+    const asOf = nowRows.map((r) => r.asOf).filter(Boolean).sort((a, b) => Date.parse(a) - Date.parse(b)).pop() || null;
     return {
-      tenors: TENORS.map(({ id }) => ({
+      tenors: TENORS.map(({ id, src }) => ({
         id,
+        cmd: src,
+        kind: 'yield',
         now: byId.get(id)?.last ?? null,
         change: byId.get(id)?.change ?? null,
         asOf: byId.get(id)?.asOf ?? null,
+        realTime: typeof byId.get(id)?.realTime === 'boolean' ? byId.get(id).realTime : null,
         m1: m1?.yields[id] ?? null,
         y1: y1?.yields[id] ?? null,
       })),
+      asOf,
       m1Date: m1?.date || null,
       y1Date: y1?.date || null,
       officialDate: latest?.date || null,
