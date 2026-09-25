@@ -48,15 +48,29 @@
 
 /* ---- HISTORY --------------------------------------------------------------------- */
 .hist-main .dt { margin: 0; }
-.hist-main .dt td.last { color: var(--text); font-weight: 600; }
 .hist-main .toolbar .ch-dates { padding-right: 0; }
 
 /* ---- Tables: date cells and plain labels in company tables ---------------------- */
 .dt td.date { color: var(--text-2); }
 .dt tbody tr:hover td { background: var(--panel-2); }
+.co-wide .dt td.last { color: var(--text); font-weight: 600; }
+.seg-n { margin-left: 6px; color: var(--faint); font-weight: 400; }
+.seg-item.is-active .seg-n { color: var(--ink); }
+@media (min-width: 640px) { .dt td.wide-name { max-width: 56ch; } }
+.dt tbody th { font-size: 13px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--text-2); }
+.bt-next th, .bt-next td { color: var(--dim); border-bottom-color: var(--rule-strong); }
+.m-only, .m-only-block { display: none; }
+.fil-seg { max-width: 100%; }
+.bt-next-line { margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--rule); color: var(--text-2); font-size: 12px; }
 
 @media (max-width: 639px) {
   .dt .hide-m { display: none; }
+  .m-only { display: inline; }
+  .m-only-block { display: block; }
+  .co-wide .dt .cell-name { max-width: 12ch; }
+  .dt tr.hide-m { display: none; }
+  .d-only { display: none; }
+  .co-wide .dt th { white-space: normal; line-height: 1.2; vertical-align: bottom; padding-bottom: 4px; }
   .co-wide .dt { width: 100%; }
   .hist-layout > .hist-side { order: 0; border-bottom: 0; border-top: 1px solid var(--rule); }
   .side-chart { height: 160px; }

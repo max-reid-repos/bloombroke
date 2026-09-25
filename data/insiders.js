@@ -7,7 +7,7 @@ import { CompanyDataError, DAY_MS, nasdaqData, tickerOrThrow, cachedOrThrow, tex
 
 export { CompanyDataError as InsidersError };
 
-const LIMIT = 40;
+const LIMIT = 200;
 export const INSIDERS_SOURCE = 'Nasdaq insider activity (SEC Forms 3, 4 and 5)';
 
 // Nasdaq's transaction words -> a short kind. The source text is kept as `transaction`.

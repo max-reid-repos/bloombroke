@@ -176,7 +176,6 @@
 .co-totals .name, .co-pos .name { width: auto; max-width: none; color: var(--dim); }
 .co-totals .last { color: var(--text); font-weight: 600; }
 .co-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 24px; align-items: start; }
-.co-pos { border: 1px solid var(--rule); }
 .co-chips { display: flex; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--rule); background: var(--panel); }
 .co-chips::-webkit-scrollbar { display: none; }
 .co-chip { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 10px; border-right: 1px solid var(--rule); color: var(--dim); font-size: 11px; font-weight: 600; letter-spacing: .08em; white-space: nowrap; }

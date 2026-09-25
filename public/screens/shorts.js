@@ -1,25 +1,33 @@
 // SHORTS <ticker>: short interest by settlement date (twice a month), average daily
-// volume and days to cover, newest first.
+// volume and days to cover, newest first, with the short interest trend beside it.
 
 import { esc, fmtNum, fmtSigned, dirOf, panel, LOADING } from './markets.js';
-import { mountFnBar, sourceLine, errorHtml, tickerUsage, fmtInt, fmtBig, dash } from './company-kit.js';
+import { mountFnBar, sourceLine, errorHtml, tickerUsage, fmtInt, fmtBig, fmtDay, dash } from './company-kit.js';
+import { dataTable, sortRows, nextSort, fmtDate } from '../kit.js';
+import { mountLines } from './lines.js';
 
 export { parseTicker as parse } from './company-kit.js';
 
 const signedPct = (n) => (Number.isFinite(n) ? `${fmtSigned(n, 2)}%` : dash);
 
-export function shortsTable(rows) {
-  return `<table class="grid-table co-table si-table">
-    <thead><tr><th scope="col" class="num co-n">#</th><th scope="col" class="co-date">Settlement</th><th scope="col" class="num">Short interest</th><th scope="col" class="num chg">Change</th><th scope="col" class="num time">Avg daily volume</th><th scope="col" class="num">Days to cover</th></tr></thead>
-    <tbody>${rows.map((r, i) => `<tr>
-      <td class="num co-n dim">${i + 1}</td>
-      <th scope="row" class="co-date num">${esc(r.date)}</th>
-      <td class="num last">${fmtInt(r.shortInterest)}</td>
-      <td class="num chg ${dirOf(r.changePct)}">${signedPct(r.changePct)}</td>
-      <td class="num time">${fmtBig(r.avgVolume)}</td>
-      <td class="num">${Number.isFinite(r.daysToCover) ? fmtNum(r.daysToCover, 2) : dash}</td>
-    </tr>`).join('')}</tbody>
-  </table>`;
+// Dates are the plain label; the short interest itself is the number that stands out.
+const COLUMNS = [
+  { key: 'date', label: 'Settlement', cls: 'date', fmt: (v) => esc(fmtDay(v)) },
+  { key: 'shortInterest', label: 'Short interest', num: true, cls: 'last', fmt: (v) => `<span class="d-only">${fmtInt(v)}</span><span class="m-only">${fmtBig(v)}</span>` },
+  { key: 'changePct', label: 'Change', num: true, fmt: (v) => `<span class="${dirOf(v)}">${signedPct(v)}</span>` },
+  { key: 'avgVolume', label: 'Avg daily volume', num: true, cls: 'hide-m dim', fmt: (v) => fmtBig(v) },
+  { key: 'daysToCover', label: 'Days to cover', num: true, fmt: (v) => (Number.isFinite(v) ? fmtNum(v, 2) : dash) },
+];
+
+export function shortsTable(rows, sort = { key: 'date', dir: 'desc' }) {
+  return dataTable({ columns: COLUMNS, rows: sortRows(rows, sort.key, sort.dir), sort, caption: 'Short interest by settlement date' });
+}
+
+// Oldest first, for the chart: [{ x: ms, y: shares, d }].
+export function trendPoints(rows) {
+  return rows.filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.date || '') && Number.isFinite(r.shortInterest))
+    .map((r) => ({ x: Date.parse(`${r.date}T12:00:00Z`), y: r.shortInterest, d: r.date }))
+    .sort((a, b) => a.x - b.x);
 }
 
 const NOTE = 'Short interest = shares sold short and not yet bought back, on the settlement date. Days to cover = short interest / average daily volume, as published. Change is against the settlement before it. Nasdaq-listed stocks only.';
@@ -35,10 +43,44 @@ export function render(el, cmd, ctx) {
   <div id="si-foot">${sourceLine('Nasdaq short interest')}</div>`;
   mountFnBar(el, ctx, ticker, 'SHORTS');
   const body = el.querySelector('.panel-body');
+  let stopChart = null;
+  ctx.onCleanup(() => stopChart?.());
 
   ctx.fetchJSON(`/api/shorts?s=${encodeURIComponent(ticker)}`, { signal: ctx.signal }).then((d) => {
-    body.innerHTML = shortsTable(d.rows);
-    el.querySelector('#si-meta').textContent = `${d.rows.length} SETTLEMENTS`;
+    const pts = trendPoints(d.rows);
+    const newest = d.rows.find((r) => Number.isFinite(r.shortInterest));
+    body.innerHTML = `<div class="with-side side-hug co-wide">
+        <div class="si-table"></div>
+        <aside class="side-panel" aria-label="Short interest trend">
+          <p class="side-title tag">Short interest, shares</p>
+          ${pts.length >= 2 ? '<div class="side-chart" id="si-chart"></div><p class="side-hover dim" id="si-hover" aria-live="polite"></p>' : '<p class="side-empty">Not enough settlements for a trend.</p>'}
+          ${newest ? `<dl class="stats side-stats">
+            <div class="stat"><dt>Latest</dt><dd class="num">${fmtBig(newest.shortInterest)} <span class="dim">${esc(fmtDay(newest.date))}</span></dd></div>
+            <div class="stat"><dt>Days to cover</dt><dd class="num">${Number.isFinite(newest.daysToCover) ? fmtNum(newest.daysToCover, 2) : dash}</dd></div>
+          </dl>` : ''}
+        </aside>
+      </div>`;
+    const tableEl = body.querySelector('.si-table');
+    let sort = { key: 'date', dir: 'desc' };
+    const draw = () => { tableEl.innerHTML = shortsTable(d.rows, sort); };
+    tableEl.addEventListener('click', (e) => {
+      const th = e.target.closest('.th-sort');
+      if (!th) return;
+      const col = COLUMNS.find((c) => c.key === th.dataset.sort);
+      sort = nextSort(sort, col.key, Boolean(col.num));
+      draw();
+      tableEl.querySelector(`.th-sort[data-sort="${col.key}"]`)?.focus();
+    });
+    draw();
+    if (pts.length >= 2) {
+      const hover = body.querySelector('#si-hover');
+      stopChart = mountLines(body.querySelector('#si-chart'), [{ id: 'si', cls: 'ln-0', label: 'Short interest', points: pts }], {
+        label: `${ticker} short interest by settlement date`, fmtY: (v) => fmtBig(v),
+        fmtX: (x) => fmtDate(new Date(x), 'axis'),
+        onHover: (h) => { hover.textContent = h ? `${fmtDay(new Date(h.x).toISOString().slice(0, 10))}  ${fmtInt(h.values[0].y)}` : ''; },
+      });
+    }
+    el.querySelector('#si-meta').innerHTML = `<span class="panel-tools"><span class="tools-count">${d.rows.length} SETTLEMENTS</span></span>`;
     el.querySelector('#si-foot').innerHTML = sourceLine(d.source, NOTE);
     ctx.updated(d.updated, d.stale);
   }).catch((err) => {

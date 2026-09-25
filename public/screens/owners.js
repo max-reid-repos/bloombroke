@@ -2,7 +2,8 @@
 // many funds added, trimmed, opened or closed a position last quarter.
 
 import { esc, fmtSigned, dirOf, panel, LOADING } from './markets.js';
-import { mountFnBar, sourceLine, errorHtml, tickerUsage, fmtInt, fmtBig, fmtBigMoney, fmtPlainPct, dash } from './company-kit.js';
+import { mountFnBar, sourceLine, errorHtml, tickerUsage, fmtInt, fmtBig, fmtBigMoney, fmtPlainPct, fmtDay, dash } from './company-kit.js';
+import { panelTools, dataTable, sortRows, nextSort } from '../kit.js';
 
 export { parseTicker as parse } from './company-kit.js';
 
@@ -31,21 +32,19 @@ export function summaryHtml(s) {
   </div>`;
 }
 
-export function holdersTable(rows) {
+const COLUMNS = [
+  { key: 'holder', label: 'Holder', name: true },
+  { key: 'shares', label: 'Shares', num: true, cls: 'last', fmt: (v) => fmtBig(v) },
+  { key: 'pctOfShares', label: '% of shares', num: true, fmt: (v) => fmtPlainPct(v) },
+  { key: 'change', label: 'Change', num: true, cls: 'hide-m', fmt: (v) => `<span class="${dirOf(v)}">${signedInt(v)}</span>` },
+  { key: 'changePct', label: 'Chg %', num: true, fmt: (v) => `<span class="${dirOf(v)}">${signedPct(v)}</span>` },
+  { key: 'value', label: 'Value', num: true, cls: 'hide-m', fmt: (v) => fmtBigMoney(v) },
+  { key: 'asOf', label: 'As of', cls: 'date hide-m', fmt: (v) => esc(v ? fmtDay(v) : dash) },
+];
+
+export function holdersTable(rows, sort = { key: 'shares', dir: 'desc' }) {
   if (!rows.length) return '<p class="panel-msg">No holders listed.</p>';
-  return `<table class="grid-table co-table own-table">
-    <thead><tr><th scope="col" class="num co-n">#</th><th scope="col">Holder</th><th scope="col" class="num">Shares</th><th scope="col" class="num">% of shares</th><th scope="col" class="num chg">Change</th><th scope="col" class="num time">Chg %</th><th scope="col" class="num chg">Value</th><th scope="col" class="num time">As of</th></tr></thead>
-    <tbody>${rows.map((r, i) => `<tr>
-      <td class="num co-n dim">${i + 1}</td>
-      <th scope="row" class="name">${esc(r.holder)}</th>
-      <td class="num last">${fmtBig(r.shares)}</td>
-      <td class="num">${fmtPlainPct(r.pctOfShares)}</td>
-      <td class="num chg ${dirOf(r.change)}">${signedInt(r.change)}</td>
-      <td class="num time ${dirOf(r.changePct)}">${signedPct(r.changePct)}</td>
-      <td class="num chg">${fmtBigMoney(r.value)}</td>
-      <td class="num time dim">${esc(r.asOf || dash)}</td>
-    </tr>`).join('')}</tbody>
-  </table>`;
+  return dataTable({ columns: COLUMNS, rows: sortRows(rows, sort.key, sort.dir), sort, caption: 'Top institutional holders' });
 }
 
 const NOTE = 'Holdings as of each holder\'s latest 13F filing (the As of date). % of shares = shares held / shares outstanding, both from the source.';
@@ -67,8 +66,18 @@ export function render(el, cmd, ctx) {
 
   ctx.fetchJSON(`/api/owners?s=${encodeURIComponent(ticker)}`, { signal: ctx.signal }).then((d) => {
     top.innerHTML = summaryHtml(d.summary);
-    list.innerHTML = holdersTable(d.rows);
-    el.querySelector('#own-meta').textContent = Number.isFinite(d.totalRecords) ? `TOP ${d.rows.length} OF ${fmtInt(d.totalRecords)}` : `${d.rows.length} HOLDERS`;
+    let sort = { key: 'shares', dir: 'desc' };
+    const draw = () => { list.innerHTML = `<div class="co-wide">${holdersTable(d.rows, sort)}</div>`; };
+    list.addEventListener('click', (e) => {
+      const th = e.target.closest('.th-sort');
+      if (!th) return;
+      const col = COLUMNS.find((c) => c.key === th.dataset.sort);
+      sort = nextSort(sort, col.key, Boolean(col.num));
+      draw();
+      list.querySelector(`.th-sort[data-sort="${col.key}"]`)?.focus();
+    });
+    draw();
+    el.querySelector('#own-meta').innerHTML = panelTools(Number.isFinite(d.totalRecords) ? { shown: d.rows.length, total: d.totalRecords } : { total: d.rows.length });
     el.querySelector('#own-foot').innerHTML = sourceLine(d.source, NOTE);
     ctx.updated(d.updated, d.stale);
   }).catch((err) => {

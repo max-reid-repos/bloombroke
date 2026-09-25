@@ -1,46 +1,53 @@
-// FILINGS <ticker> [10-K|10-Q|8-K|4|ALL]: the company's latest SEC filings, newest first,
-// each linking to the document on sec.gov.
+// FILINGS <ticker> [KEY|10-K|10-Q|8-K|4|ALL]: the company's latest SEC filings, newest
+// first, each linking to the document on sec.gov. KEY (reports, proxies, registrations,
+// no ownership paperwork) is the default.
 
 import { esc, q, panel, LOADING } from './markets.js';
-import { mountFnBar, sourceLine, errorHtml, fmtInt, dash } from './company-kit.js';
+import { mountFnBar, sourceLine, errorHtml, fmtInt, fmtDay, dash } from './company-kit.js';
+import { toolbar, panelTools, dataTable, sortRows, nextSort, edgeFade } from '../kit.js';
 
 const TICKER = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
-export const FORMS = ['ALL', '10-K', '10-Q', '8-K', '4'];
-const FORM_ALIASES = { '10K': '10-K', '10Q': '10-Q', '8K': '8-K', FORM4: '4', ANNUAL: '10-K', QUARTERLY: '10-Q', INSIDER: '4' };
+// KEY (the default) leaves out ownership paperwork: insider Forms 3, 4, 5 and 144 and 5%
+// holder schedules, which are most of a big company's list.
+export const FORMS = ['KEY', '10-K', '10-Q', '8-K', '4', 'ALL'];
+const FORM_ALIASES = { '10K': '10-K', '10Q': '10-Q', '8K': '8-K', FORM4: '4', ANNUAL: '10-K', QUARTERLY: '10-Q', INSIDER: '4', MAIN: 'KEY' };
+const FORM_LABEL = { KEY: 'KEY FILINGS', 4: 'FORM 4' };
 
 // FILINGS <ticker> [form]
 export function parse(args) {
   if (!args.length || args.length > 2 || !TICKER.test(args[0])) return { error: 'usage' };
-  const form = args[1] ? (FORM_ALIASES[args[1]] || args[1]) : 'ALL';
+  const form = args[1] ? (FORM_ALIASES[args[1]] || args[1]) : 'KEY';
   if (!FORMS.includes(form)) return { error: 'usage' };
   return { ticker: args[0], form };
 }
 
 export function inputOf(args) {
-  return ['FILINGS', args.ticker, ...(args.form && args.form !== 'ALL' ? [args.form] : [])].join(' ');
+  return ['FILINGS', args.ticker, ...(args.form && args.form !== 'KEY' ? [args.form] : [])].join(' ');
 }
 
+// The filter row: one segmented set, each with its count once the list is in.
 export function chips(ticker, current, counts = null) {
-  return `<nav class="co-chips" aria-label="Filing type">${FORMS.map((f) => {
+  return `<nav class="seg fil-seg" aria-label="Filing type">${FORMS.map((f) => {
     const c = inputOf({ ticker, form: f });
     const on = f === current;
-    const n = counts && Number.isFinite(counts[f]) ? `<span class="co-count">${counts[f]}</span>` : '';
-    return `<a class="co-chip${on ? ' is-active' : ''}" href="${esc(q(c))}" data-cmd="${esc(c)}"${on ? ' aria-current="true"' : ''}>${f === '4' ? 'FORM 4' : f}${n}</a>`;
+    const n = counts && Number.isFinite(counts[f]) ? ` <span class="seg-n">${fmtInt(counts[f])}</span>` : '';
+    return `<a class="seg-item${on ? ' is-active' : ''}" href="${esc(q(c))}" data-cmd="${esc(c)}"${on ? ' aria-current="true"' : ''}>${esc(FORM_LABEL[f] || f)}${n}</a>`;
   }).join('')}</nav>`;
 }
 
-export function filingsTable(rows) {
+const COLUMNS = [
+  { key: 'filed', label: 'Filed', cls: 'date', fmt: (v) => esc(fmtDay(v)) },
+  { key: 'form', label: 'Form', cls: 'co-form' },
+  {
+    key: 'description', label: 'Description', name: true, cls: 'wide-name',
+    fmt: (v, r) => (r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" title="${esc(v || r.form)}">${esc(v || r.form)}</a>` : esc(v || r.form)),
+  },
+  { key: 'period', label: 'Period', cls: 'dim hide-m', fmt: (v) => esc(v ? fmtDay(v) : dash) },
+];
+
+export function filingsTable(rows, sort = { key: 'filed', dir: 'desc' }) {
   if (!rows.length) return '<p class="panel-msg">No filings of this type in the recent list.</p>';
-  return `<table class="grid-table co-table fil-table">
-    <thead><tr><th scope="col" class="num co-n">#</th><th scope="col" class="co-date">Filed</th><th scope="col" class="co-form">Form</th><th scope="col">Description</th><th scope="col" class="num time">Period</th></tr></thead>
-    <tbody>${rows.map((r, i) => `<tr>
-      <td class="num co-n dim">${i + 1}</td>
-      <td class="co-date num">${esc(r.filed)}</td>
-      <td class="co-form last">${esc(r.form)}</td>
-      <th scope="row" class="name">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${esc(r.description || r.form)}</a>` : esc(r.description || r.form)}</th>
-      <td class="num time dim">${esc(r.period || dash)}</td>
-    </tr>`).join('')}</tbody>
-  </table>`;
+  return dataTable({ columns: COLUMNS, rows: sortRows(rows, sort.key, sort.dir), sort, caption: 'SEC filings' });
 }
 
 const USAGE_EX = ['FILINGS AAPL', 'FILINGS MSFT 10-K', 'FILINGS TSLA 8-K', 'FILINGS NVDA 4'];
@@ -48,23 +55,34 @@ const USAGE_EX = ['FILINGS AAPL', 'FILINGS MSFT 10-K', 'FILINGS TSLA 8-K', 'FILI
 export function render(el, cmd, ctx) {
   if (cmd.error) {
     el.innerHTML = panel('1', 'Filings', `<p class="notice">FILINGS needs one ticker, then a form if you want one.</p>
-      <p class="muted">Format: <span class="code">FILINGS &lt;ticker&gt; [10-K|10-Q|8-K|4]</span></p>
+      <p class="muted">Format: <span class="code">FILINGS &lt;ticker&gt; [10-K|10-Q|8-K|4|ALL]</span></p>
       <p class="muted examples">Try ${USAGE_EX.map((e) => `<a class="code" href="${esc(q(e))}" data-cmd="${esc(e)}">${esc(e)}</a>`).join(' ')}</p>`, { cls: 'panel-solo' });
     ctx.status('FILINGS: CHECK THE FORMAT', 'warn');
     return;
   }
   const { ticker, form } = cmd.args;
-  el.innerHTML = `${panel('1', `${ticker} SEC filings`, `${chips(ticker, form)}<div class="fil-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'fil-meta', bodyCls: 'flush' })}
+  el.innerHTML = `${panel('1', `${ticker} SEC filings`, `${toolbar({ left: chips(ticker, form), label: 'Filing type' })}<div class="fil-body co-wide">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'fil-meta', bodyCls: 'flush' })}
   <div id="fil-foot">${sourceLine('US SEC EDGAR filing index')}</div>`;
   mountFnBar(el, ctx, ticker, 'FILINGS');
   const body = el.querySelector('.fil-body');
 
   const params = new URLSearchParams({ s: ticker, f: form });
   ctx.fetchJSON(`/api/filings?${params}`, { signal: ctx.signal }).then((d) => {
-    el.querySelector('.co-chips').outerHTML = chips(ticker, form, d.counts);
-    el.querySelector('#fil-meta').textContent = `${fmtInt(d.matched)} FILINGS`;
-    const more = d.matched > d.rows.length ? `<p class="more muted co-pad">Showing the newest ${d.rows.length} of ${fmtInt(d.matched)}. Every filing: <a href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&amp;CIK=${esc(String(d.cik))}" target="_blank" rel="noopener noreferrer">sec.gov</a></p>` : '';
-    body.innerHTML = filingsTable(d.rows) + more;
+    el.querySelector('.fil-seg').outerHTML = chips(ticker, form, d.counts);
+    ctx.onCleanup(edgeFade(el.querySelector('.fil-seg')));
+    el.querySelector('#fil-meta').innerHTML = panelTools({ shown: d.rows.length, total: d.matched });
+    const more = d.matched > d.rows.length ? `<p class="more muted co-pad">The newest ${d.rows.length} of ${fmtInt(d.matched)}. Every filing: <a href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&amp;CIK=${esc(String(d.cik))}" target="_blank" rel="noopener noreferrer">sec.gov</a></p>` : '';
+    let sort = { key: 'filed', dir: 'desc' };
+    const draw = () => { body.innerHTML = filingsTable(d.rows, sort) + more; };
+    body.addEventListener('click', (e) => {
+      const th = e.target.closest('.th-sort');
+      if (!th) return;
+      const col = COLUMNS.find((c) => c.key === th.dataset.sort);
+      sort = nextSort(sort, col.key, false);
+      draw();
+      body.querySelector(`.th-sort[data-sort="${col.key}"]`)?.focus();
+    });
+    draw();
     el.querySelector('#fil-foot').innerHTML = sourceLine(d.source, `${d.name || ticker}, CIK ${d.cik}. Links open the document on sec.gov. Descriptions are the form's plain-English name.`);
     ctx.updated(d.updated, d.stale);
   }).catch((err) => {

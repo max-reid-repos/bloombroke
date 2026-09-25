@@ -1,4 +1,4 @@
-// FILINGS <ticker> [10-K|10-Q|8-K|4|ALL]: the latest SEC filings, from SEC EDGAR
+// FILINGS <ticker> [KEY|10-K|10-Q|8-K|4|ALL]: the latest SEC filings, from SEC EDGAR
 // (no key). Ticker to CIK from company_tickers.json, the list from the submissions JSON.
 // SEC asks for a descriptive User-Agent and under 10 requests a second: calls here go one
 // at a time, 350 ms apart. Cached a day.
@@ -12,7 +12,11 @@ export { CompanyDataError as FilingsError };
 const TICKERS_URL = 'https://www.sec.gov/files/company_tickers.json';
 const SUBMISSIONS_URL = (cik) => `https://data.sec.gov/submissions/CIK${String(cik).padStart(10, '0')}.json`;
 export const FILINGS_SOURCE = 'US SEC EDGAR filing index';
-export const FILING_FORMS = ['ALL', '10-K', '10-Q', '8-K', '4'];
+export const FILING_FORMS = ['KEY', 'ALL', '10-K', '10-Q', '8-K', '4'];
+// Ownership paperwork (insider Forms 3, 4, 5 and 144, and 5% holder schedules) is most of
+// a big company's list. KEY is everything else: reports, proxies, registrations.
+const OWNERSHIP = /^(3|4|5|144|SC 13[DG]|SCHEDULE 13[DG])(\/A)?$/;
+export const isKeyFiling = (form) => !OWNERSHIP.test(String(form || '').toUpperCase().trim());
 const MAX_ROWS = 100;
 
 // Plain-English names for the common forms.
@@ -96,9 +100,10 @@ export function filterFilings(rows, form = 'ALL', max = MAX_ROWS) {
   const counts = Object.fromEntries(FILING_FORMS.map((f) => [f, 0]));
   for (const r of rows) {
     counts.ALL += 1;
+    if (isKeyFiling(r.form)) counts.KEY += 1;
     if (r.family) counts[r.family] += 1;
   }
-  const picked = form === 'ALL' ? rows : rows.filter((r) => r.family === form);
+  const picked = form === 'ALL' ? rows : form === 'KEY' ? rows.filter((r) => isKeyFiling(r.form)) : rows.filter((r) => r.family === form);
   return { rows: picked.slice(0, max), counts, matched: picked.length };
 }
 

@@ -151,8 +151,8 @@ export const REGISTRY = [
   },
   {
     name: 'FILINGS', category: 'Stocks and companies', summary: 'Latest SEC filings, with links to sec.gov', takesTicker: true, bar: 10,
-    syntax: 'FILINGS <ticker> [10-K|10-Q|8-K|4]', examples: ['FILINGS AAPL', 'FILINGS TSLA 8-K'], keywords: ['sec', 'edgar', '10-k', 'annual report', 'documents'],
-    options: [['10-K', 'Annual reports'], ['10-Q', 'Quarterly reports'], ['8-K', 'News the company must report'], ['4', 'Insider trades']],
+    syntax: 'FILINGS <ticker> [10-K|10-Q|8-K|4|ALL]', examples: ['FILINGS AAPL', 'FILINGS TSLA 8-K'], keywords: ['sec', 'edgar', '10-k', 'annual report', 'documents'],
+    options: [['10-K', 'Annual reports'], ['10-Q', 'Quarterly reports'], ['8-K', 'News the company must report'], ['4', 'Insider trades'], ['ALL', 'Every filing, insider paperwork too (the default leaves it out)']],
     source: 'SEC EDGAR', delay: 'Minutes after filing',
   },
   {

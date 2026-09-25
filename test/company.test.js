@@ -270,7 +270,9 @@ test('router: company commands, ticker first, function bar, help', () => {
   assert.equal(parseCommand('EXDIV SOON').error, 'usage');
   assert.deepEqual(parseExdiv(['2026-02-30']), { error: 'usage' });
   assert.deepEqual(parseFilings(['AAPL', '8K']), { ticker: 'AAPL', form: '8-K' });
-  assert.equal(filingsInput({ ticker: 'AAPL', form: 'ALL' }), 'FILINGS AAPL');
+  assert.equal(filingsInput({ ticker: 'AAPL', form: 'KEY' }), 'FILINGS AAPL');
+  assert.equal(filingsInput({ ticker: 'AAPL', form: 'ALL' }), 'FILINGS AAPL ALL');
+  assert.deepEqual(parseFilings(['AAPL']), { ticker: 'AAPL', form: 'KEY' });
   assert.equal(matchCompany('NOPE', []), null);
   for (const fn of COMPANY_FUNCTIONS) {
     assert.ok(TICKER_FUNCTIONS.includes(fn));

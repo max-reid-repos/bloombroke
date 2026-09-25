@@ -49,8 +49,9 @@ export function rangePills(active, cmdFor, ranges = PRESETS) {
 
 export function panelTools({ shown, total, csv } = {}) {
   const parts = [];
-  if (Number.isFinite(shown) && Number.isFinite(total)) parts.push(`<span class="tools-count">${esc(shown)} OF ${esc(total)}</span>`);
-  else if (Number.isFinite(total)) parts.push(`<span class="tools-count">${esc(total)}</span>`);
+  const n = (v) => esc(v.toLocaleString('en-US'));
+  if (Number.isFinite(shown) && Number.isFinite(total)) parts.push(`<span class="tools-count">${n(shown)} OF ${n(total)}</span>`);
+  else if (Number.isFinite(total)) parts.push(`<span class="tools-count">${n(total)}</span>`);
   if (csv) parts.push(`<a class="chip tools-csv" href="${esc(csv.href)}"${csv.name ? ` download="${esc(csv.name)}"` : ''}>CSV</a>`);
   return `<span class="panel-tools">${parts.join('')}</span>`;
 }
