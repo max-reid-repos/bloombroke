@@ -28,6 +28,10 @@
   --down-flash: hsla(0, 100%, 60%, .28);
 
   --gutter: 12px;
+  /* Every row shares one centred content column. Bar backgrounds stay full-bleed;
+     only their contents are inset. 100% resolves against each element's own width. */
+  --maxw: 1440px;
+  --inset: max(var(--gutter), calc((100% - var(--maxw)) / 2));
   --topbar-h: 30px;
   --cmd-h: 40px;
   --status-h: 22px;
@@ -93,7 +97,7 @@ kbd {
 .topbar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   height: var(--topbar-h);
-  padding: 0 var(--gutter);
+  padding: 0 var(--inset);
   background: var(--bg);
   border-bottom: 1px solid var(--rule);
 }
@@ -114,7 +118,7 @@ kbd {
 
 /* ---- Command bar ------------------------------------------------------ */
 .commandbar { position: sticky; top: 0; z-index: 10; background: var(--panel); border-bottom: 1px solid var(--rule-strong); }
-.cmd { position: relative; display: flex; align-items: center; gap: 10px; height: var(--cmd-h); padding: 0 var(--gutter); }
+.cmd { position: relative; display: flex; align-items: center; gap: 10px; height: var(--cmd-h); padding: 0 var(--inset); }
 .prompt { font-size: 16px; font-weight: 600; color: var(--accent); line-height: 1; }
 .cmd-field { position: relative; flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; }
 
@@ -152,8 +156,8 @@ kbd {
 .suggest {
   position: absolute;
   top: 100%;
-  left: calc(var(--gutter) + 18px);
-  width: min(600px, calc(100% - var(--gutter) * 2 - 18px));
+  left: calc(var(--inset) + 18px);
+  width: min(600px, calc(100% - var(--inset) * 2 - 18px));
   background: var(--panel-2);
   border: 1px solid var(--rule-strong);
   z-index: 20;
@@ -187,7 +191,7 @@ kbd {
 .share:hover { color: var(--ink); background: var(--accent); border-color: var(--accent); }
 
 /* ---- Screen ----------------------------------------------------------- */
-.screen { padding: 8px var(--gutter) calc(var(--dock-h) + 16px); outline: 0; }
+.screen { padding: 8px var(--inset) calc(var(--dock-h) + 16px); outline: 0; }
 
 .footnote { margin-top: 6px; font-size: 11px; color: var(--dim); }
 .notice { font-size: 16px; font-weight: 600; line-height: 1.35; color: var(--text); margin-bottom: 6px; }
@@ -384,7 +388,7 @@ a.panel-label:hover { text-decoration: none; background: var(--text); }
 .statusline {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   height: var(--status-h);
-  padding: 0 var(--gutter);
+  padding: 0 var(--inset);
   background: var(--panel);
   font-size: 11px; letter-spacing: .06em;
   white-space: nowrap;
@@ -420,7 +424,7 @@ a.panel-label:hover { text-decoration: none; background: var(--text); }
 .keybar {
   display: flex;
   height: var(--keybar-h);
-  padding: 0 calc(var(--gutter) - 8px);
+  padding: 0 calc(var(--inset) - 8px);
   overflow-x: auto; overflow-y: hidden;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
