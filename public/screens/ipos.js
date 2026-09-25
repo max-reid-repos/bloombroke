@@ -9,6 +9,9 @@ export function priceText(low, high) {
   return Number.isFinite(high) && high !== low ? `$${fmtNum(low, 2)}-${fmtNum(high, 2)}` : `$${fmtNum(low, 2)}`;
 }
 
+// FILED is long (70 or more deals): the newest FILED_SHOWN, then a button for the rest.
+export const FILED_SHOWN = 10;
+
 export function ipoTable(rows, { kind }) {
   if (!rows.length) return '<p class="panel-msg">None listed.</p>';
   const filed = kind === 'filed';
@@ -36,8 +39,11 @@ export function render(el, cmd, ctx) {
 
   ctx.fetchJSON('/api/ipos', { signal: ctx.signal }).then((d) => {
     ['upcoming', 'priced', 'filed'].forEach((kind, i) => {
-      bodies[i].innerHTML = ipoTable(d[kind], { kind });
+      const cut = kind === 'filed' && d[kind].length > FILED_SHOWN;
+      bodies[i].innerHTML = ipoTable(cut ? d[kind].slice(0, FILED_SHOWN) : d[kind], { kind })
+        + (cut ? `<p class="more"><button type="button" class="btn ipo-more">SHOW ALL ${d[kind].length}</button> <span class="dim">Newest ${FILED_SHOWN} shown</span></p>` : '');
       el.querySelector(`#ipo-m${i + 1}`).textContent = `${d[kind].length} DEALS`;
+      bodies[i].querySelector('.ipo-more')?.addEventListener('click', () => { bodies[i].innerHTML = ipoTable(d[kind], { kind }); });
     });
     el.querySelector('#ipo-foot').innerHTML = sourceLine(d.source, 'Upcoming covers this month and next; priced and filed cover this month and last. Offer = the dollar amount of the offering, as published. Dates are what the source lists and can move.');
     ctx.updated(d.updated, d.stale);

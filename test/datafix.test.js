@@ -21,6 +21,8 @@ import { stepPoints } from '../public/screens/fedpath.js';
 import { makeValue } from '../data/value.js';
 import { valueGroups } from '../public/screens/value.js';
 import { underlyingAsOf } from '../public/screens/options.js';
+import { parseIpoMonth } from '../data/ipos.js';
+import { ipoTable, FILED_SHOWN } from '../public/screens/ipos.js';
 
 const fixture = (f) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'));
 const json = (body) => ({ ok: true, status: 200, json: async () => body });
@@ -241,4 +243,19 @@ test('VALUE: the live last price with its time, the snapshot time for the rest',
   assert.deepEqual([down.last, down.lastAsOf], [338.71, '2026-09-25T11:32:38.375-0400']);
   assert.match(underlyingAsOf('2026-09-25T16:49:02Z'), /CBOE, DELAYED 15 MIN · FILE 12:49 ET/);
   assert.equal(underlyingAsOf(null), 'CBOE, DELAYED 15 MIN');
+});
+
+// ---- IPOS -----------------------------------------------------------------------
+// Real Nasdaq IPO calendar rows (Sep 2026 FILED): Meey Global Corp has no ticker yet.
+test('IPOS: a deal without a ticker keeps its name in the name spot', () => {
+  const m = parseIpoMonth(fixture('nasdaq-ipos-filed.json').data);
+  const meey = m.filed.find((r) => r.company === 'Meey Global Corp');
+  assert.equal(meey.symbol, null);
+  assert.equal(meey.amount, 34_500_000);
+  const html = ipoTable([meey], { kind: 'filed' });
+  assert.match(html, /<span class="tk dim">--<\/span> <span class="tk-name co-noname">Meey Global Corp<\/span>/);
+  assert.doesNotMatch(html, /<span class="tk">Meey/);
+  const withTk = m.filed.find((r) => r.symbol);
+  assert.match(ipoTable([withTk], { kind: 'filed' }), new RegExp(`<span class="tk">${withTk.symbol}</span>`));
+  assert.equal(FILED_SHOWN, 10);
 });

@@ -188,7 +188,8 @@
 .co-chip.is-active { color: var(--ink); background: var(--text-2); }
 .co-count { color: var(--faint); font-weight: 400; }
 .co-chip.is-active .co-count { color: var(--ink); }
-.co-noname { margin-left: 0; color: var(--text-2); }
+.co-noname { color: var(--text-2); }
+@media (max-width: 639px) { .tk-name.co-noname { display: inline; } }
 .co-title-line { margin-bottom: 10px; }
 .co-group { margin: 0 0 4px; color: var(--dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
 .co-groups { display: grid; gap: 12px 24px; }
