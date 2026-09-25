@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   parseScreenArgs, parseScreenCommand, screenWords, screenTokens, parseCond, applyScreen, sortRows, matchSector, matchCountry, sortOf, isEmptySpec,
 } from '../public/screener.js';
@@ -197,4 +198,29 @@ test('service: one download for many screens, limit, errors', async () => {
   assert.equal(b.rows[0].symbol, 'AAPL');
   assert.equal(calls, 2, 'the universe and its date are fetched once');
   await assert.rejects(getScreen('SECTOR PIZZA'), (e) => e.code === 'sector');
+});
+
+// ---- P/E and other ratio filters: a loss is not a cheap stock -----------------------
+
+test('PE filters leave out negative and missing P/E (real CNBC rows), and it shows as loss', async () => {
+  const { parseFundMap } = await import('../data/value.js');
+  const { withFund } = await import('../data/screen.js');
+  const { fmtPe } = await import('../public/screens/screen.js');
+  const fund = parseFundMap(JSON.parse(readFileSync(new URL('./fixtures/cnbc-fund-losses.json', import.meta.url))).FormattedQuoteResult.FormattedQuote);
+  assert.equal(fund.get('NET').pe, -599.5, 'the source really sends a negative P/E');
+  const base = ['SPCX', 'INTC', 'NET', 'SNOW', 'AAPL', 'KO', 'T', 'BRK.B', 'NOFUND'].map((symbol, i) => ({ symbol, name: symbol, last: 10, changePct: 0, marketCap: 1e9 * (i + 1), volume: 1 }));
+  const rows = withFund(base, fund);
+  assert.deepEqual(syms(applyScreen(rows, parseScreenArgs('PE<30'))), ['BRK.B', 'T', 'KO']);
+  assert.deepEqual(syms(applyScreen(rows, parseScreenArgs('PE<=1000 SORT PE LOW'))), ['T', 'BRK.B', 'KO', 'AAPL']);
+  assert.deepEqual(syms(applyScreen(rows, parseScreenArgs('PE>-1000'))).sort(), ['AAPL', 'BRK.B', 'KO', 'T'], 'no negative P/E passes any PE filter');
+  // Sorting on P/E: losses and missing numbers sink to the bottom both ways.
+  assert.deepEqual(syms(sortRows(rows, { by: 'PE', dir: 'LOW' })).slice(0, 4), ['T', 'BRK.B', 'KO', 'AAPL']);
+  assert.deepEqual(syms(sortRows(rows, { by: 'PE', dir: 'HIGH' })).slice(0, 4), ['AAPL', 'KO', 'BRK.B', 'T']);
+  // Dividend yield: missing never passes; zero passes DIV<1, a negative never.
+  assert.deepEqual(syms(applyScreen(rows, parseScreenArgs('DIV>2'))), ['T', 'KO']);
+  assert.deepEqual(syms(applyScreen([{ symbol: 'Z', divYield: 0 }, { symbol: 'N', divYield: -1 }], parseScreenArgs('DIV<1'))), ['Z']);
+  assert.equal(fmtPe(-218.06), 'loss');
+  assert.equal(fmtPe(26.45), '26.45');
+  assert.equal(fmtPe(null), '--');
+  assert.match(resultsTable(withFund(base.slice(0, 1), fund), parseScreenArgs('DIV>0')), /<td class="num">loss<\/td>/);
 });

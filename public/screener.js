@@ -45,10 +45,18 @@ export const FIELDS = {
   CHG: { key: 'changePct', label: '% change', scale: false },
   VOL: { key: 'volume', label: 'Volume', scale: true },
   // From the CNBC quote service, not the Nasdaq screener: only stocks where CNBC has the
-  // number can pass these filters.
-  PE: { key: 'pe', label: 'P/E', scale: false, cnbc: true },
-  DIV: { key: 'divYield', label: 'Dividend yield', scale: false, cnbc: true },
+  // number can pass these filters. `valid` says which values a ratio can take: a
+  // negative P/E is a loss, not a cheap stock, so PE<30 never lists it.
+  PE: { key: 'pe', label: 'P/E', scale: false, cnbc: true, valid: (v) => v > 0 },
+  DIV: { key: 'divYield', label: 'Dividend yield', scale: false, cnbc: true, valid: (v) => v >= 0 },
 };
+
+// True when a row has a usable value for a number field: present, finite and, for a
+// ratio, in its valid range (see FIELDS).
+export function hasValue(field, v) {
+  const def = FIELDS[field];
+  return Number.isFinite(v) && (!def?.valid || def.valid(v));
+}
 const FIELD_ALIASES = { CAP: 'MCAP', MARKETCAP: 'MCAP', LAST: 'PRICE', CHANGE: 'CHG', '%CHG': 'CHG', PCT: 'CHG', VOLUME: 'VOL', YIELD: 'DIV', DIVYIELD: 'DIV' };
 export const FIELD_ORDER = ['MCAP', 'PRICE', 'CHG', 'VOL', 'PE', 'DIV'];
 
@@ -57,7 +65,7 @@ export const SORTS = {
   SYMBOL: { key: 'symbol', text: true }, NAME: { key: 'name', text: true },
   PRICE: { key: 'last' }, CHG: { key: 'changePct' }, MCAP: { key: 'marketCap' }, VOL: { key: 'volume' },
   SECTOR: { key: 'sector', text: true }, INDUSTRY: { key: 'industry', text: true }, COUNTRY: { key: 'country', text: true },
-  PE: { key: 'pe', cnbc: true }, DIV: { key: 'divYield', cnbc: true },
+  PE: { key: 'pe', cnbc: true, field: 'PE' }, DIV: { key: 'divYield', cnbc: true, field: 'DIV' },
 };
 
 export const PRESETS = {
@@ -218,21 +226,23 @@ export function applyScreen(rows, spec) {
     if (sector && r.sector !== sector) return false;
     if (country && r.country !== country) return false;
     if (industry && !String(r.industry || '').toUpperCase().includes(industry)) return false;
-    return conds.every((c) => test(r[FIELDS[c.field].key], c.op, c.value));
+    return conds.every((c) => hasValue(c.field, r[FIELDS[c.field].key]) && test(r[FIELDS[c.field].key], c.op, c.value));
   });
   return sortRows(out, sortOf(spec));
 }
 
-// Missing values always sink to the bottom; ties break on symbol.
+// Missing values (and a ratio out of range, like a negative P/E) always sink to the
+// bottom; ties break on symbol.
 export function sortRows(rows, { by, dir }) {
   const def = SORTS[by] || SORTS.MCAP;
   const k = def.key;
   const sign = dir === 'LOW' ? 1 : -1;
+  const missing = (v) => (def.text ? !v : !(def.field ? hasValue(def.field, v) : Number.isFinite(v)));
   return [...rows].sort((a, b) => {
     const x = a[k];
     const y = b[k];
-    const xm = def.text ? !x : !Number.isFinite(x);
-    const ym = def.text ? !y : !Number.isFinite(y);
+    const xm = missing(x);
+    const ym = missing(y);
     if (xm || ym) return xm === ym ? cmpSym(a, b) : xm ? 1 : -1;
     const c = def.text ? String(x).localeCompare(String(y)) : x - y;
     return c ? c * sign : cmpSym(a, b);
