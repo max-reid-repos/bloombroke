@@ -7,6 +7,8 @@ import { makeScreen } from '../data/screen.js';
 import { createCache } from '../data/cache.js';
 import { parseScreenArgs, screenWords } from '../public/screener.js';
 import { formValues, wordsFromForm, presetValues, asOfLine, resultsTable } from '../public/screens/screen.js';
+import { parseExDiv, cleanExDiv, exDivProblem, makeSplits } from '../data/splits.js';
+import { exdivTable } from '../public/screens/exdiv.js';
 
 const fixture = (f) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'));
 const json = (body) => ({ ok: true, status: 200, json: async () => body });
@@ -45,4 +47,28 @@ test('SCREEN form: a preset fills its own boxes, and they do not become extra wo
   assert.deepEqual(wordsFromForm(w, spec.sort), { words: screenWords(spec) });
   // Without the preset the same values are ordinary rules.
   assert.deepEqual(wordsFromForm({ ...v, preset: '' }), { words: 'MCAP>300M CHG>0' });
+});
+
+// ---- EXDIV ----------------------------------------------------------------------
+// Real Nasdaq dividend-calendar rows (Sep 28 and 29, 2026): ERIC lists payment on
+// 9/25 for a record date of 9/29; GGAL and BZ list a historical annual dividend of 0.
+test('EXDIV: impossible date orders are left out and named, zero annual amounts are "--"', async () => {
+  const body = fixture('nasdaq-exdiv-checks.json');
+  const rows = parseExDiv(body.data);
+  assert.equal(rows.find((r) => r.symbol === 'GGAL').annual, null);
+  assert.equal(rows.find((r) => r.symbol === 'BZ').annual, null);
+  assert.equal(rows.find((r) => r.symbol === 'GSBC').annual, 1.72);
+  assert.equal(exDivProblem(rows.find((r) => r.symbol === 'ERIC')), 'paid before the record date');
+  assert.equal(exDivProblem({ record: '2026-09-28', announced: '2026-09-30' }), 'record date before the announcement');
+  assert.equal(exDivProblem(rows.find((r) => r.symbol === 'GSBC')), null);
+  const c = cleanExDiv(rows);
+  assert.deepEqual(c.rows.map((r) => r.symbol), ['BZ', 'GGAL', 'GSBC']);
+  assert.deepEqual(c.dropped.map((r) => r.symbol), ['ERIC']);
+  const html = exdivTable(c.rows);
+  assert.doesNotMatch(html, /\$0\.0000/);
+  assert.match(html, />--</);
+  const sp = makeSplits({ fetchImpl: async () => json(body), cache: createCache(), now: () => Date.parse('2026-09-26T15:00:00Z') });
+  const one = await sp.getExDiv('2026-09-29');
+  assert.deepEqual(one.days[0].dropped, [{ symbol: 'ERIC', company: 'Ericsson American Depositary Shares', why: 'paid before the record date' }]);
+  assert.ok(one.days[0].rows.every((r) => r.symbol !== 'ERIC'));
 });
