@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createCache } from '../data/cache.js';
-import { makeQuotes, parseQuoteRow, parseListRows, normalizeTicker, INSTRUMENTS } from '../data/quotes.js';
+import { makeQuotes, parseQuoteRow, parseListRows, normalizeTicker, INSTRUMENTS, QUOTES_TTL } from '../data/quotes.js';
+import { INSTRUMENTS as REGISTRY } from '../public/instruments.js';
 import { makeCharts, shapeBars, lastSession } from '../data/charts.js';
 import { makeCpi, inflate, latestFromBls, ANNUAL, FIRST_YEAR, LAST_YEAR } from '../data/cpi.js';
 import { parseEffr, parsePmms, makeRates } from '../data/rates.js';
@@ -86,32 +87,72 @@ test('ticker shapes', () => {
   assert.equal(normalizeTicker('TOOLONG'), null);
   assert.equal(normalizeTicker('AA|BB'), null);
   assert.equal(normalizeTicker('A1'), null);
+  assert.equal(normalizeTicker('eur/usd'), 'EURUSD');
+  assert.equal(normalizeTicker('us10y'), 'US10Y');
   assert.equal(normalizeTicker(''), null);
 });
 
-test('getQuote: unknown ticker is null, known ticker maps index aliases', async () => {
+// Every registry symbol, as the CNBC batch call returns them.
+const batchRows = (extra = {}) => REGISTRY.map((i) => ({
+  symbol: i.src, code: 0, name: i.name, last: '10', change: '1', change_pct: '10%', last_time: '2026-09-25T10:14:00.000-0400',
+  realTime: i.kind === 'future' ? 'false' : 'true', curmktstatus: 'REG_MKT', ...extra,
+}));
+
+test('getQuote: unknown ticker is null; registry names come from the shared batch', async () => {
   const urls = [];
   const fetchImpl = async (url) => {
     urls.push(url);
     const sym = new URL(url).searchParams.get('symbols');
     if (sym === 'ZZZZZ') return json({ FormattedQuoteResult: { FormattedQuote: [{ symbol: 'ZZZZZ', code: 1 }] } });
+    if (sym.includes('|')) return json({ FormattedQuoteResult: { FormattedQuote: batchRows() } });
     return json({ FormattedQuoteResult: { FormattedQuote: [{ ...AAPL_ROW, symbol: sym }] } });
   };
   const qs = makeQuotes({ fetchImpl });
   assert.equal(await qs.getQuote('zzzzz'), null);
   const spx = await qs.getQuote('SPX');
   assert.equal(spx.ticker, 'SPX');
-  assert.equal(new URL(urls[1]).searchParams.get('symbols'), '.SPX');
+  assert.equal(spx.kind, 'index');
+  assert.equal(spx.realTime, true);
+  assert.ok(new URL(urls[1]).searchParams.get('symbols').split('|').includes('.SPX'));
+  const gold = await qs.getQuote('gold');
+  assert.deepEqual([gold.ticker, gold.kind, gold.realTime, gold.label], ['GOLD', 'future', false, 'Gold']);
+  await qs.getQuote('EUR/USD');
+  await qs.getQuotes();
+  await qs.getFxMajors();
+  assert.equal(urls.length, 2, 'one batch call serves every registry screen');
+  const aapl = await qs.getQuote('aapl');
+  assert.equal(aapl.kind, 'stock');
   assert.equal(await qs.getQuote('bad|sym'), null);
-  assert.equal(urls.length, 2, 'bad shapes never reach the source');
+  assert.equal(urls.length, 3, 'bad shapes never reach the source');
+});
+
+test('quotes: 15 second cache, one upstream call however many callers', async () => {
+  assert.equal(QUOTES_TTL, 15_000);
+  let t = 0;
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    await new Promise((r) => setTimeout(r, 5));
+    return json({ FormattedQuoteResult: { FormattedQuote: batchRows() } });
+  };
+  const qs = makeQuotes({ fetchImpl, cache: createCache({ now: () => t }) });
+  await Promise.all(Array.from({ length: 50 }, () => qs.getQuotes()));
+  assert.equal(calls, 1, '50 visitors at once, one call');
+  t = 14_999;
+  await qs.getQuotes();
+  assert.equal(calls, 1);
+  t = 15_001;
+  await qs.getQuotes();
+  assert.equal(calls, 2);
 });
 
 test('getQuotes: too few rows is a failure, not an empty table', async () => {
-  const fetchImpl = async () => json({ FormattedQuoteResult: { FormattedQuote: [{ symbol: '.SPX', last: '1' }] } });
+  const fetchImpl = async () => json({ FormattedQuoteResult: { FormattedQuote: [{ symbol: '.SPX', code: 0, last: '1' }] } });
   await assert.rejects(makeQuotes({ fetchImpl }).getQuotes(), /too few rows/);
-  const all = async () => json({ FormattedQuoteResult: { FormattedQuote: INSTRUMENTS.map((i) => ({ symbol: i.src, last: '10', change: '1', change_pct: '10%' })) } });
+  const all = async () => json({ FormattedQuoteResult: { FormattedQuote: batchRows() } });
   const r = await makeQuotes({ fetchImpl: all }).getQuotes();
   assert.equal(r.instruments.length, INSTRUMENTS.length);
+  assert.ok(r.instruments.every((i) => typeof i.realTime === 'boolean' && !('src' in i) && !('aliases' in i)));
 });
 
 // ---- charts ------------------------------------------------------------------
@@ -205,12 +246,12 @@ test('getRates: one dead source leaves the others', async () => {
   const fetchImpl = async (url) => {
     if (url.includes('newyorkfed')) throw new Error('down');
     if (url.includes('freddiemac')) return json('date,pmms30,pmms15\n9/17/2026,6.95,6.26\n9/24/2026,7.03,6.42\n');
-    return json({ FormattedQuoteResult: { FormattedQuote: [{ symbol: 'US10Y', last: '5.18%', change: '+0.02', change_pct: '0.3%' }] } });
+    return json({ FormattedQuoteResult: { FormattedQuote: batchRows({ last: '5.18%', change: '+0.02' }) } });
   };
   const r = await makeRates({ fetchImpl }).getRates();
   assert.equal(r.fed, null);
   assert.equal(r.mortgage.rate30, 7.03);
-  assert.equal(r.yields.length, 1);
+  assert.equal(r.yields.length, 3);
 });
 
 // ---- news --------------------------------------------------------------------

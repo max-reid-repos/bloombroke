@@ -2,42 +2,19 @@
 // Current source: the public CNBC quote service (no key). Keep it server side only.
 
 import { createCache } from './cache.js';
+import { INSTRUMENTS as ALL, FX_MAJOR_IDS, YIELD_IDS, instrumentById, resolveInstrument } from '../public/instruments.js';
 
-export const INSTRUMENTS = [
-  { id: 'SPX', name: 'S&P 500', group: 'Stocks', decimals: 2, src: '.SPX' },
-  { id: 'NDX', name: 'Nasdaq 100', group: 'Stocks', decimals: 2, src: '.NDX' },
-  { id: 'DJI', name: 'Dow', group: 'Stocks', decimals: 2, src: '.DJI' },
-  { id: 'FTSE', name: 'FTSE 100', group: 'Stocks', decimals: 2, src: '.FTSE' },
-  { id: 'N225', name: 'Nikkei 225', group: 'Stocks', decimals: 2, src: '.N225' },
-  { id: 'DAX', name: 'DAX', group: 'Stocks', decimals: 2, src: '.GDAXI' },
-  { id: 'GOLD', name: 'Gold', group: 'Commodities', decimals: 2, src: '@GC.1' },
-  { id: 'WTI', name: 'Oil (WTI)', group: 'Commodities', decimals: 2, src: '@CL.1' },
-  { id: 'BTC', name: 'Bitcoin', group: 'Crypto', decimals: 0, src: 'BTC.CM=' },
-  { id: 'EURUSD', name: 'EUR/USD', group: 'Currencies', decimals: 4, src: 'EUR=' },
-  { id: 'USDJPY', name: 'USD/JPY', group: 'Currencies', decimals: 2, src: 'JPY=' },
-];
+// The MARKETS list (with CNBC symbols), the FX majors and the Treasury yields all come
+// from the shared registry in public/instruments.js.
+export const INSTRUMENTS = ALL.filter((i) => i.markets);
+export const FX_MAJORS = FX_MAJOR_IDS.map(instrumentById).map((i) => ({ ...i, pair: i.name }));
+export const YIELDS = YIELD_IDS.map(instrumentById).map((i) => ({ ...i, name: i.longName }));
 
-// Majors against the US dollar, quoted the way traders quote them.
-export const FX_MAJORS = [
-  { id: 'EURUSD', pair: 'EUR/USD', base: 'EUR', quote: 'USD', decimals: 4, src: 'EUR=' },
-  { id: 'GBPUSD', pair: 'GBP/USD', base: 'GBP', quote: 'USD', decimals: 4, src: 'GBP=' },
-  { id: 'USDJPY', pair: 'USD/JPY', base: 'USD', quote: 'JPY', decimals: 2, src: 'JPY=' },
-  { id: 'USDCHF', pair: 'USD/CHF', base: 'USD', quote: 'CHF', decimals: 4, src: 'CHF=' },
-  { id: 'USDCNY', pair: 'USD/CNY', base: 'USD', quote: 'CNY', decimals: 4, src: 'CNY=' },
-  { id: 'USDTHB', pair: 'USD/THB', base: 'USD', quote: 'THB', decimals: 2, src: 'THB=' },
-];
-
-export const YIELDS = [
-  { id: 'US2Y', name: 'US 2-year Treasury', term: '2Y', src: 'US2Y' },
-  { id: 'US10Y', name: 'US 10-year Treasury', term: '10Y', src: 'US10Y' },
-  { id: 'US30Y', name: 'US 30-year Treasury', term: '30Y', src: 'US30Y' },
-];
-
-// Friendly names for indexes, so SPX works like a ticker.
-export const TICKER_ALIASES = { SPX: '.SPX', NDX: '.NDX', DJI: '.DJI', DOW: '.DJI', FTSE: '.FTSE', N225: '.N225', DAX: '.GDAXI' };
 export const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 
-const QUOTES_TTL = 5 * 60_000;
+// Quotes are shared by every visitor: one upstream call per 15 seconds per key,
+// however many people are watching (the cache de-duplicates calls in flight).
+export const QUOTES_TTL = 15_000;
 export const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 const CNBC_URL = 'https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol';
 
@@ -53,14 +30,26 @@ function numOrNull(s) {
   return Number.isFinite(n) ? n : null;
 }
 
-// "aapl" -> "AAPL"; anything that is not ticker shaped -> null.
+// "aapl" -> "AAPL"; "gold" -> "GOLD" (a registry id); anything else -> null.
 export function normalizeTicker(raw) {
+  const inst = resolveInstrument(raw);
+  if (inst) return inst.id;
   const t = String(raw ?? '').trim().toUpperCase();
   return TICKER_RE.test(t) ? t : null;
 }
 
+// Our id -> the CNBC symbol. Plain stock tickers are the same in both.
 export function tickerSource(ticker) {
-  return TICKER_ALIASES[ticker] || ticker;
+  return instrumentById(ticker)?.src || ticker;
+}
+
+// CNBC says realTime for US stocks (Nasdaq Last Sale), US indexes, FX, crypto and
+// yields; futures and most non-US indexes are delayed.
+export function freshness(r) {
+  return {
+    realTime: r?.realTime === true || r?.realTime === 'true',
+    marketState: r?.curmktstatus || null,
+  };
 }
 
 export async function fetchCnbcRows(fetchImpl, symbols) {
@@ -90,13 +79,14 @@ export function parseListRows(list, rows) {
     if (!r || !Number.isFinite(last)) continue;
     const change = parseNum(r.change);
     const changePct = parseNum(r.change_pct);
-    const { src, ...rest } = item;
+    const { src, aliases, markets, ...rest } = item;
     out.push({
       ...rest,
       last,
       change: Number.isFinite(change) ? change : 0,
       changePct: Number.isFinite(changePct) ? changePct : 0,
       asOf: r.last_time || null,
+      ...freshness(r),
     });
   }
   return out;
@@ -109,10 +99,15 @@ export function parseQuoteRow(r, ticker = r?.symbol) {
   if (!Number.isFinite(last)) return null;
   const x = r.ExtendedMktQuote;
   const extLast = parseNum(x?.last);
+  const inst = instrumentById(ticker);
   return {
     ticker,
     symbol: r.symbol,
     name: r.name || r.shortName || ticker,
+    label: inst?.name || null,
+    kind: inst?.kind || 'stock',
+    decimals: inst?.decimals ?? null,
+    ...freshness(r),
     type: r.type || null,
     exchange: r.exchange || null,
     currency: r.currencyCode || null,
@@ -142,35 +137,47 @@ export function parseQuoteRow(r, ticker = r?.symbol) {
 }
 
 export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache() } = {}) {
-  async function list(key, items, minRows) {
-    const { value, stale, fetchedAt } = await cache.cached(key, QUOTES_TTL, async () => {
-      const rows = await fetchCnbcRows(fetchImpl, items.map((i) => i.src));
-      const out = parseListRows(items, rows);
-      if (out.length < minRows) throw new Error(`quotes source: too few rows for ${key}`);
-      return out;
+  // Every registry instrument in one upstream call: MARKETS, HOME, the tape, the FX
+  // majors, the yields and each instrument screen all read from it.
+  async function batch() {
+    return cache.cached('quotes:all', QUOTES_TTL, async () => {
+      const rows = await fetchCnbcRows(fetchImpl, ALL.map((i) => i.src));
+      const ok = rows.filter((r) => Number(r.code) === 0 && Number.isFinite(parseNum(r.last)));
+      if (ok.length < ALL.length / 2) throw new Error('quotes source: too few rows');
+      return rows;
     });
-    return { value, stale, updated: new Date(fetchedAt).toISOString() };
+  }
+
+  async function list(items) {
+    const { value, stale, fetchedAt } = await batch();
+    return { value: parseListRows(items, value), stale, updated: new Date(fetchedAt).toISOString() };
   }
 
   return {
     async getQuotes() {
-      const { value, stale, updated } = await list('quotes', INSTRUMENTS, INSTRUMENTS.length / 2);
+      const { value, stale, updated } = await list(INSTRUMENTS);
       return { instruments: value, stale, updated };
     },
     async getFxMajors() {
-      const { value, stale, updated } = await list('fxmajors', FX_MAJORS, FX_MAJORS.length / 2);
+      const { value, stale, updated } = await list(FX_MAJORS);
       return { pairs: value, stale, updated };
     },
     async getYields() {
-      const { value, stale, updated } = await list('yields', YIELDS, 1);
+      const { value, stale, updated } = await list(YIELDS);
       return { yields: value, stale, updated };
     },
     // Resolves to null for an unknown ticker.
     async getQuote(rawTicker) {
       const ticker = normalizeTicker(rawTicker);
       if (!ticker) return null;
+      const inst = instrumentById(ticker);
+      if (inst) {
+        const { value, stale, fetchedAt } = await batch();
+        const quote = parseQuoteRow(value.find((r) => r.symbol === inst.src), ticker);
+        return quote ? { ...quote, stale, updated: new Date(fetchedAt).toISOString() } : null;
+      }
       const { value, stale, fetchedAt } = await cache.cached(`quote:${ticker}`, QUOTES_TTL, async () => {
-        const rows = await fetchCnbcRows(fetchImpl, [tickerSource(ticker)]);
+        const rows = await fetchCnbcRows(fetchImpl, [ticker]);
         return { quote: parseQuoteRow(rows[0], ticker) };
       });
       if (!value.quote) return null;
@@ -179,4 +186,4 @@ export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache()
   };
 }
 
-export const { getQuotes, getFxMajors, getYields, getQuote } = makeQuotes();
+export const { getQuotes, getFxMajors, getYields, getQuote } = makeQuotes({ cache: createCache({ maxEntries: 2000 }) });

@@ -7,6 +7,7 @@ import { getChart, ChartError } from './data/charts.js';
 import { getCpi, CpiError, CPI_EXAMPLES } from './data/cpi.js';
 import { getRates } from './data/rates.js';
 import { getNews } from './data/news.js';
+import { search } from './data/search.js';
 import { getCatalog, getWhatif, getFunding } from './data/whatif-service.js';
 import { WhatifError } from './data/whatif.js';
 import { buildId, versionIndex } from './lib/assets.js';
@@ -44,7 +45,7 @@ app.use((req, res, next) => {
 app.get('/api/markets', async (req, res) => {
   try {
     const data = await getQuotes();
-    res.set('Cache-Control', 'public, max-age=30');
+    res.set('Cache-Control', 'public, max-age=5');
     res.json(data);
   } catch (err) {
     console.error('[markets]', err.message);
@@ -78,7 +79,7 @@ const str = (v) => (typeof v === 'string' ? v : undefined);
 app.get('/api/fxmajors', async (req, res) => {
   try {
     const data = await getFxMajors();
-    res.set('Cache-Control', 'public, max-age=30');
+    res.set('Cache-Control', 'public, max-age=5');
     res.json(data);
   } catch (err) {
     console.error('[fxmajors]', err.message);
@@ -92,7 +93,7 @@ app.get('/api/quote', async (req, res) => {
   try {
     const data = await getQuote(ticker);
     if (!data) return res.status(404).json({ error: 'not_found', message: `No ticker called ${ticker}.` });
-    res.set('Cache-Control', 'public, max-age=30');
+    res.set('Cache-Control', 'public, max-age=5');
     res.json(data);
   } catch (err) {
     console.error('[quote]', err.message);
@@ -100,9 +101,22 @@ app.get('/api/quote', async (req, res) => {
   }
 });
 
+app.get('/api/search', async (req, res) => {
+  try {
+    const data = await search(str(req.query.q));
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.json(data);
+  } catch (err) {
+    console.error('[search]', err.message);
+    res.status(503).json({ error: 'unavailable', message: BREAK });
+  }
+});
+
 app.get('/api/chart', async (req, res) => {
   try {
-    const data = await getChart(str(req.query.s), str(req.query.r));
+    const from = str(req.query.from);
+    const range = from ? { from, to: str(req.query.to) || null } : str(req.query.r);
+    const data = await getChart(str(req.query.s), range);
     res.set('Cache-Control', 'public, max-age=60');
     res.json(data);
   } catch (err) {
@@ -131,7 +145,7 @@ app.get('/api/cpi', async (req, res) => {
 app.get('/api/rates', async (req, res) => {
   try {
     const data = await getRates();
-    res.set('Cache-Control', 'public, max-age=60');
+    res.set('Cache-Control', 'public, max-age=5');
     res.json(data);
   } catch (err) {
     console.error('[rates]', err.message);
