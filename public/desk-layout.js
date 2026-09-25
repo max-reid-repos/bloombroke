@@ -12,7 +12,14 @@ export const MIN_H = 3;
 export const MAX_H = 40;
 export const LINKS = [null, 'blue', 'green'];
 // The screens that show one ticker, so a linked panel can switch to another one.
-export const TICKER_SCREENS = ['QUOTE', 'TICKERNEWS', 'PROFILE', 'HISTORY', 'DIVIDENDS', 'FINANCIALS'];
+export const TICKER_SCREENS = [
+  'QUOTE', 'TICKERNEWS', 'PROFILE', 'VALUE', 'FINANCIALS', 'DIVIDENDS', 'BEATS', 'INSIDERS',
+  'OWNERS', 'FILINGS', 'SHORTS', 'OPTIONS', 'HISTORY',
+];
+// Screens with a chart: a new panel for one is at least this many rows tall, so the
+// chart keeps its x-axis.
+export const CHART_SCREENS = ['QUOTE', 'COMPARE', 'CURVE', 'RATES', 'BONDS', 'FEDPATH', 'ECONOMY', 'BREADTH', 'SECTORS', 'HISTORY', 'DIVIDENDS', 'SHORTS'];
+export const CHART_MIN_H = 10;
 
 // Desk 1 out of the box: a big chart, the watchlist, news, the heatmap and markets.
 export const DEFAULT_DESK = [
@@ -120,6 +127,13 @@ export function findSpot(panels, w, h) {
 export function nextId(panels) {
   const n = panels.reduce((m, p) => Math.max(m, Number(String(p.id).replace(/^p/, '')) || 0), 0);
   return `p${n + 1}`;
+}
+
+// The size of a new panel for a command: charts get CHART_MIN_H rows. parse is the
+// app's parseCommand.
+export function newPanelSize(cmd, parse) {
+  const p = parse(cmd);
+  return { w: 6, h: CHART_SCREENS.includes(p.name) ? CHART_MIN_H : 7 };
 }
 
 export function addPanel(panels, cmd, { w = 6, h = 7 } = {}) {
@@ -245,14 +259,24 @@ export function tickerOf(cmd, parse) {
 
 // The same screen for another ticker: "NEWS AAPL" + MSFT -> "NEWS MSFT", or null when
 // the screen does not show one ticker or does not take that one (FINANCIALS GOLD).
+// NEWS (every headline) narrows to NEWS MSFT; a ticker screen still waiting for one
+// (INSIDERS) takes it; OPTIONS drops the old expiry, since dates differ by ticker.
 export function retarget(cmd, ticker, parse) {
   const p = parse(cmd);
-  const old = TICKER_SCREENS.includes(p.name) && !p.error ? p.args?.ticker : null;
-  if (!old || old === ticker) return null;
+  const same = (name) => name === p.name || (p.name === 'NEWS' && name === 'TICKERNEWS');
+  const check = (c) => {
+    const next = parse(c);
+    return same(next.name) && !next.error && next.args?.ticker === ticker ? next.input : null;
+  };
+  if (p.name === 'NEWS' && !p.error) return check(`NEWS ${ticker}`);
+  if (!TICKER_SCREENS.includes(p.name)) return null;
+  const old = p.args?.ticker;
+  if (!old) return p.error === 'usage' && p.input === p.name ? check(`${p.name} ${ticker}`) : null;
+  if (p.error || old === ticker) return null;
+  if (p.name === 'OPTIONS') return check(`OPTIONS ${ticker}`);
   const toks = String(p.input).split(' ');
   const i = toks.indexOf(old);
   if (i < 0) return null;
   toks[i] = ticker;
-  const next = parse(toks.join(' '));
-  return next.name === p.name && !next.error && next.args?.ticker === ticker ? next.input : null;
+  return check(toks.join(' '));
 }

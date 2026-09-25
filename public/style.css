@@ -1000,10 +1000,8 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .08em; cursor: pointer; white-space: nowrap;
 }
 .desk-btn:hover { color: var(--ink); background: var(--accent); border-color: var(--accent); }
-.desk-bar .desk-add { display: none; margin-left: auto; }
-.desk[data-editing="true"] .desk-bar .desk-add { display: block; }
-.desk-bar .desk-edit { margin: 0 6px 0 auto; }
-.desk[data-editing="true"] .desk-bar .desk-edit { margin-left: 0; }
+.desk-bar .desk-add { margin-left: auto; }
+.desk-bar .desk-edit { margin: 0 6px 0 0; }
 .desk-edit[aria-pressed="true"] { color: var(--ink); background: var(--accent); border-color: var(--accent); }
 
 .desk-picker { margin-bottom: 1px; background: var(--panel-2); border: 1px solid var(--rule-strong); }
@@ -1071,7 +1069,17 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .dp-body iframe { display: block; width: 100%; height: 100%; border: 0; background: var(--bg); }
 .dp-resize { display: none; }
 
-.desk[data-editing="true"] .dp-head { cursor: grab; }
+.dp-head { cursor: grab; user-select: none; }
+.dp-head .dp-cmd { cursor: text; }
+/* The add tile, after the last panel. */
+.dp-add {
+  grid-column: 1 / -1; order: 9999;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 0; border: 1px dashed var(--rule-strong); background: transparent;
+  color: var(--dim); font-family: var(--font); font-size: 12px; font-weight: 600; letter-spacing: .08em; cursor: pointer;
+}
+.dp-add:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-tint); }
+.dp-add[hidden] { display: none; }
 .desk[data-editing="true"] .dp-resize {
   display: block; position: absolute; right: 0; bottom: 0; z-index: 2;
   width: 14px; height: 14px; cursor: nwse-resize;
@@ -1092,7 +1100,8 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .desk.is-mobile .dp-asof, .desk.is-mobile .desk-focus, .desk.is-mobile .desk-hint { display: none; }
 .desk.is-mobile[data-editing="true"] .dp-move { display: flex; }
 .desk.is-mobile[data-editing="true"] .dp-resize { display: none; }
-.desk.is-mobile[data-editing="true"] .dp-head { cursor: default; }
+.desk.is-mobile .dp-head { cursor: default; }
+.desk.is-mobile .dp-add { height: 44px; }
 
 /* ---- Embed mode: the app inside a DESK panel ------------------------------- */
 .is-embed body { min-height: 0; }

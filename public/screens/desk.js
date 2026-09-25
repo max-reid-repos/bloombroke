@@ -1,7 +1,8 @@
 // DESK: your own screen. Four desks, each a 12-column grid of panels. Every panel runs
 // any command in a same-origin frame of the app in embed mode (so every screen works
 // as it is), with its own command input, link group, as-of time, FULL and close.
-// EDIT: drag a header to move, drag the corner to resize, + PANEL to add. Keys: Alt+Arrows
+// + PANEL (in the bar, and the tile after the last panel) adds one. Drag a header to
+// move a panel; EDIT shows the corner to resize it. Keys: Alt+Arrows
 // move the focused panel, Alt+Shift+Arrows resize it, Ctrl+[ and Ctrl+] cycle focus.
 // The layout maths and the saved state live in ../desk-layout.js.
 
@@ -61,7 +62,7 @@ export function render(el, cmd, ctx) {
       </form>
       <ul class="desk-pick-list" role="listbox" aria-label="Commands"></ul>
     </div>
-    <div class="desk-grid" role="list"></div>
+    <div class="desk-grid" role="list"><button type="button" class="dp-add" data-act="add">+ PANEL</button></div>
     <div class="desk-empty" hidden>
       <p class="notice">Desk ${n} is empty.</p>
       <p class="muted">Add a panel and give it any command: a chart, NEWS, WATCH, HEATMAP, FX 500 USD THB.</p>
@@ -75,6 +76,7 @@ export function render(el, cmd, ctx) {
   const pickInput = el.querySelector('.desk-pick-input');
   const pickList = el.querySelector('.desk-pick-list');
   const empty = el.querySelector('.desk-empty');
+  const addTile = el.querySelector('.dp-add');
 
   const find = (id) => panels.find((p) => p.id === id);
   const order = () => L.stackOrder(panels);
@@ -143,6 +145,10 @@ export function render(el, cmd, ctx) {
     panels.forEach(paintPanel);
     empty.hidden = panels.length > 0;
     grid.hidden = panels.length === 0;
+    // The add tile: a row under the lowest panel, the whole width.
+    const bottom = panels.reduce((m, p) => Math.max(m, p.y + p.h), 0);
+    addTile.hidden = panels.length >= L.MAX_PANELS;
+    addTile.style.gridRow = `${bottom + 1} / span 2`;
     focusLine();
   }
 
@@ -338,13 +344,50 @@ export function render(el, cmd, ctx) {
     window.addEventListener('pointercancel', up);
   }
 
+  // The whole header moves the panel, except its buttons. A press on the command input
+  // waits: moving 5px starts a drag, letting go without moving puts the caret in it.
+  function armDrag(e, id, input) {
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const move = (ev) => {
+      if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) < 5) return;
+      stop();
+      startDrag(e, id, 'move');
+    };
+    const up = (ev) => {
+      stop();
+      if (input && ev.type === 'pointerup') {
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  }
+  // Mouse: dragging works any time. Touch: only in EDIT, so a swipe still scrolls.
+  const canDrag = (e) => !mq.matches && e.button === 0 && (editing || e.pointerType === 'mouse' || e.pointerType === 'pen');
+  const idleInput = (t) => (t.matches?.('.dp-cmd') && document.activeElement !== t ? t : null);
+
   grid.addEventListener('pointerdown', (e) => {
     const node = e.target.closest('.dp');
     if (!node) return;
     setFocus(node.dataset.id);
-    if (!editing || mq.matches || e.button !== 0) return;
-    if (e.target.closest('.dp-resize')) { startDrag(e, node.dataset.id, 'resize'); return; }
-    if (e.target.closest('.dp-head') && !e.target.closest('button, input, a, form')) startDrag(e, node.dataset.id, 'move');
+    if (!canDrag(e)) return;
+    if (e.target.closest('.dp-resize')) { if (editing) startDrag(e, node.dataset.id, 'resize'); return; }
+    if (!e.target.closest('.dp-head') || e.target.closest('button, a')) return;
+    const input = e.target.closest('.dp-cmd');
+    if (input && !idleInput(input)) return; // already typing: select text as usual
+    armDrag(e, node.dataset.id, input);
+  });
+  // A press on an idle command input does not focus it yet (armDrag does, on release).
+  grid.addEventListener('mousedown', (e) => {
+    if (!mq.matches && e.button === 0 && idleInput(e.target)) e.preventDefault();
   });
 
   grid.addEventListener('click', (e) => {
@@ -406,7 +449,8 @@ export function render(el, cmd, ctx) {
     picker.hidden = false;
     pickInput.value = '';
     renderPicker();
-    pickInput.focus();
+    picker.scrollIntoView({ block: 'nearest' });
+    pickInput.focus({ preventScroll: true });
   }
   function closePicker() {
     picker.hidden = true;
@@ -416,7 +460,7 @@ export function render(el, cmd, ctx) {
     if (p.name === 'DESK') { ctx.status('A PANEL CANNOT HOLD A DESK', 'warn'); return; }
     if (p.name === 'UNKNOWN') { ctx.status('UNKNOWN COMMAND. TYPE HELP IN A PANEL TO SEE THEM ALL', 'warn'); return; }
     if (panels.length >= L.MAX_PANELS) { ctx.status(`A DESK HOLDS ${L.MAX_PANELS} PANELS`, 'warn'); return; }
-    const next = L.addPanel(panels, stored(c));
+    const next = L.addPanel(panels, stored(c), L.newPanelSize(stored(c), ctx.parseCommand));
     const added = next.find((o) => !find(o.id));
     setPanels(next);
     closePicker();

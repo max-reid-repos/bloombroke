@@ -4,8 +4,10 @@ import {
   COLS, DEFAULT_DESK, DESK_KEY, DESK_VERSION, MAX_PANELS, clampPanel, collides, settle, dragPreview, dropAt,
   resizeTo, nudge, grow, findSpot, addPanel, removePanel, stackOrder, swapInStack, cycleLink,
   defaultDesks, parseDesks, serializeDesks, loadDesks, saveDesks, parseDeskArgs, embedSrc, isEmbedSearch,
-  tickerOf, retarget,
+  tickerOf, retarget, TICKER_SCREENS, newPanelSize, CHART_MIN_H,
 } from '../public/desk-layout.js';
+import { REGISTRY } from '../public/registry.js';
+import { sectorLabel } from '../public/screens/heatmap.js';
 import { parseCommand, FKEYS, suggest, COMMANDS } from '../public/app.js';
 import { embedHtml, isEmbedQuery, securityHeaders } from '../lib/embed.js';
 
@@ -181,4 +183,37 @@ test('linked panels: a ticker moves to every ticker screen in the group', () => 
   assert.equal(retarget('WATCH', 'MSFT', parseCommand), null);
   assert.equal(retarget('AAPL 1D', 'AAPL', parseCommand), null, 'same ticker: nothing to do');
   assert.equal(COLS, 12);
+});
+
+test('linked panels: NEWS and every one-ticker screen follow the group', () => {
+  assert.equal(retarget('NEWS', 'MSFT', parseCommand), 'NEWS MSFT', 'all headlines narrow to the picked ticker');
+  assert.equal(retarget('INSIDERS', 'MSFT', parseCommand), 'INSIDERS MSFT', 'a screen still waiting for a ticker takes it');
+  assert.equal(retarget('OPTIONS AAPL 2026-10-16', 'MSFT', parseCommand), 'OPTIONS MSFT', 'expiry dates differ by ticker');
+  assert.equal(retarget('FILINGS AAPL 8-K', 'MSFT', parseCommand), 'FILINGS MSFT 8-K');
+  assert.equal(retarget('HEATMAP', 'MSFT', parseCommand), null);
+  // Every registry screen that takes one ticker (not WATCH, which adds, or COMPARE).
+  const one = REGISTRY.filter((c) => c.takesTicker && !['WATCH', 'COMPARE', 'CHART', 'NEWS'].includes(c.name)).map((c) => c.name);
+  assert.ok(one.length >= 11);
+  for (const name of one) {
+    assert.ok(TICKER_SCREENS.includes(parseCommand(`${name} AAPL`).name), `${name} is a linked screen`);
+    assert.equal(retarget(`${name} AAPL`, 'MSFT', parseCommand)?.split(' ').includes('MSFT'), true, `${name} AAPL follows MSFT`);
+    assert.equal(tickerOf(`${name} AAPL`, parseCommand), 'AAPL', `${name} sends its ticker to the group`);
+  }
+});
+
+test('new panels: charts are tall enough for their x-axis', () => {
+  assert.equal(newPanelSize('MSFT 1D', parseCommand).h, CHART_MIN_H);
+  assert.equal(newPanelSize('COMPARE AAPL MSFT', parseCommand).h, CHART_MIN_H);
+  assert.equal(newPanelSize('NEWS', parseCommand).h, 7);
+  assert.ok(CHART_MIN_H >= 10);
+  const d = addPanel([], 'MSFT 1D', newPanelSize('MSFT 1D', parseCommand));
+  assert.equal(d[0].h, CHART_MIN_H);
+});
+
+test('heatmap: a sector label never runs past its box', () => {
+  assert.equal(sectorLabel('Tech', '+1.20%', 300), 'TECH +1.20%');
+  assert.equal(sectorLabel('Consumer disc.', '+0.52%', 120), 'CONSUMER DISC.');
+  const cut = sectorLabel('Consumer disc.', '+0.52%', 80);
+  assert.ok(cut.endsWith('.') && cut.length * 7.4 <= 80 - 8, cut);
+  assert.equal(sectorLabel('Health care', '-0.30%', 30), '', 'too narrow: no label');
 });
