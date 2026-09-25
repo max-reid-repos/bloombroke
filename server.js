@@ -27,11 +27,11 @@ app.use((req, res, next) => {
     'X-Frame-Options': 'DENY',
     'Content-Security-Policy': [
       "default-src 'self'",
-      "script-src 'self'",
+      "script-src 'self' https://datafa.st",
       "style-src 'self' https://fonts.googleapis.com",
       "font-src https://fonts.gstatic.com",
       "img-src 'self' data:",
-      "connect-src 'self'",
+      "connect-src 'self' https://datafa.st",
       "base-uri 'none'",
       "frame-ancestors 'none'",
     ].join('; '),
