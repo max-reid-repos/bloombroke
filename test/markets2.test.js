@@ -415,7 +415,7 @@ test('ECONOMY and FEDPATH screens: units, periods, lines', () => {
   assert.equal(fmtValue(null, 'pct'), '--');
   assert.equal(periodLabel('2026-04-01', 'Q'), 'Q2 2026');
   assert.equal(periodLabel('2026-08-01', 'M'), 'AUG 2026');
-  assert.equal(periodLabel('2026-09-19', 'W'), '2026-09-19');
+  assert.equal(periodLabel('2026-09-19', 'W'), 'SEP 19 2026');
   assert.match(sparkSvg([1, 2, 3]), /<polyline points="1\.0,17\.0 48\.0,9\.0 95\.0,1\.0"\/>/);
   assert.match(sparkSvg([1]), /--/);
   assert.deepEqual(parseEconomy([]), { id: null });

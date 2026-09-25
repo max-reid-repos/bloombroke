@@ -124,6 +124,65 @@ test('RATES: every row opens something', async () => {
   assert.deepEqual(rows.map((r) => r.cmd), ['FEDPATH', 'FEDPATH', 'US10Y', 'LOAN 400000 30Y', 'LOAN 400000 15Y']);
 });
 
+test('CPI: the amount and year form builds the command', async () => {
+  const { cpiFormCommand, cpiForm } = await import('../public/screens/cpi.js');
+  assert.equal(cpiFormCommand('$1,000', '1990', 2026), 'CPI 1000 1990');
+  assert.equal(cpiFormCommand('100', '1850', 2026), null);
+  assert.equal(cpiFormCommand('100', '2030', 2026), null);
+  assert.equal(cpiFormCommand('-5', '2000', 2026), null);
+  assert.match(cpiForm({ amount: 100, year: 2015 }), /name="year" value="2015"/);
+});
+
+test('ECONOMY: one period style, no ISO dates', async () => {
+  const { periodLabel } = await import('../public/screens/economy.js');
+  assert.equal(periodLabel('2026-04-01', 'Q'), 'Q2 2026');
+  assert.equal(periodLabel('2026-08-01', 'M'), 'AUG 2026');
+  assert.equal(periodLabel('2026-09-19', 'W'), 'SEP 19 2026');
+  assert.equal(periodLabel('2026-09-04', 'D'), 'SEP 04 2026');
+  assert.equal(periodLabel(null, 'D'), '--');
+});
+
+test('NEWS: source filters; phone dates as 9/24', async () => {
+  const { filterNews, fmtNewsTimeShort, newsTimeHtml } = await import('../public/screens/news.js');
+  const items = [{ source: 'CNBC', title: 'a' }, { source: 'MarketWatch', title: 'b' }, { source: 'Yahoo Finance', title: 'c' }];
+  assert.deepEqual(filterNews(items, 'MKTW').map((n) => n.title), ['b']);
+  assert.equal(filterNews(items, 'ALL').length, 3);
+  const now = new Date('2026-09-25T15:00:00Z');
+  assert.equal(fmtNewsTimeShort('2026-09-24T15:00:00Z', now), '9/24');
+  assert.equal(fmtNewsTimeShort('2026-09-25T13:02:00Z', now), '09:02');
+  assert.match(newsTimeHtml('2026-09-24T15:00:00Z', now), /nt-l">SEP 24<.*nt-s">9\/24</);
+});
+
+test('NEWS <T>: source in the NEWS slot; ABOUT keeps stories that name the company', async () => {
+  const { tickerNewsList, aboutTicker, nameWord } = await import('../public/screens/tickernews.js');
+  const html = tickerNewsList([{ title: 'x', link: 'https://example.com/', source: 'Zacks', time: '2026-09-24T15:00:00Z' }]);
+  assert.ok(html.indexOf('news-src') < html.indexOf('news-title'), 'source before the headline, as on NEWS');
+  assert.equal(nameWord('Apple Inc.'), 'Apple');
+  assert.equal(nameWord('The Walt Disney Company'), 'Walt');
+  const items = [
+    { title: 'Prediction: what $1,000 in Apple will be worth' },
+    { title: 'Notable ETF inflow - SPYG, NVDA, AAPL' },
+    { title: '4 ETFs to buy if the market crashes' },
+    { title: 'Pineapple prices soar' },
+  ];
+  assert.deepEqual(aboutTicker(items, 'AAPL', 'Apple Inc.').map((n) => n.title[0]), ['P', 'N']);
+  assert.equal(aboutTicker(items, 'AAPL', null).length, 1);
+});
+
+test('EARNINGS: day pills for the week, with the weeks either side', async () => {
+  const { dayPills, mondayOf } = await import('../public/screens/earnings.js');
+  assert.equal(mondayOf('2026-09-25'), '2026-09-21');
+  assert.equal(mondayOf('2026-09-27'), '2026-09-21', 'Sunday belongs to the week before');
+  const p = dayPills('2026-09-23', false);
+  assert.deepEqual(p.items.map((i) => i.label), ['‹ PREV', 'MON 21', 'TUE 22', 'WED 23', 'THU 24', 'FRI 25', 'WEEK', 'NEXT ›']);
+  assert.equal(p.active, 'WED 23');
+  assert.equal(p.items[0].cmd, 'EARNINGS 2026-09-14');
+  assert.equal(p.items[6].cmd, 'EARNINGS 2026-09-21 WEEK');
+  const w = dayPills('2026-09-21', true);
+  assert.equal(w.active, 'WEEK');
+  assert.equal(w.items[7].cmd, 'EARNINGS 2026-09-28 WEEK');
+});
+
 test('SECTORS: the bar sits in the TODAY cell; leaders by period', async () => {
   const { sectorsTable, sectorLeaders } = await import('../public/screens/sectors.js');
   const rows = [

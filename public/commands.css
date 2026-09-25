@@ -58,6 +58,11 @@
 .legend { display: flex; flex-wrap: wrap; gap: 4px 20px; padding: 6px 10px 8px; border-top: 1px solid var(--rule); font-size: 12px; }
 .legend li { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .sw { display: inline-block; width: 12px; height: 3px; flex: 0 0 auto; }
+/* EARNINGS day pills sit above the panels; on phones they scroll with an edge fade. */
+.er-bar { margin-bottom: 8px; border: 1px solid var(--rule-strong); }
+.er-bar .toolbar { border-bottom: 0; flex-wrap: nowrap; }
+.er-bar .toolbar-main { flex-wrap: nowrap; }
+
 /* COMPARE: ticker chips (press to remove) and the add field. */
 .cp-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
 .cp-chip { gap: 6px; color: var(--text); }
@@ -78,6 +83,7 @@
 .fx-form { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .fx-form .fx-amt { width: 16ch; text-align: right; }
 .fx-form .fx-code { width: 5ch; text-align: center; }
+.fx-form .fx-year { width: 7ch; text-align: center; }
 .field-input::placeholder { color: var(--dim); }
 .sw.ln-0 { background: var(--ln-0); }
 .sw.ln-1 { background: var(--ln-1); }
@@ -174,8 +180,9 @@
 .dv-chart-host { position: relative; height: 150px; max-width: 520px; margin-top: 4px; }
 .dv-bar { fill: var(--series-1); }
 .dv-bar.is-part { fill-opacity: .45; }
-.tnews-row { grid-template-columns: 48px minmax(0, 1fr) minmax(0, max-content); }
-.tnews-src { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22ch; }
+/* NEWS <T>: the source in the same slot as NEWS (second), wider for full names. */
+.tnews-row { grid-template-columns: 48px 16ch minmax(0, 1fr); }
+.tnews-src { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .money { padding: 2px 0 6px; }
 
 /* ---- Narrower screens ------------------------------------------------- */
@@ -223,6 +230,7 @@
 .grid-table .co-kind.dim { color: var(--dim); }
 .grid-table .co-title { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
 .co-table .name { color: var(--text-2); }
+.sp-table { max-width: 960px; }
 .fil-table .name a { color: var(--text-2); }
 .fil-table .name a:hover { color: var(--accent); text-decoration: none; }
 .co-totals { max-width: 720px; border-right: 1px solid var(--rule); }

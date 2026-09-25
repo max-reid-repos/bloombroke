@@ -2,12 +2,31 @@
 
 import { esc, q, fmtNum, panel, LOADING } from './markets.js';
 import { mountChart } from './quote.js';
+import { toolbar } from '../kit.js';
+import { flipAmount } from './fx.js';
 
 const EXAMPLES = ['CPI 100 2015', 'CPI 1000 1990', 'CPI 20 1970'];
 
 export function fmtUsd(n) {
   if (!Number.isFinite(n)) return '--';
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// The row under the title: an amount and a year, so a new question needs no retyping.
+export function cpiForm({ amount, year }) {
+  return `<form class="fx-form cpi-form" autocomplete="off">
+    <span class="dim">$</span><input class="field-input fx-amt num" name="amount" value="${esc(flipAmount(amount))}" inputmode="decimal" maxlength="16" spellcheck="false" aria-label="Amount in dollars">
+    <span class="dim">IN</span><input class="field-input fx-year num" name="year" value="${esc(year)}" inputmode="numeric" maxlength="4" size="4" spellcheck="false" aria-label="Year">
+    <button type="submit" class="chip">GO</button>
+  </form>`;
+}
+
+// The CPI command for the form, or null when a field is not right.
+export function cpiFormCommand(amount, year, thisYear = new Date().getUTCFullYear()) {
+  const n = Number(String(amount ?? '').replace(/[$,\s]/g, ''));
+  const y = Number(String(year ?? '').trim());
+  if (!(n > 0) || n > 1e12 || !Number.isInteger(y) || y < 1913 || y > thisYear) return null;
+  return `CPI ${flipAmount(n)} ${y}`;
 }
 
 function examplesHtml() {
@@ -29,11 +48,18 @@ export function render(el, cmd, ctx) {
   }
   const { amount, year } = cmd.args;
   el.innerHTML = `<div class="stack">
-    ${panel('1', `CPI ${year}`, LOADING, { metaId: 'cpi-meta' })}
+    ${panel('1', `CPI ${year}`, `${toolbar({ left: cpiForm({ amount, year }), label: 'Amount and year' })}<div class="fx-out">${LOADING}</div>`, { metaId: 'cpi-meta', bodyCls: 'flush' })}
     ${panel('2', `Prices since ${year}`, `<div class="chart-host" id="cpi-chart">${LOADING}</div>`, { metaId: 'cpi-ch-meta', bodyCls: 'flush' })}
   </div>
   <p class="footnote">CPI-U, all items, US city average, from the US Bureau of Labor Statistics. Annual averages, plus the latest month (MONTHLY). Not financial advice.</p>`;
-  const [body] = el.querySelectorAll('.panel-body');
+  const body = el.querySelector('.fx-out');
+  el.querySelector('.cpi-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = e.currentTarget.elements;
+    const next = cpiFormCommand(f.amount.value, f.year.value);
+    if (next) ctx.run(next);
+    else ctx.status('CPI: AN AMOUNT AND A YEAR FROM 1913, LIKE 100 IN 2015', 'warn');
+  });
   const meta = el.querySelector('#cpi-meta');
   const chMeta = el.querySelector('#cpi-ch-meta');
   const host = el.querySelector('#cpi-chart');
@@ -56,6 +82,7 @@ export function render(el, cmd, ctx) {
           <div class="stat"><dt>CPI ${esc(d.year)}</dt><dd class="num">${esc(fmtNum(d.base, 3))}</dd></div>
           <div class="stat"><dt>CPI ${esc(d.latest.label)}</dt><dd class="num">${esc(fmtNum(d.latest.value, 3))}</dd></div>
           <div class="stat"><dt>$1 then</dt><dd class="num">${esc(fmtUsd(d.latest.value / d.base))} now</dd></div>
+          <div class="stat"><dt>A year, average</dt><dd class="num">${Number.isFinite(d.perYear) ? `${esc(fmtNum(d.perYear, 1))}%` : '--'}</dd></div>
         </dl>
       </div>`;
     const pts = d.series.map((p) => {

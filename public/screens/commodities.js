@@ -22,7 +22,7 @@ export function commoditiesTable(rows) {
 }
 
 export function render(el, cmd, ctx) {
-  el.innerHTML = panel('1', 'Commodities', LOADING, { cls: 'panel-solo', metaId: 'cm-meta', meta: '<span class="delayed">DELAYED</span> FRONT-MONTH FUTURES' })
+  el.innerHTML = panel('1', 'Commodities', LOADING, { cls: 'panel-solo', metaId: 'cm-meta', meta: 'DELAYED · FRONT-MONTH FUTURES' })
     + '<p class="footnote">Futures prices from CNBC, delayed. Month shown is the contract. Grains, coffee and sugar trade in US cents. Not financial advice.</p>';
   const body = el.querySelector('.panel-body');
 

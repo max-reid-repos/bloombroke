@@ -6,6 +6,7 @@
 import { esc, q, fmtNum, fmtSigned, panel, LOADING, rowAttrs, nameCell } from './markets.js';
 import { mountLines } from './lines.js';
 import { statusLine } from '../freshness.js';
+import { fmtDate, rangePills } from '../kit.js';
 
 export const ECONOMY_RANGES = ['5Y', '10Y', 'MAX'];
 
@@ -35,14 +36,16 @@ export function fmtValue(v, unit) {
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
-// The period an observation covers: Q2 2026, AUG 2026, or the day for weekly and daily.
+// The period an observation covers, in one style: Q2 2026, AUG 2026, and for weekly
+// and daily series the day, SEP 19 2026 (never an ISO date next to the others).
 export function periodLabel(date, freq) {
   if (!date) return '--';
   const y = date.slice(0, 4);
   const m = Number(date.slice(5, 7));
   if (freq === 'Q') return `Q${Math.floor((m - 1) / 3) + 1} ${y}`;
   if (freq === 'M') return `${MONTHS[m - 1]} ${y}`;
-  return date;
+  const day = fmtDate(date, 'table');
+  return day === '--' ? '--' : `${day} ${y}`;
 }
 
 // A tiny line: values -> an SVG polyline, scaled to its own min and max.
@@ -65,16 +68,16 @@ function dashboard(el, ctx) {
   const body = el.querySelector('.panel-body');
   ctx.fetchJSON('/api/economy', { signal: ctx.signal }).then((d) => {
     body.innerHTML = `<table class="grid-table ec-table">
-      <thead><tr><th scope="col">Indicator</th><th scope="col" class="num">Latest</th><th scope="col" class="num ec-per">Period</th><th scope="col" class="num ec-prev">Previous</th><th scope="col" class="ec-spark">2 years</th><th scope="col" class="ec-src">Series</th></tr></thead>
+      <thead><tr><th scope="col">Indicator</th><th scope="col" class="num">Latest</th><th scope="col" class="ec-per">Period</th><th scope="col" class="num ec-prev">Previous</th><th scope="col" class="ec-spark">2 years</th></tr></thead>
       <tbody>${d.series.map((s) => {
         const cmd = `ECONOMY ${s.id}`;
-        return `<tr${rowAttrs(cmd)}>
+        // The FRED id is a tooltip on the row, not a column.
+        return `<tr${rowAttrs(cmd)} title="FRED series ${esc(s.fred)}">
           ${nameCell(s.name, cmd)}
           <td class="num last">${esc(fmtValue(s.value, s.unit))}</td>
-          <td class="num ec-per dim">${esc(periodLabel(s.date, s.freq))}</td>
+          <td class="ec-per dim">${esc(periodLabel(s.date, s.freq))}</td>
           <td class="num ec-prev">${esc(fmtValue(s.prev, s.unit))}</td>
           <td class="ec-spark">${sparkSvg(s.spark)}</td>
-          <td class="ec-src dim">${esc(s.fred)}</td>
         </tr>`;
       }).join('')}</tbody>
     </table>`;
@@ -90,12 +93,9 @@ const fmtDay = (ms) => new Date(ms).toISOString().slice(0, 10);
 
 function series(el, args, ctx) {
   const range = args.range || '10Y';
-  const tabs = ECONOMY_RANGES.map((r) => {
-    const c = `ECONOMY ${args.id} ${r}`;
-    return `<a class="tab${r === range ? ' is-active' : ''}" href="${esc(q(c))}" data-cmd="${esc(c)}"${r === range ? ' aria-current="page"' : ''}>${r}</a>`;
-  }).join('');
+  const tabs = rangePills(range, (r) => `ECONOMY ${args.id} ${r}`, ECONOMY_RANGES);
   el.innerHTML = `<div class="stack">
-    ${panel('1', args.id, `<div class="ec-head" id="ec-head">${LOADING}</div><div class="ch-bar"><nav class="tabs ch-tabs" aria-label="Range">${tabs}</nav><a class="ec-back code" href="${esc(q('ECONOMY'))}" data-cmd="ECONOMY">ALL INDICATORS</a></div><div class="chart-host" id="ec-chart"></div>`, { metaId: 'ec-meta', bodyCls: 'flush', meta: 'FRED' })}
+    ${panel('1', args.id, `<div class="ec-head" id="ec-head">${LOADING}</div><div class="ch-bar ec-bar">${tabs}<a class="ec-back code" href="${esc(q('ECONOMY'))}" data-cmd="ECONOMY">ALL INDICATORS</a></div><div class="chart-host" id="ec-chart"></div>`, { metaId: 'ec-meta', bodyCls: 'flush', meta: 'FRED' })}
     ${panel('2', 'Recent readings', LOADING, { metaId: 'ec-t-meta' })}
   </div>
   <p class="footnote">${esc(FOOT)}</p>`;
@@ -131,7 +131,7 @@ function series(el, args, ctx) {
       <thead><tr><th scope="col">Period</th><th scope="col" class="num">Value</th></tr></thead>
       <tbody>${recent.map((p) => `<tr><th scope="row" class="name">${esc(periodLabel(p.date, d.freq))}</th><td class="num last">${esc(fmtValue(p.value, d.unit))}</td></tr>`).join('')}</tbody>
     </table>`;
-    el.querySelector('#ec-t-meta').textContent = `FIRST READING ${d.first || '--'}`;
+    el.querySelector('#ec-t-meta').textContent = `FIRST READING ${d.first ? periodLabel(d.first, d.freq) : '--'}`;
     ctx.status(`${statusLine(d.updated, d.stale)} · FRED ${d.fred}`, d.stale ? 'warn' : '');
   }).catch((err) => {
     if (err.name === 'AbortError') return;
