@@ -18,6 +18,7 @@
 //   pattern     not a word you type (<TICKER>): HELP only, never suggested
 //   soon        on the way: listed, not runnable
 //   hidden      runs, but never listed (420)
+// PHRASES (below) lists the plain words that surely mean one command.
 
 export const CATEGORIES = [
   'Start here',
@@ -322,8 +323,8 @@ export const REGISTRY = [
   },
   {
     name: 'AFFORD', category: 'Money tools', summary: 'Can I afford it? Cost per use of a thing you buy, and a verdict',
-    syntax: 'AFFORD <price> [<n> PER WEEK] [FOR <n>Y]', examples: ['AFFORD 1200', 'AFFORD 90 3 PER WEEK FOR 2Y'], keywords: ['buy', 'cost per use', 'purchase', 'worth it', 'spend'],
-    options: [['<price>', 'What it costs'], ['<n> PER DAY|WEEK|MONTH|YEAR', 'How often you use it'], ['FOR <n>Y', 'How long it lasts']],
+    syntax: 'AFFORD <price> [<thing>] [<n> PER WEEK] [FOR <n>Y]', examples: ['AFFORD 1200', 'AFFORD 1200 BIKE 2 PER WEEK', 'AFFORD 90 3 TIMES A MONTH FOR 2Y'], keywords: ['buy', 'cost per use', 'purchase', 'worth it', 'spend'],
+    options: [['<price>', 'What it costs'], ['<thing>', 'What it is, like BIKE (a label, optional)'], ['<n> PER DAY|WEEK|MONTH|YEAR', 'How often you use it. Also TWICE A WEEK, 2X WEEK, 3 TIMES A MONTH, DAILY'], ['FOR <n>Y', 'How long it lasts, like FOR 3Y or FOR 18 MONTHS']],
     source: 'Built in', delay: 'None',
   },
   {
@@ -448,6 +449,49 @@ export const TICKER_FUNCTIONS = REGISTRY.filter((c) => c.takesTicker || c.ticker
 
 // Aliases -> name, for the router.
 export const ALIASES = Object.fromEntries(REGISTRY.flatMap((c) => (c.aliases || []).map((a) => [a, c.name])));
+
+// Plain words that surely mean one command, for the resolver (resolve.js) and HELP
+// <word>: "apple revenue" is AAPL FINANCIALS, "yield curve" is CURVE. A phrase may carry
+// words to add after the ticker ([phrase, 'BALANCE']). One phrase can name two
+// commands (earnings): the one that takes a ticker wins when a ticker was typed.
+export const PHRASES = {
+  NEWS: ['news', 'headlines', 'latest news'],
+  PROFILE: ['profile', 'company profile', 'what does it do', 'business'],
+  VALUE: ['valuation', 'pe', 'p/e', 'pe ratio', 'p/e ratio', 'price to earnings', 'value'],
+  FINANCIALS: ['financials', 'financial', 'revenue', 'revenues', 'sales', 'income statement', 'income', 'net income', 'profit', 'profits',
+    'financial statements', 'statements', 'margins', ['balance sheet', 'BALANCE'], ['balance', 'BALANCE'], ['cash flow', 'CASHFLOW'], ['cashflow', 'CASHFLOW']],
+  DIVIDENDS: ['dividend', 'dividends', 'dividend history', 'dividend yield', 'payout'],
+  BEATS: ['earnings', 'eps', 'earnings surprise', 'beats', 'earnings history'],
+  EARNINGS: ['earnings', 'earnings calendar', 'earnings today', 'earnings this week'],
+  INSIDERS: ['insider', 'insiders', 'insider trading', 'insider buying', 'insider selling', 'insider trades'],
+  OWNERS: ['owners', 'holders', 'institutional holders', 'institutions', 'who owns', 'shareholders', 'ownership'],
+  FILINGS: ['filings', 'sec filings', 'sec', '10-k', '10k', '10-q', 'annual report'],
+  SHORTS: ['short interest', 'short', 'shorts', 'short sellers', 'days to cover', 'short squeeze'],
+  OPTIONS: ['options', 'option', 'options chain', 'option chain', 'calls', 'puts'],
+  CHART: ['chart', 'graph'],
+  HISTORY: ['history', 'historical prices', 'price history', 'historical'],
+  COMPARE: ['compare', 'vs', 'versus', 'against'],
+  CURVE: ['yield curve', 'treasury curve'],
+  RATES: ['interest rates', 'mortgage rates', 'rates'],
+  FEDPATH: ['fed path', 'rate cuts', 'rate cut', 'fed funds futures'],
+  BONDS: ['bond yields', 'government bonds'],
+  CRYPTO: ['crypto', 'cryptocurrency', 'cryptocurrencies'],
+  COMMODITIES: ['commodities', 'commodity prices'],
+  ECONOMY: ['economy', 'gdp', 'unemployment', 'jobs report'],
+  CALENDAR: ['economic calendar', 'calendar'],
+  IPOS: ['ipo', 'ipos', 'ipo calendar'],
+  SPLITS: ['stock splits', 'splits'],
+  EXDIV: ['ex-dividend', 'ex dividend', 'ex-dividend dates'],
+  MOVERS: ['movers', 'top movers', 'gainers', 'losers', 'top gainers', 'top losers'],
+  HEATMAP: ['heatmap', 'heat map'],
+  SECTORS: ['sectors', 'sector performance'],
+  CLOCK: ['market hours', 'market clock', 'is the market open'],
+  WATCH: ['watchlist', 'my watchlist'],
+  PORTFOLIO: ['portfolio', 'my portfolio', 'holdings', 'my holdings'],
+  LOAN: ['mortgage calculator', 'loan calculator', 'loan payment'],
+  COMPOUND: ['compound interest'],
+  FX: ['exchange rate', 'exchange rates', 'currency converter'],
+};
 
 // "Start here": six things to try, and the three rules of the command bar.
 export const START_HERE = [

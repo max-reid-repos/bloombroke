@@ -28,7 +28,7 @@ import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { statusLine } from './freshness.js';
 import { EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra, urlCommand, isSecret } from './commands.js';
 import { getTape, loadTapeRows, bareKey, looksLikeKey } from './pro.js';
-import { ensureConsent } from './consent.js';
+import { ensureConsent, consentNeeded } from './consent.js';
 import * as deskScreen from './screens/desk.js';
 import { parseDeskArgs, isEmbedSearch, tickerOf, TICKER_SCREENS } from './desk-layout.js';
 import { COMPANY_SCREENS, COMPANY_TAKES_ARGS, matchCompany } from './company.js';
@@ -38,6 +38,8 @@ import { tapeOn, setTapeOn, mountTape, tapeItems } from './tape.js';
 import { createMenu } from './menu.js';
 import { compactEmbed } from './embed.js';
 import { parseAffordArgs } from './afford.js';
+import { resolveInput } from './resolve.js';
+import { tickerForName, LISTED_TICKERS } from './known-tickers.js';
 
 export { FUNCTION_BAR, TICKER_FUNCTIONS };
 
@@ -490,6 +492,14 @@ export function tickerStripHtml(ticker, current) {
   }).join('');
 }
 
+// A command with its full name first: PF ADD AAPL -> PORTFOLIO ADD AAPL, M -> MARKETS.
+export function fullName(input) {
+  const toks = tokenize(input);
+  const entry = toks.length ? findCommand(toks[0]) : null;
+  if (entry && !entry.hidden && !entry.pattern) toks[0] = entry.name;
+  return toks.join(' ');
+}
+
 export function screenTitle(cmd) {
   const strip = tickerStripFor(cmd);
   if (strip) {
@@ -501,13 +511,40 @@ export function screenTitle(cmd) {
   if (cmd.name === 'QUOTE') return { title: cmd.input, sub: '' };
   if (cmd.name === 'FUNDING') return { title: cmd.input, sub: '' };
   if (cmd.name === 'MENU') return { title: 'HELP', sub: findCommand('HELP').summary };
-  if (cmd.name === 'HELP' && cmd.args?.topic) return { title: cmd.input, sub: `How to use ${cmd.args.topic}` };
+  if (cmd.name === 'HELP' && cmd.args?.topic) return { title: fullName(cmd.input), sub: `How to use ${cmd.args.topic}` };
   const entry = findCommand(tokenize(cmd.input)[0]) || findCommand(cmd.name);
-  return { title: cmd.input, sub: entry && !entry.hidden ? entry.summary : '' };
+  return { title: fullName(cmd.input), sub: entry && !entry.hidden ? entry.summary : '' };
 }
 // What a saved-list command changes, for the "this link wants to change" question.
 const SAVED_LIST = { PORTFOLIO: ['Portfolio', 'portfolio'], WATCH: ['Watchlist', 'watchlist'], DESK: ['Desk', 'desk layout'] };
-const DEFAULT_TITLE = 'Bloombroke: the $32,000 terminal. Now $4.20 a month.';
+export const DEFAULT_TITLE = 'Bloombroke: a free market terminal. Pro $4.20/mo.';
+
+// A ticker screen whose ticker is not known yet: check it has a quote before showing
+// the screen (TESLA is not a ticker; the resolver makes it TSLA). null when no check.
+export function tickerToCheck(cmd) {
+  if (!cmd || cmd.mutates || cmd.error) return null;
+  const t = cmd.args?.ticker;
+  if (!t || !TICKER_RE.test(t) || instrumentById(t) || LISTED_TICKERS.has(t)) return null;
+  return cmd.name === 'QUOTE' || tickerStripFor(cmd) ? t : null;
+}
+
+// The status line note after the resolver ran a command for the words typed.
+export function resolvedNote(command, from) {
+  return `Showing ${command} (from '${String(from).toLowerCase()}')`;
+}
+
+// The "Did you mean" screen: one clickable row per command or symbol, keys 1 to 9.
+export function didYouMeanHtml(typed, { commands = [], symbols = [] } = {}, ticker = null) {
+  const rows = [...commands.map((c) => [c.cmd, c.summary]), ...symbols.map((s) => [s.cmd, s.name])];
+  const lead = ticker
+    ? `No ticker called <span class="code">${escapeHtml(ticker)}</span>.`
+    : `Nothing called <span class="code">${escapeHtml(typed)}</span>.`;
+  const list = rows.length
+    ? `<h3 class="hs-h">Did you mean</h3><ol class="hc-list dym-list">${rows.map(([cmd, what], i) => `<li class="hc-row hc-row-fn"><a class="hc-name code" href="${toQuery(cmd)}" data-cmd="${escapeHtml(cmd)}"${i < 9 ? ` data-key="${i + 1}"` : ''}>${escapeHtml(cmd)}</a><span class="hc-sum">${escapeHtml(what || '')}</span></li>`).join('')}</ol>`
+    : '';
+  return `<p class="notice">${lead}</p>${list}
+    <p class="muted">Type <a class="code" href="${toQuery('HELP')}" data-cmd="HELP">HELP</a> for every command. A ticker is one word, like <a class="code" href="${toQuery('AAPL')}" data-cmd="AAPL">AAPL</a> or <a class="code" href="${toQuery('BRK.B')}" data-cmd="BRK.B">BRK.B</a>. A company name works too, like <a class="code" href="${toQuery('NVIDIA')}" data-cmd="NVIDIA">NVIDIA</a>.</p>`;
+}
 
 function boot() {
   const $ = (id) => document.getElementById(id);
@@ -552,8 +589,12 @@ function boot() {
   let screenAbort = null;
 
   // --- status line ------------------------------------------------------------
+  // A note that stays at the front of the status line for this screen (the resolver's
+  // "Showing NVDA (from 'nvidia')"); render() clears it.
+  let statusNote = '';
   function setStatus(text, kind = '') {
-    statusMsg.textContent = String(text).toUpperCase();
+    const t = String(text).toUpperCase();
+    statusMsg.textContent = statusNote ? `${statusNote} · ${t}` : t;
     statusMsg.dataset.kind = kind;
     statusMsg.title = FRESH_LEGEND;
   }
@@ -741,21 +782,31 @@ function boot() {
   }
 
   // fromUrl: the command came from the address bar (a load, Back, a shared link).
-  function render(raw, { fromUrl = false } = {}) {
+  // checked: the words were already looked up (lookUp below); note: the status line note.
+  function render(raw, { fromUrl = false, checked = false, note = '' } = {}) {
     const cmd = parseCommand(raw);
     currentCmd = raw;
     runCleanups();
     if (screenAbort) screenAbort.abort();
     screenAbort = new AbortController();
     const signal = screenAbort.signal;
+    statusNote = note;
 
     const view = document.createElement('section');
     view.className = 'view';
     screen.replaceChildren(view);
     // DESK panels: no repeated title or "1)" numbering (embed.js).
     if (embed) cleanups.push(compactEmbed(view));
+    // Words that are not a command, or a ticker nobody has checked: look them up first.
+    if (!checked && !(cmd.mutates && fromUrl)) {
+      const ticker = cmd.name === 'UNKNOWN' ? null : tickerToCheck(cmd);
+      if (cmd.name === 'UNKNOWN' || ticker) {
+        lookUp(view, raw, ticker, { fromUrl, signal });
+        return;
+      }
+    }
     setKeys(cmd.name === 'TICKERNEWS' ? '' : cmd.name);
-    document.title = cmd.name === 'HOME' || cmd.name === 'UNKNOWN' ? DEFAULT_TITLE : `${cmd.input} | Bloombroke`;
+    document.title = cmd.name === 'HOME' || cmd.name === 'UNKNOWN' ? DEFAULT_TITLE : `${cmd.name === 'QUOTE' ? cmd.input : fullName(cmd.input)} | Bloombroke`;
     const head = screenTitle(cmd);
     titleEl.textContent = head.title;
     subEl.textContent = head.sub;
@@ -839,6 +890,86 @@ function boot() {
         <p class="muted">You typed <span class="code">${escapeHtml(cmd.input)}</span>. A ticker is one word, like <a class="code" href="${toQuery('AAPL')}" data-cmd="AAPL">AAPL</a> or <a class="code" href="${toQuery('BRK.B')}" data-cmd="BRK.B">BRK.B</a>.</p>`, { cls: 'panel-solo' });
       setStatus('UNKNOWN COMMAND. TYPE HELP', 'warn');
     }
+  }
+
+  // --- the resolver: company names, plain words, several tickers --------------------
+  const tickerOk = new Map(); // ticker -> true or false, for this page load
+  async function checkTicker(t, signal) {
+    if (LISTED_TICKERS.has(t)) return true;
+    if (tickerOk.has(t)) return tickerOk.get(t);
+    try {
+      await fetchJSON(`/api/quote?s=${encodeURIComponent(t)}`, { signal });
+      tickerOk.set(t, true);
+      return true;
+    } catch (err) {
+      if (err.name === 'AbortError') throw err;
+      if (err.status === 404 || err.status === 400) { tickerOk.set(t, false); return false; }
+      return null; // offline or a data break: the screen itself says so
+    }
+  }
+  async function searchSymbols(text, signal) {
+    const q = String(text).toUpperCase().replace(/[^A-Z0-9 .&/-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 24);
+    if (!q) return [];
+    if (remote.has(q)) return remote.get(q);
+    const d = await fetchJSON(`/api/search?q=${encodeURIComponent(q)}`, { signal });
+    remote.set(q, d.results || []);
+    return d.results || [];
+  }
+  function neutralHead(title) {
+    setKeys('');
+    document.title = DEFAULT_TITLE;
+    titleEl.textContent = title;
+    subEl.textContent = '';
+    actionsEl.replaceChildren();
+    tickerBar.hidden = true;
+    tickerBar.innerHTML = '';
+    document.body.classList.remove('has-tickerbar');
+    headStar.hidden = true;
+    starTicker = null;
+    backBtn.hidden = embed || depth() === 0;
+  }
+  // Put the resolved command in the address bar in place of the typed words.
+  function replaceUrl(command) {
+    const { url, kept } = urlFor(command);
+    if (embed) {
+      window.history.replaceState({ c: kept, d: 0 }, '', `${toQuery(url)}&embed=1`);
+      toParent({ type: 'bb:cmd', c: kept });
+    } else {
+      window.history.replaceState({ c: kept, d: depth() }, '', toQuery(url));
+    }
+  }
+  async function lookUp(view, raw, ticker, { fromUrl, signal }) {
+    const typed = tokenize(raw).join(' ');
+    neutralHead(typed);
+    setStatus(ticker ? 'LOADING...' : 'LOOKING IT UP...');
+    try {
+      // A ticker with a quote shows as it is (APPLE is Apple's name, not a ticker to ask about).
+      if (ticker && !tickerForName(ticker)) {
+        const ok = await checkTicker(ticker, signal);
+        if (signal.aborted) return;
+        if (ok !== false) { render(raw, { fromUrl, checked: true }); return; }
+      }
+      const found = await resolveInput(raw, {
+        search: (text) => searchSymbols(text, signal),
+        checkTicker: (t) => checkTicker(t, signal),
+      });
+      if (signal.aborted) return;
+      if (found.confident) {
+        replaceUrl(found.command);
+        render(found.command, { fromUrl, checked: true, note: resolvedNote(found.command, found.from) });
+        return;
+      }
+      showDidYouMean(view, typed, found, ticker);
+    } catch (err) {
+      if (err.name === 'AbortError' || signal.aborted) return;
+      showDidYouMean(view, typed, {}, ticker);
+    }
+  }
+  function showDidYouMean(view, typed, found, ticker) {
+    neutralHead(ticker ? typed : 'Unknown command');
+    view.innerHTML = panel('1', ticker ? 'No such ticker' : 'Unknown command', didYouMeanHtml(typed, found, ticker), { cls: 'panel-solo' });
+    const any = (found.commands?.length || 0) + (found.symbols?.length || 0);
+    setStatus(any ? 'NOT FOUND. PICK ONE BELOW, OR TYPE HELP' : 'UNKNOWN COMMAND. TYPE HELP', 'warn');
   }
 
   function remember(clean) {
@@ -1117,15 +1248,34 @@ function boot() {
   const initial = urlFor(fromQuery(location.search)).url; // a link never runs LOGIN or TAPE ADD
   window.history.replaceState({ c: initial, d: embed ? 0 : depth() }, '', embed ? `${toQuery(initial)}&embed=1` : location.search ? toQuery(initial) : location.pathname);
   const firstVisit = !embed && !store.get('bb.booted', false);
+  // First visit: the notice. Never inside a DESK panel: the desk page around it shows
+  // it, and the answer is shared (same site, same storage). Words typed before or while
+  // it shows run right after ACCEPT; a deep link (?c=...) waits for ACCEPT too.
+  const needsNotice = !embed && consentNeeded();
+  const holdLink = needsNotice && Boolean(location.search);
+  function notice() {
+    ensureConsent().then((accepted) => {
+      const typedNow = input.value.trim();
+      if (accepted && typedNow) run(typedNow, { typed: true });
+      else if (holdLink) render(initial, { fromUrl: true });
+      placeCursor();
+    });
+  }
   if (firstVisit && !location.search && !reduceMotion.matches) {
     store.set('bb.booted', true);
     setStatus('STARTING');
-    bootSequence(screen, () => { render(initial, { fromUrl: true }); ensureConsent(); });
+    bootSequence(screen, (key) => {
+      if (key) input.value += key; // the key that skipped the boot log is the first letter typed
+      render(initial, { fromUrl: true });
+      if (needsNotice) notice();
+    });
+  } else if (holdLink) {
+    neutralHead(fromQuery(location.search));
+    setStatus('ACCEPT THE NOTICE TO CONTINUE');
+    notice();
   } else {
     render(initial, { fromUrl: true });
-    // First visit: the notice, at once on a deep link. Never inside a DESK panel: the
-    // desk page around it shows it, and the answer is shared (same site, same storage).
-    if (!embed) ensureConsent();
+    if (needsNotice) notice();
   }
   if (!coarse) input.focus();
   placeCursor();
@@ -1137,7 +1287,7 @@ export const BOOT_LINES = [
   ['connecting to markets ....... ', 'ok'],
   ['loading ticker tape ......... ', 'ok'],
   ['syncing New York clock ...... ', 'ok'],
-  ['cost: $4.20/mo (they charge $32,000/yr)', ''],
+  ['cost: free. Pro $4.20/mo', ''],
   ['ready.', ''],
 ];
 
@@ -1166,13 +1316,19 @@ function bootSequence(screen, done) {
     view.innerHTML = html.join('') + '<span class="boot-cursor" aria-hidden="true"></span><p class="boot-skip">Press any key to skip</p>';
   }
 
+  let key = '';
   function finish() {
     if (finished) return;
     finished = true;
     cancelAnimationFrame(raf);
-    window.removeEventListener('keydown', finish, true);
+    window.removeEventListener('keydown', onKey, true);
     window.removeEventListener('pointerdown', finish, true);
-    if (view.isConnected) done();
+    if (view.isConnected) done(key);
+  }
+  // A letter that skips the log is kept: it is the start of a command.
+  function onKey(e) {
+    if (e.key.length === 1 && e.key !== ' ' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); key = e.key; }
+    finish();
   }
 
   function frame(now) {
@@ -1183,7 +1339,7 @@ function bootSequence(screen, done) {
     else setTimeout(finish, 180);
   }
 
-  window.addEventListener('keydown', finish, true);
+  window.addEventListener('keydown', onKey, true);
   window.addEventListener('pointerdown', finish, true);
   raf = requestAnimationFrame(frame);
 }
