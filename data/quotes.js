@@ -106,6 +106,7 @@ export function parseQuoteRow(r, ticker = r?.symbol) {
     name: r.name || r.shortName || ticker,
     label: inst?.name || null,
     kind: inst?.kind || 'stock',
+    us: inst ? Boolean(inst.us) : true,
     decimals: inst?.decimals ?? null,
     ...freshness(r),
     type: r.type || null,
@@ -139,12 +140,18 @@ export function parseQuoteRow(r, ticker = r?.symbol) {
 export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache() } = {}) {
   // Every registry instrument in one upstream call: MARKETS, HOME, the tape, the FX
   // majors, the yields and each instrument screen all read from it.
+  // The source now and then leaves a row out of a batch. The last good row for that
+  // symbol fills the gap, so a table row does not blink out for 15 seconds.
+  const lastGood = new Map();
+  const valid = (r) => r && Number(r.code) === 0 && Number.isFinite(parseNum(r.last));
   async function batch() {
     return cache.cached('quotes:all', QUOTES_TTL, async () => {
       const rows = await fetchCnbcRows(fetchImpl, ALL.map((i) => i.src));
-      const ok = rows.filter((r) => Number(r.code) === 0 && Number.isFinite(parseNum(r.last)));
+      const ok = rows.filter(valid);
       if (ok.length < ALL.length / 2) throw new Error('quotes source: too few rows');
-      return rows;
+      for (const r of ok) lastGood.set(r.symbol, r);
+      const have = new Set(ok.map((r) => r.symbol));
+      return [...ok, ...ALL.filter((i) => !have.has(i.src) && lastGood.has(i.src)).map((i) => lastGood.get(i.src))];
     });
   }
 

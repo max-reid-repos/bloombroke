@@ -13,7 +13,10 @@ import * as newsScreen from './screens/news.js';
 import * as buyScreen from './screens/buy.js';
 import * as whatifScreen from './screens/whatif.js';
 import * as fundingScreen from './screens/funding.js';
-import { fmtNum, fmtPct, dirOf, cmdForInstrument, nyTime, panel } from './screens/markets.js';
+import { fmtNum, fmtPct, dirOf, cmdForInstrument, panel } from './screens/markets.js';
+import { matchInstrument, searchInstruments } from './instruments.js';
+import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
+import { statusLine, freshTag } from './freshness.js';
 
 export const COMMANDS = [
   { name: 'HOME', group: 'Markets', hint: 'Markets, S&P 500, currencies and news on one screen', usage: 'HOME', example: 'HOME' },
@@ -29,7 +32,7 @@ export const COMMANDS = [
 ];
 
 export const TICKER_HELP = {
-  name: 'AAPL', group: 'Markets', hint: 'Any ticker: price, chart and key numbers', usage: '<ticker> [1D|1M|6M|1Y|5Y]', examples: ['AAPL', 'TSLA 5Y', 'NVDA', 'BRK.B'],
+  name: 'AAPL', group: 'Markets', hint: 'Any ticker, index, currency pair, commodity or coin: price, chart and key numbers', usage: '<symbol> [1D|5D|1M|3M|6M|YTD|1Y|2Y|5Y|10Y|MAX] or <symbol> <from> <to>', examples: ['AAPL', 'TSLA 5Y', 'GOLD', 'EURUSD', 'SPX YTD', 'AAPL 2020-01-01 2024-12-31', 'NVDA FROM 2023-01-01'],
 };
 
 export const SOON = [
@@ -46,7 +49,7 @@ export const FKEYS = [
   { key: 'F8', label: 'CPI', cmd: 'CPI 100 2000' },
 ];
 
-export const CHART_RANGES = ['1D', '1M', '6M', '1Y', '5Y'];
+export const CHART_RANGES = PRESETS;
 const SIMPLE = new Set(['HOME', 'MARKETS', 'RATES', 'NEWS', 'HELP']);
 const ALIASES = { '?': 'HELP', H: 'HELP', M: 'MARKETS', MARKET: 'MARKETS', RATE: 'RATES', INFLATION: 'CPI' };
 export const DEFAULT_COMMAND = 'HOME';
@@ -167,6 +170,19 @@ export function isTicker(tok) {
   return TICKER_RE.test(tok);
 }
 
+// <symbol> [range]: a named instrument (GOLD, EUR/USD, S&P 500) or a ticker, then a
+// preset (5Y), two dates, or FROM <date> [TO <date>]. Bad dates still open the screen,
+// which explains; words that are not a range make the whole input UNKNOWN.
+export function parseSymbolCommand(toks) {
+  const m = matchInstrument(toks);
+  if (!m && !isTicker(toks[0])) return null;
+  const ticker = m ? m.inst.id : toks[0];
+  const range = parseRangeArgs(toks.slice(m ? m.used : 1));
+  if (range.error === 'usage') return null;
+  if (range.error) return { name: 'QUOTE', args: { ticker, error: range.error }, error: range.error, input: toks.join(' ') };
+  return { name: 'QUOTE', args: { ticker, ...range }, input: [ticker, rangeWords(range)].filter(Boolean).join(' ') };
+}
+
 // Turn raw input into { name, args?, error?, input }. Unknown commands get name 'UNKNOWN'.
 export function parseCommand(raw) {
   const toks = tokenize(raw);
@@ -197,10 +213,9 @@ export function parseCommand(raw) {
   if (head === 'BUY') return { name: 'BUY', args: { error: 'usage' }, error: 'usage', input: 'BUY' };
   const soon = SOON.find((s) => s.name === head);
   if (soon && !rest.length) return { name: 'SOON', args: { soon }, input: head };
-  if (isTicker(head) && (rest.length === 0 || (rest.length === 1 && CHART_RANGES.includes(rest[0])))) {
-    const range = rest[0] || '1Y';
-    return { name: 'QUOTE', args: { ticker: head, range }, input: rest.length ? `${head} ${range}` : head };
-  }
+  // Add new commands above this line: commands win over symbols of the same name.
+  const quote = parseSymbolCommand(toks);
+  if (quote) return quote;
   return { name: 'UNKNOWN', input: toks.join(' ') };
 }
 
@@ -227,9 +242,10 @@ export function suggest(raw) {
   const head = toks[0];
   const typingHead = toks.length === 1 && !/\s$/.test(text);
   if (typingHead) {
-    return COMMANDS
+    const cmds = COMMANDS
       .filter((c) => c.name.startsWith(head))
       .map((c) => ({ name: c.name, hint: c.hint, value: TAKES_ARGS[c.name] ? c.name + ' ' : c.name }));
+    return head.length >= 2 ? [...cmds, ...symbolSuggestions(searchInstruments(head, 6), cmds)] : cmds;
   }
   const cmd = COMMANDS.find((c) => c.name === head);
   if (cmd && TAKES_ARGS[cmd.name]) {
@@ -246,6 +262,16 @@ export function stepActive(active, count, dir) {
   if (active < 0) return dir > 0 ? 0 : count - 1;
   const next = active + dir;
   return next < 0 || next >= count ? -1 : next;
+}
+
+const KIND_LABEL = { index: 'index', future: 'futures', crypto: 'crypto', fx: 'currency pair', yield: 'yield', stock: 'stock', etf: 'ETF' };
+
+// Symbol rows for the suggestion list, skipping any value already listed.
+export function symbolSuggestions(results, existing = []) {
+  const have = new Set(existing.map((e) => e.value));
+  return results
+    .filter((r) => !have.has(r.id))
+    .map((r) => ({ name: r.id, hint: `${r.name}${KIND_LABEL[r.kind] ? ` · ${KIND_LABEL[r.kind]}` : ''}`, value: r.id, symbol: true }));
 }
 
 // Tab completion: complete to the n-th suggestion.
@@ -363,9 +389,9 @@ function boot() {
     statusMsg.textContent = String(text).toUpperCase();
     statusMsg.dataset.kind = kind;
   }
-  function setUpdated(iso, stale) {
-    const t = iso ? nyTime(iso, true) : '--:--:--';
-    setStatus(stale ? `LAST KNOWN DATA ${t} ET` : `UPDATED ${t} ET`, stale ? 'warn' : '');
+  // items: the instruments on screen, so the line can say what is real time and what is delayed.
+  function setUpdated(iso, stale, items) {
+    setStatus(statusLine(iso, stale, items), stale ? 'warn' : '');
   }
 
   // --- function keys ----------------------------------------------------------
@@ -399,8 +425,36 @@ function boot() {
 
   // --- suggestions (instant, no animation) ------------------------------------
   let items = [];
-  function renderSuggest() {
+  // Symbols from the server (US stocks and ETFs), merged under the local suggestions.
+  const remote = new Map();
+  let remoteTimer = 0;
+  let remoteAbort = null;
+  function remoteQuery(text) {
+    const t = text.replace(/^\s+/, '').toUpperCase();
+    return /^[A-Z0-9.&/-]{2,12}$/.test(t) ? t : null;
+  }
+  function fetchRemote(qText) {
+    clearTimeout(remoteTimer);
+    remoteTimer = setTimeout(async () => {
+      remoteAbort?.abort();
+      remoteAbort = new AbortController();
+      try {
+        const d = await fetchJSON(`/api/search?q=${encodeURIComponent(qText)}`, { signal: remoteAbort.signal });
+        remote.set(qText, d.results || []);
+        if (remote.size > 200) remote.delete(remote.keys().next().value);
+        if (remoteQuery(input.value) === qText && document.activeElement === input) renderSuggest({ keepActive: true });
+      } catch { /* the local suggestions stand */ }
+    }, 120);
+  }
+  function renderSuggest({ keepActive = false } = {}) {
     items = document.activeElement === input ? suggest(input.value) : [];
+    const qText = remoteQuery(input.value);
+    if (qText && items.every((it) => !it.usage)) {
+      if (remote.has(qText)) items = [...items, ...symbolSuggestions(remote.get(qText), items)].slice(0, 10);
+      else fetchRemote(qText);
+    }
+    if (!keepActive) active = -1;
+    if (active >= items.length) active = -1;
     const exact = items.length === 1 && !items[0].usage && items[0].value.trim() === input.value.trim().toUpperCase();
     if (!items.length || exact || !input.value.trim()) {
       closeSuggest();
@@ -444,6 +498,16 @@ function boot() {
     if (coarse) input.blur();
   }
 
+  // --- live refresh: pause while the tab is hidden ----------------------------
+  function liveTimer(fn, ms) {
+    let lastRun = Date.now();
+    const go = () => { lastRun = Date.now(); fn(); };
+    const id = setInterval(() => { if (!document.hidden) go(); }, ms);
+    const onVis = () => { if (!document.hidden && Date.now() - lastRun >= ms) go(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
+  }
+
   // --- running commands -----------------------------------------------------
   function runCleanups() {
     for (const fn of cleanups) { try { fn(); } catch { /* ignore */ } }
@@ -468,6 +532,8 @@ function boot() {
       commands: COMMANDS, ticker: TICKER_HELP, soon: SOON, fkeys: FKEYS,
       status: setStatus, updated: setUpdated,
       every(fn, ms) { const id = setInterval(fn, ms); cleanups.push(() => clearInterval(id)); },
+      // Like every(), but it skips while the tab is hidden and catches up when it is shown.
+      live(fn, ms) { cleanups.push(liveTimer(fn, ms)); },
       onCleanup(fn) { cleanups.push(fn); },
     };
     const mod = SCREENS[cmd.name];
@@ -560,7 +626,7 @@ function boot() {
     }
   });
 
-  input.addEventListener('input', () => { active = -1; renderSuggest(); placeCursor(); });
+  input.addEventListener('input', () => { renderSuggest(); placeCursor(); });
   ['keyup', 'click', 'select', 'scroll'].forEach((ev) => input.addEventListener(ev, placeCursor));
   input.addEventListener('focus', () => { document.body.classList.add('cmd-focused'); placeCursor(); });
   input.addEventListener('blur', () => { document.body.classList.remove('cmd-focused'); setTimeout(closeSuggest, 120); });
@@ -592,6 +658,12 @@ function boot() {
   });
 
   document.addEventListener('keydown', (e) => {
+    // A focused row (or any non-link element carrying a command) opens on Enter.
+    if (e.key === 'Enter' && e.target !== input && e.target.matches?.('[data-cmd]:not(a):not(button)')) {
+      e.preventDefault();
+      run(e.target.dataset.cmd);
+      return;
+    }
     // Function keys work everywhere. F5, F11 and F12 stay with the browser.
     const fk = FKEYS.find((k) => k.key === e.key);
     if (fk && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
@@ -622,31 +694,45 @@ function boot() {
   setInterval(tick, 1000);
 
   // --- ticker tape ----------------------------------------------------------
-  let tapeKey = '';
+  // Prices update in place, so the scroll does not jump back to the start every 15 s.
+  let tapeIds = '';
   async function loadTape() {
     try {
       const data = await fetchJSON('/api/markets');
-      const html = data.instruments.map((q) => {
+      const list = data.instruments.filter((q) => q.tape);
+      const ids = list.map((q) => q.id).join(',');
+      if (ids === tapeIds) {
+        for (const q of list) {
+          tape.querySelectorAll(`.tape-item[data-id="${q.id}"]`).forEach((a) => {
+            a.querySelector('.tape-last').textContent = fmtNum(q.last, q.decimals);
+            const chg = a.querySelector('.tape-chg');
+            chg.textContent = fmtPct(q.changePct);
+            chg.className = `tape-chg num ${dirOf(q.change)}`;
+          });
+        }
+        return;
+      }
+      const html = list.map((q) => {
         const d = dirOf(q.change);
         const c = cmdForInstrument(q.id) || 'MARKETS';
-        return `<a class="tape-item" href="${toQuery(c)}" data-cmd="${escapeHtml(c)}">
+        return `<a class="tape-item" href="${toQuery(c)}" data-cmd="${escapeHtml(c)}" data-id="${escapeHtml(q.id)}">
           <span class="tape-name">${escapeHtml(q.name)}</span>
           <span class="tape-last num">${fmtNum(q.last, q.decimals)}</span>
-          <span class="tape-chg num ${d}">${fmtPct(q.changePct)}</span></a>`;
+          <span class="tape-chg num ${d}">${fmtPct(q.changePct)}</span>${freshTag(q)}</a>`;
       }).join('');
-      if (html === tapeKey) return;
-      tapeKey = html;
+      tapeIds = ids;
       const group = `<div class="tape-group">${html}</div>`;
       tape.innerHTML = group + group.replace('class="tape-group"', 'class="tape-group" aria-hidden="true"');
+      tape.querySelectorAll('.tape-group[aria-hidden] a').forEach((a) => a.setAttribute('tabindex', '-1'));
       const w = tape.firstElementChild.getBoundingClientRect().width;
       tape.style.setProperty('--tape-duration', `${Math.max(30, Math.round(w / 40))}s`);
       tape.classList.add('is-running');
     } catch {
-      if (!tapeKey) tape.innerHTML = '<span class="tape-empty">MARKET DATA IS TAKING A BREAK.</span>';
+      if (!tapeIds) tape.innerHTML = '<span class="tape-empty">MARKET DATA IS TAKING A BREAK.</span>';
     }
   }
   loadTape();
-  setInterval(loadTape, 60_000);
+  liveTimer(loadTape, 15_000);
 
   // --- share: copy the current link, confirm in the status line ---------------
   async function copyText(text) {
