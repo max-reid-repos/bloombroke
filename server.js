@@ -14,7 +14,7 @@ import { WhatifError } from './data/whatif.js';
 import { whatifTokens, normalizeWhatif, certModel } from './data/whatif-cert.js';
 import { getCert, whatifPng, defaultPng, withMeta, certMeta, DEFAULT_META } from './lib/og.js';
 import { getFinancials, FinancialsError } from './data/financials.js';
-import { getScreen, ScreenError } from './data/screen.js';
+import { getScreen, ScreenError, startScreenPrewarm } from './data/screen.js';
 import { buildId, versionIndex } from './lib/assets.js';
 import { readFileSync } from 'node:fs';
 import { mountCommandRoutes } from './command-routes.js';
@@ -313,4 +313,8 @@ app.use(express.static(PUBLIC, { index: false, cacheControl: false, setHeaders: 
 
 app.use((req, res) => sendIndex(res, 404));
 
-app.listen(PORT, HOST, () => console.log(`bloombroke ${BUILD} listening on http://${HOST}:${PORT}`));
+app.listen(PORT, HOST, () => {
+  console.log(`bloombroke ${BUILD} listening on http://${HOST}:${PORT}`);
+  // SCREEN's P/E and dividend numbers: loaded in the background, so no one waits on a cold cache.
+  startScreenPrewarm();
+});

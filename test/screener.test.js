@@ -224,3 +224,43 @@ test('PE filters leave out negative and missing P/E (real CNBC rows), and it sho
   assert.equal(fmtPe(null), '--');
   assert.match(resultsTable(withFund(base.slice(0, 1), fund), parseScreenArgs('DIV>0')), /<td class="num">loss<\/td>/);
 });
+
+test('PE screens never wait on a cold cache: prewarm at start, refresh before the hour', async () => {
+  let t = 0;
+  let fundCalls = 0;
+  let nasdaqCalls = 0;
+  const fetchImpl = async (url) => {
+    nasdaqCalls += 1;
+    const body = url.includes('download=true') ? NASDAQ : { data: { asof: 'Last price as of Sep 24, 2026' } };
+    return { ok: true, status: 200, json: async () => body };
+  };
+  const getFundMap = async (symbols) => {
+    fundCalls += 1;
+    return new Map(symbols.map((s, i) => [s, { pe: i % 2 ? -5 : 20 + i, divYield: 1 }]));
+  };
+  const cache = createCache({ now: () => t });
+  const s = makeScreen({ fetchImpl, cache, getFundMap, now: () => t });
+  await s.warm();
+  assert.equal(fundCalls, 1, 'prewarm loads the P/E numbers');
+  const a = await s.getScreen('PE<30');
+  assert.equal(fundCalls, 1, 'the first PE screen is served from the warm cache');
+  assert.ok(a.count > 0 && a.rows.every((r) => r.pe > 0));
+  // 45 minutes on, the background refresh reloads both before they expire.
+  t += 45 * 60_000;
+  await s.warm();
+  assert.equal(fundCalls, 2);
+  t += 30 * 60_000;
+  const b = await s.getScreen('PE<30');
+  assert.equal(fundCalls, 2, '75 minutes after start, still no wait: the refresh kept it fresh');
+  assert.equal(b.stale, false);
+  // A failed refresh keeps the last good copy.
+  const bad = makeScreen({ fetchImpl, cache, getFundMap: async () => { throw new Error('down'); }, now: () => t });
+  await assert.rejects(bad.warm(), /down/);
+  assert.equal((await s.getScreen('PE<30')).count, b.count);
+  // The timers: first run after the delay, never blocking; stop() clears them.
+  const stop = s.startPrewarm({ delayMs: 1, everyMs: 60_000, log: () => {} });
+  await new Promise((r) => { setTimeout(r, 30); });
+  stop();
+  assert.equal(fundCalls, 3);
+  assert.ok(nasdaqCalls >= 6);
+});
