@@ -4,10 +4,13 @@
 // - Fresh entry: returned as is.
 // - Expired entry: loader runs; on failure the old value is served with stale: true
 //   and the next retry waits `retryMs` so a dead source is not hammered.
-// - No entry and loader fails: the error is thrown.
+// - No entry and loader fails: the error is thrown, and the failure itself is
+//   remembered for `retryMs`. Calls in that window get the same error without
+//   touching the source.
 
 export function createCache({ retryMs = 30_000, now = () => Date.now() } = {}) {
   const entries = new Map();
+  const failures = new Map();
   const inflight = new Map();
 
   async function cached(key, ttlMs, loader) {
@@ -16,6 +19,10 @@ export function createCache({ retryMs = 30_000, now = () => Date.now() } = {}) {
     if (entry && t < entry.expiresAt) {
       return { value: entry.value, stale: entry.stale, fetchedAt: entry.fetchedAt };
     }
+    if (!entry) {
+      const fail = failures.get(key);
+      if (fail && t < fail.until) throw fail.error;
+    }
     if (inflight.has(key)) return inflight.get(key);
 
     const p = (async () => {
@@ -23,6 +30,7 @@ export function createCache({ retryMs = 30_000, now = () => Date.now() } = {}) {
         const value = await loader();
         const fetchedAt = now();
         entries.set(key, { value, fetchedAt, expiresAt: fetchedAt + ttlMs, stale: false });
+        failures.delete(key);
         return { value, stale: false, fetchedAt };
       } catch (err) {
         if (entry) {
@@ -30,6 +38,7 @@ export function createCache({ retryMs = 30_000, now = () => Date.now() } = {}) {
           entry.expiresAt = now() + Math.min(retryMs, ttlMs);
           return { value: entry.value, stale: true, fetchedAt: entry.fetchedAt };
         }
+        failures.set(key, { error: err, until: now() + retryMs });
         throw err;
       } finally {
         inflight.delete(key);
@@ -39,5 +48,9 @@ export function createCache({ retryMs = 30_000, now = () => Date.now() } = {}) {
     return p;
   }
 
-  return { cached, clear: () => entries.clear(), size: () => entries.size };
+  return {
+    cached,
+    clear: () => { entries.clear(); failures.clear(); },
+    size: () => entries.size,
+  };
 }

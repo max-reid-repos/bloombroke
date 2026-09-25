@@ -8,7 +8,7 @@ const dir = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
 
 const PORT = Number(process.env.PORT) || 3020;
-const HOST = process.env.HOST || '0.0.0.0';
+const HOST = process.env.HOST || '127.0.0.1';
 
 const app = express();
 app.disable('x-powered-by');

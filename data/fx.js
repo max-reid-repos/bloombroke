@@ -23,11 +23,23 @@ export function isCodeShape(code) {
   return /^[A-Z]{3}$/.test(code);
 }
 
+export const MAX_AMOUNT = 1e12;
+
+// Digits, commas and at most one dot. No signs, hex, exponents or spaces.
 export function parseAmount(raw) {
   if (raw === undefined || raw === null || raw === '') return 1;
-  const n = Number(String(raw).replace(/,/g, ''));
-  if (!Number.isFinite(n) || n < 0 || n > 1e15) return NaN;
+  const s = String(raw);
+  if (s.length > 32 || !/^[\d,]*\.?\d*$/.test(s) || !/\d/.test(s)) return NaN;
+  const n = Number(s.replace(/,/g, ''));
+  if (!Number.isFinite(n) || n < 0 || n > MAX_AMOUNT) return NaN;
   return n;
+}
+
+// Why an amount was refused, in plain words.
+export function amountMessage(raw) {
+  const s = String(raw ?? '');
+  const tooBig = /^[\d,]*\.?\d*$/.test(s) && Number(s.replace(/,/g, '')) > MAX_AMOUNT;
+  return tooBig ? 'That amount is too big. The limit is 1,000,000,000,000.' : 'That amount does not look like a number.';
 }
 
 export function convert(amount, rate) {
@@ -74,7 +86,7 @@ export function makeFx({ fetchImpl = globalThis.fetch, cache = createCache(), no
     const to = normalizeCode(rawTo);
     const amount = parseAmount(rawAmount);
     if (!Number.isFinite(amount)) {
-      throw new FxError('bad_amount', 'That amount does not look like a number.', { examples: FX_EXAMPLES });
+      throw new FxError('bad_amount', amountMessage(rawAmount), { examples: FX_EXAMPLES });
     }
 
     let list;
