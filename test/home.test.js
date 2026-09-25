@@ -52,4 +52,7 @@ test('assets: the build id follows the files, and the page points at it', () => 
   assert.match(html, /href="\/v\/abc123\/style\.css"/);
   assert.match(html, /src="\/v\/abc123\/app\.js"/);
   assert.match(html, /src="https:\/\/datafa\.st\/js\/script\.js"/);
+  const more = versionIndex('<link rel="stylesheet" href="/commands.css"><link rel="icon" href="data:image/svg+xml,x">', 'abc123');
+  assert.match(more, /href="\/v\/abc123\/commands\.css"/);
+  assert.match(more, /href="data:image\/svg\+xml,x"/);
 });

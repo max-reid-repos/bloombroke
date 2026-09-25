@@ -4,6 +4,8 @@ import { esc, fmtNum, fmtSigned, fmtPct, dirOf, panel, LOADING, marketsColumns, 
 import { rangeChart } from './chart.js';
 import { freshTag } from '../freshness.js';
 import { newsList } from './news.js';
+import { loadWatchlist, isDefaultList } from '../watchlist.js';
+import { fetchQuotes, watchCompact } from './watch.js';
 
 export function fxTable(pairs) {
   const rows = pairs.map((p) => {
@@ -22,11 +24,19 @@ export function fxTable(pairs) {
   </table>`;
 }
 
+const HOME_WATCH_ROWS = 10;
+
 export function render(el, cmd, ctx) {
+  // The user's own watchlist replaces the FX panel once it is theirs (not the starter list).
+  const watch = loadWatchlist(ctx.store);
+  const mine = watch.length > 0 && !isDefaultList(watch);
+  const shown = watch.slice(0, HOME_WATCH_ROWS);
   el.innerHTML = `<div class="grid grid-home">
     ${panel('1', 'Markets', LOADING, { cmd: 'MARKETS', metaId: 'h-mk-meta', cls: 'panel-wide' })}
     ${panel('2', 'S&P 500', '<div class="rc rc-home" id="h-rc"></div>', { cmd: 'SPX', metaId: 'h-ch-meta', bodyCls: 'flush' })}
-    ${panel('3', 'FX vs USD', LOADING, { cmd: 'FX 100 USD EUR', metaId: 'h-fx-meta' })}
+    ${mine
+    ? panel('3', 'Watchlist', LOADING, { cmd: 'WATCH', metaId: 'h-fx-meta', meta: `${watch.length} SYMBOLS` })
+    : panel('3', 'FX vs USD', LOADING, { cmd: 'FX 100 USD EUR', metaId: 'h-fx-meta' })}
     ${panel('4', 'News', LOADING, { cmd: 'NEWS', metaId: 'h-news-meta', bodyCls: 'flush', cls: 'panel-wide' })}
   </div>
   ${FOOTNOTE}`;
@@ -66,7 +76,21 @@ export function render(el, cmd, ctx) {
     }
   }
 
+  async function loadWatch() {
+    try {
+      const { byId, data } = await fetchQuotes(ctx, shown);
+      const more = watch.length - shown.length;
+      rerender(fxBody, watchCompact(shown, byId) + (more > 0 ? `<p class="h-more"><a href="?c=WATCH" data-cmd="WATCH">${more} more on your watchlist</a></p>` : ''));
+      settleTicks(fxBody);
+      seen.fx = { updated: data.updated, stale: data.stale, pairs: data.quotes };
+      noteUpdated();
+    } catch (err) {
+      fail(fxBody, err, 'table');
+    }
+  }
+
   async function loadFx() {
+    if (mine) { loadWatch(); return; }
     try {
       const d = await ctx.fetchJSON('/api/fxmajors', { signal: ctx.signal });
       rerender(fxBody, fxTable(d.pairs));
