@@ -13,6 +13,10 @@ import * as newsScreen from './screens/news.js';
 import * as buyScreen from './screens/buy.js';
 import * as whatifScreen from './screens/whatif.js';
 import * as fundingScreen from './screens/funding.js';
+import * as financialsScreen from './screens/financials.js';
+import * as screenScreen from './screens/screen.js';
+import { parseFinancialsCommand, parseFinancialsArgs } from './screens/financials.js';
+import { parseScreenCommand, parseScreenArgs } from './screener.js';
 import * as watchScreen from './screens/watch.js';
 import * as portfolioScreen from './screens/portfolio.js';
 import { parseWatchArgs, watchInput, WATCH_SUBCOMMANDS } from './watchlist.js';
@@ -36,6 +40,8 @@ export const COMMANDS = [
   { name: 'WATCH', group: 'Your lists', hint: 'Your watchlist, live: any stock, index, pair, coin or future', usage: 'WATCH [ADD|REMOVE <symbols>] [CLEAR|EXPORT|IMPORT]', example: 'WATCH', usageExample: 'WATCH ADD AAPL TSLA', examples: ['WATCH', 'WATCH ADD AAPL TSLA EURUSD', 'WATCH REMOVE TSLA', 'WATCH EXPORT', 'WATCH IMPORT AAPL,MSFT,GOLD'] },
   { name: 'PORTFOLIO', aliases: ['PF'], group: 'Your lists', hint: 'Your holdings: value, day gain, total gain, weights', usage: 'PF [ADD <ticker> <shares> @ <cost>|SELL <ticker> <shares>|REMOVE <ticker>]', example: 'PF', usageExample: 'PF ADD AAPL 10 @ 150', examples: ['PF', 'PF ADD AAPL 10 @ 150', 'PF SELL AAPL 3', 'PF EXPORT', 'PF IMPORT'] },
   ...EXTRA_HELP,
+  { name: 'SCREEN', group: 'Markets', hint: 'Find stocks by sector, size, price and move', usage: 'SCREEN [<filters>]', example: 'SCREEN GAINERS', examples: ['SCREEN', 'SCREEN GAINERS'] },
+  { name: 'FINANCIALS', group: 'Company', hint: 'Income, balance sheet and cash flow from SEC filings', usage: 'FINANCIALS <ticker> [BALANCE|CASHFLOW] [QUARTERLY]', example: 'FINANCIALS AAPL', examples: ['FINANCIALS AAPL', 'FINANCIALS MSFT BALANCE'] },
   { name: 'HELP', group: 'Help', hint: 'Every command, with examples', usage: 'HELP', example: 'HELP' },
 ];
 
@@ -68,6 +74,7 @@ export const FKEYS = [
 
 export const CHART_RANGES = PRESETS;
 const SIMPLE = new Set(['HOME', 'MARKETS', 'RATES', 'NEWS', 'HELP']);
+const FUNDAMENTALS = { FINANCIALS: parseFinancialsCommand, SCREEN: parseScreenCommand, SCREENER: parseScreenCommand };
 const ALIASES = { '?': 'HELP', H: 'HELP', M: 'MARKETS', MARKET: 'MARKETS', RATE: 'RATES', INFLATION: 'CPI', PF: 'PORTFOLIO', WATCHLIST: 'WATCH' };
 export const DEFAULT_COMMAND = 'HOME';
 export const MAX_AMOUNT = 1e12;
@@ -277,6 +284,7 @@ export function parseCommand(raw, depth = 0) {
     const chart = parseSymbolCommand(rest);
     if (chart) return chart;
   }
+  if (FUNDAMENTALS[head]) return FUNDAMENTALS[head](rest);
   if (depth === 0) {
     const fn = parseTickerFunction(toks);
     if (fn) return fn;
@@ -300,7 +308,7 @@ export function fromQuery(search) {
 }
 
 // Commands that take arguments: Tab adds a space, and a bad argument shows the usage line.
-const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, ...EXTRA_TAKES_ARGS };
+const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, ...EXTRA_TAKES_ARGS, FINANCIALS: parseFinancialsArgs, SCREEN: parseScreenArgs };
 // Commands that run on their own but still show the usage line for bad words after them.
 const CHECKS_ARGS = { WATCH: parseWatchArgs, PORTFOLIO: parsePfArgs };
 const commandFor = (word) => COMMANDS.find((c) => c.name === word || c.aliases?.includes(word));
@@ -429,6 +437,7 @@ const SCREENS = {
   QUOTE: quoteScreen, CPI: cpiScreen, RATES: ratesScreen, NEWS: newsScreen,
   BUY: buyScreen, WAGE: buyScreen, WHATIF: whatifScreen, FUNDING: fundingScreen,
   WATCH: watchScreen, PORTFOLIO: portfolioScreen,
+  FINANCIALS: financialsScreen, SCREEN: screenScreen,
 };
 const DEFAULT_TITLE = 'Bloombroke: the $32,000 terminal. Now $4.20 a month.';
 

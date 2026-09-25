@@ -115,7 +115,7 @@ export function fnBarHtml(ticker, fns, on) {
   return `<nav class="fnbar" aria-label="${esc(ticker)} functions">${items}<button type="button" class="fn fn-watch${on ? ' is-on' : ''}" data-watch-toggle data-key="${n}" aria-pressed="${on}"><span class="fn-n" aria-hidden="true">${n}</span><span class="star-icon" aria-hidden="true">${on ? '★' : '☆'}</span> WATCH<span class="offscreen"> ${esc(starText(ticker, on))}</span></button></nav>`;
 }
 
-function syncStars(el, ticker, on) {
+export function syncStars(el, ticker, on) {
   el.querySelectorAll('[data-watch-toggle]').forEach((b) => {
     b.classList.toggle('is-on', on);
     b.setAttribute('aria-pressed', String(on));

@@ -12,6 +12,8 @@ import { getCatalog, getWhatif, getFunding, catalog } from './data/whatif-servic
 import { WhatifError } from './data/whatif.js';
 import { whatifTokens, normalizeWhatif, certModel } from './data/whatif-cert.js';
 import { getCert, whatifPng, defaultPng, withMeta, certMeta, DEFAULT_META } from './lib/og.js';
+import { getFinancials, FinancialsError } from './data/financials.js';
+import { getScreen, ScreenError } from './data/screen.js';
 import { buildId, versionIndex } from './lib/assets.js';
 import { readFileSync } from 'node:fs';
 import { mountCommandRoutes } from './command-routes.js';
@@ -216,6 +218,37 @@ app.get('/api/funding', async (req, res) => {
   } catch (err) {
     console.error('[funding]', err.message);
     res.status(503).json({ error: 'unavailable', message: BREAK });
+  }
+});
+
+// FINANCIALS: ?s=AAPL. SEC EDGAR filings, cached a day on the server.
+app.get('/api/financials', async (req, res) => {
+  try {
+    const data = await getFinancials(str(req.query.s));
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.json(data);
+  } catch (err) {
+    if (err instanceof FinancialsError) {
+      const status = { bad_symbol: 400, not_found: 404, no_data: 404 }[err.code] || 503;
+      return res.status(status).json({ error: err.code, message: err.message });
+    }
+    console.error('[financials]', err.message);
+    res.status(503).json({ error: 'unavailable', message: BREAK });
+  }
+});
+
+// SCREEN: ?c=SECTOR+TECHNOLOGY+MCAP>10B (the words after SCREEN) &limit=100.
+app.get('/api/screen', async (req, res) => {
+  const c = str(req.query.c) || '';
+  if (c.length > 300) return res.status(400).json({ error: 'usage', message: 'That screen is too long.' });
+  try {
+    const data = await getScreen(c, str(req.query.limit));
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json(data);
+  } catch (err) {
+    if (err instanceof ScreenError) return res.status(400).json({ error: err.code, message: err.message });
+    console.error('[screen]', err.message);
+    res.status(503).json({ error: 'unavailable', message: 'Screener data is taking a break. Try again in a minute.' });
   }
 });
 
