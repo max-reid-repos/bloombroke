@@ -394,9 +394,9 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   animation: stamp-in 180ms cubic-bezier(.2, .8, .2, 1) both;
 }
 .stamp-k { font-size: 11px; font-weight: 600; letter-spacing: .3em; }
-.stamp-v { font-size: 44px; font-weight: 600; line-height: 1.05; letter-spacing: .12em; }
-.stamp-buy { color: var(--up); }
-.stamp-think { color: var(--accent); }
+.stamp-v { font-size: 30px; font-weight: 600; line-height: 1.1; letter-spacing: .1em; white-space: nowrap; }
+.stamp-worth { color: var(--up); }
+.stamp-sleep { color: var(--accent); }
 .stamp-skip { color: var(--down); }
 @keyframes stamp-in { from { transform: rotate(-4deg) scale(1.25); opacity: 0; } to { transform: rotate(-4deg) scale(1); opacity: 1; } }
 .stamp-line { margin-top: 14px; color: var(--text-2); text-align: center; }
@@ -674,7 +674,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   .wi-when-m { display: block; font-size: 11px; }
   .wi-sentence { font-size: 14px; }
   .wi-receipt { margin: 12px -10px 0; }
-  .stamp-v { font-size: 36px; }
+  .stamp-v { font-size: 26px; }
   .stats-row { grid-template-columns: minmax(0, 1fr); }
   .chart-host { height: 240px; margin-left: 6px; }
   .chart-host-lg { height: 280px; }

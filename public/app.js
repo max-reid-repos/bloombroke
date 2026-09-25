@@ -36,8 +36,8 @@ export const COMMANDS = [
   { name: 'FX', group: 'Money tools', hint: 'Convert money between currencies', usage: 'FX <amount> <from> <to>', example: 'FX 500 USD THB', examples: ['FX 500 USD THB', 'FX USD CAD'] },
   { name: 'CPI', group: 'Money tools', hint: 'What money from a past year is worth today', usage: 'CPI <amount> <year>', example: 'CPI 100 2015', examples: ['CPI 100 2015', 'CPI 1000 1990'] },
   { name: 'WHATIF', group: 'Money tools', hint: 'The stock you should have bought', usage: 'WHATIF [<item> ...]', example: 'WHATIF', examples: ['WHATIF', 'WHATIF IPHONE6 LATTE:3Y'] },
-  { name: 'BUY', group: 'Money tools', hint: 'Should I buy it? Cost per use and a verdict', usage: 'BUY <price> [<n> PER WEEK] [FOR <n>Y]', example: 'BUY 1200', examples: ['BUY 1200', 'BUY 90 3 PER WEEK FOR 2Y'] },
-  { name: 'WAGE', group: 'Money tools', hint: 'Save your hourly pay, BUY then shows hours of work', usage: 'WAGE <per hour>', example: 'WAGE 35', examples: ['WAGE 35'] },
+  { name: 'AFFORD', group: 'Money tools', hint: 'Can I afford it? Cost per use of a thing you buy, and a verdict', usage: 'AFFORD <price> [<n> PER WEEK] [FOR <n>Y]', example: 'AFFORD 1200', examples: ['AFFORD 1200', 'AFFORD 90 3 PER WEEK FOR 2Y'] },
+  { name: 'WAGE', group: 'Money tools', hint: 'Save your hourly pay, AFFORD then shows hours of work', usage: 'WAGE <per hour>', example: 'WAGE 35', examples: ['WAGE 35'] },
   { name: 'WATCH', group: 'Your lists', hint: 'Your watchlist, live: any stock, index, pair, coin or future', usage: 'WATCH [ADD|REMOVE <symbols>] [CLEAR|EXPORT|IMPORT]', example: 'WATCH', usageExample: 'WATCH ADD AAPL TSLA', examples: ['WATCH', 'WATCH ADD AAPL TSLA EURUSD', 'WATCH REMOVE TSLA', 'WATCH EXPORT', 'WATCH IMPORT AAPL,MSFT,GOLD'] },
   { name: 'PORTFOLIO', aliases: ['PF'], group: 'Your lists', hint: 'Your holdings: value, day gain, total gain, weights', usage: 'PF [ADD <ticker> <shares> @ <cost>|SELL <ticker> <shares>|REMOVE <ticker>]', example: 'PF', usageExample: 'PF ADD AAPL 10 @ 150', examples: ['PF', 'PF ADD AAPL 10 @ 150', 'PF SELL AAPL 3', 'PF EXPORT', 'PF IMPORT'] },
   ...EXTRA_HELP,
@@ -58,6 +58,8 @@ export const GRAMMAR_HELP = {
 export const TICKER_HELP = {
   name: 'AAPL', group: 'Markets', hint: 'Any ticker, index, currency pair, commodity or coin: price, chart and key numbers', usage: '<symbol> [1D|5D|1M|3M|6M|YTD|1Y|2Y|5Y|10Y|MAX] or <symbol> <from> <to>', examples: ['AAPL', 'TSLA 5Y', 'GOLD', 'EURUSD', 'SPX YTD', 'AAPL 2020-01-01 2024-12-31', 'NVDA FROM 2023-01-01'],
 };
+
+export const RENAMED_NOTE = 'Renamed to AFFORD. It is about things you buy, not investments.';
 
 export const SOON = [
   { name: 'PRO', hint: 'Everything, for $4.20 a month' },
@@ -113,7 +115,9 @@ export function parseFxArgs(args) {
   return { amount, amountGiven, from, to };
 }
 
-// BUY <price> [<n> PER DAY|WEEK|MONTH|YEAR] [FOR <n>Y]. Defaults: 1 per week, 3 years.
+// AFFORD <price> [<n> PER DAY|WEEK|MONTH|YEAR] [FOR <n>Y]. Defaults: 1 per week, 3 years.
+// (It was BUY; BUY now only says it was renamed.) AFFORD is for things people buy: a
+// ticker, a market name or an investment word gets { error: 'investment' }, never a verdict.
 export const BUY_UNITS = { DAY: 365, WEEK: 52, MONTH: 12, YEAR: 1 };
 const UNIT_WORDS = {
   DAY: 'DAY', DAYS: 'DAY', WEEK: 'WEEK', WEEKS: 'WEEK', WK: 'WEEK', MONTH: 'MONTH', MONTHS: 'MONTH', MO: 'MONTH', YEAR: 'YEAR', YEARS: 'YEAR', YR: 'YEAR',
@@ -132,8 +136,24 @@ function parseYears(tok, next) {
   return { years: unit && unit.startsWith('M') ? n / 12 : n, used };
 }
 
-export function parseBuyArgs(args) {
-  const toks = args.filter((t) => t !== 'AT' && t !== 'X' && t !== 'TIMES' && t !== 'TIME');
+export const INVESTMENT_WORDS = new Set([
+  'SHARE', 'SHARES', 'STOCK', 'STOCKS', 'EQUITY', 'EQUITIES', 'ETF', 'ETFS', 'FUND', 'FUNDS', 'BOND', 'BONDS', 'TREASURY', 'TREASURIES',
+  'COIN', 'COINS', 'TOKEN', 'TOKENS', 'CRYPTO', 'OPTION', 'OPTIONS', 'CALL', 'CALLS', 'PUT', 'PUTS', 'FUTURE', 'FUTURES', 'CFD', 'CFDS',
+  'FOREX', 'FX', 'INDEX', 'REIT', 'REITS', 'PORTFOLIO', 'INVEST', 'INVESTMENT', 'TICKER', 'NFT', 'NFTS',
+]);
+const AFFORD_WORDS = new Set(['PER', 'A', 'EVERY', 'FOR', 'AT', 'X', 'TIMES', 'TIME', 'Y', 'YR', 'YRS', 'YEAR', 'YEARS', 'MO', 'MONTH', 'MONTHS', 'M', 'USD', ...Object.keys(UNIT_WORDS), ...Object.keys(ADVERBS)]);
+// A word that names an investment: an investment word, a named market (GOLD, BITCOIN,
+// EUR/USD) or anything shaped like a ticker that is not part of the AFFORD grammar.
+export function isInvestmentWord(tok) {
+  const t = String(tok).toUpperCase().replace(/^\$(?=[A-Z])/, '');
+  if (!/[A-Z]/.test(t) || AFFORD_WORDS.has(t)) return false;
+  if (/^\d+(\.\d+)?(Y|YR|YRS|YEARS?|M|MO|MONTHS?)$/.test(t)) return false;
+  return INVESTMENT_WORDS.has(t) || INVESTMENT_WORDS.has(t.replace(/S$/, '')) || TICKER_RE.test(t) || Boolean(matchInstrument([t]));
+}
+
+export function parseAffordArgs(args) {
+  if (args.some(isInvestmentWord)) return { error: 'investment' };
+  const toks = args.filter((t) => t !== 'AT' && t !== 'X' && t !== 'TIMES' && t !== 'TIME' && t !== 'USD');
   if (!toks.length || !looksNumeric(toks[0])) return { error: 'usage' };
   const price = parseAmountToken(toks[0]);
   if (!Number.isFinite(price) || price <= 0) return { error: 'amount' };
@@ -159,6 +179,7 @@ export function parseBuyArgs(args) {
   if (!(years > 0 && years <= 100)) return { error: 'years' };
   return { price, times, unit, years };
 }
+export const parseBuyArgs = parseAffordArgs; // the old name, for older imports
 
 // WAGE <per hour>. WAGE alone shows it, WAGE OFF clears it.
 export function parseWageArgs(args) {
@@ -258,9 +279,13 @@ export function parseCommand(raw, depth = 0) {
     const args = parseCpiArgs(rest);
     return { name: 'CPI', args, error: args.error, input: ['CPI', ...rest].join(' ') };
   }
-  if (head === 'BUY' && rest.length) {
-    const args = parseBuyArgs(rest);
-    return { name: 'BUY', args, error: args.error, input: ['BUY', ...rest].join(' ') };
+  if (head === 'AFFORD' && rest.length) {
+    const args = parseAffordArgs(rest);
+    return { name: 'AFFORD', args, error: args.error, input: ['AFFORD', ...rest].join(' ') };
+  }
+  // BUY was renamed AFFORD: typed, it says so; an old link (?c=BUY+...) opens AFFORD.
+  if (head === 'BUY') {
+    return { name: 'RENAMED', args: { from: 'BUY', to: ['AFFORD', ...rest].join(' ') }, input: ['BUY', ...rest].join(' ') };
   }
   if (head === 'WAGE') {
     const args = parseWageArgs(rest);
@@ -270,7 +295,7 @@ export function parseCommand(raw, depth = 0) {
     return { name: 'WHATIF', args: { tokens: rest }, input: ['WHATIF', ...rest].join(' ') };
   }
   if (head === '420' && !rest.length) return { name: 'FUNDING', input: '420' };
-  if (head === 'BUY') return { name: 'BUY', args: { error: 'usage' }, error: 'usage', input: 'BUY' };
+  if (head === 'AFFORD') return { name: 'AFFORD', args: { error: 'usage' }, error: 'usage', input: 'AFFORD' };
   const soon = SOON.find((s) => s.name === head);
   if (soon && !rest.length) return { name: 'SOON', args: { soon }, input: head };
   if (head === 'WATCH') {
@@ -309,7 +334,7 @@ export function fromQuery(search) {
 }
 
 // Commands that take arguments: Tab adds a space, and a bad argument shows the usage line.
-const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, ...EXTRA_TAKES_ARGS, FINANCIALS: parseFinancialsArgs, SCREEN: parseScreenArgs };
+const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, AFFORD: parseAffordArgs, WAGE: parseWageArgs, ...EXTRA_TAKES_ARGS, FINANCIALS: parseFinancialsArgs, SCREEN: parseScreenArgs };
 // Commands that run on their own but still show the usage line for bad words after them.
 const CHECKS_ARGS = { WATCH: parseWatchArgs, PORTFOLIO: parsePfArgs };
 const commandFor = (word) => COMMANDS.find((c) => c.name === word || c.aliases?.includes(word));
@@ -436,7 +461,7 @@ const store = {
 const SCREENS = {
   HOME: homeScreen, HELP: helpScreen, MARKETS: marketsScreen, FX: fxScreen,
   QUOTE: quoteScreen, CPI: cpiScreen, RATES: ratesScreen, NEWS: newsScreen,
-  BUY: buyScreen, WAGE: buyScreen, WHATIF: whatifScreen, FUNDING: fundingScreen,
+  AFFORD: buyScreen, WAGE: buyScreen, WHATIF: whatifScreen, FUNDING: fundingScreen,
   WATCH: watchScreen, PORTFOLIO: portfolioScreen,
   FINANCIALS: financialsScreen, SCREEN: screenScreen,
 };
@@ -633,6 +658,19 @@ function boot() {
       setStatus('LOADING...');
       const fn = mod.render(view, cmd, ctx);
       if (typeof fn === 'function') cleanups.push(fn);
+    } else if (cmd.name === 'RENAMED') {
+      const to = cmd.args.to;
+      if (fromUrl) {
+        // An old shared link: open AFFORD and put it in the address bar.
+        window.history.replaceState({ c: to }, '', toQuery(to));
+        render(to, { fromUrl: true });
+        return;
+      }
+      const example = to === 'AFFORD' ? 'AFFORD 1200' : to;
+      view.innerHTML = panel('1', 'Renamed', `
+        <p class="notice">${escapeHtml(RENAMED_NOTE)}</p>
+        <p class="muted">Try <a class="code" href="${toQuery(example)}" data-cmd="${escapeHtml(example)}">${escapeHtml(example)}</a>.</p>`, { cls: 'panel-solo' });
+      setStatus('BUY IS NOW AFFORD');
     } else if (cmd.name === 'SOON') {
       const s = cmd.args.soon;
       const alt = s.ticker ? `<a class="code" href="${toQuery(s.ticker)}" data-cmd="${escapeHtml(s.ticker)}">${escapeHtml(s.ticker)}</a> or ` : '';

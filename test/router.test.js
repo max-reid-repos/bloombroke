@@ -43,7 +43,8 @@ test('tickers: one word of 1-5 letters, optional class and range', () => {
   assert.equal(parseCommand('AAPL 7Y').name, 'UNKNOWN');
   assert.equal(parseCommand('NEWS').name, 'NEWS');
   assert.equal(parseCommand('rates').name, 'RATES');
-  assert.equal(parseCommand('BUY').error, 'usage');
+  assert.equal(parseCommand('AFFORD').error, 'usage');
+  assert.equal(parseCommand('BUY').name, 'RENAMED');
   assert.equal(parseCommand('WHATIF').name, 'WHATIF');
   assert.deepEqual(parseCommand('whatif iphone6 latte:3y').args, { tokens: ['IPHONE6', 'LATTE:3Y'] });
   assert.equal(parseCommand('420').name, 'FUNDING');

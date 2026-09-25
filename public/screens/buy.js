@@ -1,14 +1,18 @@
-// BUY: "Should I buy it?" Cost per use, hours of work, what the money would grow to,
-// and a verdict stamp. WAGE saves an hourly wage in this browser so BUY can show hours.
+// AFFORD: "Can I afford it?" For things people buy (a bike, a laptop), never investments.
+// Cost per use, hours of work, what the money would grow to at an assumed rate, and a
+// verdict stamp. WAGE saves an hourly wage in this browser so AFFORD can show hours.
+// (The command was called BUY until September 2026.)
 
 import { esc, q, fmtNum, panel } from './markets.js';
 
 export const INVEST_RATE = 0.08;
+export const TITLE = 'Can I afford it?';
+export const NOT_INVESTMENTS = 'AFFORD is for things you buy, like a bike or a laptop. It does not assess investments.';
 export const UNIT_PER_YEAR = { DAY: 365, WEEK: 52, MONTH: 12, YEAR: 1 };
 export const VERDICTS = [
-  { max: 2, verdict: 'BUY', line: 'Under $2 a use. Go on.' },
-  { max: 10, verdict: 'THINK', line: 'Under $10 a use. Sleep on it.' },
-  { max: Infinity, verdict: 'SKIP', line: '$10 or more a use. Walk away.' },
+  { max: 2, key: 'worth', verdict: 'WORTH IT', line: 'Under $2 a use. Go on.' },
+  { max: 10, key: 'sleep', verdict: 'SLEEP ON IT', line: 'Under $10 a use. Think it over.' },
+  { max: Infinity, key: 'skip', verdict: 'SKIP IT', line: '$10 or more a use. Walk away.' },
 ];
 const WAGE_KEY = 'bb.wage';
 
@@ -24,7 +28,7 @@ export function buyMaths({ price, times, unit, years }, { wage = null, rate = IN
   const hours = Number.isFinite(wage) && wage > 0 ? price / wage : null;
   const invested = price * (1 + rate) ** years;
   const v = verdictFor(costPerUse);
-  return { price, times, unit, years, wage: hours === null ? null : wage, perYear, uses, costPerUse, hours, invested, rate, verdict: v.verdict, line: v.line };
+  return { price, times, unit, years, wage: hours === null ? null : wage, perYear, uses, costPerUse, hours, invested, rate, verdict: v.verdict, verdictKey: v.key, line: v.line };
 }
 
 // $7.69, $1,512, $0.0312: cents for small sums, whole dollars from $1,000.
@@ -52,12 +56,12 @@ export function readWage(store) {
 }
 
 const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
-const EXAMPLES = ['BUY 1200', 'BUY 90 3 PER WEEK FOR 2Y', 'BUY 4.50 1 PER DAY FOR 1Y', 'BUY 30000 FOR 8Y'];
+const EXAMPLES = ['AFFORD 1200', 'AFFORD 90 3 PER WEEK FOR 2Y', 'AFFORD 4.50 1 PER DAY FOR 1Y', 'AFFORD 30000 FOR 8Y'];
 
 function errorView(el, message) {
-  el.innerHTML = panel('1', 'Should I buy it?', `
+  el.innerHTML = panel('1', TITLE, `
     <p class="notice">${esc(message)}</p>
-    <p class="muted">Format: <span class="code">BUY &lt;price&gt; [&lt;n&gt; PER DAY|WEEK|MONTH|YEAR] [FOR &lt;n&gt;Y]</span>. Starts at once a week for 3 years.</p>
+    <p class="muted">Format: <span class="code">AFFORD &lt;price&gt; [&lt;n&gt; PER DAY|WEEK|MONTH|YEAR] [FOR &lt;n&gt;Y]</span>. Starts at once a week for 3 years.</p>
     <p class="muted examples">Try ${EXAMPLES.map(code).join(' ')}</p>`, { cls: 'panel-solo' });
 }
 
@@ -70,10 +74,10 @@ export function buyHtml(r) {
     `Uses: ${howOften(r.times, r.unit)} for ${yearsWord(r.years)} is ${plain(r.uses)} uses.`,
     `Cost per use: ${fmtMoney(r.price)} divided by ${plain(r.uses)} uses is ${fmtMoney(r.costPerUse)}.`,
     r.hours === null
-      ? 'Hours of work: save your hourly pay with WAGE and BUY divides the price by it.'
+      ? 'Hours of work: save your hourly pay with WAGE and AFFORD divides the price by it.'
       : `Hours of work: ${fmtMoney(r.price)} divided by ${fmtMoney(r.wage)} an hour is ${fmtNum(r.hours, 1)} hours, before tax.`,
     `Invested instead: ${fmtMoney(r.price)} growing ${Math.round(r.rate * 100)}% a year, compounded, for ${yearsWord(r.years)} is ${fmtMoney(r.invested)}. The ${Math.round(r.rate * 100)}% is an assumption, not a promise. Real returns go up and down.`,
-    'Verdict: BUY under $2 a use, THINK under $10 a use, SKIP at $10 or more.',
+    'Verdict: WORTH IT under $2 a use, SLEEP ON IT under $10 a use, SKIP IT at $10 or more. A rule of thumb for things you buy, not investments.',
   ];
   return `<div class="buy">
     <div class="buy-main">
@@ -86,7 +90,7 @@ export function buyHtml(r) {
       </dl>
     </div>
     <div class="buy-side">
-      <p class="stamp stamp-${r.verdict.toLowerCase()}" role="img" aria-label="Verdict: ${r.verdict}"><span class="stamp-k">VERDICT</span><span class="stamp-v">${r.verdict}</span></p>
+      <p class="stamp stamp-${r.verdictKey}" role="img" aria-label="Verdict: ${r.verdict}"><span class="stamp-k">VERDICT</span><span class="stamp-v">${r.verdict}</span></p>
       <p class="stamp-line">${esc(r.line)}</p>
       <details class="how">
         <summary>How is this calculated?</summary>
@@ -113,7 +117,7 @@ function renderWage(el, cmd, ctx) {
     : `${show ? 'Your wage' : 'Saved'}: ${fmtMoney(now)} an hour.`;
   el.innerHTML = panel('1', 'Wage', `
     <p class="notice">${esc(msg)}</p>
-    <p class="muted">${now === null ? `Type ${code('WAGE 35')} to save one.` : `BUY now shows the hours of work. Try ${code('BUY 1200')}.`} It stays in this browser only.</p>`, { cls: 'panel-solo' });
+    <p class="muted">${now === null ? `Type ${code('WAGE 35')} to save one.` : `AFFORD now shows the hours of work. Try ${code('AFFORD 1200')}.`} It stays in this browser only.</p>`, { cls: 'panel-solo' });
   ctx.status(now === null ? 'WAGE: NONE SAVED' : `WAGE: ${fmtMoney(now)}/HR`);
 }
 
@@ -121,19 +125,20 @@ export function render(el, cmd, ctx) {
   if (cmd.name === 'WAGE') return renderWage(el, cmd, ctx);
   if (cmd.error) {
     const msg = {
-      usage: 'BUY needs a price.',
+      usage: 'AFFORD needs a price.',
+      investment: NOT_INVESTMENTS,
       amount: 'That price does not look right.',
       times: 'How often? Use a number from 1 to 1,000.',
       years: 'For how long? Use 1 to 100 years, like FOR 3Y.',
     }[cmd.error] || 'Check the format.';
     errorView(el, msg);
-    ctx.status('BUY: CHECK THE FORMAT', 'warn');
+    ctx.status(cmd.error === 'investment' ? 'AFFORD: THINGS YOU BUY, NOT INVESTMENTS' : 'AFFORD: CHECK THE FORMAT', 'warn');
     return;
   }
   const r = buyMaths(cmd.args, { wage: readWage(ctx.store) });
-  el.innerHTML = panel('1', 'Should I buy it?', buyHtml(r), {
+  el.innerHTML = panel('1', TITLE, buyHtml(r), {
     cls: 'panel-solo',
     meta: esc(`${fmtMoney(r.price)}  ${plain(r.times)} PER ${r.unit}  ${yearsWord(r.years).toUpperCase()}`),
-  }) + '<p class="footnote">A rule of thumb, not financial advice.</p>';
-  ctx.status(`BUY: ${r.verdict}`);
+  }) + '<p class="footnote">A rule of thumb for things you buy. The growth rate is an assumption, not a forecast. Not financial advice.</p>';
+  ctx.status(`AFFORD: ${r.verdict}`);
 }
