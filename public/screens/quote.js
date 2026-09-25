@@ -32,10 +32,16 @@ export function statRows(d) {
   const dec = decimalsOf(d);
   const f = (v) => (Number.isFinite(v) ? (isYield(d) ? `${fmtNum(v, dec)}%` : fmtNum(v, dec)) : '--');
   const range = (lo, hi) => (Number.isFinite(lo) && Number.isFinite(hi) ? `${f(lo)} - ${f(hi)}` : '--');
+  // The 52-week range: from daily closes when the source rounds it, else the source's
+  // own values at the decimals it gave (never padded with zeros it did not send).
+  const r52dec = d.range52Basis !== 'daily closes' && Number.isInteger(d.range52Dp) && d.range52Dp < dec ? d.range52Dp : dec;
+  const f52 = (v) => (Number.isFinite(v) ? (isYield(d) ? `${fmtNum(v, r52dec)}%` : fmtNum(v, r52dec)) : '--');
+  const range52 = Number.isFinite(d.low52) && Number.isFinite(d.high52) ? `${f52(d.low52)} - ${f52(d.high52)}` : '--';
+  const label52 = d.range52Basis === 'daily closes' ? '52W range (closes)' : r52dec < dec ? '52W range (rounded)' : '52W range';
   const rows = [];
   if (isStock(d)) {
     rows.push(['Mkt cap', d.marketCap || '--']);
-    rows.push(['52W range', range(d.low52, d.high52), rangeBar(d.low52, d.high52, d.last)]);
+    rows.push([label52, range52, rangeBar(d.low52, d.high52, d.last)]);
     rows.push(['P/E', Number.isFinite(d.pe) ? fmtNum(d.pe, 2) : '--']);
     if (Number.isFinite(d.eps)) rows.push(['EPS', fmtNum(d.eps, 2)]);
     if (d.divYield) rows.push(['Div yield', d.divYield]);
@@ -43,7 +49,7 @@ export function statRows(d) {
   } else {
     if (Number.isFinite(d.open)) rows.push(['Open', f(d.open)]);
     if (Number.isFinite(d.low) && Number.isFinite(d.high)) rows.push(['Day range', range(d.low, d.high), rangeBar(d.low, d.high, d.last)]);
-    rows.push(['52W range', range(d.low52, d.high52), rangeBar(d.low52, d.high52, d.last)]);
+    rows.push([label52, range52, rangeBar(d.low52, d.high52, d.last)]);
     if (d.kind === 'future' && d.volume) rows.push(['Volume', d.volume]);
   }
   if (Number.isFinite(d.prevClose)) rows.push(['Prev close', f(d.prevClose)]);

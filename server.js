@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { getQuotes, getFxMajors, getQuote, getQuoteList, normalizeTicker, MAX_LIST } from './data/quotes.js';
 import { getFx, FxError } from './data/fx.js';
 import { getChart, ChartError } from './data/charts.js';
+import { precise52 } from './data/range52.js';
 import { getCpi, CpiError, CPI_EXAMPLES } from './data/cpi.js';
 import { getRates } from './data/rates.js';
 import { getNews } from './data/news.js';
@@ -86,7 +87,7 @@ app.get('/api/quote', async (req, res) => {
   const ticker = normalizeTicker(str(req.query.s));
   if (!ticker) return res.status(400).json({ error: 'bad_symbol', message: 'That does not look like a ticker.' });
   try {
-    const data = await getQuote(ticker);
+    const data = await precise52(await getQuote(ticker));
     if (!data) return res.status(404).json({ error: 'not_found', message: `No ticker called ${ticker}.` });
     res.set('Cache-Control', 'public, max-age=5');
     res.json(data);

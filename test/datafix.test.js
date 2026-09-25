@@ -12,6 +12,9 @@ import { exdivTable } from '../public/screens/exdiv.js';
 import { parseCoins, excludeCoins, makeCrypto } from '../data/crypto.js';
 import { shapeBars, barEnds, isPartial, makeCharts } from '../data/charts.js';
 import { stripItems, barDay } from '../public/screens/chart.js';
+import { parseQuoteRow, decimalsIn } from '../data/quotes.js';
+import { precise52, closesRange, roundedRange } from '../data/range52.js';
+import { statRows } from '../public/screens/quote.js';
 
 const fixture = (f) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'));
 const json = (body) => ({ ok: true, status: 200, json: async () => body });
@@ -153,4 +156,34 @@ test('chart service: weekly ranges fetch daily bars for the end dates', async ()
   assert.equal(d.points[d.points.length - 1].p, true, 'the week of Apr 16, 2023 is still running on Apr 20');
   const one = await makeCharts({ fetchImpl: async (url) => { urls.push(url); return json(fixture('cnbc-bars-aapl-1d.json')); }, cache: createCache(), now: () => new Date('2023-04-20T16:00:00Z') }).getChart('AAPL', '1Y');
   assert.equal(one.points[0].e, undefined);
+});
+
+// ---- EURUSD 52-week range ---------------------------------------------------------
+// Real CNBC EUR= quote and daily bars (2026-09-25). CNBC sends the 52-week range as
+// 1.21 and 1.13. Cross-checked: ECB reference rates over the same year run 1.1340 to
+// 1.1974 and Yahoo's daily closes 1.1354 to 1.2018 (different fixing times).
+test('EURUSD: the 52-week range comes from daily closes at full precision', async () => {
+  const fx = fixture('cnbc-eurusd-52w.json');
+  const q = parseQuoteRow(fx.quote, 'EURUSD');
+  assert.equal(decimalsIn('1.21'), 2);
+  assert.equal(decimalsIn('7,040'), 0);
+  assert.equal(q.range52Dp, 2);
+  assert.equal(q.decimals, 4);
+  assert.ok(roundedRange(q));
+  const nowMs = Date.parse('2026-09-25T16:45:00Z');
+  const pts = shapeBars(fx.bars.barData.priceBars).map(({ t, v }) => ({ t, v }));
+  const r = closesRange(pts, nowMs);
+  assert.equal(r.high, 1.2041);
+  assert.equal(r.low, 1.1357);
+  const p = await precise52(q, { chart: async () => ({ bar: '1D', points: pts }), now: () => nowMs });
+  assert.deepEqual([p.low52, p.high52, p.range52Basis], [1.1357, 1.2041, 'daily closes']);
+  assert.deepEqual(p.source52, { high: 1.21, low: 1.13, decimals: 2 });
+  const row = statRows(p).find(([k]) => k.startsWith('52W'));
+  assert.deepEqual(row.slice(0, 2), ['52W range (closes)', '1.1357 - 1.2041']);
+  // Chart down: the source's values, at the source's own two decimals, said to be rounded.
+  const down = await precise52(q, { chart: async () => { throw new Error('down'); } });
+  assert.deepEqual(statRows(down).find(([k]) => k.startsWith('52W')).slice(0, 2), ['52W range (rounded)', '1.13 - 1.21']);
+  // A stock quoted to its source's precision is left alone.
+  const aapl = parseQuoteRow(fixture('cnbc-fund.json').FormattedQuoteResult.FormattedQuote[0], 'AAPL');
+  assert.equal(await precise52(aapl, { chart: async () => { throw new Error('not called'); } }), aapl);
 });
