@@ -425,12 +425,13 @@ export function rangeChart(root, ctx, opts) {
         : `<button type="button" class="tab${on ? ' is-active' : ''}" data-range="${p}"${on ? ' aria-pressed="true"' : ''}>${p}</button>`;
     }).join('');
     const from = range.from || (data?.points?.length ? isoFromMs(data.points[0].t) : '');
-    const to = range.to || '';
+    // TO shows the day the range ends: today unless a TO date was picked.
+    const to = range.to || today;
     return `<div class="ch-bar">
       <nav class="tabs ch-tabs" aria-label="Chart range">${tabs}</nav>
       <div class="ch-dates${range.from ? ' is-active' : ''}">
         <label><span>FROM</span><input type="date" name="from" min="${FIRST_DAY}" max="${today}" value="${esc(from)}"></label>
-        <label><span>TO</span><input type="date" name="to" min="${FIRST_DAY}" max="${today}" value="${esc(to)}" placeholder="TODAY"></label>
+        <label><span>TO</span><input type="date" name="to" min="${FIRST_DAY}" max="${today}" value="${esc(to)}"></label>
       </div>
     </div>`;
   }

@@ -60,13 +60,35 @@ export function changeText(d) {
   return `${fmtSigned(d.change, decimalsOf(d))} ${fmtPct(d.changePct)}`;
 }
 
+// The name, once: "Gold COMEX (Dec'26)", not "Gold Gold COMEX (Dec'26)". A short label
+// that the full name does not already start with stays in front of it.
+export function titleHtml(d) {
+  const name = String(d.name || '');
+  const label = String(d.label || '');
+  if (!label || label === name) return esc(name || label);
+  if (!name || name.toLowerCase().startsWith(label.toLowerCase())) return esc(name || label);
+  return `${esc(label)} <span class="dim">${esc(name)}</span>`;
+}
+
+// Pre-market or after-hours prices only while that session is the news: not during the
+// regular session, and not once a newer regular trade has printed.
+export function showExtended(d) {
+  const x = d?.extended;
+  if (!x || !Number.isFinite(x.last) || x.last === d.last) return false;
+  if (d.marketState === 'REG_MKT') return false;
+  const tx = Date.parse(x.asOf);
+  const tl = Date.parse(d.asOf);
+  if (Number.isFinite(tx) && Number.isFinite(tl) && tx <= tl) return false;
+  return true;
+}
+
 function quoteHtml(d) {
   const dec = decimalsOf(d);
   const dir = dirOf(isYield(d) ? Math.round(d.change * 1000) : d.change);
-  const ext = d.extended && d.extended.last !== d.last
+  const ext = showExtended(d)
     ? `<p class="q-ext"><span class="dim">${esc(d.extended.session)}</span> <span class="num">${fmtNum(d.extended.last, dec)}</span> <span class="num ${dirOf(d.extended.change)}">${fmtSigned(d.extended.change, dec)} ${fmtPct(d.extended.changePct)}</span> <span class="dim">${esc(fmtAsOf(d.extended.asOf))}</span></p>`
     : '';
-  const title = d.label && d.label !== d.name ? `${esc(d.label)} <span class="dim">${esc(d.name)}</span>` : esc(d.name);
+  const title = titleHtml(d);
   const unit = isYield(d) ? '%' : d.kind === 'fx' || d.kind === 'index' ? '' : (d.currency || '');
   return `<div class="q-top">
     <div class="q-main">
@@ -150,10 +172,9 @@ export function render(el, cmd, ctx) {
   <p class="footnote">Prices and charts from CNBC. RT: real time. DLY: delayed, futures about 10 minutes, indexes about 15. Not financial advice.</p>`;
   const [qBody, cBody] = el.querySelectorAll('.panel-body');
   const qMeta = el.querySelector('#q-meta');
-  const head = el.querySelector('.panel-head');
-  head.querySelector('.panel-label').insertAdjacentHTML('afterend', starHtml(ticker, isWatched(ctx, ticker)));
-  // Stocks and ETFs (any symbol that is not a named instrument) get the function bar.
-  if (!instrumentById(ticker) && ctx.tickerFunctions) head.insertAdjacentHTML('afterend', fnBarHtml(ticker, ctx.tickerFunctions(ticker), isWatched(ctx, ticker)));
+  // Stocks and ETFs get the frame's tab strip and watch star. A named instrument (GOLD,
+  // EURUSD, SPX) has no strip, so its star sits in the panel head.
+  if (instrumentById(ticker)) el.querySelector('.panel-head .panel-label').insertAdjacentHTML('afterend', starHtml(ticker, isWatched(ctx, ticker)));
   el.addEventListener('click', (e) => {
     const b = e.target.closest('[data-watch-toggle]');
     if (!b) return;
@@ -200,7 +221,7 @@ export function render(el, cmd, ctx) {
         qBody.innerHTML = `<p class="notice">No ticker called ${esc(ticker)}.</p>
           <p class="muted">Check the spelling, or try <a class="code" href="${esc(q('AAPL'))}" data-cmd="AAPL">AAPL</a> <a class="code" href="${esc(q('GOLD'))}" data-cmd="GOLD">GOLD</a> <a class="code" href="${esc(q('EURUSD'))}" data-cmd="EURUSD">EURUSD</a>. Type <a class="code" href="${esc(q('HELP'))}" data-cmd="HELP">HELP</a> for every command.</p>`;
         cBody.closest('.panel').hidden = true;
-        el.querySelector('.fnbar')?.remove();
+        el.querySelector('.panel-head > .star')?.remove();
         ctx.hideTickerStrip?.();
         ctx.status(`UNKNOWN TICKER ${ticker}`, 'warn');
         return;

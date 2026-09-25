@@ -1,0 +1,65 @@
+/* Company screens and user tools (HISTORY, INSIDERS, SHORTS, BEATS, FILINGS, OWNERS,
+   WATCH, PF, DESK embeds, WHATIF, AFFORD, LOAN, COMPOUND). Same tokens and scales as
+   style.css and kit.css: spacing 4 8 12 16 24 32, type 11 12 13 14 16 18 24. */
+
+/* ---- A capped table with a side panel: the table hugs, the side takes the rest ---- */
+.with-side { padding: 0; }
+@media (min-width: 1280px) {
+  .with-side.side-hug { grid-template-columns: minmax(0, max-content) minmax(280px, 1fr); }
+  .with-side.side-hug > :first-child { max-width: 960px; }
+}
+.with-side > .side-panel, .with-side > .hist-side { min-width: 0; }
+.side-panel, .hist-side {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px;
+  border-left: 1px solid var(--rule);
+}
+.side-title { margin: 0; }
+.side-chart { position: relative; height: 200px; min-width: 0; }
+.side-chart svg { display: block; }
+.side-hover { min-height: 16px; margin: 0; font-size: 11px; font-variant-numeric: tabular-nums; }
+.side-note { margin: 0; font-size: 11px; color: var(--dim); line-height: 1.5; }
+.side-stats { margin: 0; }
+.side-stats dd { gap: 8px; }
+.side-empty { margin: 0; color: var(--dim); font-size: 12px; }
+@media (max-width: 1279px) {
+  .side-panel, .hist-side { border-left: 0; border-top: 1px solid var(--rule); }
+  .hist-layout > .hist-side { order: -1; border-top: 0; border-bottom: 1px solid var(--rule); }
+}
+
+/* Small bar charts (BEATS, INSIDERS): two series, a zero line, labels under the bars. */
+.mb { display: block; width: 100%; height: auto; overflow: visible; }
+.mb-grid { stroke: var(--rule); stroke-width: 1; }
+.mb-zero { stroke: var(--rule-strong); stroke-width: 1; }
+.mb-lab, .mb-ylab { fill: var(--dim); font-family: var(--font); font-size: 10px; }
+.mb-a { fill: var(--series-1, hsl(213, 77%, 56%)); }
+.mb-b { fill: var(--text-2); opacity: .45; }
+.mb-up { fill: var(--up); opacity: .8; }
+.mb-down { fill: var(--down); opacity: .8; }
+.mb-open { fill: none; stroke: var(--text-2); stroke-width: 1; stroke-dasharray: 3 2; }
+.mb-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; list-style: none; font-size: 11px; color: var(--dim); }
+.mb-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.mb-sw { display: inline-block; width: 8px; height: 8px; }
+.mb-sw.mb-a { background: var(--series-1, hsl(213, 77%, 56%)); }
+.mb-sw.mb-b { background: var(--text-2); opacity: .45; }
+.mb-sw.mb-up { background: var(--up); }
+.mb-sw.mb-down { background: var(--down); }
+.mb-sw.mb-open { border: 1px dashed var(--text-2); background: transparent; }
+
+/* ---- HISTORY --------------------------------------------------------------------- */
+.hist-main .dt { margin: 0; }
+.hist-main .dt td.last { color: var(--text); font-weight: 600; }
+.hist-main .toolbar .ch-dates { padding-right: 0; }
+
+/* ---- Tables: date cells and plain labels in company tables ---------------------- */
+.dt td.date { color: var(--text-2); }
+.dt tbody tr:hover td { background: var(--panel-2); }
+
+@media (max-width: 639px) {
+  .dt .hide-m { display: none; }
+  .co-wide .dt { width: 100%; }
+  .hist-layout > .hist-side { order: 0; border-bottom: 0; border-top: 1px solid var(--rule); }
+  .side-chart { height: 160px; }
+  .toolbar .ch-dates { flex-wrap: wrap; }
+  .toolbar .ch-dates input { width: 128px; }
+}
