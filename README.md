@@ -64,7 +64,7 @@ npm test
 
 ## Pro
 
-The terminal stays free. Pro is $4.20 a month (Stripe subscription, USD): your own ticker tape (`TAPE ADD AAPL`, `TAPE REMOVE AAPL`, `TAPE RESET`) and sync of the watchlist, portfolio and tape across devices. Price alerts come next.
+The terminal stays free. Pro is $4.20 a month (Stripe subscription, USD): your own ticker tape (`TAPE ADD AAPL`, `TAPE REMOVE AAPL`, `TAPE RESET`) and sync of the watchlist, portfolio and tape across devices. Price alerts are planned, not part of Pro yet.
 
 ```
 > PRO                          what Pro gives, SUBSCRIBE, or your status with MANAGE and LOGOUT

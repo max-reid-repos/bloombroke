@@ -37,6 +37,7 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
       ended_at = NULL,
       updated_at = ?
       WHERE id = ?`),
+    billing: db.prepare('UPDATE licences SET cancel_at_period_end = ?, current_period_end = ?, cancel_at = ? WHERE id = ?'),
     rotate: db.prepare('UPDATE licences SET key_hash = ?, last4 = ?, reveal_ciphertext = NULL, updated_at = ? WHERE id = ?'),
     forget: db.prepare('UPDATE licences SET reveal_ciphertext = NULL WHERE checkout_session_id = ? AND key_hash = ? AND reveal_ciphertext IS NOT NULL'),
     insert: db.prepare(`INSERT INTO licences
@@ -114,6 +115,12 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
     },
 
     setStatus,
+
+    // Renewal facts from a fresh Stripe subscription: { cancelAtPeriodEnd, currentPeriodEnd, cancelAt }.
+    setBilling(id, b) {
+      q.billing.run(b.cancelAtPeriodEnd ? 1 : 0, b.currentPeriodEnd ?? null, b.cancelAt ?? null, id);
+      return q.byId.get(id);
+    },
 
     // The full key for the success page: only for this checkout session, and only within
     // 24 hours of the licence being made. Returns { key, licence } or { expired, licence } or null.

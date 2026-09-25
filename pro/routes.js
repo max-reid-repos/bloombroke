@@ -50,6 +50,10 @@ export function publicStatus(lic, now, mode = 'live') {
   const a = proAccess(lic, now);
   const out = { active: a.active, status: a.status, last4: a.last4 };
   if (a.graceUntil) out.graceUntil = new Date(a.graceUntil).toISOString();
+  // Renewal: shown as "Renews Oct 26" or "Active until Oct 26 (cancelled, will not renew)".
+  if (lic?.cancel_at_period_end !== null && lic?.cancel_at_period_end !== undefined) out.cancelAtPeriodEnd = Boolean(lic.cancel_at_period_end);
+  if (Number.isFinite(lic?.current_period_end)) out.currentPeriodEnd = new Date(lic.current_period_end).toISOString();
+  if (Number.isFinite(lic?.cancel_at)) out.cancelAt = new Date(lic.cancel_at).toISOString();
   return out;
 }
 
