@@ -26,6 +26,8 @@ import { matchInstrument, searchInstruments } from './instruments.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { statusLine, freshTag } from './freshness.js';
 import { EXTRA_HELP, EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra } from './commands.js';
+import * as deskScreen from './screens/desk.js';
+import { parseDeskArgs, isEmbedSearch, tickerOf, TICKER_SCREENS } from './desk-layout.js';
 
 export const COMMANDS = [
   { name: 'HOME', group: 'Markets', hint: 'Markets, S&P 500, currencies and news on one screen', usage: 'HOME', example: 'HOME' },
@@ -38,6 +40,7 @@ export const COMMANDS = [
   { name: 'BUY', group: 'Money tools', hint: 'Should I buy it? Cost per use and a verdict', usage: 'BUY <price> [<n> PER WEEK] [FOR <n>Y]', example: 'BUY 1200', examples: ['BUY 1200', 'BUY 90 3 PER WEEK FOR 2Y'] },
   { name: 'WAGE', group: 'Money tools', hint: 'Save your hourly pay, BUY then shows hours of work', usage: 'WAGE <per hour>', example: 'WAGE 35', examples: ['WAGE 35'] },
   { name: 'WATCH', group: 'Your lists', hint: 'Your watchlist, live: any stock, index, pair, coin or future', usage: 'WATCH [ADD|REMOVE <symbols>] [CLEAR|EXPORT|IMPORT]', example: 'WATCH', usageExample: 'WATCH ADD AAPL TSLA', examples: ['WATCH', 'WATCH ADD AAPL TSLA EURUSD', 'WATCH REMOVE TSLA', 'WATCH EXPORT', 'WATCH IMPORT AAPL,MSFT,GOLD'] },
+  { name: 'DESK', group: 'Your lists', hint: 'Build your own screen: any commands side by side, four desks', usage: 'DESK [1-4] [RESET]', example: 'DESK', examples: ['DESK', 'DESK 2', 'DESK RESET'] },
   { name: 'PORTFOLIO', aliases: ['PF'], group: 'Your lists', hint: 'Your holdings: value, day gain, total gain, weights', usage: 'PF [ADD <ticker> <shares> @ <cost>|SELL <ticker> <shares>|REMOVE <ticker>]', example: 'PF', usageExample: 'PF ADD AAPL 10 @ 150', examples: ['PF', 'PF ADD AAPL 10 @ 150', 'PF SELL AAPL 3', 'PF EXPORT', 'PF IMPORT'] },
   ...EXTRA_HELP,
   { name: 'SCREEN', group: 'Markets', hint: 'Find stocks by sector, size, price and move', usage: 'SCREEN [<filters>]', example: 'SCREEN GAINERS', examples: ['SCREEN', 'SCREEN GAINERS'] },
@@ -70,6 +73,7 @@ export const FKEYS = [
   { key: 'F6', label: 'NEWS', cmd: 'NEWS' },
   { key: 'F7', label: 'RATES', cmd: 'RATES' },
   { key: 'F8', label: 'CPI', cmd: 'CPI 100 2000' },
+  { key: 'F9', label: 'DESK', cmd: 'DESK' },
 ];
 
 export const CHART_RANGES = PRESETS;
@@ -276,6 +280,11 @@ export function parseCommand(raw, depth = 0) {
     const args = parseWatchArgs(rest);
     return { name: 'WATCH', args, error: args.error, input: watchInput(args) || ['WATCH', ...rest].join(' '), mutates: Boolean(args.mutates), view: 'WATCH' };
   }
+  if (head === 'DESK') {
+    const args = parseDeskArgs(rest);
+    const view = args.n ? `DESK ${args.n}` : 'DESK';
+    return { name: 'DESK', args, error: args.error, input: ['DESK', ...rest].join(' '), mutates: Boolean(args.reset), view };
+  }
   if (head === 'PORTFOLIO') {
     const args = parsePfArgs(rest);
     return { name: 'PORTFOLIO', args, error: args.error, input: pfInput(args) || ['PF', ...rest].join(' '), mutates: Boolean(args.mutates), view: 'PF' };
@@ -310,7 +319,7 @@ export function fromQuery(search) {
 // Commands that take arguments: Tab adds a space, and a bad argument shows the usage line.
 const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, ...EXTRA_TAKES_ARGS, FINANCIALS: parseFinancialsArgs, SCREEN: parseScreenArgs };
 // Commands that run on their own but still show the usage line for bad words after them.
-const CHECKS_ARGS = { WATCH: parseWatchArgs, PORTFOLIO: parsePfArgs };
+const CHECKS_ARGS = { WATCH: parseWatchArgs, PORTFOLIO: parsePfArgs, DESK: parseDeskArgs };
 const commandFor = (word) => COMMANDS.find((c) => c.name === word || c.aliases?.includes(word));
 
 // Suggestions for the dropdown: [{ name, hint, value }].
@@ -437,8 +446,10 @@ const SCREENS = {
   QUOTE: quoteScreen, CPI: cpiScreen, RATES: ratesScreen, NEWS: newsScreen,
   BUY: buyScreen, WAGE: buyScreen, WHATIF: whatifScreen, FUNDING: fundingScreen,
   WATCH: watchScreen, PORTFOLIO: portfolioScreen,
-  FINANCIALS: financialsScreen, SCREEN: screenScreen,
+  FINANCIALS: financialsScreen, SCREEN: screenScreen, DESK: deskScreen,
 };
+// What a saved-list command changes, for the "this link wants to change" question.
+const SAVED_LIST = { PORTFOLIO: ['Portfolio', 'portfolio'], WATCH: ['Watchlist', 'watchlist'], DESK: ['Desk', 'desk layout'] };
 const DEFAULT_TITLE = 'Bloombroke: the $32,000 terminal. Now $4.20 a month.';
 
 function boot() {
@@ -457,6 +468,17 @@ function boot() {
 
   if (window.matchMedia('(max-width: 639px)').matches) input.placeholder = 'Try AAPL or FX 500 USD THB';
 
+  // Embed mode: this page is a DESK panel. No header, tape, key bar or boot log; clicks
+  // open in the same panel, and the desk (the parent page) hears about every command.
+  const embed = isEmbedSearch(location.search) || document.documentElement.classList.contains('is-embed');
+  if (embed) document.documentElement.classList.add('is-embed');
+  const toParent = (msg) => { if (embed && window.parent !== window) window.parent.postMessage(msg, location.origin); };
+  let embedVisible = true;
+  let embedLinked = false;
+  let currentCmd = '';
+  // A screen (DESK) can take typed commands before they run here.
+  let commandHook = null;
+
   let cmdHistory = store.get('bb.history', []);
   let histIndex = cmdHistory.length;
   let draft = '';
@@ -474,6 +496,7 @@ function boot() {
   // items: the instruments on screen, so the line can say what is real time and what is delayed.
   function setUpdated(iso, stale, items) {
     setStatus(statusLine(iso, stale, items), stale ? 'warn' : '');
+    toParent({ type: 'bb:updated', iso: String(iso || ''), stale: Boolean(stale) });
   }
 
   // --- function keys ----------------------------------------------------------
@@ -576,18 +599,20 @@ function boot() {
       placeCursor();
       return;
     }
-    run(s.value);
+    run(s.value, { typed: true });
     if (coarse) input.blur();
   }
 
-  // --- live refresh: pause while the tab is hidden ----------------------------
+  // --- live refresh: pause while the tab is hidden, or the DESK panel is off screen --
   function liveTimer(fn, ms) {
     let lastRun = Date.now();
+    const paused = () => document.hidden || !embedVisible;
     const go = () => { lastRun = Date.now(); fn(); };
-    const id = setInterval(() => { if (!document.hidden) go(); }, ms);
-    const onVis = () => { if (!document.hidden && Date.now() - lastRun >= ms) go(); };
+    const id = setInterval(() => { if (!paused()) go(); }, ms);
+    const onVis = () => { if (!paused() && Date.now() - lastRun >= ms) go(); };
     document.addEventListener('visibilitychange', onVis);
-    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
+    window.addEventListener('bb:resume', onVis);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('bb:resume', onVis); };
   }
 
   // --- running commands -----------------------------------------------------
@@ -599,6 +624,7 @@ function boot() {
   // fromUrl: the command came from the address bar (a load, Back, a shared link).
   function render(raw, { fromUrl = false } = {}) {
     const cmd = parseCommand(raw);
+    currentCmd = raw;
     runCleanups();
     if (screenAbort) screenAbort.abort();
     screenAbort = new AbortController();
@@ -619,12 +645,23 @@ function boot() {
       // Like every(), but it skips while the tab is hidden and catches up when it is shown.
       live(fn, ms) { cleanups.push(liveTimer(fn, ms)); },
       onCleanup(fn) { cleanups.push(fn); },
+      // DESK: embed mode, the suggestion list, the parser, typed commands, typing.
+      embed, suggest, parseCommand,
+      setCommandHook(fn) { commandHook = fn; cleanups.push(() => { if (commandHook === fn) commandHook = null; }); },
+      typeCommand(text) {
+        input.focus();
+        input.value += text;
+        input.setSelectionRange(input.value.length, input.value.length);
+        renderSuggest();
+        placeCursor();
+      },
     };
     const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name];
     if (cmd.mutates && fromUrl) {
       // A link that changes saved lists never runs by itself: ask first.
-      view.innerHTML = panel('1', cmd.name === 'PORTFOLIO' ? 'Portfolio' : 'Watchlist', `
-        <p class="notice">This link wants to change your ${cmd.name === 'PORTFOLIO' ? 'portfolio' : 'watchlist'}.</p>
+      const [title, what] = SAVED_LIST[cmd.name] || SAVED_LIST.WATCH;
+      view.innerHTML = panel('1', title, `
+        <p class="notice">This link wants to change your ${what}.</p>
         <p class="muted">It runs <span class="code">${escapeHtml(cmd.input)}</span> on the list saved in this browser.</p>
         <p class="examples"><button type="button" class="pf-btn" data-cmd="${escapeHtml(cmd.input)}">RUN IT</button> <a class="code" href="${toQuery(cmd.view)}" data-cmd="${escapeHtml(cmd.view)}">No, just show ${escapeHtml(cmd.view)}</a></p>`, { cls: 'panel-solo' });
       setStatus('CONFIRM TO CHANGE YOUR SAVED LIST', 'warn');
@@ -647,18 +684,41 @@ function boot() {
     }
   }
 
-  function run(raw, { push = true, fromUrl = false } = {}) {
+  function remember(clean) {
+    if (cmdHistory[cmdHistory.length - 1] !== clean) {
+      cmdHistory.push(clean);
+      cmdHistory = cmdHistory.slice(-50);
+      store.set('bb.history', cmdHistory);
+    }
+  }
+
+  // typed: the command came from the command bar (Enter or a picked suggestion), so a
+  // screen that takes typed commands (DESK sends them to its focused panel) gets it first.
+  function run(raw, { push = true, fromUrl = false, typed = false } = {}) {
     const clean = tokenize(raw).join(' ') || DEFAULT_COMMAND;
+    if (typed && commandHook && commandHook(clean)) {
+      remember(clean);
+      histIndex = cmdHistory.length;
+      input.value = '';
+      draft = '';
+      closeSuggest();
+      placeCursor();
+      return;
+    }
+    if (embed) {
+      // A panel keeps one history entry, and tells the desk what it shows now.
+      const parsed = parseCommand(clean);
+      window.history.replaceState({ c: clean }, '', `${toQuery(parsed.mutates ? parsed.view : clean)}&embed=1`);
+      render(clean, { fromUrl });
+      toParent({ type: 'bb:cmd', c: clean });
+      return;
+    }
     if (push) {
       // A command that changes a saved list puts its screen in the URL, not itself.
       const parsed = parseCommand(clean);
       const q = toQuery(parsed.mutates ? parsed.view : clean);
       if (location.search !== q) window.history.pushState({ c: clean }, '', q);
-      if (cmdHistory[cmdHistory.length - 1] !== clean) {
-        cmdHistory.push(clean);
-        cmdHistory = cmdHistory.slice(-50);
-        store.set('bb.history', cmdHistory);
-      }
+      remember(clean);
     }
     histIndex = cmdHistory.length;
     input.value = '';
@@ -673,7 +733,7 @@ function boot() {
     if (active >= 0 && items[active] && !items[active].usage && !list.hidden) { pick(items[active]); return; }
     const value = input.value;
     if (!value.trim()) { run(fromQuery(location.search), { push: false, fromUrl: true }); return; }
-    run(value);
+    run(value, { typed: true });
     if (coarse) input.blur();
   });
 
@@ -740,6 +800,12 @@ function boot() {
     if (el) {
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
       e.preventDefault();
+      // A linked panel that lists tickers (WATCH, HEATMAP) stays put: the ticker goes to
+      // the other panels in its link group instead.
+      if (embed && embedLinked && !TICKER_SCREENS.includes(parseCommand(currentCmd).name) && tickerOf(el.dataset.cmd, parseCommand)) {
+        toParent({ type: 'bb:pick', c: tokenize(el.dataset.cmd).join(' ') });
+        return;
+      }
       run(el.dataset.cmd);
       if (!coarse) input.focus();
       return;
@@ -752,6 +818,23 @@ function boot() {
   });
 
   document.addEventListener('keydown', (e) => {
+    // In a DESK panel, function keys and the desk keys belong to the desk, and typing
+    // goes to the desk's command bar (which sends it to this panel).
+    if (embed) {
+      const inField = e.target.closest?.('input, select, textarea');
+      const deskKey = (e.altKey && e.key.startsWith('Arrow')) || (e.ctrlKey && (e.key === '[' || e.key === ']')) || e.key === 'Escape';
+      const fkey = FKEYS.some((k) => k.key === e.key) && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+      if (deskKey || fkey) {
+        e.preventDefault();
+        toParent({ type: 'bb:key', key: e.key, alt: e.altKey, shift: e.shiftKey, ctrl: e.ctrlKey });
+        return;
+      }
+      if (!inField && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.length === 1 && !/^[1-9]$/.test(e.key)) {
+        e.preventDefault();
+        toParent({ type: 'bb:type', key: e.key });
+        return;
+      }
+    }
     // A focused row (or any non-link element carrying a command) opens on Enter.
     if (e.key === 'Enter' && e.target !== input && e.target.matches?.('[data-cmd]:not(a):not(button)')) {
       e.preventDefault();
@@ -784,6 +867,23 @@ function boot() {
 
   window.addEventListener('popstate', () => render(fromQuery(location.search), { fromUrl: true }));
 
+  // --- DESK panel: messages from the desk, and a click here focuses this panel --------
+  if (embed) {
+    window.addEventListener('message', (e) => {
+      if (e.origin !== location.origin || e.source !== window.parent) return;
+      const m = e.data || {};
+      if (m.type === 'bb:run' && typeof m.c === 'string') run(m.c);
+      else if (m.type === 'bb:link') embedLinked = Boolean(m.on);
+      else if (m.type === 'bb:visible') {
+        const was = embedVisible;
+        embedVisible = Boolean(m.on);
+        if (!was && embedVisible) window.dispatchEvent(new Event('bb:resume'));
+      }
+    });
+    window.addEventListener('pointerdown', () => toParent({ type: 'bb:focus' }), true);
+    window.addEventListener('focusin', () => toParent({ type: 'bb:focus' }));
+  }
+
   // --- clock ----------------------------------------------------------------
   const clockEl = $('clock');
   const statusEl = $('market-status');
@@ -794,8 +894,10 @@ function boot() {
     statusEl.dataset.open = String(open);
     statusEl.querySelector('.status-text').textContent = open ? 'MARKET OPEN' : 'MARKET CLOSED';
   }
-  tick();
-  setInterval(tick, 1000);
+  if (!embed) {
+    tick();
+    setInterval(tick, 1000);
+  }
 
   // --- ticker tape ----------------------------------------------------------
   // Prices update in place, so the scroll does not jump back to the start every 15 s.
@@ -835,8 +937,10 @@ function boot() {
       if (!tapeIds) tape.innerHTML = '<span class="tape-empty">MARKET DATA IS TAKING A BREAK.</span>';
     }
   }
-  loadTape();
-  liveTimer(loadTape, 15_000);
+  if (!embed) {
+    loadTape();
+    liveTimer(loadTape, 15_000);
+  }
 
   // --- share: copy the current link, confirm in the status line ---------------
   async function copyText(text) {
@@ -866,8 +970,8 @@ function boot() {
 
   // --- first render ---------------------------------------------------------
   const initial = fromQuery(location.search);
-  window.history.replaceState({ c: initial }, '', location.search ? toQuery(initial) : location.pathname);
-  const firstVisit = !store.get('bb.booted', false);
+  window.history.replaceState({ c: initial }, '', embed ? `${toQuery(initial)}&embed=1` : location.search ? toQuery(initial) : location.pathname);
+  const firstVisit = !embed && !store.get('bb.booted', false);
   if (firstVisit && !location.search && !reduceMotion.matches) {
     store.set('bb.booted', true);
     setStatus('STARTING');
