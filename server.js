@@ -1,0 +1,73 @@
+import express from 'express';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { getQuotes } from './data/quotes.js';
+import { getFx, FxError } from './data/fx.js';
+
+const dir = path.dirname(fileURLToPath(import.meta.url));
+try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
+
+const PORT = Number(process.env.PORT) || 3020;
+const HOST = process.env.HOST || '0.0.0.0';
+
+const app = express();
+app.disable('x-powered-by');
+app.set('trust proxy', 'loopback');
+
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'X-Frame-Options': 'DENY',
+    'Content-Security-Policy': [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' https://fonts.googleapis.com",
+      "font-src https://fonts.gstatic.com",
+      "img-src 'self' data:",
+      "connect-src 'self'",
+      "base-uri 'none'",
+      "frame-ancestors 'none'",
+    ].join('; '),
+  });
+  next();
+});
+
+app.get('/api/markets', async (req, res) => {
+  try {
+    const data = await getQuotes();
+    res.set('Cache-Control', 'public, max-age=30');
+    res.json(data);
+  } catch (err) {
+    console.error('[markets]', err.message);
+    res.status(503).json({ error: 'unavailable', message: 'Market data is taking a break. Try again in a minute.' });
+  }
+});
+
+app.get('/api/fx', async (req, res) => {
+  const { amount, from, to } = req.query;
+  if (typeof from !== 'string' || typeof to !== 'string') {
+    return res.status(400).json({ error: 'usage', message: 'Use FX <amount> <from> <to>.' });
+  }
+  try {
+    const data = await getFx({ amount: typeof amount === 'string' ? amount : undefined, from, to });
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json(data);
+  } catch (err) {
+    if (err instanceof FxError) {
+      const status = err.code === 'unavailable' ? 503 : 400;
+      const { code, message, unknown, examples, supported } = err;
+      return res.status(status).json({ error: code, message, unknown, examples, supported });
+    }
+    console.error('[fx]', err.message);
+    res.status(503).json({ error: 'unavailable', message: 'Currency data is taking a break. Try again in a minute.' });
+  }
+});
+
+app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));
+
+app.use(express.static(path.join(dir, 'public'), { maxAge: '5m', index: 'index.html' }));
+
+app.use((req, res) => res.status(404).sendFile(path.join(dir, 'public', 'index.html')));
+
+app.listen(PORT, HOST, () => console.log(`bloombroke listening on http://${HOST}:${PORT}`));

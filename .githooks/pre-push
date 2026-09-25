@@ -1,0 +1,11 @@
+#!/bin/sh
+# Block pushes that contain secrets.
+GITLEAKS="$HOME/.local/bin/gitleaks"
+if [ ! -x "$GITLEAKS" ]; then
+  echo "pre-push: gitleaks not found at $GITLEAKS, refusing to push." >&2
+  exit 1
+fi
+"$GITLEAKS" git --no-banner --redact || {
+  echo "pre-push: gitleaks found possible secrets. Push blocked." >&2
+  exit 1
+}
