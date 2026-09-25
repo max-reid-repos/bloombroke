@@ -1,7 +1,8 @@
 // RATES: the interest rates that touch your money.
 
-import { esc, fmtNum, fmtSigned, dirOf, fmtAsOf, panel, LOADING, tick, settleTicks } from './markets.js';
-import { mountChart, fmtXFor, fmtHoverFor } from './quote.js';
+import { esc, fmtNum, fmtSigned, dirOf, fmtAsOf, panel, LOADING, tick, settleTicks, nameCell, rowAttrs, rerender } from './markets.js';
+import { rangeChart } from './chart.js';
+import { freshTag } from '../freshness.js';
 
 const MOVES = {
   US2Y: 'Savings, CDs, car loans',
@@ -28,7 +29,7 @@ export function ratesRows(d) {
     }
   }
   for (const y of d.yields || []) {
-    rows.push({ id: y.id, name: y.name, value: `${fmtNum(y.last, 3)}%`, num: y.last, chg: y.change, asOf: fmtAsOf(y.asOf), moves: MOVES[y.id] || '' });
+    rows.push({ id: y.id, cmd: y.id, name: y.name, value: `${fmtNum(y.last, 3)}%`, num: y.last, chg: y.change, asOf: fmtAsOf(y.asOf), moves: MOVES[y.id] || '', item: y });
   }
   if (d.mortgage) {
     rows.push({ id: 'MORT30', name: '30-year fixed mortgage', value: `${fmtNum(d.mortgage.rate30, 2)}%`, num: d.mortgage.rate30, chg: d.mortgage.change30, asOf: isoDay(d.mortgage.date), moves: 'Home loans, weekly' });
@@ -41,9 +42,10 @@ export function ratesRows(d) {
 
 function table(rows) {
   return `<table class="grid-table rates">
-    <thead><tr><th scope="col">Rate</th><th scope="col" class="num">Last</th><th scope="col" class="num bp">Chg</th><th scope="col" class="num time">As of</th><th scope="col" class="moves">What it moves</th></tr></thead>
-    <tbody>${rows.map((r) => `<tr>
-      <th scope="row" class="name">${esc(r.name)}</th>
+    <thead><tr><th scope="col">Rate</th><th scope="col" class="tag"><span class="offscreen">Real time or delayed</span></th><th scope="col" class="num">Last</th><th scope="col" class="num bp">Chg</th><th scope="col" class="num time">As of</th><th scope="col" class="moves">What it moves</th></tr></thead>
+    <tbody>${rows.map((r) => `<tr${rowAttrs(r.cmd)}>
+      ${nameCell(r.name, r.cmd)}
+      <td class="tag">${freshTag(r.item)}</td>
       <td class="num last${Number.isFinite(r.num) ? tick(`rt:${r.id}`, r.num) : ''}">${esc(r.value)}</td>
       <td class="num bp ${Number.isFinite(r.chg) ? dirOf(Math.round(r.chg * 1000)) : 'flat'}">${esc(Number.isFinite(r.chg) ? fmtBp(r.chg) : '--')}</td>
       <td class="num time dim">${esc(r.asOf)}</td>
@@ -55,42 +57,25 @@ function table(rows) {
 export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="stack">
     ${panel('1', 'Rates', LOADING, { metaId: 'rt-meta', meta: 'US, PERCENT A YEAR' })}
-    ${panel('2', 'US 10-year yield 1Y', `<div class="chart-host" id="rt-chart">${LOADING}</div>`, { metaId: 'rt-ch-meta', bodyCls: 'flush' })}
+    ${panel('2', 'US 10-year yield', '<div class="rc" id="rt-rc"></div>', { cmd: 'US10Y', metaId: 'rt-ch-meta', bodyCls: 'flush' })}
   </div>`
-    + `<p class="footnote">Treasury yields: CNBC. Fed funds: New York Fed. Mortgages: Freddie Mac weekly survey. 1 bp = 0.01%. Not financial advice.</p>`;
+    + `<p class="footnote">Treasury yields: CNBC, real time. Fed funds: New York Fed. Mortgages: Freddie Mac weekly survey. 1 bp = 0.01%. Not financial advice.</p>`;
   const body = el.querySelector('.panel-body');
-  const host = el.querySelector('#rt-chart');
-  const chMeta = el.querySelector('#rt-ch-meta');
-  let chartCleanup = null;
-  ctx.onCleanup(() => chartCleanup?.());
 
-  async function loadChart() {
-    try {
-      const d = await ctx.fetchJSON('/api/chart?s=US10Y&r=1Y', { signal: ctx.signal });
-      const pts = d.points;
-      const chg = pts[pts.length - 1].v - pts[0].v;
-      const base = `<span class="num ${dirOf(Math.round(chg * 1000))}">${esc(fmtBp(chg))}</span> <span class="dim">1Y</span>`;
-      const hover = fmtHoverFor('1Y');
-      chMeta.innerHTML = base;
-      chartCleanup?.();
-      host.textContent = '';
-      chartCleanup = mountChart(host, pts, {
-        fmtY: (v) => `${fmtNum(v, 2)}%`, fmtX: fmtXFor('1Y'), label: 'US 10-year Treasury yield, 1 year',
-        onHover: (p) => { chMeta.innerHTML = p ? `<span class="num">${esc(hover(p.t))} ${esc(fmtNum(p.v, 3))}%</span>` : base; },
-      });
-    } catch (err) {
-      if (err.name === 'AbortError') return;
-      if (!host.querySelector('svg')) host.innerHTML = `<p class="panel-msg">${esc(err.message)}</p>`;
-    }
-  }
+  const chart = rangeChart(el.querySelector('#rt-rc'), ctx, {
+    symbol: 'US10Y', range: { range: '1Y' }, meta: el.querySelector('#rt-ch-meta'),
+    label: 'US 10-year Treasury yield', bp: true, decimals: 3, fmtY: (v) => `${fmtNum(v, 2)}%`,
+  });
 
   async function load() {
     try {
       const d = await ctx.fetchJSON('/api/rates', { signal: ctx.signal });
       const rows = ratesRows(d);
-      body.innerHTML = rows.length ? table(rows) : '<p class="panel-msg">Rate data is taking a break.</p>';
+      rerender(body, rows.length ? table(rows) : '<p class="panel-msg">Rate data is taking a break.</p>');
       settleTicks(body);
-      ctx.updated(d.yieldsUpdated || d.updated, d.stale);
+      ctx.updated(d.yieldsUpdated || d.updated, d.stale, d.yields);
+      const ten = (d.yields || []).find((y) => y.id === 'US10Y');
+      if (ten) chart.setLive({ t: Date.parse(ten.asOf), v: ten.last });
     } catch (err) {
       if (err.name === 'AbortError') return;
       if (!body.querySelector('table')) body.innerHTML = `<p class="panel-msg">${esc(err.message)}</p>`;
@@ -99,7 +84,5 @@ export function render(el, cmd, ctx) {
   }
 
   load();
-  loadChart();
-  ctx.every(load, 60_000);
-  ctx.every(loadChart, 15 * 60_000);
+  ctx.live(load, 15_000);
 }
