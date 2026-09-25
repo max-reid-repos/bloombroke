@@ -38,6 +38,11 @@ function numOrNull(s) {
   return Number.isFinite(n) ? n : null;
 }
 
+function positiveOrNull(s) {
+  const n = parseNum(s);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 // "aapl" -> "AAPL"; "gold" -> "GOLD" (a registry id); anything else -> null.
 export function normalizeTicker(raw) {
   const inst = resolveInstrument(raw);
@@ -125,8 +130,11 @@ export function parseQuoteRow(r, ticker = r?.symbol) {
     changePct: numOrNull(r.change_pct) ?? 0,
     asOf: r.last_time || null,
     marketCap: r.mktcapView || null,
-    high52: numOrNull(r.yrhiprice),
-    low52: numOrNull(r.yrloprice),
+    // A price's 52-week low or high of 0 is a placeholder (spot gold sends "0.00"), not
+    // a number: missing, so the range comes from daily closes (data/range52.js).
+    // Yields can really be zero or below.
+    high52: inst?.kind === 'yield' ? numOrNull(r.yrhiprice) : positiveOrNull(r.yrhiprice),
+    low52: inst?.kind === 'yield' ? numOrNull(r.yrloprice) : positiveOrNull(r.yrloprice),
     // Decimals the source gave the 52-week range (it rounds some, see data/range52.js).
     range52Dp: Math.max(decimalsIn(r.yrhiprice) ?? -1, decimalsIn(r.yrloprice) ?? -1) >= 0 ? Math.max(decimalsIn(r.yrhiprice) ?? 0, decimalsIn(r.yrloprice) ?? 0) : null,
     pe: numOrNull(r.pe),

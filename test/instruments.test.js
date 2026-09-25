@@ -56,7 +56,7 @@ test('symbol commands: presets, custom ranges and their ?c= form', () => {
 });
 
 test('suggestions: symbols after two letters, commands first', () => {
-  assert.deepEqual(suggest('go').map((s) => s.value), ['GOLD']);
+  assert.deepEqual(suggest('go').map((s) => s.value), ['GOLD', 'GOLDFUT'], 'spot gold first, then the futures');
   assert.equal(suggest('ho')[0].value, 'HOME');
   assert.ok(suggest('bit').some((s) => s.value === 'BTC'));
   const merged = symbolSuggestions([{ id: 'GOLD', name: 'Gold', kind: 'future' }, { id: 'AAPL', name: 'Apple Inc.', kind: 'stock' }], [{ value: 'GOLD' }]);

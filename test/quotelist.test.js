@@ -26,7 +26,7 @@ test('quote list: named instruments from the batch, stocks in one shared call, u
   assert.equal(stockCalls.length, 1, 'the uncached stocks share one upstream call');
   assert.deepEqual(stockCalls[0], ['AAPL', 'MSFT', 'ZZZZ']);
   assert.equal(r.quotes[0].last, 200);
-  assert.equal(r.quotes[1].kind, 'future');
+  assert.equal(r.quotes[1].kind, 'spot', 'GOLD is spot gold');
   assert.ok(INSTRUMENTS.length > 10);
 
   // Second call inside 15 s: all from the cache.

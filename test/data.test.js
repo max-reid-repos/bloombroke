@@ -115,7 +115,9 @@ test('getQuote: unknown ticker is null; registry names come from the shared batc
   assert.equal(spx.realTime, true);
   assert.ok(new URL(urls[1]).searchParams.get('symbols').split('|').includes('.SPX'));
   const gold = await qs.getQuote('gold');
-  assert.deepEqual([gold.ticker, gold.kind, gold.realTime, gold.label], ['GOLD', 'future', false, 'Gold']);
+  assert.deepEqual([gold.ticker, gold.kind, gold.realTime, gold.label], ['GOLD', 'spot', true, 'Spot gold (XAU)']);
+  const fut = await qs.getQuote('goldfutures');
+  assert.deepEqual([fut.ticker, fut.kind, fut.realTime, fut.label], ['GOLDFUT', 'future', false, 'Gold futures (COMEX)']);
   await qs.getQuote('EUR/USD');
   await qs.getQuotes();
   await qs.getFxMajors();
@@ -124,6 +126,42 @@ test('getQuote: unknown ticker is null; registry names come from the shared batc
   assert.equal(aapl.kind, 'stock');
   assert.equal(await qs.getQuote('bad|sym'), null);
   assert.equal(urls.length, 3, 'bad shapes never reach the source');
+});
+
+test('GOLD and SILVER are spot (real time); the COMEX futures keep their own names (real CNBC rows)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { resolveInstrument, instrumentBySrc } = await import('../public/instruments.js');
+  const { precise52 } = await import('../data/range52.js');
+  const { COMMODITIES } = await import('../data/commodities.js');
+  const rows = JSON.parse(readFileSync(new URL('./fixtures/cnbc-gold-silver.json', import.meta.url))).FormattedQuoteResult.FormattedQuote;
+  const row = (s) => rows.find((r) => r.symbol === s);
+  for (const [word, id] of [['gold', 'GOLD'], ['XAU', 'GOLD'], ['spotgold', 'GOLD'], ['GOLDFUTURES', 'GOLDFUT'], ['silver', 'SILVER'], ['SPOTSILVER', 'SILVER'], ['SILVERFUTURES', 'SILVERFUT']]) {
+    assert.equal(resolveInstrument(word)?.id, id, word);
+  }
+  const gold = parseQuoteRow(row('XAU='), 'GOLD');
+  assert.deepEqual([gold.label, gold.kind, gold.realTime, gold.last], ['Spot gold (XAU)', 'spot', true, 4288.59]);
+  assert.equal(gold.low52, null, 'the source sends 0.00 for the 52-week low: a placeholder, not a price');
+  const fut = parseQuoteRow(row('@GC.1'), 'GOLDFUT');
+  assert.deepEqual([fut.label, fut.kind, fut.realTime, fut.last, fut.low52], ['Gold futures (COMEX)', 'future', false, 4320.5, 3751.9]);
+  assert.equal(parseQuoteRow(row('XAG='), 'SILVER').label, 'Spot silver (XAG)');
+  assert.equal(parseQuoteRow(row('@SI.1'), 'SILVERFUT').label, 'Silver futures (COMEX)');
+  // Spot's 52-week range: always from daily closes (the source's is a short window), or --.
+  const closes = Array.from({ length: 30 }, (_, i) => ({ t: Date.parse('2026-09-01T20:00:00Z') - i * 86_400_000, v: 4000 + i }));
+  const ok = await precise52(gold, { chart: async () => ({ bar: '1D', points: closes }), now: () => Date.parse('2026-09-25T18:00:00Z') });
+  assert.deepEqual([ok.low52, ok.high52, ok.range52Basis], [4000, 4029, 'daily closes']);
+  const down = await precise52(gold, { chart: async () => { throw new Error('down'); } });
+  assert.deepEqual([down.low52, down.high52], [null, null], 'never the 4,314.63 "52-week high" that is only today');
+  assert.equal(await precise52(fut, { chart: async () => { throw new Error('not called'); } }), fut, 'futures keep the source range');
+  // COMMODITIES keeps the futures rows, and a click opens the futures screen.
+  assert.equal(COMMODITIES.find((c) => c.src === '@GC.1').cmd, 'GOLDFUT');
+  assert.equal(COMMODITIES.find((c) => c.src === '@SI.1').cmd, 'SILVERFUT');
+  assert.equal(instrumentBySrc('XAU=').id, 'GOLD');
+  // The screen says which one it is.
+  const { metaLine } = await import('../public/screens/quote.js');
+  const { freshnessParts } = await import('../public/freshness.js');
+  assert.equal(metaLine(gold), 'USD  SPOT');
+  assert.equal(metaLine(fut), 'COMEX  USD  FUTURES');
+  assert.deepEqual(freshnessParts([gold, fut]), ['SPOT METALS REAL TIME', 'FUTURES DELAYED']);
 });
 
 test('quotes: 15 second cache, one upstream call however many callers', async () => {
