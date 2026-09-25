@@ -1,0 +1,3 @@
+# Fake licence keys used in unit tests (test/pro-client.test.js), not secrets.
+76837554c1a72605ab04d2afcf44572580abbdc0:test/pro-client.test.js:generic-api-key:29
+76837554c1a72605ab04d2afcf44572580abbdc0:test/pro-client.test.js:generic-api-key:126
