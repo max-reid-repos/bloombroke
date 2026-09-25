@@ -411,6 +411,7 @@ a.panel-label:hover { text-decoration: none; background: var(--text); }
 .wi-table tfoot .name { color: var(--text); letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
 .wi-table .is-loss .name a { color: var(--down); }
 .wi-when { color: var(--text-2); }
+.wi-when-m { display: none; }
 .wi-source { margin-top: 10px; font-size: 11px; color: var(--dim); }
 .wi-actions { display: flex; gap: 16px; margin-top: 10px; font-size: 12px; }
 .wi-note-name { color: var(--text); }
@@ -561,7 +562,9 @@ a.panel-label:hover { text-decoration: none; background: var(--text); }
   .wi-bar { gap: 8px; }
   .wi-cmd { flex-basis: 100%; order: 3; }
   .wi-run { margin-left: auto; }
-  .wi-sh, .wi-table .wi-sh { display: none; }
+  .wi-sh, .wi-table .wi-sh, .wi-table .wi-when { display: none; }
+  .wi-table tbody .name { white-space: normal; padding-top: 4px; padding-bottom: 4px; }
+  .wi-when-m { display: block; font-size: 11px; }
   .wi-sentence { font-size: 14px; }
   .wi-receipt { margin: 12px -10px 0; }
   .stamp-v { font-size: 36px; }

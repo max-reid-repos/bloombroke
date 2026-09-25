@@ -278,7 +278,7 @@ function resultHtml(d, key) {
       ? fmtDay(r.bought)
       : `${fmtMonth(r.from)} TO ${fmtMonth(r.to)}<span class="dim"> (${r.buys})</span>`;
     return `<tr class="${loss ? 'is-loss' : ''}">
-      <th scope="row" class="name"><a href="${esc(q(`${r.ticker} 5Y`))}" data-cmd="${esc(`${r.ticker} 5Y`)}">${esc(r.name)}</a> <span class="dim">${esc(r.ticker)}</span></th>
+      <th scope="row" class="name"><a href="${esc(q(`${r.ticker} 5Y`))}" data-cmd="${esc(`${r.ticker} 5Y`)}">${esc(r.name)}</a> <span class="dim">${esc(r.ticker)}</span><span class="wi-when-m dim">${bought}</span></th>
       <td class="num wi-when">${bought}</td>
       <td class="num">${esc(fmtUsd(r.paid))}</td>
       <td class="num wi-sh">${esc(fmtShares(r.shares))}</td>
@@ -296,9 +296,9 @@ function resultHtml(d, key) {
     <p class="wi-quip">${esc(quipFor(t.multiple, key))}</p>
     <div class="wi-receipt">
       <table class="grid-table wi-table">
-        <thead><tr><th scope="col">Item</th><th scope="col" class="num">Bought</th><th scope="col" class="num">Paid</th><th scope="col" class="num wi-sh">Shares</th><th scope="col" class="num">Worth now</th><th scope="col" class="num">x</th></tr></thead>
+        <thead><tr><th scope="col">Item</th><th scope="col" class="num wi-when">Bought</th><th scope="col" class="num">Paid</th><th scope="col" class="num wi-sh">Shares</th><th scope="col" class="num">Worth now</th><th scope="col" class="num">x</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><th scope="row" class="name">Total</th><td></td><td class="num">${esc(fmtUsd(t.paid))}</td><td class="wi-sh"></td><td class="num last ${dir}">${esc(fmtUsd(t.value))}</td><td class="num ${dir}">${esc(fmtX(t.multiple))}</td></tr></tfoot>
+        <tfoot><tr><th scope="row" class="name">Total</th><td class="wi-when"></td><td class="num">${esc(fmtUsd(t.paid))}</td><td class="wi-sh"></td><td class="num last ${dir}">${esc(fmtUsd(t.value))}</td><td class="num ${dir}">${esc(fmtX(t.multiple))}</td></tr></tfoot>
       </table>
     </div>
     <p class="wi-source">Prices: close on purchase date, split-adjusted, price return only. Live price as of ${esc(asOf)}${d.stale ? ' (last known)' : ''}. Source: ${esc(d.source)}.</p>
