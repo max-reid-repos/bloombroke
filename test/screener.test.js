@@ -5,7 +5,7 @@ import {
 } from '../public/screener.js';
 import { num, cleanName, cleanSymbol, parseScreenerRows, parseAsOf, makeScreen } from '../data/screen.js';
 import { createCache } from '../data/cache.js';
-import { fmtBig, fmtPrice, rowCmd, formValues, wordsFromForm, sortCmd, resultsTable } from '../public/screens/screen.js';
+import { fmtBig, fmtPrice, rowCmd, formValues, wordsFromForm, sortCmd, resultsTable, presetRule } from '../public/screens/screen.js';
 import { parseCommand, toQuery, fromQuery } from '../public/app.js';
 
 const ROWS = [
@@ -82,6 +82,9 @@ test('presets', () => {
   assert.deepEqual(syms(applyScreen(ROWS, parseScreenArgs('GAINERS SECTOR TECHNOLOGY SORT MCAP'))), ['NVDA', 'TSM']);
   assert.deepEqual(sortOf(parseScreenArgs('LOSERS')), { by: 'CHG', dir: 'LOW' });
   assert.equal(screenWords(parseScreenArgs('gainers')), 'GAINERS');
+  assert.match(presetRule(parseScreenArgs('GAINERS')), /market cap over \$300M/);
+  assert.match(presetRule(parseScreenArgs('LOSERS SECTOR ENERGY')), /LOSERS/);
+  assert.equal(presetRule(parseScreenArgs('SECTOR ENERGY')), '');
 });
 
 test('sorting: default market cap high, text A first, missing last', () => {

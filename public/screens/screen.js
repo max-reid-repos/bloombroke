@@ -146,6 +146,12 @@ export function resultsTable(rows, spec) {
   return `<div class="sc-scroll"><table class="grid-table sc-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
+// The preset's own rules, said out loud above the results: "GAINERS: Up today, market cap over $300M, ...".
+export function presetRule(spec) {
+  const p = PRESETS[spec.preset];
+  return p ? `<p class="sc-rule"><span class="sc-rule-k">${esc(spec.preset)}</span> ${esc(p.hint)}</p>` : '';
+}
+
 function fmtDay(iso) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return null;
   const d = new Date(`${iso}T12:00:00Z`);
@@ -193,13 +199,13 @@ export function render(el, cmd, ctx) {
       const day = fmtDay(d.asOf);
       meta.textContent = `${fmtNum(d.count, 0)} OF ${fmtNum(d.total, 0)} STOCKS${day ? ` · PRICES ${day}` : ''}`;
       if (!d.count) {
-        body.innerHTML = '<p class="panel-msg sc-none">No stocks match. Loosen a filter.</p>';
+        body.innerHTML = `${presetRule(spec)}<p class="panel-msg sc-none">No stocks match. Loosen a filter.</p>`;
       } else {
         const more = d.rows.length < d.count
           ? `<div class="sc-more-bar"><span class="dim">Showing ${fmtNum(d.rows.length, 0)} of ${fmtNum(d.count, 0)}</span><button type="button" class="sc-more">SHOW ${fmtNum(Math.min(PAGE, d.count - d.rows.length), 0)} MORE</button></div>`
           : '';
         const keep = body.querySelector('.sc-scroll')?.scrollLeft || 0;
-        body.innerHTML = resultsTable(d.rows, spec) + more;
+        body.innerHTML = presetRule(spec) + resultsTable(d.rows, spec) + more;
         body.querySelector('.sc-scroll').scrollLeft = keep;
         body.querySelector('.sc-more')?.addEventListener('click', () => { limit += PAGE; load(); });
       }

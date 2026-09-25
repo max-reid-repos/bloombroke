@@ -56,8 +56,8 @@ export const SORTS = {
 
 export const PRESETS = {
   LARGECAPS: { hint: 'Market cap $10B and up', conds: ['MCAP>=10B'] },
-  GAINERS: { hint: 'Up today, market cap over $300M, biggest gain first', conds: ['CHG>0', 'MCAP>300M'], sort: { by: 'CHG', dir: 'HIGH' } },
-  LOSERS: { hint: 'Down today, market cap over $300M, biggest drop first', conds: ['CHG<0', 'MCAP>300M'], sort: { by: 'CHG', dir: 'LOW' } },
+  GAINERS: { hint: 'Up on the day, market cap over $300M, biggest gain first', conds: ['CHG>0', 'MCAP>300M'], sort: { by: 'CHG', dir: 'HIGH' } },
+  LOSERS: { hint: 'Down on the day, market cap over $300M, biggest drop first', conds: ['CHG<0', 'MCAP>300M'], sort: { by: 'CHG', dir: 'LOW' } },
   PENNY: { hint: 'Price under $5, market cap over $300M', conds: ['PRICE<5', 'MCAP>300M'] },
 };
 

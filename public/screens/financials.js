@@ -5,6 +5,9 @@
 
 import { esc, q, fmtNum, dirOf, panel, LOADING } from './markets.js';
 import { niceTicks } from './chart.js';
+import { fnBarHtml, syncStars } from './quote.js';
+import { instrumentById } from '../instruments.js';
+import { loadWatchlist, saveWatchlist, toggleId } from '../watchlist.js';
 
 export const FIN_TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 const STATEMENT_WORDS = {
@@ -238,6 +241,23 @@ export function render(el, cmd, ctx) {
     ${panel('1', `${args.ticker} financials`, `${tabBar(args)}<div class="fin-body">${LOADING}</div>`, { metaId: 'fin-meta', bodyCls: 'flush' })}
   </div>
   <p class="footnote">${esc(FOOT)}</p>`;
+  // The stock function bar from the quote screen, with FINANCIALS lit.
+  if (!instrumentById(args.ticker) && ctx.tickerFunctions) {
+    const fns = ctx.tickerFunctions(args.ticker).map((f) => ({ ...f, current: f.fn === 'FINANCIALS' }));
+    const on = loadWatchlist(ctx.store).includes(args.ticker);
+    el.querySelector('.panel-head').insertAdjacentHTML('afterend', fnBarHtml(args.ticker, fns, on));
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-watch-toggle]');
+      if (!b) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const list = toggleId(loadWatchlist(ctx.store), args.ticker);
+      saveWatchlist(ctx.store, list);
+      const now = list.includes(args.ticker);
+      syncStars(el, args.ticker, now);
+      ctx.status(now ? `${args.ticker} ADDED TO THE WATCHLIST` : `${args.ticker} REMOVED FROM THE WATCHLIST`);
+    });
+  }
   const body = el.querySelector('.fin-body');
   const meta = el.querySelector('#fin-meta');
   const foot = el.querySelector('.footnote');
