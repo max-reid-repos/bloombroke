@@ -183,6 +183,33 @@ test('EARNINGS: day pills for the week, with the weeks either side', async () =>
   assert.equal(w.items[7].cmd, 'EARNINGS 2026-09-28 WEEK');
 });
 
+test('CALENDAR: filters in a row under the title', async () => {
+  const { scopeFilter } = await import('../public/screens/calendar.js');
+  const html = scopeFilter('US');
+  assert.match(html, /class="toolbar"/);
+  assert.match(html, /class="seg-item is-active" href="[^"]*" data-cmd="CALENDAR US"/);
+  assert.match(html, /data-cmd="CALENDAR ALL"/);
+});
+
+test('EXDIV: yield from the per-year dividend and the last price; dates as SEP 25', async () => {
+  const { divYield, exdivTable } = await import('../public/screens/exdiv.js');
+  assert.equal(divYield(2, 50), 4);
+  assert.equal(divYield(null, 50), null);
+  assert.equal(divYield(2, 0), null);
+  const row = { symbol: 'ALRS', company: 'Alerus', dividend: 0.22, annual: 0.88, record: '2026-09-25', paid: '2026-10-09' };
+  const html = exdivTable([row], { ALRS: 32.2 });
+  assert.match(html, />2\.73%</);
+  assert.match(html, />SEP 25</);
+  assert.match(html, />OCT 09</);
+  assert.doesNotMatch(exdivTable([row]), /%</, 'no price, no yield');
+});
+
+test('IPOS: dates in the table format', async () => {
+  const { ipoTable } = await import('../public/screens/ipos.js');
+  const html = ipoTable([{ date: '2026-09-24', company: 'X', symbol: 'XX', amount: 1e8 }], { kind: 'filed' });
+  assert.match(html, /<td class="co-date">SEP 24<\/td>/);
+});
+
 test('SECTORS: the bar sits in the TODAY cell; leaders by period', async () => {
   const { sectorsTable, sectorLeaders } = await import('../public/screens/sectors.js');
   const rows = [

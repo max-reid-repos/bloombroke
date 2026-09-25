@@ -3,6 +3,7 @@
 
 import { esc, fmtNum, panel, LOADING } from './markets.js';
 import { sourceLine, symbolCell, symbolRow, fmtBig, fmtBigMoney, dash } from './company-kit.js';
+import { moreButton, fmtDate } from '../kit.js';
 
 export function priceText(low, high) {
   if (!Number.isFinite(low)) return dash;
@@ -18,7 +19,7 @@ export function ipoTable(rows, { kind }) {
   return `<table class="grid-table co-table ipo-table">
     <thead><tr><th scope="col" class="co-date">${kind === 'upcoming' ? 'Expected' : kind === 'priced' ? 'Priced' : 'Filed'}</th><th scope="col">Company</th>${filed ? '' : `<th scope="col" class="time">Exchange</th><th scope="col" class="num">${kind === 'upcoming' ? 'Price range' : 'Price'}</th><th scope="col" class="num chg">Shares</th>`}<th scope="col" class="num${filed ? '' : ' time'}">Offer</th></tr></thead>
     <tbody>${rows.map((r) => `<tr${symbolRow(r.symbol)}>
-      <td class="co-date num">${esc(r.date || dash)}</td>
+      <td class="co-date">${esc(r.date ? fmtDate(r.date, 'table') : dash)}</td>
       ${symbolCell(r.symbol, r.company)}
       ${filed ? '' : `<td class="time dim">${esc(r.exchange || dash)}</td>
       <td class="num last">${esc(priceText(r.priceLow, r.priceHigh))}</td>
@@ -41,9 +42,9 @@ export function render(el, cmd, ctx) {
     ['upcoming', 'priced', 'filed'].forEach((kind, i) => {
       const cut = kind === 'filed' && d[kind].length > FILED_SHOWN;
       bodies[i].innerHTML = ipoTable(cut ? d[kind].slice(0, FILED_SHOWN) : d[kind], { kind })
-        + (cut ? `<p class="more"><button type="button" class="btn ipo-more">SHOW ALL ${d[kind].length}</button> <span class="dim">Newest ${FILED_SHOWN} shown</span></p>` : '');
-      el.querySelector(`#ipo-m${i + 1}`).textContent = `${d[kind].length} DEALS`;
-      bodies[i].querySelector('.ipo-more')?.addEventListener('click', () => { bodies[i].innerHTML = ipoTable(d[kind], { kind }); });
+        + (cut ? moreButton(`SHOW ALL ${d[kind].length}`, 'data-ipo-more') : '');
+      el.querySelector(`#ipo-m${i + 1}`).textContent = cut ? `${FILED_SHOWN} OF ${d[kind].length} DEALS` : `${d[kind].length} DEALS`;
+      bodies[i].querySelector('[data-ipo-more]')?.addEventListener('click', () => { bodies[i].innerHTML = ipoTable(d[kind], { kind }); el.querySelector(`#ipo-m${i + 1}`).textContent = `${d[kind].length} DEALS`; });
     });
     el.querySelector('#ipo-foot').innerHTML = sourceLine(d.source, 'Upcoming covers this month and next; priced and filed cover this month and last. Offer = the dollar amount of the offering, as published. Dates are what the source lists and can move.');
     ctx.updated(d.updated, d.stale);
