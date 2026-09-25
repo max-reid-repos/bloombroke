@@ -746,6 +746,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 }
 .fin-bar { justify-content: space-between; }
 .fin-periods { border-left: 1px solid var(--rule-strong); }
+.fin-basis { margin-left: auto; }
 .fin-chart-wrap { padding: 6px 0 0 10px; border-bottom: 1px solid var(--rule-strong); }
 .fin-chart-head { display: flex; align-items: center; gap: 16px; min-height: 18px; padding-right: 10px; font-size: 11px; color: var(--text-2); letter-spacing: .04em; }
 .fin-key { display: inline-flex; align-items: center; gap: 6px; }

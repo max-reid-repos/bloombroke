@@ -10,8 +10,15 @@
 //   every part exists;
 // - free cash flow = operating cash flow - capex, margins and growth from the rows shown.
 // Anything else missing stays null, and the screen shows "--".
+//
+// Split-adjusted view (the default on the screen): EPS and share counts from a filing
+// made before a later stock split are on the old share basis. Each such figure is
+// put on today's basis with the split history (data/split-history.js): every split
+// dated after the filing date that the figure came from. The filed values stay in
+// `values`; the adjusted EPS and share rows are in `adjusted`.
 
 import { createCache } from './cache.js';
+import { getSplitHistory, factorAfter } from './split-history.js';
 
 export const SEC_UA = 'Bloombroke dev@bloombroke.com';
 const TICKERS_URL = 'https://www.sec.gov/files/company_tickers.json';
@@ -271,9 +278,47 @@ export function buildFinancials(body, { annualCount = ANNUAL_COUNT, quarterCount
   };
 }
 
+// ---- split adjustment -------------------------------------------------------------
+
+export const SPLIT_LINES = { epsDiluted: 'divide', sharesDiluted: 'multiply' };
+
+// One mode's per-share rows on today's share basis. A cell's factor is the product of
+// the splits dated after the filing it came from; an unknown factor gives null ("--").
+export function splitAdjust(mode, hist) {
+  const out = {};
+  for (const [id, how] of Object.entries(SPLIT_LINES)) {
+    out[id] = (mode?.values?.[id] || []).map((c) => {
+      if (!c) return null;
+      const f = factorAfter(hist, c.filed);
+      if (!f) return null;
+      if (f === 1) return c;
+      const v = how === 'divide' ? c.v / f : c.v * f;
+      return { ...c, v, asReported: c.v, splitFactor: f };
+    });
+  }
+  return out;
+}
+
+// The splits that change any figure shown: dated after the earliest filing on screen.
+function splitsShown(d, hist) {
+  const filed = [...(d.annual?.periods || []), ...(d.quarterly?.periods || [])].map((p) => p.filed).filter(Boolean).sort();
+  const first = filed[0] || '';
+  return (hist?.splits || []).filter((s) => s.date > first).map(({ date, ratio }) => ({ date, ratio }));
+}
+
+export function withSplits(d, hist) {
+  if (!hist) return { ...d, split: null };
+  return {
+    ...d,
+    annual: { ...d.annual, adjusted: splitAdjust(d.annual, hist) },
+    quarterly: { ...d.quarterly, adjusted: splitAdjust(d.quarterly, hist) },
+    split: { source: hist.source, splits: splitsShown(d, hist) },
+  };
+}
+
 // ---- service ------------------------------------------------------------------
 
-export function makeFinancials({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 300, retryMs: 60_000 }), gapMs = 150 } = {}) {
+export function makeFinancials({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 300, retryMs: 60_000 }), gapMs = 150, splitHistory = fetchImpl === globalThis.fetch ? getSplitHistory : async () => null } = {}) {
   // One SEC request at a time, at least gapMs apart (under 10 a second).
   let chain = Promise.resolve();
   let lastAt = 0;
@@ -319,10 +364,12 @@ export function makeFinancials({ fetchImpl = globalThis.fetch, cache = createCac
       throw new FinancialsError('unavailable', 'SEC data is taking a break. Try again in a minute.');
     }
     if (!r.value) throw new FinancialsError('no_data', 'No 10-K or 10-Q statements on file for this symbol. Companies outside the US often file other reports.');
+    let hist = null;
+    try { hist = await splitHistory(ticker); } catch { hist = null; }
     return {
       ticker,
       title: hit.title,
-      ...r.value,
+      ...withSplits(r.value, hist),
       updated: new Date(r.fetchedAt).toISOString(),
       stale: r.stale,
       source: 'US SEC EDGAR company filings (10-K, 10-Q)',
