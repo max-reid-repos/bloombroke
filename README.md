@@ -27,7 +27,7 @@ Readable names work too: `EUR/USD`, `S&P 500`, `OIL`, `BITCOIN`, `EURO STOXX 50`
 
 ## Run
 
-Requires Node 20.12 or newer.
+Requires Node 22.13 or newer (Pro uses the built-in `node:sqlite`).
 
 ```
 cp .env.example .env
@@ -56,6 +56,32 @@ npm test
 | `GET /api/news` | market headlines |
 | `GET /api/whatif/catalog` | the WHATIF product list |
 | `GET /api/whatif?c=` | a WHATIF result, for the words after WHATIF |
+
+## Pro
+
+The terminal stays free. Pro is $4.20 a month (Stripe subscription, USD): your own ticker tape (`TAPE ADD AAPL`, `TAPE REMOVE AAPL`, `TAPE RESET`) and sync of the watchlist, portfolio and tape across devices. Price alerts come next.
+
+```
+> PRO                          what Pro gives, SUBSCRIBE, or your status with MANAGE and LOGOUT
+> LOGIN <key>                  use your key on this device (the key never goes in the URL or history)
+> LOGOUT                       forget the key on this device
+> TAPE ADD AAPL                your own ticker tape (Pro)
+```
+
+- There are no accounts. Checkout makes a licence key like `BB-7KQ2-M9XD-HT4P-WZ3C`. The server stores only its SHA-256 hash and last 4 characters. The success page shows the full key for 24 hours after checkout, to that checkout session only (kept AES-256-GCM encrypted with `PRO_SECRET` until then, then wiped).
+- Stripe is the source of truth. The webhook reads each subscription's status fresh from Stripe. Pro is on while the status is `active` or `trialing`, and for 7 days of `past_due`.
+- Code: `pro/` (server), `migrations/` (SQLite schema, applied at start), `public/pro.js` and `public/screens/pro.js`, `public/screens/tape.js` (browser). Data lives in `var/pro.db` (WAL).
+- One-time setup: `node scripts/stripe-setup.js <path/to/.env> [--live]` finds or makes the product, the $4.20 monthly price, a Billing Portal configuration and the webhook endpoint, and writes `STRIPE_PRICE_ID`, `STRIPE_PORTAL_CONFIG_ID`, `STRIPE_WEBHOOK_SECRET` and `PRO_SECRET` into that .env without printing them. Checkout stays closed until `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` and `PRO_SECRET` are all set.
+
+| Route | Does |
+| --- | --- |
+| `POST /api/pro/checkout` | a Stripe Checkout Session URL (rate limited per IP) |
+| `POST /api/stripe/webhook` | Stripe events, signature checked, each event handled once |
+| `GET /api/pro/claim?session_id=` | the new key, for a paid session, within 24 hours |
+| `POST /api/pro/login` | `{ key }` to status (rate limited, slowed down) |
+| `GET /api/pro/status` | status for the key in the `X-Pro-Key` header |
+| `POST /api/pro/portal` | a Stripe Billing Portal URL |
+| `GET/PUT /api/pro/sync` | named JSON documents per key, last write wins, 64 KB cap |
 
 ## WHATIF data
 
