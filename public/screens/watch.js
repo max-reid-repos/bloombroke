@@ -6,8 +6,9 @@ import { freshTag } from '../freshness.js';
 import { rangeBar, decimalsOf } from './quote.js';
 import {
   loadWatchlist, saveWatchlist, isDefaultList, addIds, removeIds, moveItem, exportText,
-  sortRows, DEFAULT_WATCHLIST, MAX_WATCH,
+  sortRows, parseSymbols, DEFAULT_WATCHLIST, MAX_WATCH,
 } from '../watchlist.js';
+import { toolbar } from '../kit.js';
 
 const SORT_KEY = 'bb.watch.sort';
 const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
@@ -41,7 +42,7 @@ const COLS = [
   { key: 'last', label: 'Last', cls: 'num' },
   { key: 'chg', label: 'Chg', cls: 'num chg' },
   { key: 'pct', label: '%Chg', cls: 'num' },
-  { key: null, label: 'Day range', cls: 'num wl-wide' },
+  { key: 'day', label: 'Day range', cls: 'num wl-wide' },
   { key: 'range', label: '52W range', cls: 'num wl-wide' },
   { key: 'vol', label: 'Volume', cls: 'num wl-wide' },
   { key: null, label: '<span class="offscreen">Move or remove</span>', cls: 'wl-act', raw: true },
@@ -55,6 +56,34 @@ function headHtml(sort) {
     const arrow = on ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : '';
     return `<th scope="col" class="${c.cls}"${aria}><button type="button" class="th-sort${on ? ' is-on' : ''}" data-sort="${c.key}">${esc(c.label)}<span aria-hidden="true">${arrow}</span></button></th>`;
   }).join('')}</tr></thead>`;
+}
+
+// The row actions at the right edge of a row, the same on WATCH and PF: small buttons,
+// remove (×) always last. acts: [{ act, label, aria, disabled?, text? }].
+export function rowActions(acts) {
+  return `<td class="wl-act row-acts">${acts.map((a) => `<button type="button" class="wl-btn${a.text ? ' is-text' : ''}" data-act="${esc(a.act)}" aria-label="${esc(a.aria)}" title="${esc(a.aria)}"${a.disabled ? ' disabled' : ''}>${esc(a.label)}</button>`).join('')}</td>`;
+}
+
+// The quiet list tools at the right of a WATCH or PF toolbar (EXPORT, IMPORT, CLEAR).
+// confirming: CLEAR asks first, in place, with the number it would remove.
+export function listTools(tools, { confirming = false, count = 0, what = 'symbols' } = {}) {
+  if (confirming) {
+    return `<span class="clear-ask" role="alert">Clear all ${count} ${esc(what)}?</span><button type="button" class="quiet is-danger" data-tool="clear-yes">YES, CLEAR</button><button type="button" class="quiet" data-tool="clear-no">KEEP</button>`;
+  }
+  return tools.map((t) => `<button type="button" class="quiet" data-tool="${esc(t.tool)}">${esc(t.label)}</button>`).join('');
+}
+
+// The WATCH add form: symbols separated by spaces or commas.
+export function watchForm() {
+  return `<form class="add-form" data-own-focus autocomplete="off">
+    <input class="add-in add-sym" name="symbols" type="text" maxlength="200" spellcheck="false" autocapitalize="characters" autocorrect="off" placeholder="Symbols to add" aria-label="Symbols to add, separated by spaces">
+    <button type="submit" class="chip add-btn">ADD</button>
+  </form>`;
+}
+
+// Symbols typed in the add form -> { ids, bad }.
+export function readSymbols(text) {
+  return parseSymbols(String(text || '').trim().split(/[\s,;]+/).filter(Boolean));
 }
 
 export function watchTable(rows, { sort = {}, missing = new Set() } = {}) {
@@ -72,7 +101,13 @@ export function watchTable(rows, { sort = {}, missing = new Set() } = {}) {
       <td class="num wl-wide dim">${dayRange(qt)}</td>
       <td class="num wl-wide wl-52">${range52(qt)}</td>
       <td class="num wl-wide dim">${esc(qt?.volume || '--')}</td>
-      <td class="wl-act">${canMove ? `<button type="button" class="wl-btn" data-act="up" aria-label="Move ${esc(id)} up"${i === 0 ? ' disabled' : ''}>↑</button><button type="button" class="wl-btn" data-act="down" aria-label="Move ${esc(id)} down"${i === rows.length - 1 ? ' disabled' : ''}>↓</button>` : ''}<button type="button" class="wl-btn" data-act="remove" aria-label="Remove ${esc(id)} from the watchlist">×</button></td>
+      ${rowActions([
+        ...(canMove ? [
+          { act: 'up', label: '↑', aria: `Move ${id} up`, disabled: i === 0 },
+          { act: 'down', label: '↓', aria: `Move ${id} down`, disabled: i === rows.length - 1 },
+        ] : []),
+        { act: 'remove', label: '×', aria: `Remove ${id} from the watchlist` },
+      ])}
     </tr>`;
   }).join('');
   return `<table class="grid-table wl-table">${headHtml(sort)}<tbody>${body}</tbody></table>`;
@@ -175,16 +210,24 @@ export function render(el, cmd, ctx) {
   let dragging = null;
 
   const head = `${list.length} OF ${MAX_WATCH} SYMBOLS`;
-  el.innerHTML = `${panel('1', 'Watchlist', '<div class="wl-top"></div><div class="wl-body"></div>', { cls: 'panel-solo', metaId: 'wl-meta', meta: head, bodyCls: 'flush' })}
+  el.innerHTML = `${panel('1', 'Watchlist', `${toolbar({ left: watchForm(), right: '<span class="list-tools"></span>', label: 'Watchlist' })}<div class="wl-top"></div><div class="wl-body"></div>`, { cls: 'panel-solo', metaId: 'wl-meta', meta: head, bodyCls: 'flush' })}
     <p class="footnote">Click a column to sort. Drag a row, or focus it and press Alt+Up or Alt+Down, to reorder. Delete removes the focused row. Saved in this browser only. Prices from CNBC. RT: real time. DLY: delayed. Not financial advice.</p>`;
   const top = el.querySelector('.wl-top');
   const body = el.querySelector('.wl-body');
   const meta = el.querySelector('#wl-meta');
+  const tools = el.querySelector('.list-tools');
+  const form = el.querySelector('.add-form');
+  let confirming = false;
+
+  function drawTools() {
+    tools.innerHTML = listTools([{ tool: 'export', label: 'EXPORT' }, ...(list.length ? [{ tool: 'clear', label: 'CLEAR' }] : [])], { confirming, count: list.length, what: list.length === 1 ? 'symbol' : 'symbols' });
+  }
 
   function drawTop() {
     const note = isDefaultList(list)
-      ? `<p class="wl-note">This is the starter list. Make it yours: ${code('WATCH ADD AMZN')} ${code('WATCH REMOVE TSLA')} ${code('WATCH CLEAR')}</p>`
+      ? '<p class="wl-note">This is the starter list. Add your own symbols above, and remove any row with ×.</p>'
       : '';
+    drawTools();
     top.innerHTML = `${msg ? `<p class="wl-msg${warn ? ' is-warn' : ''}" role="status">${esc(msg)}</p>` : ''}${exportBox}${note}`;
     if (a.error) top.insertAdjacentHTML('beforeend', `<p class="muted examples">Try ${EXAMPLES.map(code).join(' ')}</p>`);
     meta.textContent = `${list.length} OF ${MAX_WATCH} SYMBOLS`;
@@ -192,7 +235,7 @@ export function render(el, cmd, ctx) {
 
   function draw() {
     if (!list.length) {
-      body.innerHTML = `<p class="panel-msg wl-empty">The watchlist is empty. Add symbols: ${code('WATCH ADD AAPL MSFT GOLD')} or go back to the starter list: ${code('WATCH RESET')}</p>`;
+      body.innerHTML = `<p class="panel-msg wl-empty">The watchlist is empty. Add symbols above, like AAPL MSFT GOLD, or go back to the starter list: ${code('WATCH RESET')}</p>`;
       return;
     }
     const rows = sortRows(list.map((id) => ({ id, quote: byId[id] || null })), sort.key, sort.dir);
@@ -242,6 +285,47 @@ export function render(el, cmd, ctx) {
     drawTop();
     ctx.status(`REMOVED ${id}`);
   }
+
+  // The add form: symbols in, saved, prices fetched.
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = form.querySelector('.add-sym');
+    const { ids, bad } = readSymbols(input.value);
+    if (bad.length || !ids.length) {
+      msg = bad.length ? `${ERRORS.symbol}: ${bad.join(', ')}.` : 'Type a symbol, like AAPL or EURUSD.';
+      warn = true;
+      drawTop();
+      ctx.status('WATCH: CHECK THE SYMBOLS', 'warn');
+      return;
+    }
+    const r = applyWatch(list, { action: 'add', ids });
+    confirming = false;
+    commit(r.list);
+    msg = r.msg;
+    warn = Boolean(r.warn);
+    drawTop();
+    if (!warn) input.value = '';
+    ctx.status(warn ? 'WATCH: NOTHING ADDED' : `ADDED ${ids.join(' ')}`, warn ? 'warn' : '');
+    load();
+  });
+
+  // Quiet tools: EXPORT opens the export view; CLEAR asks first, in place.
+  tools.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-tool]')?.dataset.tool;
+    if (!t) return;
+    e.stopPropagation();
+    if (t === 'export') { ctx.run('WATCH EXPORT'); return; }
+    if (t === 'clear') { confirming = true; drawTools(); tools.querySelector('[data-tool="clear-no"]')?.focus(); return; }
+    if (t === 'clear-no') { confirming = false; drawTools(); return; }
+    if (t === 'clear-yes') {
+      confirming = false;
+      commit([]);
+      msg = 'Cleared the watchlist.';
+      warn = false;
+      drawTop();
+      ctx.status('WATCHLIST CLEARED');
+    }
+  });
 
   // Buttons inside a row act on the list; they must not open the row.
   body.addEventListener('click', (e) => {

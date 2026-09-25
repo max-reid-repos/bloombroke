@@ -12,6 +12,10 @@ import { holdersTable } from '../public/screens/owners.js';
 import { parseNextReport } from '../data/beats.js';
 import { filterFilings, isKeyFiling } from '../data/filings.js';
 import { panelTools } from '../public/kit.js';
+import { rowActions, listTools, readSymbols, watchTable } from '../public/screens/watch.js';
+import { pfForm, pfTable } from '../public/screens/portfolio.js';
+import { setHolding, readPfForm, valuePortfolio } from '../public/portfolio.js';
+import { SORTS } from '../public/watchlist.js';
 
 test('quote: the instrument name shows once', () => {
   assert.equal(titleHtml({ label: 'Gold', name: "Gold COMEX (Dec'26)" }), 'Gold COMEX (Dec&#39;26)');
@@ -149,4 +153,38 @@ test('owners: one table, no box inside the panel, counts with commas', () => {
   assert.match(html, /^<table class="dt is-sortable">/);
   assert.match(html, /DEC 31, 2025/);
   assert.equal(panelTools({ shown: 25, total: 6494 }), '<span class="panel-tools"><span class="tools-count">25 OF 6,494</span></span>');
+});
+
+test('watch and pf: the same row actions at the right edge, remove last', () => {
+  const acts = rowActions([{ act: 'edit', label: 'EDIT', aria: 'Edit AAPL', text: true }, { act: 'remove', label: '×', aria: 'Remove AAPL' }]);
+  assert.match(acts, /^<td class="wl-act row-acts"><button type="button" class="wl-btn is-text" data-act="edit"/);
+  assert.match(acts, /data-act="remove"[^>]*>×<\/button><\/td>$/);
+  const w = watchTable([{ id: 'AAPL', quote: null }, { id: 'MSFT', quote: null }]);
+  assert.match(w, /data-act="up" aria-label="Move AAPL up" title="Move AAPL up" disabled/);
+  assert.match(w, /row-acts/);
+  // Every labelled WATCH header sorts, the day range too.
+  assert.match(w, /data-sort="day">Day range/);
+  assert.equal(SORTS.day({ quote: { low: 10, high: 20, last: 15 } }), 0.5);
+  const v = valuePortfolio([{ ticker: 'AAPL', shares: 10, cost: 150 }], {});
+  assert.match(pfTable(v), /data-id="AAPL"[\s\S]*data-act="edit"[\s\S]*data-act="remove"/);
+});
+
+test('watch and pf: add forms, quiet tools, clear asks first', () => {
+  assert.deepEqual(readSymbols(' aapl, tsla  eurusd '), { ids: ['AAPL', 'TSLA', 'EURUSD'], bad: [] });
+  assert.deepEqual(readSymbols('AAPL $$$').bad, ['$$']);
+  assert.match(listTools([{ tool: 'export', label: 'EXPORT' }, { tool: 'clear', label: 'CLEAR' }]), /class="quiet" data-tool="clear">CLEAR/);
+  const ask = listTools([], { confirming: true, count: 5, what: 'symbols' });
+  assert.match(ask, /Clear all 5 symbols\?/);
+  assert.match(ask, /data-tool="clear-yes">YES, CLEAR[\s\S]*data-tool="clear-no">KEEP/);
+  // Placeholders are words, never sample numbers.
+  const form = pfForm();
+  for (const ph of form.match(/placeholder="[^"]*"/g)) assert.doesNotMatch(ph, /\d/);
+  assert.deepEqual(readPfForm({ ticker: 'aapl', shares: '10', price: '$150' }), { action: 'add', ticker: 'AAPL', shares: 10, cost: 150, mutates: true });
+  assert.equal(readPfForm({ ticker: 'AAPL', shares: '0', price: '150' }).error, 'shares');
+  assert.equal(readPfForm({ ticker: 'AAPL', shares: '1', price: '' }).error, 'cost');
+  assert.equal(readPfForm({ ticker: '', shares: '1', price: '2' }).error, 'usage');
+  assert.equal(readPfForm({ ticker: 'SPX', shares: '1', price: '2' }).error, 'kind');
+  const h = [{ ticker: 'AAPL', shares: 10, cost: 150 }, { ticker: 'MSFT', shares: 5, cost: 300 }];
+  assert.deepEqual(setHolding(h, { ticker: 'AAPL', shares: 7, cost: 160 }), [{ ticker: 'AAPL', shares: 7, cost: 160 }, h[1]]);
+  assert.deepEqual(setHolding(h, { ticker: 'NVDA', shares: 1, cost: 100 }).map((x) => x.ticker), ['AAPL', 'MSFT', 'NVDA']);
 });

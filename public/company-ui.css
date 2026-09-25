@@ -50,6 +50,35 @@
 .hist-main .dt { margin: 0; }
 .hist-main .toolbar .ch-dates { padding-right: 0; }
 
+/* ---- WATCH and PF: an add form left, quiet list tools right, row actions right --- */
+.add-form { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.add-in {
+  height: 24px; padding: 0 8px;
+  border: 1px solid var(--rule-strong); background: var(--bg);
+  color: var(--text); font-family: var(--font); font-size: 12px;
+}
+.add-in::placeholder { color: var(--faint); }
+.add-in:focus { outline: 1px solid var(--accent); outline-offset: 0; }
+.add-in[readonly] { color: var(--dim); border-style: dashed; }
+.add-sym { width: 240px; text-transform: uppercase; }
+.add-sym::placeholder, .add-tk::placeholder { text-transform: none; }
+.add-tk { width: 96px; text-transform: uppercase; }
+.add-num { width: 96px; text-align: right; font-variant-numeric: tabular-nums; }
+.add-btn { height: 24px; border-color: var(--accent); color: var(--accent); }
+.add-btn:hover { color: var(--ink); background: var(--accent); }
+.list-tools { display: inline-flex; align-items: center; gap: 4px; }
+.quiet {
+  padding: 0 4px; border: 0; background: transparent;
+  color: var(--dim); font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .08em;
+}
+.quiet:hover { color: var(--text); text-decoration: underline; }
+.quiet.is-danger { color: var(--down); }
+.quiet[hidden] { display: none; }
+.clear-ask { margin-right: 4px; color: var(--text-2); font-size: 12px; }
+.row-acts { white-space: nowrap; }
+.wl-btn.is-text { width: auto; padding: 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .08em; }
+.wl-btn[data-act="edit"]:hover { color: var(--accent); }
+
 /* ---- Tables: date cells and plain labels in company tables ---------------------- */
 .dt td.date { color: var(--text-2); }
 .dt tbody tr:hover td { background: var(--panel-2); }
@@ -68,6 +97,8 @@
   .m-only { display: inline; }
   .m-only-block { display: block; }
   .co-wide .dt .cell-name { max-width: 12ch; }
+  .add-sym { flex: 1 1 160px; width: auto; }
+  .pf-form .add-in { flex: 1 1 72px; width: 72px; min-width: 0; }
   .dt tr.hide-m { display: none; }
   .d-only { display: none; }
   .co-wide .dt th { white-space: normal; line-height: 1.2; vertical-align: bottom; padding-bottom: 4px; }

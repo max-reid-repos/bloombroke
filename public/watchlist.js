@@ -129,6 +129,7 @@ export const SORTS = {
   last: (r) => r.quote?.last,
   chg: (r) => r.quote?.change,
   pct: (r) => r.quote?.changePct,
+  day: (r) => rangePos(r.quote?.low, r.quote?.high, r.quote?.last),
   range: (r) => rangePos(r.quote?.low52, r.quote?.high52, r.quote?.last),
   vol: (r) => volumeNumber(r.quote?.volume),
 };

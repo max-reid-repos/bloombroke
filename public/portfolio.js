@@ -51,6 +51,25 @@ export function removeHolding(holdings, ticker) {
   return holdings.filter((h) => h.ticker !== ticker);
 }
 
+// Edit a holding in place: its shares and average cost become exactly these. The row keeps
+// its position; a ticker not held is added at the end.
+export function setHolding(holdings, { ticker, shares, cost }) {
+  const i = holdings.findIndex((h) => h.ticker === ticker);
+  const h = { ticker, shares: round(shares), cost };
+  if (i < 0) return [...holdings, h];
+  const out = [...holdings];
+  out[i] = h;
+  return out;
+}
+
+// The PF add form's three fields -> the same result as PF ADD <ticker> <shares> @ <price>.
+export function readPfForm({ ticker, shares, price }) {
+  const t = String(ticker || '').trim().toUpperCase();
+  const toks = ['ADD', ...t.split(/\s+/).filter(Boolean), String(shares || '').trim(), '@', String(price || '').trim()];
+  if (!t) return { action: 'add', error: 'usage' };
+  return parsePfArgs(toks);
+}
+
 // Market value, day gain, total gain and weight per holding, plus totals.
 // quotes: { [ticker]: { last, change, changePct, currency } }. A holding with no quote,
 // or a quote in another currency, is shown but left out of the totals and weights.

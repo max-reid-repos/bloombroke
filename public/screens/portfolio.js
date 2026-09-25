@@ -4,11 +4,12 @@
 import { esc, q, fmtNum, fmtSigned, fmtPct, dirOf, panel, rerender, tick, settleTicks } from './markets.js';
 import { freshTag } from '../freshness.js';
 import { decimalsOf } from './quote.js';
-import { fetchQuotes } from './watch.js';
+import { fetchQuotes, rowActions, listTools } from './watch.js';
 import {
-  addLot, sellShares, removeHolding, valuePortfolio, toCsv, parseCsv, plain,
+  addLot, sellShares, removeHolding, setHolding, readPfForm, valuePortfolio, toCsv, parseCsv, plain,
   loadPortfolio, savePortfolio, MAX_HOLDINGS,
 } from '../portfolio.js';
+import { toolbar } from '../kit.js';
 
 const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
 const EXAMPLES = ['PF ADD AAPL 10 @ 150', 'PF SELL AAPL 3', 'PF REMOVE AAPL', 'PF EXPORT', 'PF IMPORT'];
@@ -45,10 +46,10 @@ export function pfTable(v) {
     const note = r.reason === 'currency' ? ` <span class="pf-flag" title="Quoted in ${esc(qt.currency)}, left out of the totals">${esc(qt.currency)}</span>` : '';
     const dd = dirOf(r.dayGain);
     const td = dirOf(r.totalGain);
-    return `<tr class="row-link" data-cmd="${esc(r.ticker)}" tabindex="0">
+    return `<tr class="row-link" data-cmd="${esc(r.ticker)}" data-id="${esc(r.ticker)}" tabindex="0">
       <th scope="row" class="pf-sym"><a href="${esc(q(r.ticker))}" data-cmd="${esc(r.ticker)}" tabindex="-1">${esc(r.ticker)}</a>${note}</th>
       <td class="name">${esc(qt ? (qt.label || qt.name || '') : r.reason === 'noquote' ? 'No quote right now' : '')}</td>
-      <td class="num">${fmtShares(r.shares)}</td>
+      <td class="num pf-nm">${fmtShares(r.shares)}</td>
       <td class="num pf-nm">${usd(r.cost)}</td>
       <td class="tag pf-nm">${freshTag(qt)}</td>
       <td class="num pf-nm last${qt ? tick(`pf:${r.ticker}:last`, qt.last) : ''}">${qt ? fmtNum(qt.last, dec) : '--'}</td>
@@ -58,6 +59,10 @@ export function pfTable(v) {
       <td class="num pf-nm ${td}">${r.ok ? usd(r.totalGain, true) : '--'}</td>
       <td class="num ${td}">${r.ok ? fmtPct(r.totalPct) : '--'}</td>
       <td class="num pf-nm">${Number.isFinite(r.weight) ? `${fmtNum(r.weight, 1)}%` : '--'}</td>
+      ${rowActions([
+        { act: 'edit', label: 'EDIT', aria: `Edit ${r.ticker}: shares and average cost`, text: true },
+        { act: 'remove', label: '×', aria: `Remove ${r.ticker} from the portfolio` },
+      ])}
     </tr>`;
   }).join('');
   const t = v.totals;
@@ -65,20 +70,21 @@ export function pfTable(v) {
   const td = dirOf(t.totalGain);
   return `<table class="grid-table pf-table">
     <thead><tr>
-      <th scope="col" class="pf-sym">Ticker</th><th scope="col" class="name-h">Name</th><th scope="col" class="num">Shares</th>
+      <th scope="col" class="pf-sym">Ticker</th><th scope="col" class="name-h">Name</th><th scope="col" class="num pf-nm">Shares</th>
       <th scope="col" class="num pf-nm">Avg cost</th><th scope="col" class="tag pf-nm"><span class="offscreen">Real time or delayed</span></th>
       <th scope="col" class="num pf-nm">Last</th><th scope="col" class="num">Mkt value</th>
       <th scope="col" class="num pf-nm">Day $</th><th scope="col" class="num">Day %</th>
       <th scope="col" class="num pf-nm">Total $</th><th scope="col" class="num">Total %</th><th scope="col" class="num pf-nm">Weight</th>
+      <th scope="col" class="wl-act"><span class="offscreen">Edit or remove</span></th>
     </tr></thead>
     <tbody>${rows}</tbody>
     <tfoot><tr>
-      <th scope="row" class="pf-sym">Total</th><td class="name dim">${t.counted} of ${v.rows.length} holdings, USD</td><td></td>
+      <th scope="row" class="pf-sym">Total</th><td class="name dim">${t.counted} of ${v.rows.length} holdings, USD</td><td class="pf-nm"></td>
       <td class="num pf-nm dim">${usd(t.basis)}</td><td class="tag pf-nm"></td><td class="pf-nm"></td>
       <td class="num pf-val">${usd(t.value)}</td>
       <td class="num pf-nm ${dd}">${usd(t.dayGain, true)}</td><td class="num ${dd}">${fmtPct(t.dayPct)}</td>
       <td class="num pf-nm ${td}">${usd(t.totalGain, true)}</td><td class="num ${td}">${fmtPct(t.totalPct)}</td>
-      <td class="num pf-nm">${t.counted ? '100.0%' : '--'}</td>
+      <td class="num pf-nm">${t.counted ? '100.0%' : '--'}</td><td class="wl-act"></td>
     </tr></tfoot>
   </table>`;
 }
@@ -139,6 +145,23 @@ function importBox() {
   </form>`;
 }
 
+const FORM_ERRORS = {
+  usage: 'Fill in a ticker, the shares and the price you paid.',
+  shares: 'Shares must be a number above zero.',
+  cost: 'The price must be a number above zero.',
+};
+
+// The PF add form. Placeholders are words, not sample numbers, so they never read as values.
+export function pfForm() {
+  return `<form class="add-form pf-form" data-own-focus autocomplete="off">
+    <input class="add-in add-tk" name="ticker" type="text" maxlength="12" spellcheck="false" autocapitalize="characters" autocorrect="off" placeholder="Ticker" aria-label="Ticker">
+    <input class="add-in add-num" name="shares" type="text" inputmode="decimal" maxlength="16" placeholder="Shares" aria-label="Shares">
+    <input class="add-in add-num" name="price" type="text" inputmode="decimal" maxlength="16" placeholder="Price" aria-label="Price paid per share, USD">
+    <button type="submit" class="chip add-btn">ADD</button>
+    <button type="button" class="quiet add-cancel" hidden>CANCEL</button>
+  </form>`;
+}
+
 export function render(el, cmd, ctx) {
   const a = cmd.args || { action: 'show' };
   let holdings = loadPortfolio(ctx.store);
@@ -172,7 +195,7 @@ export function render(el, cmd, ctx) {
   }
 
   el.innerHTML = `<div class="stack">
-    ${panel('1', 'Portfolio', '<div class="pf-top"></div><div class="pf-body"></div>', { metaId: 'pf-meta', meta: 'USD ONLY', bodyCls: 'flush' })}
+    ${panel('1', 'Portfolio', `${toolbar({ left: pfForm(), right: '<span class="list-tools"></span>', label: 'Portfolio' })}<div class="pf-top"></div><div class="pf-body"></div>`, { metaId: 'pf-meta', meta: 'USD ONLY', bodyCls: 'flush' })}
     ${panel('2', 'Allocation', '<div class="pf-alloc"></div>', { metaId: 'pf-alloc-meta', meta: 'BY MARKET VALUE' })}
   </div>
   <p class="footnote">Prices from CNBC, refreshed every 15 seconds, RT or DLY as tagged. USD only: a holding quoted in another currency is shown but left out of the totals. Day gain uses today's change for every share. Saved in this browser only. Not financial advice.</p>`;
@@ -180,15 +203,108 @@ export function render(el, cmd, ctx) {
   const body = el.querySelector('.pf-body');
   const alloc = el.querySelector('.pf-alloc');
   const allocPanel = alloc.closest('.panel');
+  const tools = el.querySelector('.list-tools');
+  const form = el.querySelector('.add-form');
   let byId = {};
+  let confirming = false;
+  let editing = null;
+
+  function drawTools() {
+    tools.innerHTML = listTools([
+      { tool: 'import', label: 'IMPORT' },
+      ...(holdings.length ? [{ tool: 'export', label: 'EXPORT' }, { tool: 'clear', label: 'CLEAR' }] : []),
+    ], { confirming, count: holdings.length, what: holdings.length === 1 ? 'holding' : 'holdings' });
+  }
+
+  // The form adds a lot (merged into the average), or in edit mode sets a holding exactly.
+  function setEditing(ticker) {
+    editing = ticker;
+    const h = holdings.find((x) => x.ticker === ticker);
+    const f = form.elements;
+    form.classList.toggle('is-editing', Boolean(h));
+    f.ticker.readOnly = Boolean(h);
+    f.ticker.value = h ? h.ticker : '';
+    f.shares.value = h ? plain(h.shares) : '';
+    f.price.value = h ? plain(h.cost, 4) : '';
+    form.querySelector('.add-btn').textContent = h ? 'SAVE' : 'ADD';
+    form.querySelector('.add-cancel').hidden = !h;
+    if (h) f.shares.focus();
+  }
+
+  function commit(next, text) {
+    holdings = next;
+    savePortfolio(ctx.store, holdings);
+    msg = text;
+    warn = false;
+    extra = '';
+    confirming = false;
+    drawTop();
+    draw();
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = form.elements;
+    const a = readPfForm({ ticker: f.ticker.value, shares: f.shares.value, price: f.price.value });
+    if (a.error) {
+      msg = a.error === 'kind' ? `${a.ticker} is ${a.kind}. You cannot hold it directly. Try a fund that tracks it, like SPY for the S&P 500.` : FORM_ERRORS[a.error] || FORM_ERRORS.usage;
+      warn = true;
+      drawTop();
+      ctx.status('PF: CHECK THE FORM', 'warn');
+      return;
+    }
+    if (editing) {
+      commit(setHolding(holdings, { ticker: editing, shares: a.shares, cost: a.cost }), `Saved ${editing}: ${fmtShares(a.shares)} shares at an average ${usd(a.cost)}.`);
+      ctx.status(`SAVED ${editing}`);
+      setEditing(null);
+    } else {
+      const r = applyPf(holdings, a);
+      if (r.warn) { msg = r.msg; warn = true; drawTop(); ctx.status('PF: CHECK THE FORM', 'warn'); return; }
+      commit(r.holdings, r.msg);
+      ctx.status(`ADDED ${a.ticker}`);
+      setEditing(null);
+    }
+    load();
+  });
+  form.addEventListener('click', (e) => {
+    if (e.target.closest('.add-cancel')) { e.preventDefault(); setEditing(null); }
+  });
+
+  tools.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-tool]')?.dataset.tool;
+    if (!t) return;
+    e.stopPropagation();
+    if (t === 'import') { ctx.run('PF IMPORT'); return; }
+    if (t === 'export') { ctx.run('PF EXPORT'); return; }
+    if (t === 'clear') { confirming = true; drawTools(); tools.querySelector('[data-tool="clear-no"]')?.focus(); return; }
+    if (t === 'clear-no') { confirming = false; drawTools(); return; }
+    if (t === 'clear-yes') { setEditing(null); commit([], 'Cleared the portfolio.'); ctx.status('PORTFOLIO CLEARED'); }
+  });
+
+  // Row actions: edit fills the form, × removes. They must not open the row.
+  body.addEventListener('click', (e) => {
+    const btn = e.target.closest('.wl-btn');
+    if (!btn) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const id = btn.closest('tr')?.dataset.id;
+    if (!id) return;
+    if (btn.dataset.act === 'edit') { setEditing(id); ctx.status(`EDITING ${id}`); return; }
+    if (btn.dataset.act === 'remove') {
+      if (editing === id) setEditing(null);
+      commit(removeHolding(holdings, id), `Removed ${id}.`);
+      ctx.status(`REMOVED ${id}`);
+    }
+  });
 
   function drawTop() {
+    drawTools();
     top.innerHTML = `${msg ? `<p class="wl-msg${warn ? ' is-warn' : ''}" role="status">${esc(msg)}</p>` : ''}${extra}${a.error ? `<p class="muted examples">Try ${EXAMPLES.map(code).join(' ')}</p>` : ''}`;
   }
 
   function draw() {
     if (!holdings.length) {
-      body.innerHTML = `<p class="panel-msg pf-empty">No holdings yet. Add one with the shares and the price you paid: ${code('PF ADD AAPL 10 @ 150')}. Or bring a CSV: ${code('PF IMPORT')}</p>`;
+      body.innerHTML = '<p class="panel-msg pf-empty">No holdings yet. Add one above: the ticker, how many shares, and the price you paid for each.</p>';
       allocPanel.hidden = true;
       return;
     }
