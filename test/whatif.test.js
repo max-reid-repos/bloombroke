@@ -49,6 +49,24 @@ test('every baked price was checked against a second source', () => {
   for (const r of catalog.recurring) { assert.ok(prices.monthly[r.ticker], r.id); assert.match(r.src, /^https:\/\//, r.id); }
 });
 
+test('iPhone prices share one basis: full US price, or a label where only a contract price existed', () => {
+  const phones = catalog.products.filter((p) => p.family === 'IPHONE');
+  const by = Object.fromEntries(phones.map((p) => [p.id, p]));
+  // The iPhone 3G was sold only on a 2-year AT&T contract at US launch.
+  assert.equal(by.iphone3g.price, 199);
+  assert.equal(by.iphone3g.name, 'iPhone 3G (on contract)');
+  assert.match(by.iphone3g.note, /on contract/);
+  assert.match(by.iphone3g.src, /^https:\/\/www\.apple\.com\/newsroom\/2008\/06\//);
+  // No-commitment (full) US prices at launch, each with its own source.
+  assert.deepEqual([by.iphone3gs.price, by.iphone4.price, by.iphone4s.price, by.iphone5.price], [599, 599, 649, 649]);
+  for (const p of phones) {
+    const contract = /\(on contract\)/.test(p.name);
+    assert.equal(contract, /on contract/.test(p.note) && !/full price/.test(p.note), `${p.id}: the name and the note agree`);
+    if (contract) assert.ok(p.price < 300, `${p.id}: a contract price`);
+    else assert.ok(p.price >= 599, `${p.id}: a full price, not a contract price`);
+  }
+});
+
 test('months and specs', () => {
   assert.equal(addMonths('2024-11', 3), '2025-02');
   assert.equal(addMonths('2024-01', -1), '2023-12');
