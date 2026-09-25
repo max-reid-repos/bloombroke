@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Bloombroke: the $32,000 terminal. Now $4.20 a month.</title>
+  <meta name="description" content="A market terminal for normal people. Type a plain English command, get the answer. World markets, currency conversion and more, for less than a coffee.">
+  <meta name="theme-color" content="#05080C">
+  <meta name="color-scheme" content="dark">
+  <meta property="og:title" content="Bloombroke: the $32,000 terminal. Now $4.20 a month.">
+  <meta property="og:description" content="A market terminal for normal people. Type a command, get the answer.">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2305080C'/%3E%3Cpath d='M8 9l8 7-8 7' fill='none' stroke='%236CCBFF' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M18 23h7' stroke='%23CFEAFF' stroke-width='3.2' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <a class="wordmark" href="/?c=MARKETS" data-cmd="MARKETS" aria-label="Bloombroke home">BLOOMBROKE</a>
+      <div class="clock" aria-live="off">
+        <span class="label">New York</span>
+        <time id="clock" class="clock-time">--:--:--</time>
+        <span id="market-status" class="status" data-open="false"><span class="status-dot" aria-hidden="true"></span><span class="status-text">MARKET CLOSED</span></span>
+      </div>
+    </div>
+  </header>
+
+  <div class="commandbar">
+    <form id="cmd-form" class="wrap cmd" autocomplete="off" role="search">
+      <span class="prompt" aria-hidden="true">&gt;</span>
+      <div class="cmd-field">
+        <input id="cmd" name="c" type="text" spellcheck="false" autocapitalize="characters" autocorrect="off"
+               enterkeyhint="go" aria-label="Command" aria-autocomplete="list" aria-controls="suggest"
+               aria-expanded="false" placeholder="Try FX 500 USD THB or HELP">
+        <span id="cursor" class="cursor" aria-hidden="true"></span>
+        <span id="measure" class="measure" aria-hidden="true">M</span>
+      </div>
+      <span class="cmd-keys" aria-hidden="true"><kbd>Enter</kbd> run <kbd>Tab</kbd> complete</span>
+      <button type="button" id="share" class="share" aria-label="Copy a link to this screen">SHARE</button>
+      <ul id="suggest" class="suggest" role="listbox" hidden></ul>
+    </form>
+    <nav class="wrap chips" aria-label="Quick commands">
+      <button type="button" class="chip" data-cmd="MARKETS">MARKETS</button>
+      <button type="button" class="chip" data-cmd="FX 100 USD EUR">FX</button>
+      <button type="button" class="chip" data-cmd="HELP">HELP</button>
+    </nav>
+  </div>
+
+  <main id="screen" class="wrap screen" tabindex="-1" aria-live="polite"></main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <footer class="tape" aria-label="Market ticker">
+    <div class="tape-track" id="tape"></div>
+  </footer>
+</body>
+</html>
