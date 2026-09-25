@@ -79,7 +79,7 @@ export function render(el, cmd, ctx) {
   el.innerHTML = panel('1', 'FX matrix', `<div class="ch-bar"><nav class="tabs ch-tabs" aria-label="Mode">${tabs}</nav></div><div class="fxm-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'fxm-meta', bodyCls: 'flush' })
     + `<p class="footnote">${heat
       ? 'Each cell: how much the row currency moved against the column currency today, in %. Real-time quotes from CNBC; if they are missing, the change between the last two ECB reference rates, labelled DAILY. Tap a cell to convert.'
-      : 'Read across: 1 unit of the row currency buys this much of the column currency. Green or red = up or down on the day before. ECB reference rates via Frankfurter, once a day. Tap a rate to convert.'}</p>`;
+      : 'Read across: 1 unit of the row currency buys this much of the column currency. Green or red = up or down on the day before. Source: ECB statistics via Frankfurter, reference rates published once a working day (DAILY), not live. Rates that do not involve the euro are calculated from the euro rates. Tap a rate to convert.'}</p>`;
   if (cmd.args?.error) ctx.status('FXMATRIX TAKES RATES OR HEAT', 'warn');
   const body = el.querySelector('.fxm-body');
   const meta = el.querySelector('#fxm-meta');

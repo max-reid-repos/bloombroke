@@ -143,7 +143,7 @@ export function rerender(root, html) {
   if (focused) root.querySelector(`[data-cmd="${CSS.escape(focused)}"][tabindex="0"]`)?.focus({ preventScroll: true });
 }
 
-export const FOOTNOTE = '<p class="footnote">RT: real time. DLY: delayed, futures about 10 minutes, indexes about 15. Not financial advice.</p>';
+export const FOOTNOTE = '<p class="footnote">Prices from CNBC. RT: real time. DLY: delayed, futures about 10 minutes, indexes about 15. The status line shows when they were last updated. Not financial advice.</p>';
 
 export function render(el, cmd, ctx) {
   el.innerHTML = panel('1', 'Markets', LOADING, { cls: 'panel-solo', metaId: 'mk-meta', meta: 'NAME, LAST, CHANGE' }) + FOOTNOTE;

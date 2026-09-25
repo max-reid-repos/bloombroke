@@ -14,12 +14,17 @@ A market terminal for normal people. Type a plain English command, press Enter, 
 > GOLD, EURUSD, SPX, BTC, US10Y   indexes, currency pairs, futures, crypto, yields: same screen
 > FX 500 USD THB               convert money, with a 30 day chart
 > CPI 100 2015                 what money from a past year is worth today
-> BUY 1200 [2 PER WEEK] [FOR 3Y]   should I buy it? cost per use and a verdict
-> WAGE 35                      save your hourly pay (this browser only); BUY then shows hours of work
-> WHATIF                       the stock you should have bought: pick what you bought
+> AFFORD 1200 [2 PER WEEK] [FOR 3Y]   can I afford it? cost per use of a thing you buy, and a verdict (was BUY)
+> WAGE 35                      save your hourly pay (this browser only); AFFORD then shows hours of work
+> WHATIF                       in hindsight: what the money would be worth in the maker's stock, with the worst drop along the way
 > WHATIF IPHONE6 LATTE:3Y NETFLIX:2015-2024   the same, typed
 > HELP                         every command
+> TERMS, PRIVACY, DISCLAIMER   open /terms, /privacy, /disclaimer
 ```
+
+## Legal
+
+`/terms`, `/privacy` and `/disclaimer` are server-rendered from `legal/terms.md`, `legal/privacy.md` and `legal/disclaimer.md` at boot (restart to publish an edit). The version, date, operator and contact live in `public/legal-version.js`. Raise `TERMS_VERSION` there when people should accept again: the first-visit notice stores `{ version, acceptedAt }` under `bb.consent` in localStorage and asks again when the version changes.
 
 Readable names work too: `EUR/USD`, `S&P 500`, `OIL`, `BITCOIN`, `EURO STOXX 50`. Every row with a price opens its own screen (click it, or focus it and press Enter). Typing in the command bar suggests symbols with their names. Each price carries a tag: `RT` real time (US stocks via Nasdaq Last Sale, US indexes, FX, crypto, yields) or `DLY` delayed (futures about 10 minutes, most non-US indexes about 15). The named instruments live in `public/instruments.js`.
 
@@ -56,6 +61,41 @@ npm test
 | `GET /api/news` | market headlines |
 | `GET /api/whatif/catalog` | the WHATIF product list |
 | `GET /api/whatif?c=` | a WHATIF result, for the words after WHATIF |
+
+## Pro
+
+The terminal stays free. Pro is $4.20 a month (Stripe subscription, USD): your own ticker tape (`TAPE ADD AAPL`, `TAPE REMOVE AAPL`, `TAPE RESET`) and sync of the watchlist, portfolio and tape across devices. Price alerts are planned, not part of Pro yet.
+
+```
+> PRO                          what Pro gives, SUBSCRIBE, or your status with MANAGE and LOGOUT
+> LOGIN <key>                  use your key on this device (the key never goes in the URL or history)
+> LOGOUT                       forget the key on this device
+> TAPE ADD AAPL                your own ticker tape (Pro)
+```
+
+- There are no accounts. Checkout (cards only) makes a licence key like `BB-7KQ2-M9XD-HT4P-WZ3C`. The server stores only its SHA-256 hash and last 4 characters. The success page takes the session id out of the address bar, then POSTs it to get the full key. The server keeps the key AES-256-GCM encrypted with `PRO_SECRET` until the browser confirms it saved it, and 24 hours at most.
+- A pasted key on its own counts as `LOGIN <key>`. A key never goes in the URL, the title, the command history or symbol search.
+- A browser whose key has lapsed sees REACTIVATE: the new subscription joins the same licence (same key, same synced data). Checkout is refused while the licence or the customer still has a live Pro subscription, and other open checkouts of that customer are expired, so two tabs cannot buy twice.
+- Lost key: `node scripts/pro-reissue.js <path/to/.env> --subscription sub_... | --email address` gives the licence a new key, prints it once, and the old key stops working.
+- `STRIPE_MODE=test` switches to the `*_TEST` Stripe settings and shows a demo-checkout banner on PRO. Licences from test checkouts give no Pro on the live site. `TERMS_VERSION` is stored with each acceptance.
+- Stripe is the source of truth. The webhook reads each subscription's status fresh from Stripe. Pro is on while the status is `active` or `trialing`, and for 7 days of `past_due`.
+- Code: `pro/` (server), `migrations/` (SQLite schema, applied at start), `public/pro.js` and `public/screens/pro.js`, `public/screens/tape.js` (browser). Data lives in `var/pro.db` (SQLite via better-sqlite3, WAL).
+- Checkout requires ticking the Terms box (`consent_collection`), and the time is stored as `terms_accepted_at`. Stripe needs a Terms of service URL in the account's public details for that, and `/terms` must exist.
+- The PRO screen states the price, the monthly renewal, how to cancel, and: if we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month. `node scripts/shutdown-refunds.js <path/to/.env>` (admin only) does that: a dry run by default that prints counts and amounts, `--execute` (plus `--live` for a live key) to refund and cancel.
+- Bloombroke is run by Bloombroke, Singapore. Contact: hello@bloombroke.com.
+- One-time setup: `node scripts/stripe-setup.js <path/to/.env> [--live]` finds or makes the product, the $4.20 monthly price, a Billing Portal configuration and the webhook endpoint, and writes `STRIPE_PRICE_ID`, `STRIPE_PORTAL_CONFIG_ID`, `STRIPE_WEBHOOK_SECRET` and `PRO_SECRET` into that .env without printing them. Checkout stays closed until `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` and `PRO_SECRET` are all set.
+
+| Route | Does |
+| --- | --- |
+| `POST /api/pro/checkout` | a Stripe Checkout Session URL (rate limited per IP) |
+| `POST /api/stripe/webhook` | Stripe events, signature checked, each event handled once |
+| `GET /api/pro/config` | `{ mode, open }` for the PRO screen |
+| `POST /api/pro/claim` | `{ session_id }` to the new key, for a paid session, within 24 hours |
+| `POST /api/pro/claim/confirm` | the browser saved the key: the server forgets its copy |
+| `POST /api/pro/login` | `{ key }` to status (rate limited, slowed down) |
+| `GET /api/pro/status` | status for the key in the `X-Pro-Key` header |
+| `POST /api/pro/portal` | a Stripe Billing Portal URL |
+| `GET/PUT /api/pro/sync` | named JSON documents per key, last write wins, 64 KB cap |
 
 ## WHATIF data
 

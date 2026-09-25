@@ -17,7 +17,9 @@ import { getScreen, ScreenError } from './data/screen.js';
 import { buildId, versionIndex } from './lib/assets.js';
 import { readFileSync } from 'node:fs';
 import { mountCommandRoutes } from './command-routes.js';
+import { mountLegal } from './lib/legal.js';
 import { securityHeaders, isEmbedQuery, embedHtml } from './lib/embed.js';
+import { startPro } from './pro/index.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
@@ -185,7 +187,7 @@ app.get('/api/whatif', async (req, res) => {
     return res.status(400).json({ error: 'usage', message: 'That list does not look right. Type WHATIF to pick from the list.' });
   }
   try {
-    const data = await getWhatif(tokens);
+    const data = await getWhatif(tokens, { risk: true });
     // The certificate: the same words and numbers as the share image.
     const norm = data.rows ? normalizeWhatif(tokens.join(' '), catalog) : null;
     if (norm) data.cert = certModel(data, catalog, norm.command);
@@ -241,6 +243,7 @@ app.get('/api/screen', async (req, res) => {
 });
 
 mountCommandRoutes(app);
+startPro(app, { dir });
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));
 
@@ -271,6 +274,8 @@ const PUBLIC = path.join(dir, 'public');
 const BUILD = buildId(PUBLIC);
 const PAGE = versionIndex(readFileSync(path.join(PUBLIC, 'index.html'), 'utf8'), BUILD);
 const INDEX = withMeta(PAGE, DEFAULT_META);
+// /terms, /privacy, /disclaimer: plain server-rendered pages, text in legal/*.md.
+mountLegal(app, { build: BUILD });
 function sendIndex(res, status = 200, html = INDEX) {
   res.status(status).set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }).send(html);
 }

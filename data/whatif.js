@@ -1,4 +1,4 @@
-// WHATIF maths: "the stock you should have bought". Pure functions, no I/O.
+// WHATIF maths: in hindsight, the maker's stock instead of the thing. Pure functions, no I/O.
 //
 // One-off item: shares = price paid / split-adjusted close on the purchase day;
 //   worth now = shares x today's price.
@@ -180,6 +180,40 @@ export function computeWhatif(picks, { catalog, prices, quotes, now = new Date()
     return recurringRow(item, range, prices.monthly[item.ticker] || {}, quotes[item.ticker], catalog);
   });
   return { rows, total: totals(rows) };
+}
+
+// ---- Risk: the worst drop along the way -----------------------------------------------
+
+// The worst peak-to-trough fall in a price path. points: [{ t, v, month }] oldest first.
+// Returns { pct (0 or less), peakMonth, month } or null when there is nothing to measure.
+export function maxDrawdown(points) {
+  let peak = null;
+  let worst = null;
+  for (const p of points) {
+    if (!(p.v > 0)) continue;
+    if (!peak || p.v >= peak.v) { peak = p; continue; }
+    const pct = (p.v / peak.v - 1) * 100;
+    if (!worst || pct < worst.pct) worst = { pct, peakMonth: peak.month, month: p.month };
+  }
+  if (worst) return worst;
+  return peak ? { pct: 0, peakMonth: peak.month, month: null } : null;
+}
+
+const barMonth = (t) => new Date(t).toISOString().slice(0, 7);
+
+// A holding's price path: the close on the day of the first buy, then every month-end
+// close from that month on (bars: monthly [{ t, v }], each bar's close is its month's
+// last close), then today's price. Shares only change the size, so the path's worst
+// drop is the holding's worst drop (for habits: of the shares from the first buy).
+export function holdingPath({ date, close }, bars, current) {
+  const start = String(date).slice(0, 7);
+  const path = [{ v: close, month: start }];
+  for (const b of bars || []) {
+    const month = barMonth(b.t);
+    if (month >= start) path.push({ v: b.v, month });
+  }
+  if (Number.isFinite(current) && current > 0) path.push({ v: current, month: 'now' });
+  return path;
 }
 
 // Canonical command text for a set of picks.

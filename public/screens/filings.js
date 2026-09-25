@@ -55,7 +55,7 @@ export function render(el, cmd, ctx) {
   }
   const { ticker, form } = cmd.args;
   el.innerHTML = `${panel('1', `${ticker} SEC filings`, `${chips(ticker, form)}<div class="fil-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'fil-meta', bodyCls: 'flush' })}
-  <div id="fil-foot">${sourceLine('SEC EDGAR filing index')}</div>`;
+  <div id="fil-foot">${sourceLine('US SEC EDGAR filing index')}</div>`;
   mountFnBar(el, ctx, ticker, 'FILINGS');
   const body = el.querySelector('.fil-body');
 

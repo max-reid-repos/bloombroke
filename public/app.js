@@ -26,14 +26,15 @@ import { matchInstrument, searchInstruments, instrumentById } from './instrument
 import { edgeFade } from './kit.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { statusLine } from './freshness.js';
-import { EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra } from './commands.js';
+import { EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra, urlCommand, isSecret } from './commands.js';
+import { getTape, loadTapeRows, bareKey, looksLikeKey } from './pro.js';
+import { ensureConsent } from './consent.js';
 import * as deskScreen from './screens/desk.js';
 import { parseDeskArgs, isEmbedSearch, tickerOf, TICKER_SCREENS } from './desk-layout.js';
 import { COMPANY_SCREENS, COMPANY_TAKES_ARGS, matchCompany } from './company.js';
 import { MARKETS_SCREENS, MARKETS_TAKES_ARGS, matchMarkets } from './commands-markets.js';
 import { LISTED, ALIASES, FUNCTION_BAR, TICKER_FUNCTIONS, findCommand } from './registry.js';
-import * as tapeScreen from './screens/tape.js';
-import { parseTapeArgs, tapeOn, setTapeOn, mountTape } from './tape.js';
+import { tapeOn, setTapeOn, mountTape, tapeItems } from './tape.js';
 import { createMenu } from './menu.js';
 
 export { FUNCTION_BAR, TICKER_FUNCTIONS };
@@ -53,6 +54,8 @@ export const COMMANDS = [
 
 // Listed but not built yet: they answer "coming soon".
 export const SOON = LISTED.filter((c) => c.soon).map((c) => ({ name: c.name, hint: c.summary }));
+
+export const RENAMED_NOTE = 'Renamed to AFFORD. It is about things you buy, not investments.';
 
 // The key bar: real function keys (never F5, F11 or F12, which stay with the browser).
 // mobile: one of the five kept on a phone, next to MENU.
@@ -125,7 +128,9 @@ export function parseFxArgs(args) {
   return { amount, amountGiven, from, to };
 }
 
-// BUY <price> [<n> PER DAY|WEEK|MONTH|YEAR] [FOR <n>Y]. Defaults: 1 per week, 3 years.
+// AFFORD <price> [<n> PER DAY|WEEK|MONTH|YEAR] [FOR <n>Y]. Defaults: 1 per week, 3 years.
+// (It was BUY; BUY now only says it was renamed.) AFFORD is for things people buy: a
+// ticker, a market name or an investment word gets { error: 'investment' }, never a verdict.
 export const BUY_UNITS = { DAY: 365, WEEK: 52, MONTH: 12, YEAR: 1 };
 const UNIT_WORDS = {
   DAY: 'DAY', DAYS: 'DAY', WEEK: 'WEEK', WEEKS: 'WEEK', WK: 'WEEK', MONTH: 'MONTH', MONTHS: 'MONTH', MO: 'MONTH', YEAR: 'YEAR', YEARS: 'YEAR', YR: 'YEAR',
@@ -144,8 +149,24 @@ function parseYears(tok, next) {
   return { years: unit && unit.startsWith('M') ? n / 12 : n, used };
 }
 
-export function parseBuyArgs(args) {
-  const toks = args.filter((t) => t !== 'AT' && t !== 'X' && t !== 'TIMES' && t !== 'TIME');
+export const INVESTMENT_WORDS = new Set([
+  'SHARE', 'SHARES', 'STOCK', 'STOCKS', 'EQUITY', 'EQUITIES', 'ETF', 'ETFS', 'FUND', 'FUNDS', 'BOND', 'BONDS', 'TREASURY', 'TREASURIES',
+  'COIN', 'COINS', 'TOKEN', 'TOKENS', 'CRYPTO', 'OPTION', 'OPTIONS', 'CALL', 'CALLS', 'PUT', 'PUTS', 'FUTURE', 'FUTURES', 'CFD', 'CFDS',
+  'FOREX', 'FX', 'INDEX', 'REIT', 'REITS', 'PORTFOLIO', 'INVEST', 'INVESTMENT', 'TICKER', 'NFT', 'NFTS',
+]);
+const AFFORD_WORDS = new Set(['PER', 'A', 'EVERY', 'FOR', 'AT', 'X', 'TIMES', 'TIME', 'Y', 'YR', 'YRS', 'YEAR', 'YEARS', 'MO', 'MONTH', 'MONTHS', 'M', 'USD', ...Object.keys(UNIT_WORDS), ...Object.keys(ADVERBS)]);
+// A word that names an investment: an investment word, a named market (GOLD, BITCOIN,
+// EUR/USD) or anything shaped like a ticker that is not part of the AFFORD grammar.
+export function isInvestmentWord(tok) {
+  const t = String(tok).toUpperCase().replace(/^\$(?=[A-Z])/, '');
+  if (!/[A-Z]/.test(t) || AFFORD_WORDS.has(t)) return false;
+  if (/^\d+(\.\d+)?(Y|YR|YRS|YEARS?|M|MO|MONTHS?)$/.test(t)) return false;
+  return INVESTMENT_WORDS.has(t) || INVESTMENT_WORDS.has(t.replace(/S$/, '')) || TICKER_RE.test(t) || Boolean(matchInstrument([t]));
+}
+
+export function parseAffordArgs(args) {
+  if (args.some(isInvestmentWord)) return { error: 'investment' };
+  const toks = args.filter((t) => t !== 'AT' && t !== 'X' && t !== 'TIMES' && t !== 'TIME' && t !== 'USD');
   if (!toks.length || !looksNumeric(toks[0])) return { error: 'usage' };
   const price = parseAmountToken(toks[0]);
   if (!Number.isFinite(price) || price <= 0) return { error: 'amount' };
@@ -171,6 +192,7 @@ export function parseBuyArgs(args) {
   if (!(years > 0 && years <= 100)) return { error: 'years' };
   return { price, times, unit, years };
 }
+export const parseBuyArgs = parseAffordArgs; // the old name, for older imports
 
 // WAGE <per hour>. WAGE alone shows it, WAGE OFF clears it.
 export function parseWageArgs(args) {
@@ -259,16 +281,14 @@ export function parseCommand(raw, depth = 0) {
   const rest = toks.slice(1);
   // W is also a ticker (Wayfair): it means WATCH only alone or before a WATCH word.
   const head = toks[0] === 'W' && (!rest.length || WATCH_SUBCOMMANDS.includes(rest[0])) ? 'WATCH' : (ALIASES[toks[0]] || toks[0]);
+  // A pasted Pro key on its own is LOGIN <key>: the key never reaches the URL or history.
+  const key = !isCommandHead(head) && bareKey(toks);
+  if (key) return { name: 'LOGIN', args: { key }, input: 'LOGIN', secret: true, url: 'PRO' };
   const extra = matchExtra(head, rest);
   if (extra) return extra;
   if (SIMPLE.has(head)) return { name: head, input: head };
   if (head === 'HELP') return { name: 'HELP', args: helpScreen.parse(rest), input: ['HELP', ...rest].join(' ') };
   if (head === 'MENU') return { name: 'MENU', input: 'MENU' };
-  if (head === 'TAPE') {
-    // TAPE ON and TAPE OFF change a setting: the URL shows the TAPE screen instead.
-    const args = parseTapeArgs(rest);
-    return { name: 'TAPE', args, error: args.error, input: ['TAPE', ...rest].join(' '), setting: Boolean(args.set), view: 'TAPE' };
-  }
   if (head === 'FX') {
     const args = parseFxArgs(rest);
     return { name: 'FX', args, error: args.error, input: ['FX', ...rest].join(' ') };
@@ -277,9 +297,13 @@ export function parseCommand(raw, depth = 0) {
     const args = parseCpiArgs(rest);
     return { name: 'CPI', args, error: args.error, input: ['CPI', ...rest].join(' ') };
   }
-  if (head === 'BUY' && rest.length) {
-    const args = parseBuyArgs(rest);
-    return { name: 'BUY', args, error: args.error, input: ['BUY', ...rest].join(' ') };
+  if (head === 'AFFORD' && rest.length) {
+    const args = parseAffordArgs(rest);
+    return { name: 'AFFORD', args, error: args.error, input: ['AFFORD', ...rest].join(' ') };
+  }
+  // BUY was renamed AFFORD: typed, it says so; an old link (?c=BUY+...) opens AFFORD.
+  if (head === 'BUY') {
+    return { name: 'RENAMED', args: { from: 'BUY', to: ['AFFORD', ...rest].join(' ') }, input: ['BUY', ...rest].join(' ') };
   }
   if (head === 'WAGE') {
     const args = parseWageArgs(rest);
@@ -289,7 +313,7 @@ export function parseCommand(raw, depth = 0) {
     return { name: 'WHATIF', args: { tokens: rest }, input: ['WHATIF', ...rest].join(' ') };
   }
   if (head === '420' && !rest.length) return { name: 'FUNDING', input: '420' };
-  if (head === 'BUY') return { name: 'BUY', args: { error: 'usage' }, error: 'usage', input: 'BUY' };
+  if (head === 'AFFORD') return { name: 'AFFORD', args: { error: 'usage' }, error: 'usage', input: 'AFFORD' };
   const soon = SOON.find((s) => s.name === head);
   if (soon && !rest.length) return { name: 'SOON', args: { soon }, input: head };
   if (head === 'WATCH') {
@@ -322,6 +346,20 @@ export function parseCommand(raw, depth = 0) {
   return { name: 'UNKNOWN', input: toks.join(' ') };
 }
 
+function isCommandHead(head) {
+  return SIMPLE.has(head) || head === '420' || head === 'PORTFOLIO' || head === 'CHART' || head === 'DESK' || Boolean(FUNDAMENTALS[head])
+    || COMMANDS.some((c) => c.name === head) || SOON.some((s) => s.name === head);
+}
+
+// What a command puts in the URL and the command history. LOGIN (typed or a pasted key)
+// keeps its key out of both; commands that change something show their screen instead.
+export function urlFor(clean) {
+  const parsed = parseCommand(clean);
+  const url = parsed.mutates ? parsed.view : parsed.url || urlCommand(clean);
+  const kept = parsed.secret || isSecret(clean) ? parsed.input : clean;
+  return { url, kept };
+}
+
 // URL state: ?c=FX+500+USD+THB
 export function toQuery(input) {
   const c = tokenize(input).join(' ');
@@ -336,9 +374,9 @@ export function fromQuery(search) {
 
 // Commands that take arguments: Tab adds a space, and a bad argument shows the usage line.
 const chartArgs = (args) => (args.length && parseSymbolCommand(args) ? {} : { error: 'usage' });
-const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, CHART: chartArgs, ...EXTRA_TAKES_ARGS, ...COMPANY_TAKES_ARGS, ...MARKETS_TAKES_ARGS, FINANCIALS: parseFinancialsArgs, SCREEN: parseScreenArgs };
+const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, AFFORD: parseAffordArgs, WAGE: parseWageArgs, CHART: chartArgs, ...EXTRA_TAKES_ARGS, ...COMPANY_TAKES_ARGS, ...MARKETS_TAKES_ARGS, FINANCIALS: parseFinancialsArgs, SCREEN: parseScreenArgs };
 // Commands that run on their own but still show the usage line for bad words after them.
-const CHECKS_ARGS = { WATCH: parseWatchArgs, PORTFOLIO: parsePfArgs, DESK: parseDeskArgs, TAPE: parseTapeArgs };
+const CHECKS_ARGS = { WATCH: parseWatchArgs, PORTFOLIO: parsePfArgs, DESK: parseDeskArgs };
 const commandFor = (word) => COMMANDS.find((c) => c.name === word || c.aliases?.includes(word));
 
 // Commands found by a synonym ("YIELD" finds CURVE, BONDS, RATES), after the name matches.
@@ -440,6 +478,14 @@ export function nyClock(date = new Date()) {
   return `${p(hour)}:${p(minute)}:${p(second)}`;
 }
 
+// The status line keeps to the as-of time; what is real time and what is delayed goes in
+// its tooltip (and every price carries its own RT or DLY tag).
+export const FRESH_LEGEND = 'RT REAL TIME. DLY DELAYED.';
+export function shortStatus(iso, stale, items) {
+  const full = statusLine(iso, stale, items);
+  return { text: full.split(' · ')[0], title: `${full}. ${FRESH_LEGEND}` };
+}
+
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -476,10 +522,10 @@ const store = {
 const SCREENS = {
   HOME: homeScreen, HELP: helpScreen, MARKETS: marketsScreen, FX: fxScreen,
   QUOTE: quoteScreen, CPI: cpiScreen, RATES: ratesScreen, NEWS: newsScreen,
-  BUY: buyScreen, WAGE: buyScreen, WHATIF: whatifScreen, FUNDING: fundingScreen,
+  AFFORD: buyScreen, WAGE: buyScreen, WHATIF: whatifScreen, FUNDING: fundingScreen,
   WATCH: watchScreen, PORTFOLIO: portfolioScreen,
   FINANCIALS: financialsScreen, SCREEN: screenScreen, DESK: deskScreen,
-  TAPE: tapeScreen, MENU: helpScreen,
+  MENU: helpScreen,
 };
 
 // The screen header: title and one line on what the screen is. Internal screen names
@@ -570,10 +616,13 @@ function boot() {
   function setStatus(text, kind = '') {
     statusMsg.textContent = String(text).toUpperCase();
     statusMsg.dataset.kind = kind;
+    statusMsg.title = FRESH_LEGEND;
   }
   // items: the instruments on screen, so the line can say what is real time and what is delayed.
   function setUpdated(iso, stale, items) {
-    setStatus(statusLine(iso, stale, items), stale ? 'warn' : '');
+    const line = shortStatus(iso, stale, items);
+    setStatus(line.text, stale ? 'warn' : '');
+    statusMsg.title = line.title;
     toParent({ type: 'bb:updated', iso: String(iso || ''), stale: Boolean(stale) });
   }
 
@@ -631,11 +680,16 @@ function boot() {
 
   // --- ticker tape: off by default, TAPE ON puts it above the status line ------------
   let stopTape = null;
+  // The standard tape, or a Pro user's own list.
+  const loadTapeList = async () => {
+    const own = getTape();
+    return own ? loadTapeRows(own, fetchJSON) : tapeItems(await fetchJSON('/api/markets'));
+  };
   function applyTape(on) {
     if (embed) return;
     tapeBar.hidden = !on;
     document.body.classList.toggle('has-tape', on);
-    if (on && !stopTape) stopTape = mountTape(tapeBar.querySelector('.tape-track'), { fetchJSON, live: liveTimer, toQuery, escape: escapeHtml });
+    if (on && !stopTape) stopTape = mountTape(tapeBar.querySelector('.tape-track'), { load: loadTapeList, live: liveTimer, toQuery, escape: escapeHtml });
     if (!on && stopTape) { stopTape(); stopTape = null; }
     window.dispatchEvent(new Event('resize')); // DESK refits to the new dock height
   }
@@ -661,6 +715,7 @@ function boot() {
   let remoteAbort = null;
   function remoteQuery(text) {
     const t = text.replace(/^\s+/, '').toUpperCase();
+    if (looksLikeKey(t)) return null; // a Pro key being typed never goes to search
     return /^[A-Z0-9.&/-]{2,12}$/.test(t) ? t : null;
   }
   function fetchRemote(qText) {
@@ -786,6 +841,7 @@ function boot() {
       // No such ticker: drop the stock tab strip and the star.
       hideTickerStrip() { tickerBar.hidden = true; headStar.hidden = true; starTicker = null; document.body.classList.remove('has-tickerbar'); },
       tapeOn: () => tapeOn(store),
+      loadTape: loadTapeList,
       setTape(on) { setTapeOn(store, on); applyTape(on); },
       liveTimer: (fn, ms) => { const stop = liveTimer(fn, ms); cleanups.push(stop); return stop; },
       every(fn, ms) { const id = setInterval(fn, ms); cleanups.push(() => clearInterval(id)); },
@@ -816,6 +872,19 @@ function boot() {
       setStatus('LOADING...');
       const fn = mod.render(view, cmd, ctx);
       if (typeof fn === 'function') cleanups.push(fn);
+    } else if (cmd.name === 'RENAMED') {
+      const to = cmd.args.to;
+      if (fromUrl) {
+        // An old shared link: open AFFORD and put it in the address bar.
+        window.history.replaceState({ c: to }, '', toQuery(to));
+        render(to, { fromUrl: true });
+        return;
+      }
+      const example = to === 'AFFORD' ? 'AFFORD 1200' : to;
+      view.innerHTML = panel('1', 'Renamed', `
+        <p class="notice">${escapeHtml(RENAMED_NOTE)}</p>
+        <p class="muted">Try <a class="code" href="${toQuery(example)}" data-cmd="${escapeHtml(example)}">${escapeHtml(example)}</a>.</p>`, { cls: 'panel-solo' });
+      setStatus('BUY IS NOW AFFORD');
     } else if (cmd.name === 'SOON') {
       const s = cmd.args.soon;
       const alt = s.ticker ? `<a class="code" href="${toQuery(s.ticker)}" data-cmd="${escapeHtml(s.ticker)}">${escapeHtml(s.ticker)}</a> or ` : '';
@@ -854,7 +923,9 @@ function boot() {
       menu.open();
       return;
     }
-    if (typed && commandHook && commandHook(clean)) {
+    // LOGIN (typed or a pasted key) never goes to a DESK panel or into history with its key.
+    const secret = parseCommand(clean).name === 'LOGIN';
+    if (typed && commandHook && !secret && commandHook(clean)) {
       remember(clean);
       histIndex = cmdHistory.length;
       input.value = '';
@@ -865,18 +936,19 @@ function boot() {
     }
     if (embed) {
       // A panel keeps one history entry, and tells the desk what it shows now.
-      const parsed = parseCommand(clean);
-      window.history.replaceState({ c: clean, d: 0 }, '', `${toQuery(parsed.mutates || parsed.setting ? parsed.view : clean)}&embed=1`);
+      const { url, kept } = urlFor(clean);
+      window.history.replaceState({ c: kept, d: 0 }, '', `${toQuery(url)}&embed=1`);
       render(clean, { fromUrl });
-      toParent({ type: 'bb:cmd', c: clean });
+      toParent({ type: 'bb:cmd', c: kept });
       return;
     }
     if (push) {
       // A command that changes a saved list puts its screen in the URL, not itself.
-      const parsed = parseCommand(clean);
-      const q = toQuery(parsed.mutates || parsed.setting ? parsed.view : clean);
-      if (location.search !== q) window.history.pushState({ c: clean, d: depth() + 1 }, '', q);
-      remember(clean);
+      // LOGIN, LOGOUT and TAPE put their screen there too, and LOGIN's key goes nowhere.
+      const { url, kept } = urlFor(clean);
+      const q = toQuery(url);
+      if (location.search !== q) window.history.pushState({ c: kept, d: depth() + 1 }, '', q);
+      remember(kept);
     }
     histIndex = cmdHistory.length;
     input.value = '';
@@ -1039,7 +1111,7 @@ function boot() {
     if (e.key.length === 1 || e.key === 'Backspace') input.focus();
   });
 
-  window.addEventListener('popstate', () => render(fromQuery(location.search), { fromUrl: true }));
+  window.addEventListener('popstate', () => render(urlFor(fromQuery(location.search)).url, { fromUrl: true }));
 
   // --- DESK panel: messages from the desk, and a click here focuses this panel --------
   if (embed) {
@@ -1101,15 +1173,18 @@ function boot() {
   });
 
   // --- first render ---------------------------------------------------------
-  const initial = fromQuery(location.search);
+  const initial = urlFor(fromQuery(location.search)).url; // a link never runs LOGIN or TAPE ADD
   window.history.replaceState({ c: initial, d: embed ? 0 : depth() }, '', embed ? `${toQuery(initial)}&embed=1` : location.search ? toQuery(initial) : location.pathname);
   const firstVisit = !embed && !store.get('bb.booted', false);
   if (firstVisit && !location.search && !reduceMotion.matches) {
     store.set('bb.booted', true);
     setStatus('STARTING');
-    bootSequence(screen, () => render(initial, { fromUrl: true }));
+    bootSequence(screen, () => { render(initial, { fromUrl: true }); ensureConsent(); });
   } else {
     render(initial, { fromUrl: true });
+    // First visit: the notice, at once on a deep link. Never inside a DESK panel: the
+    // desk page around it shows it, and the answer is shared (same site, same storage).
+    if (!embed) ensureConsent();
   }
   if (!coarse) input.focus();
   placeCursor();

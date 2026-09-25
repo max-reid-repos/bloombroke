@@ -325,7 +325,7 @@ export function makeFinancials({ fetchImpl = globalThis.fetch, cache = createCac
       ...r.value,
       updated: new Date(r.fetchedAt).toISOString(),
       stale: r.stale,
-      source: 'SEC EDGAR company filings (10-K, 10-Q)',
+      source: 'US SEC EDGAR company filings (10-K, 10-Q)',
     };
   }
 

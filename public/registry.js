@@ -301,9 +301,9 @@ export const REGISTRY = [
     source: 'Saved in this browser', delay: 'Each panel its own',
   },
   {
-    name: 'TAPE', category: 'Your stuff', summary: 'The scrolling ticker tape: turn it on or off, or use it as a DESK panel',
-    syntax: 'TAPE [ON|OFF]', examples: ['TAPE', 'TAPE ON', 'TAPE OFF'], keywords: ['ticker tape', 'scroll', 'crawl', 'marquee'],
-    options: [['ON', 'Show the tape above the status line'], ['OFF', 'Hide it (the default)']],
+    name: 'TAPE', category: 'Your stuff', summary: 'The scrolling ticker tape: on or off, a DESK panel, or your own list (Pro)',
+    syntax: 'TAPE [ON|OFF|ADD <tickers>|REMOVE <tickers>|RESET]', examples: ['TAPE', 'TAPE ON', 'TAPE OFF', 'TAPE ADD AAPL'], keywords: ['ticker tape', 'scroll', 'crawl', 'marquee'],
+    options: [['ON', 'Show the tape above the status line'], ['OFF', 'Hide it (the default)'], ['ADD <tickers>', 'Put them on your tape (Pro)'], ['REMOVE <tickers>', 'Take them off (Pro)'], ['RESET', 'Back to the standard tape (Pro)']],
     source: 'CNBC', delay: 'Marked RT or DLY',
   },
 
@@ -315,19 +315,19 @@ export const REGISTRY = [
     source: 'US Bureau of Labor Statistics, CPI-U', delay: 'Monthly',
   },
   {
-    name: 'WHATIF', category: 'Money tools', summary: 'The stock you should have bought instead',
+    name: 'WHATIF', category: 'Money tools', summary: "In hindsight: the maker's stock instead of what you bought",
     syntax: 'WHATIF [<item> ...]', examples: ['WHATIF', 'WHATIF IPHONE6 LATTE:3Y'], keywords: ['regret', 'instead', 'what if', 'opportunity cost'],
     options: [['<item>', 'A thing you bought, like IPHONE6'], ['<habit>:<years>', 'A habit over years, like LATTE:3Y']],
     source: 'Built-in prices; CNBC stock history', delay: 'Daily closes',
   },
   {
-    name: 'BUY', category: 'Money tools', summary: 'Should I buy it? Cost per use and a verdict',
-    syntax: 'BUY <price> [<n> PER WEEK] [FOR <n>Y]', examples: ['BUY 1200', 'BUY 90 3 PER WEEK FOR 2Y'], keywords: ['afford', 'cost per use', 'purchase', 'worth it'],
+    name: 'AFFORD', category: 'Money tools', summary: 'Can I afford it? Cost per use of a thing you buy, and a verdict',
+    syntax: 'AFFORD <price> [<n> PER WEEK] [FOR <n>Y]', examples: ['AFFORD 1200', 'AFFORD 90 3 PER WEEK FOR 2Y'], keywords: ['buy', 'cost per use', 'purchase', 'worth it', 'spend'],
     options: [['<price>', 'What it costs'], ['<n> PER DAY|WEEK|MONTH|YEAR', 'How often you use it'], ['FOR <n>Y', 'How long it lasts']],
     source: 'Built in', delay: 'None',
   },
   {
-    name: 'WAGE', category: 'Money tools', summary: 'Save your hourly pay, then BUY shows hours of work',
+    name: 'WAGE', category: 'Money tools', summary: 'Save your hourly pay, then AFFORD shows hours of work',
     syntax: 'WAGE <per hour>', examples: ['WAGE 35'], keywords: ['salary', 'pay', 'hourly', 'income'],
     options: [['<per hour>', 'Your pay per hour'], ['OFF', 'Forget it']],
     source: 'Saved in this browser', delay: 'None',
@@ -347,16 +347,48 @@ export const REGISTRY = [
 
   // --- Pro ------------------------------------------------------------------------------
   {
-    name: 'PRO', soon: true, category: 'Pro', summary: 'Everything, for $4.20 a month',
-    syntax: 'PRO', examples: [], keywords: ['subscribe', 'upgrade', 'paid', 'account'],
+    name: 'PRO', category: 'Pro', summary: 'Your own ticker tape and sync across devices, $4.20 a month',
+    syntax: 'PRO', examples: ['PRO'], keywords: ['subscribe', 'upgrade', 'paid', 'account', 'sync'],
+    source: 'Built in', delay: 'None',
+  },
+  {
+    name: 'LOGIN', category: 'Pro', summary: 'Use your Pro key on this device',
+    syntax: 'LOGIN <key>', examples: ['LOGIN'], keywords: ['sign in', 'key', 'account', 'device'],
+    options: [['<key>', 'Your Pro key, BB-XXXX-XXXX-XXXX-XXXX. It never goes in the address bar']],
+    source: 'Built in', delay: 'None',
+  },
+  {
+    name: 'LOGOUT', category: 'Pro', summary: 'Log this device out of Pro',
+    syntax: 'LOGOUT', examples: ['LOGOUT'], keywords: ['sign out', 'account', 'device'],
+    source: 'Built in', delay: 'None',
+  },
+  {
+    name: 'ALERTS', soon: true, category: 'Pro', summary: 'Price alerts, coming next to Pro',
+    syntax: 'ALERTS', examples: [], keywords: ['alert', 'notify', 'price alert'],
+    source: 'Built in', delay: 'None',
+  },
+
+  // --- Legal ----------------------------------------------------------------------------
+  {
+    name: 'TERMS', category: 'Legal', summary: 'Terms of Use: information only, not investment advice',
+    syntax: 'TERMS', examples: ['TERMS'], keywords: ['terms of use', 'rules', 'legal'],
+    source: 'Built in', delay: 'None',
+  },
+  {
+    name: 'PRIVACY', category: 'Legal', summary: 'Privacy Policy: what we collect and why',
+    syntax: 'PRIVACY', examples: ['PRIVACY'], keywords: ['privacy policy', 'data', 'cookies', 'legal'],
+    source: 'Built in', delay: 'None',
+  },
+  {
+    name: 'DISCLAIMER', category: 'Legal', summary: 'Disclaimer: data may be delayed or wrong, investing is risky',
+    syntax: 'DISCLAIMER', examples: ['DISCLAIMER'], keywords: ['risk', 'advice', 'legal', 'warning'],
     source: 'Built in', delay: 'None',
   },
 
   // --- Hidden ---------------------------------------------------------------------------
   { name: '420', hidden: true, category: 'Money tools', summary: 'Funding', syntax: '420', examples: ['420'], keywords: [] },
+  { name: 'BUY', hidden: true, category: 'Money tools', summary: 'Renamed to AFFORD', syntax: 'BUY', examples: [], keywords: [] },
 ];
-
-// Legal commands (TERMS, PRIVACY, DISCLAIMER) join the 'Legal' category.
 
 const norm = (s) => String(s ?? '').trim().toUpperCase();
 

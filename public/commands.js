@@ -25,6 +25,9 @@ import * as earnings from './screens/earnings.js';
 import * as calendar from './screens/calendar.js';
 import * as loan from './screens/loan.js';
 import * as compound from './screens/compound.js';
+import * as pro from './screens/pro.js';
+import * as tape from './screens/tape.js';
+import * as legal from './screens/legal.js';
 
 export const EXTRA = [
   { name: 'WORLD', screen: world },
@@ -46,6 +49,13 @@ export const EXTRA = [
   { name: 'CALENDAR', screen: calendar },
   { name: 'LOAN', screen: loan, takesArgs: true },
   { name: 'COMPOUND', screen: compound, takesArgs: true },
+  { name: 'PRO', screen: pro },
+  { name: 'TAPE', screen: tape, takesArgs: true, url: 'TAPE' },
+  { name: 'LOGIN', screen: pro.loginCommand, takesArgs: true, url: 'PRO', secret: true },
+  { name: 'LOGOUT', screen: pro.logoutCommand, url: 'PRO' },
+  { name: 'TERMS', screen: legal },
+  { name: 'PRIVACY', screen: legal },
+  { name: 'DISCLAIMER', screen: legal },
 ];
 
 // Screen modules by internal name.
@@ -60,8 +70,23 @@ export function matchExtra(head, rest) {
     if (c.name !== head) continue;
     const args = c.screen.parse ? c.screen.parse(rest) : {};
     if (args === null) continue;
-    const input = [head, ...(c.screen.parse ? rest : [])].join(' ');
+    const input = c.secret ? head : [head, ...(c.screen.parse ? rest : [])].join(' ');
     return { name: c.id || c.name, args, error: args.error, input };
   }
   return null;
+}
+
+// What goes in the URL and the command history for a command. LOGIN never puts its key
+// there, and commands that change something (LOGIN, LOGOUT, TAPE ADD) are not replayed
+// from a link: the URL keeps only the screen they show.
+export function urlCommand(clean) {
+  const head = String(clean).split(' ')[0];
+  const c = EXTRA.find((x) => x.name === head && x.url);
+  return c ? c.url : clean;
+}
+
+// Commands whose words must never be kept (LOGIN <key>).
+export function isSecret(clean) {
+  const head = String(clean).split(' ')[0];
+  return EXTRA.some((x) => x.name === head && x.secret);
 }

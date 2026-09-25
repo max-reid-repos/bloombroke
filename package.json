@@ -13,8 +13,10 @@
     "test": "node --test"
   },
   "dependencies": {
+    "better-sqlite3": "12.11.1",
     "express": "^5.2.1",
     "satori": "^0.33.5",
-    "sharp": "^0.35.4"
+    "sharp": "^0.35.4",
+    "stripe": "22.6.2"
   }
 }

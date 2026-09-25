@@ -11,7 +11,7 @@ export { CompanyDataError as FilingsError };
 
 const TICKERS_URL = 'https://www.sec.gov/files/company_tickers.json';
 const SUBMISSIONS_URL = (cik) => `https://data.sec.gov/submissions/CIK${String(cik).padStart(10, '0')}.json`;
-export const FILINGS_SOURCE = 'SEC EDGAR filing index';
+export const FILINGS_SOURCE = 'US SEC EDGAR filing index';
 export const FILING_FORMS = ['ALL', '10-K', '10-Q', '8-K', '4'];
 const MAX_ROWS = 100;
 

@@ -1,46 +1,49 @@
 // The ticker tape: a scrolling strip of market prices. Off by default. TAPE ON puts it
 // above the status line (never over the key bar), TAPE OFF hides it, and TAPE alone is
-// a screen (and a DESK panel) that shows it.
+// a screen (and a DESK panel) that shows it. Pro users can pick what is on it
+// (TAPE ADD, REMOVE, RESET: see pro.js); this file only shows a list.
 //
 // API, kept small on purpose:
-//   parseTapeArgs(words)        -> { set: 'ON'|'OFF' } | {} | { error: 'usage' }
+//   parseTapeSwitch(words)      -> { action: 'on'|'off' } or null (not a switch)
 //   tapeOn(store) / setTapeOn(store, on)
-//   tapeItems(data)             -> the instruments the tape shows
+//   tapeItems(data)             -> the standard tape from /api/markets
 //   mountTape(el, ctx)          -> fills el and keeps it live; returns a cleanup
-//     ctx: { fetchJSON, live(fn, ms) -> cleanup, toQuery, escape }
+//     ctx: { load() -> Promise<rows>, live(fn, ms) -> cleanup, toQuery, escape }
 
 import { fmtNum, fmtPct, dirOf, cmdForInstrument } from './screens/markets.js';
 import { freshTag } from './freshness.js';
 
-export const TAPE_KEY = 'bb.tape';
+// Not 'bb.tape': that key holds a Pro user's own tape list (pro.js).
+export const TAPE_ON_KEY = 'bb.tapeOn';
 
-export function parseTapeArgs(words) {
-  if (!words.length) return {};
-  if (words.length === 1 && (words[0] === 'ON' || words[0] === 'OFF')) return { set: words[0] };
-  return { error: 'usage' };
+export function parseTapeSwitch(words) {
+  if (words.length === 1 && (words[0] === 'ON' || words[0] === 'OFF')) return { action: words[0].toLowerCase() };
+  return null;
 }
 
 export function tapeOn(store) {
-  return store.get(TAPE_KEY, false) === true;
+  return store.get(TAPE_ON_KEY, false) === true;
 }
 
 export function setTapeOn(store, on) {
-  store.set(TAPE_KEY, Boolean(on));
+  store.set(TAPE_ON_KEY, Boolean(on));
 }
 
 export function tapeItems(data) {
   return (data?.instruments || []).filter((q) => q.tape);
 }
 
-// Prices update in place, so the scroll does not jump back to the start on every refresh.
-export function mountTape(el, { fetchJSON, live, toQuery, escape }) {
+// Prices update in place, so the scroll does not jump back to the start on every
+// refresh. A change to a Pro user's list (the bb:tape event) redraws it.
+export function mountTape(el, { load, live, toQuery, escape }) {
   el.classList.add('tape-track');
   let ids = '';
   let stopped = false;
-  async function load() {
+  async function draw() {
     try {
-      const list = tapeItems(await fetchJSON('/api/markets'));
+      const list = await load();
       if (stopped) return;
+      if (!list.length) throw new Error('empty tape');
       const next = list.map((q) => q.id).join(',');
       if (next === ids) {
         for (const q of list) {
@@ -54,7 +57,7 @@ export function mountTape(el, { fetchJSON, live, toQuery, escape }) {
         return;
       }
       const html = list.map((q) => {
-        const c = cmdForInstrument(q.id) || 'MARKETS';
+        const c = cmdForInstrument(q.id) || q.id || 'MARKETS';
         return `<a class="tape-item" href="${toQuery(c)}" data-cmd="${escape(c)}" data-id="${escape(q.id)}">
           <span class="tape-name">${escape(q.name)}</span>
           <span class="tape-last num">${fmtNum(q.last, q.decimals)}</span>
@@ -71,11 +74,14 @@ export function mountTape(el, { fetchJSON, live, toQuery, escape }) {
       if (!ids && !stopped) el.innerHTML = '<span class="tape-empty">MARKET DATA IS TAKING A BREAK.</span>';
     }
   }
-  load();
-  const stop = live(load, 15_000);
+  const redraw = () => { ids = ''; draw(); };
+  draw();
+  const stop = live(draw, 15_000);
+  if (typeof window !== 'undefined') window.addEventListener('bb:tape', redraw);
   return () => {
     stopped = true;
     stop?.();
+    if (typeof window !== 'undefined') window.removeEventListener('bb:tape', redraw);
     el.innerHTML = '';
     el.classList.remove('is-running');
   };

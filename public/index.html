@@ -15,9 +15,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Caveat:wght@700&display=swap">
+  <link rel="stylesheet" href="/legal.css">
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/commands.css">
   <link rel="stylesheet" href="/commands-markets.css">
+  <link rel="stylesheet" href="/pro.css">
   <link rel="stylesheet" href="/kit.css">
   <link rel="stylesheet" href="/nav.css">
   <script type="module" src="/app.js"></script>
@@ -64,11 +66,8 @@
   <div class="dock">
     <div id="tape-bar" class="tape" aria-label="Market ticker" hidden><div class="tape-track"></div></div>
     <div class="statusline" role="status" aria-live="polite">
-      <span id="status-msg" class="status-msg">READY</span>
-      <span class="status-right">
-        <span class="status-legend"><span class="fresh is-rt">RT</span> real time <span class="fresh is-dly">DLY</span> delayed</span>
-        <span id="status-legal" class="status-legal">Not financial advice.</span>
-      </span>
+      <span id="status-msg" class="status-msg" title="RT REAL TIME. DLY DELAYED.">READY</span>
+      <span id="status-legal" class="status-legal"><span class="legal-line legal-line-long">Information only. Not investment advice. Data may be delayed.</span><span class="legal-line legal-line-short">Info only, not advice.</span><a href="/terms">Terms</a></span>
     </div>
     <nav id="keybar" class="keybar" aria-label="Function keys"></nav>
   </div>

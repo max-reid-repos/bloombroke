@@ -14,7 +14,7 @@ export function fmtPrice(n) {
 
 export function render(el, cmd, ctx) {
   el.innerHTML = panel('1', 'Crypto', LOADING, { cls: 'panel-solo', metaId: 'cr-meta', meta: 'TOP 20 BY MARKET CAP, USD' })
-    + '<p class="footnote">Prices from CoinGecko. Crypto trades all day, every day. Not financial advice.</p>';
+    + '<p class="footnote">Data provided by CoinGecko. Powered by <a href="https://www.coingecko.com/" target="_blank" rel="noopener noreferrer">CoinGecko</a>. DLY: prices can lag by a few minutes; the status line shows when they were last updated. Crypto trades all day, every day. Not financial advice.</p>';
   const body = el.querySelector('.panel-body');
 
   async function load() {

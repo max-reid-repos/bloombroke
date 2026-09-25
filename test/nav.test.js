@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  parseCommand, suggest, COMMANDS, FKEYS, FUNCTION_BAR, TICKER_FUNCTIONS, fkeyFor, isMenuKey, escGoesBack, screenTitle,
+  parseCommand, suggest, COMMANDS, FKEYS, FUNCTION_BAR, TICKER_FUNCTIONS, fkeyFor, isMenuKey, escGoesBack, screenTitle, urlFor, shortStatus,
 } from '../public/app.js';
 import {
   REGISTRY, LISTED, CATEGORIES, findCommand, byCategory, categoriesInUse, searchCommands, START_HERE, GRAMMAR_RULES,
@@ -11,7 +11,7 @@ import { EXTRA } from '../public/commands.js';
 import { COMPANY } from '../public/company.js';
 import { MARKETS_EXTRA } from '../public/commands-markets.js';
 import { resolveTopic } from '../public/screens/help.js';
-import { parseTapeArgs, tapeOn, setTapeOn, tapeItems, TAPE_KEY } from '../public/tape.js';
+import { parseTapeSwitch, tapeOn, setTapeOn, tapeItems, TAPE_ON_KEY } from '../public/tape.js';
 import { menuItems } from '../public/menu.js';
 
 // Every word the router handles by name: the command files, plus every
@@ -59,7 +59,7 @@ test('registry: entries are complete, unique and in a known category', () => {
   }
   assert.ok(categoriesInUse().includes('Start here'));
   assert.equal(categoriesInUse()[0], 'Start here');
-  assert.ok(!categoriesInUse().includes('Legal'), 'an empty category stays hidden until it has commands');
+  assert.ok(categoriesInUse().includes('Legal') && categoriesInUse().includes('Pro'));
 });
 
 test('registry: every example parses and runs its own command', () => {
@@ -81,7 +81,8 @@ test('registry feeds the command bar, the function bar and ticker-first grammar'
   assert.equal(parseCommand('AAPL EARNINGS').name, 'SOON');
   const names = COMMANDS.map((c) => c.name);
   assert.ok(!names.includes('420'), '420 stays hidden');
-  assert.ok(!names.includes('<TICKER>') && !names.includes('PRO'));
+  assert.ok(!names.includes('<TICKER>') && !names.includes('ALERTS') && !names.includes('BUY'));
+  assert.ok(names.includes('PRO') && names.includes('AFFORD') && names.includes('TERMS'));
   assert.deepEqual(names.slice(-2), ['HELP', 'MENU']);
   for (const c of COMMANDS) assert.equal(c.hint, findCommand(c.name).summary);
   assert.equal(suggest('4').length, 0);
@@ -148,18 +149,21 @@ test('tape: off by default, TAPE ON and OFF, a screen of its own', () => {
   assert.equal(tapeOn(store), false);
   setTapeOn(store, true);
   assert.equal(tapeOn(store), true);
-  assert.equal(store.get(TAPE_KEY), true);
+  assert.equal(store.get(TAPE_ON_KEY), true);
+  assert.notEqual(TAPE_ON_KEY, 'bb.tape', 'bb.tape is the Pro tape list');
   setTapeOn(store, false);
   assert.equal(tapeOn(store), false);
-  assert.deepEqual(parseTapeArgs([]), {});
-  assert.deepEqual(parseTapeArgs(['ON']), { set: 'ON' });
-  assert.deepEqual(parseTapeArgs(['OFF']), { set: 'OFF' });
-  assert.equal(parseTapeArgs(['LOUD']).error, 'usage');
+  assert.deepEqual(parseTapeSwitch(['ON']), { action: 'on' });
+  assert.deepEqual(parseTapeSwitch(['OFF']), { action: 'off' });
+  assert.equal(parseTapeSwitch([]), null);
+  assert.equal(parseTapeSwitch(['ADD', 'AAPL']), null, 'ADD, REMOVE and RESET are Pro words (pro.js)');
   const on = parseCommand('tape on');
   assert.equal(on.name, 'TAPE');
-  assert.equal(on.setting, true, 'a setting: the URL shows the TAPE screen, not the switch');
-  assert.equal(on.view, 'TAPE');
-  assert.equal(parseCommand('TAPE').setting, false);
+  assert.deepEqual(on.args, { action: 'on' });
+  assert.equal(urlFor('TAPE ON').url, 'TAPE', 'a setting: the URL shows the TAPE screen, not the switch');
+  assert.equal(urlFor('TAPE ADD AAPL').url, 'TAPE');
+  assert.deepEqual(parseCommand('TAPE').args, { action: 'show' });
+  assert.equal(parseCommand('TAPE ADD AAPL').args.action, 'add');
   assert.equal(parseCommand('TAPE X').error, 'usage');
   assert.equal(suggest('TAPE X')[0].usage, true);
   assert.deepEqual(tapeItems({ instruments: [{ id: 'A', tape: true }, { id: 'B' }] }).map((q) => q.id), ['A']);
@@ -215,6 +219,19 @@ test('screen header: a title and one line on every screen', () => {
   assert.equal(html.match(/id="share"/g).length, 1);
   assert.ok(html.indexOf('id="share"') > html.indexOf('class="screenhead"'));
   assert.match(html, /id="status-legal"/, 'a slot for the legal line');
+});
+
+test('status line: the as-of time left, the legal line right, the legend in a tooltip', () => {
+  const s = shortStatus('2026-09-25T16:00:00Z', false, [{ kind: 'fx', realTime: true }, { kind: 'future', realTime: false }]);
+  assert.equal(s.text, 'UPDATED 12:00:00 ET');
+  assert.match(s.title, /FX REAL TIME/);
+  assert.match(s.title, /RT REAL TIME\. DLY DELAYED\.$/);
+  assert.match(shortStatus(null, true, []).text, /^LAST KNOWN DATA/);
+  const html = readFileSync('public/index.html', 'utf8');
+  const line = /<div class="statusline"[\s\S]*?<\/div>/.exec(html)[0];
+  assert.match(line, /id="status-msg"[^>]*title="RT REAL TIME\. DLY DELAYED\."/);
+  assert.match(line, /<span id="status-legal" class="status-legal">.*Information only\. Not investment advice\. Data may be delayed\..*<a href="\/terms">Terms<\/a><\/span>/);
+  assert.doesNotMatch(line, /status-legend|legal-legend/, 'no legend crowding the line');
 });
 
 test('copy rules for the navigation files', () => {

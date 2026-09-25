@@ -3,15 +3,16 @@
    spacing 2 4 6 8 12 16 24 32, type 11 12 13 14 16 18 24. */
 
 /* ---- Dock: tape (optional) above the status line, key bar at the bottom ---- */
-body.has-tape { --dock-h: calc(var(--status-h) + var(--tape-h) + var(--keybar-h) + 2px); }
+/* style.css hides the tape by default (--tape-h: 0, .tape display none). TAPE ON puts
+   body.has-tape on the page, and the TAPE screen shows its own strip. */
+body.has-tape { --tape-h: 26px; --dock-h: calc(var(--status-h) + var(--tape-h) + var(--keybar-h) + 2px); }
+body.has-tape .dock > .tape:not([hidden]) { display: block; }
 .dock > .tape { border-top: 0; }
 .tape[hidden] { display: none; }
+.tape.tape-panel { display: block; --tape-h: 26px; }
 
-.status-right { display: flex; align-items: center; gap: 16px; flex: 0 0 auto; color: var(--dim); }
-.status-legend { display: inline-flex; align-items: center; gap: 4px; }
-.status-legend .fresh + * { margin-left: 4px; }
-.status-legend .fresh:not(:first-child) { margin-left: 8px; }
-.status-legal { color: var(--dim); }
+/* Status line: the as-of time left (details in its tooltip), the legal line right. */
+.status-msg { min-width: 0; }
 
 .fkey-menu {
   margin-left: auto;
@@ -205,8 +206,9 @@ body.menu-open { overflow: hidden; }
 .tape-panel { border-top: 0; }
 .tape-set { display: grid; gap: 12px; padding: 16px; }
 .tape-state { font-size: 14px; color: var(--text); }
-.tape-toggle { display: inline-flex; align-self: start; justify-self: start; margin: 0; border: 1px solid var(--rule-strong); }
-.tape-toggle .tab { height: 28px; padding: 0 12px; font-weight: 600; letter-spacing: .06em; }
+.tape-set .seg { justify-self: start; }
+.tape-contents { margin-top: 16px; }
+.tape-contents .panel-body { padding: 12px 16px; }
 .is-embed .tape-panel { border-bottom: 0; }
 
 /* ---- Narrower screens --------------------------------------------------------- */
@@ -225,7 +227,6 @@ body.menu-open { overflow: hidden; }
   .fkeys .fkey-n, .fkey-menu .fkey-n { display: none; }
   .fkeys .fkey { padding: 0 10px; }
   .fkey-menu { padding: 0 12px; }
-  .status-legend { display: none; }
 
   .menu-overlay { padding: 8px; }
   .menu { max-height: calc(100vh - 16px); }

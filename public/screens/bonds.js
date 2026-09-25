@@ -121,7 +121,7 @@ export function render(el, cmd, ctx) {
     return `<a class="tab${t === tab ? ' is-active' : ''}" href="${esc(q(c))}" data-cmd="${esc(c)}"${t === tab ? ' aria-current="page"' : ''}>${t}</a>`;
   }).join('');
   el.innerHTML = panel('1', 'Government bonds', `<div class="ch-bar"><nav class="tabs ch-tabs" aria-label="View">${tabs}</nav></div><div class="bg-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'bd-meta', meta: 'YIELD, PERCENT A YEAR', bodyCls: 'flush' })
-    + `<p class="footnote">${esc(NOTES[tab])} Government bond yields from CNBC. Not financial advice.</p>`;
+    + `<p class="footnote">${esc(NOTES[tab])} Government bond yields from CNBC, may be delayed (DLY). Not financial advice.</p>`;
   if (cmd.args?.error) ctx.status('BONDS TAKES YIELDS, SPREADS OR CURVE', 'warn');
   const body = el.querySelector('.bg-body');
 

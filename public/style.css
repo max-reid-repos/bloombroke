@@ -35,7 +35,7 @@
   --topbar-h: 30px;
   --cmd-h: 40px;
   --status-h: 22px;
-  --tape-h: 26px;
+  --tape-h: 0px; /* tape hidden by default; TAPE ON brings it back (nav.css) */
   --keybar-h: 28px;
   /* The tape is off by default; body.has-tape adds its row (see nav.css). */
   --dock-h: calc(var(--status-h) + var(--keybar-h) + 1px);
@@ -426,9 +426,9 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   animation: stamp-in 180ms cubic-bezier(.2, .8, .2, 1) both;
 }
 .stamp-k { font-size: 11px; font-weight: 600; letter-spacing: .3em; }
-.stamp-v { font-size: 44px; font-weight: 600; line-height: 1.05; letter-spacing: .12em; }
-.stamp-buy { color: var(--up); }
-.stamp-think { color: var(--accent); }
+.stamp-v { font-size: 30px; font-weight: 600; line-height: 1.1; letter-spacing: .1em; white-space: nowrap; }
+.stamp-worth { color: var(--up); }
+.stamp-sleep { color: var(--accent); }
 .stamp-skip { color: var(--down); }
 @keyframes stamp-in { from { transform: rotate(-4deg) scale(1.25); opacity: 0; } to { transform: rotate(-4deg) scale(1); opacity: 1; } }
 .stamp-line { margin-top: 14px; color: var(--text-2); text-align: center; }
@@ -486,6 +486,8 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .wi-mult { font-size: 18px; font-weight: 600; }
 .wi-mult span + span { margin-left: 12px; }
 .wi-quip { margin-top: 8px; color: var(--text-2); }
+.wi-risk { margin-top: 6px; color: var(--text-2); font-size: 12px; }
+.wi-risk-list { margin-top: 8px; color: var(--text-2); font-size: 12px; }
 .wi-receipt { margin: 16px -10px 0; border-top: 1px solid var(--rule-strong); overflow-x: auto; }
 .wi-table tfoot th, .wi-table tfoot td { height: 28px; font-weight: 600; border-top: 1px solid var(--rule-strong); padding: 0 10px; }
 .wi-table tfoot .name { color: var(--text); letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
@@ -617,6 +619,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .status-msg[data-kind="warn"] { color: var(--down); }
 
 .tape {
+  display: none;
   position: relative;
   height: var(--tape-h);
   overflow: hidden;
@@ -709,7 +712,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   .wi-when-m { display: block; font-size: 11px; }
   .wi-sentence { font-size: 14px; }
   .wi-receipt { margin: 12px -10px 0; }
-  .stamp-v { font-size: 36px; }
+  .stamp-v { font-size: 26px; }
   .stats-row { grid-template-columns: minmax(0, 1fr); }
   .chart-host { height: 240px; margin-left: 6px; }
   .chart-host-lg { height: 280px; }

@@ -11,7 +11,7 @@ export const DOODLES = [
 ];
 
 // Bump when the certificate layout changes, so cached share images are redrawn.
-export const CERT_VERSION = 1;
+export const CERT_VERSION = 2; // 2: hindsight wording and the small print on the image
 
 // ---- The command in ?c= --------------------------------------------------------
 
@@ -145,6 +145,6 @@ export function certModel(result, catalog, command) {
     fit: { ribbon: fit(ribbon, 33, 3.8, 0.46), big: fit(big, 58, 11, 0.6), lines, mult: fit(mult, 7.4, 3, 0.6) },
     share,
     title: share,
-    description: `Spent ${usd(t.paid)}. In the stock today: ${big}, ${multiple(t.multiple)}. WHATIF: the stock you should have bought.`,
+    description: `Spent ${usd(t.paid)}. In the stock today: ${big}, ${multiple(t.multiple)}. WHATIF, in hindsight. Past returns do not predict future returns. Not a recommendation.`,
   };
 }

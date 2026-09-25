@@ -10,6 +10,9 @@ import {
 } from '../registry.js';
 
 const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
+
+// The HELP categories, in order (Pro and Legal included).
+export const HELP_GROUPS = CATEGORIES;
 const CAT_KEY = 'bb.helpcat';
 
 // HELP [topic]: the words after HELP.

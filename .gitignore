@@ -5,3 +5,6 @@ data/cache/
 .DS_Store
 npm-debug.log*
 .claude/
+var/
+*.db-wal
+*.db-shm
