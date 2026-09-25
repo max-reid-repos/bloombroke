@@ -12,6 +12,7 @@ import { createCache } from './cache.js';
 import { UA } from './quotes.js';
 import { parseScreenArgs, applyScreen, screenWords, sortOf, needsCnbc, SCREEN_ERRORS } from '../public/screener.js';
 import { makeValue } from './value.js';
+import { nyDay } from './lists.js';
 
 const HOUR = 60 * 60_000;
 const BASE = 'https://api.nasdaq.com/api/screener/stocks';
@@ -91,7 +92,7 @@ export function withFund(rows, fund) {
   });
 }
 
-export function makeScreen({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: 60_000 }), getFundMap = makeValue({ fetchImpl }).getFundMap } = {}) {
+export function makeScreen({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: 60_000 }), getFundMap = makeValue({ fetchImpl }).getFundMap, now = () => Date.now() } = {}) {
   async function get(url) {
     const res = await fetchImpl(url, { headers: HEADERS, signal: AbortSignal.timeout(20_000) });
     if (!res.ok) throw new Error(`screener HTTP ${res.status}`);
@@ -123,6 +124,8 @@ export function makeScreen({ fetchImpl = globalThis.fetch, cache = createCache({
       total: u.value.rows.length,
       rows: matches.slice(0, n),
       asOf: u.value.asOf,
+      // New York's date now: an asOf before it means the numbers are an earlier session's.
+      today: nyDay(now()),
       updated: new Date(u.fetchedAt).toISOString(),
       stale: u.stale || Boolean(f?.stale),
       source: cnbc ? `Nasdaq stock screener; ${CNBC_NOTE}` : 'Nasdaq stock screener',
