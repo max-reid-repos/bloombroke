@@ -37,7 +37,8 @@
   --status-h: 22px;
   --tape-h: 26px;
   --keybar-h: 28px;
-  --dock-h: calc(var(--status-h) + var(--tape-h) + var(--keybar-h) + 1px);
+  /* The tape is off by default; body.has-tape adds its row (see nav.css). */
+  --dock-h: calc(var(--status-h) + var(--keybar-h) + 1px);
   --row-h: 24px;
 
   --font: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
@@ -614,7 +615,6 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 }
 .status-msg { color: var(--accent); overflow: hidden; text-overflow: ellipsis; }
 .status-msg[data-kind="warn"] { color: var(--down); }
-.status-note { color: var(--faint); }
 
 .tape {
   position: relative;
@@ -645,11 +645,15 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   display: flex;
   height: var(--keybar-h);
   padding: 0 calc(var(--inset) - 8px);
+  overflow: hidden;
+}
+.fkeys {
+  display: flex; flex: 1 1 auto; min-width: 0;
   overflow-x: auto; overflow-y: hidden;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
 }
-.keybar::-webkit-scrollbar { display: none; }
+.fkeys::-webkit-scrollbar { display: none; }
 .fkey {
   flex: 0 0 auto;
   display: flex; align-items: center; gap: 6px;
@@ -721,7 +725,6 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   .cmd-hint { font-size: 12px; }
   .keys { grid-template-columns: minmax(0, 1fr); }
 
-  .status-note { display: none; }
   .tape-item { padding: 0 12px; }
   .fkey { padding: 0 10px; }
 }
@@ -1074,7 +1077,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 
 /* ---- Embed mode: the app inside a DESK panel ------------------------------- */
 .is-embed body { min-height: 0; }
-.is-embed .topbar, .is-embed .commandbar, .is-embed .dock, .is-embed .footnote { display: none; }
+.is-embed .topbar, .is-embed .commandbar, .is-embed .screenhead, .is-embed .dock, .is-embed .footnote { display: none; }
 .is-embed .screen { padding: 0; }
 .is-embed .grid, .is-embed .stack, .is-embed .panel-solo { border: 0; }
 .is-embed { scrollbar-width: thin; scrollbar-color: var(--rule-strong) var(--bg); }

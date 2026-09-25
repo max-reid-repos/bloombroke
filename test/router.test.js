@@ -76,8 +76,8 @@ test('URL state round-trips', () => {
 
 test('suggestions match command prefixes', () => {
   assert.deepEqual(suggest('ma').map((s) => s.name), ['MARKETS']);
-  assert.deepEqual(suggest('m').map((s) => s.name), ['MARKETS', 'MOVERS']);
-  assert.deepEqual(suggest('F').map((s) => s.name), ['FX', 'FXMATRIX', 'FEDPATH', 'FINANCIALS', 'FILINGS']);
+  assert.deepEqual(suggest('m').map((s) => s.name), ['MARKETS', 'MOVERS', 'MENU']);
+  assert.deepEqual(suggest('F').map((s) => s.name), ['FINANCIALS', 'FILINGS', 'FEDPATH', 'FX', 'FXMATRIX']);
   assert.deepEqual(suggest('H').map((s) => s.name), ['HOME', 'HEATMAP', 'HISTORY', 'HELP']);
   assert.deepEqual(suggest('cp').map((s) => s.name), ['CPI']);
   assert.equal(suggest('').length, COMMANDS.length);
@@ -88,7 +88,8 @@ test('suggestions match command prefixes', () => {
 
 test('Tab completes and cycles', () => {
   assert.equal(complete('ma'), 'MARKETS');
-  assert.equal(complete('f'), 'FX ');
+  assert.equal(complete('f'), 'FINANCIALS ');
+  assert.equal(complete('fx'), 'FX ');
   assert.equal(complete('xyz'), 'xyz');
   assert.equal(complete('cp'), 'CPI ');
   const all = COMMANDS.map((_, i) => complete('', i));

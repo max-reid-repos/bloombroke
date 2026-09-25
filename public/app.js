@@ -21,69 +21,73 @@ import * as watchScreen from './screens/watch.js';
 import * as portfolioScreen from './screens/portfolio.js';
 import { parseWatchArgs, watchInput, WATCH_SUBCOMMANDS } from './watchlist.js';
 import { parsePfArgs, pfInput } from './portfolio.js';
-import { fmtNum, fmtPct, dirOf, cmdForInstrument, panel } from './screens/markets.js';
+import { panel } from './screens/markets.js';
 import { matchInstrument, searchInstruments } from './instruments.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
-import { statusLine, freshTag } from './freshness.js';
-import { EXTRA_HELP, EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra } from './commands.js';
+import { statusLine } from './freshness.js';
+import { EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra } from './commands.js';
 import * as deskScreen from './screens/desk.js';
 import { parseDeskArgs, isEmbedSearch, tickerOf, TICKER_SCREENS } from './desk-layout.js';
-import { COMPANY_HELP, COMPANY_SCREENS, COMPANY_TAKES_ARGS, COMPANY_FUNCTIONS, matchCompany } from './company.js';
-import { MARKETS_HELP, MARKETS_SCREENS, MARKETS_TAKES_ARGS, matchMarkets } from './commands-markets.js';
+import { COMPANY_SCREENS, COMPANY_TAKES_ARGS, matchCompany } from './company.js';
+import { MARKETS_SCREENS, MARKETS_TAKES_ARGS, matchMarkets } from './commands-markets.js';
+import { LISTED, ALIASES, FUNCTION_BAR, TICKER_FUNCTIONS, findCommand } from './registry.js';
+import * as tapeScreen from './screens/tape.js';
+import { parseTapeArgs, tapeOn, setTapeOn, mountTape } from './tape.js';
+import { createMenu } from './menu.js';
 
+export { FUNCTION_BAR, TICKER_FUNCTIONS };
+
+// The command bar's list: every listed, runnable command from registry.js, in the
+// registry's order, with the HELP and MENU entries last. Shape: { name, aliases, hint,
+// usage, example, usageExample, keywords }.
+const toSuggestEntry = (c) => ({
+  name: c.name, aliases: c.aliases, group: c.category, hint: c.summary, usage: c.syntax,
+  example: c.examples[0], examples: c.examples, usageExample: c.usageExample, keywords: c.keywords || [],
+});
+const runnable = LISTED.filter((c) => !c.pattern && !c.soon);
 export const COMMANDS = [
-  { name: 'HOME', group: 'Markets', hint: 'Markets, S&P 500, currencies and news on one screen', usage: 'HOME', example: 'HOME' },
-  { name: 'MARKETS', group: 'Markets', hint: 'World markets at a glance', usage: 'MARKETS', example: 'MARKETS' },
-  { name: 'RATES', group: 'Markets', hint: 'The interest rates that touch your money', usage: 'RATES', example: 'RATES' },
-  { name: 'NEWS', group: 'Markets', hint: 'Headlines that move markets', usage: 'NEWS', example: 'NEWS' },
-  { name: 'FX', group: 'Money tools', hint: 'Convert money between currencies', usage: 'FX <amount> <from> <to>', example: 'FX 500 USD THB', examples: ['FX 500 USD THB', 'FX USD CAD'] },
-  { name: 'CPI', group: 'Money tools', hint: 'What money from a past year is worth today', usage: 'CPI <amount> <year>', example: 'CPI 100 2015', examples: ['CPI 100 2015', 'CPI 1000 1990'] },
-  { name: 'WHATIF', group: 'Money tools', hint: 'The stock you should have bought', usage: 'WHATIF [<item> ...]', example: 'WHATIF', examples: ['WHATIF', 'WHATIF IPHONE6 LATTE:3Y'] },
-  { name: 'BUY', group: 'Money tools', hint: 'Should I buy it? Cost per use and a verdict', usage: 'BUY <price> [<n> PER WEEK] [FOR <n>Y]', example: 'BUY 1200', examples: ['BUY 1200', 'BUY 90 3 PER WEEK FOR 2Y'] },
-  { name: 'WAGE', group: 'Money tools', hint: 'Save your hourly pay, BUY then shows hours of work', usage: 'WAGE <per hour>', example: 'WAGE 35', examples: ['WAGE 35'] },
-  { name: 'WATCH', group: 'Your lists', hint: 'Your watchlist, live: any stock, index, pair, coin or future', usage: 'WATCH [ADD|REMOVE <symbols>] [CLEAR|EXPORT|IMPORT]', example: 'WATCH', usageExample: 'WATCH ADD AAPL TSLA', examples: ['WATCH', 'WATCH ADD AAPL TSLA EURUSD', 'WATCH REMOVE TSLA', 'WATCH EXPORT', 'WATCH IMPORT AAPL,MSFT,GOLD'] },
-  { name: 'DESK', group: 'Your lists', hint: 'Build your own screen: any commands side by side, four desks', usage: 'DESK [1-4] [RESET]', example: 'DESK', examples: ['DESK', 'DESK 2', 'DESK RESET'] },
-  { name: 'PORTFOLIO', aliases: ['PF'], group: 'Your lists', hint: 'Your holdings: value, day gain, total gain, weights', usage: 'PF [ADD <ticker> <shares> @ <cost>|SELL <ticker> <shares>|REMOVE <ticker>]', example: 'PF', usageExample: 'PF ADD AAPL 10 @ 150', examples: ['PF', 'PF ADD AAPL 10 @ 150', 'PF SELL AAPL 3', 'PF EXPORT', 'PF IMPORT'] },
-  ...EXTRA_HELP,
-  ...MARKETS_HELP,
-  { name: 'SCREEN', group: 'Markets', hint: 'Find stocks by sector, size, price and move', usage: 'SCREEN [<filters>]', example: 'SCREEN GAINERS', examples: ['SCREEN', 'SCREEN GAINERS'] },
-  { name: 'FINANCIALS', group: 'Company', hint: 'Income, balance sheet and cash flow from SEC filings', usage: 'FINANCIALS <ticker> [BALANCE|CASHFLOW] [QUARTERLY]', example: 'FINANCIALS AAPL', examples: ['FINANCIALS AAPL', 'FINANCIALS MSFT BALANCE'] },
-  ...COMPANY_HELP,
-  { name: 'HELP', group: 'Help', hint: 'Every command, with examples', usage: 'HELP', example: 'HELP' },
-];
+  ...runnable.filter((c) => c.category !== 'Start here'),
+  ...runnable.filter((c) => c.category === 'Start here'),
+].map(toSuggestEntry);
 
-// <TICKER> <FUNCTION> [args] runs <FUNCTION> <TICKER> [args]: AAPL CHART 5Y, AAPL NEWS.
-// A function that does not take a ticker yet shows "coming soon", not a ticker error.
-export const TICKER_FUNCTIONS = ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS', 'OPTIONS', 'EARNINGS', 'COMPARE', 'WATCH', ...COMPANY_FUNCTIONS];
-// The function bar on a stock screen, keys 1 to 9 for the first nine (the watchlist star is last).
-export const FUNCTION_BAR = ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS', 'OPTIONS', ...COMPANY_FUNCTIONS];
-export const GRAMMAR_HELP = {
-  name: '<TICKER> <FUNCTION>', hint: 'Any function for one ticker, ticker first', examples: ['AAPL CHART 5Y', 'AAPL NEWS', 'AAPL FINANCIALS', 'AAPL INSIDERS', 'AAPL WATCH', 'AAPL COMPARE MSFT'],
-};
+// Listed but not built yet: they answer "coming soon".
+export const SOON = LISTED.filter((c) => c.soon).map((c) => ({ name: c.name, hint: c.summary }));
 
-export const TICKER_HELP = {
-  name: 'AAPL', group: 'Markets', hint: 'Any ticker, index, currency pair, commodity or coin: price, chart and key numbers', usage: '<symbol> [1D|5D|1M|3M|6M|YTD|1Y|2Y|5Y|10Y|MAX] or <symbol> <from> <to>', examples: ['AAPL', 'TSLA 5Y', 'GOLD', 'EURUSD', 'SPX YTD', 'AAPL 2020-01-01 2024-12-31', 'NVDA FROM 2023-01-01'],
-};
-
-export const SOON = [
-  { name: 'PRO', hint: 'Everything, for $4.20 a month' },
-];
-
+// The key bar: real function keys (never F5, F11 or F12, which stay with the browser).
+// mobile: one of the five kept on a phone, next to MENU.
 export const FKEYS = [
   { key: 'F1', label: 'HELP', cmd: 'HELP' },
-  { key: 'F2', label: 'HOME', cmd: 'HOME' },
-  { key: 'F3', label: 'MARKETS', cmd: 'MARKETS' },
-  { key: 'F4', label: 'FX', cmd: 'FX 100 USD EUR' },
-  { key: 'F6', label: 'NEWS', cmd: 'NEWS' },
-  { key: 'F7', label: 'RATES', cmd: 'RATES' },
-  { key: 'F8', label: 'CPI', cmd: 'CPI 100 2000' },
-  { key: 'F9', label: 'DESK', cmd: 'DESK' },
+  { key: 'F2', label: 'HOME', cmd: 'HOME', mobile: true },
+  { key: 'F3', label: 'DESK', cmd: 'DESK' },
+  { key: 'F4', label: 'MARKETS', cmd: 'MARKETS', mobile: true },
+  { key: 'F6', label: 'NEWS', cmd: 'NEWS', mobile: true },
+  { key: 'F7', label: 'WATCH', cmd: 'WATCH', mobile: true },
+  { key: 'F8', label: 'PORTFOLIO', cmd: 'PF', mobile: true },
+  { key: 'F9', label: 'SCREEN', cmd: 'SCREEN' },
+  { key: 'F10', label: 'WHATIF', cmd: 'WHATIF' },
 ];
+export const MENU_KEY = { key: 'K', ctrl: true, label: 'MENU' };
+
+// The function key for a keydown, or null. Modifier keys never match.
+export function fkeyFor(e) {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return null;
+  return FKEYS.find((k) => k.key === e.key) || null;
+}
+
+// Ctrl+K or Cmd+K opens the menu.
+export function isMenuKey(e) {
+  return Boolean((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && String(e.key).toUpperCase() === 'K');
+}
+
+// Esc goes back when nothing else wants it: the command bar is empty, no suggestion
+// list or menu is open, and there is a screen to go back to.
+export function escGoesBack({ inputValue = '', suggestOpen = false, menuOpen = false, depth = 0 } = {}) {
+  return !inputValue && !suggestOpen && !menuOpen && depth > 0;
+}
 
 export const CHART_RANGES = PRESETS;
-const SIMPLE = new Set(['HOME', 'MARKETS', 'RATES', 'NEWS', 'HELP']);
+const SIMPLE = new Set(['HOME', 'MARKETS', 'RATES', 'NEWS']);
 const FUNDAMENTALS = { FINANCIALS: parseFinancialsCommand, SCREEN: parseScreenCommand, SCREENER: parseScreenCommand };
-const ALIASES = { '?': 'HELP', H: 'HELP', M: 'MARKETS', MARKET: 'MARKETS', RATE: 'RATES', INFLATION: 'CPI', PF: 'PORTFOLIO', WATCHLIST: 'WATCH' };
 export const DEFAULT_COMMAND = 'HOME';
 export const MAX_AMOUNT = 1e12;
 export const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
@@ -257,6 +261,13 @@ export function parseCommand(raw, depth = 0) {
   const extra = matchExtra(head, rest);
   if (extra) return extra;
   if (SIMPLE.has(head)) return { name: head, input: head };
+  if (head === 'HELP') return { name: 'HELP', args: helpScreen.parse(rest), input: ['HELP', ...rest].join(' ') };
+  if (head === 'MENU') return { name: 'MENU', input: 'MENU' };
+  if (head === 'TAPE') {
+    // TAPE ON and TAPE OFF change a setting: the URL shows the TAPE screen instead.
+    const args = parseTapeArgs(rest);
+    return { name: 'TAPE', args, error: args.error, input: ['TAPE', ...rest].join(' '), setting: Boolean(args.set), view: 'TAPE' };
+  }
   if (head === 'FX') {
     const args = parseFxArgs(rest);
     return { name: 'FX', args, error: args.error, input: ['FX', ...rest].join(' ') };
@@ -323,10 +334,22 @@ export function fromQuery(search) {
 }
 
 // Commands that take arguments: Tab adds a space, and a bad argument shows the usage line.
-const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, ...EXTRA_TAKES_ARGS, ...COMPANY_TAKES_ARGS, ...MARKETS_TAKES_ARGS, FINANCIALS: parseFinancialsArgs, SCREEN: parseScreenArgs };
+const chartArgs = (args) => (args.length && parseSymbolCommand(args) ? {} : { error: 'usage' });
+const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, CHART: chartArgs, ...EXTRA_TAKES_ARGS, ...COMPANY_TAKES_ARGS, ...MARKETS_TAKES_ARGS, FINANCIALS: parseFinancialsArgs, SCREEN: parseScreenArgs };
 // Commands that run on their own but still show the usage line for bad words after them.
-const CHECKS_ARGS = { WATCH: parseWatchArgs, PORTFOLIO: parsePfArgs, DESK: parseDeskArgs };
+const CHECKS_ARGS = { WATCH: parseWatchArgs, PORTFOLIO: parsePfArgs, DESK: parseDeskArgs, TAPE: parseTapeArgs };
 const commandFor = (word) => COMMANDS.find((c) => c.name === word || c.aliases?.includes(word));
+
+// Commands found by a synonym ("YIELD" finds CURVE, BONDS, RATES), after the name matches.
+function keywordSuggestions(head, have) {
+  if (head.length < 3) return [];
+  const w = head.toLowerCase();
+  const names = new Set(have.map((s) => s.name));
+  return COMMANDS
+    .filter((c) => !names.has(c.name) && c.keywords.some((k) => k.startsWith(w) || k.split(/\s+/).some((p) => p.startsWith(w))))
+    .slice(0, 4)
+    .map((c) => ({ name: c.name, hint: c.hint, value: TAKES_ARGS[c.name] ? c.name + ' ' : c.name }));
+}
 
 // Suggestions for the dropdown: [{ name, hint, value }].
 export function suggest(raw) {
@@ -339,7 +362,9 @@ export function suggest(raw) {
     const cmds = COMMANDS
       .filter((c) => c.name.startsWith(head) || (head.length >= 2 && c.aliases?.some((a) => a.startsWith(head))))
       .map((c) => ({ name: c.name, hint: c.hint, value: TAKES_ARGS[c.name] ? c.name + ' ' : c.name }));
-    return head.length >= 2 ? [...cmds, ...symbolSuggestions(searchInstruments(head, 6), cmds)] : cmds;
+    if (head.length < 2) return cmds;
+    const symbols = symbolSuggestions(searchInstruments(head, 6), cmds);
+    return [...cmds, ...symbols, ...keywordSuggestions(head, cmds)];
   }
   const cmd = commandFor(head);
   const check = cmd && (TAKES_ARGS[cmd.name] || CHECKS_ARGS[cmd.name]);
@@ -453,7 +478,21 @@ const SCREENS = {
   BUY: buyScreen, WAGE: buyScreen, WHATIF: whatifScreen, FUNDING: fundingScreen,
   WATCH: watchScreen, PORTFOLIO: portfolioScreen,
   FINANCIALS: financialsScreen, SCREEN: screenScreen, DESK: deskScreen,
+  TAPE: tapeScreen, MENU: helpScreen,
 };
+
+// The screen header: title and one line on what the screen is. Internal screen names
+// map back to the registry (TICKERNEWS is NEWS <ticker>).
+export function screenTitle(cmd) {
+  if (!cmd || cmd.name === 'UNKNOWN') return { title: 'Unknown command', sub: '' };
+  if (cmd.name === 'SOON') return { title: cmd.args.soon.name, sub: 'Coming soon' };
+  if (cmd.name === 'QUOTE') return { title: cmd.input, sub: '' };
+  if (cmd.name === 'FUNDING') return { title: cmd.input, sub: '' };
+  if (cmd.name === 'MENU') return { title: 'HELP', sub: findCommand('HELP').summary };
+  if (cmd.name === 'HELP' && cmd.args?.topic) return { title: cmd.input, sub: `How to use ${cmd.args.topic}` };
+  const entry = findCommand(tokenize(cmd.input)[0]) || findCommand(cmd.name);
+  return { title: cmd.input, sub: entry && !entry.hidden ? entry.summary : '' };
+}
 // What a saved-list command changes, for the "this link wants to change" question.
 const SAVED_LIST = { PORTFOLIO: ['Portfolio', 'portfolio'], WATCH: ['Watchlist', 'watchlist'], DESK: ['Desk', 'desk layout'] };
 const DEFAULT_TITLE = 'Bloombroke: the $32,000 terminal. Now $4.20 a month.';
@@ -466,9 +505,13 @@ function boot() {
   const measure = $('measure');
   const list = $('suggest');
   const screen = $('screen');
-  const tape = $('tape');
+  const tapeBar = $('tape-bar');
   const statusMsg = $('status-msg');
   const keybar = $('keybar');
+  const backBtn = $('back');
+  const titleEl = $('screen-title');
+  const subEl = $('screen-sub');
+  const actionsEl = $('screen-actions');
   const coarse = window.matchMedia('(pointer: coarse)').matches;
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -506,19 +549,42 @@ function boot() {
   }
 
   // --- function keys ----------------------------------------------------------
-  keybar.innerHTML = FKEYS.map((k) => `<a class="fkey" href="${toQuery(k.cmd)}" data-cmd="${escapeHtml(k.cmd)}" data-name="${tokenize(k.cmd)[0]}"><span class="fkey-n">${k.key}</span><span class="fkey-l">${k.label}</span></a>`).join('');
+  keybar.innerHTML = `<div class="fkeys">${FKEYS.map((k) => `<a class="fkey${k.mobile ? ' is-mobile' : ''}" href="${toQuery(k.cmd)}" data-cmd="${escapeHtml(k.cmd)}" data-name="${parseCommand(k.cmd).name}"><span class="fkey-n">${k.key}</span><span class="fkey-l">${k.label}</span></a>`).join('')}</div>
+    <button type="button" class="fkey fkey-menu" id="menu-btn" aria-haspopup="dialog"><span class="fkey-l">MENU</span><span class="fkey-n">Ctrl K</span></button>`;
+  const fkeysEl = keybar.querySelector('.fkeys');
 
   function setKeys(name) {
-    keybar.querySelectorAll('.fkey').forEach((k) => {
+    keybar.querySelectorAll('.fkeys .fkey').forEach((k) => {
       const on = k.dataset.name === name;
       k.classList.toggle('is-active', on);
       if (on) {
         k.setAttribute('aria-current', 'page');
-        if (keybar.scrollWidth > keybar.clientWidth) keybar.scrollLeft = k.offsetLeft - (keybar.clientWidth - k.offsetWidth) / 2;
+        if (fkeysEl.scrollWidth > fkeysEl.clientWidth) fkeysEl.scrollLeft = k.offsetLeft - (fkeysEl.clientWidth - k.offsetWidth) / 2;
       } else {
         k.removeAttribute('aria-current');
       }
     });
+  }
+
+  // --- menu (Ctrl+K) -----------------------------------------------------------
+  const menu = embed ? null : createMenu({ onClose: () => { if (!coarse) input.focus(); } });
+  $('menu-btn').addEventListener('click', (e) => { e.stopPropagation(); menu?.open(); });
+  window.addEventListener('bb:run', (e) => run(String(e.detail || ''), { typed: true }));
+
+  // --- back: history entries carry their depth, so BACK only shows with somewhere to go
+  const depth = () => Number(window.history.state?.d) || 0;
+  function goBack() { if (depth() > 0) window.history.back(); }
+  backBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); goBack(); });
+
+  // --- ticker tape: off by default, TAPE ON puts it above the status line ------------
+  let stopTape = null;
+  function applyTape(on) {
+    if (embed) return;
+    tapeBar.hidden = !on;
+    document.body.classList.toggle('has-tape', on);
+    if (on && !stopTape) stopTape = mountTape(tapeBar.querySelector('.tape-track'), { fetchJSON, live: liveTimer, toQuery, escape: escapeHtml });
+    if (!on && stopTape) { stopTape(); stopTape = null; }
+    window.dispatchEvent(new Event('resize')); // DESK refits to the new dock height
   }
 
   // --- blinking block cursor that follows the caret -------------------------
@@ -639,14 +705,25 @@ function boot() {
     const view = document.createElement('section');
     view.className = 'view';
     screen.replaceChildren(view);
-    setKeys(cmd.name);
+    setKeys(cmd.name === 'TICKERNEWS' ? '' : cmd.name);
     document.title = cmd.name === 'HOME' || cmd.name === 'UNKNOWN' ? DEFAULT_TITLE : `${cmd.input} | Bloombroke`;
+    const head = screenTitle(cmd);
+    titleEl.textContent = head.title;
+    subEl.textContent = head.sub;
+    actionsEl.replaceChildren();
+    backBtn.hidden = embed || depth() === 0;
+    if (cmd.name === 'MENU' && fromUrl) setTimeout(() => menu?.open(), 0);
 
     const ctx = {
       run, fetchJSON, signal, escapeHtml, toQuery, store, copy: copyText,
       tickerFunctions: (t) => tickerFunctions(t),
-      commands: COMMANDS, ticker: TICKER_HELP, soon: SOON, fkeys: FKEYS, grammar: GRAMMAR_HELP,
+      commands: COMMANDS, soon: SOON, fkeys: FKEYS,
       status: setStatus, updated: setUpdated,
+      // Screen-level controls (tabs, toggles) go in the header, left of SHARE.
+      actions(html) { actionsEl.innerHTML = html; return actionsEl; },
+      tapeOn: () => tapeOn(store),
+      setTape(on) { setTapeOn(store, on); applyTape(on); },
+      liveTimer: (fn, ms) => { const stop = liveTimer(fn, ms); cleanups.push(stop); return stop; },
       every(fn, ms) { const id = setInterval(fn, ms); cleanups.push(() => clearInterval(id)); },
       // Like every(), but it skips while the tab is hidden and catches up when it is shown.
       live(fn, ms) { cleanups.push(liveTimer(fn, ms)); },
@@ -702,6 +779,17 @@ function boot() {
   // screen that takes typed commands (DESK sends them to its focused panel) gets it first.
   function run(raw, { push = true, fromUrl = false, typed = false } = {}) {
     const clean = tokenize(raw).join(' ') || DEFAULT_COMMAND;
+    // MENU opens the launcher over the current screen; it is not a screen of its own.
+    if (menu && !fromUrl && clean === 'MENU') {
+      if (push) remember(clean);
+      histIndex = cmdHistory.length;
+      input.value = '';
+      draft = '';
+      closeSuggest();
+      placeCursor();
+      menu.open();
+      return;
+    }
     if (typed && commandHook && commandHook(clean)) {
       remember(clean);
       histIndex = cmdHistory.length;
@@ -714,7 +802,7 @@ function boot() {
     if (embed) {
       // A panel keeps one history entry, and tells the desk what it shows now.
       const parsed = parseCommand(clean);
-      window.history.replaceState({ c: clean }, '', `${toQuery(parsed.mutates ? parsed.view : clean)}&embed=1`);
+      window.history.replaceState({ c: clean, d: 0 }, '', `${toQuery(parsed.mutates || parsed.setting ? parsed.view : clean)}&embed=1`);
       render(clean, { fromUrl });
       toParent({ type: 'bb:cmd', c: clean });
       return;
@@ -722,8 +810,8 @@ function boot() {
     if (push) {
       // A command that changes a saved list puts its screen in the URL, not itself.
       const parsed = parseCommand(clean);
-      const q = toQuery(parsed.mutates ? parsed.view : clean);
-      if (location.search !== q) window.history.pushState({ c: clean }, '', q);
+      const q = toQuery(parsed.mutates || parsed.setting ? parsed.view : clean);
+      if (location.search !== q) window.history.pushState({ c: clean, d: depth() + 1 }, '', q);
       remember(clean);
     }
     histIndex = cmdHistory.length;
@@ -782,6 +870,9 @@ function boot() {
       closeSuggest();
       requestAnimationFrame(() => { input.setSelectionRange(input.value.length, input.value.length); placeCursor(); });
     } else if (e.key === 'Escape') {
+      // Esc: close the list, then clear the bar, then go back a screen.
+      if (e.defaultPrevented) return;
+      if (escGoesBack({ inputValue: input.value, suggestOpen: !list.hidden, depth: embed ? 0 : depth() })) { e.preventDefault(); goBack(); return; }
       if (!list.hidden) closeSuggest(); else { input.value = ''; placeCursor(); }
     }
   });
@@ -847,12 +938,25 @@ function boot() {
       run(e.target.dataset.cmd);
       return;
     }
+    // Ctrl+K (Cmd+K on a Mac) opens the menu.
+    if (isMenuKey(e) && menu) {
+      e.preventDefault();
+      menu.toggle();
+      return;
+    }
     // Function keys work everywhere. F5, F11 and F12 stay with the browser.
-    const fk = FKEYS.find((k) => k.key === e.key);
-    if (fk && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+    const fk = fkeyFor(e);
+    if (fk) {
       e.preventDefault();
       run(fk.cmd);
       if (!coarse) input.focus();
+      return;
+    }
+    // Esc away from any text field goes back a screen.
+    if (e.key === 'Escape' && !e.defaultPrevented && e.target !== input && !e.target.closest?.('input, select, textarea')
+      && escGoesBack({ menuOpen: Boolean(menu?.isOpen()), depth: embed ? 0 : depth() })) {
+      e.preventDefault();
+      goBack();
       return;
     }
     // A stock screen's function bar: keys 1 to 9 while the command bar is empty.
@@ -904,49 +1008,7 @@ function boot() {
     tick();
     setInterval(tick, 1000);
   }
-
-  // --- ticker tape ----------------------------------------------------------
-  // Prices update in place, so the scroll does not jump back to the start every 15 s.
-  let tapeIds = '';
-  async function loadTape() {
-    try {
-      const data = await fetchJSON('/api/markets');
-      const list = data.instruments.filter((q) => q.tape);
-      const ids = list.map((q) => q.id).join(',');
-      if (ids === tapeIds) {
-        for (const q of list) {
-          tape.querySelectorAll(`.tape-item[data-id="${q.id}"]`).forEach((a) => {
-            a.querySelector('.tape-last').textContent = fmtNum(q.last, q.decimals);
-            const chg = a.querySelector('.tape-chg');
-            chg.textContent = fmtPct(q.changePct);
-            chg.className = `tape-chg num ${dirOf(q.change)}`;
-          });
-        }
-        return;
-      }
-      const html = list.map((q) => {
-        const d = dirOf(q.change);
-        const c = cmdForInstrument(q.id) || 'MARKETS';
-        return `<a class="tape-item" href="${toQuery(c)}" data-cmd="${escapeHtml(c)}" data-id="${escapeHtml(q.id)}">
-          <span class="tape-name">${escapeHtml(q.name)}</span>
-          <span class="tape-last num">${fmtNum(q.last, q.decimals)}</span>
-          <span class="tape-chg num ${d}">${fmtPct(q.changePct)}</span>${freshTag(q)}</a>`;
-      }).join('');
-      tapeIds = ids;
-      const group = `<div class="tape-group">${html}</div>`;
-      tape.innerHTML = group + group.replace('class="tape-group"', 'class="tape-group" aria-hidden="true"');
-      tape.querySelectorAll('.tape-group[aria-hidden] a').forEach((a) => a.setAttribute('tabindex', '-1'));
-      const w = tape.firstElementChild.getBoundingClientRect().width;
-      tape.style.setProperty('--tape-duration', `${Math.max(30, Math.round(w / 40))}s`);
-      tape.classList.add('is-running');
-    } catch {
-      if (!tapeIds) tape.innerHTML = '<span class="tape-empty">MARKET DATA IS TAKING A BREAK.</span>';
-    }
-  }
-  if (!embed) {
-    loadTape();
-    liveTimer(loadTape, 15_000);
-  }
+  applyTape(tapeOn(store));
 
   // --- share: copy the current link, confirm in the status line ---------------
   async function copyText(text) {
@@ -976,7 +1038,7 @@ function boot() {
 
   // --- first render ---------------------------------------------------------
   const initial = fromQuery(location.search);
-  window.history.replaceState({ c: initial }, '', embed ? `${toQuery(initial)}&embed=1` : location.search ? toQuery(initial) : location.pathname);
+  window.history.replaceState({ c: initial, d: embed ? 0 : depth() }, '', embed ? `${toQuery(initial)}&embed=1` : location.search ? toQuery(initial) : location.pathname);
   const firstVisit = !embed && !store.get('bb.booted', false);
   if (firstVisit && !location.search && !reduceMotion.matches) {
     store.set('bb.booted', true);
