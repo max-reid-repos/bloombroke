@@ -147,7 +147,7 @@ export function render(el, cmd, ctx) {
     ${panel('1', ticker, LOADING, { metaId: 'q-meta' })}
     ${panel('2', `Chart ${rangeLabel(range)}`, '<div class="rc" id="q-rc"></div>', { metaId: 'q-ch-meta', bodyCls: 'flush' })}
   </div>
-  <p class="footnote">RT: real time. DLY: delayed, futures about 10 minutes, indexes about 15. Not financial advice.</p>`;
+  <p class="footnote">Prices and charts from CNBC. RT: real time. DLY: delayed, futures about 10 minutes, indexes about 15. Not financial advice.</p>`;
   const [qBody, cBody] = el.querySelectorAll('.panel-body');
   const qMeta = el.querySelector('#q-meta');
   const head = el.querySelector('.panel-head');

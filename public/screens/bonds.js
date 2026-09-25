@@ -12,7 +12,7 @@ export function levelBar(v, max) {
 
 export function render(el, cmd, ctx) {
   el.innerHTML = panel('1', 'Government bonds 10Y', LOADING, { cls: 'panel-solo', metaId: 'bd-meta', meta: 'YIELD, PERCENT A YEAR' })
-    + '<p class="footnote">10-year government bond yields from CNBC, may be delayed. 1 bp = 0.01%. Higher yield = the market charges that government more to borrow. Not financial advice.</p>';
+    + '<p class="footnote">10-year government bond yields from CNBC, may be delayed (DLY). 1 bp = 0.01%. Higher yield = the market charges that government more to borrow. Not financial advice.</p>';
   const body = el.querySelector('.panel-body');
 
   async function load() {

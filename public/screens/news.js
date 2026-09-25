@@ -40,7 +40,7 @@ export function newsList(items) {
 
 export function render(el, cmd, ctx) {
   el.innerHTML = panel('1', 'News', LOADING, { cls: 'panel-solo', metaId: 'news-meta', bodyCls: 'flush' })
-    + '<p class="footnote">Headlines open on the publisher site in a new tab.</p>';
+    + '<p class="footnote">Headlines from the CNBC, MarketWatch and Yahoo Finance feeds: the headline, the publisher and a link only. Each one opens on the original publisher\'s site, in a new tab. The status line shows when the list was last updated.</p>';
   const body = el.querySelector('.panel-body');
   const meta = el.querySelector('#news-meta');
 

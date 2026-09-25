@@ -28,7 +28,7 @@ const fmtDay = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US'
 
 export function render(el, cmd, ctx) {
   el.innerHTML = panel('1', 'FX matrix', LOADING, { cls: 'panel-solo', metaId: 'fxm-meta' })
-    + '<p class="footnote">Read across: 1 unit of the row currency buys this much of the column currency. Green or red = up or down on the day before. ECB reference rates via Frankfurter, once a day. Tap a rate to convert.</p>';
+    + '<p class="footnote">Read across: 1 unit of the row currency buys this much of the column currency. Green or red = up or down on the day before. Source: ECB statistics via Frankfurter, reference rates published once a working day (DAILY), not live. Rates that do not involve the euro are calculated from the euro rates. Tap a rate to convert.</p>';
   const body = el.querySelector('.panel-body');
   const meta = el.querySelector('#fxm-meta');
 

@@ -50,6 +50,13 @@ function errorView(el, title, detail, examples) {
     <p class="muted examples">Try ${examplesHtml(examples || DEFAULT_EXAMPLES)}</p>`, { cls: 'panel-solo' });
 }
 
+export const FX_SOURCE = 'Source: ECB statistics via Frankfurter. Reference rates, published once a working day (DAILY), not live prices. A rate between two currencies other than the euro is calculated from their euro rates. Not financial advice.';
+
+// ECB reference rates are all against the euro: any other pair is worked out from two of them.
+export function isCalculated(from, to) {
+  return from !== 'EUR' && to !== 'EUR';
+}
+
 export function render(el, cmd, ctx) {
   const a = cmd.args || {};
   if (cmd.error) {
@@ -66,7 +73,8 @@ export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="stack">
     ${panel('1', `FX ${a.from}/${a.to}`, LOADING, { metaId: 'fx-meta' })}
     ${panel('2', `${a.from}/${a.to} 30 days`, `<div class="chart-host" id="fx-chart">${LOADING}</div>`, { metaId: 'fx-ch-meta', bodyCls: 'flush' })}
-  </div>`;
+  </div>
+  <p class="footnote">${esc(FX_SOURCE)}</p>`;
   const [body] = el.querySelectorAll('.panel-body');
   const meta = el.querySelector('#fx-meta');
   const chMeta = el.querySelector('#fx-ch-meta');
@@ -90,7 +98,7 @@ export function render(el, cmd, ctx) {
         <p class="hero num${size}"><span class="hero-value">${esc(heroText)}</span><span class="hero-unit">${esc(d.to)}</span></p>
         <p class="fx-to dim">${esc(d.toName)}</p>
         <dl class="stats stats-row">
-          <div class="stat"><dt>Rate</dt><dd class="num">1 ${esc(d.from)} = ${esc(fmtRate(d.rate))} ${esc(d.to)}</dd></div>
+          <div class="stat"><dt>Rate${isCalculated(d.from, d.to) ? ' <span class="dim">(calculated)</span>' : ''}</dt><dd class="num">1 ${esc(d.from)} = ${esc(fmtRate(d.rate))} ${esc(d.to)}</dd></div>
           <div class="stat"><dt>Inverse</dt><dd class="num">1 ${esc(d.to)} = ${esc(fmtRate(1 / d.rate))} ${esc(d.from)}</dd></div>
           <div class="stat"><dt>30D low</dt><dd class="num">${esc(fmtRate(Math.min(...vals)))}</dd></div>
           <div class="stat"><dt>30D high</dt><dd class="num">${esc(fmtRate(Math.max(...vals)))}</dd></div>

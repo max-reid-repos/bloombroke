@@ -224,7 +224,7 @@ function tabBar(args) {
   return `<div class="ch-bar fin-bar"><nav class="tabs ch-tabs" aria-label="Statement">${st}</nav><nav class="tabs ch-tabs fin-periods" aria-label="Period">${pe}</nav></div>`;
 }
 
-const FOOT = 'Source: SEC EDGAR company filings (10-K, 10-Q). Figures in USD as reported.';
+const FOOT = 'Source: US SEC EDGAR company filings (10-K, 10-Q), updated as companies file. Figures in USD as reported.';
 
 export function render(el, cmd, ctx) {
   if (cmd.error) {

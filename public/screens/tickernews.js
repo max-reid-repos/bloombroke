@@ -32,7 +32,7 @@ export function render(el, cmd, ctx) {
   }
   const { ticker } = cmd.args;
   el.innerHTML = panel('1', `${ticker} news`, LOADING, { cls: 'panel-solo', meta: companyLinks(ticker, 'NEWS'), bodyCls: 'flush' })
-    + '<p class="footnote">Headlines tagged with this ticker, from the Nasdaq news feed. They open on the publisher site in a new tab.</p>';
+    + '<p class="footnote">Headlines tagged with this ticker, from the Nasdaq news feed: the headline, the publisher and a link only. Each one opens on the original publisher\'s site, in a new tab.</p>';
   const body = el.querySelector('.panel-body');
 
   async function load() {
