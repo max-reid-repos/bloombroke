@@ -91,19 +91,13 @@ export function cleanTape(v) {
   return out.slice(0, MAX_TAPE);
 }
 
-// Tape rows for a list of symbols, in order: named instruments from one /api/markets
-// call, other tickers from /api/quote each.
+// Tape rows for a list of symbols, in order, from one /api/quotes call.
 export async function loadTapeRows(symbols, fetchJSON) {
-  const markets = await fetchJSON('/api/markets').catch(() => ({ instruments: [] }));
-  const byId = new Map((markets.instruments || []).map((q) => [q.id, q]));
-  const rows = await Promise.all(symbols.map(async (s) => {
-    if (byId.has(s)) return byId.get(s);
-    try {
-      const q = await fetchJSON(`/api/quote?s=${encodeURIComponent(s)}`);
-      return { ...q, id: q.ticker || s, name: q.label || q.ticker || s, decimals: q.decimals ?? 2 };
-    } catch { return null; }
-  }));
-  return rows.filter(Boolean);
+  if (!symbols.length) return [];
+  const d = await fetchJSON(`/api/quotes?s=${encodeURIComponent(symbols.join(','))}`);
+  const byId = new Map((d.quotes || []).map((q) => [q.ticker, q]));
+  return symbols.map((s) => byId.get(s)).filter(Boolean)
+    .map((q) => ({ ...q, id: q.ticker, name: q.label || q.ticker, decimals: q.decimals ?? 2 }));
 }
 
 // ---- sync planning (pure) ----------------------------------------------------------------

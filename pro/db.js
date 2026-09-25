@@ -1,7 +1,7 @@
-// SQLite for Pro (node:sqlite, WAL). Migrations are the .sql files in migrations/,
+// SQLite for Pro (better-sqlite3, WAL; works on Node 20). Migrations are the .sql files in migrations/,
 // applied once each, in name order, inside a transaction.
 
-import { DatabaseSync } from 'node:sqlite';
+import Database from 'better-sqlite3';
 import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,11 +11,11 @@ export const MIGRATIONS_DIR = path.join(ROOT, 'migrations');
 
 export function openDb(file, { migrationsDir = MIGRATIONS_DIR } = {}) {
   if (file !== ':memory:') mkdirSync(path.dirname(file), { recursive: true });
-  const db = new DatabaseSync(file);
-  db.exec('PRAGMA journal_mode = WAL');
-  db.exec('PRAGMA busy_timeout = 5000');
-  db.exec('PRAGMA foreign_keys = ON');
-  db.exec('PRAGMA synchronous = NORMAL');
+  const db = new Database(file);
+  db.pragma('journal_mode = WAL');
+  db.pragma('busy_timeout = 5000');
+  db.pragma('foreign_keys = ON');
+  db.pragma('synchronous = NORMAL');
   migrate(db, migrationsDir);
   return db;
 }

@@ -69,19 +69,25 @@ test('TAPE: apply starts from the standard tape, caps the length, reset means de
   assert.equal(cleanTape('AAPL'), null);
 });
 
-test('TAPE: rows come from MARKETS for named instruments, /api/quote for tickers', async () => {
+test('TAPE: rows come from one /api/quotes call, in tape order', async () => {
   const urls = [];
   const fetchJSON = async (url) => {
     urls.push(url);
-    if (url === '/api/markets') return { instruments: [{ id: 'SPX', name: 'S&P 500', last: 1 }] };
-    if (url === '/api/quote?s=AAPL') return { ticker: 'AAPL', name: 'Apple Inc', last: 2, change: 1, changePct: 0.5, decimals: null };
-    throw Object.assign(new Error('nope'), { status: 404 });
+    return {
+      quotes: [
+        { ticker: 'SPX', label: 'S&P 500', name: '.SPX', last: 1, decimals: 2 },
+        { ticker: 'AAPL', label: null, name: 'Apple Inc', last: 2, change: 1, changePct: 0.5, decimals: null },
+      ],
+      missing: ['ZZZZ'],
+    };
   };
   const rows = await loadTapeRows(['AAPL', 'SPX', 'ZZZZ'], fetchJSON);
+  assert.deepEqual(urls, ['/api/quotes?s=AAPL%2CSPX%2CZZZZ']);
   assert.deepEqual(rows.map((r) => r.id), ['AAPL', 'SPX']);
   assert.equal(rows[0].name, 'AAPL');
   assert.equal(rows[0].decimals, 2);
-  assert.ok(!urls.includes('/api/quote?s=SPX'));
+  assert.equal(rows[1].name, 'S&P 500');
+  assert.deepEqual(await loadTapeRows([], fetchJSON), []);
 });
 
 test('sync planning: pull newer server copies, push local changes once', () => {

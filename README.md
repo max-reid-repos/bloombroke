@@ -27,7 +27,7 @@ Readable names work too: `EUR/USD`, `S&P 500`, `OIL`, `BITCOIN`, `EURO STOXX 50`
 
 ## Run
 
-Requires Node 22.13 or newer (Pro uses the built-in `node:sqlite`).
+Requires Node 20.12 or newer.
 
 ```
 cp .env.example .env
@@ -70,7 +70,7 @@ The terminal stays free. Pro is $4.20 a month (Stripe subscription, USD): your o
 
 - There are no accounts. Checkout makes a licence key like `BB-7KQ2-M9XD-HT4P-WZ3C`. The server stores only its SHA-256 hash and last 4 characters. The success page shows the full key for 24 hours after checkout, to that checkout session only (kept AES-256-GCM encrypted with `PRO_SECRET` until then, then wiped).
 - Stripe is the source of truth. The webhook reads each subscription's status fresh from Stripe. Pro is on while the status is `active` or `trialing`, and for 7 days of `past_due`.
-- Code: `pro/` (server), `migrations/` (SQLite schema, applied at start), `public/pro.js` and `public/screens/pro.js`, `public/screens/tape.js` (browser). Data lives in `var/pro.db` (WAL).
+- Code: `pro/` (server), `migrations/` (SQLite schema, applied at start), `public/pro.js` and `public/screens/pro.js`, `public/screens/tape.js` (browser). Data lives in `var/pro.db` (SQLite via better-sqlite3, WAL).
 - Checkout requires ticking the Terms box (`consent_collection`), and the time is stored as `terms_accepted_at`. Stripe needs a Terms of service URL in the account's public details for that, and `/terms` must exist.
 - The PRO screen states the price, the monthly renewal, how to cancel, and: if we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month. `node scripts/shutdown-refunds.js <path/to/.env>` (admin only) does that: a dry run by default that prints counts and amounts, `--execute` (plus `--live` for a live key) to refund and cancel.
 - Bloombroke is run by Bloombroke, Singapore. Contact: hello@bloombroke.com.

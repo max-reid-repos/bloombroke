@@ -31,15 +31,12 @@ function show(el, ctx, note, kind = '') {
 }
 
 // Plain tickers must exist before they go on the tape; named instruments always do.
+// One /api/quotes call; its `missing` list names the ones it does not know.
 async function unknownTickers(symbols, ctx) {
-  const out = [];
-  await Promise.all(symbols.filter((s) => !instrumentById(s)).map(async (s) => {
-    try { await ctx.fetchJSON(`/api/quote?s=${encodeURIComponent(s)}`, { signal: ctx.signal }); } catch (err) {
-      if (err.name === 'AbortError') throw err;
-      if (err.status === 404 || err.status === 400) out.push(s);
-    }
-  }));
-  return out;
+  const plain = symbols.filter((s) => !instrumentById(s));
+  if (!plain.length) return [];
+  const d = await ctx.fetchJSON(`/api/quotes?s=${encodeURIComponent(plain.join(','))}`, { signal: ctx.signal });
+  return plain.filter((s) => (d.missing || []).includes(s));
 }
 
 export function render(el, cmd, ctx) {
