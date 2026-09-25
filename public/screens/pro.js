@@ -15,8 +15,12 @@ export const OPERATOR = 'Bloombroke is run by Bloombroke, Singapore.';
 export const CONTACT = 'hello@bloombroke.com';
 export const SHUTDOWN_LINE = 'If we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month.';
 
+export const EXPERIMENTAL_LINE = 'Bloombroke is an experimental project and may be discontinued at short notice. If it is, we cancel your subscription and refund the unused days.';
+export const DEMO_BANNER = 'Demo checkout. No real money. Use card 4242 4242 4242 4242, any future date, any CVC.';
+
 // Shown before every SUBSCRIBE button: price, renewal, how to cancel, the shutdown promise.
 export const BUY_TERMS = [
+  EXPERIMENTAL_LINE,
   `${pro.PRICE} USD a month, charged by Stripe. It renews automatically every month until you cancel.`,
   'Cancel any time: type PRO and press MANAGE. Pro stays on to the end of the month you paid for.',
   SHUTDOWN_LINE,
@@ -127,10 +131,10 @@ function wire(el, ctx, sel, label, fn) {
   });
 }
 
-function buyHtml() {
+function buyHtml(label = 'SUBSCRIBE') {
   return `<ul class="pro-terms">${BUY_TERMS.map((t) => `<li>${esc(t)}</li>`).join('')}
       <li>Subscribing means you agree to the <a href="/terms">Terms</a>. Bloombroke gives information only, not investment advice.</li></ul>
-    <p class="pro-actions"><button type="button" class="btn btn-solid" id="pro-sub">SUBSCRIBE ${esc(pro.PRICE)}/MONTH</button></p>`;
+    <p class="pro-actions"><button type="button" class="btn btn-solid" id="pro-sub">${label} ${esc(pro.PRICE)}/MONTH</button></p>`;
 }
 
 // The account panel: logged out, or status + MANAGE + LOGOUT.
@@ -147,7 +151,7 @@ function accountHtml(note) {
       <div class="stat"><dt>Status</dt><dd class="${on ? 'up' : 'down'}">${esc(statusText(st))}</dd></div>
       <div class="stat"><dt>Key</dt><dd class="num">${esc(maskKey(st?.last4 || key.slice(-4)))}</dd></div>
     </dl>
-    ${on ? '' : buyHtml()}
+    ${on ? '' : `${buyHtml('REACTIVATE')}<p class="muted">REACTIVATE keeps this key and your synced lists.</p>`}
     <p class="pro-actions">
       <button type="button" class="btn" id="pro-manage">MANAGE</button>
       <button type="button" class="btn" id="pro-show">SHOW KEY</button>
@@ -158,7 +162,7 @@ function accountHtml(note) {
 }
 
 function page(el, second = '') {
-  el.innerHTML = `<div class="stack">
+  el.innerHTML = `<p class="pro-demo" id="pro-demo" role="note" hidden>${esc(DEMO_BANNER)}</p><div class="stack">
     ${panel('1', 'Bloombroke Pro', offerHtml(), { meta: `${esc(pro.PRICE)} / MONTH` })}
     ${second}
     ${panel(second ? '3' : '2', 'Your account', '<div id="pro-account"></div>')}
@@ -166,7 +170,16 @@ function page(el, second = '') {
   <p class="footnote">Your key is your login. There is no email or password. ${esc(OPERATOR)} Contact <a href="mailto:${CONTACT}">${CONTACT}</a>. Not financial advice.</p>`;
 }
 
+// Test mode: say so above everything, so nobody thinks a demo is a real purchase.
+function demoBanner(el) {
+  pro.getConfig().then((c) => {
+    const b = el.querySelector('#pro-demo');
+    if (b && c.mode === 'test') b.hidden = false;
+  });
+}
+
 function renderAccount(el, ctx, note) {
+  demoBanner(el);
   const host = el.querySelector('#pro-account');
   host.innerHTML = accountHtml(note);
   wire(host, ctx, '#pro-sub', 'OPENING CHECKOUT...', () => pro.startCheckout());
@@ -183,6 +196,12 @@ function claimInto(el, ctx, sessionId) {
   pro.claim(sessionId).then((d) => {
     if (!el.isConnected) return;
     pro.clearPending();
+    if (d.reactivated) {
+      host.innerHTML = '<p class="notice">Pro is on again, on the same key. Your synced lists are still here.</p>';
+      renderAccount(el, ctx);
+      ctx.status('PRO: ACTIVE AGAIN');
+      return;
+    }
     showKey(host, d.key, ctx, { saved: d.saved });
     renderAccount(el, ctx, 'Welcome to Pro. You are logged in on this browser.');
     ctx.status('PRO: ACTIVE. SAVE YOUR KEY');
@@ -203,13 +222,19 @@ export function render(el, cmd, ctx) {
     page(el, panel('2', 'Your key', '<div id="pro-claim"></div>'));
     renderAccount(el, ctx);
     claimInto(el, ctx, pending);
+    // A REACTIVATE checkout: the browser already has a key, so show its fresh status too.
+    if (pro.getKey()) pro.refreshStatus().then(() => { if (el.isConnected && !pro.pendingCheckout()) renderAccount(el, ctx); }).catch(() => {});
     return;
   }
   page(el);
   renderAccount(el, ctx);
   ctx.status(pro.isPro() ? 'PRO: ACTIVE' : `PRO: ${pro.PRICE_LINE.toUpperCase()}`);
   if (pro.getKey()) {
-    pro.refreshStatus().then(() => { if (el.isConnected) renderAccount(el, ctx); }).catch(() => {});
+    pro.refreshStatus().then(() => {
+      if (!el.isConnected) return;
+      renderAccount(el, ctx);
+      ctx.status(pro.isPro() ? 'PRO: ACTIVE' : 'PRO: NOT ACTIVE. REACTIVATE KEEPS YOUR KEY', pro.isPro() ? '' : 'warn');
+    }).catch(() => {});
   }
 }
 

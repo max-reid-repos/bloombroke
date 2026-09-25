@@ -22,10 +22,22 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
     bySub: db.prepare('SELECT * FROM licences WHERE stripe_subscription_id = ?'),
     bySession: db.prepare('SELECT * FROM licences WHERE checkout_session_id = ?'),
     byId: db.prepare('SELECT * FROM licences WHERE id = ?'),
+    byCustomer: db.prepare('SELECT * FROM licences WHERE stripe_customer_id = ? ORDER BY id'),
+    attach: db.prepare(`UPDATE licences SET
+      stripe_subscription_id = ?, status = ?,
+      past_due_since = CASE WHEN ? = 'past_due' THEN ? ELSE NULL END,
+      stripe_customer_id = COALESCE(?, stripe_customer_id),
+      terms_accepted_at = COALESCE(?, terms_accepted_at),
+      terms_version = COALESCE(?, terms_version),
+      livemode = COALESCE(?, livemode),
+      updated_at = ?
+      WHERE id = ?`),
+    rotate: db.prepare('UPDATE licences SET key_hash = ?, last4 = ?, reveal_ciphertext = NULL, updated_at = ? WHERE id = ?'),
+    forget: db.prepare('UPDATE licences SET reveal_ciphertext = NULL WHERE checkout_session_id = ? AND key_hash = ? AND reveal_ciphertext IS NOT NULL'),
     insert: db.prepare(`INSERT INTO licences
-      (key_hash, last4, stripe_customer_id, stripe_subscription_id, checkout_session_id, status, past_due_since, created_at, updated_at, reveal_ciphertext, reveal_expires_at, terms_accepted_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-    terms: db.prepare('UPDATE licences SET terms_accepted_at = ? WHERE id = ? AND terms_accepted_at IS NULL'),
+      (key_hash, last4, stripe_customer_id, stripe_subscription_id, checkout_session_id, status, past_due_since, created_at, updated_at, reveal_ciphertext, reveal_expires_at, terms_accepted_at, terms_version, livemode)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+    terms: db.prepare('UPDATE licences SET terms_accepted_at = ?, terms_version = ? WHERE id = ? AND terms_accepted_at IS NULL'),
     status: db.prepare(`UPDATE licences SET
       status = ?,
       past_due_since = CASE WHEN ? = 'past_due' THEN COALESCE(past_due_since, ?) ELSE NULL END,
@@ -50,21 +62,35 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
     findByKey(key) { return q.byHash.get(hashKey(key)) || null; },
     findBySubscription(id) { return q.bySub.get(id) || null; },
     findBySession(id) { return q.bySession.get(id) || null; },
+    findById(id) { return q.byId.get(id) || null; },
+    findByCustomer(id) { return q.byCustomer.all(id); },
 
     // The one way a licence is made, from the webhook or from the success page, whichever
     // comes first. Idempotent per subscription and per checkout session: a second call
     // returns the same licence and never a second key.
     // termsAcceptedAt: when the buyer agreed to the Terms at checkout (ms), or null.
-    // Returns { licence, created, key } where key is set only when this call created it.
-    ensureLicence({ sessionId, customerId, subscriptionId, status, termsAcceptedAt = null }) {
+    // licenceId: set for a REACTIVATE checkout (client_reference_id). The new subscription
+    // then moves onto that same licence: same key, same synced data.
+    // Returns { licence, created, reactivated, key } where key is set only when this call created it.
+    // termsVersion: which Terms (TERMS_VERSION) were accepted. livemode: true for a live
+    // checkout, false for a test (demo) one, null when unknown.
+    ensureLicence({ sessionId, customerId, subscriptionId, status, termsAcceptedAt = null, termsVersion = null, licenceId = null, livemode = null }) {
+      const live = livemode === null || livemode === undefined ? null : livemode ? 1 : 0;
+      const version = termsAcceptedAt ? termsVersion : null;
       if (!aesKey) throw new Error('PRO_SECRET is not set');
       if (!sessionId || !subscriptionId || !status) throw new Error('ensureLicence: missing fields');
       return tx(db, () => {
         const existing = q.bySub.get(subscriptionId) || q.bySession.get(sessionId);
         if (existing) {
-          if (termsAcceptedAt && !existing.terms_accepted_at) q.terms.run(termsAcceptedAt, existing.id);
+          if (termsAcceptedAt && !existing.terms_accepted_at) q.terms.run(termsAcceptedAt, version, existing.id);
           const licence = existing.status === status ? q.byId.get(existing.id) : setStatus(existing.id, status);
           return { licence, created: false };
+        }
+        const target = licenceId ? q.byId.get(licenceId) : null;
+        if (target) {
+          const t = now();
+          q.attach.run(subscriptionId, status, status, t, customerId || null, termsAcceptedAt || null, version, live, t, target.id);
+          return { licence: q.byId.get(target.id), created: false, reactivated: true, previousSubscription: target.stripe_subscription_id };
         }
         let key;
         let hash;
@@ -72,7 +98,7 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
         const t = now();
         const cipher = encryptReveal(aesKey, key, sessionId);
         const r = q.insert.run(hash, last4(key), customerId || null, subscriptionId, sessionId, status,
-          status === 'past_due' ? t : null, t, t, cipher, t + REVEAL_MS, termsAcceptedAt || null);
+          status === 'past_due' ? t : null, t, t, cipher, t + REVEAL_MS, termsAcceptedAt || null, version, live);
         return { licence: q.byId.get(r.lastInsertRowid), created: true, key };
       });
     },
@@ -92,6 +118,21 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
     },
 
     purgeReveals() { return Number(q.purge.run(now()).changes); },
+
+    // The browser saved the key: wipe the reveal copy now. Needs the key itself.
+    forgetReveal(sessionId, key) { return Number(q.forget.run(sessionId, hashKey(key)).changes) > 0; },
+
+    // A lost key: give the licence a new one. The old key stops working at once.
+    rotateKey(licenceId) {
+      return tx(db, () => {
+        if (!q.byId.get(licenceId)) throw new Error('no such licence');
+        let key;
+        let hash;
+        do { key = generateKey(rand); hash = hashKey(key); } while (q.byHash.get(hash));
+        q.rotate.run(hash, last4(key), now(), licenceId);
+        return { key, licence: q.byId.get(licenceId) };
+      });
+    },
 
     isEventProcessed(id) { return Boolean(q.eventSeen.get(id)); },
     markEventProcessed(id, type) {
@@ -126,6 +167,8 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
       }
       return tx(db, () => {
         const current = new Map(q.docs.all(licenceId).map((r) => [r.name, r]));
+        // Strictly newer wins. On a tie the server copy stays, even if it differs; the
+        // client sees it in the reply and adopts it.
         const writes = incoming.filter((d) => !current.has(d.name) || d.at > current.get(d.name).updated_at);
         const next = new Map([...current].map(([n, r]) => [n, r.data]));
         for (const w of writes) next.set(w.name, w.data);

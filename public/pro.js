@@ -33,6 +33,23 @@ export function normalizeKey(input) {
   return `BB-${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}`;
 }
 
+// A pasted key on its own: BB-XXXX-XXXX-XXXX-XXXX in one piece, or four groups of four
+// (with or without BB in front). Returns the key or null. The router only uses this when
+// the first word is not a command, so WATCH ADD AAPL MSFT stays a command.
+export function bareKey(toks) {
+  if (!Array.isArray(toks) || !toks.length || toks.length > 5) return null;
+  if (toks.length === 1) return normalizeKey(toks[0]);
+  const groups = toks[0] === 'BB' ? toks.slice(1) : toks;
+  if (groups.length !== 4 || groups.some((g) => g.length !== 4)) return null;
+  return normalizeKey(groups.join(''));
+}
+
+// Words that could be the start of a key being typed: never sent to symbol search.
+export function looksLikeKey(text) {
+  const t = String(text || '').toUpperCase();
+  return /^BB[-\s]/.test(t) || /^[A-Z2-9]{4}-[A-Z2-9]{1,4}/.test(t) || (t.match(/-/g) || []).length >= 2;
+}
+
 // A cached status is Pro while active, trialing, or past_due inside its grace period.
 export function statusActive(st, now = Date.now()) {
   if (!st) return false;
@@ -113,6 +130,22 @@ export function planPull(meta, remote) {
   return out;
 }
 
+// After a PUT: documents the server took are synced; for any it did not take (a tie or
+// a newer copy there) the server copy wins and this browser adopts it, so a dropped
+// write is never counted as pushed. reply: { docs, written }.
+export function resolvePush(push, local, reply) {
+  const written = new Set(reply?.written || []);
+  const accepted = [];
+  const adopt = [];
+  for (const name of Object.keys(push)) {
+    const srv = reply?.docs?.[name];
+    if (written.has(name)) accepted.push({ name, raw: local[name] ?? null, updatedAt: srv?.updatedAt ?? push[name].updatedAt });
+    else if (srv) adopt.push({ name, data: srv.data, updatedAt: srv.updatedAt });
+    // Neither: leave it unsynced, the next round tries again.
+  }
+  return { accepted, adopt };
+}
+
 // Local documents that changed since the last sync. local: { name: raw string or null }.
 export function planPush(meta, local, now) {
   const docs = {};
@@ -176,17 +209,27 @@ async function call(url, { method = 'GET', body, auth = true, keepalive = false 
   return data;
 }
 
-// The session id from the Stripe success URL. Read when this module loads, before the
-// router tidies the URL, and kept for this tab until the key is saved.
+// The session id from the Stripe success URL. Read when this module loads, then taken
+// out of the address bar at once; kept for this tab until the key is saved.
+export function withoutSessionId(search) {
+  const p = new URLSearchParams(search || '');
+  p.delete('session_id');
+  const q = p.toString();
+  return q ? `?${q}` : '';
+}
 let pendingSession = null;
 function readPending() {
   if (!hasWindow) return;
   try {
-    const id = new URLSearchParams(location.search).get('session_id');
-    if (id && /^cs_(test|live)_[A-Za-z0-9]{10,250}$/.test(id)) {
-      pendingSession = id;
-      sessionStorage.setItem(PENDING_KEY, id);
-      return;
+    const params = new URLSearchParams(location.search);
+    if (params.has('session_id')) {
+      const id = params.get('session_id');
+      history.replaceState(history.state, '', location.pathname + withoutSessionId(location.search) + location.hash);
+      if (id && /^cs_(test|live)_[A-Za-z0-9]{10,250}$/.test(id)) {
+        pendingSession = id;
+        try { sessionStorage.setItem(PENDING_KEY, id); } catch { /* this tab only */ }
+        return;
+      }
     }
   } catch { /* ignore */ }
   try { pendingSession = sessionStorage.getItem(PENDING_KEY); } catch { /* ignore */ }
@@ -199,8 +242,17 @@ export function clearPending() {
   try { sessionStorage.removeItem(PENDING_KEY); } catch { /* ignore */ }
 }
 
+// Site config: { mode: 'live'|'test', open }. Asked once per page load.
+let configPromise = null;
+export function getConfig() {
+  configPromise ||= call('/api/pro/config', { auth: false }).catch(() => { configPromise = null; return { mode: 'live', open: false }; });
+  return configPromise;
+}
+
+// SUBSCRIBE, or REACTIVATE when this browser holds a key (the key goes along, so the new
+// subscription joins the same licence).
 export async function startCheckout() {
-  const { url } = await call('/api/pro/checkout', { method: 'POST', auth: false });
+  const { url } = await call('/api/pro/checkout', { method: 'POST' });
   if (!/^https:\/\/checkout\.stripe\.com\//.test(url)) throw new Error('Checkout did not open. Try again in a minute.');
   location.assign(url);
 }
@@ -217,11 +269,19 @@ function saveStatus(d) {
   return st;
 }
 
-// The success page: fetch the new key, save it, start syncing.
+// The success page: fetch the new key, save it, tell the server it is saved (so it drops
+// its copy), start syncing. After REACTIVATE there is no new key, only a new status.
 export async function claim(sessionId) {
-  const d = await call(`/api/pro/claim?session_id=${encodeURIComponent(sessionId)}`, { auth: false });
-  const saved = saveKey(d.key);
+  const d = await call('/api/pro/claim', { method: 'POST', body: { session_id: sessionId }, auth: false });
+  if (d.reactivated) {
+    saveStatus(d);
+    syncNow().catch(() => {});
+    startSync();
+    return { ...d, saved: true };
+  }
+  const saved = saveKey(d.key) && getKey() === d.key;
   saveStatus(d);
+  if (saved) call('/api/pro/claim/confirm', { method: 'POST', body: { session_id: sessionId } }).catch(() => {});
   syncNow().catch(() => {});
   startSync();
   return { ...d, saved };
@@ -294,7 +354,9 @@ export function syncNow({ pull = true } = {}) {
     const push = planPush(meta, local, Date.now());
     if (Object.keys(push).length) {
       const r = await call('/api/pro/sync', { method: 'PUT', body: { docs: push } });
-      for (const [name, doc] of Object.entries(push)) meta[name] = { raw: local[name] ?? null, updatedAt: doc.updatedAt };
+      const { accepted, adopt } = resolvePush(push, local, r);
+      for (const a of accepted) meta[a.name] = { raw: a.raw, updatedAt: a.updatedAt };
+      changed.push(...applyPulls(meta, adopt));
       changed.push(...applyPulls(meta, planPull(meta, r.docs)));
     }
     storage.set(LS.meta, meta);

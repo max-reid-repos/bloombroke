@@ -4,7 +4,8 @@
 //
 //   node scripts/stripe-setup.js <path/to/.env> [--live]
 //
-// Reads STRIPE_SECRET_KEY from that .env. Makes, or finds:
+// Uses the key set STRIPE_MODE picks (live: STRIPE_SECRET_KEY, test: STRIPE_SECRET_KEY_TEST)
+// and writes the matching names (with _TEST in test mode). Makes, or finds:
 //   - the product "Bloombroke Pro"
 //   - its price: $4.20 USD a month
 //   - a Billing Portal configuration (card, invoices, cancel; no plan switching)
@@ -18,7 +19,7 @@ import { randomBytes } from 'node:crypto';
 import { parseEnv } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createStripe, PRO_METADATA, WEBHOOK_EVENTS } from '../pro/billing.js';
+import { createStripe, stripeEnv, PRO_METADATA, WEBHOOK_EVENTS } from '../pro/billing.js';
 
 export const PRODUCT = {
   name: 'Bloombroke Pro',
@@ -136,13 +137,21 @@ async function main(argv) {
   }
   const content = readFileSync(envPath, 'utf8');
   const env = parseEnv(content);
-  const key = env.STRIPE_SECRET_KEY;
-  if (!key) { console.error('STRIPE_SECRET_KEY is not in that .env.'); return 1; }
-  const mode = /^(sk|rk)_live_/.test(key) ? 'live' : 'test';
+  const se = stripeEnv(env);
+  if (se.error) { console.error(se.error); return 1; }
+  if (!se.secretKey) { console.error(`${se.names.secretKey} is not in that .env.`); return 1; }
+  const mode = se.mode;
   console.log(`stripe mode: ${mode}`);
   if (mode === 'live' && !live) { console.error('This is a live key. Run again with --live to go ahead.'); return 1; }
 
-  const { values, report } = await setup({ stripe: createStripe(key), env, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com' });
+  const out = await setup({
+    stripe: createStripe(se.secretKey),
+    env: { STRIPE_WEBHOOK_SECRET: se.webhookSecret, PRO_SECRET: env.PRO_SECRET },
+    publicUrl: env.PUBLIC_URL || 'https://bloombroke.com',
+  });
+  const { report } = out;
+  const rename = { STRIPE_PRICE_ID: se.names.priceId, STRIPE_WEBHOOK_SECRET: se.names.webhookSecret, STRIPE_PORTAL_CONFIG_ID: se.names.portalConfigId };
+  const values = Object.fromEntries(Object.entries(out.values).map(([k, v]) => [rename[k] || k, v]));
   const tmp = `${envPath}.tmp-${process.pid}`;
   writeFileSync(tmp, upsertEnv(content, values), { mode: 0o600 });
   renameSync(tmp, envPath);

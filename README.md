@@ -68,7 +68,11 @@ The terminal stays free. Pro is $4.20 a month (Stripe subscription, USD): your o
 > TAPE ADD AAPL                your own ticker tape (Pro)
 ```
 
-- There are no accounts. Checkout makes a licence key like `BB-7KQ2-M9XD-HT4P-WZ3C`. The server stores only its SHA-256 hash and last 4 characters. The success page shows the full key for 24 hours after checkout, to that checkout session only (kept AES-256-GCM encrypted with `PRO_SECRET` until then, then wiped).
+- There are no accounts. Checkout (cards only) makes a licence key like `BB-7KQ2-M9XD-HT4P-WZ3C`. The server stores only its SHA-256 hash and last 4 characters. The success page takes the session id out of the address bar, then POSTs it to get the full key. The server keeps the key AES-256-GCM encrypted with `PRO_SECRET` until the browser confirms it saved it, and 24 hours at most.
+- A pasted key on its own counts as `LOGIN <key>`. A key never goes in the URL, the title, the command history or symbol search.
+- A browser whose key has lapsed sees REACTIVATE: the new subscription joins the same licence (same key, same synced data). Checkout is refused while the licence or the customer still has a live Pro subscription, and other open checkouts of that customer are expired, so two tabs cannot buy twice.
+- Lost key: `node scripts/pro-reissue.js <path/to/.env> --subscription sub_... | --email address` gives the licence a new key, prints it once, and the old key stops working.
+- `STRIPE_MODE=test` switches to the `*_TEST` Stripe settings and shows a demo-checkout banner on PRO. Licences from test checkouts give no Pro on the live site. `TERMS_VERSION` is stored with each acceptance.
 - Stripe is the source of truth. The webhook reads each subscription's status fresh from Stripe. Pro is on while the status is `active` or `trialing`, and for 7 days of `past_due`.
 - Code: `pro/` (server), `migrations/` (SQLite schema, applied at start), `public/pro.js` and `public/screens/pro.js`, `public/screens/tape.js` (browser). Data lives in `var/pro.db` (SQLite via better-sqlite3, WAL).
 - Checkout requires ticking the Terms box (`consent_collection`), and the time is stored as `terms_accepted_at`. Stripe needs a Terms of service URL in the account's public details for that, and `/terms` must exist.
@@ -80,7 +84,9 @@ The terminal stays free. Pro is $4.20 a month (Stripe subscription, USD): your o
 | --- | --- |
 | `POST /api/pro/checkout` | a Stripe Checkout Session URL (rate limited per IP) |
 | `POST /api/stripe/webhook` | Stripe events, signature checked, each event handled once |
-| `GET /api/pro/claim?session_id=` | the new key, for a paid session, within 24 hours |
+| `GET /api/pro/config` | `{ mode, open }` for the PRO screen |
+| `POST /api/pro/claim` | `{ session_id }` to the new key, for a paid session, within 24 hours |
+| `POST /api/pro/claim/confirm` | the browser saved the key: the server forgets its copy |
 | `POST /api/pro/login` | `{ key }` to status (rate limited, slowed down) |
 | `GET /api/pro/status` | status for the key in the `X-Pro-Key` header |
 | `POST /api/pro/portal` | a Stripe Billing Portal URL |

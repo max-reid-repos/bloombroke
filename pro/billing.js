@@ -9,8 +9,34 @@ export const STRIPE_API_VERSION = '2026-08-26.dahlia';
 // metadata, and events for anything else are ignored.
 export const PRO_METADATA = { site: 'bloombroke', product: 'pro' };
 
+export const DEFAULT_TERMS_VERSION = '2026-09-25';
+
+// STRIPE_MODE=test|live (default live) picks the key set: STRIPE_SECRET_KEY,
+// STRIPE_PRICE_ID, STRIPE_WEBHOOK_SECRET, STRIPE_PORTAL_CONFIG_ID, or the same names with
+// _TEST. A key of the other mode is refused, so a demo can never charge real money and a
+// live site never runs on a test key.
+export function stripeEnv(env = process.env) {
+  const mode = String(env.STRIPE_MODE || '').trim().toLowerCase() === 'test' ? 'test' : 'live';
+  const sfx = mode === 'test' ? '_TEST' : '';
+  const get = (k) => (env[k + sfx] || '').trim() || null;
+  let secretKey = get('STRIPE_SECRET_KEY');
+  let error = null;
+  if (secretKey && !new RegExp(`^(sk|rk)_${mode}_`).test(secretKey)) {
+    error = `STRIPE_MODE is ${mode} but STRIPE_SECRET_KEY${sfx} is not a ${mode} key`;
+    secretKey = null;
+  }
+  return {
+    mode, error, secretKey,
+    priceId: get('STRIPE_PRICE_ID'),
+    webhookSecret: get('STRIPE_WEBHOOK_SECRET'),
+    portalConfigId: get('STRIPE_PORTAL_CONFIG_ID'),
+    names: { secretKey: `STRIPE_SECRET_KEY${sfx}`, priceId: `STRIPE_PRICE_ID${sfx}`, webhookSecret: `STRIPE_WEBHOOK_SECRET${sfx}`, portalConfigId: `STRIPE_PORTAL_CONFIG_ID${sfx}` },
+  };
+}
+
 export const WEBHOOK_EVENTS = [
   'checkout.session.completed',
+  'checkout.session.async_payment_succeeded',
   'customer.subscription.updated',
   'customer.subscription.deleted',
   'invoice.payment_failed',
@@ -34,10 +60,15 @@ export function isPaidSession(s) {
 export const TERMS_MESSAGE = 'I agree to the [Terms](https://bloombroke.com/terms) and understand Bloombroke gives information only, not investment advice.';
 export const SUBMIT_MESSAGE = 'Auto-renews monthly at $4.20 USD. Cancel any time in MANAGE; access continues to the end of the paid month.';
 
-export function checkoutParams({ priceId, publicUrl }) {
+// licence: set for REACTIVATE, so the new subscription lands on the same licence and
+// the same Stripe customer.
+export function checkoutParams({ priceId, publicUrl, licence = null }) {
   const base = publicUrl.replace(/\/+$/, '');
-  return {
+  const metadata = licence ? { ...PRO_METADATA, licence_id: String(licence.id) } : { ...PRO_METADATA };
+  const params = {
     mode: 'subscription',
+    // Cards only: a delayed payment method could complete checkout unpaid.
+    payment_method_types: ['card'],
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${base}/?c=PRO&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${base}/?c=PRO`,
@@ -50,9 +81,20 @@ export function checkoutParams({ priceId, publicUrl }) {
       terms_of_service_acceptance: { message: TERMS_MESSAGE },
       submit: { message: SUBMIT_MESSAGE },
     },
-    metadata: { ...PRO_METADATA },
-    subscription_data: { metadata: { ...PRO_METADATA } },
+    metadata,
+    subscription_data: { metadata: { ...metadata } },
   };
+  if (licence) {
+    params.client_reference_id = String(licence.id);
+    if (licence.stripe_customer_id) params.customer = licence.stripe_customer_id;
+  }
+  return params;
+}
+
+// The licence a REACTIVATE checkout belongs to, or null for a new purchase.
+export function reactivateLicenceId(session) {
+  const ref = session?.client_reference_id;
+  return typeof ref === 'string' && /^[1-9]\d{0,15}$/.test(ref) && session.metadata?.licence_id === ref ? Number(ref) : null;
 }
 
 // Invoices name their subscription under parent.subscription_details on current API
@@ -71,7 +113,7 @@ export function termsAcceptedAt(session, at = Date.now()) {
   return session?.consent?.terms_of_service === 'accepted' ? at : null;
 }
 
-export async function licenceFromSession(session, { store, stripe, log = console, at = Date.now() }) {
+export async function licenceFromSession(session, { store, stripe, log = console, at = Date.now(), termsVersion = DEFAULT_TERMS_VERSION }) {
   if (!isPaidSession(session)) return null;
   const subId = idOf(session.subscription);
   const sub = await stripe.subscriptions.retrieve(subId);
@@ -82,11 +124,17 @@ export async function licenceFromSession(session, { store, stripe, log = console
     subscriptionId: subId,
     status: sub.status,
     termsAcceptedAt: accepted,
+    termsVersion,
+    licenceId: reactivateLicenceId(session),
+    livemode: typeof session.livemode === 'boolean' ? session.livemode : null,
   });
-  if (out.created) {
+  if (out.created || out.reactivated) {
     // Only the last 4 characters go to Stripe, so the dashboard can match a customer to a key.
     const metadata = { ...PRO_METADATA, licence_last4: out.licence.last4 };
-    if (accepted) metadata.terms_accepted_at = new Date(accepted).toISOString();
+    if (accepted) {
+      metadata.terms_accepted_at = new Date(accepted).toISOString();
+      metadata.terms_version = termsVersion;
+    }
     try {
       await stripe.subscriptions.update(subId, { metadata });
     } catch (err) {
@@ -115,6 +163,7 @@ export async function handleEvent(event, deps) {
   let result = 'ignored';
   switch (event.type) {
     case 'checkout.session.completed':
+    case 'checkout.session.async_payment_succeeded':
       result = (await licenceFromSession(obj, { ...deps, at: Number.isFinite(event.created) ? event.created * 1000 : Date.now() })) ? 'licence' : 'ignored';
       break;
     case 'customer.subscription.updated':

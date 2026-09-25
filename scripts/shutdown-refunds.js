@@ -15,7 +15,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { parseEnv } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createStripe, PRO_METADATA, idOf } from '../pro/billing.js';
+import { createStripe, stripeEnv, PRO_METADATA, idOf } from '../pro/billing.js';
 
 export const STATUSES = ['active', 'trialing', 'past_due'];
 const SHUTDOWN_TAG = 'bloombroke_shutdown';
@@ -120,13 +120,14 @@ async function main(argv) {
     return 1;
   }
   const env = parseEnv(readFileSync(envPath, 'utf8'));
-  const key = env.STRIPE_SECRET_KEY;
-  if (!key) { console.error('STRIPE_SECRET_KEY is not in that .env.'); return 1; }
-  const mode = /^(sk|rk)_live_/.test(key) ? 'live' : 'test';
+  const se = stripeEnv(env);
+  if (se.error) { console.error(se.error); return 1; }
+  if (!se.secretKey) { console.error(`${se.names.secretKey} is not in that .env.`); return 1; }
+  const { mode } = se;
   console.log(`stripe mode: ${mode}. ${execute ? 'EXECUTE: cancelling and refunding.' : 'Dry run: nothing is changed.'}`);
   if (mode === 'live' && execute && !argv.includes('--live')) { console.error('This is a live key. Add --live to really cancel and refund.'); return 1; }
 
-  const s = await run({ stripe: createStripe(key), execute, priceId: env.STRIPE_PRICE_ID || null });
+  const s = await run({ stripe: createStripe(se.secretKey), execute, priceId: se.priceId });
   const by = Object.entries(s.byStatus).map(([k, v]) => `${k} ${v}`).join(', ') || 'none';
   console.log(`subscriptions: ${s.subscriptions} (${by})`);
   console.log(`refunds: ${s.refunds}, total ${fmtMoney(s.refundTotal, s.currency)}${execute ? '' : ' (not sent)'}`);

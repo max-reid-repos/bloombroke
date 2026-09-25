@@ -11,9 +11,9 @@ import {
   generateKey, normalizeKey, hashKey, last4, proAccess, KEY_RE, ALPHABET, GRACE_MS, REVEAL_MS,
   revealKeyFrom, encryptReveal, decryptReveal,
 } from '../pro/licence.js';
-import { checkoutParams, invoiceSubscriptionId, STRIPE_API_VERSION, WEBHOOK_EVENTS } from '../pro/billing.js';
+import { checkoutParams, invoiceSubscriptionId, STRIPE_API_VERSION, WEBHOOK_EVENTS, stripeEnv } from '../pro/billing.js';
 import { mountPro } from '../pro/routes.js';
-import { createLimiter } from '../pro/ratelimit.js';
+import { createLimiter, ipBucket } from '../pro/ratelimit.js';
 
 const SECRET = 'whsec_test_dummy_secret_for_unit_tests';
 const AES = revealKeyFrom('x'.repeat(40));
@@ -38,6 +38,8 @@ function fakeStripe() {
       sessions: {
         async create(p) { calls.push(['checkout.create', p]); return { id: 'cs_test_created0001', url: 'https://checkout.stripe.com/c/pay/cs_test_created0001' }; },
         async retrieve(id) { calls.push(['checkout.retrieve', id]); if (!sessions[id]) throw missing(); return sessions[id]; },
+        list({ customer, status }) { return Object.values(sessions).filter((x) => x.customer === customer && x.status === status); },
+        async expire(id) { calls.push(['checkout.expire', id]); sessions[id].status = 'expired'; return sessions[id]; },
       },
     },
     subscriptions: {
@@ -48,6 +50,7 @@ function fakeStripe() {
         return subs[id];
       },
       async update(id, p) { calls.push(['sub.update', id, p]); return { id, ...p }; },
+      list({ customer }) { return Object.values(subs).filter((x) => x.customer === customer); },
     },
     billingPortal: { sessions: { async create(p) { calls.push(['portal.create', p]); return { url: 'https://billing.stripe.com/p/session/test_1' }; } } },
   };
@@ -68,7 +71,7 @@ function paidSession(n = 1, extra = {}) {
   };
 }
 
-async function setup({ configured = true, loginDelayMs = 0 } = {}) {
+async function setup({ configured = true, loginDelayMs = 0, mode = 'live', termsVersion } = {}) {
   let t = T0;
   const now = () => t;
   const db = openDb(':memory:');
@@ -77,7 +80,7 @@ async function setup({ configured = true, loginDelayMs = 0 } = {}) {
   const app = express();
   mountPro(app, {
     store, stripe, now, loginDelayMs, log: quiet,
-    config: configured ? { priceId: 'price_test_pro', webhookSecret: SECRET, proSecretSet: true, publicUrl: 'https://bloombroke.com', portalConfigId: 'bpc_test_1' } : {},
+    config: configured ? { priceId: 'price_test_pro', webhookSecret: SECRET, proSecretSet: true, publicUrl: 'https://bloombroke.com', portalConfigId: 'bpc_test_1', mode, termsVersion } : {},
   });
   const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -226,7 +229,7 @@ test('migrations: applied once per database file', () => {
     assert.equal(a.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
     a.close();
     const b = openDb(file);
-    assert.equal(b.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 2);
+    assert.equal(b.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 3);
     assert.ok(b.prepare('PRAGMA table_info(licences)').all().some((c) => c.name === 'terms_accepted_at'));
     b.close();
   } finally {
@@ -239,6 +242,9 @@ test('migrations: applied once per database file', () => {
 test('checkout: subscription mode, server price, no promo codes, no tax, fixed URLs', async () => {
   const p = checkoutParams({ priceId: 'price_x', publicUrl: 'https://bloombroke.com/' });
   assert.equal(p.mode, 'subscription');
+  assert.deepEqual(p.payment_method_types, ['card'], 'no delayed payment methods');
+  assert.equal(p.client_reference_id, undefined);
+  assert.equal(p.customer, undefined);
   assert.deepEqual(p.line_items, [{ price: 'price_x', quantity: 1 }]);
   assert.equal(p.success_url, 'https://bloombroke.com/?c=PRO&session_id={CHECKOUT_SESSION_ID}');
   assert.equal(p.cancel_url, 'https://bloombroke.com/?c=PRO');
@@ -268,7 +274,7 @@ test('checkout: closed until Stripe and secrets are configured', async () => {
   const s = await setup({ configured: false });
   try {
     assert.equal((await s.req('POST', '/api/pro/checkout')).status, 503);
-    assert.equal((await s.req('GET', '/api/pro/claim?session_id=cs_test_session000001')).status, 503);
+    assert.equal((await s.req('POST', '/api/pro/claim', { body: { session_id: 'cs_test_session000001' } })).status, 503);
   } finally { await s.close(); }
 });
 
@@ -304,7 +310,8 @@ test('webhook: checkout.session.completed makes one licence, tags only the last 
     assert.equal(lic.terms_accepted_at, T0, 'terms time is the completion event time');
     const upd = s.stripe.calls.filter((c) => c[0] === 'sub.update');
     assert.equal(upd.length, 1);
-    assert.deepEqual(upd[0][2].metadata, { site: 'bloombroke', product: 'pro', licence_last4: lic.last4, terms_accepted_at: new Date(T0).toISOString() });
+    assert.deepEqual(upd[0][2].metadata, { site: 'bloombroke', product: 'pro', licence_last4: lic.last4, terms_accepted_at: new Date(T0).toISOString(), terms_version: '2026-09-25' });
+    assert.equal(lic.terms_version, '2026-09-25');
     assert.equal(lic.last4.length, 4);
     const r2 = await s.sendEvent(e);
     assert.equal(r2.body.result, 'duplicate');
@@ -376,7 +383,7 @@ test('webhook: invoice subscription id from new and old payload shapes', () => {
   assert.equal(invoiceSubscriptionId({ parent: { subscription_details: { subscription: { id: 'sub_b' } } } }), 'sub_b');
   assert.equal(invoiceSubscriptionId({ subscription: 'sub_c' }), 'sub_c');
   assert.equal(invoiceSubscriptionId({}), null);
-  assert.deepEqual(WEBHOOK_EVENTS, ['checkout.session.completed', 'customer.subscription.updated', 'customer.subscription.deleted', 'invoice.payment_failed']);
+  assert.deepEqual(WEBHOOK_EVENTS, ['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'customer.subscription.updated', 'customer.subscription.deleted', 'invoice.payment_failed']);
 });
 
 // ---- claim -------------------------------------------------------------------------------
@@ -387,15 +394,15 @@ test('claim: key only for a paid session, the same key every time, for 24 hours'
     const sess = paidSession(5);
     s.stripe.sessions[sess.id] = sess;
     s.stripe.subs.sub_5 = { id: 'sub_5', status: 'active', customer: 'cus_5' };
-    assert.equal((await s.req('GET', '/api/pro/claim?session_id=nope')).status, 400);
-    assert.equal((await s.req('GET', '/api/pro/claim?session_id=cs_test_unknown0000001')).status, 404);
+    assert.equal((await s.req('POST', '/api/pro/claim', { body: { session_id: 'nope' } })).status, 400);
+    assert.equal((await s.req('POST', '/api/pro/claim', { body: { session_id: 'cs_test_unknown0000001' } })).status, 404);
     s.stripe.sessions.cs_test_unpaid0000001 = paidSession(6, { id: 'cs_test_unpaid0000001', payment_status: 'unpaid', status: 'open' });
-    assert.equal((await s.req('GET', '/api/pro/claim?session_id=cs_test_unpaid0000001')).status, 402);
+    assert.equal((await s.req('POST', '/api/pro/claim', { body: { session_id: 'cs_test_unpaid0000001' } })).status, 402);
     s.stripe.sessions.cs_test_foreign000001 = paidSession(7, { id: 'cs_test_foreign000001', metadata: {} });
-    assert.equal((await s.req('GET', '/api/pro/claim?session_id=cs_test_foreign000001')).status, 404);
+    assert.equal((await s.req('POST', '/api/pro/claim', { body: { session_id: 'cs_test_foreign000001' } })).status, 404);
 
     s.advance(5000);
-    const a = await s.req('GET', `/api/pro/claim?session_id=${sess.id}`);
+    const a = await s.req('POST', '/api/pro/claim', { body: { session_id: sess.id } });
     assert.equal(a.status, 200);
     assert.match(a.body.key, KEY_RE);
     assert.equal(s.store.findBySession(sess.id).terms_accepted_at, T0 + 5000, 'from the success page: the time of the claim');
@@ -405,12 +412,12 @@ test('claim: key only for a paid session, the same key every time, for 24 hours'
     const w = await s.sendEvent(evt('evt_5', 'checkout.session.completed', sess));
     assert.equal(w.body.result, 'licence');
     assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM licences').get().n, 1);
-    const b = await s.req('GET', `/api/pro/claim?session_id=${sess.id}`);
+    const b = await s.req('POST', '/api/pro/claim', { body: { session_id: sess.id } });
     assert.equal(b.body.key, a.body.key);
     s.advance(REVEAL_MS - 1000);
-    assert.equal((await s.req('GET', `/api/pro/claim?session_id=${sess.id}`)).body.key, a.body.key);
+    assert.equal((await s.req('POST', '/api/pro/claim', { body: { session_id: sess.id } })).body.key, a.body.key);
     s.advance(2000);
-    const late = await s.req('GET', `/api/pro/claim?session_id=${sess.id}`);
+    const late = await s.req('POST', '/api/pro/claim', { body: { session_id: sess.id } });
     assert.equal(late.status, 410);
     assert.equal(late.body.key, undefined);
   } finally { await s.close(); }
@@ -424,7 +431,7 @@ test('claim: webhook first, then the success page shows that key', async () => {
     s.stripe.subs.sub_8 = { id: 'sub_8', status: 'active' };
     await s.sendEvent(evt('evt_8', 'checkout.session.completed', sess));
     const lic = s.store.findBySubscription('sub_8');
-    const r = await s.req('GET', `/api/pro/claim?session_id=${sess.id}`);
+    const r = await s.req('POST', '/api/pro/claim', { body: { session_id: sess.id } });
     assert.equal(r.status, 200);
     assert.equal(hashKey(r.body.key), lic.key_hash);
   } finally { await s.close(); }
@@ -523,4 +530,182 @@ test('portal: opens the Billing Portal for the key\'s customer only', async () =
     const [, p] = s.stripe.calls.find((c) => c[0] === 'portal.create');
     assert.deepEqual(p, { customer: 'cus_p', return_url: 'https://bloombroke.com/?c=PRO', configuration: 'bpc_test_1' });
   } finally { await s.close(); }
+});
+
+// ---- review fixes ------------------------------------------------------------------------------
+
+test('webhook: checkout.session.async_payment_succeeded makes the licence like completed', async () => {
+  const s = await setup();
+  try {
+    s.stripe.subs.sub_9 = { id: 'sub_9', status: 'active', customer: 'cus_9' };
+    const pending = await s.sendEvent(evt('evt_9a', 'checkout.session.completed', paidSession(9, { payment_status: 'unpaid' })));
+    assert.equal(pending.body.result, 'ignored');
+    const ok = await s.sendEvent(evt('evt_9b', 'checkout.session.async_payment_succeeded', paidSession(9)));
+    assert.equal(ok.body.result, 'licence');
+    assert.equal(s.store.findBySubscription('sub_9').status, 'active');
+  } finally { await s.close(); }
+});
+
+test('claim: POST only, and the reveal copy is wiped once the browser confirms it saved the key', async () => {
+  const s = await setup();
+  try {
+    const sess = paidSession(10);
+    s.stripe.sessions[sess.id] = sess;
+    s.stripe.subs.sub_10 = { id: 'sub_10', status: 'active', customer: 'cus_10' };
+    assert.equal((await s.req('GET', `/api/pro/claim?session_id=${sess.id}`)).status, 404, 'no GET: the id never sits in a URL');
+    const a = await s.req('POST', '/api/pro/claim', { body: { session_id: sess.id } });
+    assert.equal(a.status, 200);
+    const other = s.store.ensureLicence({ sessionId: 'cs_test_other00000001', subscriptionId: 'sub_other', status: 'active' });
+    const wrong = await s.req('POST', '/api/pro/claim/confirm', { headers: { 'X-Pro-Key': other.key }, body: { session_id: sess.id } });
+    assert.equal(wrong.status, 401, 'a key from another checkout cannot wipe it');
+    assert.ok(s.store.findBySession(sess.id).reveal_ciphertext);
+    const ok = await s.req('POST', '/api/pro/claim/confirm', { headers: { 'X-Pro-Key': a.body.key }, body: { session_id: sess.id } });
+    assert.equal(ok.status, 200);
+    assert.equal(s.store.findBySession(sess.id).reveal_ciphertext, null);
+    const again = await s.req('POST', '/api/pro/claim', { body: { session_id: sess.id } });
+    assert.equal(again.status, 410);
+    assert.equal(again.body.key, undefined);
+    assert.equal((await s.req('POST', '/api/pro/login', { body: { key: a.body.key } })).status, 200, 'the key itself still works');
+  } finally { await s.close(); }
+});
+
+test('reactivate: same licence, same key, same synced data; no second key', async () => {
+  const s = await setup();
+  try {
+    const first = s.store.ensureLicence({ sessionId: 'cs_test_first00000001', customerId: 'cus_r', subscriptionId: 'sub_old', status: 'canceled' });
+    s.store.putDocs(first.licence.id, { watch: { data: ['KO'], updatedAt: T0 } });
+    const H = { 'X-Pro-Key': first.key };
+    // An older open checkout of this customer (another tab) is expired first.
+    s.stripe.sessions.cs_test_opentab000001 = { id: 'cs_test_opentab000001', customer: 'cus_r', status: 'open', mode: 'subscription', metadata: { site: 'bloombroke', product: 'pro' } };
+    const r = await s.req('POST', '/api/pro/checkout', { headers: H });
+    assert.equal(r.status, 200);
+    assert.deepEqual(s.stripe.calls.filter((c) => c[0] === 'checkout.expire').map((c) => c[1]), ['cs_test_opentab000001']);
+    const [, params] = s.stripe.calls.find((c) => c[0] === 'checkout.create');
+    assert.equal(params.client_reference_id, String(first.licence.id));
+    assert.equal(params.customer, 'cus_r');
+    assert.equal(params.metadata.licence_id, String(first.licence.id));
+
+    const sess = paidSession(11, { customer: 'cus_r', subscription: 'sub_new', client_reference_id: String(first.licence.id), metadata: { site: 'bloombroke', product: 'pro', licence_id: String(first.licence.id) } });
+    s.stripe.sessions[sess.id] = sess;
+    s.stripe.subs.sub_new = { id: 'sub_new', status: 'active', customer: 'cus_r' };
+    const w = await s.sendEvent(evt('evt_r1', 'checkout.session.completed', sess));
+    assert.equal(w.body.result, 'licence');
+    assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM licences').get().n, 1, 'no second licence');
+    const lic = s.store.findByKey(first.key);
+    assert.equal(lic.id, first.licence.id);
+    assert.equal(lic.stripe_subscription_id, 'sub_new');
+    assert.equal(lic.status, 'active');
+    assert.deepEqual(s.store.getDocs(lic.id).watch.data, ['KO']);
+    const tag = s.stripe.calls.find((c) => c[0] === 'sub.update' && c[1] === 'sub_new');
+    assert.equal(tag[2].metadata.licence_last4, first.key.slice(-4));
+    // The success page gets the status, not a key.
+    const c = await s.req('POST', '/api/pro/claim', { body: { session_id: sess.id } });
+    assert.equal(c.status, 200);
+    assert.equal(c.body.reactivated, true);
+    assert.equal(c.body.key, undefined);
+    assert.equal(c.body.active, true);
+    // Events for the old subscription no longer touch the licence.
+    assert.equal((await s.sendEvent(evt('evt_r2', 'customer.subscription.deleted', { id: 'sub_old' }))).body.result, 'ignored');
+    assert.equal(s.store.findByKey(first.key).status, 'active');
+    // Now active: a second purchase is refused.
+    const again = await s.req('POST', '/api/pro/checkout', { headers: H });
+    assert.equal(again.status, 409);
+    assert.equal(again.body.error, 'already_active');
+  } finally { await s.close(); }
+});
+
+test('reactivate: refused while Stripe still has a live Pro subscription for the customer', async () => {
+  const s = await setup();
+  try {
+    const { key } = s.store.ensureLicence({ sessionId: 'cs_test_dbl000000001', customerId: 'cus_d', subscriptionId: 'sub_d1', status: 'canceled' });
+    s.stripe.subs.sub_d2 = { id: 'sub_d2', status: 'active', customer: 'cus_d', metadata: { site: 'bloombroke', product: 'pro' } };
+    const r = await s.req('POST', '/api/pro/checkout', { headers: { 'X-Pro-Key': key } });
+    assert.equal(r.status, 409);
+    assert.equal(s.stripe.calls.filter((c) => c[0] === 'checkout.create').length, 0);
+    assert.equal((await s.req('POST', '/api/pro/checkout', { headers: { 'X-Pro-Key': 'BB-AAAA-AAAA-AAAA-AAAA' } })).status, 401);
+  } finally { await s.close(); }
+});
+
+test('rate limiter: a full table refuses new keys; IPv6 counts per /64', () => {
+  let t = 0;
+  const l = createLimiter({ max: 5, windowMs: 1000, maxKeys: 2, now: () => t });
+  assert.equal(l.hit('a').ok, true);
+  assert.equal(l.hit('b').ok, true);
+  assert.equal(l.hit('c').ok, false, 'full: fail closed');
+  assert.equal(l.blocked('c'), true);
+  assert.equal(l.hit('a').ok, true, 'known keys still counted');
+  t = 1000;
+  assert.equal(l.hit('c').ok, true, 'after the window the sweep makes room');
+  assert.equal(ipBucket('2001:db8:1:2:aaaa:bbbb:cccc:dddd'), '2001:0db8:0001:0002::/64');
+  assert.equal(ipBucket('2001:db8:1:2::9'), '2001:0db8:0001:0002::/64');
+  assert.equal(ipBucket('2001:db8:1:3::9'), '2001:0db8:0001:0003::/64');
+  assert.equal(ipBucket('::ffff:203.0.113.9'), '203.0.113.9');
+  assert.equal(ipBucket('203.0.113.9'), '203.0.113.9');
+  assert.equal(ipBucket('::1'), '0000:0000:0000:0000::/64');
+});
+
+test('sync: on an equal updatedAt the server copy stays and is returned', async () => {
+  const s = await setup();
+  try {
+    const { key } = s.store.ensureLicence({ sessionId: 'cs_test_tie000000001', subscriptionId: 'sub_tie', status: 'active' });
+    const H = { 'X-Pro-Key': key };
+    await s.req('PUT', '/api/pro/sync', { headers: H, body: { docs: { watch: { data: ['A'], updatedAt: T0 } } } });
+    const tie = await s.req('PUT', '/api/pro/sync', { headers: H, body: { docs: { watch: { data: ['B'], updatedAt: T0 } } } });
+    assert.deepEqual(tie.body.written, []);
+    assert.deepEqual(tie.body.docs.watch, { data: ['A'], updatedAt: T0 });
+  } finally { await s.close(); }
+});
+
+test('terms version is stored with the acceptance; config tells the page the mode', async () => {
+  const s = await setup({ termsVersion: '2026-10-01' });
+  try {
+    s.stripe.subs.sub_12 = { id: 'sub_12', status: 'active' };
+    await s.sendEvent(evt('evt_12', 'checkout.session.completed', paidSession(12)));
+    const lic = s.store.findBySubscription('sub_12');
+    assert.equal(lic.terms_version, '2026-10-01');
+    assert.equal(lic.terms_accepted_at, T0);
+    s.stripe.subs.sub_13 = { id: 'sub_13', status: 'active' };
+    await s.sendEvent(evt('evt_13', 'checkout.session.completed', paidSession(13, { consent: null })));
+    assert.equal(s.store.findBySubscription('sub_13').terms_version, null, 'no consent, no version');
+    assert.deepEqual((await s.req('GET', '/api/pro/config')).body, { mode: 'live', open: true, price: 420, currency: 'usd' });
+  } finally { await s.close(); }
+});
+
+test('STRIPE_MODE: picks the key set, refuses a key of the other mode; demo licences are off on the live site', async () => {
+  const live = stripeEnv({ STRIPE_SECRET_KEY: 'sk_live_x', STRIPE_PRICE_ID: 'price_l', STRIPE_SECRET_KEY_TEST: 'sk_test_y', STRIPE_PRICE_ID_TEST: 'price_t' });
+  assert.equal(live.mode, 'live');
+  assert.equal(live.secretKey, 'sk_live_x');
+  assert.equal(live.priceId, 'price_l');
+  const test = stripeEnv({ STRIPE_MODE: 'test', STRIPE_SECRET_KEY: 'sk_live_x', STRIPE_SECRET_KEY_TEST: 'sk_test_y', STRIPE_PRICE_ID_TEST: 'price_t', STRIPE_WEBHOOK_SECRET_TEST: 'whsec_t' });
+  assert.equal(test.mode, 'test');
+  assert.equal(test.secretKey, 'sk_test_y');
+  assert.equal(test.priceId, 'price_t');
+  assert.equal(test.webhookSecret, 'whsec_t');
+  assert.equal(test.names.priceId, 'STRIPE_PRICE_ID_TEST');
+  const wrong = stripeEnv({ STRIPE_MODE: 'test', STRIPE_SECRET_KEY_TEST: 'sk_live_oops' });
+  assert.equal(wrong.secretKey, null);
+  assert.match(wrong.error, /not a test key/);
+  assert.equal(stripeEnv({ STRIPE_SECRET_KEY: 'sk_test_z' }).secretKey, null, 'live mode never runs on a test key');
+
+  const s = await setup({ mode: 'live' });
+  try {
+    s.stripe.subs.sub_14 = { id: 'sub_14', status: 'active' };
+    await s.sendEvent(evt('evt_14', 'checkout.session.completed', paidSession(14, { livemode: false })));
+    const lic = s.store.findBySubscription('sub_14');
+    assert.equal(lic.livemode, 0);
+    const { key } = s.store.rotateKey(lic.id);
+    const st = await s.req('GET', '/api/pro/status', { headers: { 'X-Pro-Key': key } });
+    assert.deepEqual(st.body, { active: false, status: 'demo', last4: key.slice(-4) });
+    const r = await s.req('POST', '/api/pro/checkout', { headers: { 'X-Pro-Key': key } });
+    assert.equal(r.status, 200, 'a demo key can buy for real');
+    const [, params] = s.stripe.calls.find((c) => c[0] === 'checkout.create');
+    assert.equal(params.customer, undefined, 'no test customer in a live checkout');
+    assert.equal(params.client_reference_id, String(lic.id));
+  } finally { await s.close(); }
+  const t = await setup({ mode: 'test' });
+  try {
+    const { key } = t.store.ensureLicence({ sessionId: 'cs_live_paid00000001', subscriptionId: 'sub_live', status: 'active', livemode: true });
+    assert.equal((await t.req('GET', '/api/pro/status', { headers: { 'X-Pro-Key': key } })).body.active, true, 'paid live keys keep working in test mode');
+    assert.equal((await t.req('GET', '/api/pro/config')).body.mode, 'test');
+  } finally { await t.close(); }
 });

@@ -2,8 +2,11 @@
 // parser, because the webhook needs the raw body for its signature.
 //
 //   POST /api/stripe/webhook   Stripe events (signature checked)
+//   GET  /api/pro/config       -> { mode: live|test, open }
 //   POST /api/pro/checkout     -> { url } of a Stripe Checkout Session
-//   GET  /api/pro/claim?session_id=   the new key, once paid, for 24 hours
+//   POST /api/pro/checkout     with X-Pro-Key: REACTIVATE on the same licence
+//   POST /api/pro/claim        { session_id } -> the new key, once paid, for 24 hours
+//   POST /api/pro/claim/confirm   X-Pro-Key, { session_id }: the browser saved it, forget it
 //   POST /api/pro/login        { key } -> status
 //   GET  /api/pro/status       X-Pro-Key -> status
 //   POST /api/pro/portal       X-Pro-Key -> { url } of the Stripe Billing Portal
@@ -13,12 +16,18 @@
 import express from 'express';
 import { normalizeKey, proAccess } from './licence.js';
 import { MAX_SYNC_BYTES, SyncError } from './store.js';
-import { checkoutParams, handleEvent, isProSession, isPaidSession, licenceFromSession } from './billing.js';
+import {
+  checkoutParams, handleEvent, isProSession, isPaidSession, licenceFromSession, reactivateLicenceId, idOf, PRO_METADATA, DEFAULT_TERMS_VERSION,
+} from './billing.js';
 import { createLimiter, clientIp } from './ratelimit.js';
 
 export const KEY_HEADER = 'x-pro-key';
 export const SESSION_RE = /^cs_(test|live)_[A-Za-z0-9]{10,250}$/;
 const MIN = 60 * 1000;
+// A subscription in one of these can still bill or give access: no second purchase.
+const LIVE_STATUSES = new Set(['active', 'trialing', 'past_due']);
+const ALREADY_ACTIVE = 'Pro is already active on this key, so there is nothing to buy. Use MANAGE to change your card.';
+const isProObject = (o) => o?.metadata?.site === PRO_METADATA.site && o?.metadata?.product === PRO_METADATA.product;
 
 export function defaultLimits(now) {
   return {
@@ -34,7 +43,10 @@ export function defaultLimits(now) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // What the client may see about a licence.
-export function publicStatus(lic, now) {
+// mode: the site's Stripe mode. A licence from a test (demo) checkout gives no Pro on
+// the live site; live licences keep working in test mode (they were paid for).
+export function publicStatus(lic, now, mode = 'live') {
+  if (lic && mode === 'live' && lic.livemode === 0) return { active: false, status: 'demo', last4: lic.last4 };
   const a = proAccess(lic, now);
   const out = { active: a.active, status: a.status, last4: a.last4 };
   if (a.graceUntil) out.graceUntil = new Date(a.graceUntil).toISOString();
@@ -44,7 +56,9 @@ export function publicStatus(lic, now) {
 export function mountPro(app, {
   store, stripe = null, config = {}, now = () => Date.now(), loginDelayMs = 300, limits = defaultLimits(now), log = console,
 }) {
-  const { priceId, webhookSecret, publicUrl = 'https://bloombroke.com', portalConfigId, proSecretSet } = config;
+  const {
+    priceId, webhookSecret, publicUrl = 'https://bloombroke.com', portalConfigId, proSecretSet, mode = 'live', termsVersion = DEFAULT_TERMS_VERSION,
+  } = config;
   const ready = Boolean(stripe && priceId && webhookSecret && proSecretSet);
   const base = publicUrl.replace(/\/+$/, '');
 
@@ -64,7 +78,7 @@ export function mountPro(app, {
       return fail(res, 400, 'bad_signature', 'Signature check failed.');
     }
     try {
-      const result = await handleEvent(event, { store, stripe, log });
+      const result = await handleEvent(event, { store, stripe, log, termsVersion });
       res.json({ received: true, result });
     } catch (err) {
       log.error('[stripe webhook]', event.type, event.id, err.message);
@@ -86,7 +100,7 @@ export function mountPro(app, {
       fail(res, 401, 'bad_key', 'That key is not valid. Check it and try LOGIN again.');
       return null;
     }
-    const status = publicStatus(lic, now());
+    const status = publicStatus(lic, now(), mode);
     if (requireActive && !status.active) {
       fail(res, 402, 'not_active', 'Pro is not active on this key.', { status });
       return null;
@@ -94,13 +108,40 @@ export function mountPro(app, {
     return { lic, status };
   }
 
+  // ---- config: what the PRO screen needs to know (test mode shows a demo banner) ----
+  pro.get('/config', (req, res) => {
+    res.json({ mode, open: ready, price: 420, currency: 'usd' });
+  });
+
   // ---- checkout ---------------------------------------------------------------
+  // With X-Pro-Key this is REACTIVATE: same licence, same customer. Refused while the
+  // licence (or any Pro subscription of that customer) is still live, and any other open
+  // checkout for the customer is expired first, so two tabs cannot buy twice.
   pro.post('/checkout', async (req, res) => {
     if (!ready) return fail(res, 503, 'not_open', 'Pro is not open yet. Try again soon.');
     const r = limits.checkout.hit(clientIp(req));
     if (!r.ok) return limited(res, r);
+    let licence = null;
+    if (req.get(KEY_HEADER)) {
+      const a = auth(req, res);
+      if (!a) return;
+      licence = a.lic;
+      // A demo (test mode) licence on the live site: buy for real on the same key, with a
+      // new live customer (the test customer does not exist in live mode).
+      if (mode === 'live' && licence.livemode === 0) licence = { ...licence, stripe_customer_id: null };
+      else if (LIVE_STATUSES.has(licence.status)) return fail(res, 409, 'already_active', ALREADY_ACTIVE);
+    }
     try {
-      const session = await stripe.checkout.sessions.create(checkoutParams({ priceId, publicUrl: base }));
+      const customer = licence?.stripe_customer_id;
+      if (customer) {
+        for await (const sub of stripe.subscriptions.list({ customer, status: 'all', limit: 100 })) {
+          if (isProObject(sub) && LIVE_STATUSES.has(sub.status)) return fail(res, 409, 'already_active', ALREADY_ACTIVE);
+        }
+        for await (const open of stripe.checkout.sessions.list({ customer, status: 'open', limit: 100 })) {
+          if (isProSession(open)) await stripe.checkout.sessions.expire(open.id);
+        }
+      }
+      const session = await stripe.checkout.sessions.create(checkoutParams({ priceId, publicUrl: base, licence }));
       res.json({ url: session.url });
     } catch (err) {
       log.error('[pro checkout]', err.message);
@@ -109,9 +150,10 @@ export function mountPro(app, {
   });
 
   // ---- claim: the success page asks for the new key ---------------------------------
-  pro.get('/claim', async (req, res) => {
+  // POST with the session id in the body, so it is never in a URL or a log line.
+  pro.post('/claim', express.json({ limit: '1kb' }), async (req, res) => {
     if (!ready) return fail(res, 503, 'not_open', 'Pro is not open yet.');
-    const sessionId = typeof req.query.session_id === 'string' ? req.query.session_id : '';
+    const sessionId = typeof req.body?.session_id === 'string' ? req.body.session_id : '';
     if (!SESSION_RE.test(sessionId)) return fail(res, 400, 'bad_session', 'That checkout link does not look right.');
     const r = limits.claim.hit(clientIp(req));
     if (!r.ok) return limited(res, r);
@@ -125,18 +167,42 @@ export function mountPro(app, {
     }
     if (!isProSession(session)) return fail(res, 404, 'not_found', 'No checkout found for that link.');
     if (!isPaidSession(session)) return fail(res, 402, 'not_paid', 'Payment is not complete yet. Reload in a minute.');
+    let made;
     try {
-      await licenceFromSession(session, { store, stripe, log, at: now() });
+      made = await licenceFromSession(session, { store, stripe, log, at: now(), termsVersion });
     } catch (err) {
       log.error('[pro claim] licence', err.message);
       return fail(res, 503, 'unavailable', 'Payments are taking a break. Reload in a minute.');
     }
+    // REACTIVATE: the browser already has the key; only the status changes.
+    if (reactivateLicenceId(session)) {
+      const lic = made?.licence || store.findBySubscription(idOf(session.subscription));
+      return res.json({ reactivated: true, ...publicStatus(lic, now(), mode) });
+    }
     const out = store.reveal(sessionId);
     if (!out) return fail(res, 404, 'not_found', 'No key found for that checkout.');
     if (out.expired) {
-      return fail(res, 410, 'expired', 'This key was shown for 24 hours after checkout. Use LOGIN with the key you saved.', { status: publicStatus(out.licence, now()) });
+      return fail(res, 410, 'expired', 'This key is no longer shown here. Use LOGIN with the key you saved.', { status: publicStatus(out.licence, now(), mode) });
     }
-    res.json({ key: out.key, ...publicStatus(out.licence, now()) });
+    res.json({ key: out.key, ...publicStatus(out.licence, now(), mode) });
+  });
+
+  // The browser saved the key: the server forgets its copy now instead of in 24 hours.
+  pro.post('/claim/confirm', express.json({ limit: '1kb' }), (req, res) => {
+    const ip = clientIp(req);
+    if (limits.guess.blocked(ip)) return limited(res, limits.guess.hit(ip));
+    const r = limits.claim.hit(ip);
+    if (!r.ok) return limited(res, r);
+    const sessionId = typeof req.body?.session_id === 'string' ? req.body.session_id : '';
+    const key = normalizeKey(req.get(KEY_HEADER) || '');
+    if (!SESSION_RE.test(sessionId) || !key) return fail(res, 400, 'bad_request', 'Send the session id and the key.');
+    const lic = store.findByKey(key);
+    if (!lic || lic.checkout_session_id !== sessionId) {
+      limits.guess.hit(ip);
+      return fail(res, 401, 'bad_key', 'That key does not belong to this checkout.');
+    }
+    store.forgetReveal(sessionId, key);
+    res.json({ ok: true });
   });
 
   // ---- login / status -------------------------------------------------------------
@@ -151,7 +217,7 @@ export function mountPro(app, {
       limits.guess.hit(ip);
       return fail(res, 401, 'bad_key', 'That key is not valid. Check it and try again.');
     }
-    res.json({ ok: true, ...publicStatus(lic, now()) });
+    res.json({ ok: true, ...publicStatus(lic, now(), mode) });
   });
 
   pro.get('/status', (req, res) => {

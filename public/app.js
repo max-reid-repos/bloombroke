@@ -26,7 +26,7 @@ import { matchInstrument, searchInstruments } from './instruments.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { statusLine, freshTag } from './freshness.js';
 import { EXTRA_HELP, EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra, urlCommand, isSecret } from './commands.js';
-import { getTape, loadTapeRows } from './pro.js';
+import { getTape, loadTapeRows, bareKey, looksLikeKey } from './pro.js';
 
 export const COMMANDS = [
   { name: 'HOME', group: 'Markets', hint: 'Markets, S&P 500, currencies and news on one screen', usage: 'HOME', example: 'HOME' },
@@ -247,6 +247,9 @@ export function parseCommand(raw, depth = 0) {
   const rest = toks.slice(1);
   // W is also a ticker (Wayfair): it means WATCH only alone or before a WATCH word.
   const head = toks[0] === 'W' && (!rest.length || WATCH_SUBCOMMANDS.includes(rest[0])) ? 'WATCH' : (ALIASES[toks[0]] || toks[0]);
+  // A pasted Pro key on its own is LOGIN <key>: the key never reaches the URL or history.
+  const key = !isCommandHead(head) && bareKey(toks);
+  if (key) return { name: 'LOGIN', args: { key }, input: 'LOGIN', secret: true, url: 'PRO' };
   const extra = matchExtra(head, rest);
   if (extra) return extra;
   if (SIMPLE.has(head)) return { name: head, input: head };
@@ -294,6 +297,20 @@ export function parseCommand(raw, depth = 0) {
   const quote = parseSymbolCommand(toks);
   if (quote) return quote;
   return { name: 'UNKNOWN', input: toks.join(' ') };
+}
+
+function isCommandHead(head) {
+  return SIMPLE.has(head) || head === '420' || head === 'PORTFOLIO' || head === 'CHART' || Boolean(FUNDAMENTALS[head])
+    || COMMANDS.some((c) => c.name === head) || SOON.some((s) => s.name === head);
+}
+
+// What a command puts in the URL and the command history. LOGIN (typed or a pasted key)
+// keeps its key out of both; commands that change something show their screen instead.
+export function urlFor(clean) {
+  const parsed = parseCommand(clean);
+  const url = parsed.mutates ? parsed.view : parsed.url || urlCommand(clean);
+  const kept = parsed.secret || isSecret(clean) ? parsed.input : clean;
+  return { url, kept };
 }
 
 // URL state: ?c=FX+500+USD+THB
@@ -514,6 +531,7 @@ function boot() {
   let remoteAbort = null;
   function remoteQuery(text) {
     const t = text.replace(/^\s+/, '').toUpperCase();
+    if (looksLikeKey(t)) return null; // a Pro key being typed never goes to search
     return /^[A-Z0-9.&/-]{2,12}$/.test(t) ? t : null;
   }
   function fetchRemote(qText) {
@@ -653,9 +671,8 @@ function boot() {
     if (push) {
       // A command that changes a saved list puts its screen in the URL, not itself.
       // LOGIN, LOGOUT and TAPE put their screen there too, and LOGIN's key goes nowhere.
-      const parsed = parseCommand(clean);
-      const q = toQuery(parsed.mutates ? parsed.view : urlCommand(clean));
-      const kept = isSecret(clean) ? parsed.input : clean;
+      const { url, kept } = urlFor(clean);
+      const q = toQuery(url);
       if (location.search !== q) window.history.pushState({ c: kept }, '', q);
       if (cmdHistory[cmdHistory.length - 1] !== kept) {
         cmdHistory.push(kept);
@@ -785,7 +802,7 @@ function boot() {
     if (e.key.length === 1 || e.key === 'Backspace') input.focus();
   });
 
-  window.addEventListener('popstate', () => render(urlCommand(fromQuery(location.search)), { fromUrl: true }));
+  window.addEventListener('popstate', () => render(urlFor(fromQuery(location.search)).url, { fromUrl: true }));
 
   // --- clock ----------------------------------------------------------------
   const clockEl = $('clock');
@@ -870,7 +887,7 @@ function boot() {
   });
 
   // --- first render ---------------------------------------------------------
-  const initial = urlCommand(fromQuery(location.search)); // a link never runs LOGIN or TAPE ADD
+  const initial = urlFor(fromQuery(location.search)).url; // a link never runs LOGIN or TAPE ADD
   window.history.replaceState({ c: initial }, '', location.search ? toQuery(initial) : location.pathname);
   const firstVisit = !store.get('bb.booted', false);
   if (firstVisit && !location.search && !reduceMotion.matches) {

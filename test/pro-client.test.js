@@ -1,13 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { parseCommand, suggest, COMMANDS, SOON } from '../public/app.js';
+import { parseCommand, suggest, COMMANDS, SOON, urlFor } from '../public/app.js';
 import { urlCommand } from '../public/commands.js';
 import {
   parseTape, applyTape, cleanTape, tapeSymbol, planPull, planPush, statusActive, loadTapeRows,
   normalizeKey as clientNormalize, DEFAULT_TAPE, MAX_TAPE, SYNC_DOCS, PRO_ONLY,
+  bareKey, looksLikeKey, resolvePush, withoutSessionId,
 } from '../public/pro.js';
-import { parseLogin, maskKey, keyFileText, statusText, SAVE_LINE, BUY_TERMS, OPERATOR, CONTACT } from '../public/screens/pro.js';
+import {
+  parseLogin, maskKey, keyFileText, statusText, SAVE_LINE, BUY_TERMS, OPERATOR, CONTACT, EXPERIMENTAL_LINE, DEMO_BANNER,
+} from '../public/screens/pro.js';
 import { normalizeKey as serverNormalize, generateKey } from '../pro/licence.js';
 
 test('client and server read keys the same way', () => {
@@ -145,7 +148,7 @@ test('PRO screen copy: the save line, the key file, the mask, the free-user line
 test('copy rules for the Pro files: no banned brand word, no em dashes', () => {
   const files = [
     'public/pro.js', 'public/pro.css', 'public/screens/pro.js', 'public/screens/tape.js', 'README.md',
-    ...readdirSync('pro').map((f) => `pro/${f}`), 'scripts/stripe-setup.js', 'scripts/shutdown-refunds.js',
+    ...readdirSync('pro').map((f) => `pro/${f}`), 'scripts/stripe-setup.js', 'scripts/shutdown-refunds.js', 'scripts/pro-reissue.js',
     ...readdirSync('migrations').map((f) => `migrations/${f}`),
   ];
   for (const f of files) {
@@ -153,4 +156,52 @@ test('copy rules for the Pro files: no banned brand word, no em dashes', () => {
     assert.doesNotMatch(s, new RegExp(['bloom', 'berg'].join(''), 'i'), f);
     assert.doesNotMatch(s, /\u2014/, `${f}: em dash`);
   }
+});
+
+test('a pasted key on its own is LOGIN, and never reaches the URL, history or title', () => {
+  const k = 'BB-7KQ2-M9XD-HT4P-WZ3C';
+  for (const typed of [k, k.toLowerCase(), '7KQ2-M9XD-HT4P-WZ3C', '7KQ2M9XDHT4PWZ3C', 'BB 7KQ2 M9XD HT4P WZ3C', '7kq2 m9xd ht4p wz3c']) {
+    const c = parseCommand(typed);
+    assert.equal(c.name, 'LOGIN', typed);
+    assert.deepEqual(c.args, { key: k });
+    assert.equal(c.input, 'LOGIN', 'title shows LOGIN only');
+    const u = urlFor(typed.toUpperCase());
+    assert.equal(u.url, 'PRO', 'the URL shows PRO');
+    assert.equal(u.kept, 'LOGIN', 'history keeps LOGIN');
+  }
+  // Commands and tickers are not keys, even 16 letters long.
+  assert.equal(parseCommand('WATCH ADD AAPL MSFT').name, 'WATCH');
+  assert.equal(parseCommand('BB').name, 'QUOTE', 'BlackBerry is still a ticker');
+  assert.equal(parseCommand('BB 5Y').name, 'QUOTE');
+  assert.equal(parseCommand('TAPE ADD AAPL MSFT').name, 'TAPE');
+  assert.equal(bareKey(['NEWS', 'AAPL']), null);
+  assert.equal(urlFor('LOGIN BB-7KQ2-M9XD-HT4P-WZ3C').kept, 'LOGIN');
+  assert.equal(urlFor('AAPL 5Y').url, 'AAPL 5Y');
+  // Typing a key never goes to symbol search.
+  assert.equal(looksLikeKey('BB-7KQ2'), true);
+  assert.equal(looksLikeKey('7KQ2-M9'), true);
+  assert.equal(looksLikeKey('BRK.B'), false);
+  assert.equal(looksLikeKey('BF-B'), false);
+});
+
+test('sync: a push the server did not take is replaced by the server copy, never counted as pushed', () => {
+  const push = { watch: { data: ['B'], updatedAt: 100 }, pf: { data: [], updatedAt: 100 }, tape: { data: ['X'], updatedAt: 100 } };
+  const local = { watch: '["B"]', pf: '[]', tape: '["X"]' };
+  const reply = { written: ['pf'], docs: { watch: { data: ['A'], updatedAt: 100 }, pf: { data: [], updatedAt: 100 } } };
+  const { accepted, adopt } = resolvePush(push, local, reply);
+  assert.deepEqual(accepted, [{ name: 'pf', raw: '[]', updatedAt: 100 }]);
+  assert.deepEqual(adopt, [{ name: 'watch', data: ['A'], updatedAt: 100 }]);
+  // tape: neither taken nor returned, so it stays unsynced and is tried again.
+});
+
+test('success page: the session id leaves the address bar', () => {
+  assert.equal(withoutSessionId('?c=PRO&session_id=cs_test_abc'), '?c=PRO');
+  assert.equal(withoutSessionId('?session_id=cs_test_abc'), '');
+  assert.equal(withoutSessionId('?c=PRO'), '?c=PRO');
+});
+
+test('PRO screen: experimental notice before SUBSCRIBE, demo banner text', () => {
+  assert.equal(EXPERIMENTAL_LINE, 'Bloombroke is an experimental project and may be discontinued at short notice. If it is, we cancel your subscription and refund the unused days.');
+  assert.ok(BUY_TERMS.includes(EXPERIMENTAL_LINE));
+  assert.equal(DEMO_BANNER, 'Demo checkout. No real money. Use card 4242 4242 4242 4242, any future date, any CVC.');
 });
