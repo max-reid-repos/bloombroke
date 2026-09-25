@@ -2,7 +2,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseYahooSplits, factorAfter, ratioFactor, normalizeSplits, makeSplitHistory } from '../data/split-history.js';
+import { parseYahooSplits, parseYahooDividends, factorAfter, ratioFactor, normalizeSplits, makeSplitHistory } from '../data/split-history.js';
+import { parseDividends, splitAdjustRows, yearlyTotals, checkYears, makeDividends } from '../data/dividends.js';
+import { yearsChartSvg, basisNote as divBasisNote, checkNote } from '../public/screens/dividends.js';
 import { buildFinancials, withSplits, makeFinancials } from '../data/financials.js';
 import { createCache } from '../data/cache.js';
 import { statementTable, basisValues, basisNote, parseFinancialsArgs, financialsInput, barChartSvg, cellTitle } from '../public/screens/financials.js';
@@ -120,4 +122,64 @@ test('FINANCIALS chart: bars centred over the table columns they belong to', () 
   // A column scrolled under the sticky label column is not drawn.
   const scrolled = barChartSvg(periods, [10e9, 20e9], [1e9, 2e9], { width: 400, height: 150, cols: [{ x: 100, w: 100 }, { x: 200, w: 100 }], plotLeft: 200 });
   assert.equal([...scrolled.matchAll(/class="fin-col"/g)].length, 1);
+});
+
+// ---- DIVIDENDS ------------------------------------------------------------------
+// Nasdaq's Apple dividend history (as paid) and Yahoo's (split-adjusted), both real.
+// Checked against Apple's FY2020 10-K selected data, cash dividends declared per share
+// (split-adjusted, fiscal years to September): FY2019 0.75, FY2018 0.68, FY2016 0.545.
+const NQ_DIV = fixture('nasdaq-dividends-aapl.json');
+const HIST = { splits: parseYahooSplits(YAHOO), dividends: parseYahooDividends(YAHOO), from: null, source: 'Yahoo Finance split history' };
+
+test('DIVIDENDS AAPL: amounts before the splits are put on today\'s basis', () => {
+  const rows = splitAdjustRows(parseDividends(NQ_DIV).rows, HIST);
+  const at = (d) => rows.find((r) => r.exDate === d);
+  assert.equal(at('2019-11-07').amount, 0.1925);
+  assert.equal(at('2019-11-07').asPaid, 0.77);
+  assert.equal(at('2014-05-08').amount, 0.1175, '3.29 before the 7:1 and the 4:1');
+  assert.equal(at('2014-08-07').amount, 0.1175, '0.47 after the 7:1, before the 4:1');
+  assert.equal(at('2021-02-05').amount, 0.205, 'after every split: as paid');
+  assert.equal(at('2021-02-05').splitFactor, undefined);
+  const fiscal = (from, to) => Math.round(rows.filter((r) => r.exDate >= from && r.exDate <= to).reduce((a, r) => a + r.amount, 0) * 1e4) / 1e4;
+  assert.equal(fiscal('2018-09-30', '2019-09-28'), 0.75);
+  assert.equal(fiscal('2017-10-01', '2018-09-29'), 0.68);
+  assert.equal(fiscal('2015-09-27', '2016-09-24'), 0.545);
+  const years = yearlyTotals(rows);
+  assert.equal(years.find((y) => y.year === '2019').total, 0.76);
+});
+
+test('DIVIDENDS: years that disagree with Yahoo get no total', () => {
+  const years = checkYears(yearlyTotals(splitAdjustRows(parseDividends(NQ_DIV).rows, HIST)), HIST.dividends, '2026');
+  const y = (k) => years.find((x) => x.year === k);
+  assert.equal(y('2019').check, 'ok');
+  assert.equal(y('2026').check, null, 'the current year is not checked');
+  // Nasdaq is missing Apple's 2013-05-09 payment.
+  assert.equal(y('2013').check, 'mismatch');
+  assert.equal(y('2013').total, null);
+  assert.deepEqual([y('2013').nasdaq.count, y('2013').other.count], [3, 4]);
+  assert.ok(checkYears([{ year: '2019', total: 1, count: 4 }], null, '2026').every((x) => x.check === null));
+  assert.match(checkNote({ checkSource: 'Yahoo Finance dividend history', years }), /\* 2013/);
+});
+
+test('DIVIDENDS service: adjusted rows, split list, checked years; no history means as paid', async () => {
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => NQ_DIV });
+  const d = await makeDividends({ fetchImpl, now: () => Date.parse('2026-09-25T12:00:00Z'), splitHistory: async () => HIST }).getDividends('AAPL');
+  assert.equal(d.split.splits.length, 4);
+  assert.equal(d.years.find((y) => y.year === '2019').total, 0.76);
+  assert.equal(d.checkSource, 'Yahoo Finance dividend history');
+  assert.match(divBasisNote(d), /split-adjusted/);
+  const raw = await makeDividends({ fetchImpl, splitHistory: async () => null }).getDividends('AAPL');
+  assert.equal(raw.split, null);
+  assert.equal(raw.years.find((y) => y.year === '2019').total, 3.04);
+  assert.match(divBasisNote(raw), /as paid/);
+});
+
+test('DIVIDENDS chart: only the unbroken run of years, "--" for an unchecked year', () => {
+  const svg = yearsChartSvg([{ year: '2026', total: 0.8 }, { year: '2025', total: 1.03 }, { year: '2024', total: null }, { year: '1995', total: 0.004 }], { width: 300, height: 150, currentYear: '2026' });
+  assert.equal([...svg.matchAll(/<rect class="dv-bar/g)].length, 2);
+  assert.match(svg, /dv-bar is-part/);
+  assert.match(svg, />--</);
+  assert.doesNotMatch(svg, />95</);
+  assert.doesNotMatch(svg, /style=/);
+  assert.equal(yearsChartSvg([]), '');
 });

@@ -4,6 +4,8 @@
 // - Fallback: the split list baked into data/whatif-prices.json by the WHATIF build
 //   (same Yahoo source, checked against CNBC split-adjusted closes), for its tickers.
 // A split's date is its first split-adjusted trading day (the ex-date).
+// The same Yahoo call also brings Yahoo's own dividend list (split-adjusted), which
+// DIVIDENDS uses only to cross-check Nasdaq's yearly totals.
 //
 // Rule for a figure dated D (a filing date or a dividend ex-date): every split dated
 // after D has not been applied to it yet. The factor is the product of those ratios.
@@ -74,6 +76,19 @@ export function parseYahooSplits(body) {
   return out.sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
+// Yahoo chart body -> [{ date, amount }] oldest first (amounts split-adjusted by Yahoo).
+export function parseYahooDividends(body) {
+  const r = body?.chart?.result?.[0];
+  if (!r || !r.meta) return null;
+  const off = Number.isFinite(r.meta.gmtoffset) ? r.meta.gmtoffset : -14400;
+  return Object.values(r.events?.dividends || {}).map((v) => {
+    const t = Number(v?.date);
+    const amount = Number(v?.amount);
+    if (!Number.isFinite(t) || !(amount > 0)) return null;
+    return { date: new Date((t + off) * 1000).toISOString().slice(0, 10), amount };
+  }).filter(Boolean).sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
 // Product of the splits dated after `day` (YYYY-MM-DD). 1 when none. null when the
 // history does not reach back to that day (hist.from), so the factor is unknown.
 export function factorAfter(hist, day) {
@@ -101,17 +116,18 @@ export function makeSplitHistory({ fetchImpl = globalThis.fetch, cache = createC
     if (!/^[A-Z]{1,5}([.-][A-Z]{1,2})?$/.test(t)) return null;
     try {
       const got = await cache.cached(`splits:${t}`, DAY, async () => {
-        const url = `${YAHOO_URL}/${encodeURIComponent(yahooSymbol(t))}?range=max&interval=3mo&events=split`;
+        const url = `${YAHOO_URL}/${encodeURIComponent(yahooSymbol(t))}?range=max&interval=3mo&events=div%2Csplit`;
         const res = await fetchImpl(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
         if (!res.ok) throw new Error(`yahoo splits HTTP ${res.status}`);
-        const splits = parseYahooSplits(await res.json());
+        const body = await res.json();
+        const splits = parseYahooSplits(body);
         if (!splits) throw new Error('yahoo splits: unexpected shape');
-        return splits;
+        return { splits, dividends: parseYahooDividends(body) || [] };
       });
-      return { splits: got.value, from: null, source: SPLIT_SOURCE, fetchedAt: got.fetchedAt };
+      return { splits: got.value.splits, dividends: got.value.dividends, from: null, source: SPLIT_SOURCE, fetchedAt: got.fetchedAt };
     } catch (err) {
       const b = bakedFor(t);
-      if (Array.isArray(b)) return { splits: normalizeSplits(b), from: BAKED_FROM, source: `${SPLIT_SOURCE} (WHATIF copy)`, fetchedAt: null };
+      if (Array.isArray(b)) return { splits: normalizeSplits(b), dividends: null, from: BAKED_FROM, source: `${SPLIT_SOURCE} (WHATIF copy)`, fetchedAt: null };
       console.error('[split-history]', t, err.message);
       return null;
     }
