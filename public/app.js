@@ -28,6 +28,7 @@ import { statusLine, freshTag } from './freshness.js';
 import { EXTRA_HELP, EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra } from './commands.js';
 import * as deskScreen from './screens/desk.js';
 import { parseDeskArgs, isEmbedSearch, tickerOf, TICKER_SCREENS } from './desk-layout.js';
+import { COMPANY_HELP, COMPANY_SCREENS, COMPANY_TAKES_ARGS, COMPANY_FUNCTIONS, matchCompany } from './company.js';
 
 export const COMMANDS = [
   { name: 'HOME', group: 'Markets', hint: 'Markets, S&P 500, currencies and news on one screen', usage: 'HOME', example: 'HOME' },
@@ -45,16 +46,17 @@ export const COMMANDS = [
   ...EXTRA_HELP,
   { name: 'SCREEN', group: 'Markets', hint: 'Find stocks by sector, size, price and move', usage: 'SCREEN [<filters>]', example: 'SCREEN GAINERS', examples: ['SCREEN', 'SCREEN GAINERS'] },
   { name: 'FINANCIALS', group: 'Company', hint: 'Income, balance sheet and cash flow from SEC filings', usage: 'FINANCIALS <ticker> [BALANCE|CASHFLOW] [QUARTERLY]', example: 'FINANCIALS AAPL', examples: ['FINANCIALS AAPL', 'FINANCIALS MSFT BALANCE'] },
+  ...COMPANY_HELP,
   { name: 'HELP', group: 'Help', hint: 'Every command, with examples', usage: 'HELP', example: 'HELP' },
 ];
 
 // <TICKER> <FUNCTION> [args] runs <FUNCTION> <TICKER> [args]: AAPL CHART 5Y, AAPL NEWS.
 // A function that does not take a ticker yet shows "coming soon", not a ticker error.
-export const TICKER_FUNCTIONS = ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS', 'EARNINGS', 'COMPARE', 'WATCH'];
-// The function bar on a stock screen, keys 1 to 6 (7 is the watchlist star).
-export const FUNCTION_BAR = ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS'];
+export const TICKER_FUNCTIONS = ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS', 'EARNINGS', 'COMPARE', 'WATCH', ...COMPANY_FUNCTIONS];
+// The function bar on a stock screen, keys 1 to 9 for the first nine (the watchlist star is last).
+export const FUNCTION_BAR = ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS', ...COMPANY_FUNCTIONS];
 export const GRAMMAR_HELP = {
-  name: '<TICKER> <FUNCTION>', hint: 'Any function for one ticker, ticker first', examples: ['AAPL CHART 5Y', 'AAPL NEWS', 'AAPL FINANCIALS', 'AAPL WATCH', 'AAPL COMPARE MSFT'],
+  name: '<TICKER> <FUNCTION>', hint: 'Any function for one ticker, ticker first', examples: ['AAPL CHART 5Y', 'AAPL NEWS', 'AAPL FINANCIALS', 'AAPL INSIDERS', 'AAPL WATCH', 'AAPL COMPARE MSFT'],
 };
 
 export const TICKER_HELP = {
@@ -298,6 +300,7 @@ export function parseCommand(raw, depth = 0) {
     const fn = parseTickerFunction(toks);
     if (fn) return fn;
   }
+  const company = matchCompany(head, rest); if (company) return company;
   // Add new commands above this line: commands win over symbols of the same name.
   const quote = parseSymbolCommand(toks);
   if (quote) return quote;
@@ -317,7 +320,7 @@ export function fromQuery(search) {
 }
 
 // Commands that take arguments: Tab adds a space, and a bad argument shows the usage line.
-const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, ...EXTRA_TAKES_ARGS, FINANCIALS: parseFinancialsArgs, SCREEN: parseScreenArgs };
+const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, ...EXTRA_TAKES_ARGS, ...COMPANY_TAKES_ARGS, FINANCIALS: parseFinancialsArgs, SCREEN: parseScreenArgs };
 // Commands that run on their own but still show the usage line for bad words after them.
 const CHECKS_ARGS = { WATCH: parseWatchArgs, PORTFOLIO: parsePfArgs, DESK: parseDeskArgs };
 const commandFor = (word) => COMMANDS.find((c) => c.name === word || c.aliases?.includes(word));
@@ -656,7 +659,7 @@ function boot() {
         placeCursor();
       },
     };
-    const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name];
+    const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name] || COMPANY_SCREENS[cmd.name];
     if (cmd.mutates && fromUrl) {
       // A link that changes saved lists never runs by itself: ask first.
       const [title, what] = SAVED_LIST[cmd.name] || SAVED_LIST.WATCH;

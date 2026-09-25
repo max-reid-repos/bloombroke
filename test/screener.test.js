@@ -27,7 +27,7 @@ test('words: comparisons glue, spaces allowed around the operator', () => {
   assert.equal(parseCond('VOL>=1.5M').value, 1.5e6);
   assert.equal(parseCond('MARKETCAP>2T').field, 'MCAP');
   assert.equal(parseCond('PRICE>5B'), null, 'no size suffix on a price');
-  assert.equal(parseCond('PE<20'), null, 'no P/E filter');
+  assert.equal(parseCond('PE<20').field, 'PE', 'P/E filter (CNBC)');
   assert.equal(parseCond('MCAP>ten'), null);
 });
 
@@ -58,7 +58,7 @@ test('sectors, countries and industries by name or code', () => {
 test('errors name the bad word', () => {
   assert.deepEqual(parseScreenArgs('SECTOR PIZZA'), { error: 'sector', bad: 'PIZZA' });
   assert.deepEqual(parseScreenArgs('COUNTRY ATLANTIS'), { error: 'country', bad: 'ATLANTIS' });
-  assert.deepEqual(parseScreenArgs('PE<20'), { error: 'usage', bad: 'PE<20' });
+  assert.deepEqual(parseScreenArgs('EPS<20'), { error: 'usage', bad: 'EPS<20' });
   assert.deepEqual(parseScreenArgs('SORT COLOR'), { error: 'sort', bad: 'COLOR' });
   assert.equal(parseScreenArgs('GAINERS LOSERS').error, 'preset');
   assert.equal(parseScreenArgs('INDUSTRY').error, 'industry');

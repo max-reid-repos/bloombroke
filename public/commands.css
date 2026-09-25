@@ -159,3 +159,44 @@
   .profile-name { font-size: 20px; }
   .hist-bar { flex-wrap: wrap; }
 }
+
+/* ---- Company data (INSIDERS, OWNERS, FILINGS, SHORTS, BEATS, VALUE, IPOS, SPLITS, EXDIV) ---- */
+.co-pad { padding: 8px 10px; }
+.co-source { margin-top: 6px; }
+.grid-table .co-n { width: 1%; padding-right: 0; color: var(--faint); }
+.grid-table .co-date { width: 1%; color: var(--text-2); }
+.grid-table .co-form { width: 1%; font-weight: 600; }
+.grid-table .co-kind { width: 1%; font-size: 11px; font-weight: 600; letter-spacing: .06em; }
+.grid-table .co-kind.dim { color: var(--dim); }
+.grid-table .co-title { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
+.co-table .name { color: var(--text-2); }
+.fil-table .name a { color: var(--text-2); }
+.fil-table .name a:hover { color: var(--accent); text-decoration: none; }
+.co-totals { max-width: 720px; border-right: 1px solid var(--rule); }
+.co-totals .name, .co-pos .name { width: auto; max-width: none; color: var(--dim); }
+.co-totals .last { color: var(--text); font-weight: 600; }
+.co-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 24px; align-items: start; }
+.co-pos { border: 1px solid var(--rule); }
+.co-chips { display: flex; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--rule); background: var(--panel); }
+.co-chips::-webkit-scrollbar { display: none; }
+.co-chip { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 10px; border-right: 1px solid var(--rule); color: var(--dim); font-size: 11px; font-weight: 600; letter-spacing: .08em; white-space: nowrap; }
+.co-chip:hover { text-decoration: none; color: var(--text); background: var(--panel-3); }
+.co-chip.is-active { color: var(--ink); background: var(--text-2); }
+.co-count { color: var(--faint); font-weight: 400; }
+.co-chip.is-active .co-count { color: var(--ink); }
+.co-noname { margin-left: 0; color: var(--text-2); }
+.co-title-line { margin-bottom: 10px; }
+.co-group { margin: 0 0 4px; color: var(--dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.co-groups { display: grid; gap: 12px 24px; }
+.co-when { margin-left: 8px; font-size: 11px; }
+
+@media (max-width: 1100px) {
+  .co-split { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+}
+
+@media (max-width: 639px) {
+  .grid-table .co-n { display: none; }
+  .grid-table .co-date { font-size: 11px; }
+  .co-when { display: none; }
+  .co-table .name { max-width: 0; }
+}
