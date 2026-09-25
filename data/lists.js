@@ -2,8 +2,12 @@
 
 import { createCache } from './cache.js';
 import { fetchCnbcRows, parseListRows, UA } from './quotes.js';
+import { instrumentBySrc } from '../public/instruments.js';
 
 export const iso = (ms) => new Date(ms).toISOString();
+
+// The command a row opens: its instrument id when the terminal knows that CNBC symbol.
+export const withCmd = (item) => ({ ...item, cmd: item.cmd || instrumentBySrc(item.src)?.id || null });
 
 // A fixed list of CNBC symbols ({ id, src, ... }) behind a stale-if-error cache.
 // Resolves to { rows, stale, updated }. `extra(rawRow)` adds fields from the raw CNBC row.

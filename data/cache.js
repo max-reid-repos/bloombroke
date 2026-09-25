@@ -7,8 +7,10 @@
 // - No entry and loader fails: the error is thrown, and the failure itself is
 //   remembered for `retryMs`. Calls in that window get the same error without
 //   touching the source.
+// - maxEntries caps memory: past it, the oldest entry is dropped (custom chart ranges
+//   and symbol searches make many keys).
 
-export function createCache({ retryMs = 30_000, now = () => Date.now() } = {}) {
+export function createCache({ retryMs = 30_000, now = () => Date.now(), maxEntries = Infinity } = {}) {
   const entries = new Map();
   const failures = new Map();
   const inflight = new Map();
@@ -29,7 +31,9 @@ export function createCache({ retryMs = 30_000, now = () => Date.now() } = {}) {
       try {
         const value = await loader();
         const fetchedAt = now();
+        entries.delete(key);
         entries.set(key, { value, fetchedAt, expiresAt: fetchedAt + ttlMs, stale: false });
+        while (entries.size > maxEntries) entries.delete(entries.keys().next().value);
         failures.delete(key);
         return { value, stale: false, fetchedAt };
       } catch (err) {
@@ -39,6 +43,7 @@ export function createCache({ retryMs = 30_000, now = () => Date.now() } = {}) {
           return { value: entry.value, stale: true, fetchedAt: entry.fetchedAt };
         }
         failures.set(key, { error: err, until: now() + retryMs });
+        while (failures.size > maxEntries) failures.delete(failures.keys().next().value);
         throw err;
       } finally {
         inflight.delete(key);

@@ -1,6 +1,6 @@
 // COMMODITIES: energy, metals and farm futures (front month). Delayed.
 
-import { esc, fmtNum, fmtSigned, fmtPct, dirOf, fmtAsOf, panel, LOADING, tick, settleTicks } from './markets.js';
+import { esc, q, fmtNum, fmtSigned, fmtPct, dirOf, fmtAsOf, panel, LOADING, tick, settleTicks } from './markets.js';
 
 export function commoditiesTable(rows) {
   let group = '';
@@ -10,7 +10,7 @@ export function commoditiesTable(rows) {
       const head = c.group !== group ? `<tr class="group-row"><th colspan="6" scope="rowgroup">${esc((group = c.group))}</th></tr>` : '';
       const d = dirOf(c.change);
       return `${head}<tr>
-        <th scope="row" class="name">${esc(c.name)}${c.contract ? ` <span class="dim contract">${esc(c.contract)}</span>` : ''}</th>
+        <th scope="row" class="name">${c.cmd ? `<a href="${esc(q(c.cmd))}" data-cmd="${esc(c.cmd)}">${esc(c.name)}</a>` : esc(c.name)}${c.contract ? ` <span class="dim contract">${esc(c.contract)}</span>` : ''}</th>
         <td class="num last${tick(`cm:${c.id}`, c.last)}">${fmtNum(c.last, c.decimals)}</td>
         <td class="num chg ${d}">${fmtSigned(c.change, c.decimals)}</td>
         <td class="num pct ${d}">${fmtPct(c.changePct)}</td>

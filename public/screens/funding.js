@@ -1,20 +1,20 @@
 // 420: Tesla since 7 Aug 2018, the "funding secured" day. Not listed anywhere.
 
 import { esc, fmtNum, panel, LOADING, nyTime } from './markets.js';
-import { mountChart, fmtHoverFor } from './quote.js';
+import { rangeChart } from './chart.js';
 import { fmtUsd, fmtX, fmtDay } from './whatif.js';
 
 export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="stack">
     ${panel('1', '420', LOADING, { meta: 'TSLA' })}
-    ${panel('2', 'TSLA since 7 Aug 2018', `<div class="chart-host" id="f-chart">${LOADING}</div>`, { metaId: 'f-meta', bodyCls: 'flush' })}
+    ${panel('2', 'TSLA since 7 Aug 2018', '<div class="rc" id="f-rc"></div>', { cmd: 'TSLA FROM 2018-08-07', metaId: 'f-meta', bodyCls: 'flush' })}
   </div>
   <p class="footnote">Not financial advice. Definitely not funding advice.</p>`;
   const [body] = el.querySelectorAll('.panel-body');
-  const host = el.querySelector('#f-chart');
-  const meta = el.querySelector('#f-meta');
-  let chartCleanup = null;
-  ctx.onCleanup(() => chartCleanup?.());
+  const chart = rangeChart(el.querySelector('#f-rc'), ctx, {
+    symbol: 'TSLA', range: { from: '2018-08-07', to: null }, meta: el.querySelector('#f-meta'),
+    label: 'Tesla share price', decimals: 2,
+  });
 
   ctx.fetchJSON('/api/funding', { signal: ctx.signal }).then((d) => {
     const dir = d.multiple >= 1 ? 'up' : 'down';
@@ -30,21 +30,11 @@ export function render(el, cmd, ctx) {
         <div class="stat"><dt>Multiple</dt><dd class="num ${dir}">${esc(fmtX(d.multiple))}</dd></div>
       </dl>
       <p class="wi-source">Prices: split-adjusted close on 7 Aug 2018, price return only. Live price as of ${esc(asOf)}${d.stale ? ' (last known)' : ''}. Source: ${esc(d.source)}.</p>`;
-    const hover = fmtHoverFor('5Y');
-    const base = `<span class="num ${dir}">${esc(fmtX(d.multiple))}</span>`;
-    meta.innerHTML = base;
-    host.textContent = '';
-    chartCleanup = mountChart(host, d.points, {
-      fmtY: (v) => fmtNum(v, 0),
-      fmtX: (t) => String(new Date(t).getUTCFullYear()),
-      label: 'Tesla share price since 7 August 2018',
-      onHover: (p) => { meta.innerHTML = p ? `<span class="num">${esc(hover(p.t))} $${esc(fmtNum(p.v, 2))}</span>` : base; },
-    });
+    if (d.asOf && /T/.test(d.asOf)) chart.setLive({ t: Date.parse(d.asOf), v: d.price });
     ctx.status('420: FUNDING SECURED');
   }).catch((err) => {
     if (err.name === 'AbortError') return;
     body.innerHTML = `<p class="panel-msg">${esc(err.message)}</p>`;
-    host.textContent = '';
     ctx.status('420: FUNDING NOT SECURED', 'warn');
   });
 }

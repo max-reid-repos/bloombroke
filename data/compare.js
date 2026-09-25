@@ -1,7 +1,7 @@
 // COMPARE: % performance of 2 to 5 tickers over one range, from CNBC price history (no key).
 
-import { getChart as defaultGetChart, ChartError, chartSymbol } from './charts.js';
-import { getQuote as defaultGetQuote } from './quotes.js';
+import { getChart as defaultGetChart, ChartError } from './charts.js';
+import { getQuote as defaultGetQuote, normalizeTicker } from './quotes.js';
 
 export const COMPARE_RANGES = ['1M', '6M', '1Y', '5Y'];
 
@@ -23,7 +23,7 @@ export function parseCompareSymbols(raw) {
   const list = String(raw ?? '').toUpperCase().split(/[\s,]+/).filter(Boolean);
   const uniq = [...new Set(list)];
   if (uniq.length < 2 || uniq.length > 5) return null;
-  return uniq.every((s) => chartSymbol(s)) ? uniq : null;
+  return uniq.every((s) => normalizeTicker(s)) ? uniq : null;
 }
 
 export function makeCompare({ getChart = defaultGetChart, getQuote = defaultGetQuote } = {}) {

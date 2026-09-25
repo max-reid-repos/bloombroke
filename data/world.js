@@ -1,7 +1,7 @@
 // WORLD: stock indexes by region, from the public CNBC quote service (no key).
 // `ex` is the exchange id; the screen knows each exchange's hours and time zone.
 
-import { makeCnbcList } from './lists.js';
+import { makeCnbcList, withCmd } from './lists.js';
 
 export const WORLD = [
   { id: 'SPX', src: '.SPX', name: 'S&P 500', cc: 'US', region: 'Americas', ex: 'NYSE', cmd: 'SPX' },
@@ -28,7 +28,7 @@ export const WORLD = [
   { id: 'SET', src: '.SETI', name: 'SET', cc: 'TH', region: 'Asia-Pacific', ex: 'SET' },
   { id: 'STI', src: '.STI', name: 'Straits Times', cc: 'SG', region: 'Asia-Pacific', ex: 'SGX' },
   { id: 'NZ50', src: '.NZ50', name: 'NZX 50', cc: 'NZ', region: 'Asia-Pacific', ex: 'NZX' },
-];
+].map(withCmd);
 
 export function makeWorld(opts = {}) {
   const list = makeCnbcList({ key: 'world', items: WORLD, ...opts });

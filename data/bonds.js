@@ -1,7 +1,7 @@
 // BONDS: 10-year government bond yields by country, from the CNBC quote service (no key).
 // `change` is in percentage points; the screen shows it in basis points.
 
-import { makeCnbcList } from './lists.js';
+import { makeCnbcList, withCmd } from './lists.js';
 
 export const BONDS = [
   { id: 'US', src: 'US10Y', name: 'United States', cmd: 'US10Y' },
@@ -14,7 +14,7 @@ export const BONDS = [
   { id: 'AU', src: 'AU10Y', name: 'Australia' },
   { id: 'CA', src: 'CA10Y', name: 'Canada' },
   { id: 'IN', src: 'IN10Y', name: 'India' },
-];
+].map(withCmd);
 
 export function makeBonds(opts = {}) {
   const list = makeCnbcList({ key: 'bonds', items: BONDS, ...opts });

@@ -277,8 +277,11 @@ function resultHtml(d, key) {
     const bought = r.kind === 'once'
       ? fmtDay(r.bought)
       : `${fmtMonth(r.from)} TO ${fmtMonth(r.to)}<span class="dim"> (${r.buys})</span>`;
-    return `<tr class="${loss ? 'is-loss' : ''}">
-      <th scope="row" class="name"><a href="${esc(q(`${r.ticker} 5Y`))}" data-cmd="${esc(`${r.ticker} 5Y`)}">${esc(r.name)}</a> <span class="dim">${esc(r.ticker)}</span><span class="wi-when-m dim">${bought}</span></th>
+    // The row opens the stock's chart from the day it was bought.
+    const start = r.kind === 'once' ? r.bought : /^\d{4}-\d{2}$/.test(r.from || '') ? `${r.from}-01` : r.from;
+    const cmd = /^\d{4}-\d{2}-\d{2}$/.test(start || '') ? `${r.ticker} FROM ${start}` : `${r.ticker} 5Y`;
+    return `<tr class="row-link${loss ? ' is-loss' : ''}" data-cmd="${esc(cmd)}" tabindex="0">
+      <th scope="row" class="name"><a href="${esc(q(cmd))}" data-cmd="${esc(cmd)}" tabindex="-1">${esc(r.name)}</a> <a class="dim wi-tk" href="${esc(q(r.ticker))}" data-cmd="${esc(r.ticker)}" tabindex="-1">${esc(r.ticker)}</a><span class="wi-when-m dim">${bought}</span></th>
       <td class="num wi-when">${bought}</td>
       <td class="num">${esc(fmtUsd(r.paid))}</td>
       <td class="num wi-sh">${esc(fmtShares(r.shares))}</td>

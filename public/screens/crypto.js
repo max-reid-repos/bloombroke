@@ -1,6 +1,6 @@
 // CRYPTO: the top 20 coins by market cap, with 24 hour and 7 day change.
 
-import { esc, fmtNum, fmtPct, dirOf, panel, LOADING, tick, settleTicks } from './markets.js';
+import { esc, q, fmtNum, fmtPct, dirOf, panel, LOADING, tick, settleTicks } from './markets.js';
 import { fmtCompact } from './movers.js';
 
 // Coins cost anything from $0.0000x to $100,000: keep 4 significant digits for small ones.
@@ -24,7 +24,7 @@ export function render(el, cmd, ctx) {
         <thead><tr><th scope="col" class="num rank">#</th><th scope="col">Coin</th><th scope="col" class="num">Price</th><th scope="col" class="num">24H</th><th scope="col" class="num">7D</th><th scope="col" class="num chg">Mkt cap</th><th scope="col" class="num time">Volume 24H</th></tr></thead>
         <tbody>${d.coins.map((c) => `<tr>
           <td class="num rank dim">${esc(c.rank ?? '--')}</td>
-          <th scope="row" class="name"><span class="tk">${esc(c.symbol)}</span> <span class="tk-name">${esc(c.name)}</span></th>
+          <th scope="row" class="name">${c.cmd ? `<a href="${esc(q(c.cmd))}" data-cmd="${esc(c.cmd)}">` : ''}<span class="tk">${esc(c.symbol)}</span> <span class="tk-name">${esc(c.name)}</span>${c.cmd ? '</a>' : ''}</th>
           <td class="num last${tick(`cr:${c.id}`, c.price)}">${fmtPrice(c.price)}</td>
           <td class="num ${dirOf(c.change24h)}">${fmtPct(c.change24h)}</td>
           <td class="num ${dirOf(c.change7d)}">${fmtPct(c.change7d)}</td>

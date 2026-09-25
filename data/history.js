@@ -2,8 +2,7 @@
 // Split-adjusted, the same series the charts use.
 
 import { createCache } from './cache.js';
-import { tickerSource, UA } from './quotes.js';
-import { chartSymbol } from './charts.js';
+import { tickerSource, normalizeTicker, UA } from './quotes.js';
 import { isIsoDay, nyDay, addDays, iso } from './lists.js';
 
 const BARS_URL = 'https://ts-api.cnbc.com/harmony/app/bars';
@@ -45,7 +44,7 @@ export function withChanges(rows) {
 
 export function makeHistory({ fetchImpl = globalThis.fetch, cache = createCache(), now = () => Date.now() } = {}) {
   async function getHistory({ ticker: raw, from, to }) {
-    const ticker = chartSymbol(raw);
+    const ticker = normalizeTicker(raw);
     if (!ticker) throw new HistoryError('bad_symbol', 'That does not look like a ticker.');
     const today = nyDay(now());
     const end = to || today;

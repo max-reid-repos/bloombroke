@@ -7,8 +7,11 @@ import { getChart, ChartError } from './data/charts.js';
 import { getCpi, CpiError, CPI_EXAMPLES } from './data/cpi.js';
 import { getRates } from './data/rates.js';
 import { getNews } from './data/news.js';
+import { search } from './data/search.js';
 import { getCatalog, getWhatif, getFunding } from './data/whatif-service.js';
 import { WhatifError } from './data/whatif.js';
+import { buildId, versionIndex } from './lib/assets.js';
+import { readFileSync } from 'node:fs';
 import { mountCommandRoutes } from './command-routes.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -43,7 +46,7 @@ app.use((req, res, next) => {
 app.get('/api/markets', async (req, res) => {
   try {
     const data = await getQuotes();
-    res.set('Cache-Control', 'public, max-age=30');
+    res.set('Cache-Control', 'public, max-age=5');
     res.json(data);
   } catch (err) {
     console.error('[markets]', err.message);
@@ -77,7 +80,7 @@ const str = (v) => (typeof v === 'string' ? v : undefined);
 app.get('/api/fxmajors', async (req, res) => {
   try {
     const data = await getFxMajors();
-    res.set('Cache-Control', 'public, max-age=30');
+    res.set('Cache-Control', 'public, max-age=5');
     res.json(data);
   } catch (err) {
     console.error('[fxmajors]', err.message);
@@ -91,7 +94,7 @@ app.get('/api/quote', async (req, res) => {
   try {
     const data = await getQuote(ticker);
     if (!data) return res.status(404).json({ error: 'not_found', message: `No ticker called ${ticker}.` });
-    res.set('Cache-Control', 'public, max-age=30');
+    res.set('Cache-Control', 'public, max-age=5');
     res.json(data);
   } catch (err) {
     console.error('[quote]', err.message);
@@ -99,9 +102,22 @@ app.get('/api/quote', async (req, res) => {
   }
 });
 
+app.get('/api/search', async (req, res) => {
+  try {
+    const data = await search(str(req.query.q));
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.json(data);
+  } catch (err) {
+    console.error('[search]', err.message);
+    res.status(503).json({ error: 'unavailable', message: BREAK });
+  }
+});
+
 app.get('/api/chart', async (req, res) => {
   try {
-    const data = await getChart(str(req.query.s), str(req.query.r));
+    const from = str(req.query.from);
+    const range = from ? { from, to: str(req.query.to) || null } : str(req.query.r);
+    const data = await getChart(str(req.query.s), range);
     res.set('Cache-Control', 'public, max-age=60');
     res.json(data);
   } catch (err) {
@@ -130,7 +146,7 @@ app.get('/api/cpi', async (req, res) => {
 app.get('/api/rates', async (req, res) => {
   try {
     const data = await getRates();
-    res.set('Cache-Control', 'public, max-age=60');
+    res.set('Cache-Control', 'public, max-age=5');
     res.json(data);
   } catch (err) {
     console.error('[rates]', err.message);
@@ -187,8 +203,28 @@ mountCommandRoutes(app);
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));
 
-app.use(express.static(path.join(dir, 'public'), { maxAge: '5m', index: 'index.html' }));
+// Pages: the HTML is never cached, and it points at versioned assets (see lib/assets.js).
+const PUBLIC = path.join(dir, 'public');
+const BUILD = buildId(PUBLIC);
+const INDEX = versionIndex(readFileSync(path.join(PUBLIC, 'index.html'), 'utf8'), BUILD);
+function sendIndex(res, status = 200) {
+  res.status(status).set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }).send(INDEX);
+}
+app.get(['/', '/index.html'], (req, res) => sendIndex(res));
 
-app.use((req, res) => res.status(404).sendFile(path.join(dir, 'public', 'index.html')));
+// /v/<build>/...: this build's files are immutable. An older build id (a page loaded
+// before a deploy) gets today's files, uncached, so it never pins a mismatched copy.
+const immutable = express.static(PUBLIC, { index: false, maxAge: '365d', immutable: true });
+const uncached = express.static(PUBLIC, { index: false, cacheControl: false });
+app.use('/v/:build', (req, res, next) => {
+  if (req.params.build === BUILD) return immutable(req, res, next);
+  res.set('Cache-Control', 'no-cache');
+  return uncached(req, res, next);
+});
 
-app.listen(PORT, HOST, () => console.log(`bloombroke listening on http://${HOST}:${PORT}`));
+// Unversioned paths still work for pages cached before this change.
+app.use(express.static(PUBLIC, { index: false, cacheControl: false, setHeaders: (res) => res.set('Cache-Control', 'no-cache') }));
+
+app.use((req, res) => sendIndex(res, 404));
+
+app.listen(PORT, HOST, () => console.log(`bloombroke ${BUILD} listening on http://${HOST}:${PORT}`));

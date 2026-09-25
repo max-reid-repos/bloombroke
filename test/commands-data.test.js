@@ -289,6 +289,19 @@ test('compare: normalised % change and symbol checks', async () => {
   await assert.rejects(getCompare({ symbols: 'AAA,BBB', range: '1D' }), (e) => e.code === 'bad_range');
 });
 
+test('rows link to instruments: every COMMODITIES and BONDS row, known coins, world indexes', async () => {
+  const { resolveInstrument } = await import('../public/instruments.js');
+  for (const c of COMMODITIES) assert.ok(c.cmd && resolveInstrument(c.cmd), `${c.id} opens a screen`);
+  for (const b of BONDS) assert.ok(b.cmd && resolveInstrument(b.cmd)?.kind === 'yield', `${b.id} opens a yield screen`);
+  assert.equal(WORLD.find((w) => w.id === 'CAC').cmd, 'CAC40');
+  const coins = parseCoins([
+    { id: 'bitcoin', symbol: 'btc', name: 'Bitcoin', current_price: 1 },
+    { id: 'solana', symbol: 'sol', name: 'Solana', current_price: 1 },
+    { id: 'odd', symbol: 'figr_heloc', name: 'Odd', current_price: 1 },
+  ]);
+  assert.deepEqual(coins.map((c) => c.cmd), ['BTC', 'SOLUSD', null], 'no CNBC price, no link');
+});
+
 test('dividends: NYSE stocks fall back to the CNBC yield, with no history', async () => {
   assert.deepEqual(parseCnbcDividend({ code: 0, dividend: '2.12', dividendyield: '2.41%' }), { yield: 2.41, annual: 2.12 });
   assert.equal(parseCnbcDividend({ code: 1 }), null);

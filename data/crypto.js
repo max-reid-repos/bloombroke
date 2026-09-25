@@ -3,6 +3,7 @@
 import { createCache } from './cache.js';
 import { UA } from './quotes.js';
 import { iso } from './lists.js';
+import { instrumentBySrc } from '../public/instruments.js';
 
 const URL_TOP = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1&price_change_percentage=24h,7d';
 const TTL = 5 * 60_000;
@@ -16,6 +17,7 @@ export function parseCoins(body) {
       rank: num(c.market_cap_rank),
       id: String(c.id || ''),
       symbol: String(c.symbol || '').toUpperCase(),
+      cmd: instrumentBySrc(`${String(c.symbol || '').toUpperCase()}.CM=`)?.id || null,
       name: String(c.name || ''),
       price: num(c.current_price),
       change24h: num(c.price_change_percentage_24h_in_currency) ?? num(c.price_change_percentage_24h),

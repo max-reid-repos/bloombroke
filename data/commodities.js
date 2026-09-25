@@ -1,7 +1,7 @@
 // COMMODITIES: front-month futures from the CNBC quote service (no key). Delayed.
 // `unit` is how each contract is quoted on its exchange.
 
-import { makeCnbcList } from './lists.js';
+import { makeCnbcList, withCmd } from './lists.js';
 
 export const COMMODITIES = [
   { id: 'WTI', src: '@CL.1', name: 'Oil (WTI)', group: 'Energy', unit: 'USD per barrel', decimals: 2 },
@@ -17,7 +17,7 @@ export const COMMODITIES = [
   { id: 'COFFEE', src: '@KC.1', name: 'Coffee', group: 'Agriculture', unit: 'US cents per pound', decimals: 2 },
   { id: 'SUGAR', src: '@SB.1', name: 'Sugar', group: 'Agriculture', unit: 'US cents per pound', decimals: 2 },
   { id: 'COCOA', src: '@CC.1', name: 'Cocoa', group: 'Agriculture', unit: 'USD per tonne', decimals: 0 },
-];
+].map(withCmd);
 
 // "WTI Crude (Nov'26)" -> "NOV'26"
 export function contractMonth(name) {
