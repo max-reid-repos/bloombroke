@@ -160,7 +160,7 @@ export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache()
     return { value: parseListRows(items, value), stale, updated: new Date(fetchedAt).toISOString() };
   }
 
-  return {
+  const api = {
     async getQuotes() {
       const { value, stale, updated } = await list(INSTRUMENTS);
       return { instruments: value, stale, updated };
@@ -190,7 +190,49 @@ export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache()
       if (!value.quote) return null;
       return { ...value.quote, stale, updated: new Date(fetchedAt).toISOString() };
     },
+    // Many symbols at once (WATCH, PORTFOLIO, HOME): named instruments come from the
+    // shared batch, stocks from the per-ticker cache. The stocks that are not cached
+    // share one upstream call. Unknown or failed symbols are listed in `missing`.
+    async getQuoteList(rawTickers) {
+      const tickers = [...new Set(rawTickers.map(normalizeTicker).filter(Boolean))].slice(0, MAX_LIST);
+      const stocks = tickers.filter((t) => !instrumentById(t));
+      let shared = null;
+      let failed = null;
+      const fetchStocks = () => {
+        shared ||= fetchCnbcRows(fetchImpl, stocks).then((rows) => {
+          const bySym = new Map(rows.map((r) => [String(r.symbol || '').toUpperCase(), r]));
+          // One symbol asked, one row back: the same rule as getQuote. Otherwise match by
+          // symbol only, so a row can never land on the wrong ticker.
+          return (t) => bySym.get(t) || (stocks.length === 1 && rows.length === 1 ? rows[0] : undefined);
+        });
+        return shared;
+      };
+      const one = async (t) => {
+        try {
+          if (instrumentById(t)) return await api.getQuote(t);
+          const { value, stale, fetchedAt } = await cache.cached(`quote:${t}`, QUOTES_TTL, async () => {
+            const pick = await fetchStocks();
+            return { quote: parseQuoteRow(pick(t), t) };
+          });
+          return value.quote ? { ...value.quote, stale, updated: new Date(fetchedAt).toISOString() } : null;
+        } catch (err) {
+          failed = err;
+          return null;
+        }
+      };
+      const got = await Promise.all(tickers.map(one));
+      const quotes = got.filter(Boolean);
+      const missing = tickers.filter((t, i) => !got[i]);
+      // Nothing came back and the source failed: an outage, not a list of bad symbols.
+      if (!quotes.length && failed) throw failed;
+      const updated = quotes.map((q) => q.updated).sort()[0] || new Date().toISOString();
+      return { quotes, missing, stale: quotes.some((q) => q.stale), updated };
+    },
   };
+  return api;
 }
 
-export const { getQuotes, getFxMajors, getYields, getQuote } = makeQuotes({ cache: createCache({ maxEntries: 2000 }) });
+// The most symbols one /api/quotes call takes.
+export const MAX_LIST = 60;
+
+export const { getQuotes, getFxMajors, getYields, getQuote, getQuoteList } = makeQuotes({ cache: createCache({ maxEntries: 2000 }) });

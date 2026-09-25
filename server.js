@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getQuotes, getFxMajors, getQuote, normalizeTicker } from './data/quotes.js';
+import { getQuotes, getFxMajors, getQuote, getQuoteList, normalizeTicker, MAX_LIST } from './data/quotes.js';
 import { getFx, FxError } from './data/fx.js';
 import { getChart, ChartError } from './data/charts.js';
 import { getCpi, CpiError, CPI_EXAMPLES } from './data/cpi.js';
@@ -97,6 +97,22 @@ app.get('/api/quote', async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error('[quote]', err.message);
+    res.status(503).json({ error: 'unavailable', message: 'Quote data is taking a break. Try again in a minute.' });
+  }
+});
+
+// ?s=AAPL,MSFT,GOLD: many quotes in one call (WATCH, PORTFOLIO, HOME).
+app.get('/api/quotes', async (req, res) => {
+  const raw = (str(req.query.s) || '').split(',').map((t) => t.trim()).filter(Boolean);
+  if (!raw.length || raw.length > MAX_LIST || raw.some((t) => t.length > 16)) {
+    return res.status(400).json({ error: 'usage', message: `Ask for 1 to ${MAX_LIST} symbols, separated by commas.` });
+  }
+  try {
+    const data = await getQuoteList(raw);
+    res.set('Cache-Control', 'public, max-age=5');
+    res.json(data);
+  } catch (err) {
+    console.error('[quotes]', err.message);
     res.status(503).json({ error: 'unavailable', message: 'Quote data is taking a break. Try again in a minute.' });
   }
 });
