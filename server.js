@@ -12,6 +12,7 @@ import { getCatalog, getWhatif, getFunding } from './data/whatif-service.js';
 import { WhatifError } from './data/whatif.js';
 import { buildId, versionIndex } from './lib/assets.js';
 import { readFileSync } from 'node:fs';
+import { mountCommandRoutes } from './command-routes.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
@@ -213,6 +214,8 @@ app.get('/api/funding', async (req, res) => {
     res.status(503).json({ error: 'unavailable', message: BREAK });
   }
 });
+
+mountCommandRoutes(app);
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));
 

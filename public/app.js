@@ -21,6 +21,7 @@ import { fmtNum, fmtPct, dirOf, cmdForInstrument, panel } from './screens/market
 import { matchInstrument, searchInstruments } from './instruments.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { statusLine, freshTag } from './freshness.js';
+import { EXTRA_HELP, EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra } from './commands.js';
 
 export const COMMANDS = [
   { name: 'HOME', group: 'Markets', hint: 'Markets, S&P 500, currencies and news on one screen', usage: 'HOME', example: 'HOME' },
@@ -34,6 +35,7 @@ export const COMMANDS = [
   { name: 'WAGE', group: 'Money tools', hint: 'Save your hourly pay, BUY then shows hours of work', usage: 'WAGE <per hour>', example: 'WAGE 35', examples: ['WAGE 35'] },
   { name: 'WATCH', group: 'Your lists', hint: 'Your watchlist, live: any stock, index, pair, coin or future', usage: 'WATCH [ADD|REMOVE <symbols>] [CLEAR|EXPORT|IMPORT]', example: 'WATCH', usageExample: 'WATCH ADD AAPL TSLA', examples: ['WATCH', 'WATCH ADD AAPL TSLA EURUSD', 'WATCH REMOVE TSLA', 'WATCH EXPORT', 'WATCH IMPORT AAPL,MSFT,GOLD'] },
   { name: 'PORTFOLIO', aliases: ['PF'], group: 'Your lists', hint: 'Your holdings: value, day gain, total gain, weights', usage: 'PF [ADD <ticker> <shares> @ <cost>|SELL <ticker> <shares>|REMOVE <ticker>]', example: 'PF', usageExample: 'PF ADD AAPL 10 @ 150', examples: ['PF', 'PF ADD AAPL 10 @ 150', 'PF SELL AAPL 3', 'PF EXPORT', 'PF IMPORT'] },
+  ...EXTRA_HELP,
   { name: 'HELP', group: 'Help', hint: 'Every command, with examples', usage: 'HELP', example: 'HELP' },
 ];
 
@@ -215,7 +217,8 @@ export function parseTickerFunction(toks) {
   if (!TICKER_FUNCTIONS.includes(fn)) return null;
   const rest = toks.slice(sym.used + 1);
   const inner = parseCommand([fn, sym.id, ...rest].join(' '), 1);
-  if (inner.name !== 'UNKNOWN' && inner.name !== 'SOON' && tokenize(inner.input).includes(sym.id)) return inner;
+  // A usage error means the function exists but does not take a ticker (EARNINGS today).
+  if (inner.name !== 'UNKNOWN' && inner.name !== 'SOON' && inner.error !== 'usage' && tokenize(inner.input).includes(sym.id)) return inner;
   return { name: 'SOON', args: { soon: { name: `${sym.id} ${fn}`, hint: `${fn} for one ticker is on the way`, ticker: sym.id } }, input: [sym.id, fn, ...rest].join(' ') };
 }
 
@@ -236,6 +239,8 @@ export function parseCommand(raw, depth = 0) {
   const rest = toks.slice(1);
   // W is also a ticker (Wayfair): it means WATCH only alone or before a WATCH word.
   const head = toks[0] === 'W' && (!rest.length || WATCH_SUBCOMMANDS.includes(rest[0])) ? 'WATCH' : (ALIASES[toks[0]] || toks[0]);
+  const extra = matchExtra(head, rest);
+  if (extra) return extra;
   if (SIMPLE.has(head)) return { name: head, input: head };
   if (head === 'FX') {
     const args = parseFxArgs(rest);
@@ -295,7 +300,7 @@ export function fromQuery(search) {
 }
 
 // Commands that take arguments: Tab adds a space, and a bad argument shows the usage line.
-const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs };
+const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, ...EXTRA_TAKES_ARGS };
 // Commands that run on their own but still show the usage line for bad words after them.
 const CHECKS_ARGS = { WATCH: parseWatchArgs, PORTFOLIO: parsePfArgs };
 const commandFor = (word) => COMMANDS.find((c) => c.name === word || c.aliases?.includes(word));
@@ -606,7 +611,7 @@ function boot() {
       live(fn, ms) { cleanups.push(liveTimer(fn, ms)); },
       onCleanup(fn) { cleanups.push(fn); },
     };
-    const mod = SCREENS[cmd.name];
+    const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name];
     if (cmd.mutates && fromUrl) {
       // A link that changes saved lists never runs by itself: ask first.
       view.innerHTML = panel('1', cmd.name === 'PORTFOLIO' ? 'Portfolio' : 'Watchlist', `

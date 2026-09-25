@@ -75,10 +75,11 @@ test('URL state round-trips', () => {
 });
 
 test('suggestions match command prefixes', () => {
-  assert.deepEqual(suggest('m').map((s) => s.name), ['MARKETS']);
-  assert.deepEqual(suggest('F').map((s) => s.name), ['FX']);
-  assert.deepEqual(suggest('H').map((s) => s.name), ['HOME', 'HELP']);
-  assert.deepEqual(suggest('c').map((s) => s.name), ['CPI']);
+  assert.deepEqual(suggest('ma').map((s) => s.name), ['MARKETS']);
+  assert.deepEqual(suggest('m').map((s) => s.name), ['MARKETS', 'MOVERS']);
+  assert.deepEqual(suggest('F').map((s) => s.name), ['FX', 'FXMATRIX']);
+  assert.deepEqual(suggest('H').map((s) => s.name), ['HOME', 'HEATMAP', 'HISTORY', 'HELP']);
+  assert.deepEqual(suggest('cp').map((s) => s.name), ['CPI']);
   assert.equal(suggest('').length, COMMANDS.length);
   assert.equal(suggest('zzz').length, 0);
   assert.equal(suggest('FX 500 ')[0].usage, true);

@@ -26,6 +26,8 @@ test('grammar: a function that is not built yet says coming soon, not a ticker e
       assert.ok(r.input.split(' ').includes('AAPL'));
     }
   }
+  assert.notEqual(parseCommand('AAPL EARNINGS').error, 'usage', 'a function without a ticker form is not shown broken');
+  assert.equal(parseCommand('AAPL CHART 2099-01-01').name, 'QUOTE', 'date errors still open the chart, which explains');
   assert.equal(parseTickerFunction(['AAPL', '5Y']), null, 'a range is not a function');
   assert.equal(parseTickerFunction(['GOOGLE', 'CHART']), null);
   assert.equal(parseCommand('AAPL 7Y').name, 'UNKNOWN');

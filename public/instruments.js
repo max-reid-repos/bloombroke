@@ -53,7 +53,35 @@ export const INSTRUMENTS = [
   I('USDTHB', 'USD/THB', 'Currencies', 'fx', 'THB=', 2, { markets: false, base: 'USD', quote: 'THB', aliases: ['USD/THB', 'BAHT'] }),
   I('US2Y', 'US 2Y yield', 'Rates', 'yield', 'US2Y', 3, { markets: false, longName: 'US 2-year Treasury', term: '2Y' }),
   I('US30Y', 'US 30Y yield', 'Rates', 'yield', 'US30Y', 3, { markets: false, longName: 'US 30-year Treasury', term: '30Y' }),
+
+  // Rows on COMMODITIES, BONDS and CRYPTO. Each opens its own screen.
+  I('BRENT', 'Oil (Brent)', 'Commodities', 'future', '@LCO.1', 2, { markets: false, aliases: ['BRENTOIL', 'BRENTCRUDE'] }),
+  I('PLATINUM', 'Platinum', 'Commodities', 'future', '@PL.1', 2, { markets: false, aliases: ['XPT', 'XPTUSD'] }),
+  I('WHEAT', 'Wheat', 'Commodities', 'future', '@W.1', 2, { markets: false }),
+  I('CORN', 'Corn', 'Commodities', 'future', '@C.1', 2, { markets: false }),
+  I('SOYBEANS', 'Soybeans', 'Commodities', 'future', '@S.1', 2, { markets: false, aliases: ['SOYBEAN', 'SOY'] }),
+  I('COFFEE', 'Coffee', 'Commodities', 'future', '@KC.1', 2, { markets: false }),
+  I('SUGAR', 'Sugar', 'Commodities', 'future', '@SB.1', 2, { markets: false }),
+  I('COCOA', 'Cocoa', 'Commodities', 'future', '@CC.1', 0, { markets: false }),
+  ...[
+    ['DE', 'Germany'], ['GB', 'UK'], ['FR', 'France'], ['IT', 'Italy'], ['JP', 'Japan'],
+    ['CN', 'China'], ['AU', 'Australia'], ['CA', 'Canada'], ['IN', 'India'],
+  ].map(([cc, country]) => I(`${cc}10Y`, `${country} 10Y yield`, 'Rates', 'yield', `${cc}10Y`, 3, { markets: false, longName: `${country} 10-year government bond`, term: '10Y' })),
+  ...[
+    ['SOL', 'Solana'], ['XRP', 'XRP'], ['BNB', 'BNB'], ['DOGE', 'Dogecoin'], ['ADA', 'Cardano'], ['TRX', 'Tron'],
+    ['LINK', 'Chainlink'], ['XLM', 'Stellar'], ['LTC', 'Litecoin'], ['AVAX', 'Avalanche'], ['DOT', 'Polkadot'],
+    ['HYPE', 'Hyperliquid'], ['ZEC', 'Zcash'], ['BCH', 'Bitcoin Cash'], ['SHIB', 'Shiba Inu'], ['SUI', 'Sui'],
+    ['USDT', 'Tether'], ['USDC', 'USD Coin'],
+  ].map(([sym, name]) => I(`${sym}USD`, name, 'Crypto', 'crypto', `${sym}.CM=`, 4, {
+    markets: false,
+    aliases: name.toUpperCase().replace(/\s+/g, '') === sym ? [] : [name.toUpperCase().replace(/\s+/g, '')],
+  })),
 ];
+
+// The instrument behind a CNBC symbol, for rows that come from other lists.
+export function instrumentBySrc(src) {
+  return INSTRUMENTS.find((i) => i.src === src) || null;
+}
 
 // The FX majors on HOME, and the yields on RATES, in display order.
 export const FX_MAJOR_IDS = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'USDCNY', 'USDTHB'];
