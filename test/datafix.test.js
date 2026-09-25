@@ -15,6 +15,9 @@ import { stripItems, barDay } from '../public/screens/chart.js';
 import { parseQuoteRow, decimalsIn } from '../data/quotes.js';
 import { precise52, closesRange, roundedRange } from '../data/range52.js';
 import { statRows } from '../public/screens/quote.js';
+import { parseFedFutures, withGaps, makeFedPath, FF_SYMBOLS } from '../data/fedpath.js';
+import { linesSvg } from '../public/screens/lines.js';
+import { stepPoints } from '../public/screens/fedpath.js';
 
 const fixture = (f) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'));
 const json = (body) => ({ ok: true, status: 200, json: async () => body });
@@ -186,4 +189,32 @@ test('EURUSD: the 52-week range comes from daily closes at full precision', asyn
   // A stock quoted to its source's precision is left alone.
   const aapl = parseQuoteRow(fixture('cnbc-fund.json').FormattedQuoteResult.FormattedQuote[0], 'AAPL');
   assert.equal(await precise52(aapl, { chart: async () => { throw new Error('not called'); } }), aapl);
+});
+
+// ---- FEDPATH --------------------------------------------------------------------
+// Real CNBC Fed funds futures, @FF.1 to @FF.18 (2026-09-25): 16 contracts, SEP 2026 to
+// DEC 2027; @FF.17 and @FF.18 answer unknown.
+test('FEDPATH: every listed contract, and a month without a price stays as a gap', async () => {
+  const body = fixture('cnbc-fedfunds.json');
+  const raw = body.FormattedQuoteResult.FormattedQuote;
+  assert.ok(FF_SYMBOLS.length >= 16);
+  const all = withGaps(parseFedFutures(raw), raw);
+  assert.equal(all.length, 16);
+  assert.deepEqual([all[0].month, all[2].month, all[15].month], ['2026-09', '2026-11', '2027-12']);
+  assert.ok(all.every((m) => !m.gap));
+  // NOV with a blank price (before its first trade): kept, marked.
+  const blank = raw.map((r) => (r.symbol === '@FF.3' ? { ...r, last: '' } : r));
+  const g = withGaps(parseFedFutures(blank), blank);
+  assert.equal(g.length, 16);
+  assert.deepEqual([g[2].month, g[2].implied, g[2].gap], ['2026-11', null, 'no price yet']);
+  // NOV missing from the answer altogether: still a row, said to be missing.
+  const gone = raw.filter((r) => r.symbol !== '@FF.3');
+  const h = withGaps(parseFedFutures(gone), gone);
+  assert.deepEqual([h[2].month, h[2].gap], ['2026-11', 'not listed by the source']);
+  // The step line breaks at the gap instead of joining OCT to DEC.
+  const pts = stepPoints(h.map((m) => m.implied));
+  const svg = linesSvg([{ id: 'imp', cls: 'ln-0', label: 'x', points: pts, gapX: 1 }], { width: 600, height: 200 });
+  assert.equal((svg.match(/<path class="ln ln-0" d="[^"]*"/)[0].match(/M/g) || []).length, 2);
+  const d = await makeFedPath({ fetchImpl: async () => json(body), rates: async () => ({ fed: null, stale: false }) }).getFedPath();
+  assert.equal(d.months.length, 16);
 });

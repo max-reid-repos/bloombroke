@@ -3,12 +3,16 @@
 //   Each contract settles on 100 minus the average effective Fed funds rate of its month,
 //   so 100 minus the price is the average rate the market is paying for that month.
 // - The target range and today's effective rate: New York Fed, via data/rates.js.
+// Every contract the source lists is asked for (it lists 16 months ahead; the symbols
+// past the last one answer "unknown" and are skipped). A month with no price yet, or
+// missing between two listed months, stays in the list as a gap (price null), so the
+// chart and the table never close up around it.
 
 import { createCache } from './cache.js';
 import { fetchCnbcRows, parseNum } from './quotes.js';
 import { getRates } from './rates.js';
 
-export const FF_MONTHS = 12;
+export const FF_MONTHS = 18;
 export const FF_SYMBOLS = Array.from({ length: FF_MONTHS }, (_, i) => `@FF.${i + 1}`);
 const TTL = 5 * 60_000;
 
@@ -58,13 +62,34 @@ export function parseFedFutures(rows) {
   return out.sort((a, b) => (a.month < b.month ? -1 : 1)).filter((r) => (seen.has(r.month) ? false : seen.add(r.month)));
 }
 
+const nextMonth = (ym) => {
+  const [y, m] = ym.split('-').map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+};
+
+// Priced rows + the raw rows -> one row per calendar month from the first to the last
+// month the source lists; months without a price are { month, price: null, gap }.
+export function withGaps(priced, raw) {
+  const listed = (raw || []).filter((r) => r && Number(r.code) === 0).map(contractMonthOf).filter(Boolean);
+  const all = [...listed, ...priced.map((r) => r.month)].sort();
+  if (!all.length) return priced;
+  const by = new Map(priced.map((r) => [r.month, r]));
+  const listedSet = new Set(listed);
+  const out = [];
+  for (let m = all[0]; m <= all[all.length - 1]; m = nextMonth(m)) {
+    out.push(by.get(m) || { symbol: null, month: m, price: null, change: null, implied: null, asOf: null, realTime: false, gap: listedSet.has(m) ? 'no price yet' : 'not listed by the source' });
+  }
+  return out;
+}
+
 export function makeFedPath({ fetchImpl = globalThis.fetch, cache = createCache(), rates = getRates } = {}) {
   async function getFedPath() {
     const [fut, rt] = await Promise.allSettled([
       cache.cached('fedpath', TTL, async () => {
-        const rows = parseFedFutures(await fetchCnbcRows(fetchImpl, FF_SYMBOLS));
+        const raw = await fetchCnbcRows(fetchImpl, FF_SYMBOLS);
+        const rows = parseFedFutures(raw);
         if (rows.length < 3) throw new Error('quotes source: too few Fed funds futures');
-        return rows;
+        return withGaps(rows, raw);
       }),
       rates(),
     ]);
