@@ -2,9 +2,12 @@
 // them (no key; fund=1 fields). Nothing is computed here: a field CNBC leaves out stays
 // empty (the screen shows --). CNBC has no price/book field, so there is none here.
 // Also: the P/E and dividend yield for a whole list of symbols, for SCREEN.
+// The last price is the live quote (the same one the quote screen shows, 15 s cache)
+// with its trade time; the valuation numbers are the fund snapshot (15 min cache)
+// with its own time. Both times are sent, so a gap between screens is explained.
 
 import { createCache } from './cache.js';
-import { fetchCnbcRows, tickerSource } from './quotes.js';
+import { fetchCnbcRows, tickerSource, getQuote } from './quotes.js';
 import { money, capNum } from './lists.js';
 import { CompanyDataError, cachedOrThrow, tickerOrThrow, text } from './company-kit.js';
 
@@ -28,6 +31,7 @@ export function parseValue(r) {
     exchange: text(r.exchange, 20),
     currency: text(r.currencyCode, 3),
     last: money(r.last),
+    asOf: typeof r.last_time === 'string' ? r.last_time : null,
     pe: money(r.pe),
     forwardPe: money(r.fpe),
     eps: money(r.eps),
@@ -63,14 +67,30 @@ export function parseFundMap(rows) {
   return out;
 }
 
-export function makeValue({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 500 }) } = {}) {
+export function makeValue({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 500 }), quote = fetchImpl === globalThis.fetch ? getQuote : null } = {}) {
   async function getValue(raw) {
     const ticker = tickerOrThrow(raw);
     const got = await cachedOrThrow(cache, `value:${ticker}`, TTL, async () => {
       const rows = await fetchCnbcRows(fetchImpl, [tickerSource(ticker)]);
       return parseValue(rows[0]);
     }, { what: 'Quote data', missing: `No ticker called ${ticker}.` });
-    return { ticker, ...got.value, stale: got.stale, updated: got.updated, source: VALUE_SOURCE };
+    // The live last price and its trade time; the snapshot's own when the quote fails.
+    let live = null;
+    if (quote) {
+      try { live = await quote(ticker); } catch { live = null; }
+    }
+    const lastLive = live && Number.isFinite(live.last) && live.asOf;
+    return {
+      ticker,
+      ...got.value,
+      last: lastLive ? live.last : got.value.last,
+      lastAsOf: lastLive ? live.asOf : got.value.asOf,
+      lastRealTime: lastLive ? Boolean(live.realTime) : null,
+      fundAsOf: got.value.asOf,
+      stale: got.stale,
+      updated: got.updated,
+      source: VALUE_SOURCE,
+    };
   }
 
   // symbols -> Map(symbol -> { pe, divYield }). Batches of 200, six at a time. A failed

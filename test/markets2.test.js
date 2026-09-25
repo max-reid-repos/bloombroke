@@ -204,7 +204,7 @@ test('Fed funds futures: 100 minus the price, contract month, bp against the eff
     { symbol: '@FF.4', code: 0, last: '', expiration_date: '2026-12-31' },
   ]);
   assert.deepEqual(rows.map((r) => [r.month, r.implied, r.change]), [['2026-09', 3.7475, 0.005], ['2026-10', 3.895, 0]]);
-  assert.equal(FF_SYMBOLS.length, 12);
+  assert.equal(FF_SYMBOLS.length, 18, 'every contract the source lists (16 on 2026-09-25), the rest answer unknown');
 });
 
 test('FEDPATH: joins the futures with the New York Fed target range', async () => {

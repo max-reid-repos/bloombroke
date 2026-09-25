@@ -143,6 +143,10 @@
 .dv-stats { margin-top: 12px; max-width: 420px; }
 .dv-years { border: 1px solid var(--rule); }
 .dv-note { margin-top: 10px; font-size: 12px; }
+.dv-chart-head { margin-top: 14px; font-size: 11px; color: var(--text-2); letter-spacing: .04em; }
+.dv-chart-host { position: relative; height: 150px; max-width: 520px; margin-top: 4px; }
+.dv-bar { fill: var(--series-1); }
+.dv-bar.is-part { fill-opacity: .45; }
 .tnews-row { grid-template-columns: 48px minmax(0, 1fr) minmax(0, max-content); }
 .tnews-src { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22ch; }
 .money { padding: 2px 0 6px; }
@@ -206,7 +210,8 @@
 .co-chip.is-active { color: var(--ink); background: var(--text-2); }
 .co-count { color: var(--faint); font-weight: 400; }
 .co-chip.is-active .co-count { color: var(--ink); }
-.co-noname { margin-left: 0; color: var(--text-2); }
+.co-noname { color: var(--text-2); }
+@media (max-width: 639px) { .tk-name.co-noname { display: inline; } }
 .co-title-line { margin-bottom: 10px; }
 .co-group { margin: 0 0 4px; color: var(--dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
 .co-groups { display: grid; gap: 12px 24px; }

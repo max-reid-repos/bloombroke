@@ -3,7 +3,7 @@
 //   OPTIONS AAPL              nearest expiry
 //   OPTIONS AAPL 2026-10-16   one expiry (the tabs list them all)
 
-import { esc, q, fmtNum, fmtSigned, fmtPct, dirOf, panel, LOADING } from './markets.js';
+import { esc, q, fmtNum, fmtSigned, fmtPct, dirOf, fmtAsOf, panel, LOADING } from './markets.js';
 import { fnBarHtml, syncStars } from './quote.js';
 import { instrumentById, resolveInstrument } from '../instruments.js';
 import { loadWatchlist, saveWatchlist, toggleId } from '../watchlist.js';
@@ -37,6 +37,11 @@ export function parse(args) {
 
 export function toInput(args) {
   return args.error ? null : ['OPTIONS', args.ticker, args.expiry].filter(Boolean).join(' ');
+}
+
+// "CBOE, DELAYED 15 MIN · FILE 12:49 ET": when the underlying price is from.
+export function underlyingAsOf(asOf) {
+  return `CBOE, DELAYED 15 MIN${asOf ? ` · FILE ${fmtAsOf(asOf)} ET` : ''}`;
 }
 
 // In the money: a call below the price, a put above it.
@@ -153,8 +158,11 @@ export function render(el, cmd, ctx) {
     const d = data;
     const u = d.underlying;
     const dir = dirOf(u.change);
+    // Cboe's underlying price is delayed 15 minutes like the chain; its file time is
+    // when Cboe wrote the file, so the price is from about 15 minutes before it.
     top.innerHTML = `<span class="oc-px num">${esc(fmtNum(u.price, 2))}</span>
       <span class="num ${dir}">${esc(fmtSigned(u.change, 2))} ${esc(fmtPct(u.changePct))}</span>
+      <span class="oc-kv dim">${esc(underlyingAsOf(d.asOf))}</span>
       <span class="oc-kv"><span class="dim">IV30</span> <span class="num">${esc(Number.isFinite(u.iv30) ? `${fmtNum(u.iv30, 2)}%` : '--')}</span></span>
       <span class="oc-kv"><span class="dim">EXPIRES</span> <span class="num">${esc(d.expiry.date)}</span> <span class="dim">${esc(Number.isFinite(d.expiry.days) ? `${d.expiry.days} ${d.expiry.days === 1 ? 'DAY' : 'DAYS'}` : '')}</span></span>
       <button type="button" class="btn oc-all" aria-pressed="${all}">${all ? 'NEAR THE PRICE' : `ALL ${d.rows.length} STRIKES`}</button>`;

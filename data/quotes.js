@@ -18,6 +18,14 @@ export const QUOTES_TTL = 15_000;
 export const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 const CNBC_URL = 'https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol';
 
+// "1.21" -> 2, "345.34" -> 2, "7,040" -> 0, anything else -> null: how many decimals
+// the source wrote.
+export function decimalsIn(s) {
+  if (typeof s !== 'string') return null;
+  const m = /^-?\d+(?:\.(\d+))?$/.exec(s.replace(/[,\s+]/g, ''));
+  return m ? (m[1] || '').length : null;
+}
+
 export function parseNum(s) {
   if (typeof s === 'number') return s;
   if (typeof s !== 'string') return NaN;
@@ -119,6 +127,8 @@ export function parseQuoteRow(r, ticker = r?.symbol) {
     marketCap: r.mktcapView || null,
     high52: numOrNull(r.yrhiprice),
     low52: numOrNull(r.yrloprice),
+    // Decimals the source gave the 52-week range (it rounds some, see data/range52.js).
+    range52Dp: Math.max(decimalsIn(r.yrhiprice) ?? -1, decimalsIn(r.yrloprice) ?? -1) >= 0 ? Math.max(decimalsIn(r.yrhiprice) ?? 0, decimalsIn(r.yrloprice) ?? 0) : null,
     pe: numOrNull(r.pe),
     eps: numOrNull(r.eps),
     divYield: r.dividendyield || null,

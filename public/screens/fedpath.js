@@ -54,7 +54,7 @@ export function render(el, cmd, ctx) {
       const d = await ctx.fetchJSON('/api/fedpath', { signal: ctx.signal });
       const months = d.months;
       const fed = d.fed;
-      const series = [{ id: 'imp', cls: 'ln-0', label: 'Implied by futures', points: stepPoints(months.map((m) => m.implied)) }];
+      const series = [{ id: 'imp', cls: 'ln-0', label: 'Implied by futures', points: stepPoints(months.map((m) => m.implied)), gapX: 1 }];
       if (fed && Number.isFinite(fed.to) && Number.isFinite(fed.from)) {
         series.push({ id: 'top', cls: 'ln-4', label: `Target range today ${fmtNum(fed.from, 2)}-${fmtNum(fed.to, 2)}%`, points: [{ x: 0, y: fed.to }, { x: months.length, y: fed.to }] });
         series.push({ id: 'bot', cls: 'ln-4', label: '', points: [{ x: 0, y: fed.from }, { x: months.length, y: fed.from }] });
@@ -74,12 +74,13 @@ export function render(el, cmd, ctx) {
         label: 'Fed funds rate implied by futures, by month',
         onHover(h) {
           const m = h && months[Math.min(months.length - 1, Math.floor(h.x))];
-          meta.innerHTML = m ? `<span class="num">${esc(monthLabel(m.month))} ${esc(`${fmtNum(m.implied, 3)}%`)}</span>` : base;
+          meta.innerHTML = m ? `<span class="num">${esc(monthLabel(m.month))} ${esc(Number.isFinite(m.implied) ? `${fmtNum(m.implied, 3)}%` : `-- ${m.gap || ''}`)}</span>` : base;
         },
       });
       tBody.innerHTML = `<table class="grid-table fp-table">
         <thead><tr><th scope="col">Month</th><th scope="col" class="num">Price</th><th scope="col" class="num">Implied rate</th><th scope="col" class="num">vs effective</th><th scope="col" class="num chg">Chg today</th><th scope="col" class="num time">Time</th></tr></thead>
         <tbody>${months.map((m) => {
+          if (m.gap) return `<tr><th scope="row" class="name">${esc(monthLabel(m.month))}</th><td class="num dim" colspan="5">-- ${esc(m.gap)}</td></tr>`;
           const move = Number.isFinite(m.change) ? -m.change : NaN;
           return `<tr>
             <th scope="row" class="name">${esc(monthLabel(m.month))}</th>
@@ -91,7 +92,8 @@ export function render(el, cmd, ctx) {
           </tr>`;
         }).join('')}</tbody>
       </table>`;
-      el.querySelector('#fp-t-meta').innerHTML = `<span class="fresh is-dly" title="Delayed">DLY</span> ${months.length} CONTRACTS`;
+      const gaps = months.filter((m) => m.gap).length;
+      el.querySelector('#fp-t-meta').innerHTML = `<span class="fresh is-dly" title="Delayed">DLY</span> ${months.length - gaps} CONTRACTS${gaps ? ` · ${gaps} WITHOUT A PRICE` : ''}`;
       ctx.status(`${statusLine(d.updated, d.stale, months.map(() => ({ kind: 'future', realTime: false })))}`, d.stale ? 'warn' : '');
     } catch (err) {
       if (err.name === 'AbortError') return;

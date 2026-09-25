@@ -49,14 +49,15 @@ export function render(el, cmd, ctx) {
     const panels = d.days.map((x, i) => {
       const label = `Ex-dividend ${fmtWeekday(x.date)}`;
       if (x.rows === null) return panel(String(i + 1), label, '<p class="panel-msg">This day did not load. Try again in a minute.</p>');
-      if (!x.rows.length) return panel(String(i + 1), label, '<p class="panel-msg">No ex-dividend dates listed for this day.</p>', { meta: '0 STOCKS' });
+      if (!x.rows.length) return panel(String(i + 1), label, `<p class="panel-msg">No ex-dividend dates listed for this day.</p>${x.dropped?.length ? `<p class="more dim">Left out: ${esc(x.dropped.map((r) => `${r.symbol || r.company} (${r.why})`).join(', '))}.</p>` : ''}`, { meta: '0 STOCKS' });
       const shown = d.single ? x.rows : x.rows.slice(0, PER_DAY);
       const c = `EXDIV ${x.date}`;
+      const drop = x.dropped?.length ? `<p class="more dim">Left out: ${esc(x.dropped.map((r) => `${r.symbol || r.company} (${r.why})`).join(', '))}. The source's dates for ${x.dropped.length > 1 ? 'these rows' : 'this row'} cannot all be right.</p>` : '';
       const more = shown.length < x.rows.length ? `<p class="more"><a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">+${x.rows.length - shown.length} more on ${esc(x.date)}</a></p>` : '';
-      return panel(String(i + 1), label, exdivTable(shown) + more, { meta: `${x.rows.length} STOCKS`, cmd: d.single ? '' : c, bodyCls: 'flush' });
+      return panel(String(i + 1), label, exdivTable(shown) + more + drop, { meta: `${x.rows.length} STOCKS`, cmd: d.single ? '' : c, bodyCls: 'flush' });
     });
     host.innerHTML = d.single ? panels[0].replace('class="panel ', 'class="panel panel-solo ') : `<div class="stack">${panels.join('')}</div>`;
-    el.querySelector('#xd-foot').innerHTML = sourceLine(d.source, 'Ex-date = the first day a buyer does not get the next dividend. Dividend = this payment per share; per year = the annual dividend the source lists. A to Z by symbol.');
+    el.querySelector('#xd-foot').innerHTML = sourceLine(d.source, 'Ex-date = the first day a buyer does not get the next dividend. Dividend = this payment per share; per year = the historical annual dividend the source lists, -- where it lists none. Rows whose dates cannot be true (paid before the record date) are left out and named under their day. A to Z by symbol.');
     ctx.updated(d.updated, d.stale);
   }).catch((err) => {
     if (err.name === 'AbortError') return;
