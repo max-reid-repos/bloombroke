@@ -456,7 +456,7 @@ export const START_HERE = [
   ['MARKETS', 'The whole world on one screen'],
   ['HEATMAP', 'The S&P 100 in colour'],
   ['FX 500 USD THB', 'Convert money'],
-  ['WHATIF', 'The stock you should have bought'],
+  ['WHATIF', "In hindsight: the maker's stock instead"],
 ];
 
 export const GRAMMAR_RULES = [

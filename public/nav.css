@@ -55,6 +55,7 @@ body.has-tape .dock > .tape:not([hidden]) { display: block; }
 
 /* ---- Stock screens: one watch star by the title, one tab strip under it ------ */
 .head-star { align-self: center; height: 24px; margin: 0 0 0 -4px; padding: 0 4px; border-right: 0; font-size: 16px; }
+.head-star[hidden] { display: none; }
 .tickerbar { margin: 4px var(--inset) 0; border: 1px solid var(--rule-strong); }
 .tickerbar[hidden] { display: none; }
 body.has-tickerbar #screen .fnbar,
@@ -221,7 +222,7 @@ body.menu-open { overflow: hidden; }
 @media (max-width: 639px) {
   .screenhead { min-height: 36px; gap: 8px; }
   .screen-sub { display: none; }
-  .screen-title { flex: 1 1 auto; }
+  .screenhead .share { margin-left: auto; }
 
   .fkeys .fkey:not(.is-mobile) { display: none; }
   .fkeys .fkey-n, .fkey-menu .fkey-n { display: none; }
