@@ -58,6 +58,22 @@ body.has-tape .dock > .tape:not([hidden]) { display: block; }
 .head-star[hidden] { display: none; }
 .tickerbar { margin: 4px var(--inset) 0; border: 1px solid var(--rule-strong); }
 .tickerbar[hidden] { display: none; }
+/* More functions off to the right: an arrow over a fade at the edge says the strip
+   scrolls (in place of the plain fade, which hid the cut). */
+.tickerbar.scroll-x.fade-r { -webkit-mask-image: none; mask-image: none; }
+.tickerbar.scroll-x.fade-l.fade-r {
+  -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to left, #000 calc(100% - 24px), transparent);
+}
+.tickerbar.fade-r::after {
+  content: '\203A';
+  position: sticky; right: 0;
+  flex: 0 0 40px; margin-left: -40px;
+  display: flex; align-items: center; justify-content: flex-end; padding-right: 8px;
+  background: linear-gradient(to right, transparent, var(--panel) 55%);
+  color: var(--accent); font-size: 18px; font-weight: 600; line-height: 1;
+  pointer-events: none;
+}
 
 /* ---- MENU overlay (Ctrl+K) ---------------------------------------------------- */
 .menu-overlay {

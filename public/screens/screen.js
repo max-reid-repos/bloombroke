@@ -268,7 +268,7 @@ export function render(el, cmd, ctx) {
         body.querySelector('.sc-scroll').scrollLeft = keep;
         body.querySelector('.sc-more')?.addEventListener('click', () => { limit += PAGE; load(); });
       }
-      ctx.status(`${d.stale ? 'LAST KNOWN DATA · ' : ''}SCREEN: ${fmtNum(d.count, 0)} MATCHES${day ? ` · SCREENER DATA AS OF ${day}${behind ? ' CLOSE' : ''}` : ' · DATA DATE UNKNOWN'}`, d.stale || !day || behind ? 'warn' : '');
+      ctx.status(`${d.stale ? 'LAST KNOWN DATA · ' : ''}SCREEN: ${fmtNum(d.count, 0)} MATCHES${day ? ` · SCREENER DATA AS OF ${day}${behind ? ' CLOSE' : ''}` : ' · DATA DATE UNKNOWN'}`, d.stale ? 'warn' : '');
     } catch (e) {
       if (e.name === 'AbortError') return;
       body.innerHTML = `<p class="panel-msg sc-none">${esc(e.message)}</p>`;

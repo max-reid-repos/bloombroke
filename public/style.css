@@ -239,6 +239,14 @@ a.panel-label:hover { text-decoration: none; background: var(--text); }
   font-size: 11px; color: var(--dim); letter-spacing: .04em;
   white-space: nowrap; overflow: hidden;
 }
+/* Phones: a long panel title wraps inside its label instead of pushing the page wide. */
+@media (max-width: 639px) {
+  .panel-head { height: auto; min-height: 22px; }
+  .panel-label { flex: 0 0 auto; min-width: 0; max-width: 70%; padding-top: 3px; padding-bottom: 3px; white-space: normal; line-height: 16px; overflow-wrap: anywhere; }
+  .panel-meta { flex: 0 1 auto; flex-wrap: wrap; white-space: normal; text-align: right; line-height: 14px; padding-top: 3px; padding-bottom: 3px; }
+  /* A long command in a sentence (a Format: line) may break. */
+  p .code { white-space: normal; overflow-wrap: anywhere; }
+}
 .panel-body { flex: 1; min-height: 0; padding: 8px 10px; }
 .panel-body.flush, .panel-body:has(> table) { padding: 0; }
 .panel-body.flush > .loading, .panel-body.flush > .panel-msg,
@@ -475,8 +483,14 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   color: var(--text); font-family: var(--font); font-size: 12px; text-transform: uppercase; text-align: right;
 }
 .wi-years input:focus { outline: 1px solid var(--accent); outline-offset: 0; }
+/* The RUN bar sticks right on the dock (no gap for rows to show through), and the
+   list keeps the bar's height clear below it: a row moved to by keys or by the last
+   scroll is never under the bar. */
+.wi-groups { --wi-bar-h: 40px; padding-bottom: var(--wi-bar-h); }
+.wi-groups .wi-item { scroll-margin-bottom: calc(var(--wi-bar-h) + 8px); }
+@media (max-width: 639px) { .wi-groups { --wi-bar-h: 64px; } }
 .wi-bar {
-  position: sticky; bottom: calc(var(--dock-h) + 4px);
+  position: sticky; bottom: var(--dock-h);
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
   margin-top: 10px; padding: 6px 8px;
   background: var(--panel-2); border: 1px solid var(--rule-strong);
@@ -852,7 +866,8 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   .sc-sum-k { color: var(--accent); letter-spacing: .08em; text-transform: uppercase; }
   .sc-sum-v { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sc-table .sc-vol, .sc-table .sc-sec, .sc-table .sc-ind, .sc-table .sc-cty { display: none; }
-  .sc-table .name { min-width: 0; }
+  /* Phones: ticker only, so the numbers fit; a tap on the row opens the company. */
+  .sc-table .name { display: none; }
 }
 
 /* ---- WATCH, PORTFOLIO, the watchlist star and the function bar ---------- */
@@ -953,6 +968,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .pf-table tfoot th, .pf-table tfoot td { height: 28px; padding: 0 10px; font-weight: 600; border-top: 1px solid var(--rule-strong); white-space: nowrap; }
 .pf-table tfoot .name { font-weight: 400; font-size: 11px; letter-spacing: .04em; max-width: none; }
 .pf-table .pf-val { color: var(--text); font-weight: 600; }
+.pf-table .pf-ph { display: none; }
 .pf-flag { margin-left: 6px; padding: 0 3px; border: 1px solid var(--rule-strong); color: var(--dim); font-size: 9px; font-weight: 600; letter-spacing: .06em; vertical-align: middle; }
 .pf-alloc { padding: 2px 0; }
 .alloc-bar { display: flex; gap: 1px; height: 14px; background: var(--bg); }
@@ -970,6 +986,9 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   .wl-table .wl-sym, .pf-table .pf-sym { width: 100%; }
   .pf-table .pf-nm { display: none; }
   .pf-table tfoot .name { display: none; }
+  /* The Total $ column is hidden on phones, so the totals row shows it over Total %. */
+  .pf-table tfoot th, .pf-table tfoot td { height: auto; padding: 4px; line-height: 16px; }
+  .pf-table tfoot .pf-ph { display: block; font-size: 11px; }
   .pf-table th, .pf-table td { padding: 0 6px; }
   .wl-top > *, .pf-top > * { padding: 6px 8px; }
   .wl-note .code { margin-left: 0; margin-right: 8px; }

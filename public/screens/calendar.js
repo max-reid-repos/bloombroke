@@ -48,7 +48,7 @@ export function calendarTable(events, now = new Date()) {
     </tr>`;
   }).join('');
   return `<table class="grid-table calendar-table">
-    <thead><tr><th scope="col" class="num">ET</th><th scope="col" class="cal-cty">Where</th><th scope="col" class="cal-imp">Impact</th><th scope="col">Event</th><th scope="col" class="num">Forecast</th><th scope="col" class="num">Previous</th></tr></thead>
+    <thead><tr><th scope="col" class="num">ET</th><th scope="col" class="cal-cty"><span class="cal-long">Where</span><span class="cal-short" aria-hidden="true">In</span></th><th scope="col" class="cal-imp">Impact</th><th scope="col">Event</th><th scope="col" class="num"><span class="cal-long">Forecast</span><span class="cal-short" aria-hidden="true">Fcst</span></th><th scope="col" class="num"><span class="cal-long">Previous</span><span class="cal-short" aria-hidden="true">Prev</span></th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }

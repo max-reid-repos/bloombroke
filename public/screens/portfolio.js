@@ -83,7 +83,7 @@ export function pfTable(v) {
       <td class="num pf-nm dim">${usd(t.basis)}</td><td class="tag pf-nm"></td><td class="pf-nm"></td>
       <td class="num pf-val">${usd(t.value)}</td>
       <td class="num pf-nm ${dd}">${usd(t.dayGain, true)}</td><td class="num ${dd}">${fmtPct(t.dayPct)}</td>
-      <td class="num pf-nm ${td}">${usd(t.totalGain, true)}</td><td class="num ${td}">${fmtPct(t.totalPct)}</td>
+      <td class="num pf-nm ${td}">${usd(t.totalGain, true)}</td><td class="num ${td}"><span class="pf-ph">${usd(t.totalGain, true)}</span>${fmtPct(t.totalPct)}</td>
       <td class="num pf-nm">${t.counted ? '100.0%' : '--'}</td><td class="wl-act"></td>
     </tr></tfoot>
   </table>`;
