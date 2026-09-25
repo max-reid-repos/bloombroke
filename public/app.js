@@ -14,6 +14,7 @@ import * as buyScreen from './screens/buy.js';
 import * as whatifScreen from './screens/whatif.js';
 import * as fundingScreen from './screens/funding.js';
 import { fmtNum, fmtPct, dirOf, cmdForInstrument, nyTime, panel } from './screens/markets.js';
+import { EXTRA_HELP, EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra } from './commands.js';
 
 export const COMMANDS = [
   { name: 'HOME', group: 'Markets', hint: 'Markets, S&P 500, currencies and news on one screen', usage: 'HOME', example: 'HOME' },
@@ -25,6 +26,7 @@ export const COMMANDS = [
   { name: 'WHATIF', group: 'Money tools', hint: 'The stock you should have bought', usage: 'WHATIF [<item> ...]', example: 'WHATIF', examples: ['WHATIF', 'WHATIF IPHONE6 LATTE:3Y'] },
   { name: 'BUY', group: 'Money tools', hint: 'Should I buy it? Cost per use and a verdict', usage: 'BUY <price> [<n> PER WEEK] [FOR <n>Y]', example: 'BUY 1200', examples: ['BUY 1200', 'BUY 90 3 PER WEEK FOR 2Y'] },
   { name: 'WAGE', group: 'Money tools', hint: 'Save your hourly pay, BUY then shows hours of work', usage: 'WAGE <per hour>', example: 'WAGE 35', examples: ['WAGE 35'] },
+  ...EXTRA_HELP,
   { name: 'HELP', group: 'Help', hint: 'Every command, with examples', usage: 'HELP', example: 'HELP' },
 ];
 
@@ -173,6 +175,8 @@ export function parseCommand(raw) {
   if (!toks.length) return { name: DEFAULT_COMMAND, input: DEFAULT_COMMAND };
   const head = ALIASES[toks[0]] || toks[0];
   const rest = toks.slice(1);
+  const extra = matchExtra(head, rest);
+  if (extra) return extra;
   if (SIMPLE.has(head)) return { name: head, input: head };
   if (head === 'FX') {
     const args = parseFxArgs(rest);
@@ -217,7 +221,7 @@ export function fromQuery(search) {
 }
 
 // Commands that take arguments: Tab adds a space, and a bad argument shows the usage line.
-const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs };
+const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, ...EXTRA_TAKES_ARGS };
 
 // Suggestions for the dropdown: [{ name, hint, value }].
 export function suggest(raw) {
@@ -437,7 +441,7 @@ function boot() {
       every(fn, ms) { const id = setInterval(fn, ms); cleanups.push(() => clearInterval(id)); },
       onCleanup(fn) { cleanups.push(fn); },
     };
-    const mod = SCREENS[cmd.name];
+    const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name];
     if (mod) {
       setStatus('LOADING...');
       const fn = mod.render(view, cmd, ctx);
