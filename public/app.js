@@ -543,6 +543,14 @@ export function tickerStripFor(cmd) {
   return FUNCTION_BAR.includes(current) ? { ticker, current } : null;
 }
 
+// The ticker the watch star by the screen title is for: the stock of a strip, or a
+// named instrument's chart (GOLD, BTC, EURUSD, SPX). One star, one place, every time.
+export function starTickerFor(cmd) {
+  const strip = tickerStripFor(cmd);
+  if (strip) return strip.ticker;
+  return cmd?.name === 'QUOTE' && !cmd.error && instrumentById(cmd.args?.ticker) ? cmd.args.ticker : null;
+}
+
 // The strip: keys 1 to 9 for the first nine.
 export function tickerStripHtml(ticker, current) {
   return tickerFunctions(ticker, current).map((f, i) => {
@@ -828,9 +836,9 @@ function boot() {
     tickerBar.innerHTML = strip ? tickerStripHtml(strip.ticker, strip.current) : '';
     if (strip) tickerBar.setAttribute('aria-label', `${strip.ticker} functions`);
     tickerBar.dispatchEvent(new Event('scroll'));
-    starTicker = strip ? strip.ticker : null;
-    headStar.hidden = !strip;
-    if (strip) paintStar();
+    starTicker = embed ? null : starTickerFor(cmd);
+    headStar.hidden = !starTicker;
+    if (starTicker) paintStar();
     backBtn.hidden = embed || depth() === 0;
     if (cmd.name === 'MENU' && fromUrl) setTimeout(() => menu?.open(), 0);
 

@@ -25,5 +25,5 @@
 .pro-terms { margin: 4px 0 0; padding-left: 16px; list-style: square; color: var(--text-2); line-height: 1.55; }
 .pro-terms li { margin: 2px 0; }
 .pro-terms a { color: var(--accent); }
-.pro-demo { margin: 0 0 8px; padding: 8px 12px; border: 1px solid var(--down); color: var(--down); font-weight: 600; letter-spacing: .02em; }
+.pro-demo { margin: 0 0 8px; padding: 8px 12px; border: 1px solid var(--accent); background: var(--accent-tint); color: var(--accent); font-weight: 600; letter-spacing: .02em; }
 .pro-demo[hidden] { display: none; }

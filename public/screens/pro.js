@@ -119,7 +119,8 @@ function showKey(host, key, ctx, { saved = true } = {}) {
     ${saved ? '' : '<p class="muted">This browser could not save it, so copy it now.</p>'}
   </div>`;
   host.querySelector('#pro-copy').addEventListener('click', async () => {
-    ctx.status(await copyText(key) ? 'KEY COPIED' : 'SELECT THE KEY AND COPY IT', 'warn');
+    const ok = await copyText(key);
+    ctx.status(ok ? 'KEY COPIED' : 'SELECT THE KEY AND COPY IT', ok ? '' : 'warn');
   });
   host.querySelector('#pro-dl').addEventListener('click', () => {
     download('bloombroke-pro-key.txt', keyFileText(key));

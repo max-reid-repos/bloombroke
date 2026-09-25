@@ -5,7 +5,7 @@ import {
   toolbar, segmented, rangePills, panelTools, moreButton, dataTable, sortRows, nextSort, fmtDate,
 } from '../public/kit.js';
 import { PRESETS } from '../public/ranges.js';
-import { parseCommand, tickerStripFor, tickerStripHtml, screenTitle, FUNCTION_BAR } from '../public/app.js';
+import { parseCommand, tickerStripFor, tickerStripHtml, screenTitle, FUNCTION_BAR, starTickerFor } from '../public/app.js';
 
 test('dates: one format per role', () => {
   assert.equal(fmtDate('2026-09-24', 'table'), 'SEP 24');
@@ -93,4 +93,11 @@ test('kit files follow the copy rules', () => {
     assert.doesNotMatch(s, /—/, `${f}: em dash`);
     assert.doesNotMatch(s, /amber|#ffb|hsl\((3\d|4\d|5\d),/i, `${f}: amber`);
   }
+});
+
+test('the watch star sits by the title on every instrument screen', () => {
+  for (const c of ['AAPL', 'AAPL NEWS', 'GOLD', 'BTC', 'EURUSD', 'SPX', 'GOLD 5Y']) {
+    assert.equal(starTickerFor(parseCommand(c)), parseCommand(c).args.ticker, c);
+  }
+  for (const c of ['HOME', 'NEWS', 'WATCH', 'HEATMAP']) assert.equal(starTickerFor(parseCommand(c)), null, c);
 });

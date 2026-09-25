@@ -270,6 +270,8 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 }
 .fresh.is-rt { color: var(--accent); }
 .fresh.is-dly { color: var(--dim); }
+/* In a panel head (DLY CBOE, 15 MIN) the tag is a word in the line, not a column. */
+.panel-meta .fresh { width: auto; }
 
 /* ---- Tables ----------------------------------------------------------- */
 .grid-table { width: 100%; border-collapse: collapse; }

@@ -7,7 +7,6 @@ import { rangeChart, priceDecimals } from './chart.js';
 import { freshTag, lastTradeLine } from '../freshness.js';
 import { rangeLabel } from '../ranges.js';
 import { instrumentById } from '../instruments.js';
-import { loadWatchlist, saveWatchlist, toggleId } from '../watchlist.js';
 
 // The line chart moved to chart.js; these re-exports keep old imports working.
 export { niceTicks, chartSvg, mountChart, fmtXFor, fmtHoverFor, priceDecimals } from './chart.js';
@@ -120,29 +119,6 @@ export function metaLine(d) {
   return [ex, d.currency, KIND_META[d.kind] || d.type].filter(Boolean).join('  ');
 }
 
-// ---- Watchlist star (named instruments only; stocks use the frame's star) --------
-
-function isWatched(ctx, ticker) {
-  return loadWatchlist(ctx.store).includes(ticker);
-}
-
-const starText = (ticker, on) => (on ? `Remove ${ticker} from the watchlist` : `Add ${ticker} to the watchlist`);
-
-export function starHtml(ticker, on) {
-  return `<button type="button" class="star${on ? ' is-on' : ''}" data-watch-toggle aria-pressed="${on}" title="${esc(starText(ticker, on))}"><span class="star-icon" aria-hidden="true">${on ? '★' : '☆'}</span><span class="offscreen">${esc(starText(ticker, on))}</span></button>`;
-}
-
-export function syncStars(el, ticker, on) {
-  el.querySelectorAll('[data-watch-toggle]').forEach((b) => {
-    b.classList.toggle('is-on', on);
-    b.setAttribute('aria-pressed', String(on));
-    b.querySelector('.star-icon').textContent = on ? '★' : '☆';
-    const label = b.querySelector('.offscreen');
-    if (label) label.textContent = starText(ticker, on);
-    if (b.title) b.title = starText(ticker, on);
-  });
-}
-
 const RANGE_ERRORS = {
   date: 'That date does not exist. Dates look like 2020-01-31.',
   order: 'FROM has to be before TO.',
@@ -167,20 +143,8 @@ export function render(el, cmd, ctx) {
   <p class="footnote">Prices and charts from CNBC. RT: real time. DLY: delayed, futures about 10 minutes, indexes about 15. Not financial advice.</p>`;
   const [qBody, cBody] = el.querySelectorAll('.panel-body');
   const qMeta = el.querySelector('#q-meta');
-  // Stocks and ETFs get the frame's tab strip and watch star. A named instrument (GOLD,
-  // EURUSD, SPX) has no strip, so its star sits in the panel head.
-  if (instrumentById(ticker)) el.querySelector('.panel-head .panel-label').insertAdjacentHTML('afterend', starHtml(ticker, isWatched(ctx, ticker)));
-  el.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-watch-toggle]');
-    if (!b) return;
-    e.stopPropagation();
-    e.preventDefault();
-    const list = toggleId(loadWatchlist(ctx.store), ticker);
-    saveWatchlist(ctx.store, list);
-    const on = list.includes(ticker);
-    syncStars(el, ticker, on);
-    ctx.status(on ? `${ticker} ADDED TO THE WATCHLIST` : `${ticker} REMOVED FROM THE WATCHLIST`);
-  });
+  // The watch star is the frame's, by the screen title, for stocks and named
+  // instruments alike (app.js starTickerFor).
   let found = true;
   let last = null;
 
@@ -216,7 +180,6 @@ export function render(el, cmd, ctx) {
         qBody.innerHTML = `<p class="notice">No ticker called ${esc(ticker)}.</p>
           <p class="muted">Check the spelling, or try <a class="code" href="${esc(q('AAPL'))}" data-cmd="AAPL">AAPL</a> <a class="code" href="${esc(q('GOLD'))}" data-cmd="GOLD">GOLD</a> <a class="code" href="${esc(q('EURUSD'))}" data-cmd="EURUSD">EURUSD</a>. Type <a class="code" href="${esc(q('HELP'))}" data-cmd="HELP">HELP</a> for every command.</p>`;
         cBody.closest('.panel').hidden = true;
-        el.querySelector('.panel-head > .star')?.remove();
         ctx.hideTickerStrip?.();
         ctx.status(`UNKNOWN TICKER ${ticker}`, 'warn');
         return;
