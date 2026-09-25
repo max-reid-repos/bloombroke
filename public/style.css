@@ -251,15 +251,17 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .tab.is-active { color: var(--ink); background: var(--text-2); }
 
 /* ---- Live or delayed tags ------------------------------------------------ */
+/* Quiet text, not a box (a box means you can press it). A fixed width, so RT and DLY
+   line up in a column. */
 .fresh {
   display: inline-block;
-  padding: 0 3px;
-  border: 1px solid currentColor;
+  width: 3.4em;
   font-size: 9px; font-weight: 600; line-height: 12px; letter-spacing: .06em;
+  text-align: left;
   vertical-align: middle;
 }
 .fresh.is-rt { color: var(--accent); }
-.fresh.is-dly { color: var(--dim); border-color: var(--rule-strong); }
+.fresh.is-dly { color: var(--dim); }
 
 /* ---- Tables ----------------------------------------------------------- */
 .grid-table { width: 100%; border-collapse: collapse; }
@@ -277,7 +279,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .grid-table .row-link:hover { background: var(--panel-3); }
 .grid-table .row-link:hover .name a { color: var(--accent); }
 .grid-table .row-link:focus { outline: 0; background: var(--panel-3); box-shadow: inset 2px 0 0 var(--accent); }
-.grid-table th.tag, .grid-table td.tag { width: 1%; padding: 0 2px 0 0; text-align: right; }
+.grid-table th.tag, .grid-table td.tag { width: 1%; padding: 0 0 0 4px; text-align: left; }
 .grid-table .name { width: 100%; font-weight: 400; color: var(--text-2); max-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .grid-table .name a { color: var(--text-2); }
 .grid-table .name a:hover { color: var(--accent); text-decoration: none; }
@@ -301,6 +303,17 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .mk-cols { columns: 3 340px; column-gap: 0; column-rule: 1px solid var(--rule-strong); }
 .mk-cols .mk-group { break-inside: avoid; background: var(--bg); }
 .mk-cols .mk-group .group-row th { border-top: 0; }
+/* Same column widths in every group table, so tags and numbers line up across groups. */
+/* Fixed layout from the colgroup; number widths include 6px side padding. */
+.mk-group { table-layout: fixed; }
+.mk-group .c-tag { width: 34px; }
+.mk-group .c-last { width: 11ch; }
+.mk-group .c-chg { width: 9ch; }
+.mk-group .c-pct { width: 8ch; }
+.mk-group .c-time { width: 7ch; }
+.mk-group .name { width: auto; }
+.mk-group td.num { padding: 0 6px; }
+.mk-cols-time { columns: 3 400px; }
 
 /* ---- Range chart: presets, dates, chart ------------------------------- */
 .rc { display: flex; flex-direction: column; min-width: 0; }
@@ -387,7 +400,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 /* ---- QUOTE ------------------------------------------------------------ */
 .q-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 420px); gap: 24px; }
 .q-name { color: var(--text-2); font-size: 14px; }
-.q-hero .fresh { align-self: center; font-size: 10px; line-height: 14px; }
+.q-hero .fresh { align-self: center; width: auto; font-size: 10px; line-height: 14px; }
 .q-hero { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; font-size: 44px; font-weight: 600; line-height: 1.1; letter-spacing: -.02em; }
 .q-ccy { font-size: 14px; font-weight: 400; letter-spacing: .06em; color: var(--accent); }
 .q-chg { margin-top: 2px; font-size: 16px; }
@@ -640,7 +653,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 }
 .tape-item:hover { text-decoration: none; background: var(--panel-2); }
 .tape-name { color: var(--dim); text-transform: uppercase; letter-spacing: .04em; }
-.tape-item .fresh { align-self: center; font-size: 8px; line-height: 10px; padding: 0 2px; }
+.tape-item .fresh { align-self: center; width: auto; font-size: 8px; line-height: 10px; padding: 0 2px; }
 .tape-empty { padding: 0 var(--gutter); line-height: var(--tape-h); font-size: 11px; color: var(--dim); }
 @keyframes tape { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
@@ -690,6 +703,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 
   .grid-table th, .grid-table td { padding: 0 8px; }
   .grid-table .chg, .grid-table .time, .grid-table .moves { display: none; }
+  .mk-group .c-chg, .mk-group .c-time { width: 0; }
   .ch-bar { gap: 0; }
   .ch-tabs { width: 100%; border-bottom: 1px solid var(--rule); }
   .ch-dates { padding: 4px 8px; gap: 8px; }

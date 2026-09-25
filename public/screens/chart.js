@@ -209,7 +209,7 @@ function intradayLayers(points, g, { refs = {}, multiDay = false, bar = '5M', sh
     over += `<path class="ch-move ${dir}" d="M${f1(xs[i - 1])},${f1(y(from))}L${f1(mx)},${f1(my)}"><title>Biggest 5-minute move</title></path>`;
     dots.push({ x: mx, y: my, cls: `ch-mk-move ${dir}` });
     const size = bp ? `${fmtSigned((to - from) * 100, 1)} bp` : fmtPct(pct);
-    items.push({ key: 'move', text: `${size} · ${when(st.move.t)}`, x: mx, y: my, prio: 5, sides: pct > 0 ? ['above', 'below', 'right', 'left'] : ['below', 'above', 'right', 'left'], dir });
+    items.push({ key: 'move', text: `5-MIN MOVE ${size} · ${when(st.move.t)}`, x: mx, y: my, prio: 5, sides: pct > 0 ? ['above', 'below', 'right', 'left'] : ['below', 'above', 'right', 'left'], dir });
   }
   for (const d of dots) obstacles.push({ x0: d.x - 3, y0: d.y - 3, x1: d.x + 3, y1: d.y + 3 });
   const placed = placeLabels(items, { width: W, top, bottom, obstacles });

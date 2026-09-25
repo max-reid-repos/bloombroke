@@ -6,6 +6,7 @@ import { freshTag } from '../freshness.js';
 import { newsList } from './news.js';
 import { loadWatchlist, isDefaultList } from '../watchlist.js';
 import { fetchQuotes, watchCompact } from './watch.js';
+import { moversCompact } from './movers.js';
 
 const HOME_FOOTNOTE = '<p class="footnote">Prices from CNBC. RT: real time. DLY: delayed, futures about 10 minutes, indexes about 15. Headlines link to the original publishers. The status line shows when data was last updated. Not financial advice.</p>';
 
@@ -29,7 +30,8 @@ export function fxTable(pairs) {
 const HOME_WATCH_ROWS = 10;
 
 export function render(el, cmd, ctx) {
-  // The user's own watchlist replaces the FX panel once it is theirs (not the starter list).
+  // Panel 3 shows the S&P 100 movers (currencies are already in panel 1).
+  // The user's own watchlist replaces it once it is theirs (not the starter list).
   const watch = loadWatchlist(ctx.store);
   const mine = watch.length > 0 && !isDefaultList(watch);
   const shown = watch.slice(0, HOME_WATCH_ROWS);
@@ -38,7 +40,7 @@ export function render(el, cmd, ctx) {
     ${panel('2', 'S&P 500', '<div class="rc rc-home" id="h-rc"></div>', { cmd: 'SPX', metaId: 'h-ch-meta', bodyCls: 'flush' })}
     ${mine
     ? panel('3', 'Watchlist', LOADING, { cmd: 'WATCH', metaId: 'h-fx-meta', meta: `${watch.length} SYMBOLS` })
-    : panel('3', 'FX vs USD', LOADING, { cmd: 'FX 100 USD EUR', metaId: 'h-fx-meta' })}
+    : panel('3', 'Movers', LOADING, { cmd: 'MOVERS', metaId: 'h-fx-meta', meta: 'S&amp;P 100 TODAY', bodyCls: 'flush' })}
     ${panel('4', 'News', LOADING, { cmd: 'NEWS', metaId: 'h-news-meta', bodyCls: 'flush', cls: 'panel-wide' })}
   </div>
   <p class="footnote h-desk">Build your own screen: <a class="code" href="?c=DESK" data-cmd="DESK">DESK</a></p>
@@ -95,10 +97,9 @@ export function render(el, cmd, ctx) {
   async function loadFx() {
     if (mine) { loadWatch(); return; }
     try {
-      const d = await ctx.fetchJSON('/api/fxmajors', { signal: ctx.signal });
-      rerender(fxBody, fxTable(d.pairs));
-      settleTicks(fxBody);
-      seen.fx = d;
+      const d = await ctx.fetchJSON('/api/movers', { signal: ctx.signal });
+      rerender(fxBody, moversCompact(d));
+      seen.fx = { updated: d.updated, stale: d.stale, pairs: [] };
       noteUpdated();
     } catch (err) {
       fail(fxBody, err, 'table');

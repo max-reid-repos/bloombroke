@@ -15,10 +15,11 @@
 .more { padding: 6px 10px; font-size: 12px; }
 
 /* ---- Shared cells ----------------------------------------------------- */
-.tk { color: var(--text); font-weight: 600; }
+.tk { color: var(--accent); font-weight: 600; }
 .tk-name { color: var(--dim); margin-left: 6px; }
 .cc { margin-left: 4px; color: var(--dim); font-size: 11px; }
-.grid-table .name a:hover .tk { color: var(--accent); }
+.grid-table .name a:hover .tk, .grid-table .row-link:hover .tk { color: var(--text); }
+.movers-table .vol { color: var(--text-2); }
 .st { width: 1%; font-size: 11px; font-weight: 600; letter-spacing: .08em; }
 .st-open { color: var(--up); }
 .st-lunch { color: var(--text-2); }
