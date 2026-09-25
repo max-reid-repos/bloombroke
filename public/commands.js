@@ -24,6 +24,8 @@ import * as earnings from './screens/earnings.js';
 import * as calendar from './screens/calendar.js';
 import * as loan from './screens/loan.js';
 import * as compound from './screens/compound.js';
+import * as pro from './screens/pro.js';
+import * as tape from './screens/tape.js';
 
 export const EXTRA = [
   { name: 'WORLD', group: 'Markets', hint: 'World stock indexes by region, open or closed', usage: 'WORLD', example: 'WORLD', screen: world },
@@ -45,6 +47,10 @@ export const EXTRA = [
   { name: 'CALENDAR', group: 'Calendars', hint: "This week's economic events: jobs, inflation, central banks", usage: 'CALENDAR [US|ALL]', example: 'CALENDAR', examples: ['CALENDAR', 'CALENDAR ALL'], screen: calendar },
   { name: 'LOAN', group: 'Money tools', hint: "Monthly payment and total interest, at today's mortgage rate or yours", usage: 'LOAN <amount> [years]', example: 'LOAN 400000 30Y', examples: ['LOAN 400000 30Y', 'LOAN 25000 5Y 7.9%'], screen: loan, takesArgs: true },
   { name: 'COMPOUND', group: 'Money tools', hint: 'What saving every month grows to, at a return you pick', usage: 'COMPOUND <plan>', example: 'COMPOUND 500/MO 8% 30Y', examples: ['COMPOUND 500/MO 8% 30Y', 'COMPOUND 10000 7% 20Y'], screen: compound, takesArgs: true },
+  { name: 'PRO', group: 'Pro', hint: 'Your own ticker tape and sync across devices, $4.20 a month', usage: 'PRO', example: 'PRO', screen: pro },
+  { name: 'TAPE', group: 'Pro', hint: 'Your own ticker tape (Pro)', usage: 'TAPE ADD|REMOVE <tickers>, TAPE RESET', example: 'TAPE', examples: ['TAPE', 'TAPE ADD AAPL', 'TAPE RESET'], screen: tape, takesArgs: true, url: 'TAPE' },
+  { name: 'LOGIN', group: 'Pro', hint: 'Use your Pro key on this device', usage: 'LOGIN <key>', example: 'LOGIN', screen: pro.loginCommand, takesArgs: true, url: 'PRO', secret: true },
+  { name: 'LOGOUT', group: 'Pro', hint: 'Log this device out of Pro', usage: 'LOGOUT', example: 'LOGOUT', screen: pro.logoutCommand, url: 'PRO' },
 ];
 
 // Help and suggestion entries, in the same shape as the core COMMANDS.
@@ -62,8 +68,17 @@ export function matchExtra(head, rest) {
     if (c.name !== head) continue;
     const args = c.screen.parse ? c.screen.parse(rest) : {};
     if (args === null) continue;
-    const input = [head, ...(c.screen.parse ? rest : [])].join(' ');
+    const input = c.secret ? head : [head, ...(c.screen.parse ? rest : [])].join(' ');
     return { name: c.id || c.name, args, error: args.error, input };
   }
   return null;
+}
+
+// What goes in the URL and the command history for a command. LOGIN never puts its key
+// there, and commands that change something (LOGIN, LOGOUT, TAPE ADD) are not replayed
+// from a link: the URL keeps only the screen they show.
+export function urlCommand(clean) {
+  const head = String(clean).split(' ')[0];
+  const c = EXTRA.find((x) => x.name === head && x.url);
+  return c ? c.url : clean;
 }

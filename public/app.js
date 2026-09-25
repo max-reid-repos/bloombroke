@@ -17,7 +17,8 @@ import { fmtNum, fmtPct, dirOf, cmdForInstrument, panel } from './screens/market
 import { matchInstrument, searchInstruments } from './instruments.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { statusLine, freshTag } from './freshness.js';
-import { EXTRA_HELP, EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra } from './commands.js';
+import { EXTRA_HELP, EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra, urlCommand } from './commands.js';
+import { getTape, loadTapeRows } from './pro.js';
 
 export const COMMANDS = [
   { name: 'HOME', group: 'Markets', hint: 'Markets, S&P 500, currencies and news on one screen', usage: 'HOME', example: 'HOME' },
@@ -38,7 +39,7 @@ export const TICKER_HELP = {
 };
 
 export const SOON = [
-  { name: 'PRO', hint: 'Everything, for $4.20 a month' },
+  { name: 'ALERTS', hint: 'Price alerts, coming next to Pro' },
 ];
 
 export const FKEYS = [
@@ -562,10 +563,11 @@ function boot() {
   function run(raw, { push = true } = {}) {
     const clean = tokenize(raw).join(' ') || DEFAULT_COMMAND;
     if (push) {
-      const q = toQuery(clean);
-      if (location.search !== q) window.history.pushState({ c: clean }, '', q);
-      if (cmdHistory[cmdHistory.length - 1] !== clean) {
-        cmdHistory.push(clean);
+      const shown = urlCommand(clean); // LOGIN keeps its key out of the URL and history
+      const q = toQuery(shown);
+      if (location.search !== q) window.history.pushState({ c: shown }, '', q);
+      if (cmdHistory[cmdHistory.length - 1] !== shown) {
+        cmdHistory.push(shown);
         cmdHistory = cmdHistory.slice(-50);
         store.set('bb.history', cmdHistory);
       }
@@ -682,7 +684,7 @@ function boot() {
     if (e.key.length === 1 || e.key === 'Backspace') input.focus();
   });
 
-  window.addEventListener('popstate', () => render(fromQuery(location.search)));
+  window.addEventListener('popstate', () => render(urlCommand(fromQuery(location.search))));
 
   // --- clock ----------------------------------------------------------------
   const clockEl = $('clock');
@@ -702,8 +704,9 @@ function boot() {
   let tapeIds = '';
   async function loadTape() {
     try {
-      const data = await fetchJSON('/api/markets');
-      const list = data.instruments.filter((q) => q.tape);
+      const own = getTape(); // Pro: your own tape
+      const list = own ? await loadTapeRows(own, fetchJSON) : (await fetchJSON('/api/markets')).instruments.filter((q) => q.tape);
+      if (!list.length) throw new Error('empty tape');
       const ids = list.map((q) => q.id).join(',');
       if (ids === tapeIds) {
         for (const q of list) {
@@ -737,6 +740,7 @@ function boot() {
   }
   loadTape();
   liveTimer(loadTape, 15_000);
+  window.addEventListener('bb:tape', () => { tapeIds = ''; loadTape(); });
 
   // --- share: copy the current link, confirm in the status line ---------------
   async function copyText(text) {
@@ -765,7 +769,7 @@ function boot() {
   });
 
   // --- first render ---------------------------------------------------------
-  const initial = fromQuery(location.search);
+  const initial = urlCommand(fromQuery(location.search)); // a link never runs LOGIN or TAPE ADD
   window.history.replaceState({ c: initial }, '', location.search ? toQuery(initial) : location.pathname);
   const firstVisit = !store.get('bb.booted', false);
   if (firstVisit && !location.search && !reduceMotion.matches) {
