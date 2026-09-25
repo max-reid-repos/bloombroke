@@ -7,6 +7,7 @@ export const COMMODITIES = [
   { id: 'WTI', src: '@CL.1', name: 'Oil (WTI)', group: 'Energy', unit: 'USD per barrel', decimals: 2 },
   { id: 'BRENT', src: '@LCO.1', name: 'Oil (Brent)', group: 'Energy', unit: 'USD per barrel', decimals: 2 },
   { id: 'NATGAS', src: '@NG.1', name: 'Natural gas', group: 'Energy', unit: 'USD per MMBtu', decimals: 3 },
+  { id: 'GASOLINE', src: '@RB.1', name: 'Gasoline (RBOB)', group: 'Energy', unit: 'USD per gallon', decimals: 4 },
   { id: 'GOLD', src: '@GC.1', name: 'Gold', group: 'Metals', unit: 'USD per troy ounce', decimals: 2 },
   { id: 'SILVER', src: '@SI.1', name: 'Silver', group: 'Metals', unit: 'USD per troy ounce', decimals: 3 },
   { id: 'COPPER', src: '@HG.1', name: 'Copper', group: 'Metals', unit: 'USD per pound', decimals: 4 },
@@ -17,6 +18,7 @@ export const COMMODITIES = [
   { id: 'COFFEE', src: '@KC.1', name: 'Coffee', group: 'Agriculture', unit: 'US cents per pound', decimals: 2 },
   { id: 'SUGAR', src: '@SB.1', name: 'Sugar', group: 'Agriculture', unit: 'US cents per pound', decimals: 2 },
   { id: 'COCOA', src: '@CC.1', name: 'Cocoa', group: 'Agriculture', unit: 'USD per tonne', decimals: 0 },
+  { id: 'LIVECATTLE', src: '@LC.1', name: 'Live cattle', group: 'Agriculture', unit: 'US cents per pound', decimals: 3 },
 ].map(withCmd);
 
 // "WTI Crude (Nov'26)" -> "NOV'26"

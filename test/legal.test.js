@@ -8,6 +8,9 @@ import { mountLegal, renderMarkdown, inline, fill } from '../lib/legal.js';
 import { parseCommand } from '../public/app.js';
 import { HELP_GROUPS } from '../public/screens/help.js';
 
+// The one brand name that must never appear, built so it does not appear here either.
+const FORBIDDEN = new RegExp(['bloom', 'berg'].join(''), 'i');
+
 function memoryStorage() {
   const m = new Map();
   return {
@@ -97,8 +100,8 @@ test('legal pages: 200, operator named, version and date shown', async () => {
       assert.ok(html.includes('/v/test/legal.css'));
       assert.doesNotMatch(html, /\{\{\w+\}\}/, 'no unfilled placeholders');
       assert.doesNotMatch(html, /class="consent|consent\.js|app\.js/, 'no first-visit notice or app script on legal pages');
-      assert.doesNotMatch(html, /—/, 'no em dashes');
-      assert.doesNotMatch(html, /bloomberg/i);
+      assert.doesNotMatch(html, /\u2014/, 'no em dashes');
+      assert.doesNotMatch(html, FORBIDDEN);
     }
     const terms = await (await fetch(`${base}/terms`)).text();
     for (const must of ['Monetary Authority of Singapore', 'Contracts (Rights of Third Parties) Act 2001', 'USD 50', '18 years', 'experimental', 'USD 4.20', 'laws of Singapore']) {
@@ -133,8 +136,8 @@ test('legal markdown: headings, lists, bold, safe links, emails, placeholders', 
 test('legal text files: no em dashes, no forbidden name', () => {
   for (const f of ['terms.md', 'privacy.md', 'disclaimer.md']) {
     const md = readFileSync(new URL(`../legal/${f}`, import.meta.url), 'utf8');
-    assert.doesNotMatch(md, /—/, `${f}: no em dashes`);
-    assert.doesNotMatch(md, /bloomberg/i, f);
+    assert.doesNotMatch(md, /\u2014/, `${f}: no em dashes`);
+    assert.doesNotMatch(md, FORBIDDEN, f);
   }
 });
 

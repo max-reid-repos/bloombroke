@@ -49,7 +49,7 @@ You must not, and must not help anyone else to:
 
 ## 7. Third-party data and links
 
-The data on Bloombroke comes from third parties. Current sources include CNBC, Nasdaq, the US Securities and Exchange Commission (EDGAR), the US Department of the Treasury, the Federal Reserve Bank of New York, Freddie Mac, the US Bureau of Labor Statistics, the European Central Bank via the Frankfurter API, CoinGecko, Forex Factory, Yahoo Finance, and news publishers such as CNBC, MarketWatch and Yahoo Finance, whose headlines link to the publisher's own site. Sources may change without notice.
+The data on Bloombroke comes from third parties. Current sources include CNBC, Nasdaq, the US Securities and Exchange Commission (EDGAR), the US Department of the Treasury, the Federal Reserve Bank of New York, the Federal Reserve Bank of St. Louis (FRED), Freddie Mac, the US Bureau of Labor Statistics, the European Central Bank via the Frankfurter API, CoinGecko, Cboe, Forex Factory, Yahoo Finance, and news publishers such as CNBC, MarketWatch and Yahoo Finance, whose headlines link to the publisher's own site. Sources may change without notice.
 
 These sources are not our partners. They do not endorse Bloombroke and we do not endorse them. Their data belongs to them and may be subject to their own terms, which you must follow if you use their data. We are not responsible for their data, their sites or their availability.
 

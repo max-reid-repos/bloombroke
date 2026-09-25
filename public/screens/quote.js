@@ -171,11 +171,11 @@ export function render(el, cmd, ctx) {
   const inst = instrumentById(ticker);
   const yieldChart = inst?.kind === 'yield';
   const chart = rangeChart(el.querySelector('#q-rc'), ctx, {
-    symbol: ticker, range, meta: el.querySelector('#q-ch-meta'), hostCls: 'chart-host-lg',
+    symbol: ticker, range, meta: el.querySelector('#q-ch-meta'), hostCls: 'chart-host-lg', quote: 'external',
     navigate: (c) => ctx.run(c),
     label: `${inst?.name || ticker}${yieldChart ? '' : ' price'}`,
     ...(yieldChart ? { bp: true, decimals: 3, fmtY: (v) => `${fmtNum(v, 2)}%` } : inst ? { decimals: inst.decimals } : {}),
-    onLoad: () => { if (last) chart.setLive(liveOf(last)); },
+    onLoad: () => { if (last) { chart.setQuote(last); chart.setLive(liveOf(last)); } },
   });
 
   function liveOf(d) {
@@ -191,6 +191,7 @@ export function render(el, cmd, ctx) {
       settleTicks(qBody);
       qMeta.textContent = metaLine(d);
       ctx.updated(d.updated, d.stale, [d]);
+      chart.setQuote(d);
       chart.setLive(liveOf(d));
     } catch (err) {
       if (err.name === 'AbortError') return;

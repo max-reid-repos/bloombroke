@@ -3,12 +3,15 @@
 // rows, shared by every visitor for an hour. Filtering happens here with the pure
 // functions in public/screener.js.
 //
-// Nasdaq's screener has no P/E or dividend yield columns, so there are no filters
-// for them: we do not mix in numbers from another source.
+// Nasdaq's screener has no P/E or dividend yield columns. PE and DIV filters use the
+// CNBC quote service instead (one batched download of the whole list, shared for an
+// hour, only when a screen asks for them). A stock CNBC has no number for is left out
+// of that filter, and the answer says where the numbers came from.
 
 import { createCache } from './cache.js';
 import { UA } from './quotes.js';
-import { parseScreenArgs, applyScreen, screenWords, sortOf, SCREEN_ERRORS } from '../public/screener.js';
+import { parseScreenArgs, applyScreen, screenWords, sortOf, needsCnbc, SCREEN_ERRORS } from '../public/screener.js';
+import { makeValue } from './value.js';
 
 const HOUR = 60 * 60_000;
 const BASE = 'https://api.nasdaq.com/api/screener/stocks';
@@ -78,7 +81,17 @@ export function parseAsOf(body) {
   return mon ? `${m[3]}-${String(mon).padStart(2, '0')}-${m[2].padStart(2, '0')}` : null;
 }
 
-export function makeScreen({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: 60_000 }) } = {}) {
+export const CNBC_NOTE = 'P/E and dividend yield from CNBC, may be missing for some stocks';
+
+// rows + Map(symbol -> { pe, divYield }) -> rows with pe and divYield (null when missing).
+export function withFund(rows, fund) {
+  return rows.map((r) => {
+    const f = fund.get(r.symbol);
+    return { ...r, pe: f?.pe ?? null, divYield: f?.divYield ?? null };
+  });
+}
+
+export function makeScreen({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: 60_000 }), getFundMap = makeValue({ fetchImpl }).getFundMap } = {}) {
   async function get(url) {
     const res = await fetchImpl(url, { headers: HEADERS, signal: AbortSignal.timeout(20_000) });
     if (!res.ok) throw new Error(`screener HTTP ${res.status}`);
@@ -91,13 +104,18 @@ export function makeScreen({ fetchImpl = globalThis.fetch, cache = createCache({
     return { rows: parseScreenerRows(rows.value), asOf: asOf.status === 'fulfilled' ? parseAsOf(asOf.value) : null };
   });
 
+  const fund = (rows) => cache.cached('screen:fund', HOUR, () => getFundMap(rows.map((r) => r.symbol)));
+
   // words: what follows SCREEN. limit: how many rows to send back.
   async function getScreen(words, limit = 100) {
     const spec = parseScreenArgs(words || '');
     if (spec.error) throw new ScreenError(spec.error, SCREEN_ERRORS[spec.error](spec.bad));
     const n = Math.max(1, Math.min(MAX_LIMIT, Math.floor(Number(limit)) || 100));
     const u = await universe();
-    const matches = applyScreen(u.value.rows, spec);
+    const cnbc = needsCnbc(spec);
+    const f = cnbc ? await fund(u.value.rows) : null;
+    const rows = f ? withFund(u.value.rows, f.value) : u.value.rows;
+    const matches = applyScreen(rows, spec);
     return {
       spec: screenWords(spec),
       sort: sortOf(spec),
@@ -106,8 +124,9 @@ export function makeScreen({ fetchImpl = globalThis.fetch, cache = createCache({
       rows: matches.slice(0, n),
       asOf: u.value.asOf,
       updated: new Date(u.fetchedAt).toISOString(),
-      stale: u.stale,
-      source: 'Nasdaq stock screener',
+      stale: u.stale || Boolean(f?.stale),
+      source: cnbc ? `Nasdaq stock screener; ${CNBC_NOTE}` : 'Nasdaq stock screener',
+      cnbc,
     };
   }
 

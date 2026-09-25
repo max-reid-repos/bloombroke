@@ -86,7 +86,7 @@ test('AFFORD formats and HTML', () => {
   assert.match(html, /How is this calculated\?/);
   assert.doesNotMatch(html, /\bBUY\b/);
   assert.doesNotMatch(html, /style=/);
-  assert.doesNotMatch(html, /—/, 'no em dashes');
+  assert.doesNotMatch(html, /\u2014/, 'no em dashes');
 });
 
 test('WAGE parses, shows and clears', () => {

@@ -41,6 +41,7 @@ export function render(el, cmd, ctx) {
     : panel('3', 'FX vs USD', LOADING, { cmd: 'FX 100 USD EUR', metaId: 'h-fx-meta' })}
     ${panel('4', 'News', LOADING, { cmd: 'NEWS', metaId: 'h-news-meta', bodyCls: 'flush', cls: 'panel-wide' })}
   </div>
+  <p class="footnote h-desk">Build your own screen: <a class="code" href="?c=DESK" data-cmd="DESK">DESK</a></p>
   ${HOME_FOOTNOTE}`;
 
   const bodies = el.querySelectorAll('.panel-body');

@@ -18,6 +18,7 @@ import { buildId, versionIndex } from './lib/assets.js';
 import { readFileSync } from 'node:fs';
 import { mountCommandRoutes } from './command-routes.js';
 import { mountLegal } from './lib/legal.js';
+import { securityHeaders, isEmbedQuery, embedHtml } from './lib/embed.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
@@ -29,22 +30,9 @@ const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 'loopback');
 
+const HEADERS = securityHeaders();
 app.use((req, res, next) => {
-  res.set({
-    'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'strict-origin-when-cross-origin',
-    'X-Frame-Options': 'DENY',
-    'Content-Security-Policy': [
-      "default-src 'self'",
-      "script-src 'self' https://datafa.st",
-      "style-src 'self' https://fonts.googleapis.com",
-      "font-src https://fonts.gstatic.com",
-      "img-src 'self' data:",
-      "connect-src 'self' https://datafa.st",
-      "base-uri 'none'",
-      "frame-ancestors 'none'",
-    ].join('; '),
-  });
+  res.set(HEADERS);
   next();
 });
 
@@ -302,7 +290,10 @@ async function whatifIndex(c) {
     return INDEX;
   }
 }
-app.get(['/', '/index.html'], async (req, res) => sendIndex(res, 200, await whatifIndex(str(req.query.c) || '')));
+app.get(['/', '/index.html'], async (req, res) => {
+  const html = await whatifIndex(str(req.query.c) || '');
+  sendIndex(res, 200, isEmbedQuery(req.query) ? embedHtml(html) : html);
+});
 
 // /v/<build>/...: this build's files are immutable. An older build id (a page loaded
 // before a deploy) gets today's files, uncached, so it never pins a mismatched copy.

@@ -90,9 +90,14 @@ export function ensureConsent({ doc = document, win = window, store = consentSto
     function accept() {
       store.set(acceptRecord(version, now()));
       win.removeEventListener('keydown', onKey, true);
+      doc.removeEventListener('focusin', keepFocus);
       wrap.remove();
       open = null;
-      if (active && typeof active.focus === 'function' && doc.contains(active)) active.focus();
+      // Back to the command bar (or whatever had focus), unless on a touch screen.
+      const input = doc.getElementById('cmd');
+      const coarse = typeof win.matchMedia === 'function' && win.matchMedia('(pointer: coarse)').matches;
+      const back = input || active;
+      if (!coarse && back && typeof back.focus === 'function' && doc.contains(back)) back.focus();
       resolve(true);
     }
     // While the notice is open, keys do not reach the terminal. Enter accepts; Tab moves
@@ -116,8 +121,14 @@ export function ensureConsent({ doc = document, win = window, store = consentSto
       }
     }
 
+    // Focus stays in the notice, even when the terminal focuses its command bar after this.
+    function keepFocus(e) {
+      if (!wrap.contains(e.target)) button.focus();
+    }
+
     button.addEventListener('click', accept);
     win.addEventListener('keydown', onKey, true);
+    doc.addEventListener('focusin', keepFocus);
     doc.body.appendChild(wrap);
     button.focus();
   });
