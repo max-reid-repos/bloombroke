@@ -26,6 +26,7 @@ import { matchInstrument, searchInstruments } from './instruments.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { statusLine, freshTag } from './freshness.js';
 import { EXTRA_HELP, EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra } from './commands.js';
+import { MARKETS_HELP, MARKETS_SCREENS, MARKETS_TAKES_ARGS, matchMarkets } from './commands-markets.js';
 
 export const COMMANDS = [
   { name: 'HOME', group: 'Markets', hint: 'Markets, S&P 500, currencies and news on one screen', usage: 'HOME', example: 'HOME' },
@@ -40,6 +41,7 @@ export const COMMANDS = [
   { name: 'WATCH', group: 'Your lists', hint: 'Your watchlist, live: any stock, index, pair, coin or future', usage: 'WATCH [ADD|REMOVE <symbols>] [CLEAR|EXPORT|IMPORT]', example: 'WATCH', usageExample: 'WATCH ADD AAPL TSLA', examples: ['WATCH', 'WATCH ADD AAPL TSLA EURUSD', 'WATCH REMOVE TSLA', 'WATCH EXPORT', 'WATCH IMPORT AAPL,MSFT,GOLD'] },
   { name: 'PORTFOLIO', aliases: ['PF'], group: 'Your lists', hint: 'Your holdings: value, day gain, total gain, weights', usage: 'PF [ADD <ticker> <shares> @ <cost>|SELL <ticker> <shares>|REMOVE <ticker>]', example: 'PF', usageExample: 'PF ADD AAPL 10 @ 150', examples: ['PF', 'PF ADD AAPL 10 @ 150', 'PF SELL AAPL 3', 'PF EXPORT', 'PF IMPORT'] },
   ...EXTRA_HELP,
+  ...MARKETS_HELP,
   { name: 'SCREEN', group: 'Markets', hint: 'Find stocks by sector, size, price and move', usage: 'SCREEN [<filters>]', example: 'SCREEN GAINERS', examples: ['SCREEN', 'SCREEN GAINERS'] },
   { name: 'FINANCIALS', group: 'Company', hint: 'Income, balance sheet and cash flow from SEC filings', usage: 'FINANCIALS <ticker> [BALANCE|CASHFLOW] [QUARTERLY]', example: 'FINANCIALS AAPL', examples: ['FINANCIALS AAPL', 'FINANCIALS MSFT BALANCE'] },
   { name: 'HELP', group: 'Help', hint: 'Every command, with examples', usage: 'HELP', example: 'HELP' },
@@ -47,9 +49,9 @@ export const COMMANDS = [
 
 // <TICKER> <FUNCTION> [args] runs <FUNCTION> <TICKER> [args]: AAPL CHART 5Y, AAPL NEWS.
 // A function that does not take a ticker yet shows "coming soon", not a ticker error.
-export const TICKER_FUNCTIONS = ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS', 'EARNINGS', 'COMPARE', 'WATCH'];
-// The function bar on a stock screen, keys 1 to 6 (7 is the watchlist star).
-export const FUNCTION_BAR = ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS'];
+export const TICKER_FUNCTIONS = ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS', 'OPTIONS', 'EARNINGS', 'COMPARE', 'WATCH'];
+// The function bar on a stock screen, keys 1 to 7 (8 is the watchlist star).
+export const FUNCTION_BAR = ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS', 'OPTIONS'];
 export const GRAMMAR_HELP = {
   name: '<TICKER> <FUNCTION>', hint: 'Any function for one ticker, ticker first', examples: ['AAPL CHART 5Y', 'AAPL NEWS', 'AAPL FINANCIALS', 'AAPL WATCH', 'AAPL COMPARE MSFT'],
 };
@@ -289,6 +291,7 @@ export function parseCommand(raw, depth = 0) {
     const fn = parseTickerFunction(toks);
     if (fn) return fn;
   }
+  const markets = matchMarkets(head, rest); if (markets) return markets;
   // Add new commands above this line: commands win over symbols of the same name.
   const quote = parseSymbolCommand(toks);
   if (quote) return quote;
@@ -308,7 +311,7 @@ export function fromQuery(search) {
 }
 
 // Commands that take arguments: Tab adds a space, and a bad argument shows the usage line.
-const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, ...EXTRA_TAKES_ARGS, FINANCIALS: parseFinancialsArgs, SCREEN: parseScreenArgs };
+const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, ...EXTRA_TAKES_ARGS, ...MARKETS_TAKES_ARGS, FINANCIALS: parseFinancialsArgs, SCREEN: parseScreenArgs };
 // Commands that run on their own but still show the usage line for bad words after them.
 const CHECKS_ARGS = { WATCH: parseWatchArgs, PORTFOLIO: parsePfArgs };
 const commandFor = (word) => COMMANDS.find((c) => c.name === word || c.aliases?.includes(word));
@@ -620,7 +623,7 @@ function boot() {
       live(fn, ms) { cleanups.push(liveTimer(fn, ms)); },
       onCleanup(fn) { cleanups.push(fn); },
     };
-    const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name];
+    const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name] || MARKETS_SCREENS[cmd.name];
     if (cmd.mutates && fromUrl) {
       // A link that changes saved lists never runs by itself: ask first.
       view.innerHTML = panel('1', cmd.name === 'PORTFOLIO' ? 'Portfolio' : 'Watchlist', `
@@ -766,7 +769,7 @@ function boot() {
       if (!coarse) input.focus();
       return;
     }
-    // A stock screen's function bar: keys 1 to 7 while the command bar is empty.
+    // A stock screen's function bar: keys 1 to 8 while the command bar is empty.
     if (/^[1-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey
       && (e.target === input ? input.value === '' : !e.target.closest?.('input, select, textarea'))) {
       const item = screen.querySelector(`.fnbar [data-key="${e.key}"]`);
