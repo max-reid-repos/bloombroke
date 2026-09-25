@@ -184,7 +184,7 @@ test('getChart: ranges, unknown symbols, cached', async () => {
   assert.equal(r.range, '5Y');
   assert.deepEqual(r.points.map((p) => p.v), [1, 2]);
   await ch.getChart('AAPL', '5Y');
-  assert.equal(calls, 1);
+  assert.equal(calls, 2, 'weekly bars plus daily bars for their end dates, then cached');
   await assert.rejects(ch.getChart('ZZZZZ', '1Y'), (e) => e.code === 'not_found');
   await assert.rejects(ch.getChart('AAPL', '7Y'), (e) => e.code === 'bad_range');
   await assert.rejects(ch.getChart('../x', '1Y'), (e) => e.code === 'bad_symbol');

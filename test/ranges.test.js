@@ -86,10 +86,12 @@ test('getChart: custom ranges reach the source with the right bar size', async (
   const r = await ch.getChart('aapl', { from: '2020-01-01', to: '2024-12-31' });
   assert.deepEqual([r.from, r.to, r.bar, r.range], ['2020-01-01', '2024-12-31', '1W', null]);
   assert.match(urls[0], /\/AAPL\/1W\/20200101000000\/20250101000000\//);
+  assert.match(urls[1], /\/AAPL\/1D\/20200101000000\/20250101000000\//, 'daily bars for the weekly end dates');
   await ch.getChart('gold', 'MAX');
-  assert.match(urls[1], /\/%40GC\.1\/1MO\/19000101000000\//);
+  assert.match(urls[2], /\/%40GC\.1\/1MO\/19000101000000\//);
   await ch.getChart('eur/usd', '5D');
-  assert.match(urls[2], /\/EUR%3D\/5M\//);
+  assert.match(urls[4], /\/EUR%3D\/5M\//);
+  assert.equal(urls.length, 5, 'intraday ranges make one call');
 });
 
 test('symbol search: our names first, then US stocks and ETFs', async () => {

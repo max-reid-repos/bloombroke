@@ -10,6 +10,8 @@ import { formValues, wordsFromForm, presetValues, asOfLine, resultsTable } from 
 import { parseExDiv, cleanExDiv, exDivProblem, makeSplits } from '../data/splits.js';
 import { exdivTable } from '../public/screens/exdiv.js';
 import { parseCoins, excludeCoins, makeCrypto } from '../data/crypto.js';
+import { shapeBars, barEnds, isPartial, makeCharts } from '../data/charts.js';
+import { stripItems, barDay } from '../public/screens/chart.js';
 
 const fixture = (f) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'));
 const json = (body) => ({ ok: true, status: 200, json: async () => body });
@@ -94,4 +96,61 @@ test('CRYPTO: top 20 without stablecoins or tokenised assets', async () => {
   assert.equal(d.stableSource, 'hand list');
   assert.match(d.note, /excluding stablecoins/);
   assert.equal(calls, 2);
+});
+
+// ---- chart legends ---------------------------------------------------------------
+// Real CNBC AAPL bars, Dec 2022 to Apr 2023. Weekly bars are stamped with the Sunday
+// their week starts (2023-01-01, a market holiday); the 129.62 close is Friday Jan 6's.
+// The source has no Apr 6, 2023 daily bar: the week of Apr 2 closes at 163.76, which
+// is its Apr 5 close (Apr 7 was Good Friday).
+const W1 = shapeBars(fixture('cnbc-bars-aapl-1w.json').barData.priceBars);
+const D1 = shapeBars(fixture('cnbc-bars-aapl-1d.json').barData.priceBars);
+const nyDate = (ms) => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+test('weekly bars carry the trading day of their close', () => {
+  const pts = barEnds(W1, D1);
+  const jan = pts.find((p) => p.d.startsWith('20230101'));
+  assert.equal(jan.v, 129.62);
+  assert.equal(nyDate(jan.e), '2023-01-06');
+  const apr = pts.find((p) => p.d.startsWith('20230402'));
+  assert.equal(nyDate(apr.e), '2023-04-05');
+  assert.ok(pts.every((p) => !p.e || ![0, 6].includes(new Date(`${nyDate(p.e)}T12:00:00Z`).getUTCDay())), 'never a weekend');
+  // A close that does not match the daily bar is not given a day.
+  const off = barEnds([{ ...W1[5], v: W1[5].v + 5 }], D1);
+  assert.equal(off[0].e, undefined);
+  assert.equal(isPartial('20260920', '1W', '2026-09-25'), true);
+  assert.equal(isPartial('20260913', '1W', '2026-09-25'), false);
+  assert.equal(isPartial('20260901', '1MO', '2026-09-25'), true);
+});
+
+test('legend: weekly closes, real dates, and the live price is not a close', () => {
+  const pts = barEnds(W1, D1).map(({ t, v, e }) => ({ t, v, ...(e ? { e } : {}) }));
+  const live = [...pts, { t: pts[pts.length - 1].t + 86_400_000, v: 999, live: true }];
+  const items = stripItems(live, null, { fmtY: (v) => v.toFixed(2), bar: '1W' });
+  const by = Object.fromEntries(items.map((i) => [i.k, i]));
+  assert.equal(by.Last.v, '999.00');
+  assert.notEqual(by['High weekly close'].v, '999.00');
+  assert.equal(by['Low weekly close'].v, '129.62');
+  assert.equal(by['Low weekly close'].when, 'JAN 6, 2023');
+  assert.ok(items.some((i) => i.v === 'WEEKLY CLOSES'));
+  // Without the daily call a bar only names its week; a running bar claims no day.
+  assert.equal(barDay({ t: W1[5].t, v: 1 }, '1W'), 'WEEK OF JAN 1, 2023');
+  assert.equal(barDay({ t: W1[5].t, v: 1, e: D1[0].t, p: true }, '1W'), 'THIS WEEK SO FAR');
+  assert.equal(barDay({ t: D1[0].t, v: 1 }, '1D'), 'DEC 1, 2022');
+  const daily = stripItems(D1.map(({ t, v }) => ({ t, v })), null, { fmtY: (v) => v.toFixed(2), bar: '1D' });
+  assert.ok(daily.some((i) => i.k === 'High close'));
+});
+
+test('chart service: weekly ranges fetch daily bars for the end dates', async () => {
+  const urls = [];
+  const fetchImpl = async (url) => { urls.push(url); return json(fixture(url.includes('/1W/') ? 'cnbc-bars-aapl-1w.json' : 'cnbc-bars-aapl-1d.json')); };
+  const { getChart } = makeCharts({ fetchImpl, cache: createCache(), now: () => new Date('2023-04-20T16:00:00Z') });
+  const d = await getChart('AAPL', '5Y');
+  assert.equal(d.bar, '1W');
+  assert.ok(urls.some((u) => u.includes('/1D/')));
+  const jan = d.points.find((p) => nyDate(p.t) === '2023-01-01');
+  assert.equal(nyDate(jan.e), '2023-01-06');
+  assert.equal(d.points[d.points.length - 1].p, true, 'the week of Apr 16, 2023 is still running on Apr 20');
+  const one = await makeCharts({ fetchImpl: async (url) => { urls.push(url); return json(fixture('cnbc-bars-aapl-1d.json')); }, cache: createCache(), now: () => new Date('2023-04-20T16:00:00Z') }).getChart('AAPL', '1Y');
+  assert.equal(one.points[0].e, undefined);
 });
