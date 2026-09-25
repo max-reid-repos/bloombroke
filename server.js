@@ -9,6 +9,8 @@ import { getRates } from './data/rates.js';
 import { getNews } from './data/news.js';
 import { getCatalog, getWhatif, getFunding } from './data/whatif-service.js';
 import { WhatifError } from './data/whatif.js';
+import { buildId, versionIndex } from './lib/assets.js';
+import { readFileSync } from 'node:fs';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
@@ -184,8 +186,28 @@ app.get('/api/funding', async (req, res) => {
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));
 
-app.use(express.static(path.join(dir, 'public'), { maxAge: '5m', index: 'index.html' }));
+// Pages: the HTML is never cached, and it points at versioned assets (see lib/assets.js).
+const PUBLIC = path.join(dir, 'public');
+const BUILD = buildId(PUBLIC);
+const INDEX = versionIndex(readFileSync(path.join(PUBLIC, 'index.html'), 'utf8'), BUILD);
+function sendIndex(res, status = 200) {
+  res.status(status).set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }).send(INDEX);
+}
+app.get(['/', '/index.html'], (req, res) => sendIndex(res));
 
-app.use((req, res) => res.status(404).sendFile(path.join(dir, 'public', 'index.html')));
+// /v/<build>/...: this build's files are immutable. An older build id (a page loaded
+// before a deploy) gets today's files, uncached, so it never pins a mismatched copy.
+const immutable = express.static(PUBLIC, { index: false, maxAge: '365d', immutable: true });
+const uncached = express.static(PUBLIC, { index: false, cacheControl: false });
+app.use('/v/:build', (req, res, next) => {
+  if (req.params.build === BUILD) return immutable(req, res, next);
+  res.set('Cache-Control', 'no-cache');
+  return uncached(req, res, next);
+});
 
-app.listen(PORT, HOST, () => console.log(`bloombroke listening on http://${HOST}:${PORT}`));
+// Unversioned paths still work for pages cached before this change.
+app.use(express.static(PUBLIC, { index: false, cacheControl: false, setHeaders: (res) => res.set('Cache-Control', 'no-cache') }));
+
+app.use((req, res) => sendIndex(res, 404));
+
+app.listen(PORT, HOST, () => console.log(`bloombroke ${BUILD} listening on http://${HOST}:${PORT}`));

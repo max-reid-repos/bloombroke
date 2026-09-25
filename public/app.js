@@ -239,6 +239,15 @@ export function suggest(raw) {
   return [];
 }
 
+// Arrow keys in the open suggestion list. -1 means nothing is picked (Enter runs what
+// was typed). Down from the last item, or Up from the first, goes back to -1.
+export function stepActive(active, count, dir) {
+  if (!count) return -1;
+  if (active < 0) return dir > 0 ? 0 : count - 1;
+  const next = active + dir;
+  return next < 0 || next >= count ? -1 : next;
+}
+
 // Tab completion: complete to the n-th suggestion.
 export function complete(raw, index = 0) {
   const list = suggest(raw);
@@ -408,7 +417,31 @@ function boot() {
   function closeSuggest() {
     active = -1;
     input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant');
     list.hidden = true;
+  }
+
+  function markActive() {
+    list.querySelectorAll('li[data-i]').forEach((li) => {
+      const on = Number(li.dataset.i) === active;
+      li.classList.toggle('is-active', on);
+      li.setAttribute('aria-selected', String(on));
+    });
+    if (active >= 0) input.setAttribute('aria-activedescendant', `sug-${active}`);
+    else input.removeAttribute('aria-activedescendant');
+  }
+
+  // A picked suggestion: commands that take words fill the bar, the rest run.
+  function pick(s) {
+    if (s.value.endsWith(' ')) {
+      input.value = s.value;
+      active = -1;
+      renderSuggest();
+      placeCursor();
+      return;
+    }
+    run(s.value);
+    if (coarse) input.blur();
   }
 
   // --- running commands -----------------------------------------------------
@@ -477,7 +510,8 @@ function boot() {
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    const value = active >= 0 && items[active] && !items[active].usage ? items[active].value : input.value;
+    if (active >= 0 && items[active] && !items[active].usage && !list.hidden) { pick(items[active]); return; }
+    const value = input.value;
     if (!value.trim()) { run(fromQuery(location.search), { push: false }); return; }
     run(value);
     if (coarse) input.blur();
@@ -497,6 +531,15 @@ function boot() {
       return;
     }
     tabIndex = -1;
+    // With the suggestion list open, the arrows move through it; otherwise they walk history.
+    const pickable = !list.hidden && items.length && !items.every((it) => it.usage);
+    if (pickable && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault();
+      active = stepActive(active, items.length, e.key === 'ArrowDown' ? 1 : -1);
+      if (items[active]?.usage) active = stepActive(active, items.length, e.key === 'ArrowDown' ? 1 : -1);
+      markActive();
+      return;
+    }
     if (e.key === 'ArrowUp') {
       if (!cmdHistory.length) return;
       e.preventDefault();
@@ -528,13 +571,7 @@ function boot() {
     e.preventDefault();
     const s = items[Number(li.dataset.i)];
     if (!s) return;
-    if (s.value.endsWith(' ')) {
-      input.value = s.value;
-      renderSuggest();
-      placeCursor();
-    } else {
-      run(s.value);
-    }
+    pick(s);
   });
 
   // Links and buttons that carry a command run it in place.
