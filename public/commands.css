@@ -15,14 +15,18 @@
 .more { padding: 6px 10px; font-size: 12px; }
 
 /* ---- Shared cells ----------------------------------------------------- */
-.tk { color: var(--text); font-weight: 600; }
+.tk { color: var(--accent); font-weight: 600; }
 .tk-name { color: var(--dim); margin-left: 6px; }
 .cc { margin-left: 4px; color: var(--dim); font-size: 11px; }
-.grid-table .name a:hover .tk { color: var(--accent); }
+.grid-table .name a:hover .tk, .grid-table .row-link:hover .tk { color: var(--text); }
+.movers-table .vol { color: var(--text-2); }
 .st { width: 1%; font-size: 11px; font-weight: 600; letter-spacing: .08em; }
 .st-open { color: var(--up); }
 .st-lunch { color: var(--text-2); }
 .st-closed { color: var(--dim); }
+/* On phones the status is a coloured dot (legend under the panels), so names keep room. */
+.st-dot { display: none; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.st-legend { display: none; }
 .delayed { padding: 0 5px; border: 1px solid var(--rule-strong); color: var(--text-2); font-weight: 600; letter-spacing: .08em; }
 .contract { margin-left: 6px; font-size: 11px; }
 .unit { font-size: 12px; }
@@ -30,6 +34,7 @@
 .grid-table td.bar-cell { padding-right: 16px; }
 
 .pbar { display: block; width: 160px; height: 8px; }
+.tbar { display: inline-block; margin-right: 16px; vertical-align: middle; }
 .pbar-mid { fill: var(--rule-strong); }
 .pbar-v.up { fill: var(--up); }
 .pbar-v.down { fill: var(--down); }
@@ -53,6 +58,33 @@
 .legend { display: flex; flex-wrap: wrap; gap: 4px 20px; padding: 6px 10px 8px; border-top: 1px solid var(--rule); font-size: 12px; }
 .legend li { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .sw { display: inline-block; width: 12px; height: 3px; flex: 0 0 auto; }
+/* EARNINGS day pills sit above the panels; on phones they scroll with an edge fade. */
+.er-bar { margin-bottom: 8px; border: 1px solid var(--rule-strong); }
+.er-bar .toolbar { border-bottom: 0; flex-wrap: nowrap; }
+.er-bar .toolbar-main { flex-wrap: nowrap; }
+
+/* COMPARE: ticker chips (press to remove) and the add field. */
+.cp-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.cp-chip { gap: 6px; color: var(--text); }
+.cp-chip.is-fixed { border-color: var(--rule); }
+.cp-x { color: var(--dim); font-size: 13px; }
+.cp-chip:hover .cp-x { color: var(--down); }
+.cp-add { display: inline-flex; align-items: center; gap: 4px; }
+.cp-full { font-size: 11px; letter-spacing: .06em; }
+.cp-bar { padding: 4px 8px; }
+.field-input {
+  height: 22px; width: 14ch; padding: 0 6px;
+  border: 1px solid var(--rule-strong); background: var(--bg); color: var(--text);
+  font-family: var(--font); font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
+}
+.field-input:focus { outline: 0; border-color: var(--accent); }
+/* FX converter row */
+.fx-out { padding: 8px 10px; }
+.fx-form { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.fx-form .fx-amt { width: 16ch; text-align: right; }
+.fx-form .fx-code { width: 5ch; text-align: center; }
+.fx-form .fx-year { width: 7ch; text-align: center; }
+.field-input::placeholder { color: var(--dim); }
 .sw.ln-0 { background: var(--ln-0); }
 .sw.ln-1 { background: var(--ln-1); }
 .sw.ln-2 { background: var(--ln-2); }
@@ -89,6 +121,15 @@
 .db-track { fill: var(--rule-strong); }
 .db-on { fill: var(--accent); opacity: .45; }
 .db-now { fill: var(--text); }
+.db-tick { fill: var(--rule-strong); }
+.db-scale { display: flex; justify-content: space-between; width: 240px; }
+.db-scale span { width: 0; display: flex; justify-content: center; }
+.db-scale span:first-child { justify-content: flex-start; }
+.db-scale span:last-child { justify-content: flex-end; }
+.nb { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; margin: 0; }
+.nb dt { color: var(--dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; line-height: 19px; }
+.nb dd { margin: 0; color: var(--text-2); }
+.nb-in { margin-left: 8px; color: var(--text); }
 
 /* ---- FXMATRIX --------------------------------------------------------- */
 .fxm-wrap { overflow-x: auto; }
@@ -97,9 +138,15 @@
 .fxm .fxm-row { color: var(--text); font-weight: 600; text-align: left; }
 .fxm td { border-left: 1px solid var(--rule); }
 .fxm-cell { color: var(--text); }
-.fxm-cell.up { color: var(--up); }
-.fxm-cell.down { color: var(--down); }
+.fxm-cell:hover { color: var(--accent); text-decoration: none; }
+.fxm-arr { display: inline-block; width: 10px; margin-left: 3px; font-size: 7px; vertical-align: 2px; text-align: right; }
+.fxm-arr.up { color: var(--up); }
+.fxm-arr.down { color: var(--down); }
+/* The currency column stays put while the rates scroll sideways. */
+.fxm .fxm-row, .fxm .fxm-corner { position: sticky; left: 0; z-index: 1; background: var(--bg); box-shadow: inset -1px 0 0 var(--rule-strong); }
+.fxm thead .fxm-corner { background: var(--bg); }
 .fxm-self { color: var(--faint); }
+.fxm td.fxm-self { padding-right: 23px; }
 
 /* ---- EARNINGS and CALENDAR -------------------------------------------- */
 .when { font-size: 11px; letter-spacing: .06em; color: var(--text-2); }
@@ -108,7 +155,8 @@
 .cal-imp { width: 1%; font-size: 11px; font-weight: 600; letter-spacing: .08em; }
 .imp-high { color: var(--down); }
 .imp-med { color: var(--text-2); }
-.imp-low { color: var(--faint); }
+.imp-low { color: var(--dim); }
+.cal-body > .loading, .cal-body > .panel-msg { padding: 8px 10px; }
 .imp-hol { color: var(--accent); }
 .calendar-table .cal-title { color: var(--text); }
 .calendar-table tr.is-past td, .calendar-table tr.is-past th { opacity: .55; }
@@ -129,8 +177,13 @@
 .dv-stats { margin-top: 12px; max-width: 420px; }
 .dv-years { border: 1px solid var(--rule); }
 .dv-note { margin-top: 10px; font-size: 12px; }
-.tnews-row { grid-template-columns: 48px minmax(0, 1fr) minmax(0, max-content); }
-.tnews-src { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22ch; }
+.dv-chart-head { margin-top: 14px; font-size: 11px; color: var(--text-2); letter-spacing: .04em; }
+.dv-chart-host { position: relative; height: 150px; max-width: 520px; margin-top: 4px; }
+.dv-bar { fill: var(--series-1); }
+.dv-bar.is-part { fill-opacity: .45; }
+/* NEWS <T>: the source in the same slot as NEWS (second), wider for full names. */
+.tnews-row { grid-template-columns: 48px 16ch minmax(0, 1fr); }
+.tnews-src { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .money { padding: 2px 0 6px; }
 
 /* ---- Narrower screens ------------------------------------------------- */
@@ -141,15 +194,23 @@
 
 @media (max-width: 639px) {
   .tk-name { display: none; }
-  .bar-cell { display: none; }
+  .sectors-table .tk { display: none; }
+  .sectors-table .tk-name { display: inline; margin-left: 0; color: var(--text-2); }
+  .bar-cell, .tbar { display: none; }
   .unit { display: none; }
   .contract { display: none; }
   .st { font-size: 10px; }
+  .world-table .st { text-align: center; }
+  .world-table .st-dot { display: inline-block; }
+  .world-table .st-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .st-legend { display: flex; gap: 16px; }
+  .st-legend > span { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; letter-spacing: .08em; }
+  .st-legend .st-dot { display: inline-block; }
   .clock-table .secs, .ex-city { display: none; }
   .fxm { font-size: 11px; }
   .fxm th, .fxm td { padding: 0 6px; }
   .cal-imp { display: none; }
-  .calendar-table .cal-title { white-space: normal; padding-top: 4px; padding-bottom: 4px; line-height: 1.35; }
+  .calendar-table .cal-title { max-width: 0; width: 100%; overflow: hidden; text-overflow: ellipsis; }
   .earnings-table .when { font-size: 10px; }
   .legend { gap: 4px 12px; }
   .lg-name { display: none; }
@@ -170,6 +231,8 @@
 .grid-table .co-kind.dim { color: var(--dim); }
 .grid-table .co-title { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
 .co-table .name { color: var(--text-2); }
+/* Capped on wide screens, so a label and its numbers do not drift apart. */
+.sp-table, .xd-table, .ipo-table, .calendar-table, .earnings-table { max-width: 960px; }
 .fil-table .name a { color: var(--text-2); }
 .fil-table .name a:hover { color: var(--accent); text-decoration: none; }
 .co-totals { max-width: 720px; border-right: 1px solid var(--rule); }
@@ -183,7 +246,8 @@
 .co-chip.is-active { color: var(--ink); background: var(--text-2); }
 .co-count { color: var(--faint); font-weight: 400; }
 .co-chip.is-active .co-count { color: var(--ink); }
-.co-noname { margin-left: 0; color: var(--text-2); }
+.co-noname { color: var(--text-2); }
+@media (max-width: 639px) { .tk-name.co-noname { display: inline; } }
 .co-title-line { margin-bottom: 10px; }
 .co-group { margin: 0 0 4px; color: var(--dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
 .co-groups { display: grid; gap: 12px 24px; }

@@ -15,7 +15,7 @@ function indexCell(r) {
 
 function table(rows, date) {
   return `<table class="grid-table world-table">
-    <thead><tr><th scope="col">Index</th><th scope="col" class="num">Last</th><th scope="col" class="num">%Chg</th><th scope="col" class="num time">Local</th><th scope="col" class="st">Status</th></tr></thead>
+    <thead><tr><th scope="col">Index</th><th scope="col" class="num">Last</th><th scope="col" class="num">%Chg</th><th scope="col" class="num time">Local</th><th scope="col" class="st"><span class="st-text">Status</span></th></tr></thead>
     <tbody>${rows.map((r) => {
       const ex = EXCHANGES[r.ex];
       const st = ex ? sessionState(ex, date) : null;
@@ -26,7 +26,7 @@ function table(rows, date) {
         <td class="num last${tick(`wd:${r.id}`, r.last)}">${fmtNum(r.last, 2)}</td>
         <td class="num pct ${d}">${fmtPct(r.changePct)}</td>
         <td class="num time dim">${esc(st ? st.local.slice(0, 5) : '--')}</td>
-        <td class="st ${s.cls}">${esc(s.text)}</td>
+        <td class="st ${s.cls}" title="${esc(s.text)}"><span class="st-dot" aria-hidden="true"></span><span class="st-text">${esc(s.text)}</span></td>
       </tr>`;
     }).join('')}</tbody>
   </table>`;
@@ -36,6 +36,7 @@ export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="grid grid-3">
     ${REGIONS.map((r, i) => panel(String(i + 1), r, LOADING, { metaId: `wd-meta-${i}` })).join('')}
   </div>
+  <p class="footnote st-legend" aria-hidden="true"><span class="st-open"><span class="st-dot"></span>OPEN</span><span class="st-lunch"><span class="st-dot"></span>LUNCH</span><span class="st-closed"><span class="st-dot"></span>CLOSED</span></p>
   <p class="footnote">Index levels from CNBC, may be delayed. Local time and status from each exchange's regular hours. Not financial advice.</p>`;
   const bodies = el.querySelectorAll('.panel-body');
   let data = null;

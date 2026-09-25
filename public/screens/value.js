@@ -2,7 +2,7 @@
 // P/E, price/sales, dividend yield, return on equity, margins, debt/equity, beta, the
 // 52 week range and market cap. A number the source leaves out shows --.
 
-import { esc, fmtNum, panel, LOADING } from './markets.js';
+import { esc, fmtNum, fmtAsOf, panel, LOADING } from './markets.js';
 import { mountFnBar, sourceLine, errorHtml, tickerUsage, fmtBigMoney, fmtBig, fmtPlainPct, fmtDay, dash } from './company-kit.js';
 
 export { parseTicker as parse } from './company-kit.js';
@@ -34,7 +34,7 @@ export function valueGroups(d) {
       ['Beta', x(d.beta)],
       ['52 week low', `${money(d.yearLow)}${d.yearLowDate ? ` <span class="dim co-when">${esc(fmtDay(d.yearLowDate))}</span>` : ''}`],
       ['52 week high', `${money(d.yearHigh)}${d.yearHighDate ? ` <span class="dim co-when">${esc(fmtDay(d.yearHighDate))}</span>` : ''}`],
-      ['Last price', money(d.last)],
+      ['Last price', `${money(d.last)}${d.lastAsOf ? ` <span class="dim co-when">${esc(fmtAsOf(d.lastAsOf))} ET</span>` : ''}`],
     ]],
   ];
 }
@@ -46,7 +46,7 @@ function groupsHtml(d) {
   </div>`).join('')}</div>`;
 }
 
-const NOTE = 'Every number is as the source publishes it; none are computed here. Trailing = the last 12 months. Forward = the source\'s forward figure. Debt / equity is from the latest quarter. The source has no price/book figure.';
+const NOTE = 'Every number is as the source publishes it; none are computed here. The last price is the live quote with its trade time; the other figures are a snapshot taken at the time shown above them, so a price elsewhere may differ by the time between the two. Trailing = the last 12 months. Forward = the source\'s forward figure. Debt / equity is from the latest quarter. The source has no price/book figure.';
 
 export function render(el, cmd, ctx) {
   if (cmd.error) {
@@ -61,7 +61,7 @@ export function render(el, cmd, ctx) {
   const body = el.querySelector('.panel-body');
 
   ctx.fetchJSON(`/api/value?s=${encodeURIComponent(ticker)}`, { signal: ctx.signal }).then((d) => {
-    body.innerHTML = `<p class="q-name co-title-line">${esc(d.name || ticker)}${d.exchange ? ` <span class="dim">${esc(d.exchange)}</span>` : ''}</p>${groupsHtml(d)}`;
+    body.innerHTML = `<p class="q-name co-title-line">${esc(d.name || ticker)}${d.exchange ? ` <span class="dim">${esc(d.exchange)}</span>` : ''}${d.fundAsOf ? ` <span class="dim co-when">FIGURES AS OF ${esc(fmtAsOf(d.fundAsOf))} ET</span>` : ''}</p>${groupsHtml(d)}`;
     el.querySelector('#val-meta').textContent = d.currency && d.currency !== 'USD' ? `IN ${d.currency}` : '';
     el.querySelector('#val-foot').innerHTML = sourceLine(d.source, NOTE);
     ctx.updated(d.updated, d.stale);

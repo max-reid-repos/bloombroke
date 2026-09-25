@@ -1,6 +1,9 @@
 // SPLITS: upcoming stock splits, from the Nasdaq splits calendar (no key). Cached an hour.
 // EXDIV: ex-dividend dates for the next five weekdays, from the Nasdaq dividend calendar
-// (one call per day). Cached an hour.
+// (one call per day). Cached an hour. Rows are checked before they are shown: a zero
+// dividend or annual amount is "no figure" (null), and a row whose dates cannot be
+// true (paid before the record date, or a record date before it was announced) is
+// left out and counted, since we cannot tell which of its dates is wrong.
 
 import { createCache } from './cache.js';
 import { money, usDay, nyDay, addDays, isIsoDay } from './lists.js';
@@ -31,13 +34,34 @@ export function parseSplits(d) {
   return rows.length ? { rows } : null;
 }
 
+const positive = (n) => (Number.isFinite(n) && n > 0 ? n : null);
+
+// Why a row's dates cannot be true, or null when they can.
+export function exDivProblem(r) {
+  if (r.paid && r.record && r.paid < r.record) return 'paid before the record date';
+  if (r.record && r.announced && r.record < r.announced) return 'record date before the announcement';
+  return null;
+}
+
+// rows -> { rows, dropped: [{ symbol, company, why }] }
+export function cleanExDiv(rows) {
+  const out = [];
+  const dropped = [];
+  for (const r of rows || []) {
+    const why = exDivProblem(r);
+    if (why) dropped.push({ symbol: r.symbol, company: r.company, why });
+    else out.push(r);
+  }
+  return { rows: out, dropped };
+}
+
 export function parseExDiv(d) {
   const rows = (Array.isArray(d?.calendar?.rows) ? d.calendar.rows : []).map((r) => ({
     symbol: symbolOf(r.symbol),
     company: text(String(r.companyName || '').replace(/\s+(Common Stock|Common Shares|Ordinary Shares)$/i, ''), 90),
     exDate: usDay(r.dividend_Ex_Date),
-    dividend: money(r.dividend_Rate),
-    annual: money(r.indicated_Annual_Dividend),
+    dividend: positive(money(r.dividend_Rate)),
+    annual: positive(money(r.indicated_Annual_Dividend)),
     record: usDay(r.record_Date),
     paid: usDay(r.payment_Date),
     announced: usDay(r.announcement_Date),
@@ -81,7 +105,7 @@ export function makeSplits({ fetchImpl = globalThis.fetch, cache = createCache({
     return {
       today,
       single: Boolean(single),
-      days: days.map((date, i) => ({ date, rows: settled[i].status === 'fulfilled' ? settled[i].value.value : null })),
+      days: days.map((date, i) => (settled[i].status === 'fulfilled' ? { date, ...cleanExDiv(settled[i].value.value) } : { date, rows: null, dropped: [] })),
       stale: ok.some((g) => g.stale),
       updated: new Date(Math.min(...ok.map((g) => g.fetchedAt))).toISOString(),
       source: EXDIV_SOURCE,

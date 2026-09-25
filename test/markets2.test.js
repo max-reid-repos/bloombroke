@@ -204,7 +204,7 @@ test('Fed funds futures: 100 minus the price, contract month, bp against the eff
     { symbol: '@FF.4', code: 0, last: '', expiration_date: '2026-12-31' },
   ]);
   assert.deepEqual(rows.map((r) => [r.month, r.implied, r.change]), [['2026-09', 3.7475, 0.005], ['2026-10', 3.895, 0]]);
-  assert.equal(FF_SYMBOLS.length, 12);
+  assert.equal(FF_SYMBOLS.length, 18, 'every contract the source lists (16 on 2026-09-25), the rest answer unknown');
 });
 
 test('FEDPATH: joins the futures with the New York Fed target range', async () => {
@@ -415,7 +415,7 @@ test('ECONOMY and FEDPATH screens: units, periods, lines', () => {
   assert.equal(fmtValue(null, 'pct'), '--');
   assert.equal(periodLabel('2026-04-01', 'Q'), 'Q2 2026');
   assert.equal(periodLabel('2026-08-01', 'M'), 'AUG 2026');
-  assert.equal(periodLabel('2026-09-19', 'W'), '2026-09-19');
+  assert.equal(periodLabel('2026-09-19', 'W'), 'SEP 19 2026');
   assert.match(sparkSvg([1, 2, 3]), /<polyline points="1\.0,17\.0 48\.0,9\.0 95\.0,1\.0"\/>/);
   assert.match(sparkSvg([1]), /--/);
   assert.deepEqual(parseEconomy([]), { id: null });

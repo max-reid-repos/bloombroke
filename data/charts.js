@@ -1,4 +1,11 @@
 // Price history for charts, from the public CNBC bars service (no key).
+//
+// Weekly and monthly bars are stamped with the day their period starts (a Sunday for
+// weeks, the 1st for months), which is not a trading day. Each such bar gets `e`, the
+// real trading day its close is from: the last daily bar inside its period, from a
+// second (daily) call over the same window. The bar still running (this week or
+// month) is marked `p` (partial): its close is the latest price, not a period close.
+// Without the daily call the bars carry no `e`, and the screen says "week of".
 
 import { createCache } from './cache.js';
 import { normalizeTicker, tickerSource, UA } from './quotes.js';
@@ -77,6 +84,33 @@ export function lastSession(points, { usSession = true, sessions = 1 } = {}) {
   return kept.filter((p) => days.includes(p.d.slice(0, 8)));
 }
 
+// Weekly/monthly points + daily points -> the same points with e (ms of the last
+// daily bar inside each period) where one exists. Periods are compared as New York
+// days (the d field), [this bar's day, the next bar's day).
+// The daily close there must equal the bar's close (within 0.05%), or the day is not
+// claimed: the bar then says only its period.
+export function barEnds(points, daily) {
+  const days = (daily || []).map((p) => ({ day: p.d.slice(0, 8), t: p.t, v: p.v })).sort((a, b) => a.t - b.t);
+  let j = 0;
+  return points.map((p, i) => {
+    const start = p.d.slice(0, 8);
+    const next = points[i + 1]?.d.slice(0, 8) || '99999999';
+    while (j < days.length && days[j].day < start) j += 1;
+    let k = j;
+    let hit = null;
+    while (k < days.length && days[k].day < next) { hit = days[k]; k += 1; }
+    return hit && Math.abs(hit.v - p.v) <= p.v * 0.0005 ? { ...p, e: hit.t } : p;
+  });
+}
+
+// Is a weekly or monthly bar starting on New York day d (YYYYMMDD) still running today?
+export function isPartial(d, bar, today) {
+  const start = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+  if (bar === '1MO') return start.slice(0, 7) === today.slice(0, 7);
+  if (bar === '1W') return (Date.parse(`${today}T12:00:00Z`) - Date.parse(`${start}T12:00:00Z`)) / DAY < 7;
+  return false;
+}
+
 // Thin a long series to at most `max` points, always keeping the first and the last.
 export function thin(points, max = MAX_POINTS) {
   if (points.length <= max) return points;
@@ -110,15 +144,28 @@ export function chartWindow({ range, from, to }, now = new Date()) {
 }
 
 export function makeCharts({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 3000 }), now = () => new Date() } = {}) {
-  async function load(ticker, win) {
-    const src = tickerSource(ticker);
-    const url = `${BARS_URL}/${encodeURIComponent(src)}/${win.bar}/${stamp(win.start)}000000/${stamp(win.end)}000000/adjusted/EST5EDT.json`;
+  async function bars(src, bar, win) {
+    const url = `${BARS_URL}/${encodeURIComponent(src)}/${bar}/${stamp(win.start)}000000/${stamp(win.end)}000000/adjusted/EST5EDT.json`;
     const res = await fetchImpl(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
     if (!res.ok) throw new Error(`chart source HTTP ${res.status}`);
-    const body = await res.json();
+    return res.json();
+  }
+
+  async function load(ticker, win) {
+    const src = tickerSource(ticker);
+    const long = win.bar === '1W' || win.bar === '1MO';
+    const [main, daily] = await Promise.allSettled([bars(src, win.bar, win), long ? bars(src, '1D', win) : Promise.resolve(null)]);
+    if (main.status === 'rejected') throw main.reason;
+    const body = main.value;
     if (body?.status === 'ERROR' || !body?.barData) return { points: [], notFound: true };
     let points = shapeBars(body.barData.priceBars);
     if (win.sessions) points = lastSession(points, { usSession: usSession(ticker), sessions: win.sessions });
+    if (long) {
+      const d = daily.status === 'fulfilled' ? shapeBars(daily.value?.barData?.priceBars) : [];
+      if (d.length) points = barEnds(points, d);
+      const today = nyToday(now());
+      points = points.map((p) => (isPartial(p.d, win.bar, today) ? { ...p, p: true } : p));
+    }
     return { points: thin(points), notFound: false };
   }
 
@@ -140,7 +187,7 @@ export function makeCharts({ fetchImpl = globalThis.fetch, cache = createCache({
     if (value.points.length < 2) throw new ChartError('no_data', `No ${label} chart for ${ticker} yet.`);
     return {
       ticker, range: win.range || null, from: win.from || null, to: win.to || null, bar: win.bar,
-      points: value.points.map(({ t, v }) => ({ t, v })), stale, updated: new Date(fetchedAt).toISOString(),
+      points: value.points.map(({ t, v, e, p }) => ({ t, v, ...(e ? { e } : {}), ...(p ? { p: true } : {}) })), stale, updated: new Date(fetchedAt).toISOString(),
     };
   }
 

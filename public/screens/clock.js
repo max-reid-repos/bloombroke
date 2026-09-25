@@ -142,17 +142,45 @@ export function statusOf(ex, st, asOf) {
   return { text: 'CLOSED', cls: 'st-closed', next: st.next ? `OPENS IN ${fmtDuration(st.minsTo)}` : '--' };
 }
 
-// A 24 hour strip of the local day: sessions filled, a mark at the local time.
+// A 24 hour strip of the local day: ticks every 6 hours, sessions filled, a mark at the
+// local time. The DAY header carries the matching 00 06 12 18 24 scale.
 function dayBar(ex, st) {
+  const ticks = [360, 720, 1080].map((x) => `<rect class="db-tick" x="${x - 2}" y="1" width="4" height="8"/>`).join('');
   const blocks = ex.sessions.map(([a, b]) => `<rect class="db-on" x="${a}" y="2" width="${b - a}" height="6"/>`).join('');
-  return `<svg class="daybar" viewBox="0 0 1440 10" preserveAspectRatio="none" aria-hidden="true"><rect class="db-track" x="0" y="4" width="1440" height="2"/>${blocks}<rect class="db-now" x="${Math.max(0, Math.min(1436, st.mins - 2)).toFixed(0)}" y="0" width="4" height="10"/></svg>`;
+  return `<svg class="daybar" viewBox="0 0 1440 10" preserveAspectRatio="none" aria-hidden="true"><rect class="db-track" x="0" y="4" width="1440" height="2"/>${ticks}${blocks}<rect class="db-now" x="${Math.max(0, Math.min(1436, st.mins - 2)).toFixed(0)}" y="0" width="4" height="10"/></svg>`;
 }
 
-function rows(asOfByIdx, date) {
+const DAY_SCALE = `<span class="db-scale" aria-hidden="true">${['00', '06', '12', '18', '24'].map((h) => `<span>${h}</span>`).join('')}</span><span class="offscreen">Day, local hours</span>`;
+
+// The side summary: what is open now, and the next open and the next close anywhere.
+export function nextBells(list) {
+  const open = list.filter((r) => r.s.text === 'OPEN');
+  const soonest = (rows) => rows.filter((r) => Number.isFinite(r.st.minsTo)).sort((a, b) => a.st.minsTo - b.st.minsTo)[0] || null;
+  const nextOpen = soonest(list.filter((r) => r.st.next === 'OPENS' && r.s.text !== 'HOLIDAY'));
+  const nextClose = soonest(open);
+  return { open: open.map((r) => r.ex.name), nextOpen, nextClose };
+}
+
+function sideHtml(list) {
+  const b = nextBells(list);
+  const line = (r) => (r ? `<span class="ex-name">${esc(r.ex.name)}</span> <span class="dim">${esc(r.ex.city)}</span><span class="nb-in">IN ${esc(fmtDuration(r.st.minsTo))}</span>` : '<span class="dim">--</span>');
+  return `<dl class="nb">
+    <dt>Open now</dt><dd>${b.open.length ? esc([...new Set(b.open)].join(', ')) : '<span class="dim">None</span>'}</dd>
+    <dt>Next close</dt><dd>${line(b.nextClose)}</dd>
+    <dt>Next open</dt><dd>${line(b.nextOpen)}</dd>
+  </dl>`;
+}
+
+function clockList(asOfByIdx, date) {
   return CLOCK_LIST.map(([id, idx]) => {
     const ex = EXCHANGES[id];
     const st = sessionState(ex, date);
-    const s = statusOf(ex, st, asOfByIdx.get(idx));
+    return { ex, st, s: statusOf(ex, st, asOfByIdx.get(idx)) };
+  });
+}
+
+function rows(list) {
+  return list.map(({ ex, st, s }) => {
     return `<tr>
       <th scope="row" class="name"><span class="ex-name">${esc(ex.name)}</span> <span class="dim ex-city">${esc(ex.city)}</span></th>
       <td class="num last">${esc(st.local.slice(0, 5))}<span class="dim secs">${esc(st.local.slice(5))}</span></td>
@@ -165,16 +193,18 @@ function rows(asOfByIdx, date) {
 }
 
 export function render(el, cmd, ctx) {
-  el.innerHTML = panel('1', 'Market clocks', '', { cls: 'panel-solo', metaId: 'ck-meta', meta: 'LOCAL TIME' })
+  el.innerHTML = `<div class="with-side">${panel('1', 'Market clocks', '', { cls: 'panel-solo', metaId: 'ck-meta', meta: 'LOCAL TIME' })}${panel('2', 'Next bells', '', { cls: 'panel-solo' })}</div>`
     + '<p class="footnote">Regular hours in local time. NYSE and Nasdaq holidays are built in; other holidays show once the main index has not traded by 30 minutes after the open.</p>';
-  const body = el.querySelector('.panel-body');
+  const [body, side] = el.querySelectorAll('.panel-body');
   const asOfByIdx = new Map();
 
   function paint() {
+    const list = clockList(asOfByIdx, new Date());
     body.innerHTML = `<table class="grid-table clock-table">
-      <thead><tr><th scope="col">Exchange</th><th scope="col" class="num">Local</th><th scope="col">Status</th><th scope="col" class="num next">Next</th><th scope="col" class="bar-cell">Day</th><th scope="col" class="num time">Hours</th></tr></thead>
-      <tbody>${rows(asOfByIdx, new Date())}</tbody>
+      <thead><tr><th scope="col">Exchange</th><th scope="col" class="num">Local</th><th scope="col">Status</th><th scope="col" class="num next">Next</th><th scope="col" class="bar-cell">${DAY_SCALE}</th><th scope="col" class="num time">Hours</th></tr></thead>
+      <tbody>${rows(list)}</tbody>
     </table>`;
+    side.innerHTML = sideHtml(list);
   }
 
   paint();

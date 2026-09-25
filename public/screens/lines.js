@@ -87,7 +87,10 @@ export function linesSvg(series, { width = 640, height = 260, fmtY = (v) => fmtN
   }).join('');
 
   const paths = drawn.map((s) => {
-    const d = s.points.filter((p) => Number.isFinite(p.y)).map((p, i) => `${i ? 'L' : 'M'}${x(p.x).toFixed(1)},${y(p.y).toFixed(1)}`).join('');
+    // s.gapX (optional): a jump in x wider than this starts a new stroke, so a
+    // missing stretch shows as a break instead of a line drawn across it.
+    const pts = s.points.filter((p) => Number.isFinite(p.y));
+    const d = pts.map((p, i) => `${i && !(s.gapX && p.x - pts[i - 1].x > s.gapX) ? 'L' : 'M'}${x(p.x).toFixed(1)},${y(p.y).toFixed(1)}`).join('');
     return `<path class="ln ${esc(s.cls)}" d="${d}"/>`;
   }).join('');
 

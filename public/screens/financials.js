@@ -16,26 +16,30 @@ const STATEMENT_WORDS = {
   CASH: 'cashflow', CASHFLOW: 'cashflow', CF: 'cashflow', FLOW: 'cashflow',
 };
 const PERIOD_WORDS = { ANNUAL: 'annual', YEARLY: 'annual', YEARS: 'annual', QUARTERLY: 'quarterly', QUARTERS: 'quarterly', Q: 'quarterly' };
+// Per-share basis: split-adjusted (the default) or as the filings reported it.
+const BASIS_WORDS = { REPORTED: 'reported', ASREPORTED: 'reported', FILED: 'reported', ADJUSTED: 'adjusted', SPLIT: 'adjusted' };
 const STATEMENT_CMD = { income: '', balance: 'BALANCE', cashflow: 'CASHFLOW' };
 export const STATEMENT_LABEL = { income: 'Income', balance: 'Balance', cashflow: 'Cash flow' };
 
-// Words after the ticker: [INCOME|BALANCE|CASHFLOW] [ANNUAL|QUARTERLY], any order.
+// Words after the ticker: [INCOME|BALANCE|CASHFLOW] [ANNUAL|QUARTERLY] [REPORTED], any order.
 export function parseFinancialsArgs(toks) {
   const [ticker, ...rest] = toks;
   if (!ticker || !FIN_TICKER_RE.test(ticker)) return { error: 'usage' };
   let statement = 'income';
   let period = 'annual';
+  let basis = 'adjusted';
   for (const t of rest) {
     if (STATEMENT_WORDS[t]) statement = STATEMENT_WORDS[t];
     else if (PERIOD_WORDS[t]) period = PERIOD_WORDS[t];
-    else if (t === 'FLOW' || t === 'SHEET' || t === 'STATEMENT') continue;
+    else if (BASIS_WORDS[t]) basis = BASIS_WORDS[t];
+    else if (t === 'FLOW' || t === 'SHEET' || t === 'STATEMENT' || t === 'AS') continue;
     else return { error: 'usage', ticker };
   }
-  return { ticker, statement, period };
+  return basis === 'reported' ? { ticker, statement, period, basis } : { ticker, statement, period };
 }
 
-export function financialsInput({ ticker, statement = 'income', period = 'annual' }) {
-  return ['FINANCIALS', ticker, STATEMENT_CMD[statement], period === 'quarterly' ? 'QUARTERLY' : ''].filter(Boolean).join(' ');
+export function financialsInput({ ticker, statement = 'income', period = 'annual', basis = 'adjusted' }) {
+  return ['FINANCIALS', ticker, STATEMENT_CMD[statement], period === 'quarterly' ? 'QUARTERLY' : '', basis === 'reported' ? 'REPORTED' : ''].filter(Boolean).join(' ');
 }
 
 export function parseFinancialsCommand(rest) {
@@ -100,7 +104,15 @@ export function cellTitle(c) {
   if (!c) return 'Not in the filings';
   if (c.calc) return `${c.calc}${c.derived ? ', from year-to-date totals' : ''}`;
   const src = `us-gaap:${c.tag}, ${c.form} filed ${c.filed}`;
+  if (c.splitFactor) return `Split-adjusted: filed as ${fmtNum(c.asReported, c.asReported < 1000 ? 2 : 0)} before later splits (x${fmtNum(c.splitFactor, c.splitFactor % 1 ? 2 : 0)} shares). ${src}`;
   return c.derived ? `Year-to-date total minus earlier quarters. ${src}` : src;
+}
+
+// The rows of one mode for a basis: split-adjusted EPS and share counts replace the
+// filed ones when the server sent them.
+export function basisValues(m, basis = 'adjusted') {
+  if (basis === 'reported' || !m?.adjusted) return m.values;
+  return { ...m.values, ...m.adjusted };
 }
 
 function shortDate(iso) {
@@ -113,8 +125,9 @@ function filingUrl(cik, accn) {
   return `https://www.sec.gov/Archives/edgar/data/${n}/${accn.replace(/-/g, '')}/${accn}-index.htm`;
 }
 
-export function statementTable(d, mode, statement) {
+export function statementTable(d, mode, statement, basis = 'adjusted') {
   const m = d[mode];
+  const values = basisValues(m, basis);
   const cols = m.periods;
   const head = cols.map((p) => {
     const url = filingUrl(d.cik, p.accn);
@@ -133,7 +146,7 @@ export function statementTable(d, mode, statement) {
         return `<td class="num${r.growth && ok ? ` ${dirOf(v)}` : ''}">${esc(text)}</td>`;
       }).join('')}</tr>`;
     }
-    const vals = m.values[r.id] || [];
+    const vals = values[r.id] || [];
     return `<tr><th scope="row" class="name">${esc(r.label)}</th>${cols.map((_, i) => {
       const c = vals[i];
       return `<td class="num${c?.derived ? ' is-derived' : ''}" title="${esc(cellTitle(c))}">${esc(fmtCell(r, c))}</td>`;
@@ -153,11 +166,16 @@ function fmtSigned1(v) {
 
 // ---- bar chart: revenue and net income ----------------------------------------------
 
-export function barChartSvg(periods, rev, net, { width = 640, height = 150 } = {}) {
+// cols (optional): [{ x, w }] per period, the table's column boxes in chart
+// coordinates, so each pair of bars sits over its own table column; plotLeft is where
+// the plot starts (the right edge of the table's label column), with the axis
+// labels just left of it. Without cols the periods share the width evenly.
+export function barChartSvg(periods, rev, net, { width = 640, height = 150, cols = null, plotLeft = 0 } = {}) {
   const n = periods.length;
   const vals = [...rev, ...net].filter(Number.isFinite);
   if (!n || !vals.length) return '';
-  const padR = 56;
+  const aligned = Array.isArray(cols) && cols.length === n && plotLeft > 0;
+  const padR = aligned ? 0 : 56;
   const padT = 8;
   const padB = 20;
   const W = Math.max(40, width - padR);
@@ -174,12 +192,20 @@ export function barChartSvg(periods, rev, net, { width = 640, height = 150 } = {
   const lo = Math.min(0, ticks[0] ?? 0, ...vals);
   const hi = Math.max(ticks[ticks.length - 1] ?? 0, ...vals) || 1;
   const y = (v) => padT + (1 - (v - lo) / (hi - lo || 1)) * H;
-  const slot = W / n;
+  const x0 = aligned ? plotLeft : 0;
+  const box = (i) => (aligned ? cols[i] : { x: (W / n) * i, w: W / n });
+  const slot = aligned ? Math.min(...cols.map((c) => c.w)) : W / n;
   const bw = Math.max(2, Math.min(28, (slot - 8) / 2 - 1));
-  const grid = ticks.map((t) => `<line class="ch-grid" x1="0" x2="${W}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text class="ch-ylab" x="${W + 6}" y="${(y(t) + 4).toFixed(1)}">${esc(fmtAxis(t))}</text>`).join('');
-  const every = Math.ceil(n / Math.max(1, Math.floor(W / 64)));
+  const ylab = (t) => (aligned
+    ? `<text class="ch-ylab" x="${(plotLeft - 6).toFixed(1)}" y="${(y(t) + 4).toFixed(1)}" text-anchor="end">${esc(fmtAxis(t))}</text>`
+    : `<text class="ch-ylab" x="${W + 6}" y="${(y(t) + 4).toFixed(1)}">${esc(fmtAxis(t))}</text>`);
+  const grid = ticks.map((t) => `<line class="ch-grid" x1="${x0.toFixed(1)}" x2="${W}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/>${ylab(t)}`).join('');
+  const every = aligned ? 1 : Math.ceil(n / Math.max(1, Math.floor(W / 64)));
   const bars = periods.map((p, i) => {
-    const cx = slot * i + slot / 2;
+    const b = box(i);
+    const cx = b.x + b.w / 2;
+    // A column scrolled under the sticky label column is not drawn.
+    if (aligned && (cx - bw - 1 < plotLeft || cx > width)) return '';
     const bar = (v, x, cls) => {
       if (!Number.isFinite(v)) return '';
       const y0 = y(0);
@@ -187,11 +213,11 @@ export function barChartSvg(periods, rev, net, { width = 640, height = 150 } = {
       return `<rect class="${cls}" x="${x.toFixed(1)}" y="${Math.min(y0, y1).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1, Math.abs(y1 - y0)).toFixed(1)}"/>`;
     };
     const lab = i % every === (n - 1) % every ? `<text class="ch-xlab" x="${cx.toFixed(1)}" y="${height - 5}" text-anchor="middle">${esc(shortLabel(p.label))}</text>` : '';
-    return `<g class="fin-col" data-i="${i}"><rect class="fin-hit" x="${(slot * i).toFixed(1)}" y="${padT}" width="${slot.toFixed(1)}" height="${H}"/>${bar(rev[i], cx - bw - 1, 'fin-bar-rev')}${bar(net[i], cx + 1, 'fin-bar-net')}${lab}</g>`;
+    return `<g class="fin-col" data-i="${i}"><rect class="fin-hit" x="${b.x.toFixed(1)}" y="${padT}" width="${b.w.toFixed(1)}" height="${H}"/>${bar(rev[i], cx - bw - 1, 'fin-bar-rev')}${bar(net[i], cx + 1, 'fin-bar-net')}${lab}</g>`;
   }).join('');
   return `<svg class="chart fin-chart" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Revenue and net income by period, USD millions">
     ${grid}
-    <line class="ch-axis" x1="0" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}"/>
+    <line class="ch-axis" x1="${x0.toFixed(1)}" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}"/>
     ${bars}
   </svg>`;
 }
@@ -214,17 +240,29 @@ export function shortLabel(label) {
 const EXAMPLES = ['FINANCIALS AAPL', 'FINANCIALS MSFT BALANCE', 'FINANCIALS NVDA QUARTERLY'];
 const exampleLinks = () => EXAMPLES.map((e) => `<a class="code" href="${esc(q(e))}" data-cmd="${esc(e)}">${esc(e)}</a>`).join(' ');
 
-function tabBar(args) {
+function tabBar(args, withBasis = false) {
   const tab = (label, a, on) => {
     const c = financialsInput(a);
     return `<a class="tab${on ? ' is-active' : ''}" href="${esc(q(c))}" data-cmd="${esc(c)}"${on ? ' aria-current="page"' : ''}>${esc(label)}</a>`;
   };
   const st = ['income', 'balance', 'cashflow'].map((s) => tab(STATEMENT_LABEL[s].toUpperCase(), { ...args, statement: s }, args.statement === s)).join('');
   const pe = [['ANNUAL', 'annual'], ['QUARTERLY', 'quarterly']].map(([l, p]) => tab(l, { ...args, period: p }, args.period === p)).join('');
-  return `<div class="ch-bar fin-bar"><nav class="tabs ch-tabs" aria-label="Statement">${st}</nav><nav class="tabs ch-tabs fin-periods" aria-label="Period">${pe}</nav></div>`;
+  const basis = args.basis || 'adjusted';
+  const ba = withBasis ? `<nav class="tabs ch-tabs fin-periods fin-basis" aria-label="Per-share basis">${[['SPLIT-ADJUSTED', 'adjusted'], ['AS REPORTED', 'reported']].map(([l, b]) => tab(l, { ...args, basis: b }, basis === b)).join('')}</nav>` : '';
+  return `<div class="ch-bar fin-bar"><nav class="tabs ch-tabs" aria-label="Statement">${st}</nav>${ba}<nav class="tabs ch-tabs fin-periods" aria-label="Period">${pe}</nav></div>`;
 }
 
 const FOOT = 'Source: US SEC EDGAR company filings (10-K, 10-Q), updated as companies file. Figures in USD as reported.';
+
+// The footnote words on the per-share basis.
+export function basisNote(d, basis = 'adjusted') {
+  const list = d?.split?.splits || [];
+  const names = list.map((x) => `${x.ratio} split on ${x.date}`).join(' and the ');
+  if (!d?.split) return 'EPS and share counts as filed: the split history is unavailable right now, so a figure filed before a stock split is on the old share basis.';
+  if (!list.length) return 'No stock splits in these years: EPS and share counts are as filed.';
+  if (basis === 'reported') return `EPS and share counts as reported: each figure as its latest filing gave it, so figures filed before the ${names} are on the old share basis. SPLIT-ADJUSTED puts them on today's basis.`;
+  return `EPS and share counts split-adjusted to today's share basis for the ${names} (${d.split.source}); hover a number for the filed value. AS REPORTED shows them as filed.`;
+}
 
 export function render(el, cmd, ctx) {
   if (cmd.error) {
@@ -237,6 +275,7 @@ export function render(el, cmd, ctx) {
   }
   const args = cmd.args;
   const mode = args.period;
+  const basis = args.basis || 'adjusted';
   el.innerHTML = `<div class="stack">
     ${panel('1', `${args.ticker} financials`, `${tabBar(args)}<div class="fin-body">${LOADING}</div>`, { metaId: 'fin-meta', bodyCls: 'flush' })}
   </div>
@@ -274,20 +313,30 @@ export function render(el, cmd, ctx) {
     }
     const rev = m.values.revenue.map((c) => c?.v ?? null);
     const net = m.values.netIncome.map((c) => c?.v ?? null);
+    const hasSplits = Boolean(d.split?.splits?.length);
+    if (hasSplits) el.querySelector('.fin-bar').outerHTML = tabBar(args, true);
     body.innerHTML = `
       <div class="fin-chart-wrap">
         <div class="fin-chart-head"><span class="fin-key"><span class="fin-sw fin-sw-rev"></span>Revenue</span><span class="fin-key"><span class="fin-sw fin-sw-net"></span>Net income</span><span class="fin-hover num" aria-live="polite"></span></div>
         <div class="fin-chart-host"></div>
       </div>
-      ${statementTable(d, mode, args.statement)}`;
+      ${statementTable(d, mode, args.statement, basis)}`;
     const host = body.querySelector('.fin-chart-host');
     const hover = body.querySelector('.fin-hover');
-    let lastW = 0;
+    const scroller = body.querySelector('.fin-scroll');
+    let lastKey = '';
+    // The bars sit over the table's own columns: measured from the header cells.
     const draw = () => {
       const w = Math.floor(host.clientWidth);
-      if (!w || w === lastW) return;
-      lastW = w;
-      host.innerHTML = barChartSvg(m.periods, rev, net, { width: w, height: host.clientHeight || 150 });
+      if (!w) return;
+      const hb = host.getBoundingClientRect();
+      const ths = [...body.querySelectorAll('.fin-table thead th')];
+      const cols = ths.slice(1).map((th) => { const r = th.getBoundingClientRect(); return { x: r.left - hb.left, w: r.width }; });
+      const plotLeft = ths[0] ? ths[0].getBoundingClientRect().right - hb.left : 0;
+      const key = `${w}|${cols.map((c) => c.x.toFixed(0)).join(',')}|${plotLeft.toFixed(0)}`;
+      if (key === lastKey) return;
+      lastKey = key;
+      host.innerHTML = barChartSvg(m.periods, rev, net, { width: w, height: host.clientHeight || 150, cols, plotLeft });
       const svg = host.querySelector('svg');
       if (!svg) return;
       const show = (e) => {
@@ -302,12 +351,17 @@ export function render(el, cmd, ctx) {
       svg.addEventListener('pointerdown', show);
       svg.addEventListener('pointerleave', () => { hover.textContent = ''; svg.querySelectorAll('.fin-col.is-on').forEach((x) => x.classList.remove('is-on')); });
     };
-    draw();
-    if (typeof ResizeObserver === 'function') { ro = new ResizeObserver(draw); ro.observe(host); }
-    const scroller = body.querySelector('.fin-scroll');
     scroller.scrollLeft = scroller.scrollWidth;
+    draw();
+    scroller.addEventListener('scroll', draw, { passive: true });
+    if (typeof ResizeObserver === 'function') { ro = new ResizeObserver(draw); ro.observe(host); }
     const derived = mode === 'quarterly' || Object.values(m.values).some((arr) => arr.some((c) => c?.derived));
-    foot.textContent = `${FOOT} Periods as the company labels them; column headers link to the filing. Hover a number for its source.${derived ? ' Underlined dotted: a quarter the filing only gives as part of a year-to-date total, worked out as that total minus the earlier quarters (always the case for Q4).' : ''} Not financial advice.`;
+    foot.textContent = [
+      `${FOOT} Periods as the company labels them; column headers link to the filing. Hover a number for its source.`,
+      args.statement === 'income' ? basisNote(d, basis) : '',
+      derived ? 'Underlined dotted: a quarter the filing only gives as part of a year-to-date total, worked out as that total minus the earlier quarters (always the case for Q4).' : '',
+      'Not financial advice.',
+    ].filter(Boolean).join(' ');
     const lastP = m.periods[m.periods.length - 1];
     ctx.status(`${d.stale ? 'LAST KNOWN DATA · ' : ''}SEC FILINGS · LATEST ${lastP.label} (${lastP.form} FILED ${lastP.filed})`, d.stale ? 'warn' : '');
   }).catch((err) => {

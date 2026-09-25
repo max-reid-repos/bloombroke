@@ -209,7 +209,7 @@ function intradayLayers(points, g, { refs = {}, multiDay = false, bar = '5M', sh
     over += `<path class="ch-move ${dir}" d="M${f1(xs[i - 1])},${f1(y(from))}L${f1(mx)},${f1(my)}"><title>Biggest 5-minute move</title></path>`;
     dots.push({ x: mx, y: my, cls: `ch-mk-move ${dir}` });
     const size = bp ? `${fmtSigned((to - from) * 100, 1)} bp` : fmtPct(pct);
-    items.push({ key: 'move', text: `${size} · ${when(st.move.t)}`, x: mx, y: my, prio: 5, sides: pct > 0 ? ['above', 'below', 'right', 'left'] : ['below', 'above', 'right', 'left'], dir });
+    items.push({ key: 'move', text: `5-MIN MOVE ${size} · ${when(st.move.t)}`, x: mx, y: my, prio: 5, sides: pct > 0 ? ['above', 'below', 'right', 'left'] : ['below', 'above', 'right', 'left'], dir });
   }
   for (const d of dots) obstacles.push({ x0: d.x - 3, y0: d.y - 3, x1: d.x + 3, y1: d.y + 3 });
   const placed = placeLabels(items, { width: W, top, bottom, obstacles });
@@ -322,6 +322,25 @@ export function fmtHoverForBar(bar) {
   return (t) => new Date(t).toLocaleString('en-US', { timeZone: NY, ...opts }).toUpperCase();
 }
 
+// The date a bar's close is from. Weekly and monthly bars carry e, the trading day of
+// their close (from the server); without it the bar only knows its period, which is
+// said as such ("WEEK OF SEP 20, 2026"), never passed off as a trading day. A bar still
+// running says so.
+const PERIOD = { '1W': 'week', '1MO': 'month' };
+export function barDay(p, bar) {
+  const day = fmtHoverForBar(bar);
+  const per = PERIOD[bar];
+  if (!per) return day(p.t);
+  // A running bar's close may be newer than its last daily bar: no day is claimed.
+  if (p.p) return `THIS ${per.toUpperCase()} SO FAR`;
+  if (p.e) return day(p.e);
+  if (bar === '1MO') return new Date(p.t).toLocaleString('en-US', { timeZone: NY, month: 'short', year: 'numeric' }).toUpperCase();
+  return `WEEK OF ${day(p.t)}`;
+}
+
+// "weekly closes" / "monthly closes" / "closes": what one point of the chart is.
+export const closesWord = (bar) => (bar === '1W' ? 'weekly close' : bar === '1MO' ? 'monthly close' : 'close');
+
 // Change from the first point: "+12.40 +3.21%", or basis points for yields.
 export function changeFrom(first, v, { bp = false, decimals = 2 } = {}) {
   const abs = v - first;
@@ -384,15 +403,22 @@ export function stripItems(points, spec, { fmtY, bp = false, hover = null, bar =
     out.push({ k: spec.multiDay ? `${rangeName} range` : 'Range', v: `${fmtY(Math.min(...vals))} - ${fmtY(Math.max(...vals))}` });
     return out;
   }
-  const st = intradayStats(points, { bar: 'none' });
-  const day = fmtHoverForBar(bar);
-  const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
-  return [
+  // High, low and average from the chart's own bars only: the live price appended
+  // after the last bar is not a close.
+  const barsOnly = points.filter((p) => !p.live);
+  const src = barsOnly.length >= 2 ? barsOnly : points;
+  const st = intradayStats(src, { bar: 'none' });
+  const bv = src.map((p) => p.v);
+  const avg = bv.reduce((s, v) => s + v, 0) / bv.length;
+  const w = closesWord(bar);
+  const items = [
     { k: 'Last', v: fmtY(vals[vals.length - 1]), strong: true },
-    { k: 'High close', v: fmtY(st.high.v), when: day(st.high.t) },
-    { k: 'Low close', v: fmtY(st.low.v), when: day(st.low.t) },
-    { k: 'Average close', v: fmtY(avg) },
+    { k: `High ${w}`, v: fmtY(st.high.v), when: barDay(src[st.high.i], bar) },
+    { k: `Low ${w}`, v: fmtY(st.low.v), when: barDay(src[st.low.i], bar) },
+    { k: `Average ${w}`, v: fmtY(avg) },
   ];
+  if (PERIOD[bar]) items.push({ k: '', v: `${w.toUpperCase()}S`, when: 'one point per ' + PERIOD[bar] });
+  return items;
 }
 
 function stripHtml(items) {
@@ -477,7 +503,7 @@ export function rangeChart(root, ctx, opts) {
       return;
     }
     const c = changeFrom(first, hover.v, { bp, decimals: dec });
-    const when = hover.live ? 'NOW' : fmtHoverForBar(data.bar)(hover.t);
+    const when = hover.live ? 'NOW' : barDay(hover, data.bar);
     meta.innerHTML = `<span class="num">${esc(when)}</span> <span class="num ch-hv">${esc(fmtY(hover.v))}</span> <span class="num ${c.dir}">${esc(c.text)}</span>`;
   }
 

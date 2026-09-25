@@ -2,6 +2,7 @@
 
 import { esc, q, fmtNum, panel, LOADING } from './markets.js';
 import { tickerCell, fmtCompact } from './movers.js';
+import { toolbar, segmented, edgeFade } from '../kit.js';
 
 const WORDS = { TODAY: 0, TOMORROW: 1, YESTERDAY: -1 };
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -38,12 +39,40 @@ export const fmtDayLong = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('
 
 const fmtEps = (n) => (Number.isFinite(n) ? fmtNum(n, 2) : '--');
 
+const addDays = (day, k) => {
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + k);
+  return d.toISOString().slice(0, 10);
+};
+
+// Monday of the week that holds `day` (weekends belong to the week before).
+export function mondayOf(day) {
+  const dow = new Date(`${day}T12:00:00Z`).getUTCDay();
+  return addDays(day, dow === 0 ? -6 : 1 - dow);
+}
+
+// The day pills: that week's Monday to Friday and WEEK, with the week before and the
+// week after at the ends. [{ label, cmd }] for segmented(); active is the label to mark.
+export function dayPills(day, week) {
+  const mon = mondayOf(day);
+  const days = [0, 1, 2, 3, 4].map((k) => addDays(mon, k));
+  const label = (d) => `${new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }).toUpperCase()} ${Number(d.slice(8))}`;
+  const items = [
+    { label: '‹ PREV', cmd: `EARNINGS ${addDays(mon, -7)}${week ? ' WEEK' : ''}` },
+    ...days.map((d) => ({ label: label(d), cmd: `EARNINGS ${d}` })),
+    { label: 'WEEK', cmd: `EARNINGS ${mon} WEEK` },
+    { label: 'NEXT ›', cmd: `EARNINGS ${addDays(mon, 7)}${week ? ' WEEK' : ''}` },
+  ];
+  const active = week ? 'WEEK' : (days.includes(day) ? label(day) : null);
+  return { items, active };
+}
+
 function table(rows) {
   return `<table class="grid-table earnings-table">
     <thead><tr><th scope="col">Company</th><th scope="col" class="when">When</th><th scope="col" class="num chg">Mkt cap</th><th scope="col" class="num">EPS est</th><th scope="col" class="num time">Last year</th></tr></thead>
     <tbody>${rows.map((r) => `<tr>
       ${tickerCell(r.ticker, r.name)}
-      <td class="when ${r.time ? '' : 'dim'}">${esc(r.time || 'NOT GIVEN')}</td>
+      <td class="when ${r.time ? '' : 'dim'}"${r.time ? '' : ' title="No time announced"'}>${esc(r.time || '--')}</td>
       <td class="num chg">${esc(Number.isFinite(r.marketCap) ? fmtCompact(r.marketCap) : '--')}</td>
       <td class="num last">${fmtEps(r.epsForecast)}</td>
       <td class="num time dim">${fmtEps(r.lastYearEps)}</td>
@@ -67,9 +96,12 @@ export function render(el, cmd, ctx) {
   }
   const day = resolveDay(cmd.args.day);
   const week = cmd.args.week;
-  el.innerHTML = `<div id="er-host">${panel('1', week ? `Earnings week of ${day}` : `Earnings ${fmtDayLong(day)}`, LOADING, { cls: 'panel-solo' })}</div>
+  const pills = dayPills(day, week);
+  const bar = `<div class="er-bar scroll-x">${toolbar({ left: segmented(pills.items, pills.active, { label: 'Day' }), label: 'Day' })}</div>`;
+  el.innerHTML = `${bar}<div id="er-host">${panel('1', week ? `Earnings week of ${day}` : `Earnings ${fmtDayLong(day)}`, LOADING, { cls: 'panel-solo' })}</div>
     <p class="footnote">Earnings calendar and EPS estimates from Nasdaq. EPS = earnings per share, in USD. Times are what the company announced. Not financial advice.</p>`;
   const hostEl = el.querySelector('#er-host');
+  ctx.onCleanup(edgeFade(el.querySelector('.er-bar')));
 
   const params = new URLSearchParams({ d: day });
   if (week) params.set('w', '1');

@@ -1,8 +1,11 @@
 // CALENDAR: this week's economic calendar. US events plus the big ones from elsewhere.
 
 import { esc, q, panel, LOADING } from './markets.js';
+import { toolbar, segmented } from '../kit.js';
 
 export const SCOPES = { MAJOR: 'US and high impact', ALL: 'Every event', US: 'US only' };
+// The source has no actual results: said in the panel title, not left as an empty column.
+export const CAL_TITLE = 'Economic calendar this week: forecast and previous only';
 
 // CALENDAR [ALL|US]
 export function parse(args) {
@@ -39,7 +42,7 @@ export function calendarTable(events, now = new Date()) {
       <td class="num cal-time dim">${esc(timeOf(e.time))}</td>
       <td class="cal-cty">${esc(COUNTRY[e.country] || e.country)}</td>
       <td class="cal-imp ${cls}">${esc(imp)}</td>
-      <th scope="row" class="name cal-title">${esc(e.title)}</th>
+      <th scope="row" class="name cal-title" title="${esc(e.title)}">${esc(e.title)}</th>
       <td class="num">${esc(e.forecast || '--')}</td>
       <td class="num dim">${esc(e.previous || '--')}</td>
     </tr>`;
@@ -50,8 +53,9 @@ export function calendarTable(events, now = new Date()) {
   </table>`;
 }
 
-function scopeTabs(active) {
-  return `<nav class="tabs" aria-label="Filter">${[['MAJOR', 'CALENDAR'], ['US', 'CALENDAR US'], ['ALL', 'CALENDAR ALL']].map(([k, c]) => `<a class="tab${k === active ? ' is-active' : ''}" href="${esc(q(c))}" data-cmd="${esc(c)}"${k === active ? ' aria-current="true"' : ''}>${k}</a>`).join('')}</nav>`;
+// The filter row under the title (not in the title bar).
+export function scopeFilter(active) {
+  return toolbar({ left: segmented([['MAJOR', 'CALENDAR'], ['US', 'CALENDAR US'], ['ALL', 'CALENDAR ALL']].map(([label, cmd]) => ({ label, cmd })), active, { label: 'Filter' }), label: 'Filter' });
 }
 
 export function render(el, cmd, ctx) {
@@ -62,15 +66,16 @@ export function render(el, cmd, ctx) {
     return;
   }
   const scope = cmd.args.scope;
-  el.innerHTML = panel('1', 'Economic calendar this week', LOADING, { cls: 'panel-solo', meta: scopeTabs(scope) })
-    + `<p class="footnote">${esc(SCOPES[scope])}. Times in New York (ET). From the Forex Factory weekly feed, which lists forecast and previous values; actual results are not in it.</p>`;
-  const body = el.querySelector('.panel-body');
+  el.innerHTML = panel('1', CAL_TITLE, `${scopeFilter(scope)}<div class="cal-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'cal-meta', bodyCls: 'flush' })
+    + `<p class="footnote">${esc(SCOPES[scope])}. Times in New York (ET). From the Forex Factory weekly feed, which lists forecast and previous values only: actual results are not in it, so none are shown. The release itself (for US data: BLS, BEA, the Census Bureau) has the actual figure.</p>`;
+  const body = el.querySelector('.cal-body');
 
   async function load() {
     try {
       const d = await ctx.fetchJSON('/api/calendar', { signal: ctx.signal });
       const list = filterEvents(d.events, scope);
       body.innerHTML = list.length ? calendarTable(list) : '<p class="panel-msg">No events this week for this filter.</p>';
+      el.querySelector('#cal-meta').textContent = `${list.length} EVENTS`;
       ctx.updated(d.updated, d.stale);
     } catch (err) {
       if (err.name === 'AbortError') return;

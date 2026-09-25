@@ -124,15 +124,18 @@ export function marketsTable(instruments, { compact = false } = {}) {
   </table>`;
 }
 
-// HOME: one small table per group, flowing into columns on wide screens.
-export function marketsColumns(instruments) {
+// HOME and MARKETS: one small table per group, flowing into columns on wide screens.
+// Every group table uses the same fixed column widths, so the RT/DLY tags and the
+// numbers line up from one group to the next. time adds the last-trade time column.
+export function marketsColumns(instruments, { time = false } = {}) {
   const groups = [];
   for (const m of instruments) {
     const g = groups[groups.length - 1];
     if (g && g.name === m.group) g.rows.push(m); else groups.push({ name: m.group, rows: [m] });
   }
-  return `<div class="mk-cols">${groups.map((g) => `<table class="grid-table mk-group">
-    <tbody><tr class="group-row"><th colspan="5" scope="rowgroup">${esc(g.name)}</th></tr>${g.rows.map((m) => marketRow(m, true)).join('')}</tbody>
+  const cols = `<colgroup><col><col class="c-tag"><col class="c-last"><col class="c-chg"><col class="c-pct">${time ? '<col class="c-time">' : ''}</colgroup>`;
+  return `<div class="mk-cols${time ? ' mk-cols-time' : ''}">${groups.map((g) => `<table class="grid-table mk-group">
+    ${cols}<tbody><tr class="group-row"><th colspan="${time ? 6 : 5}" scope="rowgroup">${esc(g.name)}</th></tr>${g.rows.map((m) => marketRow(m, !time)).join('')}</tbody>
   </table>`).join('')}</div>`;
 }
 
@@ -146,14 +149,14 @@ export function rerender(root, html) {
 export const FOOTNOTE = '<p class="footnote">Prices from CNBC. RT: real time. DLY: delayed, futures about 10 minutes, indexes about 15. The status line shows when they were last updated. Not financial advice.</p>';
 
 export function render(el, cmd, ctx) {
-  el.innerHTML = panel('1', 'Markets', LOADING, { cls: 'panel-solo', metaId: 'mk-meta', meta: 'NAME, LAST, CHANGE' }) + FOOTNOTE;
+  el.innerHTML = panel('1', 'Markets', LOADING, { cls: 'panel-solo', metaId: 'mk-meta', meta: 'NAME, LAST, CHANGE, TIME' }) + FOOTNOTE;
   const body = el.querySelector('.panel-body');
   const meta = el.querySelector('#mk-meta');
 
   async function load() {
     try {
       const data = await ctx.fetchJSON('/api/markets', { signal: ctx.signal });
-      rerender(body, marketsTable(data.instruments));
+      rerender(body, marketsColumns(data.instruments, { time: true }));
       settleTicks(body);
       meta.textContent = `${data.instruments.length} INSTRUMENTS`;
       ctx.updated(data.updated, data.stale, data.instruments);

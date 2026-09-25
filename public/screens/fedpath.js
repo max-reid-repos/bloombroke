@@ -35,13 +35,14 @@ const METHOD = `<details class="fp-method"><summary>HOW THIS IS WORKED OUT</summ
 </details>`;
 
 export function render(el, cmd, ctx) {
-  el.innerHTML = `<p class="fp-label">${esc(LABEL)}</p>
-  <div class="stack">
+  // The "not a forecast" line is a quiet source line under the panels, not a box on top.
+  el.innerHTML = `<div class="stack">
     ${panel('1', 'Fed funds path', `<div class="chart-host" id="fp-chart">${LOADING}</div><div id="fp-legend"></div>`, { metaId: 'fp-meta', bodyCls: 'flush' })}
     ${panel('2', 'Fed funds futures', LOADING, { metaId: 'fp-t-meta', meta: '<span class="fresh is-dly" title="Delayed">DLY</span> CBOT' })}
   </div>
+  <p class="footnote fp-src">${esc(LABEL)}</p>
   ${METHOD}
-  <p class="footnote">Futures: CBOT 30-day Fed funds, via CNBC, delayed about 10 minutes. Target range and effective rate: New York Fed. ${esc(LABEL)} Not financial advice.</p>`;
+  <p class="footnote">Futures: CBOT 30-day Fed funds, via CNBC, delayed about 10 minutes. Target range and effective rate: New York Fed. Not financial advice.</p>`;
   const host = el.querySelector('#fp-chart');
   const leg = el.querySelector('#fp-legend');
   const meta = el.querySelector('#fp-meta');
@@ -54,7 +55,7 @@ export function render(el, cmd, ctx) {
       const d = await ctx.fetchJSON('/api/fedpath', { signal: ctx.signal });
       const months = d.months;
       const fed = d.fed;
-      const series = [{ id: 'imp', cls: 'ln-0', label: 'Implied by futures', points: stepPoints(months.map((m) => m.implied)) }];
+      const series = [{ id: 'imp', cls: 'ln-0', label: 'Implied by futures', points: stepPoints(months.map((m) => m.implied)), gapX: 1 }];
       if (fed && Number.isFinite(fed.to) && Number.isFinite(fed.from)) {
         series.push({ id: 'top', cls: 'ln-4', label: `Target range today ${fmtNum(fed.from, 2)}-${fmtNum(fed.to, 2)}%`, points: [{ x: 0, y: fed.to }, { x: months.length, y: fed.to }] });
         series.push({ id: 'bot', cls: 'ln-4', label: '', points: [{ x: 0, y: fed.from }, { x: months.length, y: fed.from }] });
@@ -74,24 +75,26 @@ export function render(el, cmd, ctx) {
         label: 'Fed funds rate implied by futures, by month',
         onHover(h) {
           const m = h && months[Math.min(months.length - 1, Math.floor(h.x))];
-          meta.innerHTML = m ? `<span class="num">${esc(monthLabel(m.month))} ${esc(`${fmtNum(m.implied, 3)}%`)}</span>` : base;
+          meta.innerHTML = m ? `<span class="num">${esc(monthLabel(m.month))} ${esc(Number.isFinite(m.implied) ? `${fmtNum(m.implied, 3)}%` : `-- ${m.gap || ''}`)}</span>` : base;
         },
       });
       tBody.innerHTML = `<table class="grid-table fp-table">
-        <thead><tr><th scope="col">Month</th><th scope="col" class="num">Price</th><th scope="col" class="num">Implied rate</th><th scope="col" class="num">vs effective</th><th scope="col" class="num chg">Chg today</th><th scope="col" class="num time">Time</th></tr></thead>
+        <thead><tr><th scope="col">Month</th><th scope="col" class="num">Implied rate</th><th scope="col" class="num">Price</th><th scope="col" class="num">vs effective</th><th scope="col" class="num chg">Chg today</th><th scope="col" class="num time">Time</th></tr></thead>
         <tbody>${months.map((m) => {
+          if (m.gap) return `<tr><th scope="row" class="name">${esc(monthLabel(m.month))}</th><td class="num dim" colspan="5">-- ${esc(m.gap)}</td></tr>`;
           const move = Number.isFinite(m.change) ? -m.change : NaN;
           return `<tr>
             <th scope="row" class="name">${esc(monthLabel(m.month))}</th>
-            <td class="num">${esc(fmtNum(m.price, 4))}</td>
             <td class="num last">${esc(`${fmtNum(m.implied, 3)}%`)}</td>
+            <td class="num">${esc(fmtNum(m.price, 4))}</td>
             <td class="num">${esc(Number.isFinite(m.vsEffective) ? `${fmtSigned(m.vsEffective, 1)} bp` : '--')}</td>
             <td class="num chg bp">${esc(Number.isFinite(move) ? fmtBp(move) : '--')}</td>
             <td class="num time dim">${esc(fmtAsOf(m.asOf))}</td>
           </tr>`;
         }).join('')}</tbody>
       </table>`;
-      el.querySelector('#fp-t-meta').innerHTML = `<span class="fresh is-dly" title="Delayed">DLY</span> ${months.length} CONTRACTS`;
+      const gaps = months.filter((m) => m.gap).length;
+      el.querySelector('#fp-t-meta').innerHTML = `<span class="fresh is-dly" title="Delayed">DLY</span> ${months.length - gaps} CONTRACTS${gaps ? ` · ${gaps} WITHOUT A PRICE` : ''}`;
       ctx.status(`${statusLine(d.updated, d.stale, months.map(() => ({ kind: 'future', realTime: false })))}`, d.stale ? 'warn' : '');
     } catch (err) {
       if (err.name === 'AbortError') return;

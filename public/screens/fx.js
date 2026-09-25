@@ -2,6 +2,7 @@
 
 import { esc, q, fmtPct, dirOf, panel, LOADING } from './markets.js';
 import { mountChart } from './quote.js';
+import { toolbar } from '../kit.js';
 
 const MINUS = '−';
 
@@ -35,6 +36,30 @@ export function flipAmount(n) {
 function fmtDate(iso) {
   const d = new Date(iso + 'T12:00:00Z');
   return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).toUpperCase();
+}
+
+// The converter row under the title: amount, from, a swap button, to. Changing any of
+// them runs the FX command again, so the result, the chart and the link stay in step.
+export function fxForm({ amount, from, to }) {
+  const amt = flipAmount(amount);
+  const code = (name, v, label) => `<input class="field-input fx-code" name="${name}" value="${esc(v)}" maxlength="3" size="3" spellcheck="false" autocapitalize="characters" autocorrect="off" aria-label="${label}">`;
+  return `<form class="fx-form" autocomplete="off">
+    <input class="field-input fx-amt num" name="amount" value="${esc(amt)}" inputmode="decimal" maxlength="16" spellcheck="false" aria-label="Amount">
+    ${code('from', from, 'From currency')}
+    <button type="button" class="chip fx-swap" data-swap aria-label="Swap ${esc(from)} and ${esc(to)}">SWAP</button>
+    ${code('to', to, 'To currency')}
+    <button type="submit" class="chip">CONVERT</button>
+  </form>`;
+}
+
+// The FX command for the form, or null when a field is not right. Amounts may use
+// commas; codes are three letters.
+export function fxFormCommand(amount, from, to) {
+  const n = Number(String(amount ?? '').replace(/[,\s]/g, ''));
+  const f = String(from || '').trim().toUpperCase();
+  const t = String(to || '').trim().toUpperCase();
+  if (!(n > 0) || n > 1e12 || !/^[A-Z]{3}$/.test(f) || !/^[A-Z]{3}$/.test(t)) return null;
+  return `FX ${flipAmount(n)} ${f} ${t}`;
 }
 
 function examplesHtml(examples) {
@@ -71,11 +96,20 @@ export function render(el, cmd, ctx) {
   }
 
   el.innerHTML = `<div class="stack">
-    ${panel('1', `FX ${a.from}/${a.to}`, LOADING, { metaId: 'fx-meta' })}
+    ${panel('1', `FX ${a.from}/${a.to}`, `${toolbar({ left: fxForm(a), label: 'Convert' })}<div class="fx-out">${LOADING}</div>`, { metaId: 'fx-meta', bodyCls: 'flush' })}
     ${panel('2', `${a.from}/${a.to} 30 days`, `<div class="chart-host" id="fx-chart">${LOADING}</div>`, { metaId: 'fx-ch-meta', bodyCls: 'flush' })}
   </div>
   <p class="footnote">${esc(FX_SOURCE)}</p>`;
-  const [body] = el.querySelectorAll('.panel-body');
+  const body = el.querySelector('.fx-out');
+  const form = el.querySelector('.fx-form');
+  const go = (swap) => {
+    const f = form.elements;
+    const next = swap ? fxFormCommand(f.amount.value, f.to.value, f.from.value) : fxFormCommand(f.amount.value, f.from.value, f.to.value);
+    if (next) ctx.run(next);
+    else ctx.status('FX: AN AMOUNT AND TWO THREE LETTER CODES, LIKE 100 USD EUR', 'warn');
+  };
+  form.addEventListener('submit', (e) => { e.preventDefault(); go(false); });
+  form.querySelector('[data-swap]').addEventListener('click', () => go(true));
   const meta = el.querySelector('#fx-meta');
   const chMeta = el.querySelector('#fx-ch-meta');
   const host = el.querySelector('#fx-chart');
@@ -90,7 +124,6 @@ export function render(el, cmd, ctx) {
     const vals = d.series.map((p) => p.v);
     const heroText = fmtMoney(d.result, d.to);
     const size = heroText.length > 18 ? ' is-xlong' : heroText.length > 13 ? ' is-long' : '';
-    const flip = `FX ${flipAmount(d.result)} ${d.to} ${d.from}`;
     meta.textContent = `${d.stale ? 'LAST KNOWN RATE' : 'ECB REFERENCE RATE'} ${fmtDate(d.date)}`;
     body.innerHTML = `
       <div class="fx">
@@ -103,7 +136,6 @@ export function render(el, cmd, ctx) {
           <div class="stat"><dt>30D low</dt><dd class="num">${esc(fmtRate(Math.min(...vals)))}</dd></div>
           <div class="stat"><dt>30D high</dt><dd class="num">${esc(fmtRate(Math.max(...vals)))}</dd></div>
         </dl>
-        <p class="muted swap">Flip it: <a class="code" href="${esc(q(flip))}" data-cmd="${esc(flip)}">FX ${esc(d.to)} ${esc(d.from)}</a></p>
       </div>`;
     const base = `<span class="num ${dirOf(Math.round(chg * 100))}">${esc(fmtPct(chg))}</span>`;
     chMeta.innerHTML = base;

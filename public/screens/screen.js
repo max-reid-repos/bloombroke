@@ -35,19 +35,36 @@ export function rowCmd(symbol) {
 
 // ---- the form ---------------------------------------------------------------------
 
-// Number filters shown as min and max boxes: MCAP>10B -> min "10B".
+const condBox = (c) => [`${c.field}_${c.op.startsWith('>') ? 'min' : 'max'}`, c.text.slice(c.field.length + c.op.length)];
+
+// A preset's own rules as form boxes: GAINERS -> { CHG_min: "0", MCAP_min: "300M" }.
+export function presetValues(preset) {
+  const out = {};
+  for (const t of PRESETS[preset]?.conds || []) {
+    const c = parseCond(t);
+    if (c) { const [k, v] = condBox(c); out[k] = v; }
+  }
+  return out;
+}
+
+// Number filters shown as min and max boxes: MCAP>10B -> min "10B". A preset's rules
+// fill their boxes too, so the form shows what the screen really does; a typed
+// condition on the same box wins.
 export function formValues(spec) {
   const v = { preset: spec.preset || '', sector: spec.sector || '', country: spec.country || '', industry: spec.industry || '' };
+  Object.assign(v, presetValues(spec.preset));
   for (const c of spec.conds || []) {
-    const text = c.text.slice(c.field.length + c.op.length);
-    v[`${c.field}_${c.op.startsWith('>') ? 'min' : 'max'}`] = text;
+    const [k, text] = condBox(c);
+    v[k] = text;
   }
   return v;
 }
 
-// Form fields -> the words after SCREEN, or { error }.
+// Form fields -> the words after SCREEN, or { error }. A box still holding its
+// preset's value is the preset's rule, not a word of its own.
 export function wordsFromForm(fields, sort) {
   const words = [];
+  const fromPreset = presetValues(fields.preset);
   if (fields.preset) words.push(fields.preset);
   if (fields.sector) words.push('SECTOR', fields.sector);
   const ind = String(fields.industry || '').toUpperCase().replace(/[^A-Z0-9&/ -]/g, ' ').trim().replace(/\s+/g, ' ');
@@ -57,6 +74,7 @@ export function wordsFromForm(fields, sort) {
     for (const [side, op] of [['min', '>'], ['max', '<']]) {
       const raw = String(fields[`${f}_${side}`] || '').trim().toUpperCase().replace(/[\s,$]/g, '');
       if (!raw) continue;
+      if (fromPreset[`${f}_${side}`] === raw) continue;
       const c = parseCond(`${f}${op}${raw}`);
       if (!c) return { error: `${FIELDS[f].label} ${side}: "${raw}" is not a number.` };
       words.push(c.text);
@@ -74,6 +92,8 @@ const HINTS = {
 
 function formHtml(spec, open = true) {
   const v = formValues(spec);
+  const pv = presetValues(spec.preset);
+  const isPreset = (k) => pv[k] !== undefined && pv[k] === v[k];
   const opt = (value, label, on) => `<option value="${esc(value)}"${on ? ' selected' : ''}>${esc(label)}</option>`;
   const sectors = [opt('', 'Any sector', !v.sector), ...SECTORS.map((s) => opt(s.code, s.name, v.sector === s.code))].join('');
   const countries = [opt('', 'Any country', !v.country), ...Object.entries(COUNTRIES)
@@ -82,8 +102,8 @@ function formHtml(spec, open = true) {
   const presets = [opt('', 'None', !v.preset), ...Object.entries(PRESETS).map(([k, p]) => opt(k, `${k}: ${p.hint}`, v.preset === k))].join('');
   const nums = FIELD_ORDER.map((f) => `<div class="sc-field sc-range">
       <span class="sc-lab">${esc(FIELDS[f].label)}${f === 'CHG' || f === 'DIV' ? ' (%)' : ''}</span>
-      <input name="${f}_min" value="${esc(v[`${f}_min`] || '')}" placeholder="${esc(HINTS[f][0] ? `over ${HINTS[f][0]}` : 'over')}" aria-label="${esc(FIELDS[f].label)} over" autocomplete="off" spellcheck="false">
-      <input name="${f}_max" value="${esc(v[`${f}_max`] || '')}" placeholder="${esc(HINTS[f][1] ? `under ${HINTS[f][1]}` : 'under')}" aria-label="${esc(FIELDS[f].label)} under" autocomplete="off" spellcheck="false">
+      <input name="${f}_min" value="${esc(v[`${f}_min`] || '')}"${isPreset(`${f}_min`) ? ` data-preset="${esc(spec.preset)}" title="${esc(`Set by the ${spec.preset} preset`)}"` : ''} placeholder="${esc(HINTS[f][0] ? `over ${HINTS[f][0]}` : 'over')}" aria-label="${esc(FIELDS[f].label)} over" autocomplete="off" spellcheck="false">
+      <input name="${f}_max" value="${esc(v[`${f}_max`] || '')}"${isPreset(`${f}_max`) ? ` data-preset="${esc(spec.preset)}" title="${esc(`Set by the ${spec.preset} preset`)}"` : ''} placeholder="${esc(HINTS[f][1] ? `under ${HINTS[f][1]}` : 'under')}" aria-label="${esc(FIELDS[f].label)} under" autocomplete="off" spellcheck="false">
     </div>`).join('');
   const words = screenWords(spec);
   return `<details class="sc-filters"${open ? ' open' : ''}><summary><span class="sc-sum-k">Filters</span> <span class="sc-sum-v">${esc(words || 'none')}</span></summary><form class="sc-form" novalidate>
@@ -130,7 +150,7 @@ export function sortCmd(spec, by) {
   return `SCREEN ${words}`;
 }
 
-export function resultsTable(rows, spec) {
+export function resultsTable(rows, spec, asOf = null) {
   const cur = sortOf(spec);
   const cols = columnsFor(spec);
   const extra = cols !== COLS;
@@ -138,7 +158,8 @@ export function resultsTable(rows, spec) {
     const on = cur.by === c.by;
     const arrow = on ? (cur.dir === 'HIGH' ? ' ▼' : ' ▲') : '';
     const cmd = sortCmd(spec, c.by);
-    return `<th scope="col" class="${c.num ? 'num ' : ''}${c.cls || ''}${c.by === 'NAME' ? ' name' : ''}"${on ? ` aria-sort="${cur.dir === 'HIGH' ? 'descending' : 'ascending'}"` : ''}><a class="sc-sort${on ? ' is-on' : ''}" href="${esc(q(cmd))}" data-cmd="${esc(cmd)}">${esc(c.label)}${arrow}</a></th>`;
+    const day = c.by === 'CHG' ? fmtDay(asOf) : null;
+    return `<th scope="col" class="${c.num ? 'num ' : ''}${c.cls || ''}${c.by === 'NAME' ? ' name' : ''}"${on ? ` aria-sort="${cur.dir === 'HIGH' ? 'descending' : 'ascending'}"` : ''}><a class="sc-sort${on ? ' is-on' : ''}" href="${esc(q(cmd))}" data-cmd="${esc(cmd)}"${day ? ` title="${esc(`% change on ${day}`)}"` : ''}>${esc(c.label)}${day ? ` ${esc(day)}` : ''}${arrow}</a></th>`;
   }).join('');
   const body = rows.map((r) => {
     const cmd = rowCmd(r.symbol);
@@ -170,6 +191,16 @@ function fmtDay(iso) {
   return d.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' }).toUpperCase();
 }
 
+// The line above the results that says which session the numbers are from. The
+// Nasdaq screener file is refreshed after the close, so during a session it holds the
+// previous day: "Screener data as of SEP 24 close".
+export function asOfLine(asOf, today) {
+  const day = fmtDay(asOf);
+  if (!day) return '<p class="sc-rule sc-asof">Screener data date unknown: prices and % change may be from an earlier session. MOVERS has today\'s moves.</p>';
+  const old = /^\d{4}-\d{2}-\d{2}$/.test(today || '') && asOf < today;
+  return `<p class="sc-rule sc-asof"><span class="sc-rule-k">DATA</span> Screener data as of ${esc(day)}${old ? ' close' : ''}: last price and % change are for that session${old ? ', not today' : ''}. <a class="code" href="${esc(q('MOVERS'))}" data-cmd="MOVERS">MOVERS</a> has today's live moves.</p>`;
+}
+
 const FOOT = 'Source: Nasdaq stock screener, all stocks listed on Nasdaq, NYSE and NYSE American. Prices are the last sale on the date shown. P/E and dividend yield from CNBC, may be missing for some stocks: a stock without the number is left out of a PE or DIV filter. Not financial advice.';
 
 export function render(el, cmd, ctx) {
@@ -194,8 +225,12 @@ export function render(el, cmd, ctx) {
     ctx.run(r.words ? `SCREEN ${r.words}` : 'SCREEN');
   });
   form.querySelector('.sc-clear').addEventListener('click', () => ctx.run('SCREEN'));
-  // Changing a menu runs the screen at once; typed boxes run on Enter or RUN.
-  form.querySelectorAll('select').forEach((s) => s.addEventListener('change', () => form.requestSubmit()));
+  // Changing a menu runs the screen at once; typed boxes run on Enter or RUN. A new
+  // preset drops the boxes the old one filled, so its rules do not stay behind as typed ones.
+  form.querySelectorAll('select').forEach((s) => s.addEventListener('change', () => {
+    if (s.name === 'preset') form.querySelectorAll('input[data-preset]').forEach((i) => { if (i.value === i.defaultValue) i.value = ''; });
+    form.requestSubmit();
+  }));
 
   if (bad) { ctx.status('SCREEN: CHECK THE FILTERS', 'warn'); return; }
   if (empty) { ctx.status('SCREEN: PICK FILTERS, OR TYPE THEM: SCREEN SECTOR TECHNOLOGY MCAP>10B'); return; }
@@ -209,19 +244,20 @@ export function render(el, cmd, ctx) {
     try {
       const d = await ctx.fetchJSON(`/api/screen?${new URLSearchParams({ c: words, limit: String(limit) })}`, { signal: ctx.signal });
       const day = fmtDay(d.asOf);
-      meta.textContent = `${fmtNum(d.count, 0)} OF ${fmtNum(d.total, 0)} STOCKS${day ? ` · PRICES ${day}` : ''}`;
+      const behind = Boolean(day && d.today && d.asOf < d.today);
+      meta.textContent = `${fmtNum(d.count, 0)} OF ${fmtNum(d.total, 0)} STOCKS${day ? ` · AS OF ${day}${behind ? ' CLOSE' : ''}` : ' · DATE UNKNOWN'}`;
       if (!d.count) {
-        body.innerHTML = `${presetRule(spec)}<p class="panel-msg sc-none">No stocks match. Loosen a filter.</p>`;
+        body.innerHTML = `${asOfLine(d.asOf, d.today)}${presetRule(spec)}<p class="panel-msg sc-none">No stocks match. Loosen a filter.</p>`;
       } else {
         const more = d.rows.length < d.count
           ? `<div class="sc-more-bar"><span class="dim">Showing ${fmtNum(d.rows.length, 0)} of ${fmtNum(d.count, 0)}</span><button type="button" class="sc-more">SHOW ${fmtNum(Math.min(PAGE, d.count - d.rows.length), 0)} MORE</button></div>`
           : '';
         const keep = body.querySelector('.sc-scroll')?.scrollLeft || 0;
-        body.innerHTML = presetRule(spec) + resultsTable(d.rows, spec) + more;
+        body.innerHTML = asOfLine(d.asOf, d.today) + presetRule(spec) + resultsTable(d.rows, spec, d.asOf) + more;
         body.querySelector('.sc-scroll').scrollLeft = keep;
         body.querySelector('.sc-more')?.addEventListener('click', () => { limit += PAGE; load(); });
       }
-      ctx.status(`${d.stale ? 'LAST KNOWN DATA · ' : ''}SCREEN: ${fmtNum(d.count, 0)} MATCHES${day ? ` · NASDAQ SCREENER PRICES ${day}` : ''}`, d.stale ? 'warn' : '');
+      ctx.status(`${d.stale ? 'LAST KNOWN DATA · ' : ''}SCREEN: ${fmtNum(d.count, 0)} MATCHES${day ? ` · SCREENER DATA AS OF ${day}${behind ? ' CLOSE' : ''}` : ' · DATA DATE UNKNOWN'}`, d.stale || !day || behind ? 'warn' : '');
     } catch (e) {
       if (e.name === 'AbortError') return;
       body.innerHTML = `<p class="panel-msg sc-none">${esc(e.message)}</p>`;

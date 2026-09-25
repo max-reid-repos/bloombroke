@@ -6,6 +6,7 @@
 import { esc, q, dirOf, fmtPct, panel, LOADING } from './markets.js';
 import { fmtRate } from './fx.js';
 import { statusLine } from '../freshness.js';
+import { toolbar, segmented } from '../kit.js';
 
 export const FXM_MODES = ['RATES', 'HEAT'];
 
@@ -61,8 +62,10 @@ export function matrixTable(d, { heat = false } = {}) {
     if (heat) {
       return `<td class="num hx ${heatBucket(chg)}"><a class="fxm-cell" href="${esc(q(cmd))}" data-cmd="${esc(cmd)}" title="${esc(title)}">${esc(chg === null ? '--' : fmtPct(chg))}</a></td>`;
     }
-    const cls = chg === null ? '' : dirOf(Math.round(chg * 100));
-    return `<td class="num"><a class="fxm-cell ${cls}" href="${esc(q(cmd))}" data-cmd="${esc(cmd)}" title="${esc(title)}">${esc(fmtRate(v))}</a></td>`;
+    // Neutral numbers; a small coloured arrow carries the day's direction.
+    const dir = chg === null ? 'flat' : dirOf(Math.round(chg * 100));
+    const arrow = dir === 'up' ? '▲' : dir === 'down' ? '▼' : '';
+    return `<td class="num"><a class="fxm-cell" href="${esc(q(cmd))}" data-cmd="${esc(cmd)}" title="${esc(title)}">${esc(fmtRate(v))}<span class="fxm-arr ${dir}" aria-hidden="true">${arrow}</span></a></td>`;
   }).join('')}</tr>`).join('');
   return `<div class="fxm-wrap"><table class="grid-table fxm${heat ? ' fxm-heat' : ''}"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -72,14 +75,11 @@ const fmtDay = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US'
 export function render(el, cmd, ctx) {
   const mode = cmd.args?.mode || 'RATES';
   const heat = mode === 'HEAT';
-  const tabs = FXM_MODES.map((m) => {
-    const c = m === 'RATES' ? 'FXMATRIX' : `FXMATRIX ${m}`;
-    return `<a class="tab${m === mode ? ' is-active' : ''}" href="${esc(q(c))}" data-cmd="${esc(c)}"${m === mode ? ' aria-current="page"' : ''}>${m}</a>`;
-  }).join('');
-  el.innerHTML = panel('1', 'FX matrix', `<div class="ch-bar"><nav class="tabs ch-tabs" aria-label="Mode">${tabs}</nav></div><div class="fxm-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'fxm-meta', bodyCls: 'flush' })
+  const modes = segmented(FXM_MODES.map((m) => ({ label: m, cmd: m === 'RATES' ? 'FXMATRIX' : `FXMATRIX ${m}` })), mode, { label: 'Mode' });
+  el.innerHTML = panel('1', 'FX matrix', `${toolbar({ right: modes, label: 'Mode' })}<div class="fxm-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'fxm-meta', bodyCls: 'flush' })
     + `<p class="footnote">${heat
       ? 'Each cell: how much the row currency moved against the column currency today, in %. Real-time quotes from CNBC; if they are missing, the change between the last two ECB reference rates, labelled DAILY. Tap a cell to convert.'
-      : 'Read across: 1 unit of the row currency buys this much of the column currency. Green or red = up or down on the day before. Source: ECB statistics via Frankfurter, reference rates published once a working day (DAILY), not live. Rates that do not involve the euro are calculated from the euro rates. Tap a rate to convert.'}</p>`;
+      : 'Read across: 1 unit of the row currency buys this much of the column currency. The small arrow = up or down on the day before. Source: ECB statistics via Frankfurter, reference rates published once a working day (DAILY), not live. Rates that do not involve the euro are calculated from the euro rates. Tap a rate to convert.'}</p>`;
   if (cmd.args?.error) ctx.status('FXMATRIX TAKES RATES OR HEAT', 'warn');
   const body = el.querySelector('.fxm-body');
   const meta = el.querySelector('#fxm-meta');

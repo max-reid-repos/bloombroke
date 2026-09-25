@@ -70,6 +70,18 @@ export function labelSize(w, h, chars) {
   return fs >= 9 ? Math.floor(fs) : 0;
 }
 
+// Ticker and % change sizes for a w x h box. The % shows whenever the two lines fit,
+// shrinking the ticker a little if that is what it takes. { fs: 0 } when nothing fits.
+export function tileLabels(w, h, chars, pctChars = 6) {
+  const top = labelSize(w, h, chars);
+  if (!top) return { fs: 0, ps: 0 };
+  for (let fs = top; fs >= 9; fs -= 1) {
+    const ps = Math.max(9, Math.round(fs * 0.62));
+    if (h >= fs * 1.1 + ps * 1.15 + 4 && w >= ps * 0.62 * pctChars + 6) return { fs, ps };
+  }
+  return { fs: top, ps: 0 };
+}
+
 const SHORT = {
   TECH: 'Tech', COMM: 'Communication', DISC: 'Consumer disc.', STAPLES: 'Staples', HEALTH: 'Health care',
   FIN: 'Financials', IND: 'Industrials', ENERGY: 'Energy', UTIL: 'Utilities', RE: 'Real estate', MAT: 'Materials',
@@ -107,13 +119,15 @@ export function heatmapSvg(stocks, width, height) {
     sec.list.forEach((s, j) => {
       const c = cells[j];
       if (!c) return;
-      const fs = labelSize(c.w, c.h, s.ticker.length);
+      const pctText = fmtPct(s.changePct);
+      const { fs, ps } = tileLabels(c.w, c.h, s.ticker.length, pctText.length);
       const cx = c.x + c.w / 2;
-      const showPct = fs && c.h >= fs * 2.4 + 4 && c.w >= fs * 0.62 * 7;
-      const ty = showPct ? c.y + c.h / 2 - fs * 0.15 : c.y + c.h / 2 + fs * 0.35;
+      // Two lines: centre the pair (ticker cap height about 0.72 fs, % about 0.72 ps).
+      const block = ps ? fs * 0.72 + ps * 0.35 + ps * 0.72 : 0;
+      const ty = ps ? c.y + (c.h - block) / 2 + fs * 0.72 : c.y + c.h / 2 + fs * 0.35;
       const text = fs
         ? `<text class="hm-t" x="${cx.toFixed(1)}" y="${ty.toFixed(1)}" font-size="${fs}" text-anchor="middle">${esc(s.ticker)}</text>`
-          + (showPct ? `<text class="hm-p" x="${cx.toFixed(1)}" y="${(ty + fs * 0.95).toFixed(1)}" font-size="${Math.max(9, Math.round(fs * 0.62))}" text-anchor="middle">${esc(fmtPct(s.changePct))}</text>` : '')
+          + (ps ? `<text class="hm-p" x="${cx.toFixed(1)}" y="${(ty + ps * 0.35 + ps * 0.72).toFixed(1)}" font-size="${ps}" text-anchor="middle">${esc(pctText)}</text>` : '')
         : '';
       parts.push(`<a class="hm-a" href="${esc(q(s.ticker))}" data-cmd="${esc(s.ticker)}" data-t="${esc(s.ticker)}" aria-label="${esc(`${s.ticker} ${s.name} ${fmtPct(s.changePct)}`)}">`
         + `<rect class="hm-cell" x="${(c.x + 0.5).toFixed(1)}" y="${(c.y + 0.5).toFixed(1)}" width="${Math.max(0, c.w - 1).toFixed(1)}" height="${Math.max(0, c.h - 1).toFixed(1)}" fill="${heatFill(s.changePct)}"/>`

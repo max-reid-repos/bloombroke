@@ -53,7 +53,8 @@ export function fmtWeekday(d) {
 
 // The first cell of a row with a ticker: the ticker and the company, linking to ?c=<TICKER>.
 export function symbolCell(symbol, name) {
-  if (!symbol) return `<th scope="row" class="name"><span class="tk-name co-noname">${esc(name || dash)}</span></th>`;
+  // No ticker (yet): a -- where the ticker goes, so the name stays in the name spot.
+  if (!symbol) return `<th scope="row" class="name" title="No ticker yet"><span class="tk dim">${dash}</span> <span class="tk-name co-noname">${esc(name || dash)}</span></th>`;
   return `<th scope="row" class="name"><a href="${esc(q(symbol))}" data-cmd="${esc(symbol)}" tabindex="-1"><span class="tk">${esc(symbol)}</span> <span class="tk-name">${esc(name || '')}</span></a></th>`;
 }
 
