@@ -56,7 +56,7 @@ test('BUY formats and HTML', () => {
   assert.match(html, /WAGE 35/);
   assert.match(html, /How is this calculated\?/);
   assert.doesNotMatch(html, /style=/);
-  assert.doesNotMatch(html, /—/, 'no em dashes');
+  assert.doesNotMatch(html, /\u2014/, 'no em dashes');
 });
 
 test('WAGE parses, shows and clears', () => {

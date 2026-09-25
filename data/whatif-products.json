@@ -1,0 +1,88 @@
+{
+  "note": "US launch or release date and US launch price of the base model, in USD. Recurring items are bought every month between two dates. Each item names its source in src.",
+  "products": [
+    { "id": "iphone3g", "name": "iPhone 3G", "company": "Apple", "ticker": "AAPL", "date": "2008-07-11", "price": 199, "category": "phone", "family": "IPHONE", "note": "8GB, on a 2-year contract", "src": "https://en.wikipedia.org/wiki/IPhone_3G" },
+    { "id": "iphone3gs", "name": "iPhone 3GS", "company": "Apple", "ticker": "AAPL", "date": "2009-06-19", "price": 199, "category": "phone", "family": "IPHONE", "note": "16GB, on a 2-year contract", "src": "https://en.wikipedia.org/wiki/IPhone_3GS" },
+    { "id": "iphone4", "name": "iPhone 4", "company": "Apple", "ticker": "AAPL", "date": "2010-06-24", "price": 199, "category": "phone", "family": "IPHONE", "note": "16GB, on a 2-year contract", "src": "https://en.wikipedia.org/wiki/IPhone_4" },
+    { "id": "iphone4s", "name": "iPhone 4S", "company": "Apple", "ticker": "AAPL", "date": "2011-10-14", "price": 199, "category": "phone", "family": "IPHONE", "note": "16GB, on a 2-year contract", "src": "https://en.wikipedia.org/wiki/IPhone_4S" },
+    { "id": "iphone5", "name": "iPhone 5", "company": "Apple", "ticker": "AAPL", "date": "2012-09-21", "price": 649, "category": "phone", "family": "IPHONE", "note": "16GB, full price", "src": "https://en.wikipedia.org/wiki/IPhone_5" },
+    { "id": "iphone5s", "name": "iPhone 5s", "company": "Apple", "ticker": "AAPL", "date": "2013-09-20", "price": 649, "category": "phone", "family": "IPHONE", "note": "16GB, full price", "src": "https://en.wikipedia.org/wiki/IPhone_5S" },
+    { "id": "iphone6", "name": "iPhone 6", "company": "Apple", "ticker": "AAPL", "date": "2014-09-19", "price": 649, "category": "phone", "family": "IPHONE", "note": "16GB, full price", "src": "https://en.wikipedia.org/wiki/IPhone_6" },
+    { "id": "iphone6s", "name": "iPhone 6s", "company": "Apple", "ticker": "AAPL", "date": "2015-09-25", "price": 649, "category": "phone", "family": "IPHONE", "note": "16GB, full price", "src": "https://en.wikipedia.org/wiki/IPhone_6S" },
+    { "id": "iphone7", "name": "iPhone 7", "company": "Apple", "ticker": "AAPL", "date": "2016-09-16", "price": 649, "category": "phone", "family": "IPHONE", "note": "32GB", "src": "https://en.wikipedia.org/wiki/IPhone_7" },
+    { "id": "iphone8", "name": "iPhone 8", "company": "Apple", "ticker": "AAPL", "date": "2017-09-22", "price": 699, "category": "phone", "family": "IPHONE", "note": "64GB", "src": "https://en.wikipedia.org/wiki/IPhone_8" },
+    { "id": "iphonex", "name": "iPhone X", "company": "Apple", "ticker": "AAPL", "date": "2017-11-03", "price": 999, "category": "phone", "family": "IPHONE", "note": "64GB", "src": "https://en.wikipedia.org/wiki/IPhone_X" },
+    { "id": "iphone11", "name": "iPhone 11", "company": "Apple", "ticker": "AAPL", "date": "2019-09-20", "price": 699, "category": "phone", "family": "IPHONE", "note": "64GB", "src": "https://en.wikipedia.org/wiki/IPhone_11" },
+    { "id": "iphone12", "name": "iPhone 12", "company": "Apple", "ticker": "AAPL", "date": "2020-10-23", "price": 799, "category": "phone", "family": "IPHONE", "note": "64GB", "src": "https://en.wikipedia.org/wiki/IPhone_12" },
+    { "id": "iphone13", "name": "iPhone 13", "company": "Apple", "ticker": "AAPL", "date": "2021-09-24", "price": 799, "category": "phone", "family": "IPHONE", "note": "128GB", "src": "https://en.wikipedia.org/wiki/IPhone_13" },
+    { "id": "iphone14", "name": "iPhone 14", "company": "Apple", "ticker": "AAPL", "date": "2022-09-16", "price": 799, "category": "phone", "family": "IPHONE", "note": "128GB", "src": "https://en.wikipedia.org/wiki/IPhone_14" },
+    { "id": "iphone15", "name": "iPhone 15", "company": "Apple", "ticker": "AAPL", "date": "2023-09-22", "price": 799, "category": "phone", "family": "IPHONE", "note": "128GB", "src": "https://en.wikipedia.org/wiki/IPhone_15" },
+    { "id": "iphone16", "name": "iPhone 16", "company": "Apple", "ticker": "AAPL", "date": "2024-09-20", "price": 799, "category": "phone", "family": "IPHONE", "note": "128GB", "src": "https://en.wikipedia.org/wiki/IPhone_16" },
+    { "id": "iphone17", "name": "iPhone 17", "company": "Apple", "ticker": "AAPL", "date": "2025-09-19", "price": 799, "category": "phone", "family": "IPHONE", "note": "256GB", "src": "https://en.wikipedia.org/wiki/IPhone_17" },
+    { "id": "ipad", "name": "iPad (first)", "company": "Apple", "ticker": "AAPL", "date": "2010-04-03", "price": 499, "category": "tablet", "family": "IPAD", "note": "Wi-Fi, 16GB", "src": "https://en.wikipedia.org/wiki/IPad_(1st_generation)" },
+    { "id": "macbookair", "name": "MacBook Air (2008)", "company": "Apple", "ticker": "AAPL", "date": "2008-01-29", "price": 1799, "category": "laptop", "family": "MAC", "note": "1.6GHz, 80GB", "src": "https://en.wikipedia.org/wiki/MacBook_Air_(Intel-based)" },
+    { "id": "airpods", "name": "AirPods (first)", "company": "Apple", "ticker": "AAPL", "date": "2016-12-13", "price": 159, "category": "audio", "family": "AIRPODS", "src": "https://en.wikipedia.org/wiki/AirPods" },
+    { "id": "applewatch", "name": "Apple Watch (first)", "company": "Apple", "ticker": "AAPL", "date": "2015-04-24", "price": 349, "category": "watch", "family": "WATCH", "note": "Sport, 38mm", "src": "https://en.wikipedia.org/wiki/Apple_Watch_(1st_generation)" },
+
+    { "id": "models", "name": "Tesla Model S", "company": "Tesla", "ticker": "TSLA", "date": "2012-06-22", "price": 57400, "category": "car", "family": "TESLA", "note": "Base price at launch, 40 kWh, before tax credit", "src": "https://en.wikipedia.org/wiki/Tesla_Model_S" },
+    { "id": "model3", "name": "Tesla Model 3", "company": "Tesla", "ticker": "TSLA", "date": "2017-07-28", "price": 44000, "category": "car", "family": "TESLA", "note": "Long Range, the only version on sale at launch", "src": "https://en.wikipedia.org/wiki/Tesla_Model_3" },
+    { "id": "modely", "name": "Tesla Model Y", "company": "Tesla", "ticker": "TSLA", "date": "2020-03-13", "price": 52990, "category": "car", "family": "TESLA", "note": "Long Range AWD", "src": "https://en.wikipedia.org/wiki/Tesla_Model_Y" },
+    { "id": "cybertruck", "name": "Tesla Cybertruck", "company": "Tesla", "ticker": "TSLA", "date": "2023-11-30", "price": 79990, "category": "car", "family": "TESLA", "note": "AWD", "src": "https://en.wikipedia.org/wiki/Tesla_Cybertruck" },
+
+    { "id": "gtx1080", "name": "GeForce GTX 1080", "company": "Nvidia", "ticker": "NVDA", "date": "2016-05-27", "price": 599, "category": "gpu", "family": "GEFORCE", "note": "MSRP", "src": "https://en.wikipedia.org/wiki/GeForce_10_series" },
+    { "id": "rtx3080", "name": "GeForce RTX 3080", "company": "Nvidia", "ticker": "NVDA", "date": "2020-09-17", "price": 699, "category": "gpu", "family": "GEFORCE", "note": "10GB", "src": "https://en.wikipedia.org/wiki/GeForce_30_series" },
+    { "id": "rtx4090", "name": "GeForce RTX 4090", "company": "Nvidia", "ticker": "NVDA", "date": "2022-10-12", "price": 1599, "category": "gpu", "family": "GEFORCE", "src": "https://en.wikipedia.org/wiki/GeForce_40_series" },
+
+    { "id": "ps4", "name": "PlayStation 4", "company": "Sony", "ticker": "SONY", "date": "2013-11-15", "price": 399, "category": "console", "family": "PLAYSTATION", "src": "https://en.wikipedia.org/wiki/PlayStation_4" },
+    { "id": "ps5", "name": "PlayStation 5", "company": "Sony", "ticker": "SONY", "date": "2020-11-12", "price": 499, "category": "console", "family": "PLAYSTATION", "note": "With disc drive", "src": "https://en.wikipedia.org/wiki/PlayStation_5" },
+    { "id": "xboxone", "name": "Xbox One", "company": "Microsoft", "ticker": "MSFT", "date": "2013-11-22", "price": 499, "category": "console", "family": "XBOX", "note": "With Kinect", "src": "https://en.wikipedia.org/wiki/Xbox_One" },
+    { "id": "xboxseriesx", "name": "Xbox Series X", "company": "Microsoft", "ticker": "MSFT", "date": "2020-11-10", "price": 499, "category": "console", "family": "XBOX", "src": "https://en.wikipedia.org/wiki/Xbox_Series_X_and_Series_S" },
+    { "id": "switch", "name": "Nintendo Switch", "company": "Nintendo", "ticker": "NTDOY", "date": "2017-03-03", "price": 299.99, "category": "console", "family": "NINTENDO", "src": "https://en.wikipedia.org/wiki/Nintendo_Switch" },
+    { "id": "quest2", "name": "Quest 2", "company": "Meta", "ticker": "META", "date": "2020-10-13", "price": 299, "category": "vr", "family": "QUEST", "note": "64GB", "src": "https://en.wikipedia.org/wiki/Quest_2" },
+    { "id": "peloton", "name": "Peloton Bike", "company": "Peloton", "ticker": "PTON", "date": "2019-09-26", "price": 2245, "category": "fitness", "family": "PELOTON", "note": "Price on the day Peloton listed its shares", "src": "https://en.wikipedia.org/wiki/Peloton_Interactive" },
+    { "id": "gopro", "name": "GoPro HERO4 Black", "company": "GoPro", "ticker": "GPRO", "date": "2014-10-05", "price": 499, "category": "camera", "family": "GOPRO", "src": "https://en.wikipedia.org/wiki/GoPro" },
+    { "id": "blackberry", "name": "BlackBerry Bold 9000", "company": "BlackBerry", "ticker": "BB", "date": "2008-11-04", "price": 299, "category": "phone", "family": "BLACKBERRY", "note": "AT&T, on a 2-year contract", "src": "https://en.wikipedia.org/wiki/BlackBerry_Bold" }
+  ],
+  "recurring": [
+    { "id": "latte", "name": "Grande latte, every day", "company": "Starbucks", "ticker": "SBUX", "per": "day", "start": "2008-01", "defaultYears": 5, "category": "food", "family": "STARBUCKS",
+      "today": 5.95, "scaleWith": "bigmac",
+      "note": "Assumes $5.95 today, a typical US price. Earlier years are scaled back in line with the US Big Mac price.",
+      "src": "https://github.com/TheEconomist/big-mac-data" },
+    { "id": "netflix", "name": "Netflix Standard plan", "company": "Netflix", "ticker": "NFLX", "per": "month", "start": "2010-11", "defaultYears": 10, "category": "subscription", "family": "NETFLIX",
+      "prices": [
+        { "from": "2010-11", "usd": 7.99 }, { "from": "2014-05", "usd": 8.99 }, { "from": "2015-10", "usd": 9.99 },
+        { "from": "2017-10", "usd": 10.99 }, { "from": "2019-01", "usd": 12.99 }, { "from": "2020-10", "usd": 13.99 },
+        { "from": "2022-01", "usd": 15.49 }, { "from": "2025-01", "usd": 17.99 }, { "from": "2026-03", "usd": 19.99 }
+      ],
+      "note": "US price for new members, 2 screens, no ads.",
+      "src": "https://en.wikipedia.org/wiki/Netflix" },
+    { "id": "prime", "name": "Amazon Prime", "company": "Amazon", "ticker": "AMZN", "per": "year", "start": "2008-01", "defaultYears": 10, "category": "subscription", "family": "AMAZON",
+      "prices": [
+        { "from": "2008-01", "usd": 79 }, { "from": "2014-03", "usd": 99 }, { "from": "2018-05", "usd": 119 }, { "from": "2022-02", "usd": 139 }
+      ],
+      "note": "US annual fee, spread over 12 monthly buys.",
+      "src": "https://en.wikipedia.org/wiki/Amazon_Prime" },
+    { "id": "spotify", "name": "Spotify Premium", "company": "Spotify", "ticker": "SPOT", "per": "month", "start": "2018-04", "listed": "2018-04-03", "defaultYears": 5, "category": "subscription", "family": "SPOTIFY",
+      "prices": [
+        { "from": "2018-04", "usd": 9.99 }, { "from": "2023-07", "usd": 10.99 }, { "from": "2024-07", "usd": 11.99 }, { "from": "2026-01", "usd": 12.99 }
+      ],
+      "note": "US Individual plan. Starts April 2018, when Spotify shares began trading.",
+      "src": "https://en.wikipedia.org/wiki/Spotify" },
+    { "id": "bigmac", "name": "Big Mac, every week", "company": "McDonald's", "ticker": "MCD", "per": "week", "start": "2008-01", "defaultYears": 10, "category": "food", "family": "MCDONALDS",
+      "prices": [
+        { "from": "2007-06", "usd": 3.00 }, { "from": "2008-06", "usd": 3.21 }, { "from": "2009-07", "usd": 3.43 }, { "from": "2010-07", "usd": 3.53 },
+        { "from": "2011-07", "usd": 3.64 }, { "from": "2012-01", "usd": 3.81 }, { "from": "2012-07", "usd": 3.96 }, { "from": "2013-01", "usd": 4.03 },
+        { "from": "2013-07", "usd": 4.18 }, { "from": "2014-01", "usd": 4.24 }, { "from": "2014-07", "usd": 4.29 }, { "from": "2016-07", "usd": 4.50 },
+        { "from": "2018-01", "usd": 4.61 }, { "from": "2018-07", "usd": 4.62 }, { "from": "2019-01", "usd": 4.71 }, { "from": "2020-01", "usd": 4.82 },
+        { "from": "2021-01", "usd": 4.89 }, { "from": "2021-07", "usd": 4.93 }, { "from": "2022-01", "usd": 5.04 }, { "from": "2022-07", "usd": 5.15 },
+        { "from": "2023-01", "usd": 5.36 }, { "from": "2023-07", "usd": 5.58 }, { "from": "2024-01", "usd": 5.69 }, { "from": "2025-01", "usd": 5.79 },
+        { "from": "2025-07", "usd": 6.01 }, { "from": "2026-01", "usd": 6.12 }, { "from": "2026-07", "usd": 6.22 }
+      ],
+      "note": "US Big Mac price from The Economist Big Mac index.",
+      "src": "https://github.com/TheEconomist/big-mac-data" },
+    { "id": "burrito", "name": "Chipotle burrito, every week", "company": "Chipotle", "ticker": "CMG", "per": "week", "start": "2008-01", "defaultYears": 5, "category": "food", "family": "CHIPOTLE",
+      "today": 9.80, "scaleWith": "bigmac",
+      "note": "Chicken burrito. Assumes $9.80 today, a typical US price. Earlier years are scaled back in line with the US Big Mac price.",
+      "src": "https://github.com/TheEconomist/big-mac-data" }
+  ]
+}

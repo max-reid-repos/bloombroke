@@ -7,6 +7,8 @@ import { getChart, ChartError } from './data/charts.js';
 import { getCpi, CpiError, CPI_EXAMPLES } from './data/cpi.js';
 import { getRates } from './data/rates.js';
 import { getNews } from './data/news.js';
+import { getCatalog, getWhatif } from './data/whatif-service.js';
+import { WhatifError } from './data/whatif.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
@@ -143,6 +145,29 @@ app.get('/api/news', async (req, res) => {
   } catch (err) {
     console.error('[news]', err.message);
     res.status(503).json({ error: 'unavailable', message: 'News is taking a break. Try again in a minute.' });
+  }
+});
+
+app.get('/api/whatif/catalog', (req, res) => {
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.json(getCatalog());
+});
+
+// ?c=IPHONE6+LATTE:3Y (the words after WHATIF)
+app.get('/api/whatif', async (req, res) => {
+  const c = str(req.query.c) || '';
+  const tokens = c.toUpperCase().split(/[\s,]+/).filter(Boolean);
+  if (c.length > 600 || tokens.length > 40 || tokens.some((t) => !/^[A-Z0-9.:-]{1,24}$/.test(t))) {
+    return res.status(400).json({ error: 'usage', message: 'That list does not look right. Type WHATIF to pick from the list.' });
+  }
+  try {
+    const data = await getWhatif(tokens);
+    res.set('Cache-Control', 'public, max-age=60');
+    res.json(data);
+  } catch (err) {
+    if (err instanceof WhatifError) return res.status(400).json({ error: err.code, message: err.message, unknown: err.unknown });
+    console.error('[whatif]', err.message);
+    res.status(503).json({ error: 'unavailable', message: BREAK });
   }
 });
 

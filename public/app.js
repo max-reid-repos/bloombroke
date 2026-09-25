@@ -11,6 +11,7 @@ import * as cpiScreen from './screens/cpi.js';
 import * as ratesScreen from './screens/rates.js';
 import * as newsScreen from './screens/news.js';
 import * as buyScreen from './screens/buy.js';
+import * as whatifScreen from './screens/whatif.js';
 import { fmtNum, fmtPct, dirOf, cmdForInstrument, nyTime, panel } from './screens/markets.js';
 
 export const COMMANDS = [
@@ -20,6 +21,7 @@ export const COMMANDS = [
   { name: 'NEWS', group: 'Markets', hint: 'Headlines that move markets', usage: 'NEWS', example: 'NEWS' },
   { name: 'FX', group: 'Money tools', hint: 'Convert money between currencies', usage: 'FX <amount> <from> <to>', example: 'FX 500 USD THB', examples: ['FX 500 USD THB', 'FX USD CAD'] },
   { name: 'CPI', group: 'Money tools', hint: 'What money from a past year is worth today', usage: 'CPI <amount> <year>', example: 'CPI 100 2015', examples: ['CPI 100 2015', 'CPI 1000 1990'] },
+  { name: 'WHATIF', group: 'Money tools', hint: 'The stock you should have bought', usage: 'WHATIF [<item> ...]', example: 'WHATIF', examples: ['WHATIF', 'WHATIF IPHONE6 LATTE:3Y'] },
   { name: 'BUY', group: 'Money tools', hint: 'Should I buy it? Cost per use and a verdict', usage: 'BUY <price> [<n> PER WEEK] [FOR <n>Y]', example: 'BUY 1200', examples: ['BUY 1200', 'BUY 90 3 PER WEEK FOR 2Y'] },
   { name: 'WAGE', group: 'Money tools', hint: 'Save your hourly pay, BUY then shows hours of work', usage: 'WAGE <per hour>', example: 'WAGE 35', examples: ['WAGE 35'] },
   { name: 'HELP', group: 'Help', hint: 'Every command, with examples', usage: 'HELP', example: 'HELP' },
@@ -30,7 +32,6 @@ export const TICKER_HELP = {
 };
 
 export const SOON = [
-  { name: 'WHATIF', hint: 'What if you had bought ten years ago' },
   { name: 'PRO', hint: 'Everything, for $4.20 a month' },
 ];
 
@@ -188,6 +189,9 @@ export function parseCommand(raw) {
     const args = parseWageArgs(rest);
     return { name: 'WAGE', args, error: args.error, input: ['WAGE', ...rest].join(' ') };
   }
+  if (head === 'WHATIF') {
+    return { name: 'WHATIF', args: { tokens: rest }, input: ['WHATIF', ...rest].join(' ') };
+  }
   if (head === 'BUY') return { name: 'BUY', args: { error: 'usage' }, error: 'usage', input: 'BUY' };
   const soon = SOON.find((s) => s.name === head);
   if (soon && !rest.length) return { name: 'SOON', args: { soon }, input: head };
@@ -314,7 +318,7 @@ const store = {
 const SCREENS = {
   HOME: homeScreen, HELP: helpScreen, MARKETS: marketsScreen, FX: fxScreen,
   QUOTE: quoteScreen, CPI: cpiScreen, RATES: ratesScreen, NEWS: newsScreen,
-  BUY: buyScreen, WAGE: buyScreen,
+  BUY: buyScreen, WAGE: buyScreen, WHATIF: whatifScreen,
 };
 const DEFAULT_TITLE = 'Bloombroke: the $32,000 terminal. Now $4.20 a month.';
 
@@ -542,6 +546,8 @@ function boot() {
       return;
     }
     if (e.target.closest('a[href]')) return;
+    // Controls on a screen (pickers, inputs, toggles) keep their own focus.
+    if (e.target.closest('input, select, textarea, button, summary, [data-own-focus]')) return;
     // Keep the command bar focused, unless the user is selecting text.
     if (!coarse && !String(window.getSelection?.() || '')) input.focus();
   });
@@ -557,6 +563,7 @@ function boot() {
     }
     // Typing anywhere goes to the command bar.
     if (document.activeElement === input || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.target.closest?.('input, select, textarea')) return;
     if (e.key.length === 1 || e.key === 'Backspace') input.focus();
   });
 
