@@ -14,6 +14,7 @@ export function render(el, cmd, ctx) {
     ...by('Markets').map((c) => row(c.name, c.hint, [c.example])),
     row('<TICKER>', t.hint, t.examples),
   ].join('');
+  const company = by('Company').map((c) => row(c.name, c.hint, [c.example])).join('');
   const money = [
     ...by('Money tools').map((c) => row(c.usage, c.hint, c.examples || [c.example])),
   ].join('');
@@ -22,15 +23,16 @@ export function render(el, cmd, ctx) {
 
   el.innerHTML = `<div class="grid">
     ${panel('1', 'Markets', `<ul class="cmd-list">${markets}</ul>`)}
-    ${panel('2', 'Money tools', `<ul class="cmd-list">${money}</ul>`)}
-    ${panel('3', 'Coming soon', `<ul class="cmd-list">${soon}</ul>`)}
-    ${panel('4', 'Keys', `<dl class="keys">
+    ${panel('2', 'Company', `<ul class="cmd-list">${company}</ul>`)}
+    ${panel('3', 'Money tools', `<ul class="cmd-list">${money}</ul>`)}
+    ${panel('4', 'Coming soon', `<ul class="cmd-list">${soon}</ul>`)}
+    ${panel('5', 'Keys', `<dl class="keys">
       <div><dt><kbd>Enter</kbd></dt><dd>Run the command</dd></div>
       <div><dt><kbd>Tab</kbd></dt><dd>Complete the suggestion</dd></div>
       <div><dt><kbd>Up</kbd> <kbd>Down</kbd></dt><dd>Past commands</dd></div>
       <div><dt><kbd>Esc</kbd></dt><dd>Clear the command bar</dd></div>
       ${fkeys}
-    </dl>`)}
+    </dl>`, { cls: 'panel-wide' })}
   </div>
   <p class="footnote">Type a command and press Enter. Any case. Every screen is a link: SHARE copies it.</p>`;
   ctx.status('HELP: TYPE A COMMAND AND PRESS ENTER');

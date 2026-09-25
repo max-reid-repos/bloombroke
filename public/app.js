@@ -13,6 +13,10 @@ import * as newsScreen from './screens/news.js';
 import * as buyScreen from './screens/buy.js';
 import * as whatifScreen from './screens/whatif.js';
 import * as fundingScreen from './screens/funding.js';
+import * as financialsScreen from './screens/financials.js';
+import * as screenScreen from './screens/screen.js';
+import { parseFinancialsCommand, parseFinancialsArgs } from './screens/financials.js';
+import { parseScreenCommand, parseScreenArgs } from './screener.js';
 import { fmtNum, fmtPct, dirOf, cmdForInstrument, panel } from './screens/markets.js';
 import { matchInstrument, searchInstruments } from './instruments.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
@@ -28,6 +32,8 @@ export const COMMANDS = [
   { name: 'WHATIF', group: 'Money tools', hint: 'The stock you should have bought', usage: 'WHATIF [<item> ...]', example: 'WHATIF', examples: ['WHATIF', 'WHATIF IPHONE6 LATTE:3Y'] },
   { name: 'BUY', group: 'Money tools', hint: 'Should I buy it? Cost per use and a verdict', usage: 'BUY <price> [<n> PER WEEK] [FOR <n>Y]', example: 'BUY 1200', examples: ['BUY 1200', 'BUY 90 3 PER WEEK FOR 2Y'] },
   { name: 'WAGE', group: 'Money tools', hint: 'Save your hourly pay, BUY then shows hours of work', usage: 'WAGE <per hour>', example: 'WAGE 35', examples: ['WAGE 35'] },
+  { name: 'SCREEN', group: 'Markets', hint: 'Find stocks by sector, size, price and move', usage: 'SCREEN [SECTOR <name>] [MCAP>10B] [PRICE<50] [CHG>2] [COUNTRY US]', example: 'SCREEN GAINERS', examples: ['SCREEN', 'SCREEN SECTOR TECHNOLOGY MCAP>10B', 'SCREEN GAINERS'] },
+  { name: 'FINANCIALS', group: 'Company', hint: 'Income, balance sheet and cash flow from SEC filings', usage: 'FINANCIALS <ticker> [BALANCE|CASHFLOW] [QUARTERLY]', example: 'FINANCIALS AAPL', examples: ['FINANCIALS AAPL', 'FINANCIALS MSFT BALANCE', 'FINANCIALS NVDA QUARTERLY'] },
   { name: 'HELP', group: 'Help', hint: 'Every command, with examples', usage: 'HELP', example: 'HELP' },
 ];
 
@@ -51,6 +57,7 @@ export const FKEYS = [
 
 export const CHART_RANGES = PRESETS;
 const SIMPLE = new Set(['HOME', 'MARKETS', 'RATES', 'NEWS', 'HELP']);
+const FUNDAMENTALS = { FINANCIALS: parseFinancialsCommand, SCREEN: parseScreenCommand, SCREENER: parseScreenCommand };
 const ALIASES = { '?': 'HELP', H: 'HELP', M: 'MARKETS', MARKET: 'MARKETS', RATE: 'RATES', INFLATION: 'CPI' };
 export const DEFAULT_COMMAND = 'HOME';
 export const MAX_AMOUNT = 1e12;
@@ -213,6 +220,7 @@ export function parseCommand(raw) {
   if (head === 'BUY') return { name: 'BUY', args: { error: 'usage' }, error: 'usage', input: 'BUY' };
   const soon = SOON.find((s) => s.name === head);
   if (soon && !rest.length) return { name: 'SOON', args: { soon }, input: head };
+  if (FUNDAMENTALS[head]) return FUNDAMENTALS[head](rest);
   // Add new commands above this line: commands win over symbols of the same name.
   const quote = parseSymbolCommand(toks);
   if (quote) return quote;
@@ -232,7 +240,7 @@ export function fromQuery(search) {
 }
 
 // Commands that take arguments: Tab adds a space, and a bad argument shows the usage line.
-const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs };
+const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, FINANCIALS: parseFinancialsArgs, SCREEN: parseScreenArgs };
 
 // Suggestions for the dropdown: [{ name, hint, value }].
 export function suggest(raw) {
@@ -356,6 +364,7 @@ const SCREENS = {
   HOME: homeScreen, HELP: helpScreen, MARKETS: marketsScreen, FX: fxScreen,
   QUOTE: quoteScreen, CPI: cpiScreen, RATES: ratesScreen, NEWS: newsScreen,
   BUY: buyScreen, WAGE: buyScreen, WHATIF: whatifScreen, FUNDING: fundingScreen,
+  FINANCIALS: financialsScreen, SCREEN: screenScreen,
 };
 const DEFAULT_TITLE = 'Bloombroke: the $32,000 terminal. Now $4.20 a month.';
 
