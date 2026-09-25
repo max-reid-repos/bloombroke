@@ -9,6 +9,7 @@ import { parseScreenArgs, screenWords } from '../public/screener.js';
 import { formValues, wordsFromForm, presetValues, asOfLine, resultsTable } from '../public/screens/screen.js';
 import { parseExDiv, cleanExDiv, exDivProblem, makeSplits } from '../data/splits.js';
 import { exdivTable } from '../public/screens/exdiv.js';
+import { parseCoins, excludeCoins, makeCrypto } from '../data/crypto.js';
 
 const fixture = (f) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'));
 const json = (body) => ({ ok: true, status: 200, json: async () => body });
@@ -71,4 +72,26 @@ test('EXDIV: impossible date orders are left out and named, zero annual amounts 
   const one = await sp.getExDiv('2026-09-29');
   assert.deepEqual(one.days[0].dropped, [{ symbol: 'ERIC', company: 'Ericsson American Depositary Shares', why: 'paid before the record date' }]);
   assert.ok(one.days[0].rows.every((r) => r.symbol !== 'ERIC'));
+});
+
+// ---- CRYPTO ---------------------------------------------------------------------
+// Real CoinGecko top 40 by market cap (2026-09-25): USDT #3, USDC #6, FIGR_HELOC #10
+// (a tokenised pool of home equity loans), USDS #16.
+test('CRYPTO: top 20 without stablecoins or tokenised assets', async () => {
+  const top = fixture('coingecko-top40.json');
+  const { coins, excluded } = excludeCoins(parseCoins(top), ['tether', 'usd-coin', 'usds']);
+  assert.equal(coins.length, 20);
+  const ids = coins.map((c) => c.id);
+  for (const bad of ['tether', 'usd-coin', 'usds', 'figure-heloc', 'ethena-usde', 'dai']) assert.ok(!ids.includes(bad), bad);
+  assert.deepEqual(ids.slice(0, 4), ['bitcoin', 'ethereum', 'binancecoin', 'ripple']);
+  assert.deepEqual(excluded.map((c) => `${c.symbol} ${c.why}`), ['USDT stablecoin', 'USDC stablecoin', 'FIGR_HELOC tokenised asset', 'USDS stablecoin']);
+  // The hand list still catches the big stablecoins when CoinGecko's category is down.
+  assert.ok(!excludeCoins(parseCoins(top), null).coins.some((c) => c.id === 'tether'));
+  let calls = 0;
+  const fetchImpl = async (url) => { calls += 1; return url.includes('category=stablecoins') ? { ok: false, status: 429, json: async () => ({}) } : json(top); };
+  const d = await makeCrypto({ fetchImpl, cache: createCache() }).getCrypto();
+  assert.equal(d.coins.length, 20);
+  assert.equal(d.stableSource, 'hand list');
+  assert.match(d.note, /excluding stablecoins/);
+  assert.equal(calls, 2);
 });

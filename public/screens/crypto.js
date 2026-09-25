@@ -1,4 +1,5 @@
-// CRYPTO: the top 20 coins by market cap, with 24 hour and 7 day change.
+// CRYPTO: the top 20 coins by market cap, excluding stablecoins and tokenised
+// assets, with 24 hour and 7 day change. # is CoinGecko's own market cap rank.
 
 import { esc, q, fmtNum, fmtPct, dirOf, panel, LOADING, tick, settleTicks } from './markets.js';
 import { fmtCompact } from './movers.js';
@@ -13,15 +14,15 @@ export function fmtPrice(n) {
 }
 
 export function render(el, cmd, ctx) {
-  el.innerHTML = panel('1', 'Crypto', LOADING, { cls: 'panel-solo', metaId: 'cr-meta', meta: 'TOP 20 BY MARKET CAP, USD' })
-    + '<p class="footnote">Data provided by CoinGecko. Powered by <a href="https://www.coingecko.com/" target="_blank" rel="noopener noreferrer">CoinGecko</a>. DLY: prices can lag by a few minutes; the status line shows when they were last updated. Crypto trades all day, every day. Not financial advice.</p>';
+  el.innerHTML = panel('1', 'Crypto', LOADING, { cls: 'panel-solo', metaId: 'cr-meta', meta: 'TOP 20 EXCLUDING STABLECOINS, BY MARKET CAP, USD' })
+    + '<p class="footnote">Top 20 excluding stablecoins and tokenised assets (gold, loans, fund shares), which track something outside crypto. Data provided by CoinGecko. Powered by <a href="https://www.coingecko.com/" target="_blank" rel="noopener noreferrer">CoinGecko</a>. DLY: prices can lag by a few minutes; the status line shows when they were last updated. Crypto trades all day, every day. Not financial advice.</p>';
   const body = el.querySelector('.panel-body');
 
   async function load() {
     try {
       const d = await ctx.fetchJSON('/api/crypto', { signal: ctx.signal });
       body.innerHTML = `<table class="grid-table crypto-table">
-        <thead><tr><th scope="col" class="num rank">#</th><th scope="col">Coin</th><th scope="col" class="num">Price</th><th scope="col" class="num">24H</th><th scope="col" class="num">7D</th><th scope="col" class="num chg">Mkt cap</th><th scope="col" class="num time">Volume 24H</th></tr></thead>
+        <thead><tr><th scope="col" class="num rank" title="CoinGecko market cap rank, stablecoins included">#</th><th scope="col">Coin</th><th scope="col" class="num">Price</th><th scope="col" class="num">24H</th><th scope="col" class="num">7D</th><th scope="col" class="num chg">Mkt cap</th><th scope="col" class="num time">Volume 24H</th></tr></thead>
         <tbody>${d.coins.map((c) => `<tr>
           <td class="num rank dim">${esc(c.rank ?? '--')}</td>
           <th scope="row" class="name">${c.cmd ? `<a href="${esc(q(c.cmd))}" data-cmd="${esc(c.cmd)}">` : ''}<span class="tk">${esc(c.symbol)}</span> <span class="tk-name">${esc(c.name)}</span>${c.cmd ? '</a>' : ''}</th>
@@ -32,6 +33,7 @@ export function render(el, cmd, ctx) {
           <td class="num time dim">${esc(fmtCompact(c.volume))}</td>
         </tr>`).join('')}</tbody>
       </table>`;
+      if (d.excluded?.length) body.insertAdjacentHTML('beforeend', `<p class="more dim">${esc(d.note || 'Top 20 excluding stablecoins')}. Left out: ${esc(d.excluded.map((c) => `${c.symbol} (${c.why})`).join(', '))}. # is the CoinGecko rank.</p>`);
       settleTicks(body);
       ctx.updated(d.updated, d.stale);
     } catch (err) {
