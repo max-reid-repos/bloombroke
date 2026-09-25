@@ -37,6 +37,7 @@ import { LISTED, ALIASES, FUNCTION_BAR, TICKER_FUNCTIONS, findCommand } from './
 import { tapeOn, setTapeOn, mountTape, tapeItems } from './tape.js';
 import { createMenu } from './menu.js';
 import { compactEmbed } from './embed.js';
+import { parseAffordArgs } from './afford.js';
 
 export { FUNCTION_BAR, TICKER_FUNCTIONS };
 
@@ -129,71 +130,8 @@ export function parseFxArgs(args) {
   return { amount, amountGiven, from, to };
 }
 
-// AFFORD <price> [<n> PER DAY|WEEK|MONTH|YEAR] [FOR <n>Y]. Defaults: 1 per week, 3 years.
-// (It was BUY; BUY now only says it was renamed.) AFFORD is for things people buy: a
-// ticker, a market name or an investment word gets { error: 'investment' }, never a verdict.
-export const BUY_UNITS = { DAY: 365, WEEK: 52, MONTH: 12, YEAR: 1 };
-const UNIT_WORDS = {
-  DAY: 'DAY', DAYS: 'DAY', WEEK: 'WEEK', WEEKS: 'WEEK', WK: 'WEEK', MONTH: 'MONTH', MONTHS: 'MONTH', MO: 'MONTH', YEAR: 'YEAR', YEARS: 'YEAR', YR: 'YEAR',
-};
-const ADVERBS = { DAILY: 'DAY', WEEKLY: 'WEEK', MONTHLY: 'MONTH', YEARLY: 'YEAR' };
-export const BUY_DEFAULTS = { times: 1, unit: 'WEEK', years: 3 };
-
-// "3Y", "3", "18M", "2.5YRS" -> years, or NaN.
-function parseYears(tok, next) {
-  const m = /^(\d+(?:\.\d+)?)(Y|YR|YRS|YEAR|YEARS|M|MO|MONTHS?)?$/.exec(tok || '');
-  if (!m) return { years: NaN, used: 1 };
-  let unit = m[2];
-  let used = 1;
-  if (!unit && next && /^(Y|YR|YRS|YEARS?|MO|MONTHS?)$/.test(next)) { unit = next; used = 2; }
-  const n = Number(m[1]);
-  return { years: unit && unit.startsWith('M') ? n / 12 : n, used };
-}
-
-export const INVESTMENT_WORDS = new Set([
-  'SHARE', 'SHARES', 'STOCK', 'STOCKS', 'EQUITY', 'EQUITIES', 'ETF', 'ETFS', 'FUND', 'FUNDS', 'BOND', 'BONDS', 'TREASURY', 'TREASURIES',
-  'COIN', 'COINS', 'TOKEN', 'TOKENS', 'CRYPTO', 'OPTION', 'OPTIONS', 'CALL', 'CALLS', 'PUT', 'PUTS', 'FUTURE', 'FUTURES', 'CFD', 'CFDS',
-  'FOREX', 'FX', 'INDEX', 'REIT', 'REITS', 'PORTFOLIO', 'INVEST', 'INVESTMENT', 'TICKER', 'NFT', 'NFTS',
-]);
-const AFFORD_WORDS = new Set(['PER', 'A', 'EVERY', 'FOR', 'AT', 'X', 'TIMES', 'TIME', 'Y', 'YR', 'YRS', 'YEAR', 'YEARS', 'MO', 'MONTH', 'MONTHS', 'M', 'USD', ...Object.keys(UNIT_WORDS), ...Object.keys(ADVERBS)]);
-// A word that names an investment: an investment word, a named market (GOLD, BITCOIN,
-// EUR/USD) or anything shaped like a ticker that is not part of the AFFORD grammar.
-export function isInvestmentWord(tok) {
-  const t = String(tok).toUpperCase().replace(/^\$(?=[A-Z])/, '');
-  if (!/[A-Z]/.test(t) || AFFORD_WORDS.has(t)) return false;
-  if (/^\d+(\.\d+)?(Y|YR|YRS|YEARS?|M|MO|MONTHS?)$/.test(t)) return false;
-  return INVESTMENT_WORDS.has(t) || INVESTMENT_WORDS.has(t.replace(/S$/, '')) || TICKER_RE.test(t) || Boolean(matchInstrument([t]));
-}
-
-export function parseAffordArgs(args) {
-  if (args.some(isInvestmentWord)) return { error: 'investment' };
-  const toks = args.filter((t) => t !== 'AT' && t !== 'X' && t !== 'TIMES' && t !== 'TIME' && t !== 'USD');
-  if (!toks.length || !looksNumeric(toks[0])) return { error: 'usage' };
-  const price = parseAmountToken(toks[0]);
-  if (!Number.isFinite(price) || price <= 0) return { error: 'amount' };
-  let { times, unit, years } = BUY_DEFAULTS;
-  let i = 1;
-  if (ADVERBS[toks[i]]) { times = 1; unit = ADVERBS[toks[i]]; i += 1; }
-  else if (/^\d+(\.\d+)?$/.test(toks[i] || '') && (toks[i + 1] === 'PER' || toks[i + 1] === 'A' || toks[i + 1] === 'EVERY')) {
-    times = Number(toks[i]);
-    unit = UNIT_WORDS[toks[i + 2]];
-    if (!unit) return { error: 'usage' };
-    i += 3;
-  } else if ((toks[i] === 'PER' || toks[i] === 'EVERY') && UNIT_WORDS[toks[i + 1]]) {
-    unit = UNIT_WORDS[toks[i + 1]];
-    i += 2;
-  }
-  if (toks[i] === 'FOR') {
-    const y = parseYears(toks[i + 1], toks[i + 2]);
-    years = y.years;
-    i += 1 + y.used;
-  }
-  if (i !== toks.length) return { error: 'usage' };
-  if (!(times > 0 && times <= 1000)) return { error: 'times' };
-  if (!(years > 0 && years <= 100)) return { error: 'years' };
-  return { price, times, unit, years };
-}
-export const parseBuyArgs = parseAffordArgs; // the old name, for older imports
+// AFFORD's words live in afford.js (the share card reads them too).
+export { BUY_UNITS, BUY_DEFAULTS, INVESTMENT_WORDS, isInvestmentWord, parseAffordArgs, parseBuyArgs } from './afford.js';
 
 // WAGE <per hour>. WAGE alone shows it, WAGE OFF clears it.
 export function parseWageArgs(args) {

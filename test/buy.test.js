@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseCommand, parseAffordArgs, parseBuyArgs, parseWageArgs, isInvestmentWord, suggest, complete, COMMANDS, RENAMED_NOTE } from '../public/app.js';
-import { buyMaths, verdictFor, fmtMoney, howOften, buyHtml, NOT_INVESTMENTS, TITLE, VERDICTS } from '../public/screens/buy.js';
+import { buyMaths, verdictFor, fmtMoney, howOften, buyHtml, NOT_INVESTMENTS, TITLE, VERDICTS, render as renderBuy } from '../public/screens/buy.js';
 
 test('AFFORD parses price, frequency and years with defaults', () => {
   assert.deepEqual(parseAffordArgs(['1200']), { price: 1200, times: 1, unit: 'WEEK', years: 3 });
@@ -96,4 +96,39 @@ test('WAGE parses, shows and clears', () => {
   assert.equal(parseWageArgs(['OFF']).clear, true);
   assert.equal(parseWageArgs(['LOTS']).error, 'usage');
   assert.equal(parseCommand('wage 35').name, 'WAGE');
+});
+
+test('AFFORD reads plain phrasings and keeps the first item word as a label', () => {
+  const p = (s) => parseAffordArgs(s.split(' '));
+  assert.deepEqual(p('1200 BIKE 2 PER WEEK'), { price: 1200, times: 2, unit: 'WEEK', years: 3, label: 'Bike' });
+  assert.deepEqual(p('$1,200 TWICE A WEEK'), { price: 1200, times: 2, unit: 'WEEK', years: 3 });
+  assert.deepEqual(p('1200 2X WEEK'), { price: 1200, times: 2, unit: 'WEEK', years: 3 });
+  assert.deepEqual(p('1200 2X/WEEK'), { price: 1200, times: 2, unit: 'WEEK', years: 3 });
+  assert.deepEqual(p('1200 3 TIMES A MONTH FOR 2 YEARS'), { price: 1200, times: 3, unit: 'MONTH', years: 2 });
+  assert.deepEqual(p('1200 ONCE A MONTH OVER 18 MONTHS'), { price: 1200, times: 1, unit: 'MONTH', years: 1.5 });
+  assert.deepEqual(p('1200 2 TIMES WEEKLY'), { price: 1200, times: 2, unit: 'WEEK', years: 3 });
+  assert.deepEqual(p('1200 EVERY DAY FOR 2Y'), { price: 1200, times: 1, unit: 'DAY', years: 2 });
+  assert.deepEqual(p('1200 2 YEARS'), { price: 1200, times: 1, unit: 'WEEK', years: 2 });
+  assert.equal(p('5 COFFEE 1 PER DAY').label, 'Coffee', 'an everyday market word is a thing, not a future');
+  assert.equal(p('3000 VIETNAM TRIP').label, 'Vietnam');
+  assert.equal(p('BIKE 1200 2 PER WEEK').label, 'Bike');
+  assert.equal(parseCommand('AFFORD 1200 BIKE 2 PER WEEK').error, undefined);
+  assert.equal(parseCommand('AFFORD 1200 BIKE 2 PER WEEK').args.label, 'Bike');
+  for (const ok of ['BIKE', 'LAPTOP', 'SOFA', 'COFFEE', 'TURKEY', 'GAS', '2X']) assert.equal(isInvestmentWord(ok), false, ok);
+  for (const bad of ['AAPL', '$BIKE', 'SPY', 'GOLD', 'BITCOIN', 'SHARES']) assert.equal(isInvestmentWord(bad), true, bad);
+});
+
+test('AFFORD errors say what works, and only mention investments for investments', () => {
+  assert.equal(parseAffordArgs(['1200', '2']).error, 'usage');
+  assert.equal(parseAffordArgs(['BIKE']).error, 'usage');
+  assert.equal(parseAffordArgs(['1200', 'FOR']).error, 'usage');
+  const el = { innerHTML: '', querySelector: () => null };
+  const ctx = { status: () => {}, store: { get: () => null }, copy: async () => true };
+  renderBuy(el, parseCommand('AFFORD 1200 2'), ctx);
+  assert.match(el.innerHTML, /Try: <a class="code"[^>]*>AFFORD 1200 2 PER WEEK FOR 3Y<\/a>/);
+  assert.doesNotMatch(el.innerHTML, /investment/i);
+  renderBuy(el, parseCommand('AFFORD 1200 BIKE'), ctx);
+  assert.match(el.innerHTML, /Bike: <span class="num">\$1,200<\/span>/);
+  renderBuy(el, parseCommand('AFFORD 1200 AAPL'), ctx);
+  assert.match(el.innerHTML, /does not assess investments/);
 });

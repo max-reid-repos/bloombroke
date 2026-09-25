@@ -4,6 +4,7 @@
 // (The command was called BUY until September 2026.)
 
 import { esc, q, fmtNum, panel } from './markets.js';
+import { AFFORD_EXAMPLE } from '../afford.js';
 
 export const INVEST_RATE = 0.08;
 export const TITLE = 'Can I afford it?';
@@ -21,14 +22,14 @@ export function verdictFor(costPerUse) {
 }
 
 // Pure maths. You use a thing at least once, so uses never drop below 1.
-export function buyMaths({ price, times, unit, years }, { wage = null, rate = INVEST_RATE } = {}) {
+export function buyMaths({ price, times, unit, years, label }, { wage = null, rate = INVEST_RATE } = {}) {
   const perYear = times * UNIT_PER_YEAR[unit];
   const uses = Math.max(1, perYear * years);
   const costPerUse = price / uses;
   const hours = Number.isFinite(wage) && wage > 0 ? price / wage : null;
   const invested = price * (1 + rate) ** years;
   const v = verdictFor(costPerUse);
-  return { price, times, unit, years, wage: hours === null ? null : wage, perYear, uses, costPerUse, hours, invested, rate, verdict: v.verdict, verdictKey: v.key, line: v.line };
+  return { ...(label ? { label } : {}), price, times, unit, years, wage: hours === null ? null : wage, perYear, uses, costPerUse, hours, invested, rate, verdict: v.verdict, verdictKey: v.key, line: v.line };
 }
 
 // $7.69, $1,512, $0.0312: cents for small sums, whole dollars from $1,000.
@@ -50,18 +51,20 @@ export function yearsWord(years) {
   return years === 1 ? '1 year' : `${plain(years)} years`;
 }
 
+const tokensOf = (s) => String(s || '').trim().split(/\s+/).filter(Boolean);
+
 export function readWage(store) {
   const w = Number(store?.get(WAGE_KEY, null));
   return Number.isFinite(w) && w > 0 ? w : null;
 }
 
 const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
-const EXAMPLES = ['AFFORD 1200', 'AFFORD 90 3 PER WEEK FOR 2Y', 'AFFORD 4.50 1 PER DAY FOR 1Y', 'AFFORD 30000 FOR 8Y'];
+const EXAMPLES = ['AFFORD 1200', 'AFFORD 1200 BIKE 2 PER WEEK', 'AFFORD 90 3 TIMES A MONTH FOR 2Y', 'AFFORD 4.50 1 PER DAY FOR 1Y', 'AFFORD 30000 FOR 8Y'];
 
-function errorView(el, message) {
+function errorView(el, message, tryIt = false) {
   el.innerHTML = panel('1', TITLE, `
-    <p class="notice">${esc(message)}</p>
-    <p class="muted">Format: <span class="code">AFFORD &lt;price&gt; [&lt;n&gt; PER DAY|WEEK|MONTH|YEAR] [FOR &lt;n&gt;Y]</span>. Starts at once a week for 3 years.</p>
+    <p class="notice">${esc(message)}${tryIt ? ` Try: ${code(AFFORD_EXAMPLE)}` : ''}</p>
+    <p class="muted">Format: <span class="code">AFFORD &lt;price&gt; [&lt;thing&gt;] [&lt;n&gt; PER DAY|WEEK|MONTH|YEAR] [FOR &lt;n&gt;Y]</span>. Starts at once a week for 3 years.</p>
     <p class="muted examples">Try ${EXAMPLES.map(code).join(' ')}</p>`, { cls: 'panel-solo' });
 }
 
@@ -77,7 +80,7 @@ export function readWageInput(text) {
 // The share row: a link to this exact AFFORD, on X or copied.
 export function affordShare(r, input, origin) {
   const url = `${origin}/${q(input)}`;
-  const text = `${fmtMoney(r.price)}, used ${howOften(r.times, r.unit)} for ${yearsWord(r.years)}: ${fmtMoney(r.costPerUse)} per use. Verdict: ${r.verdict}.`;
+  const text = `${r.label ? `${r.label}, ` : ''}${fmtMoney(r.price)}, used ${howOften(r.times, r.unit)} for ${yearsWord(r.years)}: ${fmtMoney(r.costPerUse)} per use. Verdict: ${r.verdict}.`;
   return `<div class="wi-share buy-share">
       <a class="wi-btn" href="${esc(`https://x.com/intent/post?${new URLSearchParams({ text, url })}`)}" target="_blank" rel="noopener noreferrer">SHARE ON X</a>
       <button type="button" class="wi-btn" data-copy="${esc(url)}">COPY LINK</button>
@@ -101,7 +104,7 @@ export function buyHtml(r, share = '') {
   ];
   return `<div class="buy">
     <div class="buy-main">
-      <p class="fx-from"><span class="num">${esc(fmtMoney(r.price))}</span>, used ${esc(howOften(r.times, r.unit))} for ${esc(yearsWord(r.years))}, costs</p>
+      <p class="fx-from">${r.label ? `${esc(r.label)}: ` : ''}<span class="num">${esc(fmtMoney(r.price))}</span>, used ${esc(howOften(r.times, r.unit))} for ${esc(yearsWord(r.years))}, costs</p>
       <p class="hero num${size}"><span class="hero-value">${esc(fmtMoney(r.costPerUse))}</span><span class="hero-unit">PER USE</span></p>
       <dl class="stats buy-stats">
         <div class="stat"><dt>Total uses</dt><dd class="num">${esc(fmtNum(r.uses, Number.isInteger(r.uses) ? 0 : 1))}</dd></div>
@@ -145,14 +148,15 @@ function renderWage(el, cmd, ctx) {
 export function render(el, cmd, ctx) {
   if (cmd.name === 'WAGE') return renderWage(el, cmd, ctx);
   if (cmd.error) {
+    const bare = tokensOf(cmd.input).length <= 1;
     const msg = {
-      usage: 'AFFORD needs a price.',
+      usage: bare ? 'AFFORD needs a price.' : 'AFFORD could not read that.',
       investment: NOT_INVESTMENTS,
       amount: 'That price does not look right.',
       times: 'How often? Use a number from 1 to 1,000.',
       years: 'For how long? Use 1 to 100 years, like FOR 3Y.',
     }[cmd.error] || 'Check the format.';
-    errorView(el, msg);
+    errorView(el, msg, cmd.error === 'usage');
     ctx.status(cmd.error === 'investment' ? 'AFFORD: THINGS YOU BUY, NOT INVESTMENTS' : 'AFFORD: CHECK THE FORMAT', 'warn');
     return;
   }
@@ -160,7 +164,7 @@ export function render(el, cmd, ctx) {
   const origin = typeof location !== 'undefined' ? location.origin : '';
   el.innerHTML = panel('1', TITLE, buyHtml(r, affordShare(r, cmd.input, origin)), {
     cls: 'panel-solo',
-    meta: esc(`${fmtMoney(r.price)}  ${plain(r.times)} PER ${r.unit}  ${yearsWord(r.years).toUpperCase()}`),
+    meta: esc(`${r.label ? `${r.label.toUpperCase()}  ` : ''}${fmtMoney(r.price)}  ${plain(r.times)} PER ${r.unit}  ${yearsWord(r.years).toUpperCase()}`),
   }) + '<p class="footnote">A rule of thumb for things you buy. The growth rate is an assumption, not a forecast. Not financial advice.</p>';
   el.querySelector('.wage-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
