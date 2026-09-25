@@ -106,11 +106,13 @@ function show(el, ctx, a, rate, source) {
         <div class="stat"><dt>Payments</dt><dd class="num">${Math.round(a.years * 12)}</dd></div>
       </dl>
     </div>`, { meta: 'FIXED RATE, MONTHLY' })}
+    <div class="chart-by-year">
     ${panel('2', 'Balance and interest paid', `<div class="chart-host" id="ln-chart"></div><div id="ln-legend"></div>`, { metaId: 'ln-meta', bodyCls: 'flush' })}
     ${panel('3', 'By year', `<table class="grid-table loan-table">
       <thead><tr><th scope="col">Year</th><th scope="col" class="num">Principal</th><th scope="col" class="num">Interest</th><th scope="col" class="num">Balance</th></tr></thead>
       <tbody>${res.rows.map((r) => `<tr><th scope="row" class="name">${r.year}</th><td class="num">${esc(usd(r.principal))}</td><td class="num dim">${esc(usd(r.interest))}</td><td class="num last">${esc(usd(r.balance))}</td></tr>`).join('')}</tbody>
-    </table>`)}
+    </table>`, { cls: 'by-year', bodyCls: 'flush' })}
+    </div>
   </div>
   <p class="footnote">Principal and interest only. Taxes, insurance and fees are extra. Not financial advice.</p>`;
   const series = [

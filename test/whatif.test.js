@@ -148,7 +148,7 @@ test('picker helpers: families, edit mode, specs, command', () => {
   assert.equal(normalizeSpec('2015-2024', 3), '2015-2024');
   assert.equal(normalizeSpec('junk', 3), '3Y');
   assert.equal(commandFor(new Map([['latte', ''], ['iphone8', ''], ['iphone6', '']]), cat), 'WHATIF IPHONE6 IPHONE8 LATTE:5Y');
-  assert.equal(fmtX(13.284), '13.28x');
+  assert.equal(fmtX(13.284), '13.3x');
 });
 
 test('one-liners: picked by outcome, same input same line, plain copy', () => {

@@ -82,7 +82,7 @@ test('AFFORD formats and HTML', () => {
   const html = buyHtml(buyMaths({ price: 1200, times: 1, unit: 'WEEK', years: 3 }));
   assert.match(html, /stamp-sleep/);
   assert.match(html, /SLEEP ON IT/);
-  assert.match(html, /WAGE 35/);
+  assert.match(html, /class="add-form wage-form"[\s\S]*placeholder="Hourly pay"/);
   assert.match(html, /How is this calculated\?/);
   assert.doesNotMatch(html, /\bBUY\b/);
   assert.doesNotMatch(html, /style=/);

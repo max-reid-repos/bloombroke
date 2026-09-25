@@ -65,10 +65,30 @@ function errorView(el, message) {
     <p class="muted examples">Try ${EXAMPLES.map(code).join(' ')}</p>`, { cls: 'panel-solo' });
 }
 
-export function buyHtml(r) {
+// The hourly pay typed in AFFORD's own field: "35", "$35", "1,200.50". Same limits as
+// WAGE <per hour>. Returns the number, or null.
+export function readWageInput(text) {
+  const s = String(text ?? '').trim().replace(/^\$/, '').replace(/,/g, '');
+  if (!/^\d*\.?\d+$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isFinite(n) && n > 0 && n <= 100000 ? n : null;
+}
+
+// The share row: a link to this exact AFFORD, on X or copied.
+export function affordShare(r, input, origin) {
+  const url = `${origin}/${q(input)}`;
+  const text = `${fmtMoney(r.price)}, used ${howOften(r.times, r.unit)} for ${yearsWord(r.years)}: ${fmtMoney(r.costPerUse)} per use. Verdict: ${r.verdict}.`;
+  return `<div class="wi-share buy-share">
+      <a class="wi-btn" href="${esc(`https://x.com/intent/post?${new URLSearchParams({ text, url })}`)}" target="_blank" rel="noopener noreferrer">SHARE ON X</a>
+      <button type="button" class="wi-btn" data-copy="${esc(url)}">COPY LINK</button>
+    </div>`;
+}
+
+export function buyHtml(r, share = '') {
   const size = fmtMoney(r.costPerUse).length > 12 ? ' is-long' : '';
+  // No wage saved: a field for it right here, not a command to go and type.
   const hours = r.hours === null
-    ? `<dd class="dim"><span>Type ${code('WAGE 35')} to see hours of work</span></dd>`
+    ? `<dd><form class="add-form wage-form" data-own-focus autocomplete="off"><input class="add-in add-num" name="wage" type="text" inputmode="decimal" maxlength="12" placeholder="Hourly pay" aria-label="Your hourly pay, USD, to see hours of work"><button type="submit" class="chip add-btn">SHOW HOURS</button></form></dd>`
     : `<dd class="num">${esc(fmtNum(r.hours, r.hours < 10 ? 1 : 0))} h</dd>`;
   const how = [
     `Uses: ${howOften(r.times, r.unit)} for ${yearsWord(r.years)} is ${plain(r.uses)} uses.`,
@@ -97,7 +117,8 @@ export function buyHtml(r) {
         <ul class="how-list">${how.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
       </details>
     </div>
-  </div>`;
+  </div>
+  ${share}`;
 }
 
 function renderWage(el, cmd, ctx) {
@@ -136,9 +157,22 @@ export function render(el, cmd, ctx) {
     return;
   }
   const r = buyMaths(cmd.args, { wage: readWage(ctx.store) });
-  el.innerHTML = panel('1', TITLE, buyHtml(r), {
+  const origin = typeof location !== 'undefined' ? location.origin : '';
+  el.innerHTML = panel('1', TITLE, buyHtml(r, affordShare(r, cmd.input, origin)), {
     cls: 'panel-solo',
     meta: esc(`${fmtMoney(r.price)}  ${plain(r.times)} PER ${r.unit}  ${yearsWord(r.years).toUpperCase()}`),
   }) + '<p class="footnote">A rule of thumb for things you buy. The growth rate is an assumption, not a forecast. Not financial advice.</p>';
+  el.querySelector('.wage-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const wage = readWageInput(e.currentTarget.elements.wage.value);
+    if (wage === null) { ctx.status('TYPE YOUR HOURLY PAY, LIKE 35', 'warn'); return; }
+    ctx.store.set(WAGE_KEY, wage);
+    render(el, cmd, ctx);
+    ctx.status(`WAGE SAVED: ${fmtMoney(wage)}/HR. WAGE OFF FORGETS IT`);
+  });
+  el.querySelector('[data-copy]')?.addEventListener('click', async (e) => {
+    const ok = await ctx.copy(e.currentTarget.dataset.copy);
+    ctx.status(ok ? 'LINK COPIED' : 'COPY THE LINK FROM THE ADDRESS BAR', ok ? '' : 'warn');
+  });
   ctx.status(`AFFORD: ${r.verdict}`);
 }

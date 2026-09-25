@@ -69,7 +69,22 @@ export function fmtUsd(n) {
   const d = a >= 1000 ? 0 : 2;
   return (n < 0 ? '−' : '') + '$' + a.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 }
-export const fmtX = (m) => (Number.isFinite(m) ? `${m >= 100 ? fmtNum(m, 0) : fmtNum(m, 2)}x` : '--');
+// The same rule as the certificate (data/whatif-cert.js multiple), so the page and the
+// image never disagree: 11.1x on both, not 11.12x beside 11.1x.
+export const fmtX = (m) => (Number.isFinite(m) ? `${fmtNum(m, m >= 100 ? 0 : m >= 0.1 ? 1 : 2)}x` : '--');
+
+// Picker columns: a long family (Apple has 20-odd items) is cut into runs of at most
+// `max`, so the columns come out even instead of one tall column and an empty one.
+export function splitGroups(groups, max = 12) {
+  const out = [];
+  for (const g of groups) {
+    const n = Math.ceil(g.items.length / max);
+    if (n <= 1) { out.push(g); continue; }
+    const size = Math.ceil(g.items.length / n);
+    for (let i = 0; i < n; i += 1) out.push({ ...g, items: g.items.slice(i * size, (i + 1) * size), part: i + 1 });
+  }
+  return out;
+}
 export const fmtShares = (n) => (n >= 1000 ? fmtNum(n, 0) : n >= 1 ? fmtNum(n, 3) : fmtNum(n, 4));
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -179,12 +194,12 @@ function itemRow(p, picks) {
 }
 
 function renderPicker(el, ctx, cat, picks) {
-  const groups = groupsOf(cat);
+  const groups = splitGroups(groupsOf(cat));
   el.innerHTML = panel('1', WHATIF_TITLE, `
     <p class="wi-intro">Pick the things you bought. See what that money would be worth today in the maker's stock.</p>
     <div class="wi-groups" role="listbox" aria-multiselectable="true" aria-label="Things you bought" data-own-focus>
       ${groups.map((g) => `<section class="wi-group">
-        <h3 class="wi-co">${esc(g.name.toUpperCase())}${g.ticker ? ` <span class="dim">${esc(g.ticker)}</span>` : ''}</h3>
+        <h3 class="wi-co">${esc(g.name.toUpperCase())}${g.ticker ? ` <span class="dim">${esc(g.ticker)}</span>` : ''}${g.part > 1 ? ' <span class="dim">CONTINUED</span>' : ''}</h3>
         <ul>${g.items.map((p) => itemRow(p, picks)).join('')}</ul>
       </section>`).join('')}
     </div>
@@ -317,7 +332,7 @@ export function shareLinks(m, origin) {
 
 // Type sizes arrive as % of the certificate width; the CSP allows no inline styles, so
 // they are set through the DOM after render (see sizeCert).
-export function certHtml(m, links) {
+export function certHtml(m, links, actions = '') {
   const alt = `A certificate: ${m.ribbon}, worth ${m.big} today. ${m.spent}. ${m.holding}. ${m.multiple}.`;
   return `<figure class="wi-cert${m.loss ? ' is-loss' : ''}">
       <img class="wc-paper" src="${esc(art('certificate.webp'))}" width="1536" height="1024" alt="${esc(alt)}">
@@ -335,6 +350,7 @@ export function certHtml(m, links) {
       <a class="wi-btn" href="${esc(links.x)}" target="_blank" rel="noopener noreferrer">SHARE ON X</a>
       <a class="wi-btn" href="${esc(links.image)}" download="bloombroke-whatif.png">DOWNLOAD IMAGE</a>
       <button type="button" class="wi-btn" data-copy="${esc(links.url)}">COPY LINK</button>
+      ${actions}
     </div>`;
 }
 
@@ -382,6 +398,11 @@ function resultHtml(d, key, links) {
   const asOf = d.asOf ? (/^\d{4}-\d{2}-\d{2}$/.test(d.asOf) ? `the ${fmtDay(d.asOf)} close` : `${nyTime(d.asOf)} ET`) : 'now';
   const notes = d.rows.map((r) => `<li><span class="wi-note-name">${esc(r.name)}</span> ${esc(r.note || '')}${r.clamped ? ' Starts when the shares began trading.' : ''} <a href="${esc(r.src)}" target="_blank" rel="noopener noreferrer">source</a></li>`).join('');
   const editCmd = `WHATIF EDIT ${key.replace(/^WHATIF\s*/, '')}`;
+  // CHANGE PICKS and START OVER sit on the share row when there is a certificate.
+  const actions = `<span class="wi-actions">
+      <a class="code" href="${esc(q(editCmd))}" data-cmd="${esc(editCmd)}">CHANGE PICKS</a>
+      <a class="code" href="${esc(q('WHATIF'))}" data-cmd="WHATIF">START OVER</a>
+    </span>`;
   return `
     <div class="wi-layout${d.cert ? '' : ' no-cert'}">
     <div class="wi-head">
@@ -391,7 +412,7 @@ function resultHtml(d, key, links) {
     <p class="wi-quip">${esc(quipFor(t.multiple, key))}</p>
     <p class="wi-risk">${esc(riskLine(d))}</p>
     </div>
-    ${d.cert ? `<div class="wi-certcol">${certHtml(d.cert, links)}</div>` : ''}
+    ${d.cert ? `<div class="wi-certcol">${certHtml(d.cert, links, actions)}</div>` : ''}
     <div class="wi-body">
     <div class="wi-receipt">
       <table class="grid-table wi-table">
@@ -402,10 +423,7 @@ function resultHtml(d, key, links) {
     </div>
     ${d.rows.length > 1 ? `<p class="wi-risk-list">${esc(dropList(d.rows))}</p>` : ''}
     <p class="wi-source">Prices: close on purchase date, split-adjusted, price return only. Live price as of ${esc(asOf)}${d.stale ? ' (last known)' : ''}. Source: ${esc(d.source)}.</p>
-    <div class="wi-actions">
-      <a class="code" href="${esc(q(editCmd))}" data-cmd="${esc(editCmd)}">CHANGE PICKS</a>
-      <a class="code" href="${esc(q('WHATIF'))}" data-cmd="WHATIF">START OVER</a>
-    </div>
+    ${d.cert ? '' : actions}
     </div>
     </div>
     <details class="how">

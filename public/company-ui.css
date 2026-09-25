@@ -84,6 +84,29 @@
 .toolbar .tag + .seg { margin-left: 0; }
 .sc-actions .wi-run { margin-left: 0; }
 
+/* ---- WHATIF: the result's actions sit on the share row ---------------------------- */
+.wi-share { align-items: center; }
+.wi-share .wi-actions { display: inline-flex; gap: 16px; margin: 0 0 0 auto; }
+.wi-body > .wi-actions { display: flex; }
+@media (max-width: 639px) { .wi-share .wi-actions { margin-left: 0; flex-basis: 100%; } }
+
+/* ---- AFFORD: the verdict next to the answer, a wage field, a share row ---------- */
+@media (min-width: 640px) {
+  .buy { grid-template-columns: minmax(0, 640px) minmax(260px, 380px); justify-content: start; }
+}
+.buy-stats dd .wage-form { justify-content: flex-end; }
+.buy-share { margin: 0 0 8px; }
+
+/* ---- LOAN and COMPOUND: the by-year table beside the chart, not under it -------- */
+.chart-by-year { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; background: var(--rule-strong); }
+@media (min-width: 1024px) {
+  .chart-by-year { grid-template-columns: minmax(0, 1fr) minmax(360px, 440px); }
+  /* The table takes the chart's height and scrolls inside it. */
+  .chart-by-year > .by-year { position: relative; min-height: 0; }
+  .chart-by-year > .by-year > .panel-body { position: absolute; inset: 23px 0 0; overflow-y: auto; scrollbar-width: thin; }
+  .chart-by-year > .by-year thead th { position: sticky; top: 0; background: var(--bg); z-index: 1; }
+}
+
 /* ---- Tables: date cells and plain labels in company tables ---------------------- */
 .dt td.date { color: var(--text-2); }
 .dt tbody tr:hover td { background: var(--panel-2); }

@@ -21,6 +21,9 @@ import { chainTable, CALL_COLS, PUT_COLS } from '../public/screens/options.js';
 import { fitHeight } from '../public/screens/heatmap.js';
 import { presetBar } from '../public/screens/screen.js';
 import { readFileSync } from 'node:fs';
+import { splitGroups, fmtX } from '../public/screens/whatif.js';
+import { multiple as certMultiple } from '../data/whatif-cert.js';
+import { readWageInput, affordShare, buyHtml, buyMaths } from '../public/screens/buy.js';
 
 test('quote: the instrument name shows once', () => {
   assert.equal(titleHtml({ label: 'Gold', name: "Gold COMEX (Dec'26)" }), 'Gold COMEX (Dec&#39;26)');
@@ -231,6 +234,37 @@ test('no screen draws its own tab strip or star for a stock', () => {
     assert.doesNotMatch(s, /fnBarHtml|mountFnBar|companyLinks|class="fnbar"/, f);
   }
   assert.doesNotMatch(readFileSync('public/nav.css', 'utf8'), /\.fnbar|\.co-links/, 'nothing left to hide');
+});
+
+test('whatif: even picker columns, one multiple format on page and certificate', () => {
+  const g = splitGroups([{ name: 'Apple', items: Array.from({ length: 22 }, (_, i) => i) }, { name: 'Tesla', items: [1, 2, 3, 4] }]);
+  assert.deepEqual(g.map((x) => [x.name, x.items.length, x.part]), [['Apple', 11, 1], ['Apple', 11, 2], ['Tesla', 4, undefined]]);
+  for (const m of [11.1234, 2.2066, 0.53, 0.042, 131.6]) assert.equal(fmtX(m), certMultiple(m), String(m));
+  assert.equal(fmtX(11.12), '11.1x');
+});
+
+test('afford: a wage field instead of a command, and a share row', () => {
+  assert.equal(readWageInput('35'), 35);
+  assert.equal(readWageInput('$1,200.50'), 1200.5);
+  assert.equal(readWageInput('0'), null);
+  assert.equal(readWageInput('abc'), null);
+  assert.equal(readWageInput('200000'), null);
+  const r = buyMaths({ price: 1200, times: 1, unit: 'WEEK', years: 3 });
+  const share = affordShare(r, 'AFFORD 1200', 'https://bloombroke.com');
+  assert.match(share, /data-copy="https:\/\/bloombroke\.com\/\?c=AFFORD\+1200"/);
+  assert.match(share, /x\.com\/intent\/post\?text=/);
+  const html = buyHtml(r, share);
+  assert.ok(html.indexOf('buy-side') < html.indexOf('buy-share'), 'the share row comes after the verdict');
+  assert.doesNotMatch(html, /Type <a class="code"[^>]*>WAGE 35/);
+  assert.doesNotMatch(share, /invest|recommend/i, 'no advice wording');
+});
+
+test('loan and compound: the by-year table sits beside the chart', () => {
+  for (const f of ['loan', 'compound']) {
+    const s = readFileSync(`public/screens/${f}.js`, 'utf8');
+    assert.match(s, /<div class="chart-by-year">/, f);
+    assert.match(s, /cls: 'by-year', bodyCls: 'flush'/, f);
+  }
 });
 
 test('copy rules for the ui-company files', () => {

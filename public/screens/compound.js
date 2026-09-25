@@ -102,11 +102,13 @@ export function render(el, cmd, ctx) {
         <div class="stat"><dt>Multiple</dt><dd class="num">${res.paid > 0 ? esc(fmtNum(res.final / res.paid, 2)) : '--'}x</dd></div>
       </dl>
     </div>`, { meta: 'COMPOUNDED MONTHLY' })}
+    <div class="chart-by-year">
     ${panel('2', 'Growth', `<div class="chart-host" id="cp-g-chart"></div><div id="cp-g-legend"></div>`, { metaId: 'cp-g-meta', bodyCls: 'flush' })}
     ${panel('3', 'By year', `<table class="grid-table">
       <thead><tr><th scope="col">Year</th><th scope="col" class="num">Put in</th><th scope="col" class="num">Growth</th><th scope="col" class="num">Balance</th></tr></thead>
       <tbody>${tableRows.map((r) => `<tr><th scope="row" class="name">${r.year}</th><td class="num dim">${esc(usd(r.paid))}</td><td class="num up">${esc(usd(r.balance - r.paid))}</td><td class="num last">${esc(usd(r.balance))}</td></tr>`).join('')}</tbody>
-    </table>`)}
+    </table>`, { cls: 'by-year', bodyCls: 'flush' })}
+    </div>
   </div>
   <p class="footnote">The return is your assumption, not a forecast. Real markets go up and down and there are no guarantees. Before tax, fees and inflation. Not financial advice.</p>`;
   const series = [
