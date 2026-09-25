@@ -454,6 +454,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .wi-mult { font-size: 18px; font-weight: 600; }
 .wi-mult span + span { margin-left: 12px; }
 .wi-quip { margin-top: 8px; color: var(--text-2); }
+.wi-risk { margin-top: 6px; color: var(--text-2); font-size: 12px; }
 .wi-receipt { margin: 16px -10px 0; border-top: 1px solid var(--rule-strong); overflow-x: auto; }
 .wi-table tfoot th, .wi-table tfoot td { height: 28px; font-weight: 600; border-top: 1px solid var(--rule-strong); padding: 0 10px; }
 .wi-table tfoot .name { color: var(--text); letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
@@ -669,7 +670,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   .wi-bar { gap: 8px; }
   .wi-cmd { flex-basis: 100%; order: 3; }
   .wi-run { margin-left: auto; }
-  .wi-sh, .wi-table .wi-sh, .wi-table .wi-when { display: none; }
+  .wi-sh, .wi-table .wi-sh, .wi-table .wi-when, .wi-table .wi-dd { display: none; }
   .wi-table tbody .name { white-space: normal; padding-top: 4px; padding-bottom: 4px; }
   .wi-when-m { display: block; font-size: 11px; }
   .wi-sentence { font-size: 14px; }

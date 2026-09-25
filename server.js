@@ -198,7 +198,7 @@ app.get('/api/whatif', async (req, res) => {
     return res.status(400).json({ error: 'usage', message: 'That list does not look right. Type WHATIF to pick from the list.' });
   }
   try {
-    const data = await getWhatif(tokens);
+    const data = await getWhatif(tokens, { risk: true });
     // The certificate: the same words and numbers as the share image.
     const norm = data.rows ? normalizeWhatif(tokens.join(' '), catalog) : null;
     if (norm) data.cert = certModel(data, catalog, norm.command);

@@ -9,7 +9,7 @@ export function render(el, cmd, ctx) {
     ${panel('1', '420', LOADING, { meta: 'TSLA' })}
     ${panel('2', 'TSLA since 7 Aug 2018', '<div class="rc" id="f-rc"></div>', { cmd: 'TSLA FROM 2018-08-07', metaId: 'f-meta', bodyCls: 'flush' })}
   </div>
-  <p class="footnote">Not financial advice. Definitely not funding advice.</p>`;
+  <p class="footnote">Hindsight only. Past returns do not predict future returns. Not a recommendation. Definitely not funding advice.</p>`;
   const [body] = el.querySelectorAll('.panel-body');
   const chart = rangeChart(el.querySelector('#f-rc'), ctx, {
     symbol: 'TSLA', range: { from: '2018-08-07', to: null }, meta: el.querySelector('#f-meta'),

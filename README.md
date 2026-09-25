@@ -16,7 +16,7 @@ A market terminal for normal people. Type a plain English command, press Enter, 
 > CPI 100 2015                 what money from a past year is worth today
 > AFFORD 1200 [2 PER WEEK] [FOR 3Y]   can I afford it? cost per use of a thing you buy, and a verdict (was BUY)
 > WAGE 35                      save your hourly pay (this browser only); AFFORD then shows hours of work
-> WHATIF                       the stock you should have bought: pick what you bought
+> WHATIF                       in hindsight: what the money would be worth in the maker's stock, with the worst drop along the way
 > WHATIF IPHONE6 LATTE:3Y NETFLIX:2015-2024   the same, typed
 > HELP                         every command
 > TERMS, PRIVACY, DISCLAIMER   open /terms, /privacy, /disclaimer

@@ -35,7 +35,7 @@ export const COMMANDS = [
   { name: 'NEWS', group: 'Markets', hint: 'Headlines that move markets', usage: 'NEWS', example: 'NEWS' },
   { name: 'FX', group: 'Money tools', hint: 'Convert money between currencies', usage: 'FX <amount> <from> <to>', example: 'FX 500 USD THB', examples: ['FX 500 USD THB', 'FX USD CAD'] },
   { name: 'CPI', group: 'Money tools', hint: 'What money from a past year is worth today', usage: 'CPI <amount> <year>', example: 'CPI 100 2015', examples: ['CPI 100 2015', 'CPI 1000 1990'] },
-  { name: 'WHATIF', group: 'Money tools', hint: 'The stock you should have bought', usage: 'WHATIF [<item> ...]', example: 'WHATIF', examples: ['WHATIF', 'WHATIF IPHONE6 LATTE:3Y'] },
+  { name: 'WHATIF', group: 'Money tools', hint: 'In hindsight: the maker\'s stock instead of what you bought', usage: 'WHATIF [<item> ...]', example: 'WHATIF', examples: ['WHATIF', 'WHATIF IPHONE6 LATTE:3Y'] },
   { name: 'AFFORD', group: 'Money tools', hint: 'Can I afford it? Cost per use of a thing you buy, and a verdict', usage: 'AFFORD <price> [<n> PER WEEK] [FOR <n>Y]', example: 'AFFORD 1200', examples: ['AFFORD 1200', 'AFFORD 90 3 PER WEEK FOR 2Y'] },
   { name: 'WAGE', group: 'Money tools', hint: 'Save your hourly pay, AFFORD then shows hours of work', usage: 'WAGE <per hour>', example: 'WAGE 35', examples: ['WAGE 35'] },
   { name: 'WATCH', group: 'Your lists', hint: 'Your watchlist, live: any stock, index, pair, coin or future', usage: 'WATCH [ADD|REMOVE <symbols>] [CLEAR|EXPORT|IMPORT]', example: 'WATCH', usageExample: 'WATCH ADD AAPL TSLA', examples: ['WATCH', 'WATCH ADD AAPL TSLA EURUSD', 'WATCH REMOVE TSLA', 'WATCH EXPORT', 'WATCH IMPORT AAPL,MSFT,GOLD'] },
