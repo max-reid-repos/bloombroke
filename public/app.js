@@ -12,6 +12,7 @@ import * as ratesScreen from './screens/rates.js';
 import * as newsScreen from './screens/news.js';
 import * as buyScreen from './screens/buy.js';
 import * as whatifScreen from './screens/whatif.js';
+import * as fundingScreen from './screens/funding.js';
 import { fmtNum, fmtPct, dirOf, cmdForInstrument, nyTime, panel } from './screens/markets.js';
 
 export const COMMANDS = [
@@ -192,6 +193,7 @@ export function parseCommand(raw) {
   if (head === 'WHATIF') {
     return { name: 'WHATIF', args: { tokens: rest }, input: ['WHATIF', ...rest].join(' ') };
   }
+  if (head === '420' && !rest.length) return { name: 'FUNDING', input: '420' };
   if (head === 'BUY') return { name: 'BUY', args: { error: 'usage' }, error: 'usage', input: 'BUY' };
   const soon = SOON.find((s) => s.name === head);
   if (soon && !rest.length) return { name: 'SOON', args: { soon }, input: head };
@@ -318,7 +320,7 @@ const store = {
 const SCREENS = {
   HOME: homeScreen, HELP: helpScreen, MARKETS: marketsScreen, FX: fxScreen,
   QUOTE: quoteScreen, CPI: cpiScreen, RATES: ratesScreen, NEWS: newsScreen,
-  BUY: buyScreen, WAGE: buyScreen, WHATIF: whatifScreen,
+  BUY: buyScreen, WAGE: buyScreen, WHATIF: whatifScreen, FUNDING: fundingScreen,
 };
 const DEFAULT_TITLE = 'Bloombroke: the $32,000 terminal. Now $4.20 a month.';
 

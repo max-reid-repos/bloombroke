@@ -46,6 +46,9 @@ test('tickers: one word of 1-5 letters, optional class and range', () => {
   assert.equal(parseCommand('BUY').error, 'usage');
   assert.equal(parseCommand('WHATIF').name, 'WHATIF');
   assert.deepEqual(parseCommand('whatif iphone6 latte:3y').args, { tokens: ['IPHONE6', 'LATTE:3Y'] });
+  assert.equal(parseCommand('420').name, 'FUNDING');
+  assert.equal(parseCommand('420 X').name, 'UNKNOWN');
+  assert.equal(suggest('4').length, 0, '420 stays hidden');
 });
 
 test('CPI arguments', () => {

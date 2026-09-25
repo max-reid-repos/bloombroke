@@ -7,7 +7,7 @@ import { getChart, ChartError } from './data/charts.js';
 import { getCpi, CpiError, CPI_EXAMPLES } from './data/cpi.js';
 import { getRates } from './data/rates.js';
 import { getNews } from './data/news.js';
-import { getCatalog, getWhatif } from './data/whatif-service.js';
+import { getCatalog, getWhatif, getFunding } from './data/whatif-service.js';
 import { WhatifError } from './data/whatif.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -167,6 +167,17 @@ app.get('/api/whatif', async (req, res) => {
   } catch (err) {
     if (err instanceof WhatifError) return res.status(400).json({ error: err.code, message: err.message, unknown: err.unknown });
     console.error('[whatif]', err.message);
+    res.status(503).json({ error: 'unavailable', message: BREAK });
+  }
+});
+
+app.get('/api/funding', async (req, res) => {
+  try {
+    const data = await getFunding();
+    res.set('Cache-Control', 'public, max-age=60');
+    res.json(data);
+  } catch (err) {
+    console.error('[funding]', err.message);
     res.status(503).json({ error: 'unavailable', message: BREAK });
   }
 });
