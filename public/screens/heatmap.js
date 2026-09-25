@@ -87,6 +87,19 @@ const SHORT = {
   FIN: 'Financials', IND: 'Industrials', ENERGY: 'Energy', UTIL: 'Utilities', RE: 'Real estate', MAT: 'Materials',
 };
 
+// A sector's head label for a box w px wide: name and %, the name alone, the name cut
+// short with a dot, or '' when not even 4 letters fit. 11px caps with letter spacing
+// take about 7.4px each, so a label never runs into the next sector.
+export const SEC_CHAR_W = 7.4;
+export function sectorLabel(name, pctText, w) {
+  const fit = Math.floor((w - 8) / SEC_CHAR_W);
+  const up = String(name).toUpperCase();
+  if (up.length + 1 + pctText.length <= fit) return `${up} ${pctText}`;
+  if (up.length <= fit) return up;
+  if (fit < 4) return '';
+  return `${up.slice(0, fit - 1).trimEnd()}.`;
+}
+
 // Cap-weighted % change of a group.
 export function weightedPct(stocks) {
   const cap = stocks.reduce((t, s) => t + s.marketCap, 0);
@@ -109,10 +122,8 @@ export function heatmapSvg(stocks, width, height) {
     const head = r.h > 44 && r.w > 70 ? 16 : 0;
     parts.push(`<rect class="hm-sec" x="${r.x.toFixed(1)}" y="${r.y.toFixed(1)}" width="${r.w.toFixed(1)}" height="${r.h.toFixed(1)}"/>`);
     if (head) {
-      const pct = weightedPct(sec.list);
-      const name = SHORT[sec.id] || sec.id;
-      const label = r.w > (name.length + 8) * 7 ? `${name.toUpperCase()} ${fmtPct(pct)}` : name.toUpperCase();
-      parts.push(`<text class="hm-sec-t" x="${(r.x + 4).toFixed(1)}" y="${(r.y + 12).toFixed(1)}">${esc(label)}</text>`);
+      const label = sectorLabel(SHORT[sec.id] || sec.id, fmtPct(weightedPct(sec.list)), r.w);
+      if (label) parts.push(`<text class="hm-sec-t" x="${(r.x + 4).toFixed(1)}" y="${(r.y + 12).toFixed(1)}">${esc(label)}</text>`);
     }
     const inner = { x: r.x + 1, y: r.y + head + 1, w: Math.max(0, r.w - 2), h: Math.max(0, r.h - head - 2) };
     const cells = squarify(sec.list.map((s) => s.marketCap), inner);
