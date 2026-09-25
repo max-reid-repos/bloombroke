@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/commands.css">
   <link rel="stylesheet" href="/commands-markets.css">
+  <link rel="stylesheet" href="/kit.css">
   <link rel="stylesheet" href="/nav.css">
   <script type="module" src="/app.js"></script>
   <script defer data-website-id="dfid_RaIYVk8TuhGSz6fl2wpPa" data-domain="bloombroke.com" src="https://datafa.st/js/script.js"></script>
@@ -50,10 +51,13 @@
   <div class="screenhead">
     <a id="back" class="back" href="#" hidden aria-label="Back to the previous screen">&lt; BACK</a>
     <h1 id="screen-title" class="screen-title"></h1>
+    <button type="button" id="head-star" class="star head-star" hidden aria-pressed="false"><span class="star-icon" aria-hidden="true">&#9734;</span><span class="offscreen"></span></button>
     <p id="screen-sub" class="screen-sub"></p>
     <div id="screen-actions" class="screen-actions"></div>
     <button type="button" id="share" class="share" aria-label="Copy a link to this screen">SHARE</button>
   </div>
+
+  <nav id="tickerbar" class="fnbar tickerbar" hidden aria-label="Stock functions"></nav>
 
   <main id="screen" class="screen" tabindex="-1" aria-live="polite"></main>
 

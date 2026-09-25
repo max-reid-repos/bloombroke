@@ -51,8 +51,14 @@ body.has-tape { --dock-h: calc(var(--status-h) + var(--tape-h) + var(--keybar-h)
 }
 .screen-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .screen-actions:empty { display: none; }
-.head-tabs { align-self: center; height: 24px; margin: 0; border: 1px solid var(--rule-strong); }
-.head-tabs .tab { padding: 0 12px; font-weight: 600; letter-spacing: .06em; }
+
+/* ---- Stock screens: one watch star by the title, one tab strip under it ------ */
+.head-star { align-self: center; height: 24px; margin: 0 0 0 -4px; padding: 0 4px; border-right: 0; font-size: 16px; }
+.tickerbar { margin: 4px var(--inset) 0; border: 1px solid var(--rule-strong); }
+.tickerbar[hidden] { display: none; }
+body.has-tickerbar #screen .fnbar,
+body.has-tickerbar #screen .panel-head > .star,
+body.has-tickerbar #screen .co-links { display: none; }
 
 /* ---- MENU overlay (Ctrl+K) ---------------------------------------------------- */
 .menu-overlay {

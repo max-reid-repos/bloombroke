@@ -19,10 +19,11 @@ import { parseFinancialsCommand, parseFinancialsArgs } from './screens/financial
 import { parseScreenCommand, parseScreenArgs } from './screener.js';
 import * as watchScreen from './screens/watch.js';
 import * as portfolioScreen from './screens/portfolio.js';
-import { parseWatchArgs, watchInput, WATCH_SUBCOMMANDS } from './watchlist.js';
+import { parseWatchArgs, watchInput, WATCH_SUBCOMMANDS, loadWatchlist, saveWatchlist, toggleId } from './watchlist.js';
 import { parsePfArgs, pfInput } from './portfolio.js';
 import { panel } from './screens/markets.js';
-import { matchInstrument, searchInstruments } from './instruments.js';
+import { matchInstrument, searchInstruments, instrumentById } from './instruments.js';
+import { edgeFade } from './kit.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { statusLine } from './freshness.js';
 import { EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra } from './commands.js';
@@ -483,7 +484,33 @@ const SCREENS = {
 
 // The screen header: title and one line on what the screen is. Internal screen names
 // map back to the registry (TICKERNEWS is NEWS <ticker>).
+// Screens about one stock share one tab strip under the title: the same functions, in
+// the same order, with the same names, on every one of them. null for other screens
+// (and for named instruments like GOLD or SPX, which have no company functions).
+const FN_OF_SCREEN = { QUOTE: 'CHART', TICKERNEWS: 'NEWS' };
+export function tickerStripFor(cmd) {
+  const ticker = cmd?.args?.ticker;
+  if (!ticker || !TICKER_RE.test(ticker) || instrumentById(ticker)) return null;
+  if (cmd.error && cmd.name !== 'QUOTE') return null;
+  const current = FN_OF_SCREEN[cmd.name] || cmd.name;
+  return FUNCTION_BAR.includes(current) ? { ticker, current } : null;
+}
+
+// The strip: keys 1 to 9 for the first nine.
+export function tickerStripHtml(ticker, current) {
+  return tickerFunctions(ticker, current).map((f, i) => {
+    const key = i < 9 ? ` data-key="${i + 1}"` : '';
+    const n = i < 9 ? `<span class="fn-n" aria-hidden="true">${i + 1}</span>` : '';
+    return `<a class="fn${f.current ? ' is-active' : ''}" href="${toQuery(f.cmd)}" data-cmd="${escapeHtml(f.cmd)}"${key}${f.current ? ' aria-current="page"' : ''}>${n}${f.fn}</a>`;
+  }).join('');
+}
+
 export function screenTitle(cmd) {
+  const strip = tickerStripFor(cmd);
+  if (strip) {
+    const entry = findCommand(strip.current);
+    return { title: strip.ticker, sub: strip.current === 'CHART' ? '' : entry.summary };
+  }
   if (!cmd || cmd.name === 'UNKNOWN') return { title: 'Unknown command', sub: '' };
   if (cmd.name === 'SOON') return { title: cmd.args.soon.name, sub: 'Coming soon' };
   if (cmd.name === 'QUOTE') return { title: cmd.input, sub: '' };
@@ -512,6 +539,8 @@ function boot() {
   const titleEl = $('screen-title');
   const subEl = $('screen-sub');
   const actionsEl = $('screen-actions');
+  const tickerBar = $('tickerbar');
+  const headStar = $('head-star');
   const coarse = window.matchMedia('(pointer: coarse)').matches;
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -552,6 +581,8 @@ function boot() {
   keybar.innerHTML = `<div class="fkeys">${FKEYS.map((k) => `<a class="fkey${k.mobile ? ' is-mobile' : ''}" href="${toQuery(k.cmd)}" data-cmd="${escapeHtml(k.cmd)}" data-name="${parseCommand(k.cmd).name}"><span class="fkey-n">${k.key}</span><span class="fkey-l">${k.label}</span></a>`).join('')}</div>
     <button type="button" class="fkey fkey-menu" id="menu-btn" aria-haspopup="dialog"><span class="fkey-l">MENU</span><span class="fkey-n">Ctrl K</span></button>`;
   const fkeysEl = keybar.querySelector('.fkeys');
+  edgeFade(fkeysEl);
+  edgeFade(tickerBar);
 
   function setKeys(name) {
     keybar.querySelectorAll('.fkeys .fkey').forEach((k) => {
@@ -575,6 +606,28 @@ function boot() {
   const depth = () => Number(window.history.state?.d) || 0;
   function goBack() { if (depth() > 0) window.history.back(); }
   backBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); goBack(); });
+
+  // --- one watch star, by the title of a stock screen ----------------------------
+  let starTicker = null;
+  function paintStar() {
+    const on = Boolean(starTicker) && loadWatchlist(store).includes(starTicker);
+    headStar.classList.toggle('is-on', on);
+    headStar.setAttribute('aria-pressed', String(on));
+    headStar.querySelector('.star-icon').textContent = on ? '\u2605' : '\u2606';
+    const text = on ? `Remove ${starTicker} from the watchlist` : `Add ${starTicker} to the watchlist`;
+    headStar.title = text;
+    headStar.querySelector('.offscreen').textContent = text;
+  }
+  headStar.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!starTicker) return;
+    const next = toggleId(loadWatchlist(store), starTicker);
+    saveWatchlist(store, next);
+    paintStar();
+    const on = next.includes(starTicker);
+    setStatus(on ? `${starTicker} ADDED TO THE WATCHLIST` : `${starTicker} REMOVED FROM THE WATCHLIST`);
+    if (!coarse) input.focus();
+  });
 
   // --- ticker tape: off by default, TAPE ON puts it above the status line ------------
   let stopTape = null;
@@ -711,6 +764,15 @@ function boot() {
     titleEl.textContent = head.title;
     subEl.textContent = head.sub;
     actionsEl.replaceChildren();
+    const strip = embed ? null : tickerStripFor(cmd);
+    document.body.classList.toggle('has-tickerbar', Boolean(strip));
+    tickerBar.hidden = !strip;
+    tickerBar.innerHTML = strip ? tickerStripHtml(strip.ticker, strip.current) : '';
+    if (strip) tickerBar.setAttribute('aria-label', `${strip.ticker} functions`);
+    tickerBar.dispatchEvent(new Event('scroll'));
+    starTicker = strip ? strip.ticker : null;
+    headStar.hidden = !strip;
+    if (strip) paintStar();
     backBtn.hidden = embed || depth() === 0;
     if (cmd.name === 'MENU' && fromUrl) setTimeout(() => menu?.open(), 0);
 
@@ -721,6 +783,8 @@ function boot() {
       status: setStatus, updated: setUpdated,
       // Screen-level controls (tabs, toggles) go in the header, left of SHARE.
       actions(html) { actionsEl.innerHTML = html; return actionsEl; },
+      // No such ticker: drop the stock tab strip and the star.
+      hideTickerStrip() { tickerBar.hidden = true; headStar.hidden = true; starTicker = null; document.body.classList.remove('has-tickerbar'); },
       tapeOn: () => tapeOn(store),
       setTape(on) { setTapeOn(store, on); applyTape(on); },
       liveTimer: (fn, ms) => { const stop = liveTimer(fn, ms); cleanups.push(stop); return stop; },
@@ -962,7 +1026,7 @@ function boot() {
     // A stock screen's function bar: keys 1 to 9 while the command bar is empty.
     if (/^[1-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey
       && (e.target === input ? input.value === '' : !e.target.closest?.('input, select, textarea'))) {
-      const item = screen.querySelector(`.fnbar [data-key="${e.key}"]`);
+      const item = (tickerBar.hidden ? screen : tickerBar).querySelector(`[data-key="${e.key}"]`) || screen.querySelector(`.fnbar [data-key="${e.key}"]`);
       if (item) {
         e.preventDefault();
         item.click();

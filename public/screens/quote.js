@@ -201,6 +201,7 @@ export function render(el, cmd, ctx) {
           <p class="muted">Check the spelling, or try <a class="code" href="${esc(q('AAPL'))}" data-cmd="AAPL">AAPL</a> <a class="code" href="${esc(q('GOLD'))}" data-cmd="GOLD">GOLD</a> <a class="code" href="${esc(q('EURUSD'))}" data-cmd="EURUSD">EURUSD</a>. Type <a class="code" href="${esc(q('HELP'))}" data-cmd="HELP">HELP</a> for every command.</p>`;
         cBody.closest('.panel').hidden = true;
         el.querySelector('.fnbar')?.remove();
+        ctx.hideTickerStrip?.();
         ctx.status(`UNKNOWN TICKER ${ticker}`, 'warn');
         return;
       }

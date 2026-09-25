@@ -3,6 +3,7 @@
 // syntax, options, examples, source and delay. Everything comes from ../registry.js.
 
 import { esc, q } from './markets.js';
+import { edgeFade } from '../kit.js';
 import {
   CATEGORIES, findCommand, byCategory, categoriesInUse, searchCommands,
   START_HERE, GRAMMAR_RULES, FUNCTION_BAR,
@@ -225,7 +226,8 @@ export function render(el, cmd, ctx) {
   document.addEventListener('keydown', onSlash, true);
 
   paint();
+  const stopFade = edgeFade(el.querySelector('.help-cats'));
   if (query) input.focus();
   ctx.status(topic.entry ? `HELP ${topic.ticker || topic.entry.name}` : 'HELP: PICK A CATEGORY, OR PRESS / TO SEARCH');
-  return () => document.removeEventListener('keydown', onSlash, true);
+  return () => { document.removeEventListener('keydown', onSlash, true); stopFade(); };
 }

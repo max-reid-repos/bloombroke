@@ -15,7 +15,7 @@ export const parse = parseTicker;
 // Links to the other screens for the same company.
 export function companyLinks(ticker, current) {
   const cmds = [[ticker, 'QUOTE'], [`PROFILE ${ticker}`, 'PROFILE'], [`HISTORY ${ticker}`, 'HISTORY'], [`DIVIDENDS ${ticker}`, 'DIVIDENDS'], [`NEWS ${ticker}`, 'NEWS']];
-  return `<nav class="tabs" aria-label="${esc(ticker)}">${cmds.map(([c, label]) => `<a class="tab${label === current ? ' is-active' : ''}" href="${esc(q(c))}" data-cmd="${esc(c)}"${label === current ? ' aria-current="true"' : ''}>${label}</a>`).join('')}</nav>`;
+  return `<nav class="tabs co-links" aria-label="${esc(ticker)}">${cmds.map(([c, label]) => `<a class="tab${label === current ? ' is-active' : ''}" href="${esc(q(c))}" data-cmd="${esc(c)}"${label === current ? ' aria-current="true"' : ''}>${label}</a>`).join('')}</nav>`;
 }
 
 export function tickerUsage(name, examples) {
