@@ -14,12 +14,17 @@ A market terminal for normal people. Type a plain English command, press Enter, 
 > GOLD, EURUSD, SPX, BTC, US10Y   indexes, currency pairs, futures, crypto, yields: same screen
 > FX 500 USD THB               convert money, with a 30 day chart
 > CPI 100 2015                 what money from a past year is worth today
-> BUY 1200 [2 PER WEEK] [FOR 3Y]   should I buy it? cost per use and a verdict
-> WAGE 35                      save your hourly pay (this browser only); BUY then shows hours of work
-> WHATIF                       the stock you should have bought: pick what you bought
+> AFFORD 1200 [2 PER WEEK] [FOR 3Y]   can I afford it? cost per use of a thing you buy, and a verdict (was BUY)
+> WAGE 35                      save your hourly pay (this browser only); AFFORD then shows hours of work
+> WHATIF                       in hindsight: what the money would be worth in the maker's stock, with the worst drop along the way
 > WHATIF IPHONE6 LATTE:3Y NETFLIX:2015-2024   the same, typed
 > HELP                         every command
+> TERMS, PRIVACY, DISCLAIMER   open /terms, /privacy, /disclaimer
 ```
+
+## Legal
+
+`/terms`, `/privacy` and `/disclaimer` are server-rendered from `legal/terms.md`, `legal/privacy.md` and `legal/disclaimer.md` at boot (restart to publish an edit). The version, date, operator and contact live in `public/legal-version.js`. Raise `TERMS_VERSION` there when people should accept again: the first-visit notice stores `{ version, acceptedAt }` under `bb.consent` in localStorage and asks again when the version changes.
 
 Readable names work too: `EUR/USD`, `S&P 500`, `OIL`, `BITCOIN`, `EURO STOXX 50`. Every row with a price opens its own screen (click it, or focus it and press Enter). Typing in the command bar suggests symbols with their names. Each price carries a tag: `RT` real time (US stocks via Nasdaq Last Sale, US indexes, FX, crypto, yields) or `DLY` delayed (futures about 10 minutes, most non-US indexes about 15). The named instruments live in `public/instruments.js`.
 

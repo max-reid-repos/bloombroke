@@ -26,7 +26,7 @@ export function render(el, cmd, ctx) {
     ${panel('1', 'US Treasury yield curve', `<div class="chart-host" id="cv-chart">${LOADING}</div><div id="cv-legend"></div>`, { metaId: 'cv-meta', bodyCls: 'flush' })}
     ${panel('2', 'Yields', LOADING, { metaId: 'cv-t-meta', meta: 'PERCENT A YEAR' })}
   </div>
-  <p class="footnote">Today: CNBC, may be delayed. 1 month and 1 year ago: US Treasury daily par yield curve. 1 bp = 0.01%. Not financial advice.</p>`;
+  <p class="footnote">Today: CNBC, may be delayed (DLY). 1 month and 1 year ago: US Treasury daily par yield curve (DAILY). 1 bp = 0.01%. Not financial advice.</p>`;
   const host = el.querySelector('#cv-chart');
   const leg = el.querySelector('#cv-legend');
   const meta = el.querySelector('#cv-meta');

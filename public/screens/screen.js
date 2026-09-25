@@ -4,7 +4,7 @@
 
 import { esc, q, fmtNum, fmtPct, dirOf, panel, LOADING, rowAttrs, nameCell } from './markets.js';
 import {
-  SECTORS, COUNTRIES, FIELDS, FIELD_ORDER, PRESETS, SORTS, parseCond, parseScreenArgs, screenWords, sortOf, isEmptySpec, SCREEN_ERRORS,
+  SECTORS, COUNTRIES, FIELDS, FIELD_ORDER, PRESETS, SORTS, parseCond, parseScreenArgs, screenWords, sortOf, isEmptySpec, needsCnbc, SCREEN_ERRORS,
 } from '../screener.js';
 import { resolveInstrument } from '../instruments.js';
 
@@ -69,7 +69,7 @@ export function wordsFromForm(fields, sort) {
 }
 
 const HINTS = {
-  MCAP: ['10B', '200B'], PRICE: ['5', '50'], CHG: ['2', '-2'], VOL: ['1M', ''],
+  MCAP: ['10B', '200B'], PRICE: ['5', '50'], CHG: ['2', '-2'], VOL: ['1M', ''], PE: ['', '30'], DIV: ['2', ''],
 };
 
 function formHtml(spec, open = true) {
@@ -81,7 +81,7 @@ function formHtml(spec, open = true) {
     .map(([code, name]) => opt(code, `${name} (${code})`, v.country === code))].join('');
   const presets = [opt('', 'None', !v.preset), ...Object.entries(PRESETS).map(([k, p]) => opt(k, `${k}: ${p.hint}`, v.preset === k))].join('');
   const nums = FIELD_ORDER.map((f) => `<div class="sc-field sc-range">
-      <span class="sc-lab">${esc(FIELDS[f].label)}${f === 'CHG' ? ' (%)' : ''}</span>
+      <span class="sc-lab">${esc(FIELDS[f].label)}${f === 'CHG' || f === 'DIV' ? ' (%)' : ''}</span>
       <input name="${f}_min" value="${esc(v[`${f}_min`] || '')}" placeholder="${esc(HINTS[f][0] ? `over ${HINTS[f][0]}` : 'over')}" aria-label="${esc(FIELDS[f].label)} over" autocomplete="off" spellcheck="false">
       <input name="${f}_max" value="${esc(v[`${f}_max`] || '')}" placeholder="${esc(HINTS[f][1] ? `under ${HINTS[f][1]}` : 'under')}" aria-label="${esc(FIELDS[f].label)} under" autocomplete="off" spellcheck="false">
     </div>`).join('');
@@ -95,7 +95,7 @@ function formHtml(spec, open = true) {
     <div class="sc-actions"><button class="wi-run" type="submit">RUN SCREEN</button><button class="sc-clear" type="button">CLEAR</button><span class="sc-err" role="alert"></span></div>
   </form></details>
   <p class="sc-presets muted">Presets: ${Object.keys(PRESETS).map((k) => `<a class="code" href="${esc(q(`SCREEN ${k}`))}" data-cmd="SCREEN ${esc(k)}">${esc(k)}</a>`).join(' ')}</p>
-  <p class="sc-presets muted">Sizes take K, M, B and T, like MCAP&gt;10B or VOL&gt;1M.</p>`;
+  <p class="sc-presets muted">Sizes take K, M, B and T, like MCAP&gt;10B or VOL&gt;1M. P/E from CNBC, may be missing for some stocks; so may dividend yield.</p>`;
 }
 
 // ---- the results --------------------------------------------------------------------
@@ -111,6 +111,15 @@ const COLS = [
   { by: 'INDUSTRY', label: 'Industry', cls: 'sc-ind' },
   { by: 'COUNTRY', label: 'Country', cls: 'sc-cty' },
 ];
+// Shown only when the screen uses them (the numbers come from CNBC).
+const CNBC_COLS = [
+  { by: 'PE', label: 'P/E', num: true },
+  { by: 'DIV', label: 'Yield', num: true },
+];
+
+export function columnsFor(spec) {
+  return needsCnbc(spec) ? [...COLS.slice(0, 5), ...CNBC_COLS, ...COLS.slice(5)] : COLS;
+}
 
 // The command a column header runs: sort by it, or flip the order if it is the sort.
 export function sortCmd(spec, by) {
@@ -123,7 +132,9 @@ export function sortCmd(spec, by) {
 
 export function resultsTable(rows, spec) {
   const cur = sortOf(spec);
-  const head = COLS.map((c) => {
+  const cols = columnsFor(spec);
+  const extra = cols !== COLS;
+  const head = cols.map((c) => {
     const on = cur.by === c.by;
     const arrow = on ? (cur.dir === 'HIGH' ? ' ▼' : ' ▲') : '';
     const cmd = sortCmd(spec, c.by);
@@ -137,6 +148,7 @@ export function resultsTable(rows, spec) {
       <td class="num last">${esc(fmtPrice(r.last))}</td>
       <td class="num ${dirOf(r.changePct)}">${esc(fmtPct(r.changePct))}</td>
       <td class="num">${esc(fmtBig(r.marketCap))}</td>
+      ${extra ? `<td class="num">${Number.isFinite(r.pe) ? esc(fmtNum(r.pe, 2)) : '--'}</td><td class="num">${Number.isFinite(r.divYield) ? `${esc(fmtNum(r.divYield, 2))}%` : '--'}</td>` : ''}
       <td class="num sc-vol dim">${esc(fmtBig(r.volume))}</td>
       <td class="sc-sec dim">${esc(r.sector || '--')}</td>
       <td class="sc-ind dim">${esc(r.industry || '--')}</td>
@@ -158,7 +170,7 @@ function fmtDay(iso) {
   return d.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' }).toUpperCase();
 }
 
-const FOOT = 'Source: Nasdaq stock screener, all stocks listed on Nasdaq, NYSE and NYSE American. Prices are the last sale on the date shown. No P/E or dividend filters: the source does not carry them. Not financial advice.';
+const FOOT = 'Source: Nasdaq stock screener, all stocks listed on Nasdaq, NYSE and NYSE American. Prices are the last sale on the date shown. P/E and dividend yield from CNBC, may be missing for some stocks: a stock without the number is left out of a PE or DIV filter. Not financial advice.';
 
 export function render(el, cmd, ctx) {
   const bad = cmd.error ? SCREEN_ERRORS[cmd.error]?.(cmd.args.bad) : null;

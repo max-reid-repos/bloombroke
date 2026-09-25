@@ -176,7 +176,7 @@ export function render(el, cmd, ctx) {
 
   const head = `${list.length} OF ${MAX_WATCH} SYMBOLS`;
   el.innerHTML = `${panel('1', 'Watchlist', '<div class="wl-top"></div><div class="wl-body"></div>', { cls: 'panel-solo', metaId: 'wl-meta', meta: head, bodyCls: 'flush' })}
-    <p class="footnote">Click a column to sort. Drag a row, or focus it and press Alt+Up or Alt+Down, to reorder. Delete removes the focused row. Saved in this browser only. RT: real time. DLY: delayed. Not financial advice.</p>`;
+    <p class="footnote">Click a column to sort. Drag a row, or focus it and press Alt+Up or Alt+Down, to reorder. Delete removes the focused row. Saved in this browser only. Prices from CNBC. RT: real time. DLY: delayed. Not financial advice.</p>`;
   const top = el.querySelector('.wl-top');
   const body = el.querySelector('.wl-body');
   const meta = el.querySelector('#wl-meta');

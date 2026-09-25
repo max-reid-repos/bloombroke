@@ -18,6 +18,7 @@ export const EXCHANGES = {
   TSX: { name: 'TSX', city: 'Toronto', tz: 'America/Toronto', sessions: [[hm(9, 30), hm(16)]] },
   B3: { name: 'B3', city: 'Sao Paulo', tz: 'America/Sao_Paulo', sessions: [[hm(10), hm(17)]] },
   BMV: { name: 'BMV', city: 'Mexico City', tz: 'America/Mexico_City', sessions: [[hm(8, 30), hm(15)]] },
+  BYMA: { name: 'BYMA', city: 'Buenos Aires', tz: 'America/Argentina/Buenos_Aires', sessions: [[hm(11), hm(17)]] },
   LSE: { name: 'LSE', city: 'London', tz: 'Europe/London', sessions: [[hm(8), hm(16, 30)]] },
   XETRA: { name: 'Xetra', city: 'Frankfurt', tz: 'Europe/Berlin', sessions: [[hm(9), hm(17, 30)]] },
   EURONEXT: { name: 'Euronext', city: 'Paris', tz: 'Europe/Paris', sessions: [[hm(9), hm(17, 30)]] },
@@ -25,6 +26,7 @@ export const EXCHANGES = {
   BME: { name: 'BME', city: 'Madrid', tz: 'Europe/Madrid', sessions: [[hm(9), hm(17, 30)]] },
   BIT: { name: 'Borsa Italiana', city: 'Milan', tz: 'Europe/Rome', sessions: [[hm(9), hm(17, 30)]] },
   SIX: { name: 'SIX', city: 'Zurich', tz: 'Europe/Zurich', sessions: [[hm(9), hm(17, 30)]] },
+  BIST: { name: 'Borsa Istanbul', city: 'Istanbul', tz: 'Europe/Istanbul', sessions: [[hm(10), hm(18)]] },
   TSE: { name: 'TSE', city: 'Tokyo', tz: 'Asia/Tokyo', sessions: [[hm(9), hm(11, 30)], [hm(12, 30), hm(15, 30)]] },
   HKEX: { name: 'HKEX', city: 'Hong Kong', tz: 'Asia/Hong_Kong', sessions: [[hm(9, 30), hm(12)], [hm(13), hm(16)]] },
   SSE: { name: 'SSE', city: 'Shanghai', tz: 'Asia/Shanghai', sessions: [[hm(9, 30), hm(11, 30)], [hm(13), hm(15)]] },
@@ -35,6 +37,7 @@ export const EXCHANGES = {
   ASX: { name: 'ASX', city: 'Sydney', tz: 'Australia/Sydney', sessions: [[hm(10), hm(16)]] },
   NSE: { name: 'NSE', city: 'Mumbai', tz: 'Asia/Kolkata', sessions: [[hm(9, 15), hm(15, 30)]] },
   NZX: { name: 'NZX', city: 'Wellington', tz: 'Pacific/Auckland', sessions: [[hm(10), hm(16, 45)]] },
+  HOSE: { name: 'HOSE', city: 'Ho Chi Minh City', tz: 'Asia/Ho_Chi_Minh', sessions: [[hm(9), hm(11, 30)], [hm(13), hm(14, 45)]] },
 };
 
 // The CLOCK screen's exchanges, and the WORLD index that tells us each one traded today.

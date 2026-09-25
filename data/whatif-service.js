@@ -6,7 +6,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getQuote } from './quotes.js';
-import { computeWhatif, resolveTokens, WhatifError } from './whatif.js';
+import { getChart } from './charts.js';
+import { computeWhatif, resolveTokens, WhatifError, maxDrawdown, holdingPath } from './whatif.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const load = (f) => JSON.parse(readFileSync(path.join(dir, f), 'utf8'));
@@ -30,6 +31,41 @@ async function quotesFor(tickers, quoteImpl) {
   return Object.fromEntries(got);
 }
 
+export const RISK_BASIS = 'Based on month-end closes from CNBC, from the first purchase to today.';
+const RISK_WAIT_MS = 6000;
+
+// Monthly bars for each ticker, or null when the chart source is slow or down.
+async function monthlyBars(tickers, chartImpl, waitMs) {
+  const got = await Promise.all(tickers.map(async (t) => {
+    const timeout = new Promise((resolve) => { setTimeout(resolve, waitMs, null).unref?.(); });
+    try {
+      const c = await Promise.race([chartImpl(t, 'MAX'), timeout]);
+      return [t, c && c.bar === '1MO' ? c.points : null];
+    } catch {
+      return [t, null];
+    }
+  }));
+  return Object.fromEntries(got);
+}
+
+// Adds row.worstDrop ({ pct, month } or null) and result.risk: the worst single holding.
+export function attachRisk(result, bars, { prices: p = prices } = {}) {
+  for (const row of result.rows) {
+    const series = bars[row.ticker];
+    const first = row.kind === 'once' ? { date: row.bought, close: row.close } : p.monthly[row.ticker]?.[row.from];
+    const dd = series && first ? maxDrawdown(holdingPath(first, series, row.price)) : null;
+    row.worstDrop = dd ? { pct: dd.pct, month: dd.month } : null;
+  }
+  const measured = result.rows.filter((r) => r.worstDrop);
+  const worst = measured.sort((a, b) => a.worstDrop.pct - b.worstDrop.pct)[0] || null;
+  result.risk = {
+    worst: worst ? { ...worst.worstDrop, name: worst.name, ticker: worst.ticker } : null,
+    complete: measured.length === result.rows.length,
+    basis: RISK_BASIS,
+  };
+  return result;
+}
+
 // The picker's list: small, no prices history.
 export function getCatalog() {
   const pick = ({ id, name, company, ticker, date, price, category, family, note, per, start, defaultYears }) =>
@@ -42,16 +78,19 @@ export function getCatalog() {
 }
 
 // tokens: ['IPHONE6', 'LATTE:3Y'].
-export async function getWhatif(tokens, { quoteImpl = getQuote, now = new Date() } = {}) {
+// risk: also work out each holding's worst drop along the way (the WHATIF screen asks
+// for it; the share image does not need it and stays fast).
+export async function getWhatif(tokens, { quoteImpl = getQuote, now = new Date(), risk = false, chartImpl = getChart, riskWaitMs = RISK_WAIT_MS } = {}) {
   const { picks, families, unknown } = resolveTokens(tokens, catalog);
   if (unknown.length) {
     throw new WhatifError('unknown', `Not on the list: ${unknown.join(' ')}. Type WHATIF to pick from the list.`, { unknown });
   }
   if (!picks.length) return { picker: true, families };
   const tickers = [...new Set(picks.map(({ id }) => [...catalog.products, ...catalog.recurring].find((p) => p.id === id).ticker))];
-  const live = await quotesFor(tickers, quoteImpl);
+  const [live, bars] = await Promise.all([quotesFor(tickers, quoteImpl), risk ? monthlyBars(tickers, chartImpl, riskWaitMs) : null]);
   const quotes = Object.fromEntries(Object.entries(live).map(([t, q]) => [t, q.price]));
   const result = computeWhatif(picks, { catalog, prices, quotes, now });
+  if (risk) attachRisk(result, bars);
   const asOf = Object.values(live).map((q) => q.asOf).filter(Boolean).sort().pop() || null;
   return {
     ...result,

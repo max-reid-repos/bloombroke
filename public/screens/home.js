@@ -1,11 +1,13 @@
 // HOME: the default screen. Markets by region, the S&P 500 chart, currencies, news.
 
-import { esc, fmtNum, fmtSigned, fmtPct, dirOf, panel, LOADING, marketsColumns, nameCell, rowAttrs, rerender, tick, settleTicks, FOOTNOTE } from './markets.js';
+import { esc, fmtNum, fmtSigned, fmtPct, dirOf, panel, LOADING, marketsColumns, nameCell, rowAttrs, rerender, tick, settleTicks } from './markets.js';
 import { rangeChart } from './chart.js';
 import { freshTag } from '../freshness.js';
 import { newsList } from './news.js';
 import { loadWatchlist, isDefaultList } from '../watchlist.js';
 import { fetchQuotes, watchCompact } from './watch.js';
+
+const HOME_FOOTNOTE = '<p class="footnote">Prices from CNBC. RT: real time. DLY: delayed, futures about 10 minutes, indexes about 15. Headlines link to the original publishers. The status line shows when data was last updated. Not financial advice.</p>';
 
 export function fxTable(pairs) {
   const rows = pairs.map((p) => {
@@ -39,7 +41,8 @@ export function render(el, cmd, ctx) {
     : panel('3', 'FX vs USD', LOADING, { cmd: 'FX 100 USD EUR', metaId: 'h-fx-meta' })}
     ${panel('4', 'News', LOADING, { cmd: 'NEWS', metaId: 'h-news-meta', bodyCls: 'flush', cls: 'panel-wide' })}
   </div>
-  ${FOOTNOTE}`;
+  <p class="footnote h-desk">Build your own screen: <a class="code" href="?c=DESK" data-cmd="DESK">DESK</a></p>
+  ${HOME_FOOTNOTE}`;
 
   const bodies = el.querySelectorAll('.panel-body');
   const [mkBody, , fxBody, newsBody] = bodies;

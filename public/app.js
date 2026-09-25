@@ -27,6 +27,11 @@ import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { statusLine, freshTag } from './freshness.js';
 import { EXTRA_HELP, EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra, urlCommand, isSecret } from './commands.js';
 import { getTape, loadTapeRows, bareKey, looksLikeKey } from './pro.js';
+import { ensureConsent } from './consent.js';
+import * as deskScreen from './screens/desk.js';
+import { parseDeskArgs, isEmbedSearch, tickerOf, TICKER_SCREENS } from './desk-layout.js';
+import { COMPANY_HELP, COMPANY_SCREENS, COMPANY_TAKES_ARGS, COMPANY_FUNCTIONS, matchCompany } from './company.js';
+import { MARKETS_HELP, MARKETS_SCREENS, MARKETS_TAKES_ARGS, matchMarkets } from './commands-markets.js';
 
 export const COMMANDS = [
   { name: 'HOME', group: 'Markets', hint: 'Markets, S&P 500, currencies and news on one screen', usage: 'HOME', example: 'HOME' },
@@ -35,29 +40,34 @@ export const COMMANDS = [
   { name: 'NEWS', group: 'Markets', hint: 'Headlines that move markets', usage: 'NEWS', example: 'NEWS' },
   { name: 'FX', group: 'Money tools', hint: 'Convert money between currencies', usage: 'FX <amount> <from> <to>', example: 'FX 500 USD THB', examples: ['FX 500 USD THB', 'FX USD CAD'] },
   { name: 'CPI', group: 'Money tools', hint: 'What money from a past year is worth today', usage: 'CPI <amount> <year>', example: 'CPI 100 2015', examples: ['CPI 100 2015', 'CPI 1000 1990'] },
-  { name: 'WHATIF', group: 'Money tools', hint: 'The stock you should have bought', usage: 'WHATIF [<item> ...]', example: 'WHATIF', examples: ['WHATIF', 'WHATIF IPHONE6 LATTE:3Y'] },
-  { name: 'BUY', group: 'Money tools', hint: 'Should I buy it? Cost per use and a verdict', usage: 'BUY <price> [<n> PER WEEK] [FOR <n>Y]', example: 'BUY 1200', examples: ['BUY 1200', 'BUY 90 3 PER WEEK FOR 2Y'] },
-  { name: 'WAGE', group: 'Money tools', hint: 'Save your hourly pay, BUY then shows hours of work', usage: 'WAGE <per hour>', example: 'WAGE 35', examples: ['WAGE 35'] },
+  { name: 'WHATIF', group: 'Money tools', hint: 'In hindsight: the maker\'s stock instead of what you bought', usage: 'WHATIF [<item> ...]', example: 'WHATIF', examples: ['WHATIF', 'WHATIF IPHONE6 LATTE:3Y'] },
+  { name: 'AFFORD', group: 'Money tools', hint: 'Can I afford it? Cost per use of a thing you buy, and a verdict', usage: 'AFFORD <price> [<n> PER WEEK] [FOR <n>Y]', example: 'AFFORD 1200', examples: ['AFFORD 1200', 'AFFORD 90 3 PER WEEK FOR 2Y'] },
+  { name: 'WAGE', group: 'Money tools', hint: 'Save your hourly pay, AFFORD then shows hours of work', usage: 'WAGE <per hour>', example: 'WAGE 35', examples: ['WAGE 35'] },
   { name: 'WATCH', group: 'Your lists', hint: 'Your watchlist, live: any stock, index, pair, coin or future', usage: 'WATCH [ADD|REMOVE <symbols>] [CLEAR|EXPORT|IMPORT]', example: 'WATCH', usageExample: 'WATCH ADD AAPL TSLA', examples: ['WATCH', 'WATCH ADD AAPL TSLA EURUSD', 'WATCH REMOVE TSLA', 'WATCH EXPORT', 'WATCH IMPORT AAPL,MSFT,GOLD'] },
+  { name: 'DESK', group: 'Your lists', hint: 'Build your own screen: any commands side by side, four desks', usage: 'DESK [1-4] [RESET]', example: 'DESK', examples: ['DESK', 'DESK 2', 'DESK RESET'] },
   { name: 'PORTFOLIO', aliases: ['PF'], group: 'Your lists', hint: 'Your holdings: value, day gain, total gain, weights', usage: 'PF [ADD <ticker> <shares> @ <cost>|SELL <ticker> <shares>|REMOVE <ticker>]', example: 'PF', usageExample: 'PF ADD AAPL 10 @ 150', examples: ['PF', 'PF ADD AAPL 10 @ 150', 'PF SELL AAPL 3', 'PF EXPORT', 'PF IMPORT'] },
   ...EXTRA_HELP,
+  ...MARKETS_HELP,
   { name: 'SCREEN', group: 'Markets', hint: 'Find stocks by sector, size, price and move', usage: 'SCREEN [<filters>]', example: 'SCREEN GAINERS', examples: ['SCREEN', 'SCREEN GAINERS'] },
   { name: 'FINANCIALS', group: 'Company', hint: 'Income, balance sheet and cash flow from SEC filings', usage: 'FINANCIALS <ticker> [BALANCE|CASHFLOW] [QUARTERLY]', example: 'FINANCIALS AAPL', examples: ['FINANCIALS AAPL', 'FINANCIALS MSFT BALANCE'] },
+  ...COMPANY_HELP,
   { name: 'HELP', group: 'Help', hint: 'Every command, with examples', usage: 'HELP', example: 'HELP' },
 ];
 
 // <TICKER> <FUNCTION> [args] runs <FUNCTION> <TICKER> [args]: AAPL CHART 5Y, AAPL NEWS.
 // A function that does not take a ticker yet shows "coming soon", not a ticker error.
-export const TICKER_FUNCTIONS = ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS', 'EARNINGS', 'COMPARE', 'WATCH'];
-// The function bar on a stock screen, keys 1 to 6 (7 is the watchlist star).
-export const FUNCTION_BAR = ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS'];
+export const TICKER_FUNCTIONS = ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS', 'OPTIONS', 'EARNINGS', 'COMPARE', 'WATCH', ...COMPANY_FUNCTIONS];
+// The function bar on a stock screen, keys 1 to 9 for the first nine (the watchlist star is last).
+export const FUNCTION_BAR = ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS', 'OPTIONS', ...COMPANY_FUNCTIONS];
 export const GRAMMAR_HELP = {
-  name: '<TICKER> <FUNCTION>', hint: 'Any function for one ticker, ticker first', examples: ['AAPL CHART 5Y', 'AAPL NEWS', 'AAPL FINANCIALS', 'AAPL WATCH', 'AAPL COMPARE MSFT'],
+  name: '<TICKER> <FUNCTION>', hint: 'Any function for one ticker, ticker first', examples: ['AAPL CHART 5Y', 'AAPL NEWS', 'AAPL FINANCIALS', 'AAPL INSIDERS', 'AAPL WATCH', 'AAPL COMPARE MSFT'],
 };
 
 export const TICKER_HELP = {
   name: 'AAPL', group: 'Markets', hint: 'Any ticker, index, currency pair, commodity or coin: price, chart and key numbers', usage: '<symbol> [1D|5D|1M|3M|6M|YTD|1Y|2Y|5Y|10Y|MAX] or <symbol> <from> <to>', examples: ['AAPL', 'TSLA 5Y', 'GOLD', 'EURUSD', 'SPX YTD', 'AAPL 2020-01-01 2024-12-31', 'NVDA FROM 2023-01-01'],
 };
+
+export const RENAMED_NOTE = 'Renamed to AFFORD. It is about things you buy, not investments.';
 
 export const SOON = [
   { name: 'ALERTS', hint: 'Price alerts, coming next to Pro' },
@@ -71,6 +81,7 @@ export const FKEYS = [
   { key: 'F6', label: 'NEWS', cmd: 'NEWS' },
   { key: 'F7', label: 'RATES', cmd: 'RATES' },
   { key: 'F8', label: 'CPI', cmd: 'CPI 100 2000' },
+  { key: 'F9', label: 'DESK', cmd: 'DESK' },
 ];
 
 export const CHART_RANGES = PRESETS;
@@ -113,7 +124,9 @@ export function parseFxArgs(args) {
   return { amount, amountGiven, from, to };
 }
 
-// BUY <price> [<n> PER DAY|WEEK|MONTH|YEAR] [FOR <n>Y]. Defaults: 1 per week, 3 years.
+// AFFORD <price> [<n> PER DAY|WEEK|MONTH|YEAR] [FOR <n>Y]. Defaults: 1 per week, 3 years.
+// (It was BUY; BUY now only says it was renamed.) AFFORD is for things people buy: a
+// ticker, a market name or an investment word gets { error: 'investment' }, never a verdict.
 export const BUY_UNITS = { DAY: 365, WEEK: 52, MONTH: 12, YEAR: 1 };
 const UNIT_WORDS = {
   DAY: 'DAY', DAYS: 'DAY', WEEK: 'WEEK', WEEKS: 'WEEK', WK: 'WEEK', MONTH: 'MONTH', MONTHS: 'MONTH', MO: 'MONTH', YEAR: 'YEAR', YEARS: 'YEAR', YR: 'YEAR',
@@ -132,8 +145,24 @@ function parseYears(tok, next) {
   return { years: unit && unit.startsWith('M') ? n / 12 : n, used };
 }
 
-export function parseBuyArgs(args) {
-  const toks = args.filter((t) => t !== 'AT' && t !== 'X' && t !== 'TIMES' && t !== 'TIME');
+export const INVESTMENT_WORDS = new Set([
+  'SHARE', 'SHARES', 'STOCK', 'STOCKS', 'EQUITY', 'EQUITIES', 'ETF', 'ETFS', 'FUND', 'FUNDS', 'BOND', 'BONDS', 'TREASURY', 'TREASURIES',
+  'COIN', 'COINS', 'TOKEN', 'TOKENS', 'CRYPTO', 'OPTION', 'OPTIONS', 'CALL', 'CALLS', 'PUT', 'PUTS', 'FUTURE', 'FUTURES', 'CFD', 'CFDS',
+  'FOREX', 'FX', 'INDEX', 'REIT', 'REITS', 'PORTFOLIO', 'INVEST', 'INVESTMENT', 'TICKER', 'NFT', 'NFTS',
+]);
+const AFFORD_WORDS = new Set(['PER', 'A', 'EVERY', 'FOR', 'AT', 'X', 'TIMES', 'TIME', 'Y', 'YR', 'YRS', 'YEAR', 'YEARS', 'MO', 'MONTH', 'MONTHS', 'M', 'USD', ...Object.keys(UNIT_WORDS), ...Object.keys(ADVERBS)]);
+// A word that names an investment: an investment word, a named market (GOLD, BITCOIN,
+// EUR/USD) or anything shaped like a ticker that is not part of the AFFORD grammar.
+export function isInvestmentWord(tok) {
+  const t = String(tok).toUpperCase().replace(/^\$(?=[A-Z])/, '');
+  if (!/[A-Z]/.test(t) || AFFORD_WORDS.has(t)) return false;
+  if (/^\d+(\.\d+)?(Y|YR|YRS|YEARS?|M|MO|MONTHS?)$/.test(t)) return false;
+  return INVESTMENT_WORDS.has(t) || INVESTMENT_WORDS.has(t.replace(/S$/, '')) || TICKER_RE.test(t) || Boolean(matchInstrument([t]));
+}
+
+export function parseAffordArgs(args) {
+  if (args.some(isInvestmentWord)) return { error: 'investment' };
+  const toks = args.filter((t) => t !== 'AT' && t !== 'X' && t !== 'TIMES' && t !== 'TIME' && t !== 'USD');
   if (!toks.length || !looksNumeric(toks[0])) return { error: 'usage' };
   const price = parseAmountToken(toks[0]);
   if (!Number.isFinite(price) || price <= 0) return { error: 'amount' };
@@ -159,6 +188,7 @@ export function parseBuyArgs(args) {
   if (!(years > 0 && years <= 100)) return { error: 'years' };
   return { price, times, unit, years };
 }
+export const parseBuyArgs = parseAffordArgs; // the old name, for older imports
 
 // WAGE <per hour>. WAGE alone shows it, WAGE OFF clears it.
 export function parseWageArgs(args) {
@@ -261,9 +291,13 @@ export function parseCommand(raw, depth = 0) {
     const args = parseCpiArgs(rest);
     return { name: 'CPI', args, error: args.error, input: ['CPI', ...rest].join(' ') };
   }
-  if (head === 'BUY' && rest.length) {
-    const args = parseBuyArgs(rest);
-    return { name: 'BUY', args, error: args.error, input: ['BUY', ...rest].join(' ') };
+  if (head === 'AFFORD' && rest.length) {
+    const args = parseAffordArgs(rest);
+    return { name: 'AFFORD', args, error: args.error, input: ['AFFORD', ...rest].join(' ') };
+  }
+  // BUY was renamed AFFORD: typed, it says so; an old link (?c=BUY+...) opens AFFORD.
+  if (head === 'BUY') {
+    return { name: 'RENAMED', args: { from: 'BUY', to: ['AFFORD', ...rest].join(' ') }, input: ['BUY', ...rest].join(' ') };
   }
   if (head === 'WAGE') {
     const args = parseWageArgs(rest);
@@ -273,12 +307,17 @@ export function parseCommand(raw, depth = 0) {
     return { name: 'WHATIF', args: { tokens: rest }, input: ['WHATIF', ...rest].join(' ') };
   }
   if (head === '420' && !rest.length) return { name: 'FUNDING', input: '420' };
-  if (head === 'BUY') return { name: 'BUY', args: { error: 'usage' }, error: 'usage', input: 'BUY' };
+  if (head === 'AFFORD') return { name: 'AFFORD', args: { error: 'usage' }, error: 'usage', input: 'AFFORD' };
   const soon = SOON.find((s) => s.name === head);
   if (soon && !rest.length) return { name: 'SOON', args: { soon }, input: head };
   if (head === 'WATCH') {
     const args = parseWatchArgs(rest);
     return { name: 'WATCH', args, error: args.error, input: watchInput(args) || ['WATCH', ...rest].join(' '), mutates: Boolean(args.mutates), view: 'WATCH' };
+  }
+  if (head === 'DESK') {
+    const args = parseDeskArgs(rest);
+    const view = args.n ? `DESK ${args.n}` : 'DESK';
+    return { name: 'DESK', args, error: args.error, input: ['DESK', ...rest].join(' '), mutates: Boolean(args.reset), view };
   }
   if (head === 'PORTFOLIO') {
     const args = parsePfArgs(rest);
@@ -293,6 +332,8 @@ export function parseCommand(raw, depth = 0) {
     const fn = parseTickerFunction(toks);
     if (fn) return fn;
   }
+  const company = matchCompany(head, rest); if (company) return company;
+  const markets = matchMarkets(head, rest); if (markets) return markets;
   // Add new commands above this line: commands win over symbols of the same name.
   const quote = parseSymbolCommand(toks);
   if (quote) return quote;
@@ -300,7 +341,7 @@ export function parseCommand(raw, depth = 0) {
 }
 
 function isCommandHead(head) {
-  return SIMPLE.has(head) || head === '420' || head === 'PORTFOLIO' || head === 'CHART' || Boolean(FUNDAMENTALS[head])
+  return SIMPLE.has(head) || head === '420' || head === 'PORTFOLIO' || head === 'CHART' || head === 'DESK' || Boolean(FUNDAMENTALS[head])
     || COMMANDS.some((c) => c.name === head) || SOON.some((s) => s.name === head);
 }
 
@@ -326,9 +367,9 @@ export function fromQuery(search) {
 }
 
 // Commands that take arguments: Tab adds a space, and a bad argument shows the usage line.
-const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, ...EXTRA_TAKES_ARGS, FINANCIALS: parseFinancialsArgs, SCREEN: parseScreenArgs };
+const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, AFFORD: parseAffordArgs, WAGE: parseWageArgs, ...EXTRA_TAKES_ARGS, ...COMPANY_TAKES_ARGS, ...MARKETS_TAKES_ARGS, FINANCIALS: parseFinancialsArgs, SCREEN: parseScreenArgs };
 // Commands that run on their own but still show the usage line for bad words after them.
-const CHECKS_ARGS = { WATCH: parseWatchArgs, PORTFOLIO: parsePfArgs };
+const CHECKS_ARGS = { WATCH: parseWatchArgs, PORTFOLIO: parsePfArgs, DESK: parseDeskArgs };
 const commandFor = (word) => COMMANDS.find((c) => c.name === word || c.aliases?.includes(word));
 
 // Suggestions for the dropdown: [{ name, hint, value }].
@@ -453,10 +494,12 @@ const store = {
 const SCREENS = {
   HOME: homeScreen, HELP: helpScreen, MARKETS: marketsScreen, FX: fxScreen,
   QUOTE: quoteScreen, CPI: cpiScreen, RATES: ratesScreen, NEWS: newsScreen,
-  BUY: buyScreen, WAGE: buyScreen, WHATIF: whatifScreen, FUNDING: fundingScreen,
+  AFFORD: buyScreen, WAGE: buyScreen, WHATIF: whatifScreen, FUNDING: fundingScreen,
   WATCH: watchScreen, PORTFOLIO: portfolioScreen,
-  FINANCIALS: financialsScreen, SCREEN: screenScreen,
+  FINANCIALS: financialsScreen, SCREEN: screenScreen, DESK: deskScreen,
 };
+// What a saved-list command changes, for the "this link wants to change" question.
+const SAVED_LIST = { PORTFOLIO: ['Portfolio', 'portfolio'], WATCH: ['Watchlist', 'watchlist'], DESK: ['Desk', 'desk layout'] };
 const DEFAULT_TITLE = 'Bloombroke: the $32,000 terminal. Now $4.20 a month.';
 
 function boot() {
@@ -475,6 +518,17 @@ function boot() {
 
   if (window.matchMedia('(max-width: 639px)').matches) input.placeholder = 'Try AAPL or FX 500 USD THB';
 
+  // Embed mode: this page is a DESK panel. No header, tape, key bar or boot log; clicks
+  // open in the same panel, and the desk (the parent page) hears about every command.
+  const embed = isEmbedSearch(location.search) || document.documentElement.classList.contains('is-embed');
+  if (embed) document.documentElement.classList.add('is-embed');
+  const toParent = (msg) => { if (embed && window.parent !== window) window.parent.postMessage(msg, location.origin); };
+  let embedVisible = true;
+  let embedLinked = false;
+  let currentCmd = '';
+  // A screen (DESK) can take typed commands before they run here.
+  let commandHook = null;
+
   let cmdHistory = store.get('bb.history', []);
   let histIndex = cmdHistory.length;
   let draft = '';
@@ -492,6 +546,7 @@ function boot() {
   // items: the instruments on screen, so the line can say what is real time and what is delayed.
   function setUpdated(iso, stale, items) {
     setStatus(statusLine(iso, stale, items), stale ? 'warn' : '');
+    toParent({ type: 'bb:updated', iso: String(iso || ''), stale: Boolean(stale) });
   }
 
   // --- function keys ----------------------------------------------------------
@@ -595,18 +650,20 @@ function boot() {
       placeCursor();
       return;
     }
-    run(s.value);
+    run(s.value, { typed: true });
     if (coarse) input.blur();
   }
 
-  // --- live refresh: pause while the tab is hidden ----------------------------
+  // --- live refresh: pause while the tab is hidden, or the DESK panel is off screen --
   function liveTimer(fn, ms) {
     let lastRun = Date.now();
+    const paused = () => document.hidden || !embedVisible;
     const go = () => { lastRun = Date.now(); fn(); };
-    const id = setInterval(() => { if (!document.hidden) go(); }, ms);
-    const onVis = () => { if (!document.hidden && Date.now() - lastRun >= ms) go(); };
+    const id = setInterval(() => { if (!paused()) go(); }, ms);
+    const onVis = () => { if (!paused() && Date.now() - lastRun >= ms) go(); };
     document.addEventListener('visibilitychange', onVis);
-    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
+    window.addEventListener('bb:resume', onVis);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('bb:resume', onVis); };
   }
 
   // --- running commands -----------------------------------------------------
@@ -618,6 +675,7 @@ function boot() {
   // fromUrl: the command came from the address bar (a load, Back, a shared link).
   function render(raw, { fromUrl = false } = {}) {
     const cmd = parseCommand(raw);
+    currentCmd = raw;
     runCleanups();
     if (screenAbort) screenAbort.abort();
     screenAbort = new AbortController();
@@ -638,12 +696,23 @@ function boot() {
       // Like every(), but it skips while the tab is hidden and catches up when it is shown.
       live(fn, ms) { cleanups.push(liveTimer(fn, ms)); },
       onCleanup(fn) { cleanups.push(fn); },
+      // DESK: embed mode, the suggestion list, the parser, typed commands, typing.
+      embed, suggest, parseCommand,
+      setCommandHook(fn) { commandHook = fn; cleanups.push(() => { if (commandHook === fn) commandHook = null; }); },
+      typeCommand(text) {
+        input.focus();
+        input.value += text;
+        input.setSelectionRange(input.value.length, input.value.length);
+        renderSuggest();
+        placeCursor();
+      },
     };
-    const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name];
+    const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name] || COMPANY_SCREENS[cmd.name] || MARKETS_SCREENS[cmd.name];
     if (cmd.mutates && fromUrl) {
       // A link that changes saved lists never runs by itself: ask first.
-      view.innerHTML = panel('1', cmd.name === 'PORTFOLIO' ? 'Portfolio' : 'Watchlist', `
-        <p class="notice">This link wants to change your ${cmd.name === 'PORTFOLIO' ? 'portfolio' : 'watchlist'}.</p>
+      const [title, what] = SAVED_LIST[cmd.name] || SAVED_LIST.WATCH;
+      view.innerHTML = panel('1', title, `
+        <p class="notice">This link wants to change your ${what}.</p>
         <p class="muted">It runs <span class="code">${escapeHtml(cmd.input)}</span> on the list saved in this browser.</p>
         <p class="examples"><button type="button" class="pf-btn" data-cmd="${escapeHtml(cmd.input)}">RUN IT</button> <a class="code" href="${toQuery(cmd.view)}" data-cmd="${escapeHtml(cmd.view)}">No, just show ${escapeHtml(cmd.view)}</a></p>`, { cls: 'panel-solo' });
       setStatus('CONFIRM TO CHANGE YOUR SAVED LIST', 'warn');
@@ -651,6 +720,19 @@ function boot() {
       setStatus('LOADING...');
       const fn = mod.render(view, cmd, ctx);
       if (typeof fn === 'function') cleanups.push(fn);
+    } else if (cmd.name === 'RENAMED') {
+      const to = cmd.args.to;
+      if (fromUrl) {
+        // An old shared link: open AFFORD and put it in the address bar.
+        window.history.replaceState({ c: to }, '', toQuery(to));
+        render(to, { fromUrl: true });
+        return;
+      }
+      const example = to === 'AFFORD' ? 'AFFORD 1200' : to;
+      view.innerHTML = panel('1', 'Renamed', `
+        <p class="notice">${escapeHtml(RENAMED_NOTE)}</p>
+        <p class="muted">Try <a class="code" href="${toQuery(example)}" data-cmd="${escapeHtml(example)}">${escapeHtml(example)}</a>.</p>`, { cls: 'panel-solo' });
+      setStatus('BUY IS NOW AFFORD');
     } else if (cmd.name === 'SOON') {
       const s = cmd.args.soon;
       const alt = s.ticker ? `<a class="code" href="${toQuery(s.ticker)}" data-cmd="${escapeHtml(s.ticker)}">${escapeHtml(s.ticker)}</a> or ` : '';
@@ -666,19 +748,44 @@ function boot() {
     }
   }
 
-  function run(raw, { push = true, fromUrl = false } = {}) {
+  function remember(clean) {
+    if (cmdHistory[cmdHistory.length - 1] !== clean) {
+      cmdHistory.push(clean);
+      cmdHistory = cmdHistory.slice(-50);
+      store.set('bb.history', cmdHistory);
+    }
+  }
+
+  // typed: the command came from the command bar (Enter or a picked suggestion), so a
+  // screen that takes typed commands (DESK sends them to its focused panel) gets it first.
+  function run(raw, { push = true, fromUrl = false, typed = false } = {}) {
     const clean = tokenize(raw).join(' ') || DEFAULT_COMMAND;
+    // LOGIN (typed or a pasted key) never goes to a DESK panel or into history with its key.
+    const secret = parseCommand(clean).name === 'LOGIN';
+    if (typed && commandHook && !secret && commandHook(clean)) {
+      remember(clean);
+      histIndex = cmdHistory.length;
+      input.value = '';
+      draft = '';
+      closeSuggest();
+      placeCursor();
+      return;
+    }
+    if (embed) {
+      // A panel keeps one history entry, and tells the desk what it shows now.
+      const { url, kept } = urlFor(clean);
+      window.history.replaceState({ c: kept }, '', `${toQuery(url)}&embed=1`);
+      render(clean, { fromUrl });
+      toParent({ type: 'bb:cmd', c: kept });
+      return;
+    }
     if (push) {
       // A command that changes a saved list puts its screen in the URL, not itself.
       // LOGIN, LOGOUT and TAPE put their screen there too, and LOGIN's key goes nowhere.
       const { url, kept } = urlFor(clean);
       const q = toQuery(url);
       if (location.search !== q) window.history.pushState({ c: kept }, '', q);
-      if (cmdHistory[cmdHistory.length - 1] !== kept) {
-        cmdHistory.push(kept);
-        cmdHistory = cmdHistory.slice(-50);
-        store.set('bb.history', cmdHistory);
-      }
+      remember(kept);
     }
     histIndex = cmdHistory.length;
     input.value = '';
@@ -693,7 +800,7 @@ function boot() {
     if (active >= 0 && items[active] && !items[active].usage && !list.hidden) { pick(items[active]); return; }
     const value = input.value;
     if (!value.trim()) { run(fromQuery(location.search), { push: false, fromUrl: true }); return; }
-    run(value);
+    run(value, { typed: true });
     if (coarse) input.blur();
   });
 
@@ -760,6 +867,12 @@ function boot() {
     if (el) {
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
       e.preventDefault();
+      // A linked panel that lists tickers (WATCH, HEATMAP) stays put: the ticker goes to
+      // the other panels in its link group instead.
+      if (embed && embedLinked && !TICKER_SCREENS.includes(parseCommand(currentCmd).name) && tickerOf(el.dataset.cmd, parseCommand)) {
+        toParent({ type: 'bb:pick', c: tokenize(el.dataset.cmd).join(' ') });
+        return;
+      }
       run(el.dataset.cmd);
       if (!coarse) input.focus();
       return;
@@ -772,6 +885,23 @@ function boot() {
   });
 
   document.addEventListener('keydown', (e) => {
+    // In a DESK panel, function keys and the desk keys belong to the desk, and typing
+    // goes to the desk's command bar (which sends it to this panel).
+    if (embed) {
+      const inField = e.target.closest?.('input, select, textarea');
+      const deskKey = (e.altKey && e.key.startsWith('Arrow')) || (e.ctrlKey && (e.key === '[' || e.key === ']')) || e.key === 'Escape';
+      const fkey = FKEYS.some((k) => k.key === e.key) && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+      if (deskKey || fkey) {
+        e.preventDefault();
+        toParent({ type: 'bb:key', key: e.key, alt: e.altKey, shift: e.shiftKey, ctrl: e.ctrlKey });
+        return;
+      }
+      if (!inField && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.length === 1 && !/^[1-9]$/.test(e.key)) {
+        e.preventDefault();
+        toParent({ type: 'bb:type', key: e.key });
+        return;
+      }
+    }
     // A focused row (or any non-link element carrying a command) opens on Enter.
     if (e.key === 'Enter' && e.target !== input && e.target.matches?.('[data-cmd]:not(a):not(button)')) {
       e.preventDefault();
@@ -786,7 +916,7 @@ function boot() {
       if (!coarse) input.focus();
       return;
     }
-    // A stock screen's function bar: keys 1 to 7 while the command bar is empty.
+    // A stock screen's function bar: keys 1 to 9 while the command bar is empty.
     if (/^[1-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey
       && (e.target === input ? input.value === '' : !e.target.closest?.('input, select, textarea'))) {
       const item = screen.querySelector(`.fnbar [data-key="${e.key}"]`);
@@ -804,6 +934,23 @@ function boot() {
 
   window.addEventListener('popstate', () => render(urlFor(fromQuery(location.search)).url, { fromUrl: true }));
 
+  // --- DESK panel: messages from the desk, and a click here focuses this panel --------
+  if (embed) {
+    window.addEventListener('message', (e) => {
+      if (e.origin !== location.origin || e.source !== window.parent) return;
+      const m = e.data || {};
+      if (m.type === 'bb:run' && typeof m.c === 'string') run(m.c);
+      else if (m.type === 'bb:link') embedLinked = Boolean(m.on);
+      else if (m.type === 'bb:visible') {
+        const was = embedVisible;
+        embedVisible = Boolean(m.on);
+        if (!was && embedVisible) window.dispatchEvent(new Event('bb:resume'));
+      }
+    });
+    window.addEventListener('pointerdown', () => toParent({ type: 'bb:focus' }), true);
+    window.addEventListener('focusin', () => toParent({ type: 'bb:focus' }));
+  }
+
   // --- clock ----------------------------------------------------------------
   const clockEl = $('clock');
   const statusEl = $('market-status');
@@ -814,8 +961,10 @@ function boot() {
     statusEl.dataset.open = String(open);
     statusEl.querySelector('.status-text').textContent = open ? 'MARKET OPEN' : 'MARKET CLOSED';
   }
-  tick();
-  setInterval(tick, 1000);
+  if (!embed) {
+    tick();
+    setInterval(tick, 1000);
+  }
 
   // --- ticker tape ----------------------------------------------------------
   // Prices update in place, so the scroll does not jump back to the start every 15 s.
@@ -856,9 +1005,11 @@ function boot() {
       if (!tapeIds) tape.innerHTML = '<span class="tape-empty">MARKET DATA IS TAKING A BREAK.</span>';
     }
   }
-  loadTape();
-  liveTimer(loadTape, 15_000);
-  window.addEventListener('bb:tape', () => { tapeIds = ''; loadTape(); });
+  if (!embed) {
+    loadTape();
+    liveTimer(loadTape, 15_000);
+    window.addEventListener('bb:tape', () => { tapeIds = ''; loadTape(); });
+  }
 
   // --- share: copy the current link, confirm in the status line ---------------
   async function copyText(text) {
@@ -888,14 +1039,17 @@ function boot() {
 
   // --- first render ---------------------------------------------------------
   const initial = urlFor(fromQuery(location.search)).url; // a link never runs LOGIN or TAPE ADD
-  window.history.replaceState({ c: initial }, '', location.search ? toQuery(initial) : location.pathname);
-  const firstVisit = !store.get('bb.booted', false);
+  window.history.replaceState({ c: initial }, '', embed ? `${toQuery(initial)}&embed=1` : location.search ? toQuery(initial) : location.pathname);
+  const firstVisit = !embed && !store.get('bb.booted', false);
   if (firstVisit && !location.search && !reduceMotion.matches) {
     store.set('bb.booted', true);
     setStatus('STARTING');
-    bootSequence(screen, () => render(initial, { fromUrl: true }));
+    bootSequence(screen, () => { render(initial, { fromUrl: true }); ensureConsent(); });
   } else {
     render(initial, { fromUrl: true });
+    // First visit: the notice, at once on a deep link. Never inside a DESK panel: the
+    // desk page around it shows it, and the answer is shared (same site, same storage).
+    if (!embed) ensureConsent();
   }
   if (!coarse) input.focus();
   placeCursor();

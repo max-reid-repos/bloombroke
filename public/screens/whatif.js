@@ -1,4 +1,4 @@
-// WHATIF: "the stock you should have bought". A picker of things people bought, and a
+// WHATIF: in hindsight, the maker's stock instead of the thing. A picker of things people bought, and a
 // receipt of what that money would be worth today in the maker's stock.
 //
 // WHATIF                      the picker
@@ -83,16 +83,17 @@ export function fmtMonth(key) {
 }
 
 // One dry line, picked by outcome. The same command always gets the same line.
+// Hindsight only: the lines describe what happened, never what anyone should do.
 export const QUIPS = {
   big: [
-    'You bought the product. You should have bought the company.',
+    'In hindsight, the company did better than the product.',
     'The gadget is in a drawer somewhere. The stock is not.',
     'Somewhere, a shareholder thanks you for your purchase.',
-    'The receipt says you spent it. The chart says you could have kept it.',
+    'The receipt says you spent it. Hindsight says it grew.',
   ],
   gain: [
-    'Not bad. Still, the stock did better than the gadget.',
-    'The stock beat the stuff. It usually does.',
+    'Not bad. In hindsight, the stock did better than the gadget.',
+    'This time, the stock beat the stuff.',
     'The money grew. You just were not holding it.',
     'A decent return, on money you already spent.',
   ],
@@ -103,6 +104,39 @@ export const QUIPS = {
     'The product held up better than the stock.',
   ],
 };
+export const WHATIF_TITLE = 'WHATIF: what if you had bought the stock?';
+export const HINDSIGHT_NOTE = 'Hindsight only. Past returns do not predict future returns. Not a recommendation.';
+
+// "−43%". Drops are shown with a real minus sign.
+export function fmtDrop(pct) {
+  if (!Number.isFinite(pct)) return '--';
+  const r = Math.round(Math.abs(pct));
+  return r === 0 ? '0%' : `−${r}%`;
+}
+const dropWhen = (month) => (month === 'now' ? 'today' : /^\d{4}-\d{2}$/.test(month || '') ? fmtMonth(month) : '');
+
+// The risk line under every result: the worst fall of a holding between its purchase and
+// today, at month-end prices. Several holdings: the worst one, named.
+export function riskLine(d) {
+  const w = d.risk?.worst;
+  if (!w) return 'Worst drop along the way: not available right now. Prices can fall a long way before they recover.';
+  if (w.pct > -0.5) return 'Worst drop along the way: none at month-end prices, so far. That can change.';
+  const when = dropWhen(w.month);
+  const who = d.rows.length > 1 ? `, in ${w.ticker} (${w.name})` : '';
+  return `Worst drop along the way: ${fmtDrop(w.pct)}${when ? ` (${when})` : ''}${who}, based on month-end prices.`;
+}
+
+// Several holdings: every one's worst drop, in the order of the table.
+export function dropList(rows) {
+  const parts = rows.map((r) => {
+    const w = r.worstDrop;
+    if (!w) return `${r.name} --`;
+    const when = w.pct > -0.5 ? '' : dropWhen(w.month);
+    return `${r.name} ${fmtDrop(w.pct)}${when ? ` (${when})` : ''}`;
+  });
+  return `Worst drop along the way, by holding, month-end prices: ${parts.join('; ')}.`;
+}
+
 export function hashText(s) {
   let h = 2166136261;
   for (const c of String(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
@@ -146,7 +180,7 @@ function itemRow(p, picks) {
 
 function renderPicker(el, ctx, cat, picks) {
   const groups = groupsOf(cat);
-  el.innerHTML = panel('1', 'WHATIF: the stock you should have bought', `
+  el.innerHTML = panel('1', WHATIF_TITLE, `
     <p class="wi-intro">Pick the things you bought. See what that money would be worth today in the maker's stock.</p>
     <div class="wi-groups" role="listbox" aria-multiselectable="true" aria-label="Things you bought" data-own-focus>
       ${groups.map((g) => `<section class="wi-group">
@@ -355,6 +389,7 @@ function resultHtml(d, key, links) {
     <p class="hero num"><span class="hero-value ${dir}">${esc(fmtUsd(t.value))}</span><span class="hero-unit">TODAY</span></p>
     <p class="wi-mult num"><span class="${dir}">${esc(fmtX(t.multiple))}</span> <span class="${dir}">${esc(pct)}</span></p>
     <p class="wi-quip">${esc(quipFor(t.multiple, key))}</p>
+    <p class="wi-risk">${esc(riskLine(d))}</p>
     </div>
     ${d.cert ? `<div class="wi-certcol">${certHtml(d.cert, links)}</div>` : ''}
     <div class="wi-body">
@@ -365,6 +400,7 @@ function resultHtml(d, key, links) {
         <tfoot><tr><th scope="row" class="name">Total</th><td class="wi-when"></td><td class="num">${esc(fmtUsd(t.paid))}</td><td class="wi-sh"></td><td class="num last ${dir}">${esc(fmtUsd(t.value))}</td><td class="num ${dir}">${esc(fmtX(t.multiple))}</td></tr></tfoot>
       </table>
     </div>
+    ${d.rows.length > 1 ? `<p class="wi-risk-list">${esc(dropList(d.rows))}</p>` : ''}
     <p class="wi-source">Prices: close on purchase date, split-adjusted, price return only. Live price as of ${esc(asOf)}${d.stale ? ' (last known)' : ''}. Source: ${esc(d.source)}.</p>
     <div class="wi-actions">
       <a class="code" href="${esc(q(editCmd))}" data-cmd="${esc(editCmd)}">CHANGE PICKS</a>
@@ -379,6 +415,8 @@ function resultHtml(d, key, links) {
         <li>Worth now: those shares times today's price.</li>
         <li>Habits: one buy a month, on the first trading day, of what that month cost you.</li>
         <li>Price return only. Dividends and spin-offs are left out, so long holds come out a little low.</li>
+        <li>Worst drop: the biggest fall from a high to a later low, using the price on the day of the first buy, each month-end close after it and today's price. Falls within a month can be deeper.</li>
+        <li>Hindsight: the list is picked after the fact. Nobody knew these results when the money was spent. Costs, taxes and currency moves are left out.</li>
       </ul>
     </details>
     <details class="how">
@@ -405,9 +443,9 @@ export function render(el, cmd, ctx) {
     return ctx.fetchJSON(`/api/whatif?${new URLSearchParams({ c: tokens.join(' ') })}`, { signal: ctx.signal }).then((d) => {
       if (d.picker) { renderPicker(el, ctx, cat, plan.picks); return; }
       const links = d.cert ? shareLinks(d.cert, location.origin) : null;
-      el.innerHTML = panel('1', 'WHATIF: the stock you should have bought', resultHtml(d, key, links), {
+      el.innerHTML = panel('1', WHATIF_TITLE, resultHtml(d, key, links), {
         cls: 'panel-solo', meta: `${d.rows.length} ${d.rows.length === 1 ? 'ITEM' : 'ITEMS'}`,
-      }) + '<p class="footnote">Not financial advice. Past returns say nothing about future ones.</p>';
+      }) + `<p class="footnote">${esc(HINDSIGHT_NOTE)}</p>`;
       sizeCert(el);
       el.querySelector('[data-copy]')?.addEventListener('click', async (e) => {
         const ok = await copyText(e.currentTarget.dataset.copy);

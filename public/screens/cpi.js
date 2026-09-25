@@ -32,7 +32,7 @@ export function render(el, cmd, ctx) {
     ${panel('1', `CPI ${year}`, LOADING, { metaId: 'cpi-meta' })}
     ${panel('2', `Prices since ${year}`, `<div class="chart-host" id="cpi-chart">${LOADING}</div>`, { metaId: 'cpi-ch-meta', bodyCls: 'flush' })}
   </div>
-  <p class="footnote">CPI-U, all items, US city average, from the Bureau of Labor Statistics. Annual averages, plus the latest month.</p>`;
+  <p class="footnote">CPI-U, all items, US city average, from the US Bureau of Labor Statistics. Annual averages, plus the latest month (MONTHLY). Not financial advice.</p>`;
   const [body] = el.querySelectorAll('.panel-body');
   const meta = el.querySelector('#cpi-meta');
   const chMeta = el.querySelector('#cpi-ch-meta');

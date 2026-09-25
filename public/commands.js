@@ -26,6 +26,7 @@ import * as loan from './screens/loan.js';
 import * as compound from './screens/compound.js';
 import * as pro from './screens/pro.js';
 import * as tape from './screens/tape.js';
+import * as legal from './screens/legal.js';
 
 export const EXTRA = [
   { name: 'WORLD', group: 'Markets', hint: 'World stock indexes by region, open or closed', usage: 'WORLD', example: 'WORLD', screen: world },
@@ -41,8 +42,8 @@ export const EXTRA = [
   { name: 'DIVIDENDS', group: 'Company', hint: 'Dividend yield and every payment', usage: 'DIVIDENDS <ticker>', example: 'DIVIDENDS PEP', examples: ['DIVIDENDS PEP', 'DIVIDENDS AAPL'], screen: dividends, takesArgs: true },
   { name: 'NEWS', id: 'TICKERNEWS', group: 'Company', hint: 'Headlines about one company', usage: 'NEWS <ticker>', example: 'NEWS AAPL', examples: ['NEWS AAPL', 'NEWS TSLA'], screen: tickernews },
   { name: 'CURVE', group: 'Rates and FX', hint: 'US Treasury yield curve: today, 1 month and 1 year ago', usage: 'CURVE', example: 'CURVE', screen: curve },
-  { name: 'BONDS', group: 'Rates and FX', hint: '10-year government bond yields by country', usage: 'BONDS', example: 'BONDS', screen: bonds },
-  { name: 'FXMATRIX', group: 'Rates and FX', hint: 'Cross rates for nine currencies', usage: 'FXMATRIX', example: 'FXMATRIX', screen: fxmatrix },
+  { name: 'BONDS', group: 'Rates and FX', hint: 'Government bond yields by country: 2Y to 30Y, spreads, curves', usage: 'BONDS [SPREADS|CURVE]', example: 'BONDS', examples: ['BONDS', 'BONDS SPREADS', 'BONDS CURVE'], screen: bonds },
+  { name: 'FXMATRIX', group: 'Rates and FX', hint: 'Cross rates for nine currencies, or HEAT for today\'s moves', usage: 'FXMATRIX [HEAT]', example: 'FXMATRIX', examples: ['FXMATRIX', 'FXMATRIX HEAT'], screen: fxmatrix },
   { name: 'EARNINGS', group: 'Calendars', hint: 'Who reports earnings today, or this week', usage: 'EARNINGS [day|WEEK]', example: 'EARNINGS', examples: ['EARNINGS', 'EARNINGS WEEK', 'EARNINGS TOMORROW'], screen: earnings },
   { name: 'CALENDAR', group: 'Calendars', hint: "This week's economic events: jobs, inflation, central banks", usage: 'CALENDAR [US|ALL]', example: 'CALENDAR', examples: ['CALENDAR', 'CALENDAR ALL'], screen: calendar },
   { name: 'LOAN', group: 'Money tools', hint: "Monthly payment and total interest, at today's mortgage rate or yours", usage: 'LOAN <amount> [years]', example: 'LOAN 400000 30Y', examples: ['LOAN 400000 30Y', 'LOAN 25000 5Y 7.9%'], screen: loan, takesArgs: true },
@@ -51,6 +52,9 @@ export const EXTRA = [
   { name: 'TAPE', group: 'Pro', hint: 'Your own ticker tape (Pro)', usage: 'TAPE ADD|REMOVE <tickers>, TAPE RESET', example: 'TAPE', examples: ['TAPE', 'TAPE ADD AAPL', 'TAPE RESET'], screen: tape, takesArgs: true, url: 'TAPE' },
   { name: 'LOGIN', group: 'Pro', hint: 'Use your Pro key on this device', usage: 'LOGIN <key>', example: 'LOGIN', screen: pro.loginCommand, takesArgs: true, url: 'PRO', secret: true },
   { name: 'LOGOUT', group: 'Pro', hint: 'Log this device out of Pro', usage: 'LOGOUT', example: 'LOGOUT', screen: pro.logoutCommand, url: 'PRO' },
+  { name: 'TERMS', group: 'Legal', hint: 'Terms of Use: information only, not investment advice', usage: 'TERMS', example: 'TERMS', screen: legal },
+  { name: 'PRIVACY', group: 'Legal', hint: 'Privacy Policy: what we collect and why', usage: 'PRIVACY', example: 'PRIVACY', screen: legal },
+  { name: 'DISCLAIMER', group: 'Legal', hint: 'Disclaimer: data may be delayed or wrong, investing is risky', usage: 'DISCLAIMER', example: 'DISCLAIMER', screen: legal },
 ];
 
 // Help and suggestion entries, in the same shape as the core COMMANDS.

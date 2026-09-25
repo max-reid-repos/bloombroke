@@ -43,7 +43,8 @@ test('tickers: one word of 1-5 letters, optional class and range', () => {
   assert.equal(parseCommand('AAPL 7Y').name, 'UNKNOWN');
   assert.equal(parseCommand('NEWS').name, 'NEWS');
   assert.equal(parseCommand('rates').name, 'RATES');
-  assert.equal(parseCommand('BUY').error, 'usage');
+  assert.equal(parseCommand('AFFORD').error, 'usage');
+  assert.equal(parseCommand('BUY').name, 'RENAMED');
   assert.equal(parseCommand('WHATIF').name, 'WHATIF');
   assert.deepEqual(parseCommand('whatif iphone6 latte:3y').args, { tokens: ['IPHONE6', 'LATTE:3Y'] });
   assert.equal(parseCommand('420').name, 'FUNDING');
@@ -77,7 +78,7 @@ test('URL state round-trips', () => {
 test('suggestions match command prefixes', () => {
   assert.deepEqual(suggest('ma').map((s) => s.name), ['MARKETS']);
   assert.deepEqual(suggest('m').map((s) => s.name), ['MARKETS', 'MOVERS']);
-  assert.deepEqual(suggest('F').map((s) => s.name), ['FX', 'FXMATRIX', 'FINANCIALS']);
+  assert.deepEqual(suggest('F').map((s) => s.name), ['FX', 'FXMATRIX', 'FEDPATH', 'FINANCIALS', 'FILINGS']);
   assert.deepEqual(suggest('H').map((s) => s.name), ['HOME', 'HEATMAP', 'HISTORY', 'HELP']);
   assert.deepEqual(suggest('cp').map((s) => s.name), ['CPI']);
   assert.equal(suggest('').length, COMMANDS.length);
