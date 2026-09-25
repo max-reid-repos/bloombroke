@@ -20,23 +20,21 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="wrap topbar-inner">
-      <a class="wordmark" href="/?c=MARKETS" data-cmd="MARKETS" aria-label="Bloombroke home">BLOOMBROKE</a>
-      <div class="clock" aria-live="off">
-        <span class="label">New York</span>
-        <time id="clock" class="clock-time">--:--:--</time>
-        <span id="market-status" class="status" data-open="false"><span class="status-dot" aria-hidden="true"></span><span class="status-text">MARKET CLOSED</span></span>
-      </div>
+    <a class="wordmark" href="/?c=HOME" data-cmd="HOME" aria-label="Bloombroke home">BLOOMBROKE</a>
+    <div class="clock" aria-live="off">
+      <span class="label">NEW YORK</span>
+      <time id="clock" class="clock-time">--:--:--</time>
+      <span id="market-status" class="status" data-open="false"><span class="status-dot" aria-hidden="true"></span><span class="status-text">MARKET CLOSED</span></span>
     </div>
   </header>
 
   <div class="commandbar">
-    <form id="cmd-form" class="wrap cmd" autocomplete="off" role="search">
+    <form id="cmd-form" class="cmd" autocomplete="off" role="search">
       <span class="prompt" aria-hidden="true">&gt;</span>
       <div class="cmd-field">
-        <input id="cmd" name="c" type="text" spellcheck="false" autocapitalize="characters" autocorrect="off"
+        <input id="cmd" name="c" type="text" maxlength="64" spellcheck="false" autocapitalize="characters" autocorrect="off"
                enterkeyhint="go" aria-label="Command" aria-autocomplete="list" aria-controls="suggest"
-               aria-expanded="false" placeholder="Try FX 500 USD THB or HELP">
+               aria-expanded="false" placeholder="Type a command: AAPL, FX 500 USD THB, CPI 100 2015, HELP">
         <span id="cursor" class="cursor" aria-hidden="true"></span>
         <span id="measure" class="measure" aria-hidden="true">M</span>
       </div>
@@ -44,19 +42,19 @@
       <button type="button" id="share" class="share" aria-label="Copy a link to this screen">SHARE</button>
       <ul id="suggest" class="suggest" role="listbox" hidden></ul>
     </form>
-    <nav class="wrap chips" aria-label="Quick commands">
-      <button type="button" class="chip" data-cmd="MARKETS">MARKETS</button>
-      <button type="button" class="chip" data-cmd="FX 100 USD EUR">FX</button>
-      <button type="button" class="chip" data-cmd="HELP">HELP</button>
-    </nav>
   </div>
 
-  <main id="screen" class="wrap screen" tabindex="-1" aria-live="polite"></main>
+  <main id="screen" class="screen" tabindex="-1" aria-live="polite"></main>
 
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
-
-  <footer class="tape" aria-label="Market ticker">
-    <div class="tape-track" id="tape"></div>
-  </footer>
+  <div class="dock">
+    <div class="statusline" role="status" aria-live="polite">
+      <span id="status-msg" class="status-msg">READY</span>
+      <span class="status-note">DATA MAY BE DELAYED. NOT FINANCIAL ADVICE.</span>
+    </div>
+    <footer class="tape" aria-label="Market ticker">
+      <div class="tape-track" id="tape"></div>
+    </footer>
+    <nav id="keybar" class="keybar" aria-label="Function keys"></nav>
+  </div>
 </body>
 </html>

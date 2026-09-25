@@ -1,6 +1,7 @@
 // FX: convert an amount between two currencies, with a 30 day chart of the rate.
 
-import { fmtPct, dirOf, digitsHtml } from './markets.js';
+import { esc, q, fmtPct, dirOf, panel, LOADING } from './markets.js';
+import { mountChart } from './quote.js';
 
 const MINUS = '−';
 
@@ -25,69 +26,53 @@ export function fmtRate(r) {
   return r.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-export function sparkline(points, { width = 640, height = 120, pad = 6 } = {}) {
-  if (!points || points.length < 2) return '';
-  const vals = points.map((p) => p.v);
-  const min = Math.min(...vals);
-  const max = Math.max(...vals);
-  const span = max - min || 1;
-  const x = (i) => (i / (points.length - 1)) * width;
-  const y = (v) => pad + (1 - (v - min) / span) * (height - pad * 2);
-  const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join('');
-  const area = `${line}L${width},${height}L0,${height}Z`;
-  const lx = x(points.length - 1);
-  const ly = y(vals[vals.length - 1]);
-  return `<svg class="spark" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="30 day chart of the rate">
-    <defs><linearGradient id="spark-fill" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="var(--accent)" stop-opacity=".22"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/>
-    </linearGradient></defs>
-    <path d="${area}" fill="url(#spark-fill)" stroke="none"/>
-    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>
-    <circle cx="${lx}" cy="${ly}" r="3.5" fill="var(--accent)" vector-effect="non-scaling-stroke" class="spark-dot"/>
-  </svg>`;
+// The amount for the "flip it" link: full precision, plain digits, never exponent notation.
+export function flipAmount(n) {
+  if (!Number.isFinite(n) || n <= 0) return '0';
+  return n.toLocaleString('en-US', { useGrouping: false, maximumSignificantDigits: 15 });
 }
 
 function fmtDate(iso) {
   const d = new Date(iso + 'T12:00:00Z');
-  return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).toUpperCase();
 }
 
-function examplesHtml(examples, esc) {
-  const q = (c) => '?' + new URLSearchParams({ c }).toString();
-  return examples.map((e) => `<a class="code" href="${q(e)}" data-cmd="${esc(e)}">${esc(e)}</a>`).join(' ');
+function examplesHtml(examples) {
+  return examples.map((e) => `<a class="code" href="${esc(q(e))}" data-cmd="${esc(e)}">${esc(e)}</a>`).join(' ');
 }
 
 const DEFAULT_EXAMPLES = ['FX 500 USD THB', 'FX 100 EUR USD', 'FX 20000 JPY GBP', 'FX USD CAD'];
 
-function errorView(el, title, detail, examples, esc) {
-  el.innerHTML = `
-    <div class="screen-head"><h1 class="eyebrow">FX</h1></div>
+function errorView(el, title, detail, examples) {
+  el.innerHTML = panel('1', 'FX', `
     <p class="notice">${esc(title)}</p>
     ${detail ? `<p class="muted">${detail}</p>` : ''}
-    <p class="muted examples">Try ${examplesHtml(examples || DEFAULT_EXAMPLES, esc)}</p>`;
+    <p class="muted examples">Try ${examplesHtml(examples || DEFAULT_EXAMPLES)}</p>`, { cls: 'panel-solo' });
 }
 
 export function render(el, cmd, ctx) {
-  const esc = ctx.escapeHtml;
   const a = cmd.args || {};
   if (cmd.error) {
     const title = cmd.error === 'code'
       ? 'Currencies are three letter codes, like USD or EUR.'
       : cmd.error === 'amount'
-        ? 'That amount does not look like a number.'
+        ? 'That amount does not look right. Use digits, up to 1,000,000,000,000.'
         : 'FX needs an amount and two currencies.';
-    errorView(el, title, 'Format: <span class="code">FX &lt;amount&gt; &lt;from&gt; &lt;to&gt;</span>. The amount is optional.', null, esc);
+    errorView(el, title, 'Format: <span class="code">FX &lt;amount&gt; &lt;from&gt; &lt;to&gt;</span>. The amount is optional.', null);
+    ctx.status('FX: CHECK THE FORMAT', 'warn');
     return;
   }
 
-  el.innerHTML = `
-    <div class="screen-head"><h1 class="eyebrow">FX</h1><p class="meta" id="fx-meta">Loading</p></div>
-    <div class="fx is-loading" aria-busy="true">
-      <p class="fx-from num">${esc(fmtMoney(a.amount, a.from))} ${esc(a.from)} =</p>
-      <p class="hero num"><span class="hero-value skel-bar"></span><span class="hero-unit">${esc(a.to)}</span></p>
-      <p class="fx-to"><span class="skel-bar skel-short"></span></p>
-      <p class="fx-rate"><span class="skel-bar skel-long"></span></p>
-    </div>`;
+  el.innerHTML = `<div class="stack">
+    ${panel('1', `FX ${a.from}/${a.to}`, LOADING, { metaId: 'fx-meta' })}
+    ${panel('2', `${a.from}/${a.to} 30 days`, `<div class="chart-host" id="fx-chart">${LOADING}</div>`, { metaId: 'fx-ch-meta', bodyCls: 'flush' })}
+  </div>`;
+  const [body] = el.querySelectorAll('.panel-body');
+  const meta = el.querySelector('#fx-meta');
+  const chMeta = el.querySelector('#fx-ch-meta');
+  const host = el.querySelector('#fx-chart');
+  let chartCleanup = null;
+  ctx.onCleanup(() => chartCleanup?.());
 
   const params = new URLSearchParams({ amount: String(a.amount), from: a.from, to: a.to });
   ctx.fetchJSON(`/api/fx?${params}`, { signal: ctx.signal }).then((d) => {
@@ -95,42 +80,44 @@ export function render(el, cmd, ctx) {
     const last = d.series[d.series.length - 1]?.v;
     const chg = first ? ((last - first) / first) * 100 : 0;
     const vals = d.series.map((p) => p.v);
-    const dir = dirOf(Math.round(chg * 100));
     const heroText = fmtMoney(d.result, d.to);
-    const size = heroText.length > 14 ? ' is-xlong' : heroText.length > 10 ? ' is-long' : '';
-    el.innerHTML = `
-      <div class="screen-head">
-        <h1 class="eyebrow">FX</h1>
-        <p class="meta${d.stale ? ' is-stale' : ''}">${d.stale ? 'Last known rate' : 'ECB reference rate'}, ${esc(fmtDate(d.date))}</p>
-      </div>
-      <div class="fx is-revealed">
+    const size = heroText.length > 18 ? ' is-xlong' : heroText.length > 13 ? ' is-long' : '';
+    const flip = `FX ${flipAmount(d.result)} ${d.to} ${d.from}`;
+    meta.textContent = `${d.stale ? 'LAST KNOWN RATE' : 'ECB REFERENCE RATE'} ${fmtDate(d.date)}`;
+    body.innerHTML = `
+      <div class="fx">
         <p class="fx-from"><span class="num">${esc(fmtMoney(d.amount, d.from))}</span> ${esc(d.from)} <span class="dim">${esc(d.fromName)}</span> =</p>
-        <p class="hero num${size}"><span class="hero-value">${digitsHtml(esc(heroText), 1)}</span><span class="hero-unit">${esc(d.to)}</span></p>
+        <p class="hero num${size}"><span class="hero-value">${esc(heroText)}</span><span class="hero-unit">${esc(d.to)}</span></p>
         <p class="fx-to dim">${esc(d.toName)}</p>
-        <p class="fx-rate num">1 ${esc(d.from)} = ${esc(fmtRate(d.rate))} ${esc(d.to)}<span class="sep" aria-hidden="true"></span><span class="dim">1 ${esc(d.to)} = ${esc(fmtRate(1 / d.rate))} ${esc(d.from)}</span></p>
-      </div>
-      <figure class="chart">
-        <figcaption class="chart-head">
-          <span class="eyebrow">30 days</span>
-          <span class="chart-stats num">
-            <span><span class="dim">Low</span> ${esc(fmtRate(Math.min(...vals)))}</span>
-            <span><span class="dim">High</span> ${esc(fmtRate(Math.max(...vals)))}</span>
-            <span class="${dir}">${esc(fmtPct(chg))}</span>
-          </span>
-        </figcaption>
-        ${sparkline(d.series)}
-        <div class="chart-axis dim num"><span>${esc(fmtDate(d.series[0].d))}</span><span>${esc(fmtDate(d.date))}</span></div>
-      </figure>
-      <p class="muted swap">Flip it: <a class="code" href="?${new URLSearchParams({ c: `FX ${Math.round(d.result * 100) / 100} ${d.to} ${d.from}` })}" data-cmd="FX ${Math.round(d.result * 100) / 100} ${esc(d.to)} ${esc(d.from)}">FX ${esc(d.to)} ${esc(d.from)}</a></p>`;
+        <dl class="stats stats-row">
+          <div class="stat"><dt>Rate</dt><dd class="num">1 ${esc(d.from)} = ${esc(fmtRate(d.rate))} ${esc(d.to)}</dd></div>
+          <div class="stat"><dt>Inverse</dt><dd class="num">1 ${esc(d.to)} = ${esc(fmtRate(1 / d.rate))} ${esc(d.from)}</dd></div>
+          <div class="stat"><dt>30D low</dt><dd class="num">${esc(fmtRate(Math.min(...vals)))}</dd></div>
+          <div class="stat"><dt>30D high</dt><dd class="num">${esc(fmtRate(Math.max(...vals)))}</dd></div>
+        </dl>
+        <p class="muted swap">Flip it: <a class="code" href="${esc(q(flip))}" data-cmd="${esc(flip)}">FX ${esc(d.to)} ${esc(d.from)}</a></p>
+      </div>`;
+    const base = `<span class="num ${dirOf(Math.round(chg * 100))}">${esc(fmtPct(chg))}</span>`;
+    chMeta.innerHTML = base;
+    host.textContent = '';
+    const pts = d.series.map((p) => ({ t: Date.parse(p.d + 'T12:00:00Z'), v: p.v }));
+    const dayFmt = (t) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase();
+    chartCleanup = mountChart(host, pts, {
+      fmtY: fmtRate, fmtX: dayFmt, label: `${d.from} to ${d.to}, 30 days`,
+      onHover: (p) => { chMeta.innerHTML = p ? `<span class="num">${esc(dayFmt(p.t))} ${esc(fmtRate(p.v))}</span>` : base; },
+    });
+    ctx.updated(d.updated, d.stale);
   }).catch((err) => {
     if (err.name === 'AbortError') return;
     if (err.code === 'unknown_currency') {
       const codes = (err.body?.unknown || []).join(', ');
       const supported = (err.body?.supported || []).join(' ');
       errorView(el, `We do not know the currency ${codes}.`,
-        supported ? `Supported: <span class="codes">${esc(supported)}</span>` : '', err.body?.examples, esc);
+        supported ? `Supported: <span class="codes">${esc(supported)}</span>` : '', err.body?.examples);
+      ctx.status(`UNKNOWN CURRENCY ${codes}`, 'warn');
     } else {
-      errorView(el, err.message, '', null, esc);
+      errorView(el, err.message, '', null);
+      ctx.status('FX: NO DATA', 'warn');
     }
   });
 }

@@ -1,43 +1,75 @@
-// Bloombroke front end: command bar, router and URL state.
+// Bloombroke front end: command bar, router, URL state, status line and function keys.
 // Pure helpers are exported so node:test can import this file; the DOM wiring
 // only runs in a browser.
 
 import * as helpScreen from './screens/help.js';
+import * as homeScreen from './screens/home.js';
 import * as marketsScreen from './screens/markets.js';
 import * as fxScreen from './screens/fx.js';
-import { fmtNum, fmtPct, dirOf } from './screens/markets.js';
+import * as quoteScreen from './screens/quote.js';
+import * as cpiScreen from './screens/cpi.js';
+import * as ratesScreen from './screens/rates.js';
+import * as newsScreen from './screens/news.js';
+import { fmtNum, fmtPct, dirOf, cmdForInstrument, nyTime, panel } from './screens/markets.js';
 
 export const COMMANDS = [
-  { name: 'MARKETS', hint: 'World markets at a glance', usage: 'MARKETS', example: 'MARKETS' },
-  { name: 'FX', hint: 'Convert money between currencies', usage: 'FX <amount> <from> <to>', example: 'FX 500 USD THB' },
-  { name: 'HELP', hint: 'Every command, with examples', usage: 'HELP', example: 'HELP' },
+  { name: 'HOME', group: 'Markets', hint: 'Markets, S&P 500, currencies and news on one screen', usage: 'HOME', example: 'HOME' },
+  { name: 'MARKETS', group: 'Markets', hint: 'World markets at a glance', usage: 'MARKETS', example: 'MARKETS' },
+  { name: 'RATES', group: 'Markets', hint: 'The interest rates that touch your money', usage: 'RATES', example: 'RATES' },
+  { name: 'NEWS', group: 'Markets', hint: 'Headlines that move markets', usage: 'NEWS', example: 'NEWS' },
+  { name: 'FX', group: 'Money tools', hint: 'Convert money between currencies', usage: 'FX <amount> <from> <to>', example: 'FX 500 USD THB' },
+  { name: 'CPI', group: 'Money tools', hint: 'What money from a past year is worth today', usage: 'CPI <amount> <year>', example: 'CPI 100 2015' },
+  { name: 'HELP', group: 'Help', hint: 'Every command, with examples', usage: 'HELP', example: 'HELP' },
 ];
 
+export const TICKER_HELP = {
+  name: 'AAPL', group: 'Markets', hint: 'Any ticker: price, chart and key numbers', usage: '<ticker> [1D|1M|6M|1Y|5Y]', examples: ['AAPL', 'TSLA 5Y', 'NVDA', 'BRK.B'],
+};
+
 export const SOON = [
-  { name: 'AAPL', hint: 'Any ticker: price, chart and what moved it' },
-  { name: 'CPI', hint: 'Inflation, in plain words' },
-  { name: 'RATES', hint: 'The interest rates that touch your money' },
-  { name: 'NEWS', hint: 'Headlines that move markets' },
-  { name: 'BUY', hint: 'Practice trading with play money' },
   { name: 'WHATIF', hint: 'What if you had bought ten years ago' },
+  { name: 'BUY', hint: 'Practice trading with play money' },
   { name: 'PRO', hint: 'Everything, for $4.20 a month' },
 ];
 
-const SCREENS = { HELP: helpScreen, MARKETS: marketsScreen, FX: fxScreen };
-const ALIASES = { '?': 'HELP', H: 'HELP', M: 'MARKETS', MARKET: 'MARKETS' };
-export const DEFAULT_COMMAND = 'MARKETS';
+export const FKEYS = [
+  { key: 'F1', label: 'HELP', cmd: 'HELP' },
+  { key: 'F2', label: 'HOME', cmd: 'HOME' },
+  { key: 'F3', label: 'MARKETS', cmd: 'MARKETS' },
+  { key: 'F4', label: 'FX', cmd: 'FX 100 USD EUR' },
+  { key: 'F6', label: 'NEWS', cmd: 'NEWS' },
+  { key: 'F7', label: 'RATES', cmd: 'RATES' },
+  { key: 'F8', label: 'CPI', cmd: 'CPI 100 2000' },
+];
+
+export const CHART_RANGES = ['1D', '1M', '6M', '1Y', '5Y'];
+const SIMPLE = new Set(['HOME', 'MARKETS', 'RATES', 'NEWS', 'HELP']);
+const ALIASES = { '?': 'HELP', H: 'HELP', M: 'MARKETS', MARKET: 'MARKETS', RATE: 'RATES', INFLATION: 'CPI' };
+export const DEFAULT_COMMAND = 'HOME';
+export const MAX_AMOUNT = 1e12;
+export const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 
 export function tokenize(raw) {
   return String(raw ?? '').trim().toUpperCase().split(/\s+/).filter(Boolean);
 }
+
+// Amounts: digits, commas and one dot. Returns a number, or NaN for anything else.
+export function parseAmountToken(tok) {
+  const s = String(tok).replace(/^\$/, '');
+  if (!/^[\d,]*\.?\d*$/.test(s) || !/\d/.test(s)) return NaN;
+  const n = Number(s.replace(/,/g, ''));
+  return Number.isFinite(n) && n <= MAX_AMOUNT ? n : NaN;
+}
+
+const looksNumeric = (tok) => /^\$?[\d.,]+$/.test(tok);
 
 // Parse FX arguments: [amount] <from> [TO] <to>. Amount may use commas.
 export function parseFxArgs(args) {
   const toks = args.filter((t) => t !== 'TO' && t !== 'IN' && t !== '=');
   let amount = 1;
   let amountGiven = false;
-  if (toks.length && /^[\d.,]+$/.test(toks[0])) {
-    const n = Number(toks[0].replace(/,/g, ''));
+  if (toks.length && looksNumeric(toks[0])) {
+    const n = parseAmountToken(toks[0]);
     if (!Number.isFinite(n)) return { error: 'amount' };
     amount = n;
     amountGiven = true;
@@ -49,16 +81,50 @@ export function parseFxArgs(args) {
   return { amount, amountGiven, from, to };
 }
 
+// Parse CPI arguments: [amount] [year]. Defaults: 100 dollars, year 2000.
+export function parseCpiArgs(args) {
+  const toks = args.filter((t) => t !== 'IN' && t !== 'FROM' && t !== 'USD');
+  const isYear = (t) => /^\d{4}$/.test(t) && Number(t) >= 1900 && Number(t) <= 2100;
+  let amount = 100;
+  let year = 2000;
+  if (toks.length > 2) return { error: 'usage' };
+  if (toks.length === 1) {
+    if (isYear(toks[0])) year = Number(toks[0]);
+    else if (looksNumeric(toks[0])) amount = parseAmountToken(toks[0]);
+    else return { error: 'usage' };
+  } else if (toks.length === 2) {
+    if (!looksNumeric(toks[0]) || !/^\d{4}$/.test(toks[1])) return { error: 'usage' };
+    amount = parseAmountToken(toks[0]);
+    year = Number(toks[1]);
+  }
+  if (!Number.isFinite(amount)) return { error: 'amount' };
+  return { amount, year };
+}
+
+export function isTicker(tok) {
+  return TICKER_RE.test(tok);
+}
+
 // Turn raw input into { name, args?, error?, input }. Unknown commands get name 'UNKNOWN'.
 export function parseCommand(raw) {
   const toks = tokenize(raw);
   if (!toks.length) return { name: DEFAULT_COMMAND, input: DEFAULT_COMMAND };
   const head = ALIASES[toks[0]] || toks[0];
   const rest = toks.slice(1);
-  if (head === 'HELP' || head === 'MARKETS') return { name: head, input: head };
+  if (SIMPLE.has(head)) return { name: head, input: head };
   if (head === 'FX') {
     const args = parseFxArgs(rest);
     return { name: 'FX', args, error: args.error, input: ['FX', ...rest].join(' ') };
+  }
+  if (head === 'CPI') {
+    const args = parseCpiArgs(rest);
+    return { name: 'CPI', args, error: args.error, input: ['CPI', ...rest].join(' ') };
+  }
+  const soon = SOON.find((s) => s.name === head);
+  if (soon && !rest.length) return { name: 'SOON', args: { soon }, input: head };
+  if (isTicker(head) && (rest.length === 0 || (rest.length === 1 && CHART_RANGES.includes(rest[0])))) {
+    const range = rest[0] || '1Y';
+    return { name: 'QUOTE', args: { ticker: head, range }, input: rest.length ? `${head} ${range}` : head };
   }
   return { name: 'UNKNOWN', input: toks.join(' ') };
 }
@@ -85,11 +151,11 @@ export function suggest(raw) {
   if (typingHead) {
     return COMMANDS
       .filter((c) => c.name.startsWith(head))
-      .map((c) => ({ name: c.name, hint: c.hint, value: c.name === 'FX' ? 'FX ' : c.name }));
+      .map((c) => ({ name: c.name, hint: c.hint, value: c.name === 'FX' || c.name === 'CPI' ? c.name + ' ' : c.name }));
   }
   const cmd = COMMANDS.find((c) => c.name === head);
-  if (cmd && cmd.name === 'FX') {
-    const args = parseFxArgs(toks.slice(1));
+  if (cmd && (cmd.name === 'FX' || cmd.name === 'CPI')) {
+    const args = cmd.name === 'FX' ? parseFxArgs(toks.slice(1)) : parseCpiArgs(toks.slice(1));
     if (args.error) return [{ name: cmd.usage, hint: 'e.g. ' + cmd.example, value: cmd.example, usage: true }];
   }
   return [];
@@ -102,27 +168,46 @@ export function complete(raw, index = 0) {
   return list[((index % list.length) + list.length) % list.length].value;
 }
 
-// New York market hours: 9:30 to 16:00 ET, Monday to Friday. Holidays are ignored.
+// New York market hours: 9:30 to 16:00 ET, Monday to Friday, NYSE holidays closed,
+// early closes at 13:00.
+export const NYSE_HOLIDAYS = new Set([
+  '2026-01-01', '2026-01-19', '2026-02-16', '2026-04-03', '2026-05-25', '2026-06-19',
+  '2026-07-03', '2026-09-07', '2026-11-26', '2026-12-25',
+  '2027-01-01', '2027-01-18', '2027-02-15', '2027-03-26', '2027-05-31', '2027-06-18',
+  '2027-07-05', '2027-09-06', '2027-11-25', '2027-12-24',
+]);
+export const NYSE_EARLY_CLOSES = new Set(['2026-11-27', '2026-12-24', '2027-11-26']);
+
 export function nyParts(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York', hour12: false, weekday: 'short',
+    year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   }).formatToParts(date);
   const get = (t) => parts.find((p) => p.type === t)?.value;
-  return { weekday: get('weekday'), hour: Number(get('hour')) % 24, minute: Number(get('minute')), second: Number(get('second')) };
+  return {
+    weekday: get('weekday'),
+    date: `${get('year')}-${get('month')}-${get('day')}`,
+    hour: Number(get('hour')) % 24, minute: Number(get('minute')), second: Number(get('second')),
+  };
 }
 
 export function marketStatus(date = new Date()) {
-  const { weekday, hour, minute } = nyParts(date);
+  const { weekday, date: day, hour, minute } = nyParts(date);
+  if (['Sat', 'Sun'].includes(weekday) || NYSE_HOLIDAYS.has(day)) return 'CLOSED';
   const mins = hour * 60 + minute;
-  const weekdayOpen = !['Sat', 'Sun'].includes(weekday);
-  return weekdayOpen && mins >= 9 * 60 + 30 && mins < 16 * 60 ? 'OPEN' : 'CLOSED';
+  const close = NYSE_EARLY_CLOSES.has(day) ? 13 * 60 : 16 * 60;
+  return mins >= 9 * 60 + 30 && mins < close ? 'OPEN' : 'CLOSED';
 }
 
 export function nyClock(date = new Date()) {
   const { hour, minute, second } = nyParts(date);
   const p = (n) => String(n).padStart(2, '0');
   return `${p(hour)}:${p(minute)}:${p(second)}`;
+}
+
+export function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 // ---------------------------------------------------------------------------
@@ -140,7 +225,7 @@ async function fetchJSON(url, { signal } = {}) {
   let body = null;
   try { body = await res.json(); } catch { /* non-JSON */ }
   if (!res.ok) {
-    throw Object.assign(new Error(body?.message || 'Something went wrong. Try again in a minute.'), { code: body?.error, body });
+    throw Object.assign(new Error(body?.message || 'Something went wrong. Try again in a minute.'), { code: body?.error, status: res.status, body });
   }
   return body;
 }
@@ -154,9 +239,11 @@ const store = {
   },
 };
 
-export function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
+const SCREENS = {
+  HOME: homeScreen, HELP: helpScreen, MARKETS: marketsScreen, FX: fxScreen,
+  QUOTE: quoteScreen, CPI: cpiScreen, RATES: ratesScreen, NEWS: newsScreen,
+};
+const DEFAULT_TITLE = 'Bloombroke: the $32,000 terminal. Now $4.20 a month.';
 
 function boot() {
   const $ = (id) => document.getElementById(id);
@@ -167,9 +254,12 @@ function boot() {
   const list = $('suggest');
   const screen = $('screen');
   const tape = $('tape');
+  const statusMsg = $('status-msg');
+  const keybar = $('keybar');
   const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-  if (window.matchMedia('(max-width: 639px)').matches) input.placeholder = 'Try FX 500 USD THB';
+  if (window.matchMedia('(max-width: 639px)').matches) input.placeholder = 'Try AAPL or FX 500 USD THB';
 
   let cmdHistory = store.get('bb.history', []);
   let histIndex = cmdHistory.length;
@@ -177,14 +267,38 @@ function boot() {
   let tabIndex = -1;
   let tabBase = '';
   let active = -1;
-  let cleanup = null;
+  let cleanups = [];
   let screenAbort = null;
-  let currentName = null;
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  // --- status line ------------------------------------------------------------
+  function setStatus(text, kind = '') {
+    statusMsg.textContent = String(text).toUpperCase();
+    statusMsg.dataset.kind = kind;
+  }
+  function setUpdated(iso, stale) {
+    const t = iso ? nyTime(iso, true) : '--:--:--';
+    setStatus(stale ? `LAST KNOWN DATA ${t} ET` : `UPDATED ${t} ET`, stale ? 'warn' : '');
+  }
+
+  // --- function keys ----------------------------------------------------------
+  keybar.innerHTML = FKEYS.map((k) => `<a class="fkey" href="${toQuery(k.cmd)}" data-cmd="${escapeHtml(k.cmd)}" data-name="${tokenize(k.cmd)[0]}"><span class="fkey-n">${k.key}</span><span class="fkey-l">${k.label}</span></a>`).join('');
+
+  function setKeys(name) {
+    keybar.querySelectorAll('.fkey').forEach((k) => {
+      const on = k.dataset.name === name;
+      k.classList.toggle('is-active', on);
+      if (on) {
+        k.setAttribute('aria-current', 'page');
+        if (keybar.scrollWidth > keybar.clientWidth) keybar.scrollLeft = k.offsetLeft - (keybar.clientWidth - k.offsetWidth) / 2;
+      } else {
+        k.removeAttribute('aria-current');
+      }
+    });
+  }
 
   // --- blinking block cursor that follows the caret -------------------------
   function placeCursor() {
-    const ch = measure.getBoundingClientRect().width || 10;
+    const ch = measure.getBoundingClientRect().width || 9;
     const pos = input.selectionStart ?? input.value.length;
     const x = pos * ch - input.scrollLeft;
     cursor.style.width = `${ch}px`;
@@ -195,7 +309,7 @@ function boot() {
     cursor.classList.add('blink');
   }
 
-  // --- suggestions ----------------------------------------------------------
+  // --- suggestions (instant, no animation) ------------------------------------
   let items = [];
   function renderSuggest() {
     items = document.activeElement === input ? suggest(input.value) : [];
@@ -208,77 +322,58 @@ function boot() {
       <li role="option" id="sug-${i}" data-i="${i}" class="${i === active ? 'is-active' : ''}${s.usage ? ' is-usage' : ''}" aria-selected="${i === active}">
         <span class="sug-name">${escapeHtml(s.name)}</span><span class="sug-hint">${escapeHtml(s.hint)}</span>
       </li>`).join('');
-    clearTimeout(closeTimer);
-    list.classList.remove('is-closing');
-    if (list.hidden) {
-      list.hidden = false;
-      void list.offsetWidth; // let the closed state paint so the open transition runs
-    }
-    list.classList.add('is-open');
+    list.hidden = false;
     input.setAttribute('aria-expanded', 'true');
   }
 
-  let closeTimer = 0;
   function closeSuggest() {
     active = -1;
     input.setAttribute('aria-expanded', 'false');
-    if (list.hidden || !list.classList.contains('is-open')) return;
-    list.classList.remove('is-open');
-    list.classList.add('is-closing');
-    clearTimeout(closeTimer);
-    closeTimer = setTimeout(() => { list.classList.remove('is-closing'); list.hidden = true; }, 150);
+    list.hidden = true;
   }
 
   // --- running commands -----------------------------------------------------
-  function setChips(name) {
-    document.querySelectorAll('.chip').forEach((c) => {
-      const on = tokenize(c.dataset.cmd)[0] === name;
-      c.classList.toggle('is-active', on);
-      if (on) c.setAttribute('aria-current', 'page'); else c.removeAttribute('aria-current');
-    });
+  function runCleanups() {
+    for (const fn of cleanups) { try { fn(); } catch { /* ignore */ } }
+    cleanups = [];
   }
 
   function render(raw) {
     const cmd = parseCommand(raw);
-    if (cleanup) { try { cleanup(); } catch { /* ignore */ } cleanup = null; }
+    runCleanups();
     if (screenAbort) screenAbort.abort();
     screenAbort = new AbortController();
+    const signal = screenAbort.signal;
 
     const view = document.createElement('section');
     view.className = 'view';
-    const order = ['MARKETS', 'FX', 'HELP', 'UNKNOWN'];
-    const dir = Math.sign(order.indexOf(cmd.name) - order.indexOf(currentName));
-    view.style.setProperty('--view-from-x', `${dir * 8}px`);
-    screen.querySelectorAll('.view.is-leaving').forEach((v) => v.remove());
-    const old = screen.querySelector('.view');
-    if (old && !reduceMotion.matches) {
-      const r = old.getBoundingClientRect();
-      const host = screen.getBoundingClientRect();
-      Object.assign(old.style, { top: `${r.top - host.top}px`, left: `${r.left - host.left}px`, width: `${r.width}px` });
-      old.style.setProperty('--view-to-x', `${dir * -8}px`);
-      old.classList.add('is-leaving');
-      old.setAttribute('aria-hidden', 'true');
-      old.addEventListener('animationend', () => old.remove(), { once: true });
-      setTimeout(() => old.remove(), 400);
-      screen.appendChild(view);
-    } else {
-      screen.replaceChildren(view);
-    }
-    currentName = cmd.name;
-    setChips(cmd.name);
-    document.title = cmd.name === 'MARKETS' || cmd.name === 'UNKNOWN'
-      ? 'Bloombroke: the $32,000 terminal. Now $4.20 a month.'
-      : `${cmd.input} | Bloombroke`;
+    screen.replaceChildren(view);
+    setKeys(cmd.name);
+    document.title = cmd.name === 'HOME' || cmd.name === 'UNKNOWN' ? DEFAULT_TITLE : `${cmd.input} | Bloombroke`;
 
-    const ctx = { run, fetchJSON, signal: screenAbort.signal, commands: COMMANDS, soon: SOON, escapeHtml };
+    const ctx = {
+      run, fetchJSON, signal, escapeHtml, toQuery,
+      commands: COMMANDS, ticker: TICKER_HELP, soon: SOON, fkeys: FKEYS,
+      status: setStatus, updated: setUpdated,
+      every(fn, ms) { const id = setInterval(fn, ms); cleanups.push(() => clearInterval(id)); },
+      onCleanup(fn) { cleanups.push(fn); },
+    };
     const mod = SCREENS[cmd.name];
     if (mod) {
-      cleanup = mod.render(view, cmd, ctx) || null;
+      setStatus('LOADING...');
+      const fn = mod.render(view, cmd, ctx);
+      if (typeof fn === 'function') cleanups.push(fn);
+    } else if (cmd.name === 'SOON') {
+      const s = cmd.args.soon;
+      view.innerHTML = panel('1', s.name, `
+        <p class="notice">${escapeHtml(s.name)} is coming soon.</p>
+        <p class="muted">${escapeHtml(s.hint)}. For now, try <a class="code" href="${toQuery('HELP')}" data-cmd="HELP">HELP</a>.</p>`, { cls: 'panel-solo' });
+      setStatus(`${s.name}: COMING SOON`);
     } else {
-      view.innerHTML = `
-        <p class="eyebrow">Unknown command</p>
-        <h1 class="notice">Unknown command. Type <a href="${toQuery('HELP')}" data-cmd="HELP">HELP</a>.</h1>
-        <p class="muted">You typed <span class="code">${escapeHtml(cmd.input)}</span>. Ticker screens like <span class="code">AAPL</span> are coming soon.</p>`;
+      view.innerHTML = panel('1', 'Unknown command', `
+        <p class="notice">Unknown command. Type <a href="${toQuery('HELP')}" data-cmd="HELP">HELP</a>.</p>
+        <p class="muted">You typed <span class="code">${escapeHtml(cmd.input)}</span>. A ticker is one word, like <a class="code" href="${toQuery('AAPL')}" data-cmd="AAPL">AAPL</a> or <a class="code" href="${toQuery('BRK.B')}" data-cmd="BRK.B">BRK.B</a>.</p>`, { cls: 'panel-solo' });
+      setStatus('UNKNOWN COMMAND. TYPE HELP', 'warn');
     }
   }
 
@@ -373,12 +468,21 @@ function boot() {
       if (!coarse) input.focus();
       return;
     }
+    if (e.target.closest('a[href]')) return;
     // Keep the command bar focused, unless the user is selecting text.
     if (!coarse && !String(window.getSelection?.() || '')) input.focus();
   });
 
-  // Typing anywhere goes to the command bar.
   document.addEventListener('keydown', (e) => {
+    // Function keys work everywhere. F5, F11 and F12 stay with the browser.
+    const fk = FKEYS.find((k) => k.key === e.key);
+    if (fk && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+      e.preventDefault();
+      run(fk.cmd);
+      if (!coarse) input.focus();
+      return;
+    }
+    // Typing anywhere goes to the command bar.
     if (document.activeElement === input || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key.length === 1 || e.key === 'Backspace') input.focus();
   });
@@ -405,35 +509,27 @@ function boot() {
       const data = await fetchJSON('/api/markets');
       const html = data.instruments.map((q) => {
         const d = dirOf(q.change);
-        return `<a class="tape-item" href="${toQuery('MARKETS')}" data-cmd="MARKETS">
+        const c = cmdForInstrument(q.id) || 'MARKETS';
+        return `<a class="tape-item" href="${toQuery(c)}" data-cmd="${escapeHtml(c)}">
           <span class="tape-name">${escapeHtml(q.name)}</span>
           <span class="tape-last num">${fmtNum(q.last, q.decimals)}</span>
           <span class="tape-chg num ${d}">${fmtPct(q.changePct)}</span></a>`;
       }).join('');
-      const key = html;
-      if (key === tapeKey) return;
-      tapeKey = key;
+      if (html === tapeKey) return;
+      tapeKey = html;
       const group = `<div class="tape-group">${html}</div>`;
       tape.innerHTML = group + group.replace('class="tape-group"', 'class="tape-group" aria-hidden="true"');
       const w = tape.firstElementChild.getBoundingClientRect().width;
       tape.style.setProperty('--tape-duration', `${Math.max(30, Math.round(w / 40))}s`);
       tape.classList.add('is-running');
     } catch {
-      if (!tapeKey) tape.innerHTML = '<span class="tape-empty">Market data is taking a break.</span>';
+      if (!tapeKey) tape.innerHTML = '<span class="tape-empty">MARKET DATA IS TAKING A BREAK.</span>';
     }
   }
   loadTape();
   setInterval(loadTape, 60_000);
 
-  // --- share: copy the current link, confirm with a toast ---------------------
-  const toast = $('toast');
-  let toastTimer = 0;
-  function showToast(text) {
-    toast.textContent = text;
-    toast.classList.add('is-open');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toast.classList.remove('is-open'), 1800);
-  }
+  // --- share: copy the current link, confirm in the status line ---------------
   async function copyText(text) {
     try {
       await navigator.clipboard.writeText(text);
@@ -442,7 +538,7 @@ function boot() {
       const ta = document.createElement('textarea');
       ta.value = text;
       ta.setAttribute('readonly', '');
-      ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+      ta.className = 'offscreen';
       document.body.appendChild(ta);
       ta.select();
       let ok = false;
@@ -454,7 +550,8 @@ function boot() {
   $('share').addEventListener('click', async (e) => {
     e.stopPropagation();
     const url = location.origin + location.pathname + toQuery(fromQuery(location.search));
-    showToast((await copyText(url)) ? 'Link copied' : 'Copy the link from the address bar');
+    if (await copyText(url)) setStatus('LINK COPIED');
+    else setStatus('COPY THE LINK FROM THE ADDRESS BAR', 'warn');
     if (!coarse) input.focus();
   });
 
@@ -464,6 +561,7 @@ function boot() {
   const firstVisit = !store.get('bb.booted', false);
   if (firstVisit && !location.search && !reduceMotion.matches) {
     store.set('bb.booted', true);
+    setStatus('STARTING');
     bootSequence(screen, () => render(initial));
   } else {
     render(initial);

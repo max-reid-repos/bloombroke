@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeFx, shapeSeries, parseAmount, convert, normalizeCode, FxError } from '../data/fx.js';
 import { createCache } from '../data/cache.js';
-import { fmtMoney, fmtRate, sparkline } from '../public/screens/fx.js';
+import { fmtMoney, fmtRate, flipAmount } from '../public/screens/fx.js';
 
 const CURRENCIES = { USD: 'United States Dollar', THB: 'Thai Baht', EUR: 'Euro' };
 const SERIES = { rates: { '2026-09-24': { THB: 33.48 }, '2026-08-25': { THB: 32.735 }, '2026-09-01': { THB: 33.265 } } };
@@ -26,6 +26,11 @@ test('helpers: codes, amounts, conversion, series order', () => {
   assert.equal(parseAmount('1,500'), 1500);
   assert.ok(Number.isNaN(parseAmount('abc')));
   assert.ok(Number.isNaN(parseAmount('-5')));
+  assert.equal(parseAmount('1000000000000'), 1e12);
+  for (const bad of ['1000000000001', '1e5', '0x10', '1.2.3', ' 5', '+5', 'Infinity', '.', ',']) {
+    assert.ok(Number.isNaN(parseAmount(bad)), bad);
+  }
+  assert.equal(parseAmount('.5'), 0.5);
   assert.equal(convert(500, 33.48), 16740);
   const s = shapeSeries(SERIES.rates, 'THB');
   assert.deepEqual(s.map((p) => p.d), ['2026-08-25', '2026-09-01', '2026-09-24']);
@@ -90,7 +95,19 @@ test('display formatting', () => {
   assert.equal(fmtRate(33.48), '33.4800');
   assert.equal(fmtRate(157.734), '157.73');
   assert.equal(fmtRate(0.02987), '0.02987');
-  const svg = sparkline([{ d: 'a', v: 1 }, { d: 'b', v: 2 }]);
-  assert.match(svg, /^<svg/);
-  assert.equal(sparkline([{ d: 'a', v: 1 }]), '');
+});
+
+test('flip amount keeps precision and never uses exponent notation', () => {
+  assert.equal(flipAmount(500 * 33.48), '16740');
+  assert.equal(flipAmount(157.734), '157.734');
+  assert.equal(flipAmount(0.00000123), '0.00000123');
+  assert.equal(flipAmount(1.6e16), '16000000000000000');
+  assert.equal(flipAmount(1e21), '1000000000000000000000');
+  for (const n of [1e-7, 1e22, 123456789.123456]) assert.doesNotMatch(flipAmount(n), /e/i);
+});
+
+test('amount limits: too big says so', async () => {
+  const fx = makeFx({ fetchImpl: fakeFetch({ calls: [] }) });
+  await assert.rejects(fx.getFx({ amount: '2000000000000', from: 'USD', to: 'THB' }), (err) => err.code === 'bad_amount' && /too big/.test(err.message));
+  await assert.rejects(fx.getFx({ amount: '1e3', from: 'USD', to: 'THB' }), (err) => err.code === 'bad_amount' && /number/.test(err.message));
 });
