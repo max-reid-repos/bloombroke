@@ -23,8 +23,9 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
     bySession: db.prepare('SELECT * FROM licences WHERE checkout_session_id = ?'),
     byId: db.prepare('SELECT * FROM licences WHERE id = ?'),
     insert: db.prepare(`INSERT INTO licences
-      (key_hash, last4, stripe_customer_id, stripe_subscription_id, checkout_session_id, status, past_due_since, created_at, updated_at, reveal_ciphertext, reveal_expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+      (key_hash, last4, stripe_customer_id, stripe_subscription_id, checkout_session_id, status, past_due_since, created_at, updated_at, reveal_ciphertext, reveal_expires_at, terms_accepted_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+    terms: db.prepare('UPDATE licences SET terms_accepted_at = ? WHERE id = ? AND terms_accepted_at IS NULL'),
     status: db.prepare(`UPDATE licences SET
       status = ?,
       past_due_since = CASE WHEN ? = 'past_due' THEN COALESCE(past_due_since, ?) ELSE NULL END,
@@ -53,14 +54,16 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
     // The one way a licence is made, from the webhook or from the success page, whichever
     // comes first. Idempotent per subscription and per checkout session: a second call
     // returns the same licence and never a second key.
+    // termsAcceptedAt: when the buyer agreed to the Terms at checkout (ms), or null.
     // Returns { licence, created, key } where key is set only when this call created it.
-    ensureLicence({ sessionId, customerId, subscriptionId, status }) {
+    ensureLicence({ sessionId, customerId, subscriptionId, status, termsAcceptedAt = null }) {
       if (!aesKey) throw new Error('PRO_SECRET is not set');
       if (!sessionId || !subscriptionId || !status) throw new Error('ensureLicence: missing fields');
       return tx(db, () => {
         const existing = q.bySub.get(subscriptionId) || q.bySession.get(sessionId);
         if (existing) {
-          const licence = existing.status === status ? existing : setStatus(existing.id, status);
+          if (termsAcceptedAt && !existing.terms_accepted_at) q.terms.run(termsAcceptedAt, existing.id);
+          const licence = existing.status === status ? q.byId.get(existing.id) : setStatus(existing.id, status);
           return { licence, created: false };
         }
         let key;
@@ -69,7 +72,7 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
         const t = now();
         const cipher = encryptReveal(aesKey, key, sessionId);
         const r = q.insert.run(hash, last4(key), customerId || null, subscriptionId, sessionId, status,
-          status === 'past_due' ? t : null, t, t, cipher, t + REVEAL_MS);
+          status === 'past_due' ? t : null, t, t, cipher, t + REVEAL_MS, termsAcceptedAt || null);
         return { licence: q.byId.get(r.lastInsertRowid), created: true, key };
       });
     },

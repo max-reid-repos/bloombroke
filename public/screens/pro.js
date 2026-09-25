@@ -11,6 +11,16 @@ export const FEATURES = [
 ];
 
 export const SAVE_LINE = 'Save this key. It is your login on any device.';
+export const OPERATOR = 'Bloombroke is run by Bloombroke, Singapore.';
+export const CONTACT = 'hello@bloombroke.com';
+export const SHUTDOWN_LINE = 'If we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month.';
+
+// Shown before every SUBSCRIBE button: price, renewal, how to cancel, the shutdown promise.
+export const BUY_TERMS = [
+  `${pro.PRICE} USD a month, charged by Stripe. It renews automatically every month until you cancel.`,
+  'Cancel any time: type PRO and press MANAGE. Pro stays on to the end of the month you paid for.',
+  SHUTDOWN_LINE,
+];
 
 const link = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
 
@@ -33,7 +43,9 @@ export function keyFileText(key) {
     '',
     SAVE_LINE,
     'To log in: open https://bloombroke.com and type LOGIN followed by the key.',
-    'To manage billing: type PRO, then press MANAGE.',
+    'To manage billing or cancel: type PRO, then press MANAGE.',
+    '',
+    `${OPERATOR} Contact ${CONTACT}.`,
     '',
   ].join('\n');
 }
@@ -56,7 +68,7 @@ function offerHtml() {
     <p class="fx-from">The terminal stays free. Pro adds:</p>
     <ul class="pro-list">${rows}</ul>
     <p class="hero num"><span class="hero-value">${esc(pro.PRICE)}</span><span class="hero-unit">A MONTH</span></p>
-    <p class="fx-to dim">Billed monthly in US dollars by Stripe. Cancel any time with MANAGE.</p>
+    <p class="fx-to dim">Billed monthly in US dollars. Renews automatically. Cancel any time.</p>
   </div>`;
 }
 
@@ -115,13 +127,19 @@ function wire(el, ctx, sel, label, fn) {
   });
 }
 
+function buyHtml() {
+  return `<ul class="pro-terms">${BUY_TERMS.map((t) => `<li>${esc(t)}</li>`).join('')}
+      <li>Subscribing means you agree to the <a href="/terms">Terms</a>. Bloombroke gives information only, not investment advice.</li></ul>
+    <p class="pro-actions"><button type="button" class="btn btn-solid" id="pro-sub">SUBSCRIBE ${esc(pro.PRICE)}/MONTH</button></p>`;
+}
+
 // The account panel: logged out, or status + MANAGE + LOGOUT.
 function accountHtml(note) {
   const key = pro.getKey();
   const st = pro.getStatus();
   const n = note ? `<p class="notice">${esc(note)}</p>` : '';
   if (!key) {
-    return `${n}<p class="pro-actions"><button type="button" class="btn btn-solid" id="pro-sub">SUBSCRIBE ${esc(pro.PRICE)}/MONTH</button></p>
+    return `${n}${buyHtml()}
       <p class="muted">Already subscribed? Type ${link('LOGIN')} and your key.</p>`;
   }
   const on = pro.statusActive(st);
@@ -129,8 +147,8 @@ function accountHtml(note) {
       <div class="stat"><dt>Status</dt><dd class="${on ? 'up' : 'down'}">${esc(statusText(st))}</dd></div>
       <div class="stat"><dt>Key</dt><dd class="num">${esc(maskKey(st?.last4 || key.slice(-4)))}</dd></div>
     </dl>
+    ${on ? '' : buyHtml()}
     <p class="pro-actions">
-      ${on ? '' : `<button type="button" class="btn btn-solid" id="pro-sub">SUBSCRIBE ${esc(pro.PRICE)}/MONTH</button>`}
       <button type="button" class="btn" id="pro-manage">MANAGE</button>
       <button type="button" class="btn" id="pro-show">SHOW KEY</button>
       <a class="btn" href="${esc(q('LOGOUT'))}" data-cmd="LOGOUT">LOGOUT</a>
@@ -145,7 +163,7 @@ function page(el, second = '') {
     ${second}
     ${panel(second ? '3' : '2', 'Your account', '<div id="pro-account"></div>')}
   </div>
-  <p class="footnote">Your key is your login. There is no email or password. Not financial advice.</p>`;
+  <p class="footnote">Your key is your login. There is no email or password. ${esc(OPERATOR)} Contact <a href="mailto:${CONTACT}">${CONTACT}</a>. Not financial advice.</p>`;
 }
 
 function renderAccount(el, ctx, note) {

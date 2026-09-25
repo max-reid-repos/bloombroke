@@ -7,7 +7,7 @@ import {
   parseTape, applyTape, cleanTape, tapeSymbol, planPull, planPush, statusActive, loadTapeRows,
   normalizeKey as clientNormalize, DEFAULT_TAPE, MAX_TAPE, SYNC_DOCS, PRO_ONLY,
 } from '../public/pro.js';
-import { parseLogin, maskKey, keyFileText, statusText, SAVE_LINE } from '../public/screens/pro.js';
+import { parseLogin, maskKey, keyFileText, statusText, SAVE_LINE, BUY_TERMS, OPERATOR, CONTACT } from '../public/screens/pro.js';
 import { normalizeKey as serverNormalize, generateKey } from '../pro/licence.js';
 
 test('client and server read keys the same way', () => {
@@ -125,12 +125,22 @@ test('PRO screen copy: the save line, the key file, the mask, the free-user line
   assert.equal(maskKey('WZ3C'), 'BB-XXXX-XXXX-XXXX-WZ3C');
   assert.deepEqual(parseLogin(['BB', '7KQ2', 'M9XD', 'HT4P', 'WZ3C']), { key: 'BB-7KQ2-M9XD-HT4P-WZ3C' });
   assert.match(PRO_ONLY, /\$4\.20 a month/);
+  // Before SUBSCRIBE: price, monthly renewal, how to cancel, the shutdown promise.
+  const terms = BUY_TERMS.join(' ');
+  assert.match(terms, /\$4\.20 USD a month/);
+  assert.match(terms, /renews automatically every month/);
+  assert.match(terms, /Cancel any time: type PRO and press MANAGE/);
+  assert.ok(BUY_TERMS.includes('If we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month.'));
+  assert.equal(OPERATOR, 'Bloombroke is run by Bloombroke, Singapore.');
+  assert.equal(CONTACT, 'hello@bloombroke.com');
+  assert.ok(txt.includes(CONTACT));
 });
 
 test('copy rules for the Pro files: no banned brand word, no em dashes', () => {
   const files = [
     'public/pro.js', 'public/pro.css', 'public/screens/pro.js', 'public/screens/tape.js', 'README.md',
-    ...readdirSync('pro').map((f) => `pro/${f}`), 'scripts/stripe-setup.js', 'migrations/001_pro.sql',
+    ...readdirSync('pro').map((f) => `pro/${f}`), 'scripts/stripe-setup.js', 'scripts/shutdown-refunds.js',
+    ...readdirSync('migrations').map((f) => `migrations/${f}`),
   ];
   for (const f of files) {
     const s = readFileSync(f, 'utf8');

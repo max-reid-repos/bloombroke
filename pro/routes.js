@@ -126,7 +126,7 @@ export function mountPro(app, {
     if (!isProSession(session)) return fail(res, 404, 'not_found', 'No checkout found for that link.');
     if (!isPaidSession(session)) return fail(res, 402, 'not_paid', 'Payment is not complete yet. Reload in a minute.');
     try {
-      await licenceFromSession(session, { store, stripe, log });
+      await licenceFromSession(session, { store, stripe, log, at: now() });
     } catch (err) {
       log.error('[pro claim] licence', err.message);
       return fail(res, 503, 'unavailable', 'Payments are taking a break. Reload in a minute.');

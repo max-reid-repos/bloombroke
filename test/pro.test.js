@@ -63,6 +63,7 @@ function paidSession(n = 1, extra = {}) {
     customer: `cus_${n}`,
     subscription: `sub_${n}`,
     metadata: { site: 'bloombroke', product: 'pro' },
+    consent: { terms_of_service: 'accepted', promotions: null },
     ...extra,
   };
 }
@@ -202,6 +203,16 @@ test('store: ensureLicence is idempotent and keeps no plain key', () => {
   assert.equal(db.prepare('SELECT reveal_ciphertext FROM licences').get().reveal_ciphertext, null);
 });
 
+test('store: terms_accepted_at is kept, filled once, and null without consent', () => {
+  const store = createStore(openDb(':memory:'), { aesKey: AES, now: () => T0 });
+  const a = store.ensureLicence({ sessionId: 'cs_test_t1', subscriptionId: 'sub_t1', status: 'active' });
+  assert.equal(a.licence.terms_accepted_at, null);
+  const b = store.ensureLicence({ sessionId: 'cs_test_t1', subscriptionId: 'sub_t1', status: 'active', termsAcceptedAt: T0 - 50 });
+  assert.equal(b.licence.terms_accepted_at, T0 - 50);
+  const c = store.ensureLicence({ sessionId: 'cs_test_t1', subscriptionId: 'sub_t1', status: 'active', termsAcceptedAt: T0 });
+  assert.equal(c.licence.terms_accepted_at, T0 - 50, 'the first time stays');
+});
+
 test('store: without PRO_SECRET no licence can be made', () => {
   const store = createStore(openDb(':memory:'), {});
   assert.throws(() => store.ensureLicence({ sessionId: 'cs_test_1', subscriptionId: 'sub_1', status: 'active' }), /PRO_SECRET/);
@@ -215,7 +226,8 @@ test('migrations: applied once per database file', () => {
     assert.equal(a.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
     a.close();
     const b = openDb(file);
-    assert.equal(b.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 1);
+    assert.equal(b.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 2);
+    assert.ok(b.prepare('PRAGMA table_info(licences)').all().some((c) => c.name === 'terms_accepted_at'));
     b.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -233,6 +245,9 @@ test('checkout: subscription mode, server price, no promo codes, no tax, fixed U
   assert.equal(p.allow_promotion_codes, false);
   assert.deepEqual(p.automatic_tax, { enabled: false });
   assert.deepEqual(p.metadata, { site: 'bloombroke', product: 'pro' });
+  assert.deepEqual(p.consent_collection, { terms_of_service: 'required' });
+  assert.equal(p.custom_text.terms_of_service_acceptance.message, 'I agree to the [Terms](https://bloombroke.com/terms) and understand Bloombroke gives information only, not investment advice.');
+  assert.equal(p.custom_text.submit.message, 'Auto-renews monthly at $4.20 USD. Cancel any time in MANAGE; access continues to the end of the paid month.');
 
   const s = await setup();
   try {
@@ -286,9 +301,10 @@ test('webhook: checkout.session.completed makes one licence, tags only the last 
     const lic = s.store.findBySubscription('sub_1');
     assert.equal(lic.status, 'active');
     assert.equal(lic.stripe_customer_id, 'cus_1');
+    assert.equal(lic.terms_accepted_at, T0, 'terms time is the completion event time');
     const upd = s.stripe.calls.filter((c) => c[0] === 'sub.update');
     assert.equal(upd.length, 1);
-    assert.deepEqual(upd[0][2].metadata, { site: 'bloombroke', product: 'pro', licence_last4: lic.last4 });
+    assert.deepEqual(upd[0][2].metadata, { site: 'bloombroke', product: 'pro', licence_last4: lic.last4, terms_accepted_at: new Date(T0).toISOString() });
     assert.equal(lic.last4.length, 4);
     const r2 = await s.sendEvent(e);
     assert.equal(r2.body.result, 'duplicate');
@@ -378,9 +394,11 @@ test('claim: key only for a paid session, the same key every time, for 24 hours'
     s.stripe.sessions.cs_test_foreign000001 = paidSession(7, { id: 'cs_test_foreign000001', metadata: {} });
     assert.equal((await s.req('GET', '/api/pro/claim?session_id=cs_test_foreign000001')).status, 404);
 
+    s.advance(5000);
     const a = await s.req('GET', `/api/pro/claim?session_id=${sess.id}`);
     assert.equal(a.status, 200);
     assert.match(a.body.key, KEY_RE);
+    assert.equal(s.store.findBySession(sess.id).terms_accepted_at, T0 + 5000, 'from the success page: the time of the claim');
     assert.equal(a.body.active, true);
     assert.equal(a.headers.get('cache-control'), 'no-store');
     // The webhook arriving later finds the same licence.
