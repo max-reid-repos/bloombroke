@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { maxDrawdown, holdingPath } from '../data/whatif.js';
 import { attachRisk, getWhatif } from '../data/whatif-service.js';
-import { QUIPS, riskLine, fmtDrop, HINDSIGHT_NOTE, WHATIF_TITLE } from '../public/screens/whatif.js';
+import { QUIPS, riskLine, dropList, fmtDrop, HINDSIGHT_NOTE, WHATIF_TITLE } from '../public/screens/whatif.js';
 import { HINDSIGHT_NOTE as OG_NOTE } from '../lib/og.js';
 import { COMMANDS } from '../public/app.js';
 
@@ -70,6 +70,8 @@ test('risk line: always shown, one holding or several', () => {
   assert.match(riskLine({ rows: [{}] }), /^Worst drop along the way: not available right now/);
   assert.match(riskLine({ rows: [{}], risk: { worst: { pct: 0, month: null } } }), /none at month-end prices/);
   assert.equal(fmtDrop(-0.2), '0%');
+  assert.equal(dropList([{ name: 'iPhone 6', worstDrop: { pct: -30.7, month: '2018-12' } }, { name: 'Bike', worstDrop: null }]),
+    'Worst drop along the way, by holding, month-end prices: iPhone 6 −31% (DEC 2018); Bike --.');
 });
 
 test('WHATIF copy is hindsight, never advice', () => {

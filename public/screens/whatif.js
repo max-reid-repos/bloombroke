@@ -126,6 +126,17 @@ export function riskLine(d) {
   return `Worst drop along the way: ${fmtDrop(w.pct)}${when ? ` (${when})` : ''}${who}, based on month-end prices.`;
 }
 
+// Several holdings: every one's worst drop, in the order of the table.
+export function dropList(rows) {
+  const parts = rows.map((r) => {
+    const w = r.worstDrop;
+    if (!w) return `${r.name} --`;
+    const when = w.pct > -0.5 ? '' : dropWhen(w.month);
+    return `${r.name} ${fmtDrop(w.pct)}${when ? ` (${when})` : ''}`;
+  });
+  return `Worst drop along the way, by holding, month-end prices: ${parts.join('; ')}.`;
+}
+
 export function hashText(s) {
   let h = 2166136261;
   for (const c of String(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
@@ -366,7 +377,6 @@ function resultHtml(d, key, links) {
       <td class="num wi-sh">${esc(fmtShares(r.shares))}</td>
       <td class="num last ${loss ? 'down' : ''}">${esc(fmtUsd(r.value))}</td>
       <td class="num ${loss ? 'down' : 'up'}">${esc(fmtX(r.multiple))}</td>
-      <td class="num wi-dd${r.worstDrop && r.worstDrop.pct <= -0.5 ? ' down' : ' dim'}"${r.worstDrop?.month ? ` title="${esc(dropWhen(r.worstDrop.month))}"` : ''}>${r.worstDrop ? esc(fmtDrop(r.worstDrop.pct)) : '--'}</td>
     </tr>`;
   }).join('');
   const asOf = d.asOf ? (/^\d{4}-\d{2}-\d{2}$/.test(d.asOf) ? `the ${fmtDay(d.asOf)} close` : `${nyTime(d.asOf)} ET`) : 'now';
@@ -385,11 +395,12 @@ function resultHtml(d, key, links) {
     <div class="wi-body">
     <div class="wi-receipt">
       <table class="grid-table wi-table">
-        <thead><tr><th scope="col">Item</th><th scope="col" class="num wi-when">Bought</th><th scope="col" class="num">Paid</th><th scope="col" class="num wi-sh">Shares</th><th scope="col" class="num">Worth now</th><th scope="col" class="num">x</th><th scope="col" class="num wi-dd" title="Worst drop along the way, month-end prices">Worst drop</th></tr></thead>
+        <thead><tr><th scope="col">Item</th><th scope="col" class="num wi-when">Bought</th><th scope="col" class="num">Paid</th><th scope="col" class="num wi-sh">Shares</th><th scope="col" class="num">Worth now</th><th scope="col" class="num">x</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><th scope="row" class="name">Total</th><td class="wi-when"></td><td class="num">${esc(fmtUsd(t.paid))}</td><td class="wi-sh"></td><td class="num last ${dir}">${esc(fmtUsd(t.value))}</td><td class="num ${dir}">${esc(fmtX(t.multiple))}</td><td class="wi-dd"></td></tr></tfoot>
+        <tfoot><tr><th scope="row" class="name">Total</th><td class="wi-when"></td><td class="num">${esc(fmtUsd(t.paid))}</td><td class="wi-sh"></td><td class="num last ${dir}">${esc(fmtUsd(t.value))}</td><td class="num ${dir}">${esc(fmtX(t.multiple))}</td></tr></tfoot>
       </table>
     </div>
+    ${d.rows.length > 1 ? `<p class="wi-risk-list">${esc(dropList(d.rows))}</p>` : ''}
     <p class="wi-source">Prices: close on purchase date, split-adjusted, price return only. Live price as of ${esc(asOf)}${d.stale ? ' (last known)' : ''}. Source: ${esc(d.source)}.</p>
     <div class="wi-actions">
       <a class="code" href="${esc(q(editCmd))}" data-cmd="${esc(editCmd)}">CHANGE PICKS</a>

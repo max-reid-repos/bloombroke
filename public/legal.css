@@ -59,9 +59,10 @@
 }
 
 /* ---- Status bar: the always-visible short line ------------------------- */
-.status-legal { display: flex; gap: 12px; min-width: 0; color: var(--faint, #4a5a6b); }
-.status-legal .legal-line { overflow: hidden; text-overflow: ellipsis; }
-.status-legal a { color: var(--dim, #7f93a8); }
+/* The legal line never shrinks: the status message on the left gives way (ellipsis). */
+.status-legal { display: flex; flex: 0 0 auto; gap: 12px; color: var(--faint, #4a5a6b); }
+.status-legal .legal-line { color: var(--dim, #7f93a8); }
+.status-legal a { color: var(--accent, #6CCBFF); }
 .status-legal a:hover { color: var(--text, #CFEAFF); text-decoration: none; }
 .legal-line-short { display: none; }
 @media (max-width: 639px) {
