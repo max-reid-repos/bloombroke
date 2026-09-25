@@ -18,6 +18,9 @@ import { statRows } from '../public/screens/quote.js';
 import { parseFedFutures, withGaps, makeFedPath, FF_SYMBOLS } from '../data/fedpath.js';
 import { linesSvg } from '../public/screens/lines.js';
 import { stepPoints } from '../public/screens/fedpath.js';
+import { makeValue } from '../data/value.js';
+import { valueGroups } from '../public/screens/value.js';
+import { underlyingAsOf } from '../public/screens/options.js';
 
 const fixture = (f) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'));
 const json = (body) => ({ ok: true, status: 200, json: async () => body });
@@ -217,4 +220,25 @@ test('FEDPATH: every listed contract, and a month without a price stays as a gap
   assert.equal((svg.match(/<path class="ln ln-0" d="[^"]*"/)[0].match(/M/g) || []).length, 2);
   const d = await makeFedPath({ fetchImpl: async () => json(body), rates: async () => ({ fed: null, stale: false }) }).getFedPath();
   assert.equal(d.months.length, 16);
+});
+
+// ---- VALUE, quote and OPTIONS prices ------------------------------------------------
+// Real CNBC fund snapshot for AAPL taken 11:32:38 ET (last 338.71); the live quote is
+// later. VALUE shows the live last with its trade time and says when the rest is from.
+test('VALUE: the live last price with its time, the snapshot time for the rest', async () => {
+  const fund = fixture('cnbc-fund.json');
+  const live = { ticker: 'AAPL', last: 339.44, asOf: '2026-09-25T12:42:23.000-0400', realTime: true };
+  const v = makeValue({ fetchImpl: async () => json(fund), cache: createCache(), quote: async () => live });
+  const d = await v.getValue('AAPL');
+  assert.equal(d.last, 339.44);
+  assert.equal(d.lastAsOf, live.asOf);
+  assert.equal(d.fundAsOf, '2026-09-25T11:32:38.375-0400');
+  assert.equal(d.pe, 38.97, 'valuation figures stay as the snapshot has them');
+  const html = valueGroups(d).flatMap(([, items]) => items).find(([k]) => k === 'Last price')[1];
+  assert.match(html, /\$339\.44 <span class="dim co-when">12:42 ET<\/span>/);
+  // Quote down: the snapshot's last, with the snapshot's time, never a time it does not have.
+  const down = await makeValue({ fetchImpl: async () => json(fund), cache: createCache(), quote: async () => { throw new Error('down'); } }).getValue('AAPL');
+  assert.deepEqual([down.last, down.lastAsOf], [338.71, '2026-09-25T11:32:38.375-0400']);
+  assert.match(underlyingAsOf('2026-09-25T16:49:02Z'), /CBOE, DELAYED 15 MIN · FILE 12:49 ET/);
+  assert.equal(underlyingAsOf(null), 'CBOE, DELAYED 15 MIN');
 });
