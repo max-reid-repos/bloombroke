@@ -62,6 +62,11 @@
 .bb-unch { fill: var(--rule-strong); }
 .bb-down { fill: var(--down); }
 .bb-all th, .bb-all td { font-weight: 600; background: var(--panel); }
+/* One grid for both panels: the same name width, then the split bar. */
+.bb-table { width: auto; }
+.bb-table .name { width: 30ch; min-width: 30ch; max-width: 30ch; }
+.bb-table .bar-cell { width: 204px; }
+.bb-table .num { min-width: 9ch; }
 
 /* ---- BONDS grid --------------------------------------------------------- */
 .bg-table .bg-cell { width: 1%; }
@@ -95,6 +100,8 @@
   .oc-all { margin-left: 0; }
   .ec-per, .ec-prev, .ec-src { display: none; }
   .bb-x { display: none; }
+  .bb-table { width: 100%; }
+  .bb-table .name { width: 100%; min-width: 0; max-width: 0; }
   .bg-d, .bg-unit { display: none; }
   .bg-table .bg-cell { padding: 0 6px; }
   .fp-method p { padding: 0 8px 8px; }

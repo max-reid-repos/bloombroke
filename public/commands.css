@@ -24,6 +24,9 @@
 .st-open { color: var(--up); }
 .st-lunch { color: var(--text-2); }
 .st-closed { color: var(--dim); }
+/* On phones the status is a coloured dot (legend under the panels), so names keep room. */
+.st-dot { display: none; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.st-legend { display: none; }
 .delayed { padding: 0 5px; border: 1px solid var(--rule-strong); color: var(--text-2); font-weight: 600; letter-spacing: .08em; }
 .contract { margin-left: 6px; font-size: 11px; }
 .unit { font-size: 12px; }
@@ -31,6 +34,7 @@
 .grid-table td.bar-cell { padding-right: 16px; }
 
 .pbar { display: block; width: 160px; height: 8px; }
+.tbar { display: inline-block; margin-right: 16px; vertical-align: middle; }
 .pbar-mid { fill: var(--rule-strong); }
 .pbar-v.up { fill: var(--up); }
 .pbar-v.down { fill: var(--down); }
@@ -90,6 +94,15 @@
 .db-track { fill: var(--rule-strong); }
 .db-on { fill: var(--accent); opacity: .45; }
 .db-now { fill: var(--text); }
+.db-tick { fill: var(--rule-strong); }
+.db-scale { display: flex; justify-content: space-between; width: 240px; }
+.db-scale span { width: 0; display: flex; justify-content: center; }
+.db-scale span:first-child { justify-content: flex-start; }
+.db-scale span:last-child { justify-content: flex-end; }
+.nb { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; margin: 0; }
+.nb dt { color: var(--dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; line-height: 19px; }
+.nb dd { margin: 0; color: var(--text-2); }
+.nb-in { margin-left: 8px; color: var(--text); }
 
 /* ---- FXMATRIX --------------------------------------------------------- */
 .fxm-wrap { overflow-x: auto; }
@@ -142,10 +155,18 @@
 
 @media (max-width: 639px) {
   .tk-name { display: none; }
-  .bar-cell { display: none; }
+  .sectors-table .tk { display: none; }
+  .sectors-table .tk-name { display: inline; margin-left: 0; color: var(--text-2); }
+  .bar-cell, .tbar { display: none; }
   .unit { display: none; }
   .contract { display: none; }
   .st { font-size: 10px; }
+  .world-table .st { text-align: center; }
+  .world-table .st-dot { display: inline-block; }
+  .world-table .st-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .st-legend { display: flex; gap: 16px; }
+  .st-legend > span { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; letter-spacing: .08em; }
+  .st-legend .st-dot { display: inline-block; }
   .clock-table .secs, .ex-city { display: none; }
   .fxm { font-size: 11px; }
   .fxm th, .fxm td { padding: 0 6px; }

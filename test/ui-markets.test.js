@@ -39,3 +39,45 @@ test('HOME movers panel: five gainers then five losers', () => {
   assert.ok(html.indexOf('Top gainers') < html.indexOf('Top losers'));
   assert.match(moversCompact({ gainers: [], losers: [] }), /None right now/);
 });
+
+test('HEATMAP: big tiles show the % change too', async () => {
+  const { tileLabels, labelSize } = await import('../public/screens/heatmap.js');
+  // A wide, short big tile: the old rule dropped the %; now the ticker shrinks to fit it.
+  const big = tileLabels(150, 56, 4, 6);
+  assert.ok(big.fs >= 9 && big.ps >= 9, 'ticker and % both shown');
+  assert.ok(big.fs <= labelSize(150, 56, 4));
+  assert.ok(56 >= big.fs * 1.1 + big.ps * 1.15 + 4);
+  assert.deepEqual(tileLabels(8, 8, 4), { fs: 0, ps: 0 });
+  // Room for the ticker only: no %.
+  assert.equal(tileLabels(40, 16, 3).ps, 0);
+});
+
+test('CLOCK: next bells from the clock rows', async () => {
+  const { nextBells } = await import('../public/screens/clock.js');
+  const ex = (name) => ({ name, city: name });
+  const list = [
+    { ex: ex('NYSE'), st: { next: 'CLOSES', minsTo: 120 }, s: { text: 'OPEN' } },
+    { ex: ex('LSE'), st: { next: 'OPENS', minsTo: 900 }, s: { text: 'CLOSED' } },
+    { ex: ex('TSE'), st: { next: 'OPENS', minsTo: 300 }, s: { text: 'LUNCH' } },
+    { ex: ex('SSE'), st: { next: 'OPENS', minsTo: 10 }, s: { text: 'HOLIDAY' } },
+  ];
+  const b = nextBells(list);
+  assert.deepEqual(b.open, ['NYSE']);
+  assert.equal(b.nextClose.ex.name, 'NYSE');
+  assert.equal(b.nextOpen.ex.name, 'TSE', 'a holiday is not the next open');
+});
+
+test('SECTORS: the bar sits in the TODAY cell; leaders by period', async () => {
+  const { sectorsTable, sectorLeaders } = await import('../public/screens/sectors.js');
+  const rows = [
+    { id: 'XLK', name: 'Technology', last: 1, changePct: 1, m1: 2, ytd: 30 },
+    { id: 'XLE', name: 'Energy', last: 1, changePct: -1, m1: -2, ytd: 40 },
+  ];
+  const html = sectorsTable(rows);
+  assert.equal((html.match(/<th scope="col"/g) || []).length, 5, 'every column has a header');
+  assert.match(html, /today-cell[^>]*><span class="tbar"><svg class="pbar"/);
+  assert.match(html, /data-cmd="XLK" tabindex="0"/);
+  const lead = sectorLeaders(rows);
+  assert.equal(lead[0].best.id, 'XLK');
+  assert.equal(lead[2].best.id, 'XLE');
+});

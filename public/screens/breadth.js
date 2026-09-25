@@ -4,6 +4,8 @@
 import { esc, fmtNum, panel, LOADING, rerender } from './markets.js';
 import { statusLine } from '../freshness.js';
 
+// Both tables put the split bar right after a fixed-width name column, so the bars in
+// the two panels start at the same x.
 // A bar split into rising, unchanged and falling shares of the total.
 export function splitBar(up, unch, down) {
   const total = up + unch + down;
@@ -31,11 +33,12 @@ export function fmtShares(n) {
 
 function exchangeTable(exs) {
   return `<table class="grid-table bb-table">
-    <thead><tr><th scope="col">Exchange</th><th scope="col" class="num">Up</th><th scope="col" class="num">Down</th><th scope="col" class="num bb-x">Unch</th><th scope="col" class="num">% up</th><th scope="col" class="num bb-x">Up/down</th><th scope="col" class="num bb-x">Up volume</th><th scope="col" class="num bb-x">Down volume</th><th scope="col" class="bar-cell">Split</th></tr></thead>
+    <thead><tr><th scope="col">Exchange</th><th scope="col" class="bar-cell">Split</th><th scope="col" class="num">Up</th><th scope="col" class="num">Down</th><th scope="col" class="num bb-x">Unch</th><th scope="col" class="num">% up</th><th scope="col" class="num bb-x">Up/down</th><th scope="col" class="num bb-x">Up volume</th><th scope="col" class="num bb-x">Down volume</th></tr></thead>
     <tbody>${exs.map((e) => (e.missing
-      ? `<tr><th scope="row" class="name">${esc(e.name)}</th><td class="num">--</td><td class="num">--</td><td class="num bb-x">--</td><td class="num">--</td><td class="num bb-x">--</td><td class="num bb-x">--</td><td class="num bb-x">--</td><td class="bar-cell"></td></tr>`
+      ? `<tr><th scope="row" class="name">${esc(e.name)}</th><td class="bar-cell"></td><td class="num">--</td><td class="num">--</td><td class="num bb-x">--</td><td class="num">--</td><td class="num bb-x">--</td><td class="num bb-x">--</td><td class="num bb-x">--</td></tr>`
       : `<tr>
         <th scope="row" class="name">${esc(e.name)}</th>
+        <td class="bar-cell">${splitBar(e.up, e.unchanged, e.down)}</td>
         <td class="num up">${fmtInt(e.up)}</td>
         <td class="num down">${fmtInt(e.down)}</td>
         <td class="num bb-x flat">${fmtInt(e.unchanged)}</td>
@@ -43,7 +46,6 @@ function exchangeTable(exs) {
         <td class="num bb-x">${esc(Number.isFinite(adRatio(e.up, e.down)) ? fmtNum(adRatio(e.up, e.down), 2) : '--')}</td>
         <td class="num bb-x">${esc(fmtShares(e.upVolume))}</td>
         <td class="num bb-x">${esc(fmtShares(e.downVolume))}</td>
-        <td class="bar-cell">${splitBar(e.up, e.unchanged, e.down)}</td>
       </tr>`)).join('')}</tbody>
   </table>`;
 }
@@ -51,14 +53,14 @@ function exchangeTable(exs) {
 function sectorTable(sectors, all) {
   const row = (s, cls = '') => `<tr${cls ? ` class="${cls}"` : ''}>
     <th scope="row" class="name">${esc(s.name)}</th>
+    <td class="bar-cell">${splitBar(s.up, s.unchanged, s.down)}</td>
     <td class="num up">${fmtInt(s.up)}</td>
     <td class="num down">${fmtInt(s.down)}</td>
     <td class="num bb-x flat">${fmtInt(s.unchanged)}</td>
     <td class="num last">${fmtPctPlain(s.upPct)}</td>
-    <td class="bar-cell">${splitBar(s.up, s.unchanged, s.down)}</td>
   </tr>`;
   return `<table class="grid-table bb-table">
-    <thead><tr><th scope="col">Sector</th><th scope="col" class="num">Up</th><th scope="col" class="num">Down</th><th scope="col" class="num bb-x">Unch</th><th scope="col" class="num">% up</th><th scope="col" class="bar-cell">Split</th></tr></thead>
+    <thead><tr><th scope="col">Sector</th><th scope="col" class="bar-cell">Split</th><th scope="col" class="num">Up</th><th scope="col" class="num">Down</th><th scope="col" class="num bb-x">Unch</th><th scope="col" class="num">% up</th></tr></thead>
     <tbody>${all ? row({ ...all, name: `All S&P 100 (${all.total})` }, 'bb-all') : ''}${sectors.map((s) => row(s)).join('')}</tbody>
   </table>`;
 }
