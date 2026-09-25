@@ -425,7 +425,7 @@ test('ECONOMY and FEDPATH screens: units, periods, lines', () => {
 });
 
 test('instruments: the new rows open their own screens, new WORLD rows link', () => {
-  const ids = ['SPFUT', 'NDFUT', 'DJFUT', 'SOX', 'DJTRANS', 'SPXEW', 'NYA', 'MOVEINDEX', 'VXN', 'SPOTGOLD', 'SPOTSILVER', 'BTCFUT', 'GASOLINE', 'LIVECATTLE', 'STOXX600', 'HSCEI', 'BIST100', 'MERVAL', 'VNINDEX', 'BALTICDRY'];
+  const ids = ['SPFUT', 'NDFUT', 'DJFUT', 'SOX', 'DJTRANS', 'SPXEW', 'NYA', 'MOVEINDEX', 'VXN', 'GOLDFUT', 'SILVERFUT', 'BTCFUT', 'GASOLINE', 'LIVECATTLE', 'STOXX600', 'HSCEI', 'BIST100', 'MERVAL', 'VNINDEX', 'BALTICDRY'];
   for (const id of ids) {
     assert.ok(instrumentById(id), id);
     const c = parseCommand(id);

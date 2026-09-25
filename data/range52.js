@@ -32,14 +32,27 @@ export function closesRange(points, nowMs) {
   return { high: hi.v, low: lo.v, highT: hi.t, lowT: lo.t };
 }
 
+// The source's 52-week range cannot be used at all: a named instrument missing a side
+// (spot gold's low comes as a 0.00 placeholder, see parseQuoteRow), and every spot
+// metal, whose high and low CNBC tracks over a short window only (on 2026-09-25 spot
+// silver's "52-week high" was 64.39 while COMEX silver's was 121.79). Those get the
+// range of the daily closes, or -- when the closes cannot be had.
+export function unusableRange(q) {
+  if (!q?.label || q.kind === 'stock') return false;
+  return q.kind === 'spot' || !Number.isFinite(q.high52) || !Number.isFinite(q.low52);
+}
+
 export async function precise52(q, { chart = getChart, now = () => Date.now() } = {}) {
-  if (!q || !roundedRange(q)) return q;
+  const unusable = unusableRange(q);
+  if (!q || !(roundedRange(q) || unusable)) return q;
   try {
     const c = await chart(q.ticker, '1Y');
     const r = c?.bar === '1D' ? closesRange(c.points, now()) : null;
     if (!r) throw new Error('no daily closes');
     return { ...q, high52: r.high, low52: r.low, range52Basis: 'daily closes', source52: { high: q.high52, low: q.low52, decimals: q.range52Dp } };
   } catch {
+    // An unusable range shows as -- (never the placeholder); a rounded one is kept, marked.
+    if (unusable) return { ...q, high52: null, low52: null };
     return { ...q, range52Basis: 'source, rounded' };
   }
 }

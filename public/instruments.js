@@ -2,8 +2,8 @@
 // the FX majors and the Treasury yields. Shared by the server (which maps ids to
 // CNBC symbols) and the browser (names, aliases, kinds). Pure data plus lookups.
 //
-// kind: index | future | crypto | fx | yield. Plain stocks are not listed here;
-// any ticker-shaped word is a stock.
+// kind: index | future | spot | crypto | fx | yield (spot: a metal's spot price).
+// Plain stocks are not listed here; any ticker-shaped word is a stock.
 // group: the heading the row sits under on MARKETS and HOME.
 // markets: shown on MARKETS and HOME. tape: shown on the ticker tape.
 // us: a US index (intraday charts show the 9:30 to 16:00 ET session, unless allDay).
@@ -66,13 +66,15 @@ export const INSTRUMENTS = [
   I('ASX200', 'ASX 200', 'Asia Pacific', 'index', '.AXJO', 2, { aliases: ['ASX', 'AXJO'] }),
   I('SET', 'SET Thailand', 'Asia Pacific', 'index', '.SETI', 2, { aliases: ['SETI', 'THAILAND'] }),
 
-  I('GOLD', 'Gold', 'Commodities', 'future', '@GC.1', 2, { tape: true, aliases: ['XAU', 'XAUUSD'] }),
-  I('SILVER', 'Silver', 'Commodities', 'future', '@SI.1', 3, { tape: true, aliases: ['XAG', 'XAGUSD'] }),
+  // GOLD and SILVER are the spot prices (what "the gold price" means, real time); the
+  // COMEX front-month futures are GOLD FUTURES and SILVER FUTURES (and on COMMODITIES).
+  I('GOLD', 'Spot gold (XAU)', 'Commodities', 'spot', 'XAU=', 2, { tape: true, base: 'XAU', quote: 'USD', aliases: ['XAU', 'XAUUSD', 'SPOTGOLD', 'SPOTXAU', 'GOLDSPOT'] }),
+  I('SILVER', 'Spot silver (XAG)', 'Commodities', 'spot', 'XAG=', 3, { tape: true, base: 'XAG', quote: 'USD', aliases: ['XAG', 'XAGUSD', 'SPOTSILVER', 'SPOTXAG', 'SILVERSPOT'] }),
   I('WTI', 'Oil (WTI)', 'Commodities', 'future', '@CL.1', 2, { tape: true, aliases: ['OIL', 'CRUDE', 'CRUDEOIL'] }),
   I('NATGAS', 'Natural Gas', 'Commodities', 'future', '@NG.1', 3, { aliases: ['NATURALGAS', 'GAS'] }),
   I('COPPER', 'Copper', 'Commodities', 'future', '@HG.1', 4),
-  I('SPOTGOLD', 'Spot gold', 'Commodities', 'fx', 'XAU=', 2, { base: 'XAU', quote: 'USD', aliases: ['SPOTXAU'] }),
-  I('SPOTSILVER', 'Spot silver', 'Commodities', 'fx', 'XAG=', 3, { base: 'XAG', quote: 'USD', aliases: ['SPOTXAG'] }),
+  I('GOLDFUT', 'Gold futures (COMEX)', 'Commodities', 'future', '@GC.1', 2, { aliases: ['GOLDFUTURES', 'GOLDFUTURE', 'COMEXGOLD'] }),
+  I('SILVERFUT', 'Silver futures (COMEX)', 'Commodities', 'future', '@SI.1', 3, { aliases: ['SILVERFUTURES', 'SILVERFUTURE', 'COMEXSILVER'] }),
   I('BALTICDRY', 'Baltic Dry Index', 'Commodities', 'index', '.BADI', 0, { aliases: ['BDI', 'BADI', 'BALTIC', 'BALTICDRYINDEX'] }),
 
   I('BTC', 'Bitcoin', 'Crypto', 'crypto', 'BTC.CM=', 0, { tape: true, aliases: ['BITCOIN', 'BTCUSD'] }),
@@ -93,6 +95,11 @@ export const INSTRUMENTS = [
   I('USDTHB', 'USD/THB', 'Currencies', 'fx', 'THB=', 2, { markets: false, base: 'USD', quote: 'THB', aliases: ['USD/THB', 'BAHT'] }),
   I('US2Y', 'US 2Y yield', 'Rates', 'yield', 'US2Y', 3, { markets: false, longName: 'US 2-year Treasury', term: '2Y' }),
   I('US30Y', 'US 30Y yield', 'Rates', 'yield', 'US30Y', 3, { markets: false, longName: 'US 30-year Treasury', term: '30Y' }),
+  // The rest of the Treasury curve (CURVE). In the one shared quote batch, so CURVE and
+  // RATES show the same yields with the same time and the same RT or DLY tag.
+  ...[['1M', '1-month'], ['3M', '3-month'], ['6M', '6-month'], ['1Y', '1-year'], ['3Y', '3-year'], ['7Y', '7-year'], ['20Y', '20-year']].map(([t, words]) => I(`US${t}`, `US ${t} yield`, 'Rates', 'yield', `US${t}`, 3, {
+    markets: false, longName: `US ${words} Treasury`, term: t,
+  })),
 
   // Rows on COMMODITIES, BONDS and CRYPTO. Each opens its own screen.
   I('BRENT', 'Oil (Brent)', 'Commodities', 'future', '@LCO.1', 2, { markets: false, aliases: ['BRENTOIL', 'BRENTCRUDE'] }),
@@ -142,6 +149,8 @@ export function instrumentBySrc(src) {
 // The FX majors on HOME, and the yields on RATES, in display order.
 export const FX_MAJOR_IDS = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'USDCNY', 'USDTHB'];
 export const YIELD_IDS = ['US2Y', 'US10Y', 'US30Y'];
+// The US Treasury curve, shortest first (CURVE).
+export const CURVE_IDS = ['US1M', 'US3M', 'US6M', 'US1Y', 'US2Y', 'US3Y', 'US5Y', 'US7Y', 'US10Y', 'US20Y', 'US30Y'];
 
 const BY_KEY = new Map();
 for (const inst of INSTRUMENTS) {

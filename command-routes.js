@@ -60,7 +60,8 @@ export function mountCommandRoutes(app) {
   route(app, '/api/heatmap', 30, () => getHeatmap());
   route(app, '/api/sectors', 60, () => getSectors());
   route(app, '/api/compare', 60, (req) => getCompare({ symbols: str(req.query.s), range: str(req.query.r) || '1Y' }));
-  route(app, '/api/curve', 60, () => getCurve());
+  // Today's yields: the same 15 s quote batch as /api/rates, so the same short max-age.
+  route(app, '/api/curve', 5, () => getCurve());
   route(app, '/api/bonds', 60, () => getBonds());
   route(app, '/api/commodities', 60, () => getCommodities());
   route(app, '/api/crypto', 60, () => getCrypto());

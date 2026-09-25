@@ -47,7 +47,26 @@ export function holdersTable(rows, sort = { key: 'shares', dir: 'desc' }) {
   return dataTable({ columns: COLUMNS, rows: sortRows(rows, sort.key, sort.dir), sort, caption: 'Top institutional holders' });
 }
 
-const NOTE = 'Holdings as of each holder\'s latest 13F filing (the As of date). % of shares = shares held / shares outstanding, both from the source.';
+// Holders whose latest 13F is older than the newest quarter: greyed, apart from the top
+// list, never in a total. Plain cells (no up or down colour) and no sorting.
+const OLD_COLUMNS = COLUMNS.map((c) => ({ ...c, cls: c.cls === 'last' ? '' : c.cls, fmt: c.key === 'change' ? (v) => signedInt(v) : c.key === 'changePct' ? (v) => signedPct(v) : c.fmt }));
+
+export function notRefiledHtml(rows, quarter) {
+  if (!rows?.length) return '';
+  return `<div class="co-wide dim own-old">
+    <p class="panel-msg">Not refiled this quarter: latest 13F older than ${esc(quarter ? fmtDay(quarter) : 'the newest quarter')}. Left out of every total above, as the stake may now be filed by a successor.</p>
+    ${dataTable({ columns: OLD_COLUMNS, rows, caption: 'Holders that have not refiled this quarter' })}
+  </div>`;
+}
+
+// The footnote: what the totals count, and the source's own total when it differs.
+export function ownersNote(s) {
+  const base = 'Holdings as of each holder\'s latest 13F filing (the As of date). % of shares = shares held / shares outstanding, both from the source.';
+  if (!s?.quarterOnly) return `${base} The source's totals count every holder's latest filing, old ones too.`;
+  const n = s.notRefiled;
+  const their = Number.isFinite(s.reported?.institutionalPct) ? ` The source's own total, with them, is ${fmtPlainPct(s.reported.institutionalPct)}.` : '';
+  return `${base} Totals and the top list count only filings for ${fmtDay(s.quarter)}, summed from the source's full holder list: ${fmtInt(n.holders)} holders whose latest filing is older (${fmtBig(n.shares)} shares) are left out, so a stake that moved to a successor is not counted twice.${their} Sold out is the source's count.`;
+}
 
 export function render(el, cmd, ctx) {
   if (cmd.error) {
@@ -66,7 +85,7 @@ export function render(el, cmd, ctx) {
   ctx.fetchJSON(`/api/owners?s=${encodeURIComponent(ticker)}`, { signal: ctx.signal }).then((d) => {
     top.innerHTML = summaryHtml(d.summary);
     let sort = { key: 'shares', dir: 'desc' };
-    const draw = () => { list.innerHTML = `<div class="co-wide">${holdersTable(d.rows, sort)}</div>`; };
+    const draw = () => { list.innerHTML = `<div class="co-wide">${holdersTable(d.rows, sort)}</div>${notRefiledHtml(d.notRefiled, d.summary?.quarter)}`; };
     list.addEventListener('click', (e) => {
       const th = e.target.closest('.th-sort');
       if (!th) return;
@@ -77,7 +96,7 @@ export function render(el, cmd, ctx) {
     });
     draw();
     el.querySelector('#own-meta').innerHTML = panelTools(Number.isFinite(d.totalRecords) ? { shown: d.rows.length, total: d.totalRecords } : { total: d.rows.length });
-    el.querySelector('#own-foot').innerHTML = sourceLine(d.source, NOTE);
+    el.querySelector('#own-foot').innerHTML = sourceLine(d.source, ownersNote(d.summary));
     ctx.updated(d.updated, d.stale);
   }).catch((err) => {
     if (err.name === 'AbortError') return;

@@ -18,7 +18,7 @@ import {
 } from './lib/og.js';
 import { parseCommand } from './public/app.js';
 import { getFinancials, FinancialsError } from './data/financials.js';
-import { getScreen, ScreenError } from './data/screen.js';
+import { getScreen, ScreenError, startScreenPrewarm } from './data/screen.js';
 import { buildId, versionIndex } from './lib/assets.js';
 import { readFileSync } from 'node:fs';
 import { mountCommandRoutes } from './command-routes.js';
@@ -345,4 +345,8 @@ app.use(express.static(PUBLIC, { index: false, cacheControl: false, setHeaders: 
 
 app.use((req, res) => sendIndex(res, 404));
 
-app.listen(PORT, HOST, () => console.log(`bloombroke ${BUILD} listening on http://${HOST}:${PORT}`));
+app.listen(PORT, HOST, () => {
+  console.log(`bloombroke ${BUILD} listening on http://${HOST}:${PORT}`);
+  // SCREEN's P/E and dividend numbers: loaded in the background, so no one waits on a cold cache.
+  startScreenPrewarm();
+});

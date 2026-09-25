@@ -89,7 +89,7 @@ test('registry feeds the command bar, the function bar and ticker-first grammar'
   // Synonyms: YIELD finds the rate screens, after the symbols.
   const y = suggest('yield').map((s) => s.name);
   assert.ok(y.includes('RATES') || y.includes('CURVE') || y.includes('BONDS'), y.join());
-  assert.deepEqual(suggest('go').map((s) => s.value), ['GOLD'], 'two letters: no synonym matches');
+  assert.deepEqual(suggest('go').map((s) => s.value), ['GOLD', 'GOLDFUT'], 'two letters: no synonym matches');
   assert.equal(suggest('CHART ')[0].usage, true);
   assert.ok(suggest('MEN').some((s) => s.name === 'MENU'));
 });

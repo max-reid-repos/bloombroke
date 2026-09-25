@@ -1,0 +1,74 @@
+{
+ "_note": "Real CNBC quote rows, 2026-09-25 14:20 ET, trimmed to the fields SCREEN reads. SPCX, INTC, NET and SNOW carry a negative P/E (a loss).",
+ "FormattedQuoteResult": {
+  "FormattedQuote": [
+   {
+    "symbol": "SPCX",
+    "code": 0,
+    "name": "Space Exploration Technologies Corp",
+    "last": "148.18",
+    "last_time": "2026-09-25T14:16:19.272-0400",
+    "pe": "-218.06"
+   },
+   {
+    "symbol": "INTC",
+    "code": 0,
+    "name": "Intel Corp",
+    "last": "124.50",
+    "last_time": "2026-09-25T14:16:19.681-0400",
+    "pe": "-58.72"
+   },
+   {
+    "symbol": "NET",
+    "code": 0,
+    "name": "Cloudflare, Inc.",
+    "last": "350.47",
+    "last_time": "2026-09-25T14:16:15.042-0400",
+    "pe": "-599.50"
+   },
+   {
+    "symbol": "SNOW",
+    "code": 0,
+    "name": "Snowflake Inc.",
+    "last": "339.25",
+    "last_time": "2026-09-25T14:16:18.384-0400",
+    "pe": "-106.87"
+   },
+   {
+    "symbol": "AAPL",
+    "code": 0,
+    "name": "Apple Inc.",
+    "last": "340.13",
+    "last_time": "2026-09-25T14:16:19.733-0400",
+    "pe": "39.14",
+    "dividendyield": "0.32%"
+   },
+   {
+    "symbol": "KO",
+    "code": 0,
+    "name": "Coca-Cola Co",
+    "last": "87.79",
+    "last_time": "2026-09-25T14:16:08.242-0400",
+    "pe": "26.45",
+    "dividendyield": "2.41%"
+   },
+   {
+    "symbol": "T",
+    "code": 0,
+    "name": "AT&T Inc",
+    "last": "25.31",
+    "last_time": "2026-09-25T14:16:17.544-0400",
+    "pe": "8.36",
+    "dividendyield": "4.38%"
+   },
+   {
+    "symbol": "BRK.B",
+    "code": 0,
+    "name": "Berkshire Hathaway Inc",
+    "last": "505.07",
+    "last_time": "2026-09-25T14:16:18.156-0400",
+    "pe": "12.70"
+   }
+  ]
+ }
+}
