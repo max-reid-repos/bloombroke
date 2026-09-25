@@ -12,9 +12,13 @@ import { search } from './data/search.js';
 import { getCatalog, getWhatif, getFunding, catalog } from './data/whatif-service.js';
 import { WhatifError } from './data/whatif.js';
 import { whatifTokens, normalizeWhatif, certModel } from './data/whatif-cert.js';
-import { getCert, whatifPng, defaultPng, withMeta, certMeta, DEFAULT_META } from './lib/og.js';
+import {
+  getCert, whatifPng, defaultPng, withMeta, certMeta, DEFAULT_META,
+  getQuoteCard, quotePng, quoteMeta, affordModel, affordPng, affordMeta,
+} from './lib/og.js';
+import { parseCommand } from './public/app.js';
 import { getFinancials, FinancialsError } from './data/financials.js';
-import { getScreen, ScreenError } from './data/screen.js';
+import { getScreen, ScreenError, startScreenPrewarm } from './data/screen.js';
 import { buildId, versionIndex } from './lib/assets.js';
 import { readFileSync } from 'node:fs';
 import { mountCommandRoutes } from './command-routes.js';
@@ -250,12 +254,30 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message
 
 // Share images. A bad or unknown command gets the site card, never an error.
 const ogDeps = { catalog, getWhatif };
+const quoteDeps = { getQuote, getChart, parse: parseCommand };
 function sendPng(res, png, maxAge) {
   res.set({ 'Content-Type': 'image/png', 'Cache-Control': `public, max-age=${maxAge}` }).send(png);
 }
 app.get('/og/whatif.png', async (req, res) => {
   try {
     sendPng(res, await whatifPng(str(req.query.c) || '', ogDeps), 86400);
+  } catch (err) {
+    console.error('[og]', err.message);
+    try { sendPng(res, await defaultPng(), 300); } catch { res.status(503).end(); }
+  }
+});
+// A ticker card changes with the price: kept 10 minutes.
+app.get('/og/quote.png', async (req, res) => {
+  try {
+    sendPng(res, await quotePng(str(req.query.c) || '', quoteDeps), 600);
+  } catch (err) {
+    console.error('[og]', err.message);
+    try { sendPng(res, await defaultPng(), 300); } catch { res.status(503).end(); }
+  }
+});
+app.get('/og/afford.png', async (req, res) => {
+  try {
+    sendPng(res, await affordPng(str(req.query.c) || ''), 86400);
   } catch (err) {
     console.error('[og]', err.message);
     try { sendPng(res, await defaultPng(), 300); } catch { res.status(503).end(); }
@@ -281,20 +303,30 @@ function sendIndex(res, status = 200, html = INDEX) {
   res.status(status).set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }).send(html);
 }
 
-// A shared WHATIF link (/?c=WHATIF+...) gets its own title and certificate image, so
-// the card on X shows the result. Anything else, or a slow answer, gets the site card.
-async function whatifIndex(c) {
-  if (!/^\s*WHATIF\s+\S/i.test(c)) return INDEX;
+// A shared link gets its own title and image, so the card on X shows the result:
+// WHATIF (the certificate), AFFORD (cost per use and verdict) and a ticker (price and a
+// 1-month line). Anything else, or a slow answer, gets the site card.
+async function shareIndex(c) {
+  if (/^\s*AFFORD\s+\S/i.test(c)) {
+    const model = affordModel(c);
+    return model ? withMeta(PAGE, affordMeta(model)) : INDEX;
+  }
+  const whatif = /^\s*WHATIF\s+\S/i.test(c);
+  if (!whatif && !c.trim()) return INDEX;
   const timeout = new Promise((resolve) => { setTimeout(resolve, 2500, null).unref(); });
   try {
-    const model = await Promise.race([getCert(c, ogDeps), timeout]);
-    return model ? withMeta(PAGE, certMeta(model)) : INDEX;
+    if (whatif) {
+      const model = await Promise.race([getCert(c, ogDeps), timeout]);
+      return model ? withMeta(PAGE, certMeta(model)) : INDEX;
+    }
+    const model = await Promise.race([getQuoteCard(c, quoteDeps), timeout]);
+    return model ? withMeta(PAGE, quoteMeta(model)) : INDEX;
   } catch {
     return INDEX;
   }
 }
 app.get(['/', '/index.html'], async (req, res) => {
-  const html = await whatifIndex(str(req.query.c) || '');
+  const html = await shareIndex(str(req.query.c) || '');
   sendIndex(res, 200, isEmbedQuery(req.query) ? embedHtml(html) : html);
 });
 
@@ -313,4 +345,8 @@ app.use(express.static(PUBLIC, { index: false, cacheControl: false, setHeaders: 
 
 app.use((req, res) => sendIndex(res, 404));
 
-app.listen(PORT, HOST, () => console.log(`bloombroke ${BUILD} listening on http://${HOST}:${PORT}`));
+app.listen(PORT, HOST, () => {
+  console.log(`bloombroke ${BUILD} listening on http://${HOST}:${PORT}`);
+  // SCREEN's P/E and dividend numbers: loaded in the background, so no one waits on a cold cache.
+  startScreenPrewarm();
+});

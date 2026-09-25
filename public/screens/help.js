@@ -8,6 +8,8 @@ import {
   CATEGORIES, findCommand, byCategory, categoriesInUse, searchCommands,
   START_HERE, GRAMMAR_RULES, FUNCTION_BAR,
 } from '../registry.js';
+import { commandForWord } from '../resolve.js';
+import { LISTED_TICKERS } from '../known-tickers.js';
 
 const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 
@@ -21,7 +23,9 @@ export function parse(args) {
 }
 
 // What HELP <topic> shows: { entry, ticker } for a command or a ticker, or { query }
-// to search for anything else.
+// to search for anything else. Plain words find their command: HELP SHORT and HELP
+// SHORT INTEREST open SHORTS, HELP DIVIDEND opens DIVIDENDS, a typo one letter off
+// opens the command it meant (from: the words typed).
 export function resolveTopic(topic) {
   const words = String(topic || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
   if (!words.length) return {};
@@ -29,8 +33,13 @@ export function resolveTopic(topic) {
     const entry = findCommand(w);
     if (entry && !entry.hidden) return { entry };
   }
-  if (words.length === 1 && TICKER_RE.test(words[0])) return { entry: findCommand('<TICKER>'), ticker: words[0] };
-  return { query: words.join(' ').toLowerCase() };
+  const one = words.length === 1 && TICKER_RE.test(words[0]) ? words[0] : null;
+  if (one && LISTED_TICKERS.has(one)) return { entry: findCommand('<TICKER>'), ticker: one };
+  const guess = commandForWord(words.join(' '));
+  if (guess) return { entry: guess, from: words.join(' ') };
+  const query = words.join(' ').toLowerCase();
+  if (one && !searchCommands(query).length) return { entry: findCommand('<TICKER>'), ticker: one };
+  return { query };
 }
 
 const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
@@ -231,6 +240,6 @@ export function render(el, cmd, ctx) {
   paint();
   const stopFade = edgeFade(el.querySelector('.help-cats'));
   if (query) input.focus();
-  ctx.status(topic.entry ? `HELP ${topic.ticker || topic.entry.name}` : 'HELP: PICK A CATEGORY, OR PRESS / TO SEARCH');
+  ctx.status(topic.entry ? `HELP ${topic.ticker || topic.entry.name}${topic.from ? ` (FROM ${topic.from})` : ''}` : 'HELP: PICK A CATEGORY, OR PRESS / TO SEARCH');
   return () => { document.removeEventListener('keydown', onSlash, true); stopFade(); };
 }

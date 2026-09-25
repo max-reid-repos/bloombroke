@@ -1,0 +1,401 @@
+{
+ "_note": "Real Nasdaq institutional-holdings response for AAPL (limit=10000), 2026-09-25, trimmed: the top 30 holders by value plus the 3 biggest holders of each older filing date. totalRecords is set to the rows kept, so the file reads as a complete list; the summary blocks are the source figures for all 6,494 holders.",
+ "data": {
+  "ownershipSummary": {
+   "SharesOutstandingPCT": {
+    "label": "Institutional Ownership",
+    "value": "76.57%"
+   },
+   "ShareoutstandingTotal": {
+    "label": "Total Shares Outstanding (millions)",
+    "value": "14,594"
+   },
+   "TotalHoldingsValue": {
+    "label": "Total Value of Holdings (millions)",
+    "value": "$3,753,723"
+   }
+  },
+  "activePositions": {
+   "asOf": null,
+   "headers": {
+    "positions": "Active Positions",
+    "holders": "Holders",
+    "shares": "Shares"
+   },
+   "rows": [
+    {
+     "positions": "Increased Positions",
+     "holders": "2,882",
+     "shares": "331,504,136"
+    },
+    {
+     "positions": "Decreased Positions",
+     "holders": "3,203",
+     "shares": "240,666,268"
+    },
+    {
+     "positions": "Held Positions",
+     "holders": "409",
+     "shares": "10,602,283,686"
+    },
+    {
+     "positions": "Total Institutional Shares",
+     "holders": "6,494",
+     "shares": "11,174,454,090"
+    }
+   ]
+  },
+  "newSoldOutPositions": {
+   "asOf": null,
+   "headers": {
+    "positions": "Active Positions",
+    "holders": "Holders",
+    "shares": "Shares"
+   },
+   "rows": [
+    {
+     "positions": "New Positions",
+     "holders": "193",
+     "shares": "42,713,732"
+    },
+    {
+     "positions": "Sold Out Positions",
+     "holders": "104",
+     "shares": "18,657,913"
+    }
+   ]
+  },
+  "holdingsTransactions": {
+   "totalRecords": "39",
+   "table": {
+    "headers": {
+     "ownerName": "Owner Name",
+     "date": "Date",
+     "sharesHeld": "Shares Held",
+     "sharesChange": "Change (Shares)",
+     "sharesChangePCT": "Change (%)",
+     "marketValue": "Value (In 1,000s)"
+    },
+    "rows": [
+     {
+      "ownerName": "Vanguard Group Inc",
+      "date": "12/31/2025",
+      "sharesHeld": "1,426,283,914",
+      "sharesChange": "26,856,752",
+      "sharesChangePCT": "1.919%",
+      "marketValue": "$479,117,292"
+     },
+     {
+      "ownerName": "Blackrock, Inc.",
+      "date": "6/30/2026",
+      "sharesHeld": "1,162,996,939",
+      "sharesChange": "18,301,514",
+      "sharesChangePCT": "1.599%",
+      "marketValue": "$390,673,932"
+     },
+     {
+      "ownerName": "Vanguard Capital Management Llc",
+      "date": "6/30/2026",
+      "sharesHeld": "959,107,911",
+      "sharesChange": "5,260,263",
+      "sharesChangePCT": "0.551%",
+      "marketValue": "$322,183,529"
+     },
+     {
+      "ownerName": "State Street Corp",
+      "date": "6/30/2026",
+      "sharesHeld": "615,129,929",
+      "sharesChange": "12,788,520",
+      "sharesChangePCT": "2.123%",
+      "marketValue": "$206,634,446"
+     },
+     {
+      "ownerName": "Geode Capital Management, Llc",
+      "date": "6/30/2026",
+      "sharesHeld": "371,336,543",
+      "sharesChange": "2,719,589",
+      "sharesChangePCT": "0.738%",
+      "marketValue": "$124,739,372"
+     },
+     {
+      "ownerName": "Vanguard Portfolio Management Llc",
+      "date": "6/30/2026",
+      "sharesHeld": "334,119,156",
+      "sharesChange": "2,682,101",
+      "sharesChangePCT": "0.809%",
+      "marketValue": "$112,237,307"
+     },
+     {
+      "ownerName": "Fmr Llc",
+      "date": "6/30/2026",
+      "sharesHeld": "325,348,754",
+      "sharesChange": "17,906,714",
+      "sharesChangePCT": "5.824%",
+      "marketValue": "$109,291,153"
+     },
+     {
+      "ownerName": "Morgan Stanley",
+      "date": "6/30/2026",
+      "sharesHeld": "242,614,238",
+      "sharesChange": "-1,860,484",
+      "sharesChangePCT": "-0.761%",
+      "marketValue": "$81,498,975"
+     },
+     {
+      "ownerName": "Jpmorgan Chase & Co",
+      "date": "6/30/2026",
+      "sharesHeld": "228,762,008",
+      "sharesChange": "-2,860,133",
+      "sharesChangePCT": "-1.235%",
+      "marketValue": "$76,845,734"
+     },
+     {
+      "ownerName": "Berkshire Hathaway Inc",
+      "date": "6/30/2026",
+      "sharesHeld": "227,917,808",
+      "sharesChange": "0",
+      "sharesChangePCT": "0%",
+      "marketValue": "$76,562,150"
+     },
+     {
+      "ownerName": "Norges Bank",
+      "date": "6/30/2026",
+      "sharesHeld": "190,726,866",
+      "sharesChange": "-1,528,220",
+      "sharesChangePCT": "-0.795%",
+      "marketValue": "$64,068,969"
+     },
+     {
+      "ownerName": "Invesco Ltd.",
+      "date": "6/30/2026",
+      "sharesHeld": "187,965,529",
+      "sharesChange": "3,463,897",
+      "sharesChangePCT": "1.877%",
+      "marketValue": "$63,141,381"
+     },
+     {
+      "ownerName": "Price T Rowe Associates Inc /Md/",
+      "date": "6/30/2026",
+      "sharesHeld": "159,811,362",
+      "sharesChange": "-40,615,258",
+      "sharesChangePCT": "-20.264%",
+      "marketValue": "$53,683,833"
+     },
+     {
+      "ownerName": "Northern Trust Corp",
+      "date": "6/30/2026",
+      "sharesHeld": "157,785,381",
+      "sharesChange": "-1,480,244",
+      "sharesChangePCT": "-0.929%",
+      "marketValue": "$53,003,265"
+     },
+     {
+      "ownerName": "Bank Of America Corp /De/",
+      "date": "6/30/2026",
+      "sharesHeld": "127,820,329",
+      "sharesChange": "7,092,365",
+      "sharesChangePCT": "5.875%",
+      "marketValue": "$42,937,405"
+     },
+     {
+      "ownerName": "Goldman Sachs Group Inc",
+      "date": "6/30/2026",
+      "sharesHeld": "111,744,105",
+      "sharesChange": "5,158,712",
+      "sharesChangePCT": "4.84%",
+      "marketValue": "$37,537,080"
+     },
+     {
+      "ownerName": "Legal & General Group Plc",
+      "date": "6/30/2026",
+      "sharesHeld": "105,208,881",
+      "sharesChange": "-2,918,499",
+      "sharesChangePCT": "-2.699%",
+      "marketValue": "$35,341,767"
+     },
+     {
+      "ownerName": "Ubs Am, A Distinct Business Unit Of Ubs Asset Management Ame",
+      "date": "6/30/2026",
+      "sharesHeld": "104,001,309",
+      "sharesChange": "-1,509,444",
+      "sharesChangePCT": "-1.431%",
+      "marketValue": "$34,936,120"
+     },
+     {
+      "ownerName": "Charles Schwab Investment Management Inc",
+      "date": "6/30/2026",
+      "sharesHeld": "101,374,121",
+      "sharesChange": "-970,672",
+      "sharesChangePCT": "-0.948%",
+      "marketValue": "$34,053,595"
+     },
+     {
+      "ownerName": "Bank Of New York Mellon Corp",
+      "date": "6/30/2026",
+      "sharesHeld": "88,383,551",
+      "sharesChange": "-3,728,318",
+      "sharesChangePCT": "-4.048%",
+      "marketValue": "$29,689,802"
+     },
+     {
+      "ownerName": "Vanguard Fiduciary Trust Co",
+      "date": "6/30/2026",
+      "sharesHeld": "83,474,159",
+      "sharesChange": "-720,509",
+      "sharesChangePCT": "-0.856%",
+      "marketValue": "$28,040,639"
+     },
+     {
+      "ownerName": "Nuveen, Llc",
+      "date": "6/30/2026",
+      "sharesHeld": "74,873,332",
+      "sharesChange": "-3,629,686",
+      "sharesChangePCT": "-4.624%",
+      "marketValue": "$25,151,450"
+     },
+     {
+      "ownerName": "Amundi",
+      "date": "6/30/2026",
+      "sharesHeld": "70,758,208",
+      "sharesChange": "-2,324,408",
+      "sharesChangePCT": "-3.181%",
+      "marketValue": "$23,769,097"
+     },
+     {
+      "ownerName": "Franklin Templeton Inc",
+      "date": "6/30/2026",
+      "sharesHeld": "69,201,134",
+      "sharesChange": "20,599,001",
+      "sharesChangePCT": "42.383%",
+      "marketValue": "$23,246,045"
+     },
+     {
+      "ownerName": "Royal Bank Of Canada",
+      "date": "6/30/2026",
+      "sharesHeld": "65,402,666",
+      "sharesChange": "-1,561,483",
+      "sharesChangePCT": "-2.332%",
+      "marketValue": "$21,970,064"
+     },
+     {
+      "ownerName": "Wells Fargo & Company/Mn",
+      "date": "6/30/2026",
+      "sharesHeld": "59,910,539",
+      "sharesChange": "1,174,053",
+      "sharesChangePCT": "1.999%",
+      "marketValue": "$20,125,148"
+     },
+     {
+      "ownerName": "Dimensional Fund Advisors Lp",
+      "date": "6/30/2026",
+      "sharesHeld": "59,504,383",
+      "sharesChange": "950,351",
+      "sharesChangePCT": "1.623%",
+      "marketValue": "$19,988,712"
+     },
+     {
+      "ownerName": "Wellington Management Group Llp",
+      "date": "6/30/2026",
+      "sharesHeld": "59,450,771",
+      "sharesChange": "-5,582,670",
+      "sharesChangePCT": "-8.584%",
+      "marketValue": "$19,970,703"
+     },
+     {
+      "ownerName": "Capital Research Global Investors",
+      "date": "6/30/2026",
+      "sharesHeld": "59,393,712",
+      "sharesChange": "-4,642,016",
+      "sharesChangePCT": "-7.249%",
+      "marketValue": "$19,951,536"
+     },
+     {
+      "ownerName": "Fisher Asset Management, Llc",
+      "date": "6/30/2026",
+      "sharesHeld": "57,610,104",
+      "sharesChange": "1,179,763",
+      "sharesChangePCT": "2.091%",
+      "marketValue": "$19,352,386"
+     },
+     {
+      "ownerName": "Janus Henderson Group Ltd.",
+      "date": "3/31/2026",
+      "sharesHeld": "26,916,594",
+      "sharesChange": "-425,198",
+      "sharesChangePCT": "-1.555%",
+      "marketValue": "$9,041,822"
+     },
+     {
+      "ownerName": "Cwm, Llc",
+      "date": "3/31/2026",
+      "sharesHeld": "2,730,847",
+      "sharesChange": "20,623",
+      "sharesChangePCT": "0.761%",
+      "marketValue": "$917,346"
+     },
+     {
+      "ownerName": "Pacer Advisors, Inc.",
+      "date": "3/31/2026",
+      "sharesHeld": "1,043,726",
+      "sharesChange": "-536,598",
+      "sharesChangePCT": "-33.955%",
+      "marketValue": "$350,608"
+     },
+     {
+      "ownerName": "Cibc Private Wealth Group Llc",
+      "date": "12/31/2025",
+      "sharesHeld": "10,564,205",
+      "sharesChange": "-134,231",
+      "sharesChangePCT": "-1.255%",
+      "marketValue": "$3,548,728"
+     },
+     {
+      "ownerName": "Two Sigma Advisers, Lp",
+      "date": "12/31/2025",
+      "sharesHeld": "5,896,700",
+      "sharesChange": "424,100",
+      "sharesChangePCT": "7.75%",
+      "marketValue": "$1,980,819"
+     },
+     {
+      "ownerName": "Comerica Bank",
+      "date": "12/31/2025",
+      "sharesHeld": "3,216,562",
+      "sharesChange": "-170,772",
+      "sharesChangePCT": "-5.041%",
+      "marketValue": "$1,080,508"
+     },
+     {
+      "ownerName": "Axa Investment Managers S.A.",
+      "date": "9/30/2025",
+      "sharesHeld": "6,472,176",
+      "sharesChange": "6,472,176",
+      "sharesChangePCT": "New",
+      "marketValue": "$2,174,133"
+     },
+     {
+      "ownerName": "Glenmede Investment Management, Lp",
+      "date": "9/30/2025",
+      "sharesHeld": "3,335,317",
+      "sharesChange": "-66,997",
+      "sharesChangePCT": "-1.969%",
+      "marketValue": "$1,120,400"
+     },
+     {
+      "ownerName": "Pinebridge Investments, L.P.",
+      "date": "9/30/2025",
+      "sharesHeld": "3,037,520",
+      "sharesChange": "39,781",
+      "sharesChangePCT": "1.327%",
+      "marketValue": "$1,020,364"
+     }
+    ]
+   }
+  }
+ },
+ "status": {
+  "rCode": 200,
+  "bCodeMessage": null,
+  "developerMessage": null
+ }
+}

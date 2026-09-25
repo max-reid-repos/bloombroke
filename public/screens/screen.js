@@ -154,6 +154,13 @@ export function sortCmd(spec, by) {
   return `SCREEN ${words}`;
 }
 
+// P/E cell: a negative P/E means the company lost money over the last year, so it says
+// "loss" instead of a number; missing or zero is --.
+export function fmtPe(pe) {
+  if (!Number.isFinite(pe) || pe === 0) return '--';
+  return pe < 0 ? 'loss' : fmtNum(pe, 2);
+}
+
 export function resultsTable(rows, spec, asOf = null) {
   const cur = sortOf(spec);
   const cols = columnsFor(spec);
@@ -173,7 +180,7 @@ export function resultsTable(rows, spec, asOf = null) {
       <td class="num last">${esc(fmtPrice(r.last))}</td>
       <td class="num ${dirOf(r.changePct)}">${esc(fmtPct(r.changePct))}</td>
       <td class="num">${esc(fmtBig(r.marketCap))}</td>
-      ${extra ? `<td class="num">${Number.isFinite(r.pe) ? esc(fmtNum(r.pe, 2)) : '--'}</td><td class="num">${Number.isFinite(r.divYield) ? `${esc(fmtNum(r.divYield, 2))}%` : '--'}</td>` : ''}
+      ${extra ? `<td class="num">${esc(fmtPe(r.pe))}</td><td class="num">${Number.isFinite(r.divYield) ? `${esc(fmtNum(r.divYield, 2))}%` : '--'}</td>` : ''}
       <td class="num sc-vol dim">${esc(fmtBig(r.volume))}</td>
       <td class="sc-sec dim">${esc(r.sector || '--')}</td>
       <td class="sc-ind dim">${esc(r.industry || '--')}</td>
@@ -205,7 +212,7 @@ export function asOfLine(asOf, today) {
   return `<p class="sc-rule sc-asof"><span class="sc-rule-k">DATA</span> Screener data as of ${esc(day)}${old ? ' close' : ''}: last price and % change are for that session${old ? ', not today' : ''}. <a class="code" href="${esc(q('MOVERS'))}" data-cmd="MOVERS">MOVERS</a> has today's live moves.</p>`;
 }
 
-const FOOT = 'Source: Nasdaq stock screener, all stocks listed on Nasdaq, NYSE and NYSE American. Prices are the last sale on the date shown. P/E and dividend yield from CNBC, may be missing for some stocks: a stock without the number is left out of a PE or DIV filter. Not financial advice.';
+const FOOT = 'Source: Nasdaq stock screener, all stocks listed on Nasdaq, NYSE and NYSE American. Prices are the last sale on the date shown. P/E and dividend yield from CNBC, may be missing for some stocks: a stock without the number is left out of a PE or DIV filter. A negative P/E (a loss) shows as loss and never passes a PE filter. Not financial advice.';
 
 export function render(el, cmd, ctx) {
   const bad = cmd.error ? SCREEN_ERRORS[cmd.error]?.(cmd.args.bad) : null;

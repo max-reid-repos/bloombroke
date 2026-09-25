@@ -107,7 +107,7 @@ function quoteHtml(d) {
   </div>`;
 }
 
-const KIND_META = { index: 'INDEX', future: 'FUTURES', fx: 'CURRENCY PAIR', crypto: 'CRYPTO', yield: 'YIELD' };
+const KIND_META = { index: 'INDEX', future: 'FUTURES', spot: 'SPOT', fx: 'CURRENCY PAIR', crypto: 'CRYPTO', yield: 'YIELD' };
 
 // "NASDAQ  USD  STOCK", "COMEX  USD  FUTURES". CNBC's "CEC:Commodities Exchange Centre"
 // and its placeholder exchange "Exchange" are trimmed.

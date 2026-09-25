@@ -25,6 +25,7 @@ export function category(item) {
     case 'stock': case 'etf': return 'US STOCKS';
     case 'future': return 'FUTURES';
     case 'fx': return 'FX';
+    case 'spot': return 'SPOT METALS';
     case 'crypto': return 'CRYPTO';
     case 'yield': return 'YIELDS';
     case 'index': return item.us ? 'US INDEXES' : 'NON-US INDEXES';
@@ -32,7 +33,7 @@ export function category(item) {
   }
 }
 
-const ORDER = ['US STOCKS', 'US INDEXES', 'FX', 'CRYPTO', 'YIELDS', 'FUTURES', 'NON-US INDEXES'];
+const ORDER = ['US STOCKS', 'US INDEXES', 'FX', 'SPOT METALS', 'CRYPTO', 'YIELDS', 'FUTURES', 'NON-US INDEXES'];
 
 // ["US INDEXES, FX REAL TIME", "FUTURES DELAYED"]. A bucket with both kinds of rows
 // is listed as delayed with SOME in front, so the line never overstates.

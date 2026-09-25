@@ -5,7 +5,7 @@
 //
 // Nasdaq's screener has no P/E or dividend yield columns. PE and DIV filters use the
 // CNBC quote service instead (one batched download of the whole list, shared for an
-// hour, only when a screen asks for them). A stock CNBC has no number for is left out
+// hour, loaded in the background at server start and refreshed before it expires). A stock CNBC has no number for is left out
 // of that filter, and the answer says where the numbers came from.
 
 import { createCache } from './cache.js';
@@ -99,13 +99,34 @@ export function makeScreen({ fetchImpl = globalThis.fetch, cache = createCache({
     return res.json();
   }
 
-  const universe = () => cache.cached('screen:all', HOUR, async () => {
+  async function loadUniverse() {
     const [rows, asOf] = await Promise.allSettled([get(DOWNLOAD_URL), get(ASOF_URL)]);
     if (rows.status === 'rejected') throw rows.reason;
     return { rows: parseScreenerRows(rows.value), asOf: asOf.status === 'fulfilled' ? parseAsOf(asOf.value) : null };
-  });
+  }
+  const universe = () => cache.cached('screen:all', HOUR, loadUniverse);
 
-  const fund = (rows) => cache.cached('screen:fund', HOUR, () => getFundMap(rows.map((r) => r.symbol)));
+  const loadFund = (rows) => () => getFundMap(rows.map((r) => r.symbol));
+  const fund = (rows) => cache.cached('screen:fund', HOUR, loadFund(rows));
+
+  // Reload the list and the P/E and dividend numbers now, before they expire.
+  async function warm() {
+    const u = await cache.refresh('screen:all', HOUR, loadUniverse);
+    await cache.refresh('screen:fund', HOUR, loadFund(u.value.rows));
+  }
+
+  // The first PE or DIV screen used to wait about 11 s for the CNBC download. At server
+  // start (after a short delay, never blocking the listen) and then every `everyMs`,
+  // well inside the hour the cache keeps them, both are loaded in the background. A
+  // failed refresh is logged; the cache still serves the last good copy.
+  function startPrewarm({ delayMs = 5_000, everyMs = 45 * 60_000, log = console.error } = {}) {
+    const run = () => warm().catch((err) => log('[screen prewarm]', err.message));
+    const first = setTimeout(run, delayMs);
+    const again = setInterval(run, everyMs);
+    first.unref?.();
+    again.unref?.();
+    return () => { clearTimeout(first); clearInterval(again); };
+  }
 
   // words: what follows SCREEN. limit: how many rows to send back.
   async function getScreen(words, limit = 100) {
@@ -133,7 +154,7 @@ export function makeScreen({ fetchImpl = globalThis.fetch, cache = createCache({
     };
   }
 
-  return { getScreen };
+  return { getScreen, warm, startPrewarm };
 }
 
-export const { getScreen } = makeScreen();
+export const { getScreen, startPrewarm: startScreenPrewarm } = makeScreen();

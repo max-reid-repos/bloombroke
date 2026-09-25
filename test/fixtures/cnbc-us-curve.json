@@ -1,0 +1,139 @@
+{
+ "_note": "Real CNBC quote rows for the US Treasury curve, 2026-09-25, trimmed to the fields the quote parser reads. The 1-month bill last traded hours before the notes.",
+ "FormattedQuoteResult": {
+  "FormattedQuote": [
+   {
+    "symbol": "US1M",
+    "code": 0,
+    "name": "U.S. 1 Month Treasury",
+    "last": "3.964%",
+    "change": "+0.044",
+    "change_pct": "+1.1224%",
+    "last_time": "2026-09-25T12:46:01.000-0400",
+    "realTime": "true",
+    "curmktstatus": "REG_MKT",
+    "type": "BOND"
+   },
+   {
+    "symbol": "US3M",
+    "code": 0,
+    "name": "U.S. 3 Month Treasury",
+    "last": "4.186%",
+    "change": "+0.012",
+    "change_pct": "+0.2875%",
+    "last_time": "2026-09-25T14:01:27.000-0400",
+    "realTime": "true",
+    "curmktstatus": "REG_MKT",
+    "type": "BOND"
+   },
+   {
+    "symbol": "US6M",
+    "code": 0,
+    "name": "U.S. 6 Month Treasury",
+    "last": "4.372%",
+    "change": "+0.006",
+    "change_pct": "+0.1374%",
+    "last_time": "2026-09-25T14:24:35.000-0400",
+    "realTime": "true",
+    "curmktstatus": "REG_MKT",
+    "type": "BOND"
+   },
+   {
+    "symbol": "US1Y",
+    "code": 0,
+    "name": "U.S. 1 Year Treasury",
+    "last": "4.497%",
+    "change": "+0.02",
+    "change_pct": "+0.4467%",
+    "last_time": "2026-09-25T14:27:20.000-0400",
+    "realTime": "true",
+    "curmktstatus": "REG_MKT",
+    "type": "BOND"
+   },
+   {
+    "symbol": "US2Y",
+    "code": 0,
+    "name": "U.S. 2 Year Treasury",
+    "last": "4.893%",
+    "change": "-0.002",
+    "change_pct": "+0.0039%",
+    "last_time": "2026-09-25T14:28:26.000-0400",
+    "realTime": "true",
+    "curmktstatus": "REG_MKT",
+    "type": "BOND"
+   },
+   {
+    "symbol": "US3Y",
+    "code": 0,
+    "name": "U.S. 3 Year Treasury",
+    "last": "4.974%",
+    "change": "+0.002",
+    "change_pct": "+0.0402%",
+    "last_time": "2026-09-25T14:28:26.000-0400",
+    "realTime": "true",
+    "curmktstatus": "REG_MKT",
+    "type": "BOND"
+   },
+   {
+    "symbol": "US5Y",
+    "code": 0,
+    "name": "U.S. 5 Year Treasury",
+    "last": "5.036%",
+    "change": "+0.009",
+    "change_pct": "+0.179%",
+    "last_time": "2026-09-25T14:28:20.000-0400",
+    "realTime": "true",
+    "curmktstatus": "REG_MKT",
+    "type": "BOND"
+   },
+   {
+    "symbol": "US7Y",
+    "code": 0,
+    "name": "U.S. 7 Year Treasury",
+    "last": "5.118%",
+    "change": "+0.026",
+    "change_pct": "+0.5106%",
+    "last_time": "2026-09-25T14:28:31.000-0400",
+    "realTime": "true",
+    "curmktstatus": "REG_MKT",
+    "type": "BOND"
+   },
+   {
+    "symbol": "US10Y",
+    "code": 0,
+    "name": "U.S. 10 Year Treasury",
+    "last": "5.204%",
+    "change": "+0.042",
+    "change_pct": "+0.8136%",
+    "last_time": "2026-09-25T14:28:29.000-0400",
+    "realTime": "true",
+    "curmktstatus": "REG_MKT",
+    "type": "BOND"
+   },
+   {
+    "symbol": "US20Y",
+    "code": 0,
+    "name": "U.S. 20 Year Treasury",
+    "last": "5.582%",
+    "change": "+0.061",
+    "change_pct": "+1.1049%",
+    "last_time": "2026-09-25T14:28:26.000-0400",
+    "realTime": "true",
+    "curmktstatus": "REG_MKT",
+    "type": "BOND"
+   },
+   {
+    "symbol": "US30Y",
+    "code": 0,
+    "name": "U.S. 30 Year Treasury",
+    "last": "5.521%",
+    "change": "+0.059",
+    "change_pct": "+1.0802%",
+    "last_time": "2026-09-25T14:28:26.000-0400",
+    "realTime": "true",
+    "curmktstatus": "REG_MKT",
+    "type": "BOND"
+   }
+  ]
+ }
+}

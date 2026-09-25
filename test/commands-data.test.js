@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createCache } from '../data/cache.js';
+import { makeQuotes } from '../data/quotes.js';
+import { makeRates } from '../data/rates.js';
+import { INSTRUMENTS as REGISTRY, CURVE_IDS, instrumentById } from '../public/instruments.js';
 import { money, capNum, usDay, isIsoDay, addDays, makeCnbcList } from '../data/lists.js';
 import { parseSp100, pickMovers, SP100, SECTORS } from '../data/sp100.js';
 import { contractMonth, COMMODITIES } from '../data/commodities.js';
@@ -129,19 +133,52 @@ test('curve: Treasury CSV parsing and date picks', () => {
   assert.throws(() => parseTreasuryCsv('nope'), /unexpected header/);
 });
 
+// The shared quote batch, answered with the real curve rows (fixture) and a plain row for
+// every other registry symbol.
+const CURVE_ROWS = JSON.parse(readFileSync(new URL('./fixtures/cnbc-us-curve.json', import.meta.url))).FormattedQuoteResult.FormattedQuote;
+const batchWithCurve = () => [...CURVE_ROWS, ...REGISTRY.filter((i) => !CURVE_ROWS.some((r) => r.symbol === i.src)).map((i) => ({ symbol: i.src, code: 0, last: '10', change: '0', change_pct: '0%', last_time: '2026-09-25T14:00:00.000-0400', realTime: 'false' }))];
+
 test('curve: today from CNBC, history from Treasury, one source down is fine', async () => {
   const fetchImpl = async (url) => {
     if (url.includes('treasury.gov')) return url.includes('/2026/') ? json(TSY) : json('', 404);
-    return json({ FormattedQuoteResult: { FormattedQuote: [{ symbol: 'US10Y', code: 0, last: '5.2%', change: '+0.02', change_pct: '+0.4%' }, { symbol: 'US2Y', code: 0, last: '4.9%', change: '0', change_pct: '0' }, ...['US1M', 'US3M', 'US6M', 'US1Y', 'US3Y', 'US5Y', 'US7Y', 'US20Y', 'US30Y'].map((s) => ({ symbol: s, code: 0, last: '4.5%', change: '0', change_pct: '0' }))] } });
+    return json({ FormattedQuoteResult: { FormattedQuote: batchWithCurve() } });
   };
   const { getCurve } = makeCurve({ fetchImpl, now: () => Date.parse('2026-09-25T15:00:00Z') });
   const d = await getCurve();
   const ten = d.tenors.find((t) => t.id === '10Y');
-  assert.equal(ten.now, 5.2);
+  assert.equal(ten.now, 5.204);
   assert.equal(ten.m1, 4.64);
   assert.equal(d.m1Date, '2026-08-25');
   assert.equal(d.y1Date, null, 'last year file missing: no 1Y column, nothing made up');
   assert.equal(ten.y1, null);
+});
+
+test('curve and rates: one quote batch, so the same yield has the same value, time and RT tag', async () => {
+  let batches = 0;
+  const fetchImpl = async (url) => {
+    if (url.includes('treasury.gov')) return json(TSY);
+    if (url.includes('newyorkfed') || url.includes('freddiemac')) throw new Error('not in this test');
+    batches += 1;
+    return json({ FormattedQuoteResult: { FormattedQuote: batchWithCurve() } });
+  };
+  const quotes = makeQuotes({ fetchImpl, cache: createCache() });
+  const curve = await makeCurve({ fetchImpl, quotes, now: () => Date.parse('2026-09-25T18:30:00Z') }).getCurve();
+  const rates = await makeRates({ fetchImpl, quotes }).getRates();
+  assert.equal(batches, 1, 'one upstream call serves both screens');
+  for (const y of rates.yields) {
+    const t = curve.tenors.find((c) => c.cmd === y.id);
+    assert.deepEqual([t.now, t.change, t.asOf, t.realTime], [y.last, y.change, y.asOf, y.realTime], y.id);
+  }
+  assert.equal(curve.updated, rates.yieldsUpdated, 'the same fetch time');
+  // Every tenor is real time at the source, so every tag is RT (never a fixed DLY).
+  assert.ok(curve.tenors.every((t) => t.realTime === true && t.kind === 'yield'));
+  // The time shown is the newest trade on the curve, not the 1-month bill's 12:46.
+  assert.equal(curve.tenors[0].asOf, '2026-09-25T12:46:01.000-0400');
+  assert.equal(curve.asOf, '2026-09-25T14:28:31.000-0400');
+  const { freshTag } = await import('../public/freshness.js');
+  assert.match(freshTag(curve.tenors[0]), /is-rt/);
+  assert.equal(CURVE_IDS.length, 11);
+  assert.ok(CURVE_IDS.every((id) => instrumentById(id)?.kind === 'yield'), 'every tenor is in the shared batch');
 });
 
 test('crypto: CoinGecko rows, ranked', () => {

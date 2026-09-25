@@ -7,6 +7,7 @@
 // - No entry and loader fails: the error is thrown, and the failure itself is
 //   remembered for `retryMs`. Calls in that window get the same error without
 //   touching the source.
+// refresh(key, ttlMs, loader) reloads a key now, fresh or not (background prewarm).
 // - maxEntries caps memory: past it, the oldest entry is dropped (custom chart ranges
 //   and symbol searches make many keys).
 
@@ -53,8 +54,31 @@ export function createCache({ retryMs = 30_000, now = () => Date.now(), maxEntri
     return p;
   }
 
+  // Load `key` now, even when the entry is still fresh, and keep the new value. For
+  // background refreshes that run before an entry expires, so no visitor waits on a
+  // cold source. A failure throws and leaves the old entry as it was.
+  async function refresh(key, ttlMs, loader) {
+    if (inflight.has(key)) return inflight.get(key);
+    const p = (async () => {
+      try {
+        const value = await loader();
+        const fetchedAt = now();
+        entries.delete(key);
+        entries.set(key, { value, fetchedAt, expiresAt: fetchedAt + ttlMs, stale: false });
+        while (entries.size > maxEntries) entries.delete(entries.keys().next().value);
+        failures.delete(key);
+        return { value, stale: false, fetchedAt };
+      } finally {
+        inflight.delete(key);
+      }
+    })();
+    inflight.set(key, p);
+    return p;
+  }
+
   return {
     cached,
+    refresh,
     clear: () => { entries.clear(); failures.clear(); },
     size: () => entries.size,
   };

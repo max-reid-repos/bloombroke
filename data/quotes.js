@@ -38,6 +38,11 @@ function numOrNull(s) {
   return Number.isFinite(n) ? n : null;
 }
 
+function positiveOrNull(s) {
+  const n = parseNum(s);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 // "aapl" -> "AAPL"; "gold" -> "GOLD" (a registry id); anything else -> null.
 export function normalizeTicker(raw) {
   const inst = resolveInstrument(raw);
@@ -125,8 +130,11 @@ export function parseQuoteRow(r, ticker = r?.symbol) {
     changePct: numOrNull(r.change_pct) ?? 0,
     asOf: r.last_time || null,
     marketCap: r.mktcapView || null,
-    high52: numOrNull(r.yrhiprice),
-    low52: numOrNull(r.yrloprice),
+    // A price's 52-week low or high of 0 is a placeholder (spot gold sends "0.00"), not
+    // a number: missing, so the range comes from daily closes (data/range52.js).
+    // Yields can really be zero or below.
+    high52: inst?.kind === 'yield' ? numOrNull(r.yrhiprice) : positiveOrNull(r.yrhiprice),
+    low52: inst?.kind === 'yield' ? numOrNull(r.yrloprice) : positiveOrNull(r.yrloprice),
     // Decimals the source gave the 52-week range (it rounds some, see data/range52.js).
     range52Dp: Math.max(decimalsIn(r.yrhiprice) ?? -1, decimalsIn(r.yrloprice) ?? -1) >= 0 ? Math.max(decimalsIn(r.yrhiprice) ?? 0, decimalsIn(r.yrloprice) ?? 0) : null,
     pe: numOrNull(r.pe),
@@ -179,8 +187,11 @@ export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache()
       const { value, stale, updated } = await list(FX_MAJORS);
       return { pairs: value, stale, updated };
     },
-    async getYields() {
-      const { value, stale, updated } = await list(YIELDS);
+    // RATES asks for its three; CURVE for the whole curve (CURVE_IDS). Both read the one
+    // shared batch, so the same yield has the same value, time and tag on both screens.
+    async getYields(ids = null) {
+      const items = ids ? ids.map(instrumentById).filter(Boolean).map((i) => ({ ...i, name: i.longName || i.name })) : YIELDS;
+      const { value, stale, updated } = await list(items);
       return { yields: value, stale, updated };
     },
     // Resolves to null for an unknown ticker.
@@ -245,4 +256,6 @@ export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache()
 // The most symbols one /api/quotes call takes.
 export const MAX_LIST = 60;
 
-export const { getQuotes, getFxMajors, getYields, getQuote, getQuoteList } = makeQuotes({ cache: createCache({ maxEntries: 2000 }) });
+// The one live instance: every screen that shows a registry quote reads this batch.
+export const sharedQuotes = makeQuotes({ cache: createCache({ maxEntries: 2000 }) });
+export const { getQuotes, getFxMajors, getYields, getQuote, getQuoteList } = sharedQuotes;

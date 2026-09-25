@@ -1,10 +1,10 @@
 // The interest rates that touch your money.
-// - Treasury yields: CNBC quote service (via quotes.js), no key.
+// - Treasury yields: CNBC quote service (the shared batch in quotes.js), no key.
 // - Fed funds target range: New York Fed Markets API (EFFR), no key.
 // - Mortgage rates: Freddie Mac Primary Mortgage Market Survey CSV, no key.
 
 import { createCache } from './cache.js';
-import { makeQuotes, UA } from './quotes.js';
+import { makeQuotes, sharedQuotes, UA } from './quotes.js';
 
 const DAY = 24 * 60 * 60_000;
 const NYFED_URL = 'https://markets.newyorkfed.org/api/rates/unsecured/effr/last/1.json';
@@ -52,7 +52,9 @@ export function parsePmms(csv) {
   };
 }
 
-export function makeRates({ fetchImpl = globalThis.fetch, cache = createCache(), quotes = makeQuotes({ fetchImpl, cache }) } = {}) {
+// Live: the shared quote batch (the same yields as MARKETS, the tape and CURVE). Tests
+// pass their own fetch and get their own batch.
+export function makeRates({ fetchImpl = globalThis.fetch, cache = createCache(), quotes = fetchImpl === globalThis.fetch ? sharedQuotes : makeQuotes({ fetchImpl, cache }) } = {}) {
   async function get(url, as) {
     const res = await fetchImpl(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10_000) });
     if (!res.ok) throw new Error(`rates source HTTP ${res.status}`);

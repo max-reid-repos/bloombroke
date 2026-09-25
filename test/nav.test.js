@@ -89,7 +89,7 @@ test('registry feeds the command bar, the function bar and ticker-first grammar'
   // Synonyms: YIELD finds the rate screens, after the symbols.
   const y = suggest('yield').map((s) => s.name);
   assert.ok(y.includes('RATES') || y.includes('CURVE') || y.includes('BONDS'), y.join());
-  assert.deepEqual(suggest('go').map((s) => s.value), ['GOLD'], 'two letters: no synonym matches');
+  assert.deepEqual(suggest('go').map((s) => s.value), ['GOLD', 'GOLDFUT'], 'two letters: no synonym matches');
   assert.equal(suggest('CHART ')[0].usage, true);
   assert.ok(suggest('MEN').some((s) => s.name === 'MENU'));
 });
@@ -122,7 +122,8 @@ test('HELP <command>: detail, ticker or search', () => {
   assert.equal(t.entry.name, '<TICKER>');
   assert.equal(t.ticker, 'AAPL');
   assert.equal(resolveTopic('NVDA INSIDERS').entry.name, 'INSIDERS');
-  assert.deepEqual(resolveTopic('short sellers'), { query: 'short sellers' });
+  assert.equal(resolveTopic('short sellers').entry.name, 'SHORTS', 'a plain phrase finds its command');
+  assert.deepEqual(resolveTopic('volume spike'), { query: 'volume spike' });
   assert.equal(resolveTopic('420').entry, undefined, '420 has no help page');
   assert.deepEqual(resolveTopic(null), {});
   assert.deepEqual(screenTitle(parseCommand('HELP FX')), { title: 'HELP FX', sub: 'How to use FX' });
