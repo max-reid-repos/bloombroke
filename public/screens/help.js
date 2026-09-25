@@ -30,7 +30,7 @@ export function render(el, cmd, ctx) {
       <div><dt><kbd>Tab</kbd></dt><dd>Complete the suggestion</dd></div>
       <div><dt><kbd>Up</kbd> <kbd>Down</kbd></dt><dd>Past commands</dd></div>
       <div><dt><kbd>Esc</kbd></dt><dd>Clear the command bar</dd></div>
-      <div><dt><kbd>1</kbd>-<kbd>8</kbd></dt><dd>Stock functions, on a stock screen</dd></div>
+      <div><dt><kbd>1</kbd>-<kbd>9</kbd></dt><dd>Stock functions, on a stock screen</dd></div>
       ${fkeys}
     </dl>`, { cls: 'panel-wide' })}
   </div>

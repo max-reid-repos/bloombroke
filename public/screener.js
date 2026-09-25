@@ -4,6 +4,7 @@
 //   SCREEN                                   the filter form
 //   SCREEN SECTOR TECHNOLOGY MCAP>10B CHG>2 PRICE<50 COUNTRY US
 //   SCREEN GAINERS SORT VOL                  a preset, then more words
+//   SCREEN PE<30 DIV>2                       P/E and dividend yield (from CNBC)
 //
 // Words: SECTOR <name>, INDUSTRY <words>, COUNTRY <code or name>, MCAP|PRICE|CHG|VOL
 // with > < >= <=, SORT <column> [HIGH|LOW], and the presets below.
@@ -43,15 +44,20 @@ export const FIELDS = {
   PRICE: { key: 'last', label: 'Price', scale: false },
   CHG: { key: 'changePct', label: '% change', scale: false },
   VOL: { key: 'volume', label: 'Volume', scale: true },
+  // From the CNBC quote service, not the Nasdaq screener: only stocks where CNBC has the
+  // number can pass these filters.
+  PE: { key: 'pe', label: 'P/E', scale: false, cnbc: true },
+  DIV: { key: 'divYield', label: 'Dividend yield', scale: false, cnbc: true },
 };
-const FIELD_ALIASES = { CAP: 'MCAP', MARKETCAP: 'MCAP', LAST: 'PRICE', CHANGE: 'CHG', '%CHG': 'CHG', PCT: 'CHG', VOLUME: 'VOL' };
-export const FIELD_ORDER = ['MCAP', 'PRICE', 'CHG', 'VOL'];
+const FIELD_ALIASES = { CAP: 'MCAP', MARKETCAP: 'MCAP', LAST: 'PRICE', CHANGE: 'CHG', '%CHG': 'CHG', PCT: 'CHG', VOLUME: 'VOL', YIELD: 'DIV', DIVYIELD: 'DIV' };
+export const FIELD_ORDER = ['MCAP', 'PRICE', 'CHG', 'VOL', 'PE', 'DIV'];
 
 // Sortable columns: numbers start high, words start at A.
 export const SORTS = {
   SYMBOL: { key: 'symbol', text: true }, NAME: { key: 'name', text: true },
   PRICE: { key: 'last' }, CHG: { key: 'changePct' }, MCAP: { key: 'marketCap' }, VOL: { key: 'volume' },
   SECTOR: { key: 'sector', text: true }, INDUSTRY: { key: 'industry', text: true }, COUNTRY: { key: 'country', text: true },
+  PE: { key: 'pe', cnbc: true }, DIV: { key: 'divYield', cnbc: true },
 };
 
 export const PRESETS = {
@@ -98,7 +104,7 @@ export function parseCond(tok) {
   if (!def) return null;
   const suffix = m[4] || '';
   if (suffix && suffix !== '%' && !def.scale) return null;
-  if (suffix === '%' && field !== 'CHG') return null;
+  if (suffix === '%' && field !== 'CHG' && field !== 'DIV') return null;
   const num = Number(m[3].replace(/[$,]/g, ''));
   if (!Number.isFinite(num)) return null;
   const value = num * (MULT[suffix] || 1);
@@ -185,6 +191,11 @@ export function allConds(spec) {
   return [...pre, ...spec.conds];
 }
 
+// True when the screen filters or sorts on a CNBC number (P/E, dividend yield).
+export function needsCnbc(spec) {
+  return allConds(spec).some((c) => FIELDS[c.field]?.cnbc) || Boolean(SORTS[sortOf(spec).by]?.cnbc);
+}
+
 function test(v, op, x) {
   if (!Number.isFinite(v)) return false;
   switch (op) {
@@ -230,7 +241,7 @@ export function sortRows(rows, { by, dir }) {
 const cmpSym = (a, b) => (a.symbol < b.symbol ? -1 : a.symbol > b.symbol ? 1 : 0);
 
 export const SCREEN_ERRORS = {
-  usage: (bad) => `SCREEN does not know "${bad}". Filters look like MCAP>10B, PRICE<50, CHG>2 or VOL>1M.`,
+  usage: (bad) => `SCREEN does not know "${bad}". Filters look like MCAP>10B, PRICE<50, CHG>2, VOL>1M, PE<30 or DIV>2.`,
   sector: (bad) => `No sector called "${bad}". Pick one from the list.`,
   country: (bad) => `No country called "${bad}". Use a code like US, CA or UK.`,
   industry: () => 'INDUSTRY needs a word, like INDUSTRY SEMICONDUCTORS.',
