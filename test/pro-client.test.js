@@ -124,6 +124,7 @@ test('status: active, trialing, grace, off', () => {
   assert.equal(statusActive(null, now), false);
   assert.equal(statusText({ status: 'active' }), 'ACTIVE');
   assert.equal(statusText({ status: 'canceled' }), 'CANCELED');
+  assert.equal(statusText({ status: 'demo' }), 'Demo licence. Pro features work only in demo mode.');
   assert.match(statusText({ status: 'past_due', graceUntil: new Date(Date.now() + 86400000).toISOString() }), /^PAYMENT FAILED\. PRO STAYS ON UNTIL /);
 });
 

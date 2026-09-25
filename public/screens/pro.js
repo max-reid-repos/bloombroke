@@ -63,6 +63,7 @@ export function statusText(st, now = Date.now()) {
     return `PAYMENT FAILED. PRO STAYS ON UNTIL ${d}`;
   }
   if (st.status === 'canceled') return 'CANCELED';
+  if (st.status === 'demo') return 'Demo licence. Pro features work only in demo mode.';
   return String(st.status || 'UNKNOWN').toUpperCase().replace(/_/g, ' ');
 }
 

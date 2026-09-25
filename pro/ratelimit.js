@@ -4,13 +4,15 @@
 
 export function createLimiter({ max, windowMs, now = () => Date.now(), maxKeys = 50_000 }) {
   const hits = new Map();
+  let lastSweep = -Infinity;
   function sweep(t) {
+    lastSweep = t;
     for (const [k, v] of hits) if (v.reset <= t) hits.delete(k);
   }
   // No room for a new key, even after dropping the expired ones.
   function full(t) {
     if (hits.size < maxKeys) return false;
-    sweep(t);
+    if (t - lastSweep >= 1000) sweep(t); // at most once a second, so a flood cannot spin on it
     return hits.size >= maxKeys;
   }
   const retry = (ms) => Math.max(1, Math.ceil(ms / 1000));

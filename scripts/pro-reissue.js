@@ -29,7 +29,7 @@ export async function reissue({ store, stripe = null, subscription = null, email
   } else if (email) {
     if (!stripe) return { error: 'Looking up by email needs STRIPE_SECRET_KEY.' };
     const found = [];
-    for await (const c of stripe.customers.list({ email, limit: 100 })) found.push(...store.findByCustomer(c.id));
+    for await (const c of stripe.customers.list({ email: email.trim().toLowerCase(), limit: 100 })) found.push(...store.findByCustomer(c.id));
     if (!found.length) return { error: 'No licence for a Stripe customer with that email.' };
     if (found.length > 1) return { error: 'More than one licence for that email. Pick one with --subscription.', candidates: found };
     [licence] = found;
@@ -62,7 +62,8 @@ async function main(argv) {
   const subscription = arg(argv, '--subscription');
   const email = arg(argv, '--email');
   if (subscription && !/^sub_[A-Za-z0-9]+$/.test(subscription)) { console.error('That does not look like a subscription id.'); return 1; }
-  const dbPath = env.PRO_DB_PATH || path.join(ROOT, 'var', 'pro.db');
+  // A relative PRO_DB_PATH is relative to the .env file's folder.
+  const dbPath = env.PRO_DB_PATH ? path.resolve(path.dirname(envPath), env.PRO_DB_PATH) : path.join(ROOT, 'var', 'pro.db');
   if (!existsSync(dbPath)) { console.error(`No Pro database at ${dbPath}.`); return 1; }
   const store = createStore(openDb(dbPath));
   const se = stripeEnv(env);

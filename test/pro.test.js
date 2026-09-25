@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import express from 'express';
 import Stripe from 'stripe';
-import { openDb } from '../pro/db.js';
+import { openDb, migrate } from '../pro/db.js';
+import { mkdirSync, copyFileSync, readdirSync } from 'node:fs';
 import { createStore, MAX_SYNC_BYTES } from '../pro/store.js';
 import {
   generateKey, normalizeKey, hashKey, last4, proAccess, KEY_RE, ALPHABET, GRACE_MS, REVEAL_MS,
@@ -51,6 +52,7 @@ function fakeStripe() {
       },
       async update(id, p) { calls.push(['sub.update', id, p]); return { id, ...p }; },
       list({ customer }) { return Object.values(subs).filter((x) => x.customer === customer); },
+      async cancel(id, p, opts) { calls.push(['sub.cancel', id, opts]); subs[id].status = 'canceled'; return subs[id]; },
     },
     billingPortal: { sessions: { async create(p) { calls.push(['portal.create', p]); return { url: 'https://billing.stripe.com/p/session/test_1' }; } } },
   };
@@ -229,7 +231,7 @@ test('migrations: applied once per database file', () => {
     assert.equal(a.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
     a.close();
     const b = openDb(file);
-    assert.equal(b.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 3);
+    assert.equal(b.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 4);
     assert.ok(b.prepare('PRAGMA table_info(licences)').all().some((c) => c.name === 'terms_accepted_at'));
     b.close();
   } finally {
@@ -708,4 +710,100 @@ test('STRIPE_MODE: picks the key set, refuses a key of the other mode; demo lice
     assert.equal((await t.req('GET', '/api/pro/status', { headers: { 'X-Pro-Key': key } })).body.active, true, 'paid live keys keep working in test mode');
     assert.equal((await t.req('GET', '/api/pro/config')).body.mode, 'test');
   } finally { await t.close(); }
+});
+
+// ---- follow-ups ---------------------------------------------------------------------------------
+
+const reactSession = (n, licId, extra = {}) => paidSession(n, {
+  customer: `cus_${n}`, client_reference_id: String(licId), metadata: { site: 'bloombroke', product: 'pro', licence_id: String(licId) }, ...extra,
+});
+
+test('reactivate: a still-live old subscription is canceled, once, before the licence moves', async () => {
+  const s = await setup();
+  try {
+    const first = s.store.ensureLicence({ sessionId: 'cs_test_prev00000001', customerId: 'cus_20', subscriptionId: 'sub_prev', status: 'past_due' });
+    s.stripe.subs.sub_prev = { id: 'sub_prev', status: 'past_due', customer: 'cus_20' };
+    s.stripe.subs.sub_20 = { id: 'sub_20', status: 'active', customer: 'cus_20' };
+    const sess = reactSession(20, first.licence.id);
+    await s.sendEvent(evt('evt_20', 'checkout.session.completed', sess));
+    const cancels = s.stripe.calls.filter((c) => c[0] === 'sub.cancel');
+    assert.deepEqual(cancels, [['sub.cancel', 'sub_prev', { idempotencyKey: 'bb-reactivate-cancel-sub_prev' }]]);
+    assert.equal(s.store.findByKey(first.key).stripe_subscription_id, 'sub_20');
+    // Resent event and the success page: no second cancel.
+    await s.sendEvent(evt('evt_20b', 'checkout.session.completed', sess));
+    s.stripe.sessions[sess.id] = sess;
+    await s.req('POST', '/api/pro/claim', { body: { session_id: sess.id } });
+    assert.equal(s.stripe.calls.filter((c) => c[0] === 'sub.cancel').length, 1);
+  } finally { await s.close(); }
+});
+
+test('reactivate: an old subscription that already ended is left alone', async () => {
+  const s = await setup();
+  try {
+    const first = s.store.ensureLicence({ sessionId: 'cs_test_prev00000002', customerId: 'cus_21', subscriptionId: 'sub_gone', status: 'canceled' });
+    s.stripe.subs.sub_gone = { id: 'sub_gone', status: 'canceled', customer: 'cus_21' };
+    s.stripe.subs.sub_21 = { id: 'sub_21', status: 'active', customer: 'cus_21' };
+    await s.sendEvent(evt('evt_21', 'checkout.session.completed', reactSession(21, first.licence.id)));
+    assert.equal(s.stripe.calls.filter((c) => c[0] === 'sub.cancel').length, 0);
+    assert.equal(s.store.findByKey(first.key).status, 'active');
+  } finally { await s.close(); }
+});
+
+test('claim: a reactivation whose licence no longer exists makes a new licence and shows its key', async () => {
+  const s = await setup();
+  try {
+    const sess = reactSession(22, 9999);
+    s.stripe.sessions[sess.id] = sess;
+    s.stripe.subs.sub_22 = { id: 'sub_22', status: 'active', customer: 'cus_22' };
+    const r = await s.req('POST', '/api/pro/claim', { body: { session_id: sess.id } });
+    assert.equal(r.status, 200);
+    assert.match(r.body.key, KEY_RE);
+    assert.equal(r.body.reactivated, undefined);
+    // A normal reactivation reloaded later still answers with the status, not a 404.
+    const first = s.store.ensureLicence({ sessionId: 'cs_test_prev00000003', customerId: 'cus_23', subscriptionId: 'sub_old23', status: 'canceled' });
+    const re = reactSession(23, first.licence.id);
+    s.stripe.sessions[re.id] = re;
+    s.stripe.subs.sub_23 = { id: 'sub_23', status: 'active', customer: 'cus_23' };
+    const a = await s.req('POST', '/api/pro/claim', { body: { session_id: re.id } });
+    const b = await s.req('POST', '/api/pro/claim', { body: { session_id: re.id } });
+    assert.equal(a.body.reactivated, true);
+    assert.equal(b.status, 200);
+    assert.equal(b.body.reactivated, true);
+    assert.equal(b.body.key, undefined);
+  } finally { await s.close(); }
+});
+
+test('migration 004: old licences get livemode from their checkout session id', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'bb-mig-'));
+  try {
+    const early = path.join(dir, 'early');
+    mkdirSync(early);
+    for (const f of readdirSync('migrations').filter((f) => f < '004')) copyFileSync(path.join('migrations', f), path.join(early, f));
+    const db = openDb(':memory:', { migrationsDir: early });
+    const ins = db.prepare(`INSERT INTO licences (key_hash, last4, checkout_session_id, stripe_subscription_id, status, created_at, updated_at, livemode)
+      VALUES (?, 'AAAA', ?, ?, 'active', 1, 1, ?)`);
+    ins.run('h1', 'cs_test_a1', 's1', null);
+    ins.run('h2', 'cs_live_b2', 's2', null);
+    ins.run('h3', 'cs_live_c3', 's3', 0);
+    ins.run('h4', null, 's4', null);
+    migrate(db);
+    const rows = Object.fromEntries(db.prepare('SELECT key_hash, livemode FROM licences').all().map((r) => [r.key_hash, r.livemode]));
+    assert.deepEqual(rows, { h1: 0, h2: 1, h3: 0, h4: null });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('rate limiter: the sweep runs at most once a second', () => {
+  let t = 0;
+  const l = createLimiter({ max: 5, windowMs: 100, maxKeys: 2, now: () => t });
+  l.hit('a');
+  l.hit('b');
+  t = 150; // both expired
+  assert.equal(l.hit('c').ok, true, 'first full check sweeps');
+  l.hit('d');
+  t = 400; // c and d expired, but the last sweep was 250 ms ago
+  assert.equal(l.hit('e').ok, false, 'no second sweep within a second');
+  t = 1200;
+  assert.equal(l.hit('e').ok, true, 'a second later it sweeps again');
 });

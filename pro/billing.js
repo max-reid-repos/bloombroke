@@ -118,6 +118,13 @@ export async function licenceFromSession(session, { store, stripe, log = console
   const subId = idOf(session.subscription);
   const sub = await stripe.subscriptions.retrieve(subId);
   const accepted = termsAcceptedAt(session, at);
+  // REACTIVATE: the licence's old subscription must not keep billing next to the new one.
+  // Checkout already refuses while one is live; this is the backstop. Done before the
+  // licence moves, so a failure here makes Stripe (or the success page) try again.
+  const licenceId = reactivateLicenceId(session);
+  const target = licenceId ? store.findById(licenceId) : null;
+  const prev = target?.stripe_subscription_id;
+  if (prev && prev !== subId) await cancelIfLive(stripe, prev);
   const out = store.ensureLicence({
     sessionId: session.id,
     customerId: idOf(session.customer) || idOf(sub.customer),
@@ -125,7 +132,7 @@ export async function licenceFromSession(session, { store, stripe, log = console
     status: sub.status,
     termsAcceptedAt: accepted,
     termsVersion,
-    licenceId: reactivateLicenceId(session),
+    licenceId,
     livemode: typeof session.livemode === 'boolean' ? session.livemode : null,
   });
   if (out.created || out.reactivated) {
@@ -142,6 +149,21 @@ export async function licenceFromSession(session, { store, stripe, log = console
     }
   }
   return out;
+}
+
+const ENDED = new Set(['canceled', 'incomplete_expired']);
+
+export async function cancelIfLive(stripe, subId) {
+  let sub;
+  try {
+    sub = await stripe.subscriptions.retrieve(subId);
+  } catch (err) {
+    if (err?.statusCode === 404 || err?.code === 'resource_missing') return 'missing';
+    throw err;
+  }
+  if (ENDED.has(sub.status)) return 'already';
+  await stripe.subscriptions.cancel(subId, {}, { idempotencyKey: `bb-reactivate-cancel-${subId}` });
+  return 'canceled';
 }
 
 async function refreshStatus(subId, { store, stripe }, { deleted = false } = {}) {

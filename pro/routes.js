@@ -17,7 +17,7 @@ import express from 'express';
 import { normalizeKey, proAccess } from './licence.js';
 import { MAX_SYNC_BYTES, SyncError } from './store.js';
 import {
-  checkoutParams, handleEvent, isProSession, isPaidSession, licenceFromSession, reactivateLicenceId, idOf, PRO_METADATA, DEFAULT_TERMS_VERSION,
+  checkoutParams, handleEvent, isProSession, isPaidSession, licenceFromSession, idOf, PRO_METADATA, DEFAULT_TERMS_VERSION,
 } from './billing.js';
 import { createLimiter, clientIp } from './ratelimit.js';
 
@@ -175,12 +175,14 @@ export function mountPro(app, {
       return fail(res, 503, 'unavailable', 'Payments are taking a break. Reload in a minute.');
     }
     // REACTIVATE: the browser already has the key; only the status changes.
-    if (reactivateLicenceId(session)) {
-      const lic = made?.licence || store.findBySubscription(idOf(session.subscription));
-      return res.json({ reactivated: true, ...publicStatus(lic, now(), mode) });
-    }
+    if (made?.reactivated) return res.json({ reactivated: true, ...publicStatus(made.licence, now(), mode) });
     const out = store.reveal(sessionId);
-    if (!out) return fail(res, 404, 'not_found', 'No key found for that checkout.');
+    if (!out) {
+      // A reload after REACTIVATE: the licence was made by an earlier checkout.
+      const lic = made?.licence || store.findBySubscription(idOf(session.subscription));
+      if (lic) return res.json({ reactivated: true, ...publicStatus(lic, now(), mode) });
+      return fail(res, 404, 'not_found', 'No key found for that checkout.');
+    }
     if (out.expired) {
       return fail(res, 410, 'expired', 'This key is no longer shown here. Use LOGIN with the key you saved.', { status: publicStatus(out.licence, now(), mode) });
     }
