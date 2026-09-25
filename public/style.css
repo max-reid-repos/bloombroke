@@ -331,6 +331,34 @@ a.panel-label:hover { text-decoration: none; background: var(--text); }
 .fx-to.dim { color: var(--dim); }
 .swap { margin-top: 10px; }
 
+/* ---- BUY -------------------------------------------------------------- */
+.buy { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 380px); gap: 32px; padding: 4px 0 8px; }
+.buy-stats { margin-top: 16px; max-width: 640px; }
+.buy-stats dd.dim { color: var(--dim); font-size: 12px; }
+.buy-side { display: flex; flex-direction: column; align-items: center; padding-top: 12px; }
+.stamp {
+  display: inline-flex; flex-direction: column; align-items: center;
+  padding: 8px 28px 10px;
+  border: 2px solid currentColor;
+  outline: 1px solid currentColor; outline-offset: 3px;
+  text-transform: uppercase;
+  transform: rotate(-4deg);
+  animation: stamp-in 180ms cubic-bezier(.2, .8, .2, 1) both;
+}
+.stamp-k { font-size: 11px; font-weight: 600; letter-spacing: .3em; }
+.stamp-v { font-size: 44px; font-weight: 600; line-height: 1.05; letter-spacing: .12em; }
+.stamp-buy { color: var(--up); }
+.stamp-think { color: var(--accent); }
+.stamp-skip { color: var(--down); }
+@keyframes stamp-in { from { transform: rotate(-4deg) scale(1.25); opacity: 0; } to { transform: rotate(-4deg) scale(1); opacity: 1; } }
+.stamp-line { margin-top: 14px; color: var(--text-2); text-align: center; }
+.how { align-self: stretch; margin-top: 16px; border-top: 1px solid var(--rule); padding-top: 8px; }
+.how summary { cursor: pointer; color: var(--accent); font-size: 12px; list-style: none; }
+.how summary::-webkit-details-marker { display: none; }
+.how summary::before { content: '+ '; }
+.how[open] summary::before { content: '- '; }
+.how-list { margin-top: 8px; display: grid; gap: 6px; color: var(--text-2); font-size: 12px; line-height: 1.5; }
+
 /* ---- NEWS ------------------------------------------------------------- */
 .news-row {
   display: grid;
@@ -470,6 +498,8 @@ a.panel-label:hover { text-decoration: none; background: var(--text); }
   .hero.is-long { font-size: 28px; }
   .hero.is-xlong { font-size: 22px; }
   .hero-unit { font-size: 14px; }
+  .buy { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .stamp-v { font-size: 36px; }
   .stats-row { grid-template-columns: minmax(0, 1fr); }
   .chart-host { height: 240px; margin-left: 6px; }
   .chart-host-lg { height: 280px; }
@@ -497,6 +527,7 @@ a.panel-label:hover { text-decoration: none; background: var(--text); }
   .tape { overflow-x: auto; scrollbar-width: none; }
   .cmd-focused .cursor.blink { animation: none; opacity: .9; }
   .boot-cursor { animation: none; }
+  .stamp { animation: none; }
   .tick-up { background: none; color: var(--up) !important; }
   .tick-down { background: none; color: var(--down) !important; }
 }

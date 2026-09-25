@@ -43,7 +43,7 @@ test('tickers: one word of 1-5 letters, optional class and range', () => {
   assert.equal(parseCommand('AAPL 7Y').name, 'UNKNOWN');
   assert.equal(parseCommand('NEWS').name, 'NEWS');
   assert.equal(parseCommand('rates').name, 'RATES');
-  assert.equal(parseCommand('BUY').name, 'SOON');
+  assert.equal(parseCommand('BUY').error, 'usage');
   assert.equal(parseCommand('WHATIF').name, 'SOON');
 });
 

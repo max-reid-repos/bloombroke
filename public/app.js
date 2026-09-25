@@ -10,6 +10,7 @@ import * as quoteScreen from './screens/quote.js';
 import * as cpiScreen from './screens/cpi.js';
 import * as ratesScreen from './screens/rates.js';
 import * as newsScreen from './screens/news.js';
+import * as buyScreen from './screens/buy.js';
 import { fmtNum, fmtPct, dirOf, cmdForInstrument, nyTime, panel } from './screens/markets.js';
 
 export const COMMANDS = [
@@ -17,8 +18,10 @@ export const COMMANDS = [
   { name: 'MARKETS', group: 'Markets', hint: 'World markets at a glance', usage: 'MARKETS', example: 'MARKETS' },
   { name: 'RATES', group: 'Markets', hint: 'The interest rates that touch your money', usage: 'RATES', example: 'RATES' },
   { name: 'NEWS', group: 'Markets', hint: 'Headlines that move markets', usage: 'NEWS', example: 'NEWS' },
-  { name: 'FX', group: 'Money tools', hint: 'Convert money between currencies', usage: 'FX <amount> <from> <to>', example: 'FX 500 USD THB' },
-  { name: 'CPI', group: 'Money tools', hint: 'What money from a past year is worth today', usage: 'CPI <amount> <year>', example: 'CPI 100 2015' },
+  { name: 'FX', group: 'Money tools', hint: 'Convert money between currencies', usage: 'FX <amount> <from> <to>', example: 'FX 500 USD THB', examples: ['FX 500 USD THB', 'FX USD CAD'] },
+  { name: 'CPI', group: 'Money tools', hint: 'What money from a past year is worth today', usage: 'CPI <amount> <year>', example: 'CPI 100 2015', examples: ['CPI 100 2015', 'CPI 1000 1990'] },
+  { name: 'BUY', group: 'Money tools', hint: 'Should I buy it? Cost per use and a verdict', usage: 'BUY <price> [<n> PER WEEK] [FOR <n>Y]', example: 'BUY 1200', examples: ['BUY 1200', 'BUY 90 3 PER WEEK FOR 2Y'] },
+  { name: 'WAGE', group: 'Money tools', hint: 'Save your hourly pay, BUY then shows hours of work', usage: 'WAGE <per hour>', example: 'WAGE 35', examples: ['WAGE 35'] },
   { name: 'HELP', group: 'Help', hint: 'Every command, with examples', usage: 'HELP', example: 'HELP' },
 ];
 
@@ -28,7 +31,6 @@ export const TICKER_HELP = {
 
 export const SOON = [
   { name: 'WHATIF', hint: 'What if you had bought ten years ago' },
-  { name: 'BUY', hint: 'Practice trading with play money' },
   { name: 'PRO', hint: 'Everything, for $4.20 a month' },
 ];
 
@@ -81,6 +83,64 @@ export function parseFxArgs(args) {
   return { amount, amountGiven, from, to };
 }
 
+// BUY <price> [<n> PER DAY|WEEK|MONTH|YEAR] [FOR <n>Y]. Defaults: 1 per week, 3 years.
+export const BUY_UNITS = { DAY: 365, WEEK: 52, MONTH: 12, YEAR: 1 };
+const UNIT_WORDS = {
+  DAY: 'DAY', DAYS: 'DAY', WEEK: 'WEEK', WEEKS: 'WEEK', WK: 'WEEK', MONTH: 'MONTH', MONTHS: 'MONTH', MO: 'MONTH', YEAR: 'YEAR', YEARS: 'YEAR', YR: 'YEAR',
+};
+const ADVERBS = { DAILY: 'DAY', WEEKLY: 'WEEK', MONTHLY: 'MONTH', YEARLY: 'YEAR' };
+export const BUY_DEFAULTS = { times: 1, unit: 'WEEK', years: 3 };
+
+// "3Y", "3", "18M", "2.5YRS" -> years, or NaN.
+function parseYears(tok, next) {
+  const m = /^(\d+(?:\.\d+)?)(Y|YR|YRS|YEAR|YEARS|M|MO|MONTHS?)?$/.exec(tok || '');
+  if (!m) return { years: NaN, used: 1 };
+  let unit = m[2];
+  let used = 1;
+  if (!unit && next && /^(Y|YR|YRS|YEARS?|MO|MONTHS?)$/.test(next)) { unit = next; used = 2; }
+  const n = Number(m[1]);
+  return { years: unit && unit.startsWith('M') ? n / 12 : n, used };
+}
+
+export function parseBuyArgs(args) {
+  const toks = args.filter((t) => t !== 'AT' && t !== 'X' && t !== 'TIMES' && t !== 'TIME');
+  if (!toks.length || !looksNumeric(toks[0])) return { error: 'usage' };
+  const price = parseAmountToken(toks[0]);
+  if (!Number.isFinite(price) || price <= 0) return { error: 'amount' };
+  let { times, unit, years } = BUY_DEFAULTS;
+  let i = 1;
+  if (ADVERBS[toks[i]]) { times = 1; unit = ADVERBS[toks[i]]; i += 1; }
+  else if (/^\d+(\.\d+)?$/.test(toks[i] || '') && (toks[i + 1] === 'PER' || toks[i + 1] === 'A' || toks[i + 1] === 'EVERY')) {
+    times = Number(toks[i]);
+    unit = UNIT_WORDS[toks[i + 2]];
+    if (!unit) return { error: 'usage' };
+    i += 3;
+  } else if ((toks[i] === 'PER' || toks[i] === 'EVERY') && UNIT_WORDS[toks[i + 1]]) {
+    unit = UNIT_WORDS[toks[i + 1]];
+    i += 2;
+  }
+  if (toks[i] === 'FOR') {
+    const y = parseYears(toks[i + 1], toks[i + 2]);
+    years = y.years;
+    i += 1 + y.used;
+  }
+  if (i !== toks.length) return { error: 'usage' };
+  if (!(times > 0 && times <= 1000)) return { error: 'times' };
+  if (!(years > 0 && years <= 100)) return { error: 'years' };
+  return { price, times, unit, years };
+}
+
+// WAGE <per hour>. WAGE alone shows it, WAGE OFF clears it.
+export function parseWageArgs(args) {
+  const toks = args.filter((t) => t !== 'PER' && t !== 'HOUR' && t !== 'HR' && t !== '/HR' && t !== 'AN' && t !== 'USD');
+  if (!toks.length) return { wage: null, show: true };
+  if (toks.length === 1 && (toks[0] === 'OFF' || toks[0] === 'CLEAR' || toks[0] === '0')) return { wage: null, clear: true };
+  if (toks.length !== 1 || !looksNumeric(toks[0])) return { error: 'usage' };
+  const wage = parseAmountToken(toks[0]);
+  if (!Number.isFinite(wage) || wage <= 0 || wage > 100000) return { error: 'amount' };
+  return { wage };
+}
+
 // Parse CPI arguments: [amount] [year]. Defaults: 100 dollars, year 2000.
 export function parseCpiArgs(args) {
   const toks = args.filter((t) => t !== 'IN' && t !== 'FROM' && t !== 'USD');
@@ -120,6 +180,15 @@ export function parseCommand(raw) {
     const args = parseCpiArgs(rest);
     return { name: 'CPI', args, error: args.error, input: ['CPI', ...rest].join(' ') };
   }
+  if (head === 'BUY' && rest.length) {
+    const args = parseBuyArgs(rest);
+    return { name: 'BUY', args, error: args.error, input: ['BUY', ...rest].join(' ') };
+  }
+  if (head === 'WAGE') {
+    const args = parseWageArgs(rest);
+    return { name: 'WAGE', args, error: args.error, input: ['WAGE', ...rest].join(' ') };
+  }
+  if (head === 'BUY') return { name: 'BUY', args: { error: 'usage' }, error: 'usage', input: 'BUY' };
   const soon = SOON.find((s) => s.name === head);
   if (soon && !rest.length) return { name: 'SOON', args: { soon }, input: head };
   if (isTicker(head) && (rest.length === 0 || (rest.length === 1 && CHART_RANGES.includes(rest[0])))) {
@@ -141,6 +210,9 @@ export function fromQuery(search) {
   return cleaned || DEFAULT_COMMAND;
 }
 
+// Commands that take arguments: Tab adds a space, and a bad argument shows the usage line.
+const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs };
+
 // Suggestions for the dropdown: [{ name, hint, value }].
 export function suggest(raw) {
   const text = String(raw ?? '').replace(/^\s+/, '').toUpperCase();
@@ -151,11 +223,11 @@ export function suggest(raw) {
   if (typingHead) {
     return COMMANDS
       .filter((c) => c.name.startsWith(head))
-      .map((c) => ({ name: c.name, hint: c.hint, value: c.name === 'FX' || c.name === 'CPI' ? c.name + ' ' : c.name }));
+      .map((c) => ({ name: c.name, hint: c.hint, value: TAKES_ARGS[c.name] ? c.name + ' ' : c.name }));
   }
   const cmd = COMMANDS.find((c) => c.name === head);
-  if (cmd && (cmd.name === 'FX' || cmd.name === 'CPI')) {
-    const args = cmd.name === 'FX' ? parseFxArgs(toks.slice(1)) : parseCpiArgs(toks.slice(1));
+  if (cmd && TAKES_ARGS[cmd.name]) {
+    const args = TAKES_ARGS[cmd.name](toks.slice(1));
     if (args.error) return [{ name: cmd.usage, hint: 'e.g. ' + cmd.example, value: cmd.example, usage: true }];
   }
   return [];
@@ -242,6 +314,7 @@ const store = {
 const SCREENS = {
   HOME: homeScreen, HELP: helpScreen, MARKETS: marketsScreen, FX: fxScreen,
   QUOTE: quoteScreen, CPI: cpiScreen, RATES: ratesScreen, NEWS: newsScreen,
+  BUY: buyScreen, WAGE: buyScreen,
 };
 const DEFAULT_TITLE = 'Bloombroke: the $32,000 terminal. Now $4.20 a month.';
 
@@ -352,7 +425,7 @@ function boot() {
     document.title = cmd.name === 'HOME' || cmd.name === 'UNKNOWN' ? DEFAULT_TITLE : `${cmd.input} | Bloombroke`;
 
     const ctx = {
-      run, fetchJSON, signal, escapeHtml, toQuery,
+      run, fetchJSON, signal, escapeHtml, toQuery, store,
       commands: COMMANDS, ticker: TICKER_HELP, soon: SOON, fkeys: FKEYS,
       status: setStatus, updated: setUpdated,
       every(fn, ms) { const id = setInterval(fn, ms); cleanups.push(() => clearInterval(id)); },

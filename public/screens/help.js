@@ -15,7 +15,7 @@ export function render(el, cmd, ctx) {
     row('<TICKER>', t.hint, t.examples),
   ].join('');
   const money = [
-    ...by('Money tools').map((c) => row(c.usage, c.hint, [c.example, ...(c.name === 'FX' ? ['FX USD CAD'] : ['CPI 1000 1990'])])),
+    ...by('Money tools').map((c) => row(c.usage, c.hint, c.examples || [c.example])),
   ].join('');
   const soon = ctx.soon.map((c) => `<li class="cmd-row is-soon"><span class="cmd-name">${esc(c.name)}</span><span class="cmd-hint">${esc(c.hint)}</span><span class="cmd-example">SOON</span></li>`).join('');
   const fkeys = ctx.fkeys.map((k) => `<div><dt><kbd>${esc(k.key)}</kbd></dt><dd>${esc(k.label)}</dd></div>`).join('');
