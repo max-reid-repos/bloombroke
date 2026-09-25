@@ -35,7 +35,7 @@
   --topbar-h: 30px;
   --cmd-h: 40px;
   --status-h: 22px;
-  --tape-h: 26px;
+  --tape-h: 0px; /* tape hidden by default; the TAPE ON option comes with the nav overhaul */
   --keybar-h: 28px;
   --dock-h: calc(var(--status-h) + var(--tape-h) + var(--keybar-h) + 1px);
   --row-h: 24px;
@@ -619,6 +619,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .status-note { color: var(--faint); }
 
 .tape {
+  display: none;
   position: relative;
   height: var(--tape-h);
   overflow: hidden;
