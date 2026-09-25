@@ -1,15 +1,19 @@
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getQuotes, getFxMajors, getQuote, normalizeTicker } from './data/quotes.js';
+import { getQuotes, getFxMajors, getQuote, getQuoteList, normalizeTicker, MAX_LIST } from './data/quotes.js';
 import { getFx, FxError } from './data/fx.js';
 import { getChart, ChartError } from './data/charts.js';
 import { getCpi, CpiError, CPI_EXAMPLES } from './data/cpi.js';
 import { getRates } from './data/rates.js';
 import { getNews } from './data/news.js';
 import { search } from './data/search.js';
-import { getCatalog, getWhatif, getFunding } from './data/whatif-service.js';
+import { getCatalog, getWhatif, getFunding, catalog } from './data/whatif-service.js';
 import { WhatifError } from './data/whatif.js';
+import { whatifTokens, normalizeWhatif, certModel } from './data/whatif-cert.js';
+import { getCert, whatifPng, defaultPng, withMeta, certMeta, DEFAULT_META } from './lib/og.js';
+import { getFinancials, FinancialsError } from './data/financials.js';
+import { getScreen, ScreenError } from './data/screen.js';
 import { buildId, versionIndex } from './lib/assets.js';
 import { readFileSync } from 'node:fs';
 import { mountCommandRoutes } from './command-routes.js';
@@ -103,6 +107,22 @@ app.get('/api/quote', async (req, res) => {
   }
 });
 
+// ?s=AAPL,MSFT,GOLD: many quotes in one call (WATCH, PORTFOLIO, HOME).
+app.get('/api/quotes', async (req, res) => {
+  const raw = (str(req.query.s) || '').split(',').map((t) => t.trim()).filter(Boolean);
+  if (!raw.length || raw.length > MAX_LIST || raw.some((t) => t.length > 16)) {
+    return res.status(400).json({ error: 'usage', message: `Ask for 1 to ${MAX_LIST} symbols, separated by commas.` });
+  }
+  try {
+    const data = await getQuoteList(raw);
+    res.set('Cache-Control', 'public, max-age=5');
+    res.json(data);
+  } catch (err) {
+    console.error('[quotes]', err.message);
+    res.status(503).json({ error: 'unavailable', message: 'Quote data is taking a break. Try again in a minute.' });
+  }
+});
+
 app.get('/api/search', async (req, res) => {
   try {
     const data = await search(str(req.query.q));
@@ -173,13 +193,15 @@ app.get('/api/whatif/catalog', (req, res) => {
 
 // ?c=IPHONE6+LATTE:3Y (the words after WHATIF)
 app.get('/api/whatif', async (req, res) => {
-  const c = str(req.query.c) || '';
-  const tokens = c.toUpperCase().split(/[\s,]+/).filter(Boolean);
-  if (c.length > 600 || tokens.length > 40 || tokens.some((t) => !/^[A-Z0-9.:-]{1,24}$/.test(t))) {
+  const tokens = whatifTokens(str(req.query.c) || '');
+  if (!tokens) {
     return res.status(400).json({ error: 'usage', message: 'That list does not look right. Type WHATIF to pick from the list.' });
   }
   try {
     const data = await getWhatif(tokens);
+    // The certificate: the same words and numbers as the share image.
+    const norm = data.rows ? normalizeWhatif(tokens.join(' '), catalog) : null;
+    if (norm) data.cert = certModel(data, catalog, norm.command);
     res.set('Cache-Control', 'public, max-age=60');
     res.json(data);
   } catch (err) {
@@ -200,19 +222,86 @@ app.get('/api/funding', async (req, res) => {
   }
 });
 
+// FINANCIALS: ?s=AAPL. SEC EDGAR filings, cached a day on the server.
+app.get('/api/financials', async (req, res) => {
+  try {
+    const data = await getFinancials(str(req.query.s));
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.json(data);
+  } catch (err) {
+    if (err instanceof FinancialsError) {
+      const status = { bad_symbol: 400, not_found: 404, no_data: 404 }[err.code] || 503;
+      return res.status(status).json({ error: err.code, message: err.message });
+    }
+    console.error('[financials]', err.message);
+    res.status(503).json({ error: 'unavailable', message: BREAK });
+  }
+});
+
+// SCREEN: ?c=SECTOR+TECHNOLOGY+MCAP>10B (the words after SCREEN) &limit=100.
+app.get('/api/screen', async (req, res) => {
+  const c = str(req.query.c) || '';
+  if (c.length > 300) return res.status(400).json({ error: 'usage', message: 'That screen is too long.' });
+  try {
+    const data = await getScreen(c, str(req.query.limit));
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json(data);
+  } catch (err) {
+    if (err instanceof ScreenError) return res.status(400).json({ error: err.code, message: err.message });
+    console.error('[screen]', err.message);
+    res.status(503).json({ error: 'unavailable', message: 'Screener data is taking a break. Try again in a minute.' });
+  }
+});
+
 mountCommandRoutes(app);
 startPro(app, { dir });
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));
 
+// Share images. A bad or unknown command gets the site card, never an error.
+const ogDeps = { catalog, getWhatif };
+function sendPng(res, png, maxAge) {
+  res.set({ 'Content-Type': 'image/png', 'Cache-Control': `public, max-age=${maxAge}` }).send(png);
+}
+app.get('/og/whatif.png', async (req, res) => {
+  try {
+    sendPng(res, await whatifPng(str(req.query.c) || '', ogDeps), 86400);
+  } catch (err) {
+    console.error('[og]', err.message);
+    try { sendPng(res, await defaultPng(), 300); } catch { res.status(503).end(); }
+  }
+});
+app.get('/og/default.png', async (req, res) => {
+  try {
+    sendPng(res, await defaultPng(), 86400);
+  } catch (err) {
+    console.error('[og]', err.message);
+    res.status(503).end();
+  }
+});
+
 // Pages: the HTML is never cached, and it points at versioned assets (see lib/assets.js).
 const PUBLIC = path.join(dir, 'public');
 const BUILD = buildId(PUBLIC);
-const INDEX = versionIndex(readFileSync(path.join(PUBLIC, 'index.html'), 'utf8'), BUILD);
-function sendIndex(res, status = 200) {
-  res.status(status).set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }).send(INDEX);
+const PAGE = versionIndex(readFileSync(path.join(PUBLIC, 'index.html'), 'utf8'), BUILD);
+const INDEX = withMeta(PAGE, DEFAULT_META);
+function sendIndex(res, status = 200, html = INDEX) {
+  res.status(status).set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }).send(html);
 }
-app.get(['/', '/index.html'], (req, res) => sendIndex(res));
+
+// A shared WHATIF link (/?c=WHATIF+...) gets its own title and certificate image, so
+// the card on X shows the result. Anything else, or a slow answer, gets the site card.
+async function whatifIndex(c) {
+  if (!/^\s*WHATIF\s+\S/i.test(c)) return INDEX;
+  const timeout = new Promise((resolve) => { setTimeout(resolve, 2500, null).unref(); });
+  try {
+    const model = await Promise.race([getCert(c, ogDeps), timeout]);
+    return model ? withMeta(PAGE, certMeta(model)) : INDEX;
+  } catch {
+    return INDEX;
+  }
+}
+app.get(['/', '/index.html'], async (req, res) => sendIndex(res, 200, await whatifIndex(str(req.query.c) || '')));
 
 // /v/<build>/...: this build's files are immutable. An older build id (a page loaded
 // before a deploy) gets today's files, uncached, so it never pins a mismatched copy.

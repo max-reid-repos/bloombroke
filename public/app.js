@@ -13,11 +13,19 @@ import * as newsScreen from './screens/news.js';
 import * as buyScreen from './screens/buy.js';
 import * as whatifScreen from './screens/whatif.js';
 import * as fundingScreen from './screens/funding.js';
+import * as financialsScreen from './screens/financials.js';
+import * as screenScreen from './screens/screen.js';
+import { parseFinancialsCommand, parseFinancialsArgs } from './screens/financials.js';
+import { parseScreenCommand, parseScreenArgs } from './screener.js';
+import * as watchScreen from './screens/watch.js';
+import * as portfolioScreen from './screens/portfolio.js';
+import { parseWatchArgs, watchInput, WATCH_SUBCOMMANDS } from './watchlist.js';
+import { parsePfArgs, pfInput } from './portfolio.js';
 import { fmtNum, fmtPct, dirOf, cmdForInstrument, panel } from './screens/markets.js';
 import { matchInstrument, searchInstruments } from './instruments.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { statusLine, freshTag } from './freshness.js';
-import { EXTRA_HELP, EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra, urlCommand } from './commands.js';
+import { EXTRA_HELP, EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra, urlCommand, isSecret } from './commands.js';
 import { getTape, loadTapeRows } from './pro.js';
 
 export const COMMANDS = [
@@ -30,9 +38,22 @@ export const COMMANDS = [
   { name: 'WHATIF', group: 'Money tools', hint: 'The stock you should have bought', usage: 'WHATIF [<item> ...]', example: 'WHATIF', examples: ['WHATIF', 'WHATIF IPHONE6 LATTE:3Y'] },
   { name: 'BUY', group: 'Money tools', hint: 'Should I buy it? Cost per use and a verdict', usage: 'BUY <price> [<n> PER WEEK] [FOR <n>Y]', example: 'BUY 1200', examples: ['BUY 1200', 'BUY 90 3 PER WEEK FOR 2Y'] },
   { name: 'WAGE', group: 'Money tools', hint: 'Save your hourly pay, BUY then shows hours of work', usage: 'WAGE <per hour>', example: 'WAGE 35', examples: ['WAGE 35'] },
+  { name: 'WATCH', group: 'Your lists', hint: 'Your watchlist, live: any stock, index, pair, coin or future', usage: 'WATCH [ADD|REMOVE <symbols>] [CLEAR|EXPORT|IMPORT]', example: 'WATCH', usageExample: 'WATCH ADD AAPL TSLA', examples: ['WATCH', 'WATCH ADD AAPL TSLA EURUSD', 'WATCH REMOVE TSLA', 'WATCH EXPORT', 'WATCH IMPORT AAPL,MSFT,GOLD'] },
+  { name: 'PORTFOLIO', aliases: ['PF'], group: 'Your lists', hint: 'Your holdings: value, day gain, total gain, weights', usage: 'PF [ADD <ticker> <shares> @ <cost>|SELL <ticker> <shares>|REMOVE <ticker>]', example: 'PF', usageExample: 'PF ADD AAPL 10 @ 150', examples: ['PF', 'PF ADD AAPL 10 @ 150', 'PF SELL AAPL 3', 'PF EXPORT', 'PF IMPORT'] },
   ...EXTRA_HELP,
+  { name: 'SCREEN', group: 'Markets', hint: 'Find stocks by sector, size, price and move', usage: 'SCREEN [<filters>]', example: 'SCREEN GAINERS', examples: ['SCREEN', 'SCREEN GAINERS'] },
+  { name: 'FINANCIALS', group: 'Company', hint: 'Income, balance sheet and cash flow from SEC filings', usage: 'FINANCIALS <ticker> [BALANCE|CASHFLOW] [QUARTERLY]', example: 'FINANCIALS AAPL', examples: ['FINANCIALS AAPL', 'FINANCIALS MSFT BALANCE'] },
   { name: 'HELP', group: 'Help', hint: 'Every command, with examples', usage: 'HELP', example: 'HELP' },
 ];
+
+// <TICKER> <FUNCTION> [args] runs <FUNCTION> <TICKER> [args]: AAPL CHART 5Y, AAPL NEWS.
+// A function that does not take a ticker yet shows "coming soon", not a ticker error.
+export const TICKER_FUNCTIONS = ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS', 'EARNINGS', 'COMPARE', 'WATCH'];
+// The function bar on a stock screen, keys 1 to 6 (7 is the watchlist star).
+export const FUNCTION_BAR = ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS'];
+export const GRAMMAR_HELP = {
+  name: '<TICKER> <FUNCTION>', hint: 'Any function for one ticker, ticker first', examples: ['AAPL CHART 5Y', 'AAPL NEWS', 'AAPL FINANCIALS', 'AAPL WATCH', 'AAPL COMPARE MSFT'],
+};
 
 export const TICKER_HELP = {
   name: 'AAPL', group: 'Markets', hint: 'Any ticker, index, currency pair, commodity or coin: price, chart and key numbers', usage: '<symbol> [1D|5D|1M|3M|6M|YTD|1Y|2Y|5Y|10Y|MAX] or <symbol> <from> <to>', examples: ['AAPL', 'TSLA 5Y', 'GOLD', 'EURUSD', 'SPX YTD', 'AAPL 2020-01-01 2024-12-31', 'NVDA FROM 2023-01-01'],
@@ -54,7 +75,8 @@ export const FKEYS = [
 
 export const CHART_RANGES = PRESETS;
 const SIMPLE = new Set(['HOME', 'MARKETS', 'RATES', 'NEWS', 'HELP']);
-const ALIASES = { '?': 'HELP', H: 'HELP', M: 'MARKETS', MARKET: 'MARKETS', RATE: 'RATES', INFLATION: 'CPI' };
+const FUNDAMENTALS = { FINANCIALS: parseFinancialsCommand, SCREEN: parseScreenCommand, SCREENER: parseScreenCommand };
+const ALIASES = { '?': 'HELP', H: 'HELP', M: 'MARKETS', MARKET: 'MARKETS', RATE: 'RATES', INFLATION: 'CPI', PF: 'PORTFOLIO', WATCHLIST: 'WATCH' };
 export const DEFAULT_COMMAND = 'HOME';
 export const MAX_AMOUNT = 1e12;
 export const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
@@ -186,12 +208,45 @@ export function parseSymbolCommand(toks) {
   return { name: 'QUOTE', args: { ticker, ...range }, input: [ticker, rangeWords(range)].filter(Boolean).join(' ') };
 }
 
+// The symbol at the start of the words: { id, used }, or null.
+function leadingSymbol(toks) {
+  const m = matchInstrument(toks);
+  if (m) return { id: m.inst.id, used: m.used };
+  return isTicker(toks[0]) ? { id: toks[0], used: 1 } : null;
+}
+
+// AAPL CHART 5Y -> the same as CHART AAPL 5Y. Returns null when the second word is not
+// a ticker function. A function that exists but does not take this ticker yet (or is
+// not built yet) returns SOON.
+export function parseTickerFunction(toks) {
+  const sym = leadingSymbol(toks);
+  if (!sym) return null;
+  const fn = toks[sym.used];
+  if (!TICKER_FUNCTIONS.includes(fn)) return null;
+  const rest = toks.slice(sym.used + 1);
+  const inner = parseCommand([fn, sym.id, ...rest].join(' '), 1);
+  // A usage error means the function exists but does not take a ticker (EARNINGS today).
+  if (inner.name !== 'UNKNOWN' && inner.name !== 'SOON' && inner.error !== 'usage' && tokenize(inner.input).includes(sym.id)) return inner;
+  return { name: 'SOON', args: { soon: { name: `${sym.id} ${fn}`, hint: `${fn} for one ticker is on the way`, ticker: sym.id } }, input: [sym.id, fn, ...rest].join(' ') };
+}
+
+// The function bar for a ticker: [{ fn, cmd, ready, current }].
+export function tickerFunctions(ticker, current = 'CHART') {
+  return FUNCTION_BAR.map((fn) => {
+    const cmd = fn === 'CHART' ? ticker : `${ticker} ${fn}`;
+    return { fn, cmd, ready: parseCommand(cmd).name !== 'SOON', current: fn === current };
+  });
+}
+
 // Turn raw input into { name, args?, error?, input }. Unknown commands get name 'UNKNOWN'.
-export function parseCommand(raw) {
+// Commands that change saved lists (WATCH ADD, PF SELL) carry mutates: true and the
+// screen to show in the URL instead (view), so a reload never runs them twice.
+export function parseCommand(raw, depth = 0) {
   const toks = tokenize(raw);
   if (!toks.length) return { name: DEFAULT_COMMAND, input: DEFAULT_COMMAND };
-  const head = ALIASES[toks[0]] || toks[0];
   const rest = toks.slice(1);
+  // W is also a ticker (Wayfair): it means WATCH only alone or before a WATCH word.
+  const head = toks[0] === 'W' && (!rest.length || WATCH_SUBCOMMANDS.includes(rest[0])) ? 'WATCH' : (ALIASES[toks[0]] || toks[0]);
   const extra = matchExtra(head, rest);
   if (extra) return extra;
   if (SIMPLE.has(head)) return { name: head, input: head };
@@ -218,6 +273,23 @@ export function parseCommand(raw) {
   if (head === 'BUY') return { name: 'BUY', args: { error: 'usage' }, error: 'usage', input: 'BUY' };
   const soon = SOON.find((s) => s.name === head);
   if (soon && !rest.length) return { name: 'SOON', args: { soon }, input: head };
+  if (head === 'WATCH') {
+    const args = parseWatchArgs(rest);
+    return { name: 'WATCH', args, error: args.error, input: watchInput(args) || ['WATCH', ...rest].join(' '), mutates: Boolean(args.mutates), view: 'WATCH' };
+  }
+  if (head === 'PORTFOLIO') {
+    const args = parsePfArgs(rest);
+    return { name: 'PORTFOLIO', args, error: args.error, input: pfInput(args) || ['PF', ...rest].join(' '), mutates: Boolean(args.mutates), view: 'PF' };
+  }
+  if (head === 'CHART' && rest.length) {
+    const chart = parseSymbolCommand(rest);
+    if (chart) return chart;
+  }
+  if (FUNDAMENTALS[head]) return FUNDAMENTALS[head](rest);
+  if (depth === 0) {
+    const fn = parseTickerFunction(toks);
+    if (fn) return fn;
+  }
   // Add new commands above this line: commands win over symbols of the same name.
   const quote = parseSymbolCommand(toks);
   if (quote) return quote;
@@ -237,7 +309,10 @@ export function fromQuery(search) {
 }
 
 // Commands that take arguments: Tab adds a space, and a bad argument shows the usage line.
-const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, ...EXTRA_TAKES_ARGS };
+const TAKES_ARGS = { FX: parseFxArgs, CPI: parseCpiArgs, BUY: parseBuyArgs, WAGE: parseWageArgs, ...EXTRA_TAKES_ARGS, FINANCIALS: parseFinancialsArgs, SCREEN: parseScreenArgs };
+// Commands that run on their own but still show the usage line for bad words after them.
+const CHECKS_ARGS = { WATCH: parseWatchArgs, PORTFOLIO: parsePfArgs };
+const commandFor = (word) => COMMANDS.find((c) => c.name === word || c.aliases?.includes(word));
 
 // Suggestions for the dropdown: [{ name, hint, value }].
 export function suggest(raw) {
@@ -248,14 +323,15 @@ export function suggest(raw) {
   const typingHead = toks.length === 1 && !/\s$/.test(text);
   if (typingHead) {
     const cmds = COMMANDS
-      .filter((c) => c.name.startsWith(head))
+      .filter((c) => c.name.startsWith(head) || (head.length >= 2 && c.aliases?.some((a) => a.startsWith(head))))
       .map((c) => ({ name: c.name, hint: c.hint, value: TAKES_ARGS[c.name] ? c.name + ' ' : c.name }));
     return head.length >= 2 ? [...cmds, ...symbolSuggestions(searchInstruments(head, 6), cmds)] : cmds;
   }
-  const cmd = COMMANDS.find((c) => c.name === head);
-  if (cmd && TAKES_ARGS[cmd.name]) {
-    const args = TAKES_ARGS[cmd.name](toks.slice(1));
-    if (args.error) return [{ name: cmd.usage, hint: 'e.g. ' + cmd.example, value: cmd.example, usage: true }];
+  const cmd = commandFor(head);
+  const check = cmd && (TAKES_ARGS[cmd.name] || CHECKS_ARGS[cmd.name]);
+  if (check) {
+    const args = check(toks.slice(1));
+    if (args.error) return [{ name: cmd.usage, hint: 'e.g. ' + (cmd.usageExample || cmd.example), value: cmd.usageExample || cmd.example, usage: true }];
   }
   return [];
 }
@@ -361,6 +437,8 @@ const SCREENS = {
   HOME: homeScreen, HELP: helpScreen, MARKETS: marketsScreen, FX: fxScreen,
   QUOTE: quoteScreen, CPI: cpiScreen, RATES: ratesScreen, NEWS: newsScreen,
   BUY: buyScreen, WAGE: buyScreen, WHATIF: whatifScreen, FUNDING: fundingScreen,
+  WATCH: watchScreen, PORTFOLIO: portfolioScreen,
+  FINANCIALS: financialsScreen, SCREEN: screenScreen,
 };
 const DEFAULT_TITLE = 'Bloombroke: the $32,000 terminal. Now $4.20 a month.';
 
@@ -519,7 +597,8 @@ function boot() {
     cleanups = [];
   }
 
-  function render(raw) {
+  // fromUrl: the command came from the address bar (a load, Back, a shared link).
+  function render(raw, { fromUrl = false } = {}) {
     const cmd = parseCommand(raw);
     runCleanups();
     if (screenAbort) screenAbort.abort();
@@ -533,8 +612,9 @@ function boot() {
     document.title = cmd.name === 'HOME' || cmd.name === 'UNKNOWN' ? DEFAULT_TITLE : `${cmd.input} | Bloombroke`;
 
     const ctx = {
-      run, fetchJSON, signal, escapeHtml, toQuery, store,
-      commands: COMMANDS, ticker: TICKER_HELP, soon: SOON, fkeys: FKEYS,
+      run, fetchJSON, signal, escapeHtml, toQuery, store, copy: copyText,
+      tickerFunctions: (t) => tickerFunctions(t),
+      commands: COMMANDS, ticker: TICKER_HELP, soon: SOON, fkeys: FKEYS, grammar: GRAMMAR_HELP,
       status: setStatus, updated: setUpdated,
       every(fn, ms) { const id = setInterval(fn, ms); cleanups.push(() => clearInterval(id)); },
       // Like every(), but it skips while the tab is hidden and catches up when it is shown.
@@ -542,15 +622,23 @@ function boot() {
       onCleanup(fn) { cleanups.push(fn); },
     };
     const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name];
-    if (mod) {
+    if (cmd.mutates && fromUrl) {
+      // A link that changes saved lists never runs by itself: ask first.
+      view.innerHTML = panel('1', cmd.name === 'PORTFOLIO' ? 'Portfolio' : 'Watchlist', `
+        <p class="notice">This link wants to change your ${cmd.name === 'PORTFOLIO' ? 'portfolio' : 'watchlist'}.</p>
+        <p class="muted">It runs <span class="code">${escapeHtml(cmd.input)}</span> on the list saved in this browser.</p>
+        <p class="examples"><button type="button" class="pf-btn" data-cmd="${escapeHtml(cmd.input)}">RUN IT</button> <a class="code" href="${toQuery(cmd.view)}" data-cmd="${escapeHtml(cmd.view)}">No, just show ${escapeHtml(cmd.view)}</a></p>`, { cls: 'panel-solo' });
+      setStatus('CONFIRM TO CHANGE YOUR SAVED LIST', 'warn');
+    } else if (mod) {
       setStatus('LOADING...');
       const fn = mod.render(view, cmd, ctx);
       if (typeof fn === 'function') cleanups.push(fn);
     } else if (cmd.name === 'SOON') {
       const s = cmd.args.soon;
+      const alt = s.ticker ? `<a class="code" href="${toQuery(s.ticker)}" data-cmd="${escapeHtml(s.ticker)}">${escapeHtml(s.ticker)}</a> or ` : '';
       view.innerHTML = panel('1', s.name, `
         <p class="notice">${escapeHtml(s.name)} is coming soon.</p>
-        <p class="muted">${escapeHtml(s.hint)}. For now, try <a class="code" href="${toQuery('HELP')}" data-cmd="HELP">HELP</a>.</p>`, { cls: 'panel-solo' });
+        <p class="muted">${escapeHtml(s.hint)}. For now, try ${alt}<a class="code" href="${toQuery('HELP')}" data-cmd="HELP">HELP</a>.</p>`, { cls: 'panel-solo' });
       setStatus(`${s.name}: COMING SOON`);
     } else {
       view.innerHTML = panel('1', 'Unknown command', `
@@ -560,14 +648,17 @@ function boot() {
     }
   }
 
-  function run(raw, { push = true } = {}) {
+  function run(raw, { push = true, fromUrl = false } = {}) {
     const clean = tokenize(raw).join(' ') || DEFAULT_COMMAND;
     if (push) {
-      const shown = urlCommand(clean); // LOGIN keeps its key out of the URL and history
-      const q = toQuery(shown);
-      if (location.search !== q) window.history.pushState({ c: shown }, '', q);
-      if (cmdHistory[cmdHistory.length - 1] !== shown) {
-        cmdHistory.push(shown);
+      // A command that changes a saved list puts its screen in the URL, not itself.
+      // LOGIN, LOGOUT and TAPE put their screen there too, and LOGIN's key goes nowhere.
+      const parsed = parseCommand(clean);
+      const q = toQuery(parsed.mutates ? parsed.view : urlCommand(clean));
+      const kept = isSecret(clean) ? parsed.input : clean;
+      if (location.search !== q) window.history.pushState({ c: kept }, '', q);
+      if (cmdHistory[cmdHistory.length - 1] !== kept) {
+        cmdHistory.push(kept);
         cmdHistory = cmdHistory.slice(-50);
         store.set('bb.history', cmdHistory);
       }
@@ -577,14 +668,14 @@ function boot() {
     draft = '';
     closeSuggest();
     placeCursor();
-    render(clean);
+    render(clean, { fromUrl });
   }
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     if (active >= 0 && items[active] && !items[active].usage && !list.hidden) { pick(items[active]); return; }
     const value = input.value;
-    if (!value.trim()) { run(fromQuery(location.search), { push: false }); return; }
+    if (!value.trim()) { run(fromQuery(location.search), { push: false, fromUrl: true }); return; }
     run(value);
     if (coarse) input.blur();
   });
@@ -678,13 +769,23 @@ function boot() {
       if (!coarse) input.focus();
       return;
     }
+    // A stock screen's function bar: keys 1 to 7 while the command bar is empty.
+    if (/^[1-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey
+      && (e.target === input ? input.value === '' : !e.target.closest?.('input, select, textarea'))) {
+      const item = screen.querySelector(`.fnbar [data-key="${e.key}"]`);
+      if (item) {
+        e.preventDefault();
+        item.click();
+        return;
+      }
+    }
     // Typing anywhere goes to the command bar.
     if (document.activeElement === input || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.target.closest?.('input, select, textarea')) return;
     if (e.key.length === 1 || e.key === 'Backspace') input.focus();
   });
 
-  window.addEventListener('popstate', () => render(urlCommand(fromQuery(location.search))));
+  window.addEventListener('popstate', () => render(urlCommand(fromQuery(location.search)), { fromUrl: true }));
 
   // --- clock ----------------------------------------------------------------
   const clockEl = $('clock');
@@ -775,9 +876,9 @@ function boot() {
   if (firstVisit && !location.search && !reduceMotion.matches) {
     store.set('bb.booted', true);
     setStatus('STARTING');
-    bootSequence(screen, () => render(initial));
+    bootSequence(screen, () => render(initial, { fromUrl: true }));
   } else {
-    render(initial);
+    render(initial, { fromUrl: true });
   }
   if (!coarse) input.focus();
   placeCursor();

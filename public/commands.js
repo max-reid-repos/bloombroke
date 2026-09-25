@@ -82,3 +82,9 @@ export function urlCommand(clean) {
   const c = EXTRA.find((x) => x.name === head && x.url);
   return c ? c.url : clean;
 }
+
+// Commands whose words must never be kept (LOGIN <key>).
+export function isSecret(clean) {
+  const head = String(clean).split(' ')[0];
+  return EXTRA.some((x) => x.name === head && x.secret);
+}

@@ -3,6 +3,8 @@
 // that touch the network or storage only run in a browser.
 
 import { INSTRUMENTS, resolveInstrument } from './instruments.js';
+import { WATCH_KEY } from './watchlist.js';
+import { PF_KEY } from './portfolio.js';
 
 export const PRICE = '$4.20';
 export const PRICE_LINE = '$4.20 a month';
@@ -14,7 +16,7 @@ export const PENDING_KEY = 'bb.pro.session';
 
 // Synced documents: server name -> localStorage key. watch and pf are the WATCH and PF
 // lists; tape is your own ticker tape.
-export const SYNC_DOCS = { watch: 'bb.watch', pf: 'bb.pf', tape: 'bb.tape' };
+export const SYNC_DOCS = { watch: WATCH_KEY, pf: PF_KEY, tape: 'bb.tape' };
 
 export const MAX_TAPE = 40;
 export const DEFAULT_TAPE = INSTRUMENTS.filter((i) => i.tape).map((i) => i.id);
