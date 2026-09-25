@@ -8,6 +8,10 @@ export const MAX_SYNC_DOCS = 16;
 export const DOC_NAME_RE = /^[a-z][a-z0-9_.-]{0,31}$/;
 const CLOCK_SKEW_MS = 5 * 60 * 1000;
 const EVENT_KEEP_MS = 90 * 24 * 60 * 60 * 1000;
+export const ENDED_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
+// Subscription ended for good: synced data goes 30 days after (Privacy Policy).
+const ENDED_SQL = "('canceled', 'unpaid')";
+const endedAt = (status, t) => (status === 'canceled' || status === 'unpaid' ? t : null);
 
 export class SyncError extends Error {
   constructor(code, message) {
@@ -30,20 +34,26 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
       terms_accepted_at = COALESCE(?, terms_accepted_at),
       terms_version = COALESCE(?, terms_version),
       livemode = COALESCE(?, livemode),
+      ended_at = NULL,
       updated_at = ?
       WHERE id = ?`),
     rotate: db.prepare('UPDATE licences SET key_hash = ?, last4 = ?, reveal_ciphertext = NULL, updated_at = ? WHERE id = ?'),
     forget: db.prepare('UPDATE licences SET reveal_ciphertext = NULL WHERE checkout_session_id = ? AND key_hash = ? AND reveal_ciphertext IS NOT NULL'),
     insert: db.prepare(`INSERT INTO licences
-      (key_hash, last4, stripe_customer_id, stripe_subscription_id, checkout_session_id, status, past_due_since, created_at, updated_at, reveal_ciphertext, reveal_expires_at, terms_accepted_at, terms_version, livemode)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+      (key_hash, last4, stripe_customer_id, stripe_subscription_id, checkout_session_id, status, past_due_since, created_at, updated_at, reveal_ciphertext, reveal_expires_at, terms_accepted_at, terms_version, livemode, ended_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
     terms: db.prepare('UPDATE licences SET terms_accepted_at = ?, terms_version = ? WHERE id = ? AND terms_accepted_at IS NULL'),
     status: db.prepare(`UPDATE licences SET
       status = ?,
       past_due_since = CASE WHEN ? = 'past_due' THEN COALESCE(past_due_since, ?) ELSE NULL END,
       stripe_customer_id = COALESCE(stripe_customer_id, ?),
+      ended_at = CASE WHEN ? IN ${ENDED_SQL} THEN COALESCE(ended_at, ?) ELSE NULL END,
       updated_at = ?
       WHERE id = ?`),
+    endedDocs: db.prepare(`DELETE FROM sync_docs WHERE licence_id IN
+      (SELECT id FROM licences WHERE status IN ${ENDED_SQL} AND ended_at IS NOT NULL AND ended_at <= ?)`),
+    endedReveals: db.prepare(`UPDATE licences SET reveal_ciphertext = NULL
+      WHERE reveal_ciphertext IS NOT NULL AND status IN ${ENDED_SQL} AND ended_at IS NOT NULL AND ended_at <= ?`),
     eventSeen: db.prepare('SELECT 1 FROM stripe_events WHERE id = ?'),
     eventMark: db.prepare('INSERT OR IGNORE INTO stripe_events (id, type, processed_at) VALUES (?, ?, ?)'),
     eventPrune: db.prepare('DELETE FROM stripe_events WHERE processed_at < ?'),
@@ -54,7 +64,7 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
   };
 
   function setStatus(id, status, at = now()) {
-    q.status.run(status, status, at, null, now(), id);
+    q.status.run(status, status, at, null, status, now(), now(), id);
     return q.byId.get(id);
   }
 
@@ -98,7 +108,7 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
         const t = now();
         const cipher = encryptReveal(aesKey, key, sessionId);
         const r = q.insert.run(hash, last4(key), customerId || null, subscriptionId, sessionId, status,
-          status === 'past_due' ? t : null, t, t, cipher, t + REVEAL_MS, termsAcceptedAt || null, version, live);
+          status === 'past_due' ? t : null, t, t, cipher, t + REVEAL_MS, termsAcceptedAt || null, version, live, endedAt(status, t));
         return { licence: q.byId.get(r.lastInsertRowid), created: true, key };
       });
     },
@@ -118,6 +128,17 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
     },
 
     purgeReveals() { return Number(q.purge.run(now()).changes); },
+
+    // Daily: licences whose subscription ended (canceled or unpaid) over 30 days ago lose
+    // their synced documents and any reveal copy. The licence row itself stays, so the key
+    // can still REACTIVATE. Returns counts only.
+    purgeEnded() {
+      const before = now() - ENDED_KEEP_MS;
+      return tx(db, () => ({
+        docs: Number(q.endedDocs.run(before).changes),
+        reveals: Number(q.endedReveals.run(before).changes),
+      }));
+    },
 
     // The browser saved the key: wipe the reveal copy now. Needs the key itself.
     forgetReveal(sessionId, key) { return Number(q.forget.run(sessionId, hashKey(key)).changes) > 0; },

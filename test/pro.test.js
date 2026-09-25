@@ -231,7 +231,7 @@ test('migrations: applied once per database file', () => {
     assert.equal(a.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
     a.close();
     const b = openDb(file);
-    assert.equal(b.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 4);
+    assert.equal(b.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 5);
     assert.ok(b.prepare('PRAGMA table_info(licences)').all().some((c) => c.name === 'terms_accepted_at'));
     b.close();
   } finally {
@@ -806,4 +806,46 @@ test('rate limiter: the sweep runs at most once a second', () => {
   assert.equal(l.hit('e').ok, false, 'no second sweep within a second');
   t = 1200;
   assert.equal(l.hit('e').ok, true, 'a second later it sweeps again');
+});
+
+test('daily purge: synced data goes 30 days after the subscription ended, not before', () => {
+  let t = T0;
+  const db = openDb(':memory:');
+  const store = createStore(db, { aesKey: AES, now: () => t });
+  const mk = (n, status) => {
+    const { licence } = store.ensureLicence({ sessionId: `cs_test_purge${n}`, subscriptionId: `sub_p${n}`, status: 'active' });
+    store.putDocs(licence.id, { watch: { data: [n], updatedAt: T0 } });
+    if (status !== 'active') store.setStatus(licence.id, status);
+    return licence.id;
+  };
+  const canceledOld = mk(1, 'canceled');
+  const unpaidOld = mk(2, 'unpaid');
+  const pastDue = mk(3, 'past_due');
+  const active = mk(4, 'active');
+  t = T0 + 20 * DAY;
+  const canceledNew = mk(5, 'canceled');
+  const back = mk(6, 'canceled');
+  // Reactivated before the 30 days are up: the clock stops.
+  store.ensureLicence({ sessionId: 'cs_test_purge6b', subscriptionId: 'sub_p6b', status: 'active', licenceId: back });
+  assert.equal(store.findById(back).ended_at, null);
+  // A second "canceled" event does not restart the 30 days.
+  t = T0 + 25 * DAY;
+  store.setStatus(canceledOld, 'canceled');
+  assert.equal(store.findById(canceledOld).ended_at, T0);
+
+  t = T0 + 30 * DAY + 1;
+  assert.deepEqual(store.purgeEnded(), { docs: 2, reveals: 2 });
+  const has = (id) => Boolean(store.getDocs(id).watch);
+  assert.equal(has(canceledOld), false);
+  assert.equal(has(unpaidOld), false);
+  assert.equal(store.findById(canceledOld).reveal_ciphertext, null);
+  assert.equal(has(pastDue), true);
+  assert.equal(has(active), true);
+  assert.equal(has(canceledNew), true, 'ended 10 days ago');
+  assert.equal(has(back), true);
+  assert.ok(store.findById(canceledOld), 'the licence row stays, so the key can REACTIVATE');
+  assert.deepEqual(store.purgeEnded(), { docs: 0, reveals: 0 });
+  t = T0 + 50 * DAY + 1;
+  assert.equal(store.purgeEnded().docs, 1);
+  assert.equal(has(canceledNew), false);
 });

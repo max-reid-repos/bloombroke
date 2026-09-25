@@ -44,6 +44,15 @@ export function startPro(app, { dir, env = process.env, log = console }) {
     };
     clean();
     setInterval(clean, 60 * 60 * 1000).unref();
+    // Privacy Policy: synced data of subscriptions that ended over 30 days ago is deleted.
+    const purge = () => {
+      try {
+        const n = store.purgeEnded();
+        log.log(`[pro] purge: ${n.docs} synced documents, ${n.reveals} reveal copies`);
+      } catch (err) { log.error('[pro] purge', err.message); }
+    };
+    purge();
+    setInterval(purge, 24 * 60 * 60 * 1000).unref();
     log.log(`[pro] ${se.mode} mode, ${ready ? 'ready' : 'not configured: checkout is closed'}`);
     return { db, store, ready };
   } catch (err) {
