@@ -4,3 +4,6 @@ node_modules
 data/cache/
 .DS_Store
 npm-debug.log*
+var/
+*.db-wal
+*.db-shm
