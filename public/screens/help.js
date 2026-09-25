@@ -7,7 +7,7 @@ function row(name, hint, examples) {
   return `<li class="cmd-row"><span class="cmd-name">${esc(name)}</span><span class="cmd-hint">${esc(hint)}</span><span class="cmd-example">${ex}</span></li>`;
 }
 
-export const HELP_GROUPS = ['Markets', 'Your lists', 'Company', 'Rates and FX', 'Calendars', 'Money tools'];
+export const HELP_GROUPS = ['Markets', 'Your lists', 'Company', 'Rates and FX', 'Calendars', 'Money tools', 'Legal'];
 
 export function render(el, cmd, ctx) {
   const by = (g) => ctx.commands.filter((c) => c.group === g);

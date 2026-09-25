@@ -26,6 +26,7 @@ import { matchInstrument, searchInstruments } from './instruments.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { statusLine, freshTag } from './freshness.js';
 import { EXTRA_HELP, EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra } from './commands.js';
+import { ensureConsent } from './consent.js';
 
 export const COMMANDS = [
   { name: 'HOME', group: 'Markets', hint: 'Markets, S&P 500, currencies and news on one screen', usage: 'HOME', example: 'HOME' },
@@ -871,9 +872,10 @@ function boot() {
   if (firstVisit && !location.search && !reduceMotion.matches) {
     store.set('bb.booted', true);
     setStatus('STARTING');
-    bootSequence(screen, () => render(initial, { fromUrl: true }));
+    bootSequence(screen, () => { render(initial, { fromUrl: true }); ensureConsent(); });
   } else {
     render(initial, { fromUrl: true });
+    ensureConsent(); // first visit: the notice, after the boot log or at once on a deep link
   }
   if (!coarse) input.focus();
   placeCursor();

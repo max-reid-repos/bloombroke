@@ -24,6 +24,7 @@ import * as earnings from './screens/earnings.js';
 import * as calendar from './screens/calendar.js';
 import * as loan from './screens/loan.js';
 import * as compound from './screens/compound.js';
+import * as legal from './screens/legal.js';
 
 export const EXTRA = [
   { name: 'WORLD', group: 'Markets', hint: 'World stock indexes by region, open or closed', usage: 'WORLD', example: 'WORLD', screen: world },
@@ -45,6 +46,9 @@ export const EXTRA = [
   { name: 'CALENDAR', group: 'Calendars', hint: "This week's economic events: jobs, inflation, central banks", usage: 'CALENDAR [US|ALL]', example: 'CALENDAR', examples: ['CALENDAR', 'CALENDAR ALL'], screen: calendar },
   { name: 'LOAN', group: 'Money tools', hint: "Monthly payment and total interest, at today's mortgage rate or yours", usage: 'LOAN <amount> [years]', example: 'LOAN 400000 30Y', examples: ['LOAN 400000 30Y', 'LOAN 25000 5Y 7.9%'], screen: loan, takesArgs: true },
   { name: 'COMPOUND', group: 'Money tools', hint: 'What saving every month grows to, at a return you pick', usage: 'COMPOUND <plan>', example: 'COMPOUND 500/MO 8% 30Y', examples: ['COMPOUND 500/MO 8% 30Y', 'COMPOUND 10000 7% 20Y'], screen: compound, takesArgs: true },
+  { name: 'TERMS', group: 'Legal', hint: 'Terms of Use: information only, not investment advice', usage: 'TERMS', example: 'TERMS', screen: legal },
+  { name: 'PRIVACY', group: 'Legal', hint: 'Privacy Policy: what we collect and why', usage: 'PRIVACY', example: 'PRIVACY', screen: legal },
+  { name: 'DISCLAIMER', group: 'Legal', hint: 'Disclaimer: data may be delayed or wrong, investing is risky', usage: 'DISCLAIMER', example: 'DISCLAIMER', screen: legal },
 ];
 
 // Help and suggestion entries, in the same shape as the core COMMANDS.

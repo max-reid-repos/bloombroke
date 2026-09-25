@@ -102,3 +102,6 @@
 .consent-accept:focus-visible { outline: 2px solid var(--text, #CFEAFF); outline-offset: 2px; }
 .consent-links { display: flex; gap: 14px; font-size: 12px; }
 .consent-links a { color: var(--accent, #6CCBFF); }
+@media (max-width: 639px) {
+  .status-note.status-legal { display: flex; flex: 0 0 auto; gap: 8px; }
+}
