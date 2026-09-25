@@ -46,18 +46,57 @@ test('insiders: Nasdaq rows, kinds, value = shares x price, 3 and 12 month total
   assert.equal(parseInsiders(null), null);
 });
 
-test('owners: holders, % of shares from the source outstanding, summary counts', () => {
+test('owners: a list cut short keeps the source totals, but still drops holders that did not refile', () => {
+  // 25 of 6,494 rows: the totals cannot be summed, so the source's stay (and say so).
   const d = parseOwners(fx('nasdaq-owners-aapl.json').data);
+  assert.equal(d.summary.quarterOnly, false);
   assert.equal(d.summary.institutionalPct, 76.57);
   assert.equal(d.summary.sharesOutstanding, 14594e6);
   assert.equal(d.summary.totalValue, 3753723e6);
   assert.ok(d.summary.total.holders > 1000);
   assert.ok(Number.isFinite(d.summary.new.holders) && Number.isFinite(d.summary.soldOut.holders));
+  assert.equal(d.summary.quarter, '2026-06-30');
+  // Vanguard Group Inc last filed for Dec 2025; its successors filed for Jun 2026.
+  assert.ok(!d.rows.some((r) => r.holder === 'Vanguard Group Inc'), 'not next to its successors');
+  assert.deepEqual(d.notRefiled.map((r) => [r.holder, r.asOf]), [['Vanguard Group Inc', '2025-12-31']]);
+  assert.ok(d.rows.every((r) => r.asOf === '2026-06-30'));
   const top = d.rows[0];
-  assert.equal(top.holder, 'Vanguard Group Inc');
+  assert.equal(top.holder, 'Blackrock, Inc.');
   assert.equal(top.pctOfShares, Math.round((top.shares / 14594e6) * 1e6) / 1e4);
   assert.equal(top.value % 1000, 0, 'value from thousands');
   assert.match(top.asOf, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('owners: a complete list sums its totals from the newest quarter only (real AAPL rows)', () => {
+  const raw = fx('nasdaq-owners-aapl-full.json').data;
+  const d = parseOwners(raw);
+  const s = d.summary;
+  assert.equal(s.quarterOnly, true);
+  assert.equal(s.quarter, '2026-06-30');
+  const n = (v) => Number(String(v).replace(/[$,%]/g, ''));
+  const cur = raw.holdingsTransactions.table.rows.filter((r) => r.date === '6/30/2026');
+  const old = raw.holdingsTransactions.table.rows.filter((r) => r.date !== '6/30/2026');
+  assert.equal(cur.length, 29);
+  assert.equal(old.length, 10);
+  const shares = cur.reduce((a, r) => a + n(r.sharesHeld), 0);
+  assert.equal(s.total.holders, 29);
+  assert.equal(s.total.shares, shares);
+  assert.equal(s.totalValue, cur.reduce((a, r) => a + n(r.marketValue), 0) * 1000);
+  assert.equal(s.institutionalPct, Math.round((shares / 14594e6) * 1e4) / 100);
+  // Every holder is counted once: this quarter plus not refiled is the whole list.
+  assert.equal(s.total.shares + s.notRefiled.shares, raw.holdingsTransactions.table.rows.reduce((a, r) => a + n(r.sharesHeld), 0));
+  assert.equal(s.notRefiled.holders, 10);
+  assert.equal(s.increased.holders + s.decreased.holders + s.held.holders, 29);
+  assert.equal(s.increased.shares, cur.filter((r) => n(r.sharesChange) > 0).reduce((a, r) => a + n(r.sharesChange), 0));
+  // The source's own figure (all 6,494 latest filings, old ones too) is kept for the note.
+  assert.equal(s.reported.institutionalPct, 76.57);
+  assert.equal(s.soldOut.holders, 104, 'sold out: the source count');
+  assert.equal(d.rows.length, 25);
+  assert.equal(d.totalRecords, 29);
+  assert.ok(!d.rows.some((r) => r.holder === 'Vanguard Group Inc'));
+  assert.ok(d.rows.some((r) => r.holder === 'Vanguard Capital Management Llc'));
+  // Only the old filing big enough for the top list is shown apart.
+  assert.deepEqual(d.notRefiled.map((r) => r.holder), ['Vanguard Group Inc']);
 });
 
 test('shorts: rows newest first with change against the settlement before', () => {

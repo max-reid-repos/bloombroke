@@ -8,7 +8,7 @@ import { monthlyTotals, insidersTable } from '../public/screens/insiders.js';
 import { shortQuarter, beatsGroups, beatsTable, nextLine } from '../public/screens/beats.js';
 import { trendPoints, shortsTable } from '../public/screens/shorts.js';
 import { chips as filingChips, filingsTable } from '../public/screens/filings.js';
-import { holdersTable } from '../public/screens/owners.js';
+import { holdersTable, notRefiledHtml, ownersNote } from '../public/screens/owners.js';
 import { parseNextReport } from '../data/beats.js';
 import { filterFilings, isKeyFiling } from '../data/filings.js';
 import { panelTools } from '../public/kit.js';
@@ -161,6 +161,19 @@ test('owners: one table, no box inside the panel, counts with commas', () => {
   assert.match(html, /^<table class="dt is-sortable">/);
   assert.match(html, /DEC 31, 2025/);
   assert.equal(panelTools({ shown: 25, total: 6494 }), '<span class="panel-tools"><span class="tools-count">25 OF 6,494</span></span>');
+});
+
+test('owners: holders that did not refile are greyed apart, and the note says what totals count', () => {
+  const old = notRefiledHtml([{ holder: 'Vanguard Group Inc', shares: 1.43e9, pctOfShares: 9.77, change: 26856752, changePct: 1.919, value: 4.79e11, asOf: '2025-12-31' }], '2026-06-30');
+  assert.match(old, /class="co-wide dim own-old"/);
+  assert.match(old, /Not refiled this quarter: latest 13F older than JUN 30, 2026/);
+  assert.doesNotMatch(old, /th-sort|class="up"|class="down"/, 'no sorting and no up or down colour');
+  assert.equal(notRefiledHtml([], '2026-06-30'), '');
+  const note = ownersNote({ quarterOnly: true, quarter: '2026-06-30', notRefiled: { holders: 287, shares: 1517017434 }, reported: { institutionalPct: 76.57 } });
+  assert.match(note, /only filings for JUN 30, 2026/);
+  assert.match(note, /287 holders whose latest filing is older/);
+  assert.match(note, /own total, with them, is 76\.57%/);
+  assert.match(ownersNote({ quarterOnly: false }), /old ones too/);
 });
 
 test('watch and pf: the same row actions at the right edge, remove last', () => {
