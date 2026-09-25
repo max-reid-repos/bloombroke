@@ -191,17 +191,13 @@ test('CALENDAR: filters in a row under the title', async () => {
   assert.match(html, /data-cmd="CALENDAR ALL"/);
 });
 
-test('EXDIV: yield from the per-year dividend and the last price; dates as SEP 25', async () => {
-  const { divYield, exdivTable } = await import('../public/screens/exdiv.js');
-  assert.equal(divYield(2, 50), 4);
-  assert.equal(divYield(null, 50), null);
-  assert.equal(divYield(2, 0), null);
+test('EXDIV: record and paid dates as SEP 25; no yield column', async () => {
+  const { exdivTable } = await import('../public/screens/exdiv.js');
   const row = { symbol: 'ALRS', company: 'Alerus', dividend: 0.22, annual: 0.88, record: '2026-09-25', paid: '2026-10-09' };
-  const html = exdivTable([row], { ALRS: 32.2 });
-  assert.match(html, />2\.73%</);
+  const html = exdivTable([row]);
   assert.match(html, />SEP 25</);
   assert.match(html, />OCT 09</);
-  assert.doesNotMatch(exdivTable([row]), /%</, 'no price, no yield');
+  assert.doesNotMatch(html, /Yield/);
 });
 
 test('IPOS: dates in the table format', async () => {
