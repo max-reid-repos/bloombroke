@@ -4,6 +4,7 @@
 //   BONDS CURVE     10Y minus 2Y for each country
 
 import { esc, q, fmtNum, fmtSigned, dirOf, panel, LOADING, tick, settleTicks, rowAttrs, nameCell, rerender } from './markets.js';
+import { toolbar, segmented } from '../kit.js';
 
 export const BOND_TABS = ['YIELDS', 'SPREADS', 'CURVE'];
 export const REGIONS = ['Americas', 'Europe', 'Asia-Pacific'];
@@ -116,11 +117,8 @@ const NOTES = {
 
 export function render(el, cmd, ctx) {
   const tab = cmd.args?.tab || 'YIELDS';
-  const tabs = BOND_TABS.map((t) => {
-    const c = t === 'YIELDS' ? 'BONDS' : `BONDS ${t}`;
-    return `<a class="tab${t === tab ? ' is-active' : ''}" href="${esc(q(c))}" data-cmd="${esc(c)}"${t === tab ? ' aria-current="page"' : ''}>${t}</a>`;
-  }).join('');
-  el.innerHTML = panel('1', 'Government bonds', `<div class="ch-bar"><nav class="tabs ch-tabs" aria-label="View">${tabs}</nav></div><div class="bg-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'bd-meta', meta: 'YIELD, PERCENT A YEAR', bodyCls: 'flush' })
+  const views = segmented(BOND_TABS.map((t) => ({ label: t, cmd: t === 'YIELDS' ? 'BONDS' : `BONDS ${t}` })), tab, { label: 'View' });
+  el.innerHTML = panel('1', 'Government bonds', `${toolbar({ left: views, label: 'View' })}<div class="bg-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'bd-meta', meta: 'YIELD, PERCENT A YEAR', bodyCls: 'flush' })
     + `<p class="footnote">${esc(NOTES[tab])} Government bond yields from CNBC, may be delayed (DLY). Not financial advice.</p>`;
   if (cmd.args?.error) ctx.status('BONDS TAKES YIELDS, SPREADS OR CURVE', 'warn');
   const body = el.querySelector('.bg-body');

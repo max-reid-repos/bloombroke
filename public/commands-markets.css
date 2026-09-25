@@ -1,6 +1,8 @@
 /* Styles for OPTIONS, ECONOMY, FEDPATH, BREADTH and the BONDS and FXMATRIX views.
    Same tokens as style.css. */
 
+.m-only { display: none; }
+
 /* ---- Shared header row: a big number, then key/value pairs ------------ */
 .oc-top, .ec-head {
   display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 18px;
@@ -73,7 +75,9 @@
 .bg-table .bg-key { background: var(--panel); }
 .bg-table thead .bg-key { color: var(--text-2); }
 .bg-y { color: var(--text); font-weight: 600; }
-.bg-y:hover { color: var(--accent); text-decoration: none; }
+/* Each yield opens its chart: it looks like a link on hover (the row hover too). */
+.bg-y:hover, .row-link:hover .bg-y { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.bg-table .row-link:hover .bg-y:not(:hover) { text-decoration: none; }
 .bg-d { display: inline-block; min-width: 5ch; font-size: 11px; }
 .bg-unit { color: var(--faint); font-size: 10px; letter-spacing: 0; text-transform: none; }
 
@@ -95,6 +99,7 @@
 /* ---- Narrow screens: one line per row ----------------------------------- */
 @media (max-width: 639px) {
   .oc-x, .m-hide { display: none; }
+  .m-only { display: inline; }
   .oc th, .oc td { padding: 0 6px; }
   .oc-px { font-size: 18px; }
   .oc-all { margin-left: 0; }

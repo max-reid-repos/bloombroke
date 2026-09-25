@@ -16,6 +16,14 @@ export function curveSeries(tenors) {
   ];
 }
 
+// X labels: every term when there is room, else every other one, always ending at the
+// longest (so 20Y and 30Y never print on top of each other).
+export function curveTicks(count, width) {
+  const all = Array.from({ length: count }, (_, i) => i);
+  if (width >= count * 44) return all;
+  return all.filter((i) => (count - 1 - i) % 2 === 0);
+}
+
 const bpCell = (a, b) => {
   const d = Number.isFinite(a) && Number.isFinite(b) ? a - b : NaN;
   return `<td class="num bp ${Number.isFinite(d) ? dirOf(Math.round(d * 1000)) : 'flat'}">${esc(Number.isFinite(d) ? fmtBp(d) : '--')}</td>`;
@@ -45,12 +53,12 @@ export function render(el, cmd, ctx) {
       const s10 = d.tenors.find((t) => t.id === '10Y');
       const s2 = d.tenors.find((t) => t.id === '2Y');
       const spread = s10 && s2 && Number.isFinite(s10.now) && Number.isFinite(s2.now) ? s10.now - s2.now : NaN;
-      const base = Number.isFinite(spread) ? `<span class="dim">10Y MINUS 2Y</span> <span class="num ${dirOf(Math.round(spread * 1000))}">${esc(fmtBp(spread).replace(/^\+/, ''))}</span>` : '';
+      const base = Number.isFinite(spread) ? `<span class="dim"><span class="m-hide">10Y MINUS 2Y</span><span class="m-only">10Y−2Y</span></span> <span class="num ${dirOf(Math.round(spread * 1000))}">${esc(fmtBp(spread).replace(/^\+/, ''))}</span>` : '';
       meta.innerHTML = base;
       cleanup?.();
       host.textContent = '';
       cleanup = mountLines(host, series, {
-        fmtY: (v) => `${fmtNum(v, 2)}%`, fmtX: (i) => ids[i] || '', xTicks: ids.map((_, i) => i), label: 'US Treasury yield curve',
+        fmtY: (v) => `${fmtNum(v, 2)}%`, fmtX: (i) => ids[i] || '', xTicks: curveTicks(ids.length, host.clientWidth - 64), label: 'US Treasury yield curve',
         onHover(h) {
           meta.innerHTML = h ? `<span class="num">${esc(ids[h.x])} ${h.values.map((v) => `<span class="lg-v ${series.find((s) => s.id === v.id).cls}">${esc(fmtNum(v.y, 2))}%</span>`).join(' ')}</span>` : base;
         },

@@ -58,6 +58,27 @@
 .legend { display: flex; flex-wrap: wrap; gap: 4px 20px; padding: 6px 10px 8px; border-top: 1px solid var(--rule); font-size: 12px; }
 .legend li { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .sw { display: inline-block; width: 12px; height: 3px; flex: 0 0 auto; }
+/* COMPARE: ticker chips (press to remove) and the add field. */
+.cp-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.cp-chip { gap: 6px; color: var(--text); }
+.cp-chip.is-fixed { border-color: var(--rule); }
+.cp-x { color: var(--dim); font-size: 13px; }
+.cp-chip:hover .cp-x { color: var(--down); }
+.cp-add { display: inline-flex; align-items: center; gap: 4px; }
+.cp-full { font-size: 11px; letter-spacing: .06em; }
+.cp-bar { padding: 4px 8px; }
+.field-input {
+  height: 22px; width: 14ch; padding: 0 6px;
+  border: 1px solid var(--rule-strong); background: var(--bg); color: var(--text);
+  font-family: var(--font); font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
+}
+.field-input:focus { outline: 0; border-color: var(--accent); }
+/* FX converter row */
+.fx-out { padding: 8px 10px; }
+.fx-form { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.fx-form .fx-amt { width: 16ch; text-align: right; }
+.fx-form .fx-code { width: 5ch; text-align: center; }
+.field-input::placeholder { color: var(--dim); }
 .sw.ln-0 { background: var(--ln-0); }
 .sw.ln-1 { background: var(--ln-1); }
 .sw.ln-2 { background: var(--ln-2); }
@@ -111,9 +132,15 @@
 .fxm .fxm-row { color: var(--text); font-weight: 600; text-align: left; }
 .fxm td { border-left: 1px solid var(--rule); }
 .fxm-cell { color: var(--text); }
-.fxm-cell.up { color: var(--up); }
-.fxm-cell.down { color: var(--down); }
+.fxm-cell:hover { color: var(--accent); text-decoration: none; }
+.fxm-arr { display: inline-block; width: 10px; margin-left: 3px; font-size: 7px; vertical-align: 2px; text-align: right; }
+.fxm-arr.up { color: var(--up); }
+.fxm-arr.down { color: var(--down); }
+/* The currency column stays put while the rates scroll sideways. */
+.fxm .fxm-row, .fxm .fxm-corner { position: sticky; left: 0; z-index: 1; background: var(--bg); box-shadow: inset -1px 0 0 var(--rule-strong); }
+.fxm thead .fxm-corner { background: var(--bg); }
 .fxm-self { color: var(--faint); }
+.fxm td.fxm-self { padding-right: 23px; }
 
 /* ---- EARNINGS and CALENDAR -------------------------------------------- */
 .when { font-size: 11px; letter-spacing: .06em; color: var(--text-2); }

@@ -2,8 +2,10 @@
 
 import { getChart as defaultGetChart, ChartError } from './charts.js';
 import { getQuote as defaultGetQuote, normalizeTicker } from './quotes.js';
+import { PRESETS } from '../public/ranges.js';
 
-export const COMPARE_RANGES = ['1M', '6M', '1Y', '5Y'];
+// The standard daily range set (1M to MAX), as the registry lists it.
+export const COMPARE_RANGES = PRESETS.filter((r) => r !== '1D' && r !== '5D');
 
 export class CompareError extends Error {
   constructor(code, message) {
@@ -31,7 +33,7 @@ export function makeCompare({ getChart = defaultGetChart, getQuote = defaultGetQ
     const list = parseCompareSymbols(symbols);
     if (!list) throw new CompareError('usage', 'Compare 2 to 5 tickers, like COMPARE AAPL MSFT NVDA.');
     const r = String(range).toUpperCase();
-    if (!COMPARE_RANGES.includes(r)) throw new CompareError('bad_range', 'Pick a range: 1M, 6M, 1Y or 5Y.');
+    if (!COMPARE_RANGES.includes(r)) throw new CompareError('bad_range', `Pick a range: ${COMPARE_RANGES.join(', ')}.`);
     const [charts, quotes] = await Promise.all([
       Promise.allSettled(list.map((s) => getChart(s, r))),
       Promise.allSettled(list.map((s) => getQuote(s))),

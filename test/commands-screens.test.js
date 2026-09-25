@@ -176,7 +176,7 @@ test('FX matrix: day change per cell and a linked table', () => {
   assert.equal(cellChange(now, prev, 'EUR', 'EUR'), null);
   const html = matrixTable({ codes: ['USD', 'EUR', 'JPY'], matrix: now, prev });
   assert.match(html, /data-cmd="FX 1 USD JPY"/);
-  assert.match(html, /fxm-cell up/);
+  assert.match(html, /fxm-arr up/);
 });
 
 // ---- clocks --------------------------------------------------------------------
