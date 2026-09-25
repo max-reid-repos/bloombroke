@@ -3,7 +3,7 @@
 // no ownership paperwork) is the default.
 
 import { esc, q, panel, LOADING } from './markets.js';
-import { mountFnBar, sourceLine, errorHtml, fmtInt, fmtDay, dash } from './company-kit.js';
+import { sourceLine, errorHtml, fmtInt, fmtDay, dash } from './company-kit.js';
 import { toolbar, panelTools, dataTable, sortRows, nextSort, edgeFade } from '../kit.js';
 
 const TICKER = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
@@ -63,7 +63,6 @@ export function render(el, cmd, ctx) {
   const { ticker, form } = cmd.args;
   el.innerHTML = `${panel('1', `${ticker} SEC filings`, `${toolbar({ left: chips(ticker, form), label: 'Filing type' })}<div class="fil-body co-wide">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'fil-meta', bodyCls: 'flush' })}
   <div id="fil-foot">${sourceLine('US SEC EDGAR filing index')}</div>`;
-  mountFnBar(el, ctx, ticker, 'FILINGS');
   const body = el.querySelector('.fil-body');
 
   const params = new URLSearchParams({ s: ticker, f: form });

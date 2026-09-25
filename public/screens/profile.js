@@ -12,12 +12,6 @@ export function parseTicker(args) {
 }
 export const parse = parseTicker;
 
-// Links to the other screens for the same company.
-export function companyLinks(ticker, current) {
-  const cmds = [[ticker, 'QUOTE'], [`PROFILE ${ticker}`, 'PROFILE'], [`HISTORY ${ticker}`, 'HISTORY'], [`DIVIDENDS ${ticker}`, 'DIVIDENDS'], [`NEWS ${ticker}`, 'NEWS']];
-  return `<nav class="tabs co-links" aria-label="${esc(ticker)}">${cmds.map(([c, label]) => `<a class="tab${label === current ? ' is-active' : ''}" href="${esc(q(c))}" data-cmd="${esc(c)}"${label === current ? ' aria-current="true"' : ''}>${label}</a>`).join('')}</nav>`;
-}
-
 export function tickerUsage(name, examples) {
   return `<p class="notice">${esc(name)} needs one ticker.</p>
     <p class="muted examples">Try ${examples.map((e) => `<a class="code" href="${esc(q(e))}" data-cmd="${esc(e)}">${esc(e)}</a>`).join(' ')}</p>`;

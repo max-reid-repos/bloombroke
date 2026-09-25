@@ -2,7 +2,7 @@
 // volume and days to cover, newest first, with the short interest trend beside it.
 
 import { esc, fmtNum, fmtSigned, dirOf, panel, LOADING } from './markets.js';
-import { mountFnBar, sourceLine, errorHtml, tickerUsage, fmtInt, fmtBig, fmtDay, dash } from './company-kit.js';
+import { sourceLine, errorHtml, tickerUsage, fmtInt, fmtBig, fmtDay, dash } from './company-kit.js';
 import { dataTable, sortRows, nextSort, fmtDate } from '../kit.js';
 import { mountLines } from './lines.js';
 
@@ -41,7 +41,6 @@ export function render(el, cmd, ctx) {
   const { ticker } = cmd.args;
   el.innerHTML = `${panel('1', `${ticker} short interest`, LOADING, { cls: 'panel-solo', metaId: 'si-meta', bodyCls: 'flush' })}
   <div id="si-foot">${sourceLine('Nasdaq short interest')}</div>`;
-  mountFnBar(el, ctx, ticker, 'SHORTS');
   const body = el.querySelector('.panel-body');
   let stopChart = null;
   ctx.onCleanup(() => stopChart?.());

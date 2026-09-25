@@ -3,7 +3,7 @@
 // dollar value bought and sold each month.
 
 import { esc, panel, LOADING } from './markets.js';
-import { mountFnBar, sourceLine, errorHtml, tickerUsage, fmtInt, fmtMoney, fmtBigMoney, fmtDay, dash } from './company-kit.js';
+import { sourceLine, errorHtml, tickerUsage, fmtInt, fmtMoney, fmtBigMoney, fmtDay, dash } from './company-kit.js';
 import { panelTools, moreButton, dataTable, sortRows, nextSort } from '../kit.js';
 import { mountBars, barsLegend } from './minibars.js';
 
@@ -86,7 +86,6 @@ export function render(el, cmd, ctx) {
     ${panel('2', 'Recent transactions', LOADING, { metaId: 'ins-meta', bodyCls: 'flush' })}
   </div>
   <div id="ins-foot">${sourceLine('Nasdaq insider activity (SEC Forms 3, 4 and 5)')}</div>`;
-  mountFnBar(el, ctx, ticker, 'INSIDERS');
   const [top, list] = el.querySelectorAll('.panel-body');
   let stopChart = null;
   ctx.onCleanup(() => stopChart?.());

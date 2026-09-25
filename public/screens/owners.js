@@ -2,7 +2,7 @@
 // many funds added, trimmed, opened or closed a position last quarter.
 
 import { esc, fmtSigned, dirOf, panel, LOADING } from './markets.js';
-import { mountFnBar, sourceLine, errorHtml, tickerUsage, fmtInt, fmtBig, fmtBigMoney, fmtPlainPct, fmtDay, dash } from './company-kit.js';
+import { sourceLine, errorHtml, tickerUsage, fmtInt, fmtBig, fmtBigMoney, fmtPlainPct, fmtDay, dash } from './company-kit.js';
 import { panelTools, dataTable, sortRows, nextSort } from '../kit.js';
 
 export { parseTicker as parse } from './company-kit.js';
@@ -61,7 +61,6 @@ export function render(el, cmd, ctx) {
     ${panel('2', 'Top holders', LOADING, { metaId: 'own-meta', bodyCls: 'flush' })}
   </div>
   <div id="own-foot">${sourceLine('Nasdaq institutional holdings (SEC Form 13F)')}</div>`;
-  mountFnBar(el, ctx, ticker, 'OWNERS');
   const [top, list] = el.querySelectorAll('.panel-body');
 
   ctx.fetchJSON(`/api/owners?s=${encodeURIComponent(ticker)}`, { signal: ctx.signal }).then((d) => {

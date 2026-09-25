@@ -16,6 +16,11 @@ import { rowActions, listTools, readSymbols, watchTable } from '../public/screen
 import { pfForm, pfTable } from '../public/screens/portfolio.js';
 import { setHolding, readPfForm, valuePortfolio } from '../public/portfolio.js';
 import { SORTS } from '../public/watchlist.js';
+import { stripNumber } from '../public/embed.js';
+import { chainTable, CALL_COLS, PUT_COLS } from '../public/screens/options.js';
+import { fitHeight } from '../public/screens/heatmap.js';
+import { presetBar } from '../public/screens/screen.js';
+import { readFileSync } from 'node:fs';
 
 test('quote: the instrument name shows once', () => {
   assert.equal(titleHtml({ label: 'Gold', name: "Gold COMEX (Dec'26)" }), 'Gold COMEX (Dec&#39;26)');
@@ -187,4 +192,53 @@ test('watch and pf: add forms, quiet tools, clear asks first', () => {
   const h = [{ ticker: 'AAPL', shares: 10, cost: 150 }, { ticker: 'MSFT', shares: 5, cost: 300 }];
   assert.deepEqual(setHolding(h, { ticker: 'AAPL', shares: 7, cost: 160 }), [{ ticker: 'AAPL', shares: 7, cost: 160 }, h[1]]);
   assert.deepEqual(setHolding(h, { ticker: 'NVDA', shares: 1, cost: 100 }).map((x) => x.ticker), ['AAPL', 'MSFT', 'NVDA']);
+});
+
+test('desk embeds: no "1)" numbering, the map fits the panel', () => {
+  assert.equal(stripNumber('1) AAPL'), 'AAPL');
+  assert.equal(stripNumber('12) CHART 1Y'), 'CHART 1Y');
+  assert.equal(stripNumber('S&P 100 HEATMAP'), 'S&P 100 HEATMAP');
+  assert.equal(fitHeight(420, 60), 359);
+  assert.equal(fitHeight(200, 150), 120, 'never below 120');
+  const app = readFileSync('public/app.js', 'utf8');
+  assert.match(app, /if \(embed\) cleanups\.push\(compactEmbed\(view\)\)/);
+});
+
+test('options: BID then ASK on both sides of the strike', () => {
+  const keys = (cols) => cols.map((c) => c[0]);
+  assert.deepEqual(keys(CALL_COLS).slice(-2), ['bid', 'ask']);
+  assert.deepEqual(keys(PUT_COLS).slice(0, 2), ['bid', 'ask']);
+  assert.deepEqual(keys(CALL_COLS).slice(0, 5), ['delta', 'iv', 'oi', 'volume', 'last']);
+  const html = chainTable([{ strike: 100, call: { bid: 1, ask: 2 }, put: { bid: 3, ask: 4 } }], 101, 'XYZ', 0);
+  const heads = [...html.matchAll(/<th scope="col" class="num[^"]*">([^<]+)<\/th>/g)].map((m) => m[1]);
+  assert.deepEqual(heads.filter((h) => h === 'Bid' || h === 'Ask'), ['Bid', 'Ask', 'Bid', 'Ask']);
+});
+
+test('screen: one preset set under the title, placeholders are words', () => {
+  const bar = presetBar('GAINERS');
+  assert.match(bar, /class="toolbar"/);
+  assert.match(bar, /data-value="GAINERS" aria-pressed="true"/);
+  assert.equal((bar.match(/data-value=/g) || []).length, 4);
+  const src = readFileSync('public/screens/screen.js', 'utf8');
+  assert.doesNotMatch(src, /<select name="preset"/, 'no preset dropdown');
+  assert.doesNotMatch(src, /Presets: \$\{/, 'no second preset list');
+  assert.doesNotMatch(src, /placeholder="\$\{esc\(HINTS/, 'no sample numbers in the boxes');
+});
+
+test('no screen draws its own tab strip or star for a stock', () => {
+  for (const f of ['quote', 'options', 'financials', 'company-kit', 'insiders', 'owners', 'filings', 'shorts', 'beats', 'value', 'profile', 'history', 'dividends', 'tickernews']) {
+    const s = readFileSync(`public/screens/${f}.js`, 'utf8');
+    assert.doesNotMatch(s, /fnBarHtml|mountFnBar|companyLinks|class="fnbar"/, f);
+  }
+  assert.doesNotMatch(readFileSync('public/nav.css', 'utf8'), /\.fnbar|\.co-links/, 'nothing left to hide');
+});
+
+test('copy rules for the ui-company files', () => {
+  const files = ['public/company-ui.css', 'public/embed.js', 'public/screens/minibars.js', 'public/screens/history.js', 'public/screens/watch.js', 'public/screens/screen.js', 'public/screens/options.js'];
+  for (const f of files) {
+    const s = readFileSync(f, 'utf8');
+    assert.doesNotMatch(s, new RegExp(['bloom', 'berg'].join(''), 'i'), f);
+    assert.doesNotMatch(s, /—/, `${f}: em dash`);
+    assert.doesNotMatch(s, /amber|#ffb|hsl\((3\d|4\d|5\d),/i, `${f}: amber`);
+  }
 });

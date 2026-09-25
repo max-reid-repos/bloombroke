@@ -1,32 +1,11 @@
 // Shared bits for the company-data screens (INSIDERS, OWNERS, FILINGS, SHORTS, BEATS,
-// VALUE, IPOS, SPLITS, EXDIV): the stock function bar, the source line, number formats.
+// VALUE, IPOS, SPLITS, EXDIV): the source line and number formats. The stock tab strip
+// and the watch star come from the frame (app.js), not from the screens.
 
 import { esc, q, fmtNum } from './markets.js';
 import { fmtCompact } from './movers.js';
-import { fnBarHtml, syncStars } from './quote.js';
-import { instrumentById } from '../instruments.js';
-import { loadWatchlist, saveWatchlist, toggleId } from '../watchlist.js';
 
 export { errorHtml, tickerUsage, parseTicker } from './profile.js';
-
-// The stock function bar under the first panel head, with `current` lit, and the star.
-export function mountFnBar(el, ctx, ticker, current) {
-  if (instrumentById(ticker) || !ctx.tickerFunctions) return;
-  const fns = ctx.tickerFunctions(ticker).map((f) => ({ ...f, current: f.fn === current }));
-  const on = loadWatchlist(ctx.store).includes(ticker);
-  el.querySelector('.panel-head')?.insertAdjacentHTML('afterend', fnBarHtml(ticker, fns, on));
-  el.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-watch-toggle]');
-    if (!b) return;
-    e.stopPropagation();
-    e.preventDefault();
-    const list = toggleId(loadWatchlist(ctx.store), ticker);
-    saveWatchlist(ctx.store, list);
-    const now = list.includes(ticker);
-    syncStars(el, ticker, now);
-    ctx.status(now ? `${ticker} ADDED TO THE WATCHLIST` : `${ticker} REMOVED FROM THE WATCHLIST`);
-  });
-}
 
 // Every screen says where its numbers come from.
 export function sourceLine(source, extra = '') {

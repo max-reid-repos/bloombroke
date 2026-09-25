@@ -120,7 +120,7 @@ export function metaLine(d) {
   return [ex, d.currency, KIND_META[d.kind] || d.type].filter(Boolean).join('  ');
 }
 
-// ---- Watchlist star and the function bar -----------------------------------------
+// ---- Watchlist star (named instruments only; stocks use the frame's star) --------
 
 function isWatched(ctx, ticker) {
   return loadWatchlist(ctx.store).includes(ticker);
@@ -132,24 +132,13 @@ export function starHtml(ticker, on) {
   return `<button type="button" class="star${on ? ' is-on' : ''}" data-watch-toggle aria-pressed="${on}" title="${esc(starText(ticker, on))}"><span class="star-icon" aria-hidden="true">${on ? '★' : '☆'}</span><span class="offscreen">${esc(starText(ticker, on))}</span></button>`;
 }
 
-// fns: [{ fn: 'CHART', cmd: 'AAPL', ready: true, current: true }]. Keys 1 to 7.
-export function fnBarHtml(ticker, fns, on) {
-  const items = fns.map((f, i) => {
-    const cls = `fn${f.current ? ' is-active' : ''}${f.ready ? '' : ' is-soon'}`;
-    const soon = f.ready ? '' : '<span class="offscreen"> (coming soon)</span>';
-    return `<a class="${cls}" href="${esc(q(f.cmd))}" data-cmd="${esc(f.cmd)}" data-key="${i + 1}"${f.current ? ' aria-current="page"' : ''}><span class="fn-n" aria-hidden="true">${i + 1}</span>${esc(f.fn)}${soon}</a>`;
-  }).join('');
-  const n = fns.length + 1;
-  return `<nav class="fnbar" aria-label="${esc(ticker)} functions">${items}<button type="button" class="fn fn-watch${on ? ' is-on' : ''}" data-watch-toggle data-key="${n}" aria-pressed="${on}"><span class="fn-n" aria-hidden="true">${n}</span><span class="star-icon" aria-hidden="true">${on ? '★' : '☆'}</span> WATCH<span class="offscreen"> ${esc(starText(ticker, on))}</span></button></nav>`;
-}
-
 export function syncStars(el, ticker, on) {
   el.querySelectorAll('[data-watch-toggle]').forEach((b) => {
     b.classList.toggle('is-on', on);
     b.setAttribute('aria-pressed', String(on));
     b.querySelector('.star-icon').textContent = on ? '★' : '☆';
     const label = b.querySelector('.offscreen');
-    if (label) label.textContent = b.classList.contains('fn-watch') ? ` ${starText(ticker, on)}` : starText(ticker, on);
+    if (label) label.textContent = starText(ticker, on);
     if (b.title) b.title = starText(ticker, on);
   });
 }

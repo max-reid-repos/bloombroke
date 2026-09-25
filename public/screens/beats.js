@@ -3,7 +3,7 @@
 // EPS against the estimate sits beside it.
 
 import { esc, fmtNum, fmtSigned, dirOf, panel, LOADING } from './markets.js';
-import { mountFnBar, sourceLine, errorHtml, tickerUsage, fmtDay, dash } from './company-kit.js';
+import { sourceLine, errorHtml, tickerUsage, fmtDay, dash } from './company-kit.js';
 import { mountBars, barsLegend } from './minibars.js';
 
 export { parseTicker as parse } from './company-kit.js';
@@ -60,7 +60,6 @@ export function render(el, cmd, ctx) {
   const { ticker } = cmd.args;
   el.innerHTML = `${panel('1', `${ticker} earnings vs estimates`, LOADING, { cls: 'panel-solo', metaId: 'bt-meta', bodyCls: 'flush' })}
   <div id="bt-foot">${sourceLine('Nasdaq earnings surprise')}</div>`;
-  mountFnBar(el, ctx, ticker, 'BEATS');
   const body = el.querySelector('.panel-body');
   let stopChart = null;
   ctx.onCleanup(() => stopChart?.());

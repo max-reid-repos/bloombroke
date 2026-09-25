@@ -2,7 +2,7 @@
 
 import { esc, fmtNum, panel, LOADING } from './markets.js';
 import { niceTicks } from './chart.js';
-import { companyLinks, errorHtml, tickerUsage } from './profile.js';
+import { errorHtml, tickerUsage } from './profile.js';
 
 export { parseTicker as parse } from './profile.js';
 
@@ -73,7 +73,7 @@ export function render(el, cmd, ctx) {
   }
   const { ticker } = cmd.args;
   el.innerHTML = `<div class="stack">
-    ${panel('1', `${ticker} dividends`, LOADING, { meta: companyLinks(ticker, 'DIVIDENDS') })}
+    ${panel('1', `${ticker} dividends`, LOADING)}
     ${panel('2', 'Every payment', LOADING, { metaId: 'dv-meta', bodyCls: 'flush' })}
   </div>
   <p class="footnote">Dividend data from Nasdaq. Yield = the yearly dividend divided by today's price. Per share, before tax. Not financial advice.</p>`;

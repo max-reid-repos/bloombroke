@@ -143,6 +143,11 @@ export function heatHeight(width, viewport = 900) {
   return Math.round(Math.max(420, Math.min(760, width * 0.5, viewport - 230)));
 }
 
+// In a DESK panel the map takes the height left under its head, and never less than 120.
+export function fitHeight(viewport, top) {
+  return Math.max(120, Math.floor(viewport - Math.max(0, top) - 1));
+}
+
 function scaleHtml() {
   const steps = [-3, -2, -1, 0, 1, 2, 3];
   return `<div class="hm-scale" aria-hidden="true">${steps.map((p) => `<svg class="hm-sw" viewBox="0 0 10 10" preserveAspectRatio="none"><rect width="10" height="10" fill="${heatFill(p)}"/></svg><span>${p > 0 ? '+' : p < 0 ? '−' : ''}${Math.abs(p)}%</span>`).join('')}</div>`;
@@ -161,9 +166,10 @@ export function render(el, cmd, ctx) {
     if (!stocks) return;
     const w = Math.floor(host.clientWidth);
     if (!w) return;
-    const h = heatHeight(w, window.innerHeight);
-    if (!force && `${w}` === lastKey) return;
-    lastKey = `${w}`;
+    // A DESK panel: scale the whole map into the panel instead of cropping it.
+    const h = ctx.embed ? fitHeight(window.innerHeight, host.getBoundingClientRect().top) : heatHeight(w, window.innerHeight);
+    if (!force && `${w}x${h}` === lastKey) return;
+    lastKey = `${w}x${h}`;
     host.innerHTML = heatmapSvg(stocks, w, h);
   }
 
@@ -176,7 +182,9 @@ export function render(el, cmd, ctx) {
 
   const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => draw()) : null;
   ro?.observe(host);
-  ctx.onCleanup(() => ro?.disconnect());
+  const onResize = () => draw();
+  if (ctx.embed) window.addEventListener('resize', onResize);
+  ctx.onCleanup(() => { ro?.disconnect(); window.removeEventListener('resize', onResize); });
 
   async function load() {
     try {

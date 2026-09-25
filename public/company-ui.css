@@ -79,6 +79,11 @@
 .wl-btn.is-text { width: auto; padding: 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .08em; }
 .wl-btn[data-act="edit"]:hover { color: var(--accent); }
 
+/* ---- SCREEN: presets row under the title, RUN at the left on every width --------- */
+.sc-pad { padding: 8px 10px; }
+.toolbar .tag + .seg { margin-left: 0; }
+.sc-actions .wi-run { margin-left: 0; }
+
 /* ---- Tables: date cells and plain labels in company tables ---------------------- */
 .dt td.date { color: var(--text-2); }
 .dt tbody tr:hover td { background: var(--panel-2); }
@@ -108,3 +113,11 @@
   .toolbar .ch-dates { flex-wrap: wrap; }
   .toolbar .ch-dates input { width: 128px; }
 }
+
+/* ---- DESK panels (embed mode): compact, no repeated title, maps scale to fit ------ */
+.is-embed .panel-head.is-lead .panel-label { display: none; }
+.is-embed .panel-head.is-lead { justify-content: flex-end; }
+.is-embed .panel-head.is-lead .panel-meta { flex: 1 1 auto; padding-left: 8px; }
+.is-embed .panel-head.is-lead:has(> .panel-meta:empty) { display: none; }
+.is-embed .hm-foot { display: none; }
+.is-embed .hm-host { min-height: 0; }

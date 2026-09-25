@@ -4,10 +4,9 @@
 //   OPTIONS AAPL 2026-10-16   one expiry (the tabs list them all)
 
 import { esc, q, fmtNum, fmtSigned, fmtPct, dirOf, fmtAsOf, panel, LOADING } from './markets.js';
-import { fnBarHtml, syncStars } from './quote.js';
 import { instrumentById, resolveInstrument } from '../instruments.js';
-import { loadWatchlist, saveWatchlist, toggleId } from '../watchlist.js';
 import { statusLine } from '../freshness.js';
+import { edgeFade } from '../kit.js';
 
 export const OPTION_TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 // Named instruments with listed options at Cboe.
@@ -79,12 +78,14 @@ export function expiryLabel(e, thisYear = new Date().getUTCFullYear()) {
   return e.id !== e.date ? `${base} ${e.root}` : base;
 }
 
-// Mirror image: the columns next to the strike are the bids and asks.
+// Mirror image: the columns next to the strike are the bids and asks, and both sides read
+// BID then ASK from left to right.
 const PUT_COLS = [
   ['bid', 'Bid', fmtPx, ''], ['ask', 'Ask', fmtPx, ''], ['last', 'Last', fmtPx, 'oc-x'], ['volume', 'Vol', fmtInt, 'oc-x'],
   ['oi', 'Open int', fmtInt, 'oc-x'], ['iv', 'IV', fmtIv, 'oc-x'], ['delta', 'Delta', fmtDelta, 'oc-x'],
 ];
-const CALL_COLS = [...PUT_COLS].reverse();
+export const CALL_COLS = [...PUT_COLS.slice(2).reverse(), PUT_COLS[0], PUT_COLS[1]];
+export { PUT_COLS };
 
 function sideCells(s, cols, itm) {
   return cols.map(([k, , f, cls]) => `<td class="num ${cls}${itm ? ' itm' : ''}">${esc(s ? f(s[k]) : '--')}</td>`).join('');
@@ -132,27 +133,13 @@ export function render(el, cmd, ctx) {
     ${panel('1', `${ticker} options`, `<div class="oc-top" id="oc-top">${LOADING}</div><div id="oc-tabs"></div><div id="oc-chain"></div>`, { metaId: 'oc-meta', bodyCls: 'flush', meta: '<span class="fresh is-dly" title="Delayed">DLY</span> CBOE, 15 MIN' })}
   </div>
   <p class="footnote">Cboe delayed quotes, 15 minutes behind. Shaded cells are in the money. IV: implied volatility. Delta as published by Cboe. -- means the source has no value. Not financial advice.</p>`;
-  if (!instrumentById(ticker) && ctx.tickerFunctions) {
-    const fns = ctx.tickerFunctions(ticker).map((f) => ({ ...f, current: f.fn === 'OPTIONS' }));
-    const on = loadWatchlist(ctx.store).includes(ticker);
-    el.querySelector('.panel-head').insertAdjacentHTML('afterend', fnBarHtml(ticker, fns, on));
-    el.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-watch-toggle]');
-      if (!b) return;
-      e.stopPropagation();
-      e.preventDefault();
-      const list = toggleId(loadWatchlist(ctx.store), ticker);
-      saveWatchlist(ctx.store, list);
-      const now = list.includes(ticker);
-      syncStars(el, ticker, now);
-      ctx.status(now ? `${ticker} ADDED TO THE WATCHLIST` : `${ticker} REMOVED FROM THE WATCHLIST`);
-    });
-  }
   const top = el.querySelector('#oc-top');
   const tabs = el.querySelector('#oc-tabs');
   const chain = el.querySelector('#oc-chain');
   let all = false;
   let data = null;
+  let stopFade = null;
+  ctx.onCleanup(() => stopFade?.());
 
   function paint() {
     const d = data;
@@ -175,6 +162,9 @@ export function render(el, cmd, ctx) {
     const active = tabs.querySelector('.tab.is-active');
     const nav = tabs.querySelector('nav');
     if (active && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2;
+    // The expiry strip scrolls sideways; its edges fade where there is more.
+    stopFade?.();
+    stopFade = edgeFade(nav);
     chain.innerHTML = d.rows.length ? chainTable(d.rows, u.price, ticker, all ? 0 : NEAR) : '<p class="panel-msg">No strikes for this expiry.</p>';
   }
 

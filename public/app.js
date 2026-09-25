@@ -36,6 +36,7 @@ import { MARKETS_SCREENS, MARKETS_TAKES_ARGS, matchMarkets } from './commands-ma
 import { LISTED, ALIASES, FUNCTION_BAR, TICKER_FUNCTIONS, findCommand } from './registry.js';
 import { tapeOn, setTapeOn, mountTape, tapeItems } from './tape.js';
 import { createMenu } from './menu.js';
+import { compactEmbed } from './embed.js';
 
 export { FUNCTION_BAR, TICKER_FUNCTIONS };
 
@@ -813,6 +814,8 @@ function boot() {
     const view = document.createElement('section');
     view.className = 'view';
     screen.replaceChildren(view);
+    // DESK panels: no repeated title or "1)" numbering (embed.js).
+    if (embed) cleanups.push(compactEmbed(view));
     setKeys(cmd.name === 'TICKERNEWS' ? '' : cmd.name);
     document.title = cmd.name === 'HOME' || cmd.name === 'UNKNOWN' ? DEFAULT_TITLE : `${cmd.input} | Bloombroke`;
     const head = screenTitle(cmd);
@@ -1098,7 +1101,7 @@ function boot() {
     // A stock screen's function bar: keys 1 to 9 while the command bar is empty.
     if (/^[1-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey
       && (e.target === input ? input.value === '' : !e.target.closest?.('input, select, textarea'))) {
-      const item = (tickerBar.hidden ? screen : tickerBar).querySelector(`[data-key="${e.key}"]`) || screen.querySelector(`.fnbar [data-key="${e.key}"]`);
+      const item = (tickerBar.hidden ? screen : tickerBar).querySelector(`[data-key="${e.key}"]`);
       if (item) {
         e.preventDefault();
         item.click();

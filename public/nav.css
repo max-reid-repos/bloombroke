@@ -58,9 +58,6 @@ body.has-tape .dock > .tape:not([hidden]) { display: block; }
 .head-star[hidden] { display: none; }
 .tickerbar { margin: 4px var(--inset) 0; border: 1px solid var(--rule-strong); }
 .tickerbar[hidden] { display: none; }
-body.has-tickerbar #screen .fnbar,
-body.has-tickerbar #screen .panel-head > .star,
-body.has-tickerbar #screen .co-links { display: none; }
 
 /* ---- MENU overlay (Ctrl+K) ---------------------------------------------------- */
 .menu-overlay {

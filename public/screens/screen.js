@@ -7,6 +7,7 @@ import {
   SECTORS, COUNTRIES, FIELDS, FIELD_ORDER, PRESETS, SORTS, parseCond, parseScreenArgs, screenWords, sortOf, isEmptySpec, needsCnbc, SCREEN_ERRORS,
 } from '../screener.js';
 import { resolveInstrument } from '../instruments.js';
+import { toolbar, segmented } from '../kit.js';
 
 const PAGE = 100;
 const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
@@ -86,10 +87,6 @@ export function wordsFromForm(fields, sort) {
   return { words: screenWords(spec) };
 }
 
-const HINTS = {
-  MCAP: ['10B', '200B'], PRICE: ['5', '50'], CHG: ['2', '-2'], VOL: ['1M', ''], PE: ['', '30'], DIV: ['2', ''],
-};
-
 function formHtml(spec, open = true) {
   const v = formValues(spec);
   const pv = presetValues(spec.preset);
@@ -99,23 +96,30 @@ function formHtml(spec, open = true) {
   const countries = [opt('', 'Any country', !v.country), ...Object.entries(COUNTRIES)
     .sort((a, b) => (a[0] === 'US' ? -1 : b[0] === 'US' ? 1 : a[1].localeCompare(b[1])))
     .map(([code, name]) => opt(code, `${name} (${code})`, v.country === code))].join('');
-  const presets = [opt('', 'None', !v.preset), ...Object.entries(PRESETS).map(([k, p]) => opt(k, `${k}: ${p.hint}`, v.preset === k))].join('');
   const nums = FIELD_ORDER.map((f) => `<div class="sc-field sc-range">
       <span class="sc-lab">${esc(FIELDS[f].label)}${f === 'CHG' || f === 'DIV' ? ' (%)' : ''}</span>
-      <input name="${f}_min" value="${esc(v[`${f}_min`] || '')}"${isPreset(`${f}_min`) ? ` data-preset="${esc(spec.preset)}" title="${esc(`Set by the ${spec.preset} preset`)}"` : ''} placeholder="${esc(HINTS[f][0] ? `over ${HINTS[f][0]}` : 'over')}" aria-label="${esc(FIELDS[f].label)} over" autocomplete="off" spellcheck="false">
-      <input name="${f}_max" value="${esc(v[`${f}_max`] || '')}"${isPreset(`${f}_max`) ? ` data-preset="${esc(spec.preset)}" title="${esc(`Set by the ${spec.preset} preset`)}"` : ''} placeholder="${esc(HINTS[f][1] ? `under ${HINTS[f][1]}` : 'under')}" aria-label="${esc(FIELDS[f].label)} under" autocomplete="off" spellcheck="false">
+      <input name="${f}_min" value="${esc(v[`${f}_min`] || '')}"${isPreset(`${f}_min`) ? ` data-preset="${esc(spec.preset)}" title="${esc(`Set by the ${spec.preset} preset`)}"` : ''} placeholder="over" aria-label="${esc(FIELDS[f].label)} over" autocomplete="off" spellcheck="false">
+      <input name="${f}_max" value="${esc(v[`${f}_max`] || '')}"${isPreset(`${f}_max`) ? ` data-preset="${esc(spec.preset)}" title="${esc(`Set by the ${spec.preset} preset`)}"` : ''} placeholder="under" aria-label="${esc(FIELDS[f].label)} under" autocomplete="off" spellcheck="false">
     </div>`).join('');
   const words = screenWords(spec);
   return `<details class="sc-filters"${open ? ' open' : ''}><summary><span class="sc-sum-k">Filters</span> <span class="sc-sum-v">${esc(words || 'none')}</span></summary><form class="sc-form" novalidate>
-    <label class="sc-field"><span class="sc-lab">Preset</span><select name="preset">${presets}</select></label>
+    <input type="hidden" name="preset" value="${esc(v.preset)}">
     <label class="sc-field"><span class="sc-lab">Sector</span><select name="sector">${sectors}</select></label>
     <label class="sc-field"><span class="sc-lab">Country</span><select name="country">${countries}</select></label>
-    <label class="sc-field"><span class="sc-lab">Industry has</span><input name="industry" value="${esc(v.industry)}" placeholder="e.g. semiconductors" autocomplete="off" spellcheck="false"></label>
+    <label class="sc-field"><span class="sc-lab">Industry has</span><input name="industry" value="${esc(v.industry)}" placeholder="a word in its name" autocomplete="off" spellcheck="false"></label>
     ${nums}
     <div class="sc-actions"><button class="wi-run" type="submit">RUN SCREEN</button><button class="sc-clear" type="button">CLEAR</button><span class="sc-err" role="alert"></span></div>
   </form></details>
-  <p class="sc-presets muted">Presets: ${Object.keys(PRESETS).map((k) => `<a class="code" href="${esc(q(`SCREEN ${k}`))}" data-cmd="SCREEN ${esc(k)}">${esc(k)}</a>`).join(' ')}</p>
-  <p class="sc-presets muted">Sizes take K, M, B and T, like MCAP&gt;10B or VOL&gt;1M. P/E from CNBC, may be missing for some stocks; so may dividend yield.</p>`;
+  <p class="sc-presets muted">Numbers are the least (over) and the most (under). Sizes take K, M, B and T, like MCAP&gt;10B or VOL&gt;1M. P/E from CNBC, may be missing for some stocks; so may dividend yield.</p>`;
+}
+
+// The presets: one set of buttons under the title, the one in use lit. Picking one keeps
+// the other filters; picking the lit one again drops it.
+export function presetBar(active) {
+  return toolbar({
+    left: `<span class="tag">Presets</span>${segmented(Object.keys(PRESETS).map((k) => ({ label: k, value: k })), active || '', { label: 'Presets' })}`,
+    label: 'Presets',
+  });
 }
 
 // ---- the results --------------------------------------------------------------------
@@ -210,7 +214,7 @@ export function render(el, cmd, ctx) {
   // On a phone the results come first: the filters fold away once there are results.
   const narrow = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 639px)').matches;
   el.innerHTML = `<div class="stack">
-    ${panel('1', 'Screen', `${bad ? `<p class="notice">${esc(bad)}</p>` : ''}${formHtml(spec, empty || !!bad || !narrow)}`, { meta: 'FILTER EVERY US-LISTED STOCK' })}
+    ${panel('1', 'Screen', `${presetBar(spec.preset)}<div class="sc-pad">${bad ? `<p class="notice">${esc(bad)}</p>` : ''}${formHtml(spec, empty || !!bad || !narrow)}</div>`, { meta: 'FILTER EVERY US-LISTED STOCK', bodyCls: 'flush' })}
     ${empty ? '' : panel('2', 'Results', LOADING, { metaId: 'sc-meta', bodyCls: 'flush' })}
   </div>
   <p class="footnote">${esc(FOOT)}</p>`;
@@ -225,12 +229,19 @@ export function render(el, cmd, ctx) {
     ctx.run(r.words ? `SCREEN ${r.words}` : 'SCREEN');
   });
   form.querySelector('.sc-clear').addEventListener('click', () => ctx.run('SCREEN'));
-  // Changing a menu runs the screen at once; typed boxes run on Enter or RUN. A new
-  // preset drops the boxes the old one filled, so its rules do not stay behind as typed ones.
-  form.querySelectorAll('select').forEach((s) => s.addEventListener('change', () => {
-    if (s.name === 'preset') form.querySelectorAll('input[data-preset]').forEach((i) => { if (i.value === i.defaultValue) i.value = ''; });
+  // Changing a menu runs the screen at once; typed boxes run on Enter or RUN.
+  form.querySelectorAll('select').forEach((s) => s.addEventListener('change', () => form.requestSubmit()));
+  // A new preset drops the boxes the old one filled, so its rules do not stay behind as
+  // typed ones.
+  el.querySelector('.toolbar .seg').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-value]');
+    if (!b) return;
+    e.stopPropagation();
+    const input = form.querySelector('input[name="preset"]');
+    input.value = input.value === b.dataset.value ? '' : b.dataset.value;
+    form.querySelectorAll('input[data-preset]').forEach((i) => { if (i.value === i.defaultValue) i.value = ''; });
     form.requestSubmit();
-  }));
+  });
 
   if (bad) { ctx.status('SCREEN: CHECK THE FILTERS', 'warn'); return; }
   if (empty) { ctx.status('SCREEN: PICK FILTERS, OR TYPE THEM: SCREEN SECTOR TECHNOLOGY MCAP>10B'); return; }

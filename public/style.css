@@ -889,8 +889,6 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .fn.is-active .fn-n { color: var(--ink); }
 .fn.is-soon { color: var(--faint); }
 .fn.is-soon:hover { color: var(--dim); }
-.fn-watch { margin-left: auto; border-left: 1px solid var(--rule); }
-.fn-watch.is-on { color: var(--accent); }
 
 .wl-top:empty { display: none; }
 .wl-top, .pf-top { padding: 0; }
