@@ -342,6 +342,37 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .ch-cross { stroke: var(--text-2); stroke-width: 1; stroke-dasharray: 2 2; shape-rendering: crispEdges; }
 .ch-dot { fill: var(--text); }
 
+/* Intraday: when things happened */
+.ch-strip {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px;
+  padding: 4px 10px 0; font-size: 11px; color: var(--text-2); letter-spacing: .02em;
+}
+.ch-strip[hidden] { display: none; }
+.ch-si { white-space: nowrap; }
+.ch-sk { color: var(--dim); }
+.ch-sep { color: var(--faint); }
+.ch-day { stroke: var(--rule-strong); stroke-width: 1; shape-rendering: crispEdges; }
+.ch-ext { fill: var(--panel-2); }
+.ch-ext-lab { fill: var(--dim); font-family: var(--font); font-size: 9px; letter-spacing: .08em; }
+.ch-ref { stroke-width: 1; shape-rendering: crispEdges; }
+.ch-ref-prev { stroke: var(--text-2); stroke-dasharray: 6 4; opacity: .7; }
+.ch-ref-open { stroke: var(--dim); stroke-dasharray: 1 3; }
+.ch-lab { font-family: var(--font); font-size: 10px; fill: var(--text-2); }
+.ch-lab-bg { fill: var(--bg); opacity: .82; }
+.ch-ref-prev-lab { fill: var(--text-2); }
+.ch-ref-open-lab { fill: var(--dim); }
+.ch-mk-lab { fill: var(--text); }
+.ch-mk-lab.up, .ch-mk-move.up { fill: var(--up); }
+.ch-mk-lab.down, .ch-mk-move.down { fill: var(--down); }
+.ch-mk { fill: var(--bg); stroke: var(--text); stroke-width: 1.5; }
+.ch-mk-move.up { stroke: var(--up); }
+.ch-mk-move.down { stroke: var(--down); }
+.ch-move { fill: none; stroke-width: 3; stroke-linecap: round; opacity: .85; }
+.ch-move.up { stroke: var(--up); }
+.ch-move.down { stroke: var(--down); }
+.ch-tag-bg { fill: var(--text-2); }
+.ch-tag { fill: var(--ink); font-family: var(--font); font-size: 11px; font-weight: 600; }
+
 /* ---- Stats (key numbers) --------------------------------------------- */
 .stats { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; border-top: 1px solid var(--rule); }
 .stat { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--row-h); border-bottom: 1px solid var(--rule); }
