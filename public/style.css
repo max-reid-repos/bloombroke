@@ -465,6 +465,60 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .wi-note-name { color: var(--text); }
 .how-list a { color: var(--accent); }
 
+/* WHATIF certificate: text over the art, placed in % of the image (the same numbers as
+   POS in lib/og.js), sized in cqw so it scales with the paper. */
+.wi-layout { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "cert" "body"; gap: 14px 28px; }
+.wi-head { grid-area: head; min-width: 0; }
+.wi-certcol { grid-area: cert; min-width: 0; }
+.wi-body { grid-area: body; min-width: 0; }
+.wi-body > .wi-receipt:first-child { margin-top: 0; }
+@media (min-width: 1100px) {
+  .wi-layout:not(.no-cert) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "cert head" "cert body"; grid-template-rows: auto 1fr; align-items: start; }
+}
+.wi-cert {
+  --paper-ink: #2A1A10; --paper-soft: #5A4330; --paper-red: #C23B2A;
+  position: relative; container-type: inline-size;
+  width: 97%; max-width: 860px; margin: 4px 0 0 3%;
+}
+.wc-paper { display: block; width: 100%; height: auto; }
+.wc {
+  position: absolute; transform: translate(-50%, -50%);
+  white-space: nowrap; text-align: center; line-height: 1; color: var(--paper-ink); pointer-events: none;
+}
+.wc-receipt {
+  left: 7.33%; top: 13.3%; transform: rotate(-15deg); transform-origin: top left;
+  display: flex; flex-direction: column; text-align: left;
+  font-size: .92cqw; line-height: 2.18cqw; font-weight: 800; color: var(--paper-soft);
+}
+.wc-ribbon { left: 49.6%; top: 20.2%; font-family: 'Caveat', cursive; font-weight: 700; font-size: 3.8cqw; }
+.wc-big { left: 49%; top: 43.5%; font-size: 11cqw; font-weight: 800; letter-spacing: -.04em; transform: translate(-50%, -50%) rotate(-1.5deg); }
+.wi-cert.is-loss .wc-big { color: var(--paper-red); }
+.wc-today { left: 49%; top: 56.5%; font-family: 'Caveat', cursive; font-weight: 700; font-size: 2.8cqw; color: var(--paper-soft); }
+.wc-l1, .wc-l2 { left: 49.9%; font-size: calc(var(--fs, 2.4) * var(--k, 1) * 1cqw); }
+.wc-l1 { top: calc(71.3% - .62em); font-weight: 800; }
+.wc-l2 { top: calc(76.9% - .62em); font-weight: 600; color: var(--paper-soft); }
+.wc-mult { left: 82.5%; top: 68.4%; font-size: 3cqw; font-weight: 800; }
+.wi-cert.is-loss .wc-mult { top: 66.2%; color: var(--paper-soft); }
+.wc-strike {
+  left: 82.5%; top: 66.2%; width: 9.2%; height: .45cqw; border-radius: .3cqw;
+  background: var(--paper-red); transform: translate(-50%, -50%) rotate(-14deg);
+}
+.wc-dodged { left: 82.5%; top: 72%; font-family: 'Caveat', cursive; font-weight: 700; font-size: 2.4cqw; color: var(--paper-red); }
+/* On a phone the small lines grow a little; they still stay on the paper. */
+@container (max-width: 520px) {
+  .wc-l1, .wc-l2 { --k: 1.15; }
+  .wc-today { font-size: 3.4cqw; }
+}
+.wc-sticker { position: absolute; left: -3%; bottom: -5%; width: 17%; height: auto; transform: rotate(-8deg); pointer-events: none; }
+.wi-share { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.wi-btn {
+  display: inline-flex; align-items: center; height: 28px; padding: 0 12px;
+  border: 1px solid var(--rule-strong); background: transparent; color: var(--text);
+  font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-decoration: none; cursor: pointer;
+}
+.wi-btn:first-child { background: var(--accent); border-color: var(--accent); color: var(--ink); }
+.wi-btn:hover { text-decoration: none; background: var(--text); border-color: var(--text); color: var(--ink); }
+
 /* ---- NEWS ------------------------------------------------------------- */
 .news-row {
   display: grid;

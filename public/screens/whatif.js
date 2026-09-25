@@ -266,9 +266,65 @@ function renderPicker(el, ctx, cat, picks) {
   if (!window.matchMedia('(pointer: coarse)').matches) setTimeout(() => { if (rows[first].isConnected) focusRow(first); }, 0);
 }
 
+// ---- Certificate ----------------------------------------------------------------
+// The server sends the words and numbers (d.cert, from data/whatif-cert.js); the same
+// ones are drawn on the share image at /og/whatif.png.
+
+const art = (file) => new URL(`../img/whatif/${file}`, import.meta.url).href;
+
+export function shareLinks(m, origin) {
+  const url = `${origin}/${q(m.command)}`;
+  return {
+    url,
+    x: `https://x.com/intent/post?${new URLSearchParams({ text: m.share, url })}`,
+    image: `/og/whatif.png?${new URLSearchParams({ c: m.command })}`,
+  };
+}
+
+// Type sizes arrive as % of the certificate width; the CSP allows no inline styles, so
+// they are set through the DOM after render (see sizeCert).
+export function certHtml(m, links) {
+  const alt = `A certificate: ${m.ribbon}, worth ${m.big} today. ${m.spent}. ${m.holding}. ${m.multiple}.`;
+  return `<figure class="wi-cert${m.loss ? ' is-loss' : ''}">
+      <img class="wc-paper" src="${esc(art('certificate.webp'))}" width="1536" height="1024" alt="${esc(alt)}">
+      <div class="wc wc-receipt" aria-hidden="true">${m.receipt.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
+      <div class="wc wc-ribbon" data-fs="${esc(m.fit.ribbon)}" aria-hidden="true">${esc(m.ribbon)}</div>
+      <div class="wc wc-big" data-fs="${esc(m.fit.big)}" aria-hidden="true">${esc(m.big)}</div>
+      <div class="wc wc-today" aria-hidden="true">worth today</div>
+      <div class="wc wc-l1" data-fs="${esc(m.fit.lines)}" aria-hidden="true">${esc(m.spent)}</div>
+      <div class="wc wc-l2" data-fs="${esc(m.fit.lines)}" aria-hidden="true">${esc(m.holding)}</div>
+      <div class="wc wc-mult" data-fs="${esc(m.fit.mult)}" aria-hidden="true">${esc(m.multiple)}</div>
+      ${m.loss ? '<div class="wc wc-strike" aria-hidden="true"></div><div class="wc wc-dodged" aria-hidden="true">dodged</div>' : ''}
+      <img class="wc-sticker" src="${esc(art(`doodle-${m.doodle}.webp`))}" width="384" height="384" alt="">
+    </figure>
+    <div class="wi-share">
+      <a class="wi-btn" href="${esc(links.x)}" target="_blank" rel="noopener noreferrer">SHARE ON X</a>
+      <a class="wi-btn" href="${esc(links.image)}" download="bloombroke-whatif.png">DOWNLOAD IMAGE</a>
+      <button type="button" class="wi-btn" data-copy="${esc(links.url)}">COPY LINK</button>
+    </div>`;
+}
+
+function sizeCert(el) {
+  for (const n of el.querySelectorAll('.wi-cert [data-fs]')) {
+    const v = Number(n.dataset.fs);
+    if (!Number.isFinite(v) || v <= 0) continue;
+    if (n.matches('.wc-l1, .wc-l2')) n.style.setProperty('--fs', String(v));
+    else n.style.fontSize = `${v}cqw`;
+  }
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ---- Result ---------------------------------------------------------------------
 
-function resultHtml(d, key) {
+function resultHtml(d, key, links) {
   const t = d.total;
   const dir = t.multiple >= 1 ? 'up' : 'down';
   const pct = `${t.pct >= 0 ? '+' : '−'}${fmtNum(Math.abs(t.pct), 0)}%`;
@@ -293,10 +349,15 @@ function resultHtml(d, key) {
   const notes = d.rows.map((r) => `<li><span class="wi-note-name">${esc(r.name)}</span> ${esc(r.note || '')}${r.clamped ? ' Starts when the shares began trading.' : ''} <a href="${esc(r.src)}" target="_blank" rel="noopener noreferrer">source</a></li>`).join('');
   const editCmd = `WHATIF EDIT ${key.replace(/^WHATIF\s*/, '')}`;
   return `
+    <div class="wi-layout${d.cert ? '' : ' no-cert'}">
+    <div class="wi-head">
     <p class="wi-sentence">You spent <span class="num">${esc(fmtUsd(t.paid))}</span>. In the stock, that is <span class="num ${dir}">${esc(fmtUsd(t.value))}</span>.</p>
     <p class="hero num"><span class="hero-value ${dir}">${esc(fmtUsd(t.value))}</span><span class="hero-unit">TODAY</span></p>
     <p class="wi-mult num"><span class="${dir}">${esc(fmtX(t.multiple))}</span> <span class="${dir}">${esc(pct)}</span></p>
     <p class="wi-quip">${esc(quipFor(t.multiple, key))}</p>
+    </div>
+    ${d.cert ? `<div class="wi-certcol">${certHtml(d.cert, links)}</div>` : ''}
+    <div class="wi-body">
     <div class="wi-receipt">
       <table class="grid-table wi-table">
         <thead><tr><th scope="col">Item</th><th scope="col" class="num wi-when">Bought</th><th scope="col" class="num">Paid</th><th scope="col" class="num wi-sh">Shares</th><th scope="col" class="num">Worth now</th><th scope="col" class="num">x</th></tr></thead>
@@ -308,6 +369,8 @@ function resultHtml(d, key) {
     <div class="wi-actions">
       <a class="code" href="${esc(q(editCmd))}" data-cmd="${esc(editCmd)}">CHANGE PICKS</a>
       <a class="code" href="${esc(q('WHATIF'))}" data-cmd="WHATIF">START OVER</a>
+    </div>
+    </div>
     </div>
     <details class="how">
       <summary>How is this calculated?</summary>
@@ -341,9 +404,15 @@ export function render(el, cmd, ctx) {
     const key = cmd.input;
     return ctx.fetchJSON(`/api/whatif?${new URLSearchParams({ c: tokens.join(' ') })}`, { signal: ctx.signal }).then((d) => {
       if (d.picker) { renderPicker(el, ctx, cat, plan.picks); return; }
-      el.innerHTML = panel('1', 'WHATIF: the stock you should have bought', resultHtml(d, key), {
+      const links = d.cert ? shareLinks(d.cert, location.origin) : null;
+      el.innerHTML = panel('1', 'WHATIF: the stock you should have bought', resultHtml(d, key, links), {
         cls: 'panel-solo', meta: `${d.rows.length} ${d.rows.length === 1 ? 'ITEM' : 'ITEMS'}`,
       }) + '<p class="footnote">Not financial advice. Past returns say nothing about future ones.</p>';
+      sizeCert(el);
+      el.querySelector('[data-copy]')?.addEventListener('click', async (e) => {
+        const ok = await copyText(e.currentTarget.dataset.copy);
+        ctx.status(ok ? 'LINK COPIED' : 'COPY THE LINK FROM THE ADDRESS BAR', ok ? '' : 'warn');
+      });
       ctx.status(`WHATIF: ${fmtX(d.total.multiple)}${d.stale ? ' (LAST KNOWN PRICES)' : ''}`, d.stale ? 'warn' : '');
     });
   }).catch((err) => {
