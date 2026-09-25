@@ -23,6 +23,8 @@ import { valueGroups } from '../public/screens/value.js';
 import { underlyingAsOf } from '../public/screens/options.js';
 import { parseIpoMonth } from '../data/ipos.js';
 import { ipoTable, FILED_SHOWN } from '../public/screens/ipos.js';
+import { parseCalendar } from '../data/calendar.js';
+import { calendarTable, CAL_TITLE } from '../public/screens/calendar.js';
 
 const fixture = (f) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'));
 const json = (body) => ({ ok: true, status: 200, json: async () => body });
@@ -258,4 +260,18 @@ test('IPOS: a deal without a ticker keeps its name in the name spot', () => {
   const withTk = m.filed.find((r) => r.symbol);
   assert.match(ipoTable([withTk], { kind: 'filed' }), new RegExp(`<span class="tk">${withTk.symbol}</span>`));
   assert.equal(FILED_SHOWN, 10);
+});
+
+// ---- CALENDAR -------------------------------------------------------------------
+// Real Forex Factory weekly feed rows (week of 2026-09-21): the fields are title,
+// country, date, impact, forecast, previous. There is no actual field.
+test('CALENDAR: the source has no actuals, and the screen says so instead of an empty column', () => {
+  const raw = fixture('forexfactory-week.json');
+  assert.ok(raw.every((e) => !('actual' in e)));
+  const events = parseCalendar(raw);
+  const html = calendarTable(events, new Date('2026-09-25T16:00:00Z'));
+  assert.doesNotMatch(html, /Actual/i);
+  assert.match(html, />Forecast</);
+  assert.match(html, />Previous</);
+  assert.match(CAL_TITLE, /forecast and previous only/);
 });

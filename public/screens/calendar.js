@@ -3,6 +3,8 @@
 import { esc, q, panel, LOADING } from './markets.js';
 
 export const SCOPES = { MAJOR: 'US and high impact', ALL: 'Every event', US: 'US only' };
+// The source has no actual results: said in the panel title, not left as an empty column.
+export const CAL_TITLE = 'Economic calendar this week: forecast and previous only';
 
 // CALENDAR [ALL|US]
 export function parse(args) {
@@ -62,8 +64,8 @@ export function render(el, cmd, ctx) {
     return;
   }
   const scope = cmd.args.scope;
-  el.innerHTML = panel('1', 'Economic calendar this week', LOADING, { cls: 'panel-solo', meta: scopeTabs(scope) })
-    + `<p class="footnote">${esc(SCOPES[scope])}. Times in New York (ET). From the Forex Factory weekly feed, which lists forecast and previous values; actual results are not in it.</p>`;
+  el.innerHTML = panel('1', CAL_TITLE, LOADING, { cls: 'panel-solo', meta: scopeTabs(scope) })
+    + `<p class="footnote">${esc(SCOPES[scope])}. Times in New York (ET). From the Forex Factory weekly feed, which lists forecast and previous values only: actual results are not in it, so none are shown. The release itself (for US data: BLS, BEA, the Census Bureau) has the actual figure.</p>`;
   const body = el.querySelector('.panel-body');
 
   async function load() {
