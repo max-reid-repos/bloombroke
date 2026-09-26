@@ -44,7 +44,7 @@ test('news: headline, publisher and link only, credited to the publisher', () =>
   assert.equal(TICKER_SOURCES, 'NASDAQ · SA · SEC');
   for (const f of ['screens/news.js', 'screens/tickernews.js']) assert.doesNotMatch(src(f), /class="footnote"/, f);
   assert.match(disclaimer, /Each headline links to the original publisher/);
-  assert.match(disclaimer, /CNBC, MarketWatch, Yahoo Finance and the Nasdaq news feed/);
+  assert.match(disclaimer, /Headlines: CNBC, MarketWatch, Yahoo Finance, Nasdaq, Seeking Alpha, the Federal Reserve, BLS, SEC EDGAR, GlobeNewswire, PR Newswire, Business Wire and Reddit \(r\/wallstreetbets\)\./);
 });
 
 test('the Disclaimer names every data source, and what RT and DLY mean', () => {
