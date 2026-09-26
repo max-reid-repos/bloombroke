@@ -4,7 +4,7 @@
 // solid fiber boxes (PCU322211322211). Each is compared with a year before and has
 // its own latest month.
 
-import { NoData, signedPct } from './source.js';
+import { NoData, signedPct, headlineNumber } from './source.js';
 import { FRED_TTL, FRED_RETRY, fredMonthly, latestYoy, recentRows } from './fred.js';
 
 export const id = 'boxes';
@@ -33,7 +33,7 @@ export function build(got) {
   const other = parts.find((p) => p !== lead && Number.isFinite(p.yoy));
   return {
     headline: `${signedPct(lead.yoy, 1)} YOY`,
-    value: Math.round(lead.yoy * 10) / 10, // ALERTS: the headline number and its unit
+    value: headlineNumber(lead.yoy, 1), // ALERTS: the headline number and its unit
     unit: '%',
     line: lead.key === 'output'
       ? `Box output vs a year ago (${mon(lead.month)})${other ? `; prices ${signedPct(other.yoy, 1)} (${mon(other.month)})` : ''}`

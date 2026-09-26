@@ -4,7 +4,7 @@
 // The "lipstick index" is folklore: Leonard Lauder of Estee Lauder said lipstick sells
 // better in hard times. This is a price index, not sales.
 
-import { NoData, signedPct } from './source.js';
+import { NoData, signedPct, headlineNumber } from './source.js';
 import { FRED_TTL, FRED_RETRY, fredMonthly, latestYoy, changeAt, recentRows } from './fred.js';
 
 export const id = 'lipstick';
@@ -20,7 +20,7 @@ export function build(rows) {
   if (yoy === null) throw new NoData('FRED: no value a year before');
   return {
     headline: `${signedPct(yoy, 1)} YOY`,
-    value: Math.round(yoy * 10) / 10, // ALERTS: the headline number and its unit
+    value: headlineNumber(yoy, 1), // ALERTS: the headline number and its unit
     unit: '%',
     line: 'Cosmetics prices vs a year ago',
     spark: rows.slice(-36).map((r) => r.value),

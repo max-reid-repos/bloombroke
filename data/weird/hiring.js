@@ -5,7 +5,7 @@
 // newest month whose threads are at least 7 days old, so a fresh thread is not half
 // counted.
 
-import { NoData } from './source.js';
+import { NoData, headlineNumber } from './source.js';
 
 export const id = 'hiring';
 export const source = 'HN Algolia';
@@ -52,7 +52,7 @@ export function build(months, now = Date.now()) {
   const last = settled[0];
   return {
     headline: `${last.ratio.toFixed(2)} PER JOB`,
-    value: Math.round(last.ratio * 100) / 100, // ALERTS: the headline number and its unit
+    value: headlineNumber(last.ratio, 2), // ALERTS: the headline number and its unit
     unit: 'per job',
     line: 'HN job seekers per job post',
     spark: settled.slice().reverse().map((m) => m.ratio),

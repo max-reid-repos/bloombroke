@@ -1415,6 +1415,8 @@ a.ch-flag { cursor: pointer; }
 .al-perm .quiet { margin-left: 8px; }
 .al-table .al-cond { color: var(--text); }
 .al-table .al-dist { color: var(--dim); }
+.al-table .last.is-stale { color: var(--dim); font-weight: 400; }
+.al-stale { margin-left: 4px; color: var(--faint); font-size: 10px; letter-spacing: .06em; }
 .al-table .al-st { width: 1%; white-space: nowrap; }
 .al-table td.wl-act { text-align: right; }
 .al-state { color: var(--dim); font-size: 11px; font-weight: 600; letter-spacing: .08em; }

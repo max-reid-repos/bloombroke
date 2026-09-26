@@ -13,7 +13,9 @@ export const LEASE_KEY = 'bb.alerts.lease';
 export const CHECKED_KEY = 'bb.alerts.checked';
 export const MAX_ALERTS = 20;
 export const CHECK_MS = 60_000;
-export const LEASE_MS = 20_000;
+// Longer than a hidden tab's throttled timer (about once a minute), so a hidden leader
+// keeps its lease between ticks.
+export const LEASE_MS = 90_000;
 export const TICK_MS = 5_000;
 export const MAX_QUOTES = 60;
 export const HONEST_LINE = 'Alerts check while Bloombroke is open in a tab.';
@@ -23,6 +25,7 @@ const SYM_RE = /^[A-Z0-9.&/-]{1,16}$/;
 const OPS = ['>', '<', '>=', '<='];
 const OP_WORDS = { ABOVE: '>', OVER: '>', BELOW: '<', UNDER: '<' };
 const MINUS = '−';
+const MAX_TIME = 8.64e15; // the largest valid Date
 
 // WEIRD gauges that have one clear number (data/weird/<id>.js gives value and unit).
 // dp: the decimals the headline shows.
@@ -133,14 +136,18 @@ export const valueKey = (a) => (a.kind === 'gauge' ? `gauge:${a.gauge}` : a.sym)
 // not changed). A WAITING alert whose condition is true fires once and turns TRIGGERED:
 // a price that jumps past the level between two checks still fires. A re-armed alert
 // whose condition was still true waits until the value is back on the other side, so it
-// fires on a fresh crossing only. Missing values change nothing.
+// fires on a fresh crossing only. Missing values change nothing. values: { key: number }
+// or { key: { value, stale } }.
 export function evaluate(list, values, now = Date.now()) {
   const fired = [];
   const out = list.map((a) => {
-    const v = values[valueKey(a)];
+    const e = values[valueKey(a)];
+    const v = typeof e === 'number' ? e : e?.value;
     if (!Number.isFinite(v)) return a;
-    const next = { ...a, last: v, lastAt: now };
-    if (next.state !== 'waiting') return next;
+    const stale = Boolean(e?.stale);
+    const next = { ...a, last: v, lastAt: now, stale };
+    // A stale value (the source is not answering) is shown, never fired on.
+    if (stale || next.state !== 'waiting') return next;
     const hit = conditionMet(next.op, v, next.level);
     if (next.rearmed) {
       if (!hit) next.rearmed = false;
@@ -230,7 +237,15 @@ export function cleanAlerts(raw) {
       name: typeof a.name === 'string' ? a.name.slice(0, 60) : '',
       dp: Number.isInteger(a.dp) && a.dp >= 0 && a.dp <= 8 ? a.dp : 2,
       vdp: Number.isInteger(a.vdp) && a.vdp >= 0 && a.vdp <= 8 ? a.vdp : 2,
+      stale: a.stale === true,
+      seen: a.seen !== false,
+      rearmed: a.rearmed === true,
     });
+    const o = out[out.length - 1];
+    // Numbers that would break the table or the dates are dropped, never shown.
+    for (const k of ['last', 'firedValue']) if (!(Number.isFinite(o[k]) && Math.abs(o[k]) <= 1e12)) delete o[k];
+    for (const k of ['lastAt', 'firedAt', 'created']) if (!(Number.isFinite(o[k]) && o[k] >= 0 && o[k] <= MAX_TIME)) delete o[k];
+    if (o.state === 'triggered' && !Number.isFinite(o.firedAt)) o.firedAt = o.lastAt ?? o.created ?? 0;
     if (out.length >= MAX_ALERTS) break;
   }
   return out;
@@ -252,11 +267,12 @@ export function quotesUrl(list) {
 
 export const needsWeird = (list) => list.some((a) => a.kind === 'gauge');
 
-// The API answers -> { key: number } for evaluate().
+// The API answers -> { key: { value, stale } } for evaluate(). A stale quote or gauge
+// (the last good value while its source is down) is kept for the screen, marked stale.
 export function valuesFrom(quotes, weird) {
   const values = {};
-  for (const qt of quotes?.quotes || []) if (qt && Number.isFinite(qt.last)) values[qt.ticker] = qt.last;
-  for (const g of weird?.gauges || []) if (g && g.ok && Number.isFinite(g.value)) values[`gauge:${g.id}`] = g.value;
+  for (const qt of quotes?.quotes || []) if (qt && Number.isFinite(qt.last)) values[qt.ticker] = { value: qt.last, stale: Boolean(qt.stale) };
+  for (const g of weird?.gauges || []) if (g && g.ok && Number.isFinite(g.value)) values[`gauge:${g.id}`] = { value: g.value, stale: Boolean(g.stale) };
   return values;
 }
 
@@ -285,6 +301,11 @@ export function distance(a) {
     const d = a.level - a.last;
     return `${d > 0 ? '+' : d < 0 ? MINUS : ''}${fmtNumber(Math.abs(d), Math.max(1, a.dp))} pts`;
   }
+  // A yield (a quote in %): the gap in basis points, not a relative change.
+  if (a.unit === '%') {
+    const bp = (a.level - a.last) * 100;
+    return `${bp > 0 ? '+' : bp < 0 ? MINUS : ''}${fmtNumber(Math.abs(bp), 1)}bp`;
+  }
   if (a.last === 0 || (a.kind === 'gauge' && a.last < 0)) return '--';
   const pct = (a.level / a.last - 1) * 100;
   return `${pct > 0 ? '+' : pct < 0 ? MINUS : ''}${fmtNumber(Math.abs(pct), 2)}%`;
@@ -306,6 +327,15 @@ export const openCommand = (a) => a.sym;
 // a lease older than LEASE_MS belongs to nobody (that tab closed or slept).
 export function leaseFree(lease, tab, now) {
   return !lease || lease.tab === tab || !Number.isFinite(lease.at) || now - lease.at > LEASE_MS;
+}
+
+// One tick of the watcher: take (or keep) the lease, and check when the last check by
+// any tab is CHECK_MS old. A hidden tab keeps its lease and keeps checking (the browser
+// slows its timer to about once a minute), so alerts check while any tab is open.
+export function tickPlan({ hasAlerts, lease, tab, now, lastChecked }) {
+  if (!hasAlerts) return { take: false, check: false };
+  if (!leaseFree(lease, tab, now)) return { take: false, check: false };
+  return { take: true, check: now - (Number(lastChecked) || 0) >= CHECK_MS };
 }
 
 export function startAlerts({ store, fetchJSON, status, run, statusline }) {
@@ -382,22 +412,16 @@ export function startAlerts({ store, fetchJSON, status, run, statusline }) {
     }
   }
 
-  const since = () => Date.now() - (Number(store.get(CHECKED_KEY, 0)) || 0);
-
   function tick() {
     const now = Date.now();
-    if (document.hidden) { dropLease(); return; }
-    if (!loadAlerts(store).length) return;
-    if (!takeLease(now)) return;
-    if (since() >= CHECK_MS) check();
+    const plan = tickPlan({ hasAlerts: loadAlerts(store).length > 0, lease: readLease(), tab, now, lastChecked: store.get(CHECKED_KEY, 0) });
+    if (!plan.take || !takeLease(now)) return;
+    if (plan.check) check();
   }
 
   setInterval(tick, TICK_MS);
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { dropLease(); return; }
-    // Back on the tab: check once (not again within 10 seconds of the last check).
-    if (loadAlerts(store).length && takeLease(Date.now()) && since() >= 10_000) check();
-  });
+  // Back on the tab: the same rule, so switching tabs never checks more than once a minute.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
   window.addEventListener('pagehide', dropLease);
   // The ALERTS screen added an alert: check now, from this tab.
   window.addEventListener('bb:alerts-check', () => {

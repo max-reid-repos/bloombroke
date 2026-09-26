@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import {
   parseAlertArgs, parseLevel, resolveAlertSymbol, conditionMet, evaluate, rearm, addAlert, removeAlert,
   markSeen, unseenCount, cleanAlerts, quotesUrl, needsWeird, valuesFrom, firedText, fmtValue, distance,
-  leaseFree, ALERT_GAUGES, MAX_ALERTS, LEASE_MS, HONEST_LINE, loadAlerts, saveAlerts, ALERTS_KEY,
+  leaseFree, ALERT_GAUGES, MAX_ALERTS, LEASE_MS, HONEST_LINE, loadAlerts, saveAlerts, ALERTS_KEY, tickPlan, CHECK_MS,
 } from '../public/alerts.js';
 import { alertsTable, firedAt } from '../public/screens/alerts.js';
 import { parseCommand, urlFor, suggest, COMMANDS, SOON } from '../public/app.js';
@@ -32,6 +32,7 @@ import * as sick from '../data/weird/sick.js';
 import * as macau from '../data/weird/macau.js';
 import * as degen from '../data/weird/degen.js';
 import { toMonths } from '../data/weird/fred.js';
+import { headlineNumber, signedPct } from '../data/weird/source.js';
 import { parseFredCsv } from '../data/economy.js';
 
 const fx = (f) => readFileSync(new URL(`./fixtures/weird/${f}`, import.meta.url), 'utf8');
@@ -185,7 +186,8 @@ test('limit: 20 alerts at most, no duplicates; remove and seen', () => {
 test('add: decimals from the quote, units from the gauge list', () => {
   const y = addAlert([], parsed('US10Y > 5.2').alert, { dp: 3, unit: '%', last: 5.165, name: 'US 10Y yield' }, 5, 'y1').alert;
   assert.equal(fmtValue(y.level, y.unit, y.dp), '5.200%');
-  assert.equal(distance(y), '+0.68%');
+  assert.equal(distance(y), '+3.5bp', 'a yield: the gap in basis points');
+  assert.equal(distance({ ...y, op: '<', level: 5.1 }), '−6.5bp');
   const g = addAlert([], parsed('CANAL < 5').alert, {}, 5, 'g1').alert;
   assert.deepEqual([g.unit, g.dp, g.gauge, g.name], ['ships/day', 0, 'canal', ALERT_GAUGES.CANAL.name]);
   assert.equal(firedText({ ...g, firedValue: 3 }), 'CANAL crossed 5 ships/day · now 3 ships/day');
@@ -214,13 +216,87 @@ test('storage: junk is dropped; the batch URL and the values', () => {
   assert.equal(needsWeird(list), true);
   assert.equal(needsWeird(list.slice(0, 3)), false, '/api/weird only with a gauge alert');
   assert.deepEqual(valuesFrom({ quotes: [{ ticker: 'AAPL', last: 341 }, { ticker: 'X', last: null }] }, { gauges: [{ id: 'canal', ok: true, value: 3 }, { id: 'pizza', ok: false }] }),
-    { AAPL: 341, 'gauge:canal': 3 });
+    { AAPL: { value: 341, stale: false }, 'gauge:canal': { value: 3, stale: false } });
+  assert.deepEqual(valuesFrom({ quotes: [{ ticker: 'AAPL', last: 400, stale: true }] }, { gauges: [{ id: 'canal', ok: true, value: 1, stale: true }] }),
+    { AAPL: { value: 400, stale: true }, 'gauge:canal': { value: 1, stale: true } });
+});
+
+test('stale values are shown, never fired on', () => {
+  const quotes = { quotes: [{ ticker: 'AAPL', last: 400, stale: true }] };
+  let r = evaluate([base()], valuesFrom(quotes, null), 10);
+  assert.equal(r.fired.length, 0, 'AAPL 400 > 350, but the value is stale');
+  assert.equal(r.list[0].state, 'waiting');
+  assert.deepEqual([r.list[0].last, r.list[0].stale], [400, true]);
+  const html = alertsTable(r.list);
+  assert.match(html, /class="num last is-stale"/);
+  assert.match(html, /<span class="al-stale">stale<\/span>/);
+  r = evaluate(r.list, valuesFrom({ quotes: [{ ticker: 'AAPL', last: 401, stale: false }] }, null), 20);
+  assert.equal(r.fired.length, 1, 'fresh again: it fires');
+  assert.equal(r.list[0].stale, false);
+  const g = evaluate([base({ sym: 'CANAL', kind: 'gauge', gauge: 'canal', op: '<', level: 5 })], valuesFrom(null, { gauges: [{ id: 'canal', ok: true, value: 3, stale: true }] }), 1);
+  assert.equal(g.fired.length, 0, 'a stale gauge never fires');
+});
+
+test('storage: corrupt numbers are dropped, so the table still renders', () => {
+  const [a] = cleanAlerts([base({ state: 'triggered', lastAt: 1e20, firedAt: Infinity, last: 'x', firedValue: 1e300, created: -5 })]);
+  assert.equal(a.lastAt, undefined);
+  assert.equal(a.last, undefined);
+  assert.equal(a.firedValue, undefined);
+  assert.equal(a.created, undefined);
+  assert.equal(a.firedAt, 0, 'a triggered alert keeps a valid time');
+  const html = alertsTable([a]);
+  assert.match(html, /TRIGGERED/);
+  assert.doesNotMatch(html, /Invalid Date|NaN/);
+  assert.equal(cleanAlerts([base({ lastAt: 1e20 })])[0].lastAt, undefined);
+});
+
+test('watcher: the leader keeps checking while hidden, once a minute; one tab only', () => {
+  const now = 1_000_000;
+  const hasAlerts = true;
+  // The plan has no hidden input: a hidden leader keeps its lease and checks each minute.
+  assert.deepEqual(tickPlan({ hasAlerts, lease: { tab: 't1', at: now - 60_000 }, tab: 't1', now, lastChecked: now - CHECK_MS }), { take: true, check: true });
+  assert.deepEqual(tickPlan({ hasAlerts, lease: { tab: 't1', at: now - 5_000 }, tab: 't1', now, lastChecked: now - 30_000 }), { take: true, check: false }, 'not twice a minute');
+  // Another tab while the leader holds the lease: nothing, hidden or not.
+  assert.deepEqual(tickPlan({ hasAlerts, lease: { tab: 't1', at: now - 60_000 }, tab: 't2', now, lastChecked: 0 }), { take: false, check: false });
+  // The leader closed or froze: after LEASE_MS another tab takes over.
+  assert.deepEqual(tickPlan({ hasAlerts, lease: { tab: 't1', at: now - LEASE_MS - 1 }, tab: 't2', now, lastChecked: now - CHECK_MS }), { take: true, check: true });
+  assert.deepEqual(tickPlan({ hasAlerts: false, lease: null, tab: 't1', now, lastChecked: 0 }), { take: false, check: false });
+  assert.ok(LEASE_MS > CHECK_MS, 'a hidden leader, throttled to a tick a minute, keeps its lease');
+  // The browser code: hidden tabs do not drop the lease; coming back runs the same tick.
+  const src = readFileSync('public/alerts.js', 'utf8');
+  const watcher = src.slice(src.indexOf('export function startAlerts'));
+  assert.doesNotMatch(watcher, /if \(document\.hidden\) \{ dropLease/);
+  assert.match(watcher, /visibilitychange', \(\) => \{ if \(!document\.hidden\) tick\(\); \}/);
+  // A hidden tab never marks alerts seen.
+  assert.match(readFileSync('public/screens/alerts.js', 'utf8'), /if \(!document\.hidden\) seen\(\);/);
+});
+
+test('gauge values round like their headlines, at a negative half too', () => {
+  assert.equal(headlineNumber(-2.25, 1), -2.3);
+  assert.equal(headlineNumber(-0.5, 0), -1);
+  assert.equal(headlineNumber(-0.04, 1), 0);
+  assert.equal(headlineNumber(2.25, 1), 2.3);
+  assert.equal(headlineNumber(NaN, 1), null);
+  for (let i = -3000; i <= 3000; i += 1) {
+    const v = i / 1000 + 0.0005 * Math.sign(i);
+    for (const d of [0, 1]) {
+      const shown = Number(signedPct(v, d).replace('%', '').replace('−', '-'));
+      assert.ok(headlineNumber(v, d) === shown, `${v} (${d}): ${headlineNumber(v, d)} vs ${signedPct(v, d)}`);
+    }
+  }
+  // Through a real gauge: lipstick at exactly -2.25% a year.
+  const rows = Array.from({ length: 13 }, (_, i) => ({ month: `2025-${String(i + 1).padStart(2, '0')}`.replace('2025-13', '2026-01'), value: 100 }));
+  rows[12] = { month: '2026-01', value: 97.75 };
+  const g = lipstick.build(rows);
+  assert.equal(g.headline, `${signedPct(g.yoy, 1)} YOY`);
+  assert.ok(g.value === Number(signedPct(g.yoy, 1).replace('%', '').replace('−', '-')), `${g.value} vs ${g.headline}`);
 });
 
 test('tab lease: one tab checks; a stale lease is free', () => {
   assert.equal(leaseFree(null, 't1', 100), true);
   assert.equal(leaseFree({ tab: 't1', at: 100 }, 't1', 101), true);
   assert.equal(leaseFree({ tab: 't2', at: 100 }, 't1', 101), false);
+  assert.equal(leaseFree({ tab: 't2', at: 100 }, 't1', 100 + LEASE_MS), false);
   assert.equal(leaseFree({ tab: 't2', at: 100 }, 't1', 100 + LEASE_MS + 1), true);
 });
 

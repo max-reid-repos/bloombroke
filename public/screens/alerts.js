@@ -48,7 +48,7 @@ export function alertsTable(list, now = Date.now()) {
       <th scope="row" class="wl-sym"><a href="${esc(q(a.sym))}" data-cmd="${esc(a.sym)}" tabindex="-1">${esc(a.sym)}</a></th>
       <td class="name al-name">${esc(a.name || '')}</td>
       <td class="num al-cond">${esc(a.op)} ${esc(fmtLevel(a))}</td>
-      <td class="num last">${esc(fmtNow(a))}</td>
+      <td class="num last${a.stale ? ' is-stale' : ''}"${a.stale ? ' title="The source is not answering: the last value it gave"' : ''}>${esc(fmtNow(a))}${a.stale ? ' <span class="al-stale">stale</span>' : ''}</td>
       <td class="num al-dist">${esc(distance(a))}</td>
       <td class="al-st">${state}</td>
       ${rowActions(acts)}
@@ -109,14 +109,14 @@ export function render(el, cmd, ctx) {
     draw();
   }
 
-  // The first alert: one plain line to ask for browser notifications.
+  // One plain line to ask for browser notifications: after the first alert, and on this
+  // screen while the browser has never been answered. The ask itself is a click.
   function askLine() {
     if (typeof Notification === 'undefined' || Notification.permission !== 'default') return '';
     return '<p class="al-perm">Get a browser notification when an alert fires? <button type="button" class="quiet" data-tool="notify">ALLOW NOTIFICATIONS</button></p>';
   }
 
   async function add(parsed) {
-    const first = list.length === 0;
     let info = {};
     if (parsed.kind === 'quote') {
       msg = `Checking ${parsed.sym}...`;
@@ -155,7 +155,7 @@ export function render(el, cmd, ctx) {
     const now = Number.isFinite(r.alert.last) ? ` Now ${fmtNow(r.alert)}.` : '';
     msg = `Added ${r.alert.sym} ${r.alert.op} ${fmtLevel(r.alert)}.${now}`;
     warn = false;
-    if (first) perm = askLine();
+    perm = askLine();
     drawTop();
     draw();
     ctx.status(`ALERT ADDED: ${r.alert.sym} ${r.alert.op} ${fmtLevel(r.alert)}`);
@@ -163,6 +163,7 @@ export function render(el, cmd, ctx) {
     window.dispatchEvent(new Event('bb:alerts-check'));
   }
 
+  if (list.length) perm = askLine();
   if (a.error) {
     msg = ERRORS[a.error](a.bad || '');
     warn = true;
@@ -187,7 +188,8 @@ export function render(el, cmd, ctx) {
     drawTools();
     meta.textContent = `${list.length} OF ${MAX_ALERTS}`;
     draw();
-    seen();
+    // A hidden tab has shown nobody anything: the flag stays until someone looks.
+    if (!document.hidden) seen();
   };
   window.addEventListener('bb:alerts', onChange);
   ctx.onCleanup(() => window.removeEventListener('bb:alerts', onChange));
