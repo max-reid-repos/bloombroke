@@ -139,6 +139,20 @@ export const INSTRUMENTS = [
     markets: false,
     aliases: name.toUpperCase().replace(/\s+/g, '') === sym ? [] : [name.toUpperCase().replace(/\s+/g, '')],
   })),
+
+  // --- WORLDMAP: each country's main index (screens/worldmap-geo.js) -----------------
+  // The ones WORLD lists that had no screen of their own. Ids are 6+ letters or not a US
+  // ticker, so no stock is shadowed (IBEX is a Nasdaq stock: the index is IBEX35).
+  I('TSX', 'S&P/TSX Composite', 'Americas', 'index', '.GSPTSE', 2, { markets: false, aliases: ['GSPTSE', 'CANADA'] }),
+  I('MEXBOL', 'S&P/BMV IPC', 'Americas', 'index', '.MXX', 2, { markets: false, aliases: ['MXX', 'MEXICO'] }),
+  I('BOVESPA', 'Bovespa', 'Americas', 'index', '.BVSP', 2, { markets: false, aliases: ['BVSP', 'BRAZIL'] }),
+  I('IBEX35', 'IBEX 35', 'Europe', 'index', '.IBEX', 2, { markets: false, aliases: ['SPAIN'] }),
+  I('FTSEMIB', 'FTSE MIB', 'Europe', 'index', '.FTMIB', 2, { markets: false, aliases: ['FTMIB', 'ITALY'] }),
+  I('AEX', 'AEX', 'Europe', 'index', '.AEX', 2, { markets: false, aliases: ['NETHERLANDS'] }),
+  I('SMI', 'SMI', 'Europe', 'index', '.SSMI', 2, { markets: false, aliases: ['SSMI', 'SWITZERLAND'] }),
+  I('TAIEX', 'Taiwan Weighted', 'Asia Pacific', 'index', '.TWII', 2, { markets: false, aliases: ['TWII', 'TAIWAN'] }),
+  I('NIFTY50', 'Nifty 50', 'Asia Pacific', 'index', '.NSEI', 2, { markets: false, aliases: ['NIFTY', 'NSEI', 'INDIA'] }),
+  // --- end WORLDMAP ------------------------------------------------------------------
 ];
 
 // The instrument behind a CNBC symbol, for rows that come from other lists.

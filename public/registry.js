@@ -84,6 +84,13 @@ export const REGISTRY = [
     syntax: 'HEATMAP', examples: ['HEATMAP'], keywords: ['map', 'treemap', 'sectors', 'colour', 'color'],
     source: 'CNBC', delay: 'May be delayed',
   },
+  // --- WORLDMAP (screens/worldmap.js) ---
+  {
+    name: 'WORLDMAP', category: 'Markets', summary: 'World map: indexes, ships, storms',
+    syntax: 'WORLDMAP', examples: ['WORLDMAP'], keywords: ['world map', 'globe', 'countries', 'geography', 'chokepoints', 'hurricanes', 'storms'],
+    source: 'CNBC; IMF PortWatch; National Hurricane Center; map: Natural Earth', delay: 'Indexes may be delayed; ships about 6 days behind; storms at the latest NHC advisory',
+  },
+  // --- end WORLDMAP ---
   {
     name: 'SECTORS', category: 'Markets', summary: 'The 11 sectors: today, 1 month and this year',
     syntax: 'SECTORS', examples: ['SECTORS'], keywords: ['industries', 'etf', 'performance', 'rotation'],

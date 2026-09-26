@@ -7,12 +7,14 @@ import * as options from './screens/options.js';
 import * as economy from './screens/economy.js';
 import * as fedpath from './screens/fedpath.js';
 import * as breadth from './screens/breadth.js';
+import * as worldmap from './screens/worldmap.js'; // WORLDMAP
 
 export const MARKETS_EXTRA = [
   { name: 'OPTIONS', screen: options, takesArgs: true },
   { name: 'ECONOMY', screen: economy },
   { name: 'BREADTH', screen: breadth },
   { name: 'FEDPATH', screen: fedpath },
+  { name: 'WORLDMAP', screen: worldmap }, // WORLDMAP
 ];
 
 export const MARKETS_SCREENS = Object.fromEntries(MARKETS_EXTRA.map((c) => [c.name, c.screen]));
