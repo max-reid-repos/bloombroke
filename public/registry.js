@@ -54,7 +54,7 @@ export const REGISTRY = [
 
   // --- Markets --------------------------------------------------------------------
   {
-    name: 'HOME', category: 'Markets', summary: 'Markets, the S&P 500, currencies and news on one screen',
+    name: 'HOME', category: 'Markets', summary: 'Markets, the S&P 500 and news on one screen',
     syntax: 'HOME', examples: ['HOME'], keywords: ['start', 'overview', 'dashboard', 'front page'],
     source: 'CNBC quotes; headlines from CNBC, MarketWatch and Yahoo Finance', delay: 'Real time or delayed, marked RT or DLY on each row',
   },

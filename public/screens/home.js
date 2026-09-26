@@ -1,12 +1,9 @@
-// HOME: the default screen. Markets by region, the S&P 500 chart, currencies, news.
+// HOME: the default screen. A short MARKETS list, the S&P 500 chart and the news.
 
 import { esc, fmtNum, fmtSigned, fmtPct, dirOf, panel, LOADING, marketsColumns, nameCell, rowAttrs, rerender, tick, settleTicks } from './markets.js';
 import { rangeChart } from './chart.js';
 import { freshTag } from '../freshness.js';
 import { newsList } from './news.js';
-import { loadWatchlist, isDefaultList } from '../watchlist.js';
-import { fetchQuotes, watchCompact } from './watch.js';
-import { moversCompact } from './movers.js';
 
 export function fxTable(pairs) {
   const rows = pairs.map((p) => {
@@ -25,37 +22,36 @@ export function fxTable(pairs) {
   </table>`;
 }
 
-const HOME_WATCH_ROWS = 10;
+// HOME's short MARKETS list: four columns, each a group of the MARKETS screen's own
+// instruments (the full list stays on MARKETS).
+export const HOME_MARKETS = [
+  { name: 'US', ids: ['SPX', 'NDX', 'DJI', 'RUT', 'VIX'] },
+  { name: 'World', ids: ['FTSE', 'DAX', 'N225', 'HSI', 'SHANGHAI'] },
+  { name: 'Commodities + crypto', ids: ['GOLD', 'WTI', 'COPPER', 'BALTICDRY', 'BTC', 'ETH'] },
+  { name: 'FX + rates', ids: ['EURUSD', 'USDJPY', 'GBPUSD', 'DXY', 'US10Y'] },
+];
+
+// The HOME rows from /api/markets, regrouped, in the order above. Missing ids drop out.
+export function homeMarkets(instruments) {
+  const byId = new Map((instruments || []).map((m) => [m.id, m]));
+  return HOME_MARKETS.flatMap((g) => g.ids.filter((id) => byId.has(id)).map((id) => ({ ...byId.get(id), group: g.name })));
+}
+
+const HOME_NEWS_ROWS = 30;
 
 export function render(el, cmd, ctx) {
-  // Panel 3 shows the S&P 100 movers (currencies are already in panel 1).
-  // The user's own watchlist replaces it once it is theirs (not the starter list).
-  const watch = loadWatchlist(ctx.store);
-  const mine = watch.length > 0 && !isDefaultList(watch);
-  const shown = watch.slice(0, HOME_WATCH_ROWS);
   el.innerHTML = `<div class="grid grid-home">
     ${panel('1', 'Markets', LOADING, { cmd: 'MARKETS', metaId: 'h-mk-meta', cls: 'panel-wide' })}
-    ${panel('2', 'S&P 500', '<div class="rc rc-home" id="h-rc"></div>', { cmd: 'SPX', metaId: 'h-ch-meta', bodyCls: 'flush' })}
-    ${mine
-    ? panel('3', 'Watchlist', LOADING, { cmd: 'WATCH', metaId: 'h-fx-meta', meta: `${watch.length} SYMBOLS` })
-    : panel('3', 'Movers', LOADING, { cmd: 'MOVERS', metaId: 'h-fx-meta', meta: 'S&amp;P 100 TODAY', bodyCls: 'flush' })}
-    ${panel('4', 'News', LOADING, { cmd: 'NEWS', metaId: 'h-news-meta', bodyCls: 'flush', cls: 'panel-wide' })}
+    ${panel('2', 'S&P 500', '<div class="rc rc-home" id="h-rc"></div>', { cmd: 'SPX', metaId: 'h-ch-meta', bodyCls: 'flush', cls: 'h-chart' })}
+    ${panel('3', 'News', LOADING, { cmd: 'NEWS', metaId: 'h-news-meta', bodyCls: 'flush', cls: 'h-news' })}
   </div>`;
 
   const bodies = el.querySelectorAll('.panel-body');
-  const [mkBody, , fxBody, newsBody] = bodies;
-  const seen = { markets: null, fx: null };
+  const [mkBody, , newsBody] = bodies;
   const fail = (body, err, marker) => {
     if (err.name === 'AbortError') return true;
     if (!body.querySelector(marker)) body.innerHTML = `<p class="panel-msg">${esc(err.message)}</p>`;
     return false;
-  };
-  // The status line covers both tables: the older of the two times, every tag shown.
-  const noteUpdated = () => {
-    const got = [seen.markets, seen.fx].filter(Boolean);
-    if (!got.length) return;
-    const oldest = got.map((d) => d.updated).sort()[0];
-    ctx.updated(oldest, got.some((d) => d.stale), [...(seen.markets?.instruments || []), ...(seen.fx?.pairs || [])]);
   };
 
   const chart = rangeChart(el.querySelector('#h-rc'), ctx, {
@@ -66,54 +62,28 @@ export function render(el, cmd, ctx) {
   async function loadMarkets() {
     try {
       const d = await ctx.fetchJSON('/api/markets', { signal: ctx.signal });
-      rerender(mkBody, marketsColumns(d.instruments));
+      const rows = homeMarkets(d.instruments);
+      rerender(mkBody, marketsColumns(rows, { chg: false, cls: 'mk-cols h-mk' }));
       settleTicks(mkBody);
-      seen.markets = d;
       const spx = d.instruments.find((m) => m.id === 'SPX');
       if (spx) chart.setLive({ t: Date.parse(spx.asOf), v: spx.last });
-      noteUpdated();
+      ctx.updated(d.updated, d.stale, rows);
     } catch (err) {
       if (!fail(mkBody, err, 'table')) ctx.status('COULD NOT REFRESH MARKETS', 'warn');
-    }
-  }
-
-  async function loadWatch() {
-    try {
-      const { byId, data } = await fetchQuotes(ctx, shown);
-      const more = watch.length - shown.length;
-      rerender(fxBody, watchCompact(shown, byId) + (more > 0 ? `<p class="h-more"><a href="?c=WATCH" data-cmd="WATCH">${more} more on your watchlist</a></p>` : ''));
-      settleTicks(fxBody);
-      seen.fx = { updated: data.updated, stale: data.stale, pairs: data.quotes };
-      noteUpdated();
-    } catch (err) {
-      fail(fxBody, err, 'table');
-    }
-  }
-
-  async function loadFx() {
-    if (mine) { loadWatch(); return; }
-    try {
-      const d = await ctx.fetchJSON('/api/movers', { signal: ctx.signal });
-      rerender(fxBody, moversCompact(d));
-      seen.fx = { updated: d.updated, stale: d.stale, pairs: [] };
-      noteUpdated();
-    } catch (err) {
-      fail(fxBody, err, 'table');
     }
   }
 
   async function loadNews() {
     try {
       const d = await ctx.fetchJSON('/api/news', { signal: ctx.signal });
-      newsBody.innerHTML = newsList(d.items.slice(0, 8));
+      newsBody.innerHTML = newsList(d.items.slice(0, HOME_NEWS_ROWS));
     } catch (err) {
       fail(newsBody, err, '.news');
     }
   }
 
   loadMarkets();
-  loadFx();
   loadNews();
-  ctx.live(() => { loadMarkets(); loadFx(); }, 15_000);
+  ctx.live(loadMarkets, 15_000);
   ctx.live(loadNews, 5 * 60_000);
 }
