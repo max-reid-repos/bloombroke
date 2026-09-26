@@ -219,7 +219,7 @@ export function render(el, cmd, ctx) {
   // On a phone the results come first: the filters fold away once there are results.
   const narrow = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 639px)').matches;
   el.innerHTML = `<div class="stack">
-    ${panel('1', 'Screen', `${presetBar(spec.preset)}<div class="sc-pad">${bad ? `<p class="notice">${esc(bad)}</p>` : ''}${formHtml(spec, empty || !!bad || !narrow)}</div>`, { meta: 'FILTER EVERY US-LISTED STOCK', bodyCls: 'flush' })}
+    ${panel('1', 'Screen', `${presetBar(spec.preset)}<div class="sc-pad">${bad ? `<p class="notice">${esc(bad)}</p>` : ''}${formHtml(spec, empty || !!bad || !narrow)}</div>`, { meta: 'NO P/E OR YIELD: LEFT OUT OF THAT FILTER · LOSS: NO P/E', bodyCls: 'flush' })}
     ${empty ? '' : panel('2', 'Results', LOADING, { metaId: 'sc-meta', bodyCls: 'flush' })}
   </div>`;
 

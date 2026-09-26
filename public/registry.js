@@ -518,5 +518,5 @@ export const START_HERE = [
 // The one line of keys under the list.
 export const START_KEYS = [
   ['Enter', 'run'], ['Tab', 'complete'], ['Esc', 'back'], ['Ctrl K', 'menu'], ['/', 'search'],
-  ['1-9', 'stock functions'], ['F1-F10', 'screens'],
+  ['1-9', 'stock functions'], ['number Enter', 'panel'], ['F1-F10', 'screens'],
 ];

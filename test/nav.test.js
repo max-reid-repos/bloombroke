@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   parseCommand, suggest, COMMANDS, FKEYS, FUNCTION_BAR, TICKER_FUNCTIONS, fkeyFor, isMenuKey, escGoesBack, screenTitle, urlFor, freshDot,
-  keybarHtml, panelByNumber,
+  keybarHtml, panelByNumber, panelNumberInput, freshOverdue,
 } from '../public/app.js';
 import {
   REGISTRY, LISTED, CATEGORIES, findCommand, byCategory, categoriesInUse, searchCommands, START_HERE, START_KEYS,
@@ -244,9 +244,32 @@ test('panel numbers: the panel labelled "n)" is found, other screens have none',
   for (const n of [1, 2, 3, 4]) assert.equal(panelByNumber(root, String(n)), panels[n - 1]);
   assert.equal(panelByNumber(root, '5'), null);
   assert.equal(panelByNumber({ querySelectorAll: () => [fakePanel('10) X')] }, '1'), null, '10) is not 1)');
-  // Keys 1 to 9 open panels only where no stock function bar takes them.
+});
+
+test('panel numbers: a number and Enter opens a panel; digits typed as a command stay a command', () => {
+  assert.equal(panelNumberInput('3'), 3, '3 Enter on HOME');
+  assert.equal(panelNumberInput('12'), 12, '12 Enter (a screen with 12 panels)');
+  for (const c of ['3988.HK', '1810.HK', 'CPI 100 2000', '0', '123', '3 5', 'AAPL', '']) assert.equal(panelNumberInput(c), null, c);
+  // 3 Enter on HOME finds MOVERS.
+  const fakePanel = (text) => ({ querySelector: () => ({ textContent: text }) });
+  const home = ['1) MARKETS', '2) S&P 500', '3) MOVERS', '4) NEWS'].map(fakePanel);
+  assert.equal(panelByNumber({ querySelectorAll: () => home }, String(panelNumberInput('3'))), home[2]);
+  // 3988.HK typed on HOME or MARKETS: no digit is taken on keydown off a stock screen, and
+  // Enter runs it as a command (the resolver), not as panel 3.
   const src = readFileSync('public/app.js', 'utf8');
-  assert.match(src, /tickerBar\.hidden && maximize\(e\.key\)/);
+  assert.doesNotMatch(src, /maximize\(e\.key\)/, 'no panel on a bare digit keydown');
+  assert.match(src, /\(embed \|\| !tickerBar\.hidden\)/, 'instant 1-9 only with the stock function bar');
+  assert.match(src, /typed && !embed && tickerBar\.hidden \? panelNumberInput\(clean\)/);
+  assert.equal(parseCommand('3988.HK').input, '3988.HK');
+});
+
+test('freshness: the dot goes stale when updates stop', () => {
+  const at = Date.parse('2026-09-25T16:00:00Z');
+  assert.equal(freshOverdue({ at, every: 15_000 }, at + 30_000), false, 'within a minute');
+  assert.equal(freshOverdue({ at, every: 15_000 }, at + 61_000), true, 'a minute with no 15-second update');
+  assert.equal(freshOverdue({ at, every: 300_000 }, at + 500_000), false, 'news: 5 minutes apart');
+  assert.equal(freshOverdue({ at, every: 300_000 }, at + 601_000), true);
+  assert.equal(freshOverdue({ at, every: 0 }, at + 3_600_000), false, 'a screen that loads once');
 });
 
 test('freshness: a dot by the clock, the time in its tooltip; the status line keeps messages', () => {
@@ -271,7 +294,7 @@ test('HELP start here: one plain list, no cards, one line of keys', () => {
     assert.ok(START_HERE.some(([x]) => x === c), c);
   }
   assert.equal((html.match(/class="hs-keys"/g) || []).length, 1);
-  assert.deepEqual(START_KEYS.map(([k]) => k), ['Enter', 'Tab', 'Esc', 'Ctrl K', '/', '1-9', 'F1-F10']);
+  assert.deepEqual(START_KEYS.map(([k]) => k), ['Enter', 'Tab', 'Esc', 'Ctrl K', '/', '1-9', 'number Enter', 'F1-F10']);
 });
 
 test('copy rules for the navigation files', () => {

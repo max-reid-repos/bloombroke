@@ -426,6 +426,13 @@ export function freshDot(iso, stale) {
   return { state: stale ? 'stale' : 'fresh', title: updatedTitle(iso, stale) };
 }
 
+// Overdue: no update for twice the screen's own refresh gap (at least a minute). A
+// sleeping tab or failing fetches turn the dot stale. every: ms between the last two
+// updates, 0 when the screen loads once.
+export function freshOverdue({ at = 0, every = 0 } = {}, now = Date.now()) {
+  return Boolean(at && every) && now - at > Math.max(60_000, 2 * every);
+}
+
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -502,6 +509,13 @@ export function keybarHtml() {
   return `<div class="fkeys">${FKEYS.map((k) => `<a class="fkey${k.mobile ? ' is-mobile' : ''}" href="${toQuery(k.cmd)}" data-cmd="${escapeHtml(k.cmd)}" data-name="${parseCommand(k.cmd).name}"><span class="fkey-n">${k.key}</span><span class="fkey-l">${k.label}</span></a>`).join('')}</div>
     <button type="button" class="fkey fkey-share" id="share" aria-label="Copy a link to this screen"><span class="fkey-l">SHARE</span></button>
     <button type="button" class="fkey fkey-menu" id="menu-btn" aria-haspopup="dialog"><span class="fkey-l">MENU</span><span class="fkey-n">Ctrl K</span></button>`;
+}
+
+// A command that is only a panel number: "3" -> 3, "12" -> 12. Anything else (3988.HK,
+// CPI 100 2000) -> null, and runs as a command.
+export function panelNumberInput(clean) {
+  const t = String(clean ?? '').trim();
+  return /^[1-9]\d?$/.test(t) ? Number(t) : null;
 }
 
 // The panel labelled "<n>) ..." on a screen (HOME: 1 MARKETS, 2 S&P 500...), or null.
@@ -627,9 +641,17 @@ function boot() {
     freshEl.title = title;
     freshEl.setAttribute('aria-label', title || 'No data on this screen');
   }
-  function setUpdated(iso, stale) {
-    const dot = freshDot(iso, stale);
+  let fresh = null; // { iso, stale, at, every } for the screen on show
+  function paintFresh(now = Date.now()) {
+    if (!fresh) return;
+    const dot = freshDot(fresh.iso, fresh.stale || freshOverdue(fresh, now));
     setFresh(dot.state, dot.title);
+  }
+  function setUpdated(iso, stale) {
+    const now = Date.now();
+    const gap = fresh?.at ? now - fresh.at : 0;
+    fresh = { iso, stale: Boolean(stale), at: now, every: gap > 1000 ? gap : fresh?.every || 0 };
+    paintFresh(now);
     if (statusMsg.textContent === 'LOADING...' || statusMsg.textContent === `${statusNote} · LOADING...`) setStatus('');
     toParent({ type: 'bb:updated', iso: String(iso || ''), stale: Boolean(stale) });
   }
@@ -669,8 +691,8 @@ function boot() {
   const depth = () => Number(window.history.state?.d) || 0;
   function goBack() { if (depth() > 0) window.history.back(); }
 
-  // --- panel numbers: on a screen without a stock function bar, 1 to 9 open that
-  // numbered panel over the whole screen area; Esc or the same number again returns.
+  // --- panel numbers: on a screen without a stock function bar, a number and Enter open
+  // that numbered panel over the whole screen area; Esc or the same number again returns.
   let maxPanel = null;
   function unmaximize() {
     if (!maxPanel) return false;
@@ -848,6 +870,7 @@ function boot() {
     runCleanups();
     maxPanel = null;
     document.body.classList.remove('has-max-panel');
+    fresh = null;
     setFresh('none');
     if (screenAbort) screenAbort.abort();
     screenAbort = new AbortController();
@@ -1048,6 +1071,21 @@ function boot() {
       menu.open();
       return;
     }
+    // A plain number off a stock screen: the row or panel with that number (did-you-mean
+    // row 2, HOME panel 3). The same number again closes the panel. Otherwise it runs.
+    const n = typed && !embed && tickerBar.hidden ? panelNumberInput(clean) : null;
+    if (n) {
+      const item = screen.querySelector(`[data-key="${n}"]`);
+      if (item || maximize(String(n))) {
+        input.value = '';
+        draft = '';
+        histIndex = cmdHistory.length;
+        closeSuggest();
+        placeCursor();
+        if (item) item.click();
+        return;
+      }
+    }
     // LOGIN (typed or a pasted key) never goes to a DESK panel or into history with its key.
     const secret = parseCommand(clean).name === 'LOGIN';
     if (typed && commandHook && !secret && commandHook(clean)) {
@@ -1226,18 +1264,14 @@ function boot() {
       goBack();
       return;
     }
-    // A stock screen's function bar: keys 1 to 9 while the command bar is empty.
-    if (/^[1-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey
+    // A stock screen's function bar: keys 1 to 9 while the command bar is empty. On other
+    // screens a digit is just typing (3988.HK); a number and Enter opens a panel (run()).
+    if (/^[1-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey && (embed || !tickerBar.hidden)
       && (e.target === input ? input.value === '' : !e.target.closest?.('input, select, textarea'))) {
       const item = (tickerBar.hidden ? screen : tickerBar).querySelector(`[data-key="${e.key}"]`);
       if (item) {
         e.preventDefault();
         item.click();
-        return;
-      }
-      // No stock function bar: the number opens that panel over the screen.
-      if (!embed && tickerBar.hidden && maximize(e.key)) {
-        e.preventDefault();
         return;
       }
     }
@@ -1275,6 +1309,7 @@ function boot() {
     const open = marketStatus(now) === 'OPEN';
     statusEl.dataset.open = String(open);
     statusEl.querySelector('.status-text').textContent = open ? 'MARKET OPEN' : 'MARKET CLOSED';
+    paintFresh(now.getTime());
   }
   if (!embed) {
     tick();

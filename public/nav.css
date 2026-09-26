@@ -172,7 +172,7 @@ body.menu-open { overflow: hidden; }
 .hc-row-fn { grid-template-columns: 200px minmax(0, 1fr); }
 .hc-row-fn .hc-name { color: var(--accent); }
 
-.hs-list { columns: 3 260px; column-gap: 32px; margin: 0 0 8px; }
+.hs-list { columns: 3 320px; column-gap: 32px; margin: 0 0 8px; }
 .hs-row {
   display: grid; grid-template-columns: 124px minmax(0, 1fr); gap: 12px; align-items: baseline;
   break-inside: avoid;
@@ -184,7 +184,7 @@ body.menu-open { overflow: hidden; }
 .hs-cmd:hover { color: var(--accent); text-decoration: none; }
 .hs-what { color: var(--text-2); }
 .hs-keys { margin-top: 12px; font-size: 12px; color: var(--text-2); line-height: 2; }
-.hs-sep { margin: 0 6px; color: var(--faint); }
+.hs-sep { margin: 0 4px; color: var(--faint); }
 
 .hd { max-width: 880px; }
 .hd-name { margin: 0; font-size: 24px; font-weight: 600; line-height: 1.2; color: var(--text); }

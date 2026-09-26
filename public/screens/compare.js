@@ -58,6 +58,9 @@ export function usageHtml() {
     <p class="muted examples">Try ${ex.map((e) => `<a class="code" href="${esc(q(e))}" data-cmd="${esc(e)}">${esc(e)}</a>`).join(' ')}</p>`;
 }
 
+// How to read the lines: price change only, no dividends.
+const PRICE_ONLY = 'PRICE CHANGE ONLY, NO DIVIDENDS';
+
 export function render(el, cmd, ctx) {
   if (cmd.error) {
     el.innerHTML = panel('1', 'Compare', usageHtml(), { cls: 'panel-solo' });
@@ -68,7 +71,7 @@ export function render(el, cmd, ctx) {
   const body = toolbar({ left: tickerChips(tickers, range), label: 'Tickers' })
     + `<div class="ch-bar cp-bar">${rangePills(range, (r) => compareCmd(tickers, r), RANGES)}</div>`
     + `<div class="chart-host chart-host-lg" id="cp-chart">${LOADING}</div><div id="cp-legend"></div>`;
-  el.innerHTML = panel('1', `Compare ${range}`, body, { cls: 'panel-solo', metaId: 'cp-meta', bodyCls: 'flush' });
+  el.innerHTML = panel('1', `Compare ${range}`, body, { cls: 'panel-solo', metaId: 'cp-meta', meta: PRICE_ONLY, bodyCls: 'flush' });
   const host = el.querySelector('#cp-chart');
   const leg = el.querySelector('#cp-legend');
   const meta = el.querySelector('#cp-meta');
@@ -90,7 +93,8 @@ export function render(el, cmd, ctx) {
       const all = d.series.flatMap((x) => x.points.map((p) => p.t));
       const span = all.length ? Math.max(...all) - Math.min(...all) : 0;
       const hover = fmtHoverForBar('1D');
-      const base = '';
+      const base = PRICE_ONLY;
+      meta.innerHTML = base;
       leg.innerHTML = legendHtml(d.series);
       cleanup?.();
       host.textContent = '';

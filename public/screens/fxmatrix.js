@@ -94,7 +94,7 @@ export function render(el, cmd, ctx) {
         if (!cmd.args?.error) { ctx.updated(d.updated, d.stale); ctx.status('LIVE FX QUOTES MISSING, DAILY CHANGE SHOWN', 'warn'); }
       } else {
         body.innerHTML = matrixTable(d);
-        meta.textContent = `${d.stale ? 'LAST KNOWN RATES' : 'ECB REFERENCE RATES'} ${fmtDay(d.date)}`;
+        meta.textContent = `ROW CURRENCY BUYS COLUMN · ${d.stale ? 'LAST KNOWN RATES' : 'ECB REFERENCE RATES'} ${fmtDay(d.date)}`;
         if (!cmd.args?.error) ctx.updated(d.updated, d.stale);
       }
     } catch (err) {
