@@ -365,7 +365,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .mk-cols-time { columns: 3 400px; }
 
 /* ---- Range chart: presets, bar sizes, dates, header, chart --------------- */
-.rc { display: flex; flex-direction: column; min-width: 0; }
+.rc { display: flex; flex-direction: column; min-width: 0; container: rc / inline-size; }
 .ch-bar {
   display: flex; align-items: stretch; flex-wrap: wrap; gap: 0 12px;
   min-height: 28px;
@@ -377,9 +377,9 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .ch-tabs .tab { height: 28px; font-size: 12px; }
 .ch-tabs .tab.is-zoomed { background: var(--panel-3); color: var(--text); }
 /* The range chart's bar is one left-aligned row: ranges and bar period, then ch-right
-   (FROM TO | LINE CANDLES | + COMPARE) right after it, no spacer. Every control is 28px
-   high. A .ch-grp starts with a thin dim separator (a background: taking it off a group
-   that starts a wrapped row changes no width). */
+   (the two dates | LINE or CANDLES | + COMPARE) right after it, no spacer. Every control
+   is 28px high. A .ch-grp starts with a thin dim separator (a background: taking it off a
+   group that starts a wrapped row changes no width). */
 .rc > .ch-bar { gap: 0; }
 .rc .ch-rng { padding-right: 10px; }
 .ch-right { display: flex; align-items: stretch; flex-wrap: wrap; gap: 0; min-width: 0; }
@@ -388,10 +388,14 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   background: linear-gradient(var(--rule-strong), var(--rule-strong)) 0 50% / 1px 16px no-repeat;
 }
 .ch-grp.is-row-start { background: none; }
+.ch-right > .ch-grp:last-child { padding-right: 0; }
 .ch-tools { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
 .ch-tools > .tab { height: 28px; font-size: 12px; }
 .ch-seg { display: flex; align-items: center; }
 .ch-seg .tab { height: 28px; font-size: 12px; }
+/* LINE or CANDLES, one button as wide as CANDLES, so a click never moves the row. */
+.ch-sty { justify-content: center; min-width: calc(7ch + 16px); color: var(--text); }
+.ch-add-s { display: none; }
 .ch-chip {
   display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 0 0 8px;
   border: 1px solid var(--rule-strong); font-size: 12px; color: var(--text); white-space: nowrap;
@@ -406,7 +410,10 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .ch-right > .ch-dates { margin-left: 0; padding: 0 10px 0 11px; }
 .ch-right > .ch-dates input { font-size: 12px; }
 .ch-dates label { display: flex; align-items: center; gap: 6px; letter-spacing: .06em; }
-/* The date boxes: inverse ice blue, typed as MM/DD/YYYY; red when they hold no real day. */
+.ch-right > .ch-dates { gap: 6px; }
+.ch-dsep { color: var(--dim); }
+/* The date boxes: inverse ice blue, typed as MM/DD/YYYY or MM/DD/YY; red when they hold
+   no real day. */
 .ch-dates input {
   width: 13ch; height: 28px; padding: 0 8px;
   border: 0; background: var(--text-2); color: var(--ink);
@@ -441,6 +448,23 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .ch-per-c.is-active { color: var(--ink); background: var(--text-2); font-weight: 600; }
 .ch-per-c:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
 .ch-hv { color: var(--text); }
+/* Narrow chart boxes (HOME, DESK panels) keep the bar on one row by compacting in steps,
+   by the chart box's own width: short dates (09/25/26, --ch-yy tells chart.js) and + VS,
+   then tighter range buttons, then 2Y and 10Y go (the period grid still has them). Only
+   under about 640px does the bar wrap to a second row. */
+@container rc (max-width: 859px) {
+  .ch-bar { --ch-yy: 1; }
+  .ch-right > .ch-dates input { width: calc(8ch + 18px); padding: 0 7px; }
+  .ch-add-l { display: none; }
+  .ch-add-s { display: inline; }
+}
+@container rc (max-width: 779px) {
+  .ch-tabs .tab, .ch-per-btn, .ch-add { padding: 0 5px; }
+  .ch-sty { padding: 0 5px; min-width: calc(7ch + 10px); }
+}
+@container rc (max-width: 719px) {
+  .ch-tabs .ch-r-minor:not(.is-active) { display: none; }
+}
 
 /* The header strip: last and the change over the window, big; the window's numbers or
    the crosshair's bar under it. One line each, so hovering never moves the chart. */
@@ -889,7 +913,7 @@ a.ch-flag { cursor: pointer; }
   .ch-rng > .ch-tabs { flex: 1 1 auto; width: auto; min-width: 0; border-bottom: 0; }
   .ch-right { width: 100%; margin-left: 0; gap: 0; }
   .rc .ch-rng { padding-right: 0; }
-  .ch-right > .ch-dates { flex-wrap: wrap; width: 100%; padding: 4px 8px; }
+  .ch-right > .ch-dates { padding: 4px 8px; }
   .ch-right > .ch-seg { padding: 4px 10px 4px 8px; }
   .ch-tools { padding: 4px 8px 4px 11px; }
   .ch-dates { margin-left: 0; padding: 4px 8px; gap: 8px; }

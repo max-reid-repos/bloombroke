@@ -14,7 +14,7 @@ import { earningsFrom8K, exDivFromRows, parseEventData, makeChartEvents } from '
 import { parseSubmissions } from '../data/filings.js';
 import { parseRangeArgs, rangeWords, chartQuery, splitCompare, PRESETS } from '../public/ranges.js';
 import { parseCommand } from '../public/app.js';
-import { periodLabel, periodRows, periodMenu, periodPick } from '../public/screens/chart.js';
+import { periodLabel, periodRows, periodMenu, periodPick, chartStyleToggle, nextChartStyle } from '../public/screens/chart.js';
 
 const DAY = 86_400_000;
 const NOW = new Date('2026-09-25T15:00:00Z');
@@ -463,4 +463,37 @@ test('date boxes: MM/DD/YYYY in and out, bad days refused', () => {
   assert.equal(parseDateBox('2024-02-01'), null);
   assert.equal(parseDateBox('13/01/2024'), null);
   assert.equal(parseDateBox('01/01/1850'), null);
+});
+
+test('date boxes: a narrow bar shows MM/DD/YY, and both year forms are read', () => {
+  assert.equal(fmtDateBox(Date.parse('2026-09-25T14:00:00Z'), true), '09/25/26');
+  assert.equal(fmtDateBox(Date.parse('1999-01-04T14:00:00Z'), true), '01/04/99');
+  // Two digits: this century unless that is after this year.
+  assert.equal(parseDateBox('09/25/26', 2026), '2026-09-25');
+  assert.equal(parseDateBox('9/5/24', 2026), '2024-09-05');
+  assert.equal(parseDateBox('01/02/00', 2026), '2000-01-02');
+  assert.equal(parseDateBox('12/31/27', 2026), '1927-12-31');
+  assert.equal(parseDateBox('03/16/80', 2026), '1980-03-16');
+  assert.equal(parseDateBox('09/25/2026', 2026), '2026-09-25');
+  // What the box shows parses back to the same day, in either form.
+  const t = Date.parse('2025-03-04T15:00:00Z');
+  assert.equal(parseDateBox(fmtDateBox(t, true), 2026), parseDateBox(fmtDateBox(t)));
+  assert.equal(parseDateBox('02/29/23', 2026), null, 'not a leap year');
+  assert.equal(parseDateBox('09/25/026'), null, 'three digits');
+  assert.equal(parseDateBox('09/25/2'), null, 'one digit');
+});
+
+test('chart type: one LINE or CANDLES button, a click switches it', () => {
+  assert.equal(nextChartStyle('line'), 'candle');
+  assert.equal(nextChartStyle('candle'), 'line');
+  const line = chartStyleToggle('line');
+  assert.match(line, /^<button type="button"/);
+  assert.match(line, /data-style-toggle/);
+  assert.match(line, />LINE<\/button>$/);
+  assert.match(line, /aria-label="Chart type line, switch to candles"/);
+  const candle = chartStyleToggle('candle');
+  assert.match(candle, />CANDLES<\/button>$/);
+  assert.match(candle, /aria-label="Chart type candles, switch to line"/);
+  assert.match(chartStyleToggle('bogus'), />LINE</, 'anything else is a line');
+  assert.ok(!/\u2014|\u2013/.test(line + candle), 'no long dashes');
 });

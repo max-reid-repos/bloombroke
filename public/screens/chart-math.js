@@ -347,17 +347,20 @@ export function whenText(t, { intraday = false, spanMs = 0, nowYear = new Date()
 
 // ---- Date boxes ----------------------------------------------------------------------
 
-// ms -> "09/25/2026" in New York.
-export function fmtDateBox(t) {
+// ms -> "09/25/2026" in New York, or "09/25/26" when short (a narrow chart bar).
+export function fmtDateBox(t, short = false) {
   const d = new Intl.DateTimeFormat('en-US', { timeZone: NY, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(t));
-  return d;
+  return short ? `${d.slice(0, 6)}${d.slice(8)}` : d;
 }
 
-// "9/25/2026", "09/25/2026" (also "-" or "." between) -> "2026-09-25", or null.
-export function parseDateBox(s) {
-  const m = /^\s*(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\s*$/.exec(String(s ?? ''));
+// "9/25/2026", "09/25/2026", "09/25/26" (also "-" or "." between) -> "2026-09-25", or
+// null. A two-digit year is this century unless that lands after this year: 80 is 1980.
+export function parseDateBox(s, nowYear = new Date().getUTCFullYear()) {
+  const m = /^\s*(\d{1,2})[/.-](\d{1,2})[/.-](\d{4}|\d{2})\s*$/.exec(String(s ?? ''));
   if (!m) return null;
-  const [mo, d, y] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  let y = Number(m[3]);
+  if (m[3].length === 2) y = 2000 + y > nowYear ? 1900 + y : 2000 + y;
+  const [mo, d] = [Number(m[1]), Number(m[2])];
   const date = new Date(Date.UTC(y, mo - 1, d));
   if (date.getUTCFullYear() !== y || date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d || y < 1900) return null;
   return date.toISOString().slice(0, 10);

@@ -454,6 +454,16 @@ export function stripItems(points, spec, { fmtY, bp = false, hover = null, bar =
 // the crosshair the bar's time, O H L C, volume and change from the window start.
 const DAY_MS = 86_400_000;
 const STYLE_KEY = 'bb.chart.style';
+// Range buttons a narrow chart bar hides first (the period grid still has them).
+const MINOR_RANGES = ['2Y', '10Y'];
+
+// LINE or CANDLES: one button showing the chart type; a click switches it.
+export const nextChartStyle = (style) => (style === 'candle' ? 'line' : 'candle');
+export function chartStyleToggle(style) {
+  const cur = style === 'candle' ? 'candle' : 'line';
+  const [now, next] = cur === 'candle' ? ['candles', 'line'] : ['line', 'candles'];
+  return `<button type="button" class="tab ch-sty" data-style-toggle data-style="${cur}" aria-label="Chart type ${now}, switch to ${next}" title="Switch to ${next}">${now.toUpperCase()}</button>`;
+}
 
 export function rangeChart(root, ctx, opts) {
   const { symbol, meta, navigate, label = symbol, bp = false } = opts;
@@ -492,6 +502,11 @@ export function rangeChart(root, ctx, opts) {
   const decimalsFor = (pts) => opts.decimals ?? priceDecimals(pts[pts.length - 1].v);
   const fmtYFor = (pts) => opts.fmtY || ((v) => fmtNum(v, decimalsFor(pts)));
   const compact = () => compactOpt || root.classList.contains('is-tight');
+  // A narrow bar (a container query in style.css sets --ch-yy) shows 09/25/26.
+  const shortDates = () => {
+    const bar = root.querySelector('.ch-bar');
+    return Boolean(bar) && typeof getComputedStyle === 'function' && getComputedStyle(bar).getPropertyValue('--ch-yy').trim() === '1';
+  };
 
   // ---- Windows and bar sizes ---------------------------------------------------------
 
@@ -517,9 +532,10 @@ export function rangeChart(root, ctx, opts) {
     const w = win();
     const tabs = PRESETS.map((p) => {
       const on = !range.from && range.range === p;
+      const cls = `tab${on ? ' is-active' : ''}${on && zoomed ? ' is-zoomed' : ''}${MINOR_RANGES.includes(p) ? ' ch-r-minor' : ''}`;
       return navigate
-        ? `<a class="tab${on ? ' is-active' : ''}${on && zoomed ? ' is-zoomed' : ''}" href="${esc(q(cmdFor({ range: p })))}" data-cmd="${esc(cmdFor({ range: p }))}"${on ? ' aria-current="true"' : ''}>${p}</a>`
-        : `<button type="button" class="tab${on ? ' is-active' : ''}${on && zoomed ? ' is-zoomed' : ''}" data-range="${p}"${on ? ' aria-pressed="true"' : ''}>${p}</button>`;
+        ? `<a class="${cls}" href="${esc(q(cmdFor({ range: p })))}" data-cmd="${esc(cmdFor({ range: p }))}"${on ? ' aria-current="true"' : ''}>${p}</a>`
+        : `<button type="button" class="${cls}" data-range="${p}"${on ? ' aria-pressed="true"' : ''}>${p}</button>`;
     }).join('');
     if (compact()) return `<div class="ch-bar"><nav class="tabs ch-tabs" aria-label="Chart range">${tabs}</nav></div>`;
     const per = periodMenu({
@@ -531,20 +547,22 @@ export function rangeChart(root, ctx, opts) {
       return `<span class="ch-chip ${COMPARE_CLASSES[k]}"><span class="ch-chip-sw" aria-hidden="true"></span>${esc(s)} <span class="num ch-chip-pct" data-sym="${esc(s)}">${c?.error ? 'NO DATA' : ''}</span><button type="button" class="ch-chip-x" data-uncompare="${esc(s)}" aria-label="Remove ${esc(s)}">&times;</button></span>`;
     }).join('');
     const canCompare = compare.length < MAX_COMPARE;
-    // One row, left to right: the ranges and the bar period | FROM TO | LINE CANDLES |
-    // + COMPARE. Everything after the bar period is one group (ch-right), so a narrow box
-    // wraps it whole onto a second row. Each .ch-grp starts with a thin separator, left
-    // off when the group starts a row (markRows).
+    // One row, left to right: the ranges and the bar period | the two date boxes | the
+    // LINE or CANDLES toggle | + COMPARE. Everything after the bar period is one group
+    // (ch-right), so a box under about 640px wraps it whole onto a second row. Wider boxes
+    // stay on one row by compacting in steps (container queries on .rc in style.css).
+    // Each .ch-grp starts with a thin separator, left off when it starts a row (markRows).
     return `<div class="ch-bar">
       <div class="ch-rng"><nav class="tabs ch-tabs" aria-label="Chart range">${tabs}</nav>${per}</div>
       <div class="ch-right">
-        <div class="ch-dates ch-grp${range.from || zoomed ? ' is-active' : ''}">
-          <label><span>FROM</span><input class="ch-date" name="from" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="10" placeholder="MM/DD/YYYY" aria-label="From date, MM/DD/YYYY"></label>
-          <label><span>TO</span><input class="ch-date" name="to" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="10" placeholder="MM/DD/YYYY" aria-label="To date, MM/DD/YYYY"></label>
+        <div class="ch-dates ch-grp${range.from || zoomed ? ' is-active' : ''}" role="group" aria-label="Dates, Enter to apply">
+          <input class="ch-date" name="from" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="10" placeholder="MM/DD/YYYY" aria-label="From date">
+          <span class="ch-dsep" aria-hidden="true">-</span>
+          <input class="ch-date" name="to" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="10" placeholder="MM/DD/YYYY" aria-label="To date">
         </div>
-        <span class="ch-seg ch-grp" role="group" aria-label="Chart style">${['line', 'candle'].map((k) => `<button type="button" class="tab${style === k ? ' is-active' : ''}" data-style="${k}"${style === k ? ' aria-pressed="true"' : ''}>${k === 'line' ? 'LINE' : 'CANDLES'}</button>`).join('')}</span>
+        <div class="ch-seg ch-grp">${chartStyleToggle(style)}</div>
         <div class="ch-tools ch-grp">
-          ${canCompare ? '<button type="button" class="tab ch-add" data-compare-add>+ COMPARE</button>' : ''}
+          ${canCompare ? '<button type="button" class="tab ch-add" data-compare-add aria-label="Add a compare line"><span class="ch-add-l">+ COMPARE</span><span class="ch-add-s" aria-hidden="true">+ VS</span></button>' : ''}
           ${chips}
         </div>
       </div>
@@ -562,6 +580,7 @@ export function rangeChart(root, ctx, opts) {
     if (el.matches?.('input.ch-date')) return `input[name="${el.name}"]`;
     if (el.dataset?.per) return `[data-per="${el.dataset.per}"]`;
     if (el.hasAttribute?.('data-per-toggle')) return '[data-per-toggle]';
+    if (el.hasAttribute?.('data-style-toggle')) return '[data-style-toggle]';
     return null;
   };
   // A group that starts a row (the bar wrapped) drops its separator. Only a background
@@ -818,8 +837,9 @@ export function rangeChart(root, ctx, opts) {
     const ti = root.querySelector('input[name="to"]');
     if (!fi || !ti || !model) return;
     const [i0, i1] = visibleRange();
-    const f = fmtDateBox(model.points[i0].t);
-    const t = fmtDateBox(model.points[i1].t);
+    const short = shortDates();
+    const f = fmtDateBox(model.points[i0].t, short);
+    const t = fmtDateBox(model.points[i1].t, short);
     for (const [el, v] of [[fi, f], [ti, t]]) {
       if (document.activeElement === el) continue;
       el.value = v;
@@ -1048,9 +1068,8 @@ export function rangeChart(root, ctx, opts) {
       pickPeriod(bar, p);
       return;
     }
-    const s = e.target.closest('button[data-style]');
-    if (s) {
-      style = s.dataset.style === 'candle' ? 'candle' : 'line';
+    if (e.target.closest('button[data-style-toggle]')) {
+      style = nextChartStyle(style);
       ctx.store?.set?.(STYLE_KEY, style);
       repaintBar();
       draw();
@@ -1098,7 +1117,12 @@ export function rangeChart(root, ctx, opts) {
   // A panel too short for the full controls drops them (and the volume) before the plot.
   let tightTimer = 0;
   let chromeFull = 150;
+  let shortWas = null;
   const ro = typeof ResizeObserver === 'function' && !compactOpt ? new ResizeObserver(() => {
+    // The date form follows the box width at once (before paint), so no long date
+    // shows clipped in a short box.
+    const short = shortDates();
+    if (short !== shortWas) { shortWas = short; fillDates(); }
     clearTimeout(tightTimer);
     tightTimer = setTimeout(() => {
       markRows();
