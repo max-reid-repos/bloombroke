@@ -11,6 +11,7 @@ import { createCache } from './cache.js';
 import { normalizeTicker, tickerSource, UA } from './quotes.js';
 import { instrumentById } from '../public/instruments.js';
 import { PRESETS, parseDate, isoDay, nyToday } from '../public/ranges.js';
+import { barValid, isIntradayBar, presetSpanDays, parseBar, BARS } from '../public/bars.js';
 
 const BARS_URL = 'https://ts-api.cnbc.com/harmony/app/bars';
 const DAY = 86_400_000;
@@ -18,7 +19,12 @@ const MIN = 60_000;
 // Bars the source serves: 1M 5M 1H 1D 1W 1MO. Intraday history only goes back about
 // three months, so older custom ranges use daily bars.
 const INTRADAY_DAYS = 80;
-const MAX_POINTS = 800;
+// A response never carries more bars than this (longer series are merged, see mergeBars).
+export const MAX_POINTS = 6000;
+// The source serves about 90 days of intraday bars per call: longer windows go in pieces.
+const CHUNK_DAYS = 85;
+// Upstream bodies over this size are dropped, not parsed.
+export const MAX_BODY = 8 * 1024 * 1024;
 
 // Preset -> bar size, how far back, and how long a chart stays cached.
 const PRESET_SPEC = {
@@ -52,6 +58,11 @@ function usSession(ticker) {
   return inst ? Boolean(inst.us) && inst.kind === 'index' && !inst.allDay : true;
 }
 
+// Plain stock and ETF tickers (not in the registry) trade before and after the session.
+const hasExtendedHours = (ticker) => !instrumentById(ticker);
+// Crypto trades around the clock: its 1D and 5D are the last 24 hours and 5 days.
+const aroundTheClock = (ticker) => instrumentById(ticker)?.kind === 'crypto';
+
 export class ChartError extends Error {
   constructor(code, message) {
     super(message);
@@ -63,25 +74,59 @@ export function stamp(date) {
   return date.toISOString().replace(/[-:T]/g, '').slice(0, 8);
 }
 
-// CNBC priceBars -> [{ t, d, v }], oldest first. d is "YYYYMMDDHHMMSS" in New York time.
+// CNBC priceBars -> [{ t, d, v, o, h, l, x }], oldest first. d is "YYYYMMDDHHMMSS" in
+// New York time, v the close, o h l the open, high and low (when the source sends them
+// and they make sense), x the volume (when above zero).
 export function shapeBars(bars) {
   return (Array.isArray(bars) ? bars : [])
-    .map((b) => ({ t: Number(b.tradeTimeinMills), d: String(b.tradeTime || ''), v: Number(b.close) }))
+    .map((b) => {
+      const p = { t: Number(b?.tradeTimeinMills), d: String(b?.tradeTime || ''), v: Number(b?.close) };
+      const o = Number(b?.open);
+      const h = Number(b?.high);
+      const l = Number(b?.low);
+      if ([o, h, l].every((n) => Number.isFinite(n) && n > 0) && h >= l && h >= Math.max(o, p.v) - 1e-9 && l <= Math.min(o, p.v) + 1e-9) {
+        p.o = o; p.h = h; p.l = l;
+      }
+      const x = Number(b?.volume);
+      if (Number.isFinite(x) && x > 0) p.x = x;
+      return p;
+    })
     .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.v) && p.v > 0 && /^\d{14}$/.test(p.d))
     .sort((a, b) => a.t - b.t);
 }
 
-// Keep the most recent trading day(s). For US symbols keep the regular session only.
-export function lastSession(points, { usSession = true, sessions = 1 } = {}) {
+// A bar of `mins` minutes starting at New York time d: inside the 09:30 to 16:00
+// session? 1- and 5-minute bars keep the 16:00 bar (the close); longer bars keep any bar
+// that overlaps the session (a 1h bar from 09:00 holds the open). closeHm: the last bar
+// kept (an index settles a few minutes after 16:00: its 1-minute bars run to 16:05).
+export function inRegular(d, mins = 5, closeHm = 1600) {
+  const hm = Number(d.slice(8, 12));
+  const start = Math.floor(hm / 100) * 60 + (hm % 100);
+  if (mins <= 5) return hm >= 930 && hm <= closeHm;
+  return start + mins > 9 * 60 + 30 && start < 16 * 60;
+}
+
+// A bar from 04:00 to 20:00 New York time: pre-market, the session and after hours.
+const inExtended = (d) => { const hm = Number(d.slice(8, 12)); return hm >= 400 && hm < 2000; };
+
+// Keep the most recent trading day(s). For US symbols keep the regular session only,
+// or with ext (a stock's 1D) pre-market and after hours too.
+export function lastSession(points, { usSession = true, sessions = 1, ext = false, mins = 5, closeHm = 1600 } = {}) {
   const inSession = (p) => {
     if (!usSession) return true;
-    const hm = Number(p.d.slice(8, 12));
-    return hm >= 930 && hm <= 1600;
+    return ext ? inExtended(p.d) : inRegular(p.d, mins, closeHm);
   };
   const kept = points.filter(inSession);
   if (!kept.length) return [];
   const days = [...new Set(kept.map((p) => p.d.slice(0, 8)))].slice(-sessions);
   return kept.filter((p) => days.includes(p.d.slice(0, 8)));
+}
+
+// The last `days` x 24 hours before the last bar (crypto).
+export function lastHours(points, days = 1) {
+  if (!points.length) return [];
+  const from = points[points.length - 1].t - days * DAY;
+  return points.filter((p) => p.t > from);
 }
 
 // Weekly/monthly points + daily points -> the same points with e (ms of the last
@@ -118,9 +163,37 @@ export function thin(points, max = MAX_POINTS) {
   return Array.from({ length: max }, (_, i) => points[Math.round(i * step)]);
 }
 
+// A series over `max` bars becomes `max` merged bars: each keeps the first bar's time,
+// the open of its first bar, the highest high, the lowest low, the close of its last bar
+// and the summed volume, so no high or low is lost. The newest bar is always kept whole.
+export function mergeBars(points, max = MAX_POINTS) {
+  if (points.length <= max) return points;
+  const k = Math.ceil(points.length / max);
+  const out = [];
+  for (let i = 0; i < points.length; i += k) {
+    const g = points.slice(i, i + k);
+    const first = g[0];
+    const last = g[g.length - 1];
+    const m = { ...last, t: first.t, d: first.d };
+    const hs = g.map((p) => p.h ?? p.v);
+    const ls = g.map((p) => p.l ?? p.v);
+    m.o = first.o ?? first.v;
+    m.h = Math.max(...hs);
+    m.l = Math.min(...ls);
+    const x = g.reduce((s, p) => s + (p.x || 0), 0);
+    if (x > 0) m.x = x; else delete m.x;
+    out.push(m);
+  }
+  return out;
+}
+
 // Resolve what to fetch: a preset, or a custom FROM (and optional TO) in YYYY-MM-DD.
-export function chartWindow({ range, from, to }, now = new Date()) {
+// bar: an explicit bar size from the whitelist (public/bars.js), checked against the
+// window; without one the window picks its own. An explicit intraday bar on a stock's 1D
+// keeps pre-market and after hours (ext).
+export function chartWindow({ range, from, to, bar: wantBar = null }, now = new Date()) {
   const nowMs = now.getTime();
+  const badBar = () => new ChartError('bad_bar', 'That bar size does not fit this range.');
   if (from) {
     const f = parseDate(from);
     const t = to ? parseDate(to) : null;
@@ -128,10 +201,15 @@ export function chartWindow({ range, from, to }, now = new Date()) {
     const toMs = t ? t.getTime() + DAY : nowMs + DAY;
     if (f.getTime() > nowMs) throw new ChartError('bad_date', 'FROM is in the future.');
     if (t && f.getTime() >= t.getTime()) throw new ChartError('bad_date', 'FROM has to be before TO.');
-    const bar = barFor(f.getTime(), Math.min(toMs, nowMs), nowMs);
+    const spanDays = (Math.min(toMs, nowMs) - f.getTime()) / DAY;
+    if (wantBar && !barValid(wantBar, { spanDays: Math.max(spanDays, 1), ageDays: (nowMs - f.getTime()) / DAY })) throw badBar();
+    const bar = wantBar || barFor(f.getTime(), Math.min(toMs, nowMs), nowMs);
     const ended = t && toMs < nowMs;
-    const ttl = ended ? 6 * 60 * MIN : bar.endsWith('M') && bar !== '1MO' ? MIN : 15 * MIN;
-    return { key: `${isoDay(f)}:${t ? isoDay(t) : 'now'}`, start: f, end: new Date(toMs), bar, ttl, from: isoDay(f), to: t ? isoDay(t) : null };
+    const ttl = ended ? 6 * 60 * MIN : isIntradayBar(bar) ? MIN : 15 * MIN;
+    return {
+      key: `${isoDay(f)}:${t ? isoDay(t) : 'now'}${wantBar ? `:${wantBar}` : ''}`, start: f, end: new Date(toMs), bar, ttl,
+      from: isoDay(f), to: t ? isoDay(t) : null, regular: Boolean(wantBar) && isIntradayBar(bar),
+    };
   }
   const r = String(range || '1Y').toUpperCase();
   const spec = PRESET_SPEC[r];
@@ -140,36 +218,110 @@ export function chartWindow({ range, from, to }, now = new Date()) {
   if (spec.ytd) start = new Date(Date.UTC(Number(nyToday(now).slice(0, 4)), 0, 1));
   else if (spec.from) start = parseDate(spec.from);
   else start = new Date(nowMs - spec.days * DAY);
-  return { key: r, range: r, start, end: new Date(nowMs + DAY), bar: spec.bar, ttl: spec.ttl, sessions: spec.sessions };
+  if (wantBar) {
+    const spanDays = presetSpanDays(r, now);
+    if (!barValid(wantBar, { spanDays, ageDays: spanDays + (r === '5D' ? 3 : 0) })) throw badBar();
+  }
+  const bar = wantBar || spec.bar;
+  const intraday = isIntradayBar(bar);
+  return {
+    key: wantBar ? `${r}:${wantBar}` : r, range: r, start, end: new Date(nowMs + DAY), bar,
+    ttl: intraday ? MIN : spec.ttl, sessions: spec.sessions,
+    ext: Boolean(wantBar) && r === '1D' && intraday,
+    regular: Boolean(wantBar) && intraday && !spec.sessions,
+  };
+}
+
+// /api/chart query -> what getChart takes: a preset name, { from, to }, or either with
+// an explicit bar. A bar off the whitelist (public/bars.js) is a bad_bar error.
+export function chartSpecFromQuery({ r, from, to, bar } = {}) {
+  const b = bar ? parseBar(bar) : null;
+  if (bar && !b) throw new ChartError('bad_bar', `Pick a bar size: ${BARS.join(' ')}.`);
+  const base = from ? { from, to: to || null } : { range: r };
+  if (b) return { ...base, bar: b };
+  return from ? base : r;
+}
+
+// [start, end) cut into pieces the source serves in one call (intraday bars only).
+export function chunks(start, end, bar) {
+  const ms = end.getTime() - start.getTime();
+  if (!isIntradayBar(bar) || ms <= CHUNK_DAYS * DAY) return [{ start, end }];
+  const out = [];
+  for (let a = start.getTime(); a < end.getTime(); a += CHUNK_DAYS * DAY) {
+    out.push({ start: new Date(a), end: new Date(Math.min(end.getTime(), a + CHUNK_DAYS * DAY)) });
+  }
+  return out;
+}
+
+// A JSON body read with a size cap: a Content-Length over the cap, or a stream that
+// grows past it, is an error. Test doubles without a stream use their json().
+export async function readJson(res, cap = MAX_BODY) {
+  const len = Number(res.headers?.get?.('content-length'));
+  if (Number.isFinite(len) && len > cap) throw new Error('chart source: body too large');
+  const reader = res.body?.getReader?.();
+  if (!reader) return res.json();
+  const parts = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > cap) { reader.cancel().catch(() => {}); throw new Error('chart source: body too large'); }
+    parts.push(value);
+  }
+  return JSON.parse(Buffer.concat(parts.map((p) => Buffer.from(p))).toString('utf8'));
 }
 
 export function makeCharts({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 3000 }), now = () => new Date() } = {}) {
   async function bars(src, bar, win) {
     const url = `${BARS_URL}/${encodeURIComponent(src)}/${bar}/${stamp(win.start)}000000/${stamp(win.end)}000000/adjusted/EST5EDT.json`;
-    const res = await fetchImpl(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
+    // 1-minute bars are the biggest answers: a little longer to arrive.
+    const res = await fetchImpl(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(bar === '1M' ? 12_000 : 8000) });
     if (!res.ok) throw new Error(`chart source HTTP ${res.status}`);
-    return res.json();
+    return readJson(res);
+  }
+
+  // One call, or several for a long intraday window, joined oldest first.
+  async function barsJoined(src, bar, win) {
+    const parts = chunks(win.start, win.end, bar);
+    if (parts.length === 1) return bars(src, bar, win);
+    const bodies = await Promise.all(parts.map((p) => bars(src, bar, p)));
+    const ok = bodies.filter((b) => b?.barData);
+    if (!ok.length) return bodies[0];
+    const seen = new Set();
+    const priceBars = ok.flatMap((b) => b.barData.priceBars || []).filter((b) => {
+      const k = b?.tradeTimeinMills;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    return { barData: { ...ok[0].barData, priceBars } };
   }
 
   async function load(ticker, win) {
     const src = tickerSource(ticker);
     const long = win.bar === '1W' || win.bar === '1MO';
-    const [main, daily] = await Promise.allSettled([bars(src, win.bar, win), long ? bars(src, '1D', win) : Promise.resolve(null)]);
+    const [main, daily] = await Promise.allSettled([barsJoined(src, win.bar, win), long ? bars(src, '1D', win) : Promise.resolve(null)]);
     if (main.status === 'rejected') throw main.reason;
     const body = main.value;
     if (body?.status === 'ERROR' || !body?.barData) return { points: [], notFound: true };
     let points = shapeBars(body.barData.priceBars);
-    if (win.sessions) points = lastSession(points, { usSession: usSession(ticker), sessions: win.sessions });
+    const mins = ({ '1M': 1, '5M': 5, '30M': 30, '1H': 60 }[win.bar]) || 5;
+    const closeHm = mins === 1 && !hasExtendedHours(ticker) ? 1605 : 1600;
+    if (win.sessions && aroundTheClock(ticker)) points = lastHours(points, win.sessions);
+    else if (win.sessions) points = lastSession(points, { usSession: usSession(ticker), sessions: win.sessions, ext: win.ext && hasExtendedHours(ticker), mins, closeHm });
+    else if (win.regular && usSession(ticker)) points = points.filter((p) => inRegular(p.d, mins, closeHm));
     if (long) {
       const d = daily.status === 'fulfilled' ? shapeBars(daily.value?.barData?.priceBars) : [];
       if (d.length) points = barEnds(points, d);
       const today = nyToday(now());
       points = points.map((p) => (isPartial(p.d, win.bar, today) ? { ...p, p: true } : p));
     }
-    return { points: thin(points), notFound: false };
+    return { points: mergeBars(points), notFound: false };
   }
 
-  // getChart('AAPL', '5Y') or getChart('AAPL', { from: '2020-01-01', to: '2024-12-31' }).
+  // getChart('AAPL', '5Y') or getChart('AAPL', { from: '2020-01-01', to: '2024-12-31' }),
+  // either with an explicit bar: getChart('AAPL', { range: '1D', bar: '1M' }).
   async function getChart(rawTicker, rawRange = '1Y') {
     const ticker = normalizeTicker(rawTicker);
     if (!ticker) throw new ChartError('bad_symbol', 'That does not look like a ticker.');
@@ -187,7 +339,11 @@ export function makeCharts({ fetchImpl = globalThis.fetch, cache = createCache({
     if (value.points.length < 2) throw new ChartError('no_data', `No ${label} chart for ${ticker} yet.`);
     return {
       ticker, range: win.range || null, from: win.from || null, to: win.to || null, bar: win.bar,
-      points: value.points.map(({ t, v, e, p }) => ({ t, v, ...(e ? { e } : {}), ...(p ? { p: true } : {}) })), stale, updated: new Date(fetchedAt).toISOString(),
+      ext: Boolean(win.ext && hasExtendedHours(ticker)),
+      points: value.points.map(({ t, v, o, h, l, x, e, p }) => ({
+        t, v, ...(o !== undefined ? { o, h, l } : {}), ...(x ? { x } : {}), ...(e ? { e } : {}), ...(p ? { p: true } : {}),
+      })),
+      stale, updated: new Date(fetchedAt).toISOString(),
     };
   }
 

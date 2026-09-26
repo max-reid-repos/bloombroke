@@ -150,7 +150,7 @@ export function render(el, cmd, ctx) {
   const inst = instrumentById(ticker);
   const yieldChart = inst?.kind === 'yield';
   const chart = rangeChart(el.querySelector('#q-rc'), ctx, {
-    symbol: ticker, range, meta: el.querySelector('#q-ch-meta'), hostCls: 'chart-host-lg', quote: 'external',
+    symbol: ticker, range, compare: cmd.args.compare || [], meta: el.querySelector('#q-ch-meta'), hostCls: 'chart-host-lg', quote: 'external',
     navigate: (c) => ctx.run(c),
     label: `${inst?.name || ticker}${yieldChart ? '' : ' price'}`,
     ...(yieldChart ? { bp: true, decimals: 3, fmtY: (v) => `${fmtNum(v, 2)}%` } : inst ? { decimals: inst.decimals } : {}),

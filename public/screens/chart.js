@@ -1,16 +1,21 @@
-// Charts: the SVG line chart (used by every screen) and the range chart component
-// (presets, FROM/TO dates, crosshair with change vs the range start) used by the
-// instrument screen, HOME, RATES and 420. 1D and 5D charts also show when things
-// happened: a New York clock axis, session shading, the previous close and today's
-// open, and the high, low and biggest 5-minute move with their times.
+// Charts: the SVG line chart (FX and CPI screens) and the range chart component used by
+// the instrument screen, HOME, RATES and 420: presets and bar sizes down to 1-minute
+// bars, line or candles, volume, compare lines, event flags, wheel zoom, a click-drag
+// measure and a big header strip (drawn by chart-view.js, math in chart-math.js).
 
 import { esc, q, fmtNum, fmtSigned, fmtPct, dirOf, LOADING } from './markets.js';
-import { PRESETS, chartQuery, rangeWords, rangeLabel, nyToday, FIRST_DAY } from '../ranges.js';
+import { PRESETS, chartQuery, rangeWords, rangeLabel, nyToday, MAX_COMPARE } from '../ranges.js';
+import { BARS, BAR_LABEL, BAR_MS, AUTO_BAR, barValid, presetSpanDays, zoomBar, isIntradayBar } from '../bars.js';
 import { instrumentById } from '../instruments.js';
 import {
   intradayStats, sessionDomain, timeTicks, dayStarts, sessionRuns, sessionRefs, withRefs,
   placeLabels, labelWidth, whenLabel,
 } from './intraday.js';
+import { createChartView, COMPARE_CLASSES } from './chart-view.js';
+import {
+  barInfo, alignAsOf, rebase, placeEvents, headerStats, fmtVol, whenText, fmtDateBox, parseDateBox,
+  timeAt, unitAt, windowDays,
+} from './chart-math.js';
 
 // ---- Line chart --------------------------------------------------------------
 
@@ -424,106 +429,394 @@ export function stripItems(points, spec, { fmtY, bp = false, hover = null, bar =
   return items;
 }
 
-function stripHtml(items) {
-  return items.map((it) => `<span class="ch-si">${it.k ? `<span class="ch-sk">${esc(it.k)}</span> ` : ''}<span class="num${it.dir ? ` ${it.dir}` : ''}${it.strong ? ' ch-hv' : ''}">${esc(it.v)}</span>${it.when ? ` <span class="dim">${esc(it.when)}</span>` : ''}</span>`).join('<span class="ch-sep" aria-hidden="true">·</span>');
-}
+// The range chart component: range presets, bar sizes, line or candles, compare, the
+// FROM/TO boxes, a big header strip and the chart (chart-view.js). Options:
+//   symbol, range ({ range } or { from, to }), compare (symbols), meta (element for the
+//   panel meta), navigate(cmd) to change range or compares through the command bar (the
+//   instrument screen), otherwise they change in place; fmtY, bp (yields), decimals,
+//   label, hostCls, compact (HOME: one header line and the range row only).
+//   quote: 'external' when the screen passes its quote with setQuote(); otherwise a 1D
+//   chart fetches the quote itself for the previous close.
+// Header, line 1: LAST 341.07  +84.12  +32.78% for the visible window (a 1D chart from
+// the previous close). Line 2: the window's high, low, average close and volume, or under
+// the crosshair the bar's time, O H L C, volume and change from the window start.
+const DAY_MS = 86_400_000;
+const STYLE_KEY = 'bb.chart.style';
 
-// The range chart component. `root` gets a control bar and a chart. Options:
-//   symbol, range ({ range } or { from, to }), meta (element for the summary),
-//   navigate(cmd) to change range through the command bar (the instrument screen),
-//   otherwise ranges change in place; fmtY, bp (yields), decimals, label.
-//   quote: 'external' when the screen passes its quote with setQuote(); otherwise a
-//   1D or 5D chart fetches the quote itself for the previous close and open.
 export function rangeChart(root, ctx, opts) {
   const { symbol, meta, navigate, label = symbol, bp = false } = opts;
-  let range = opts.range || { range: '1Y' };
-  let data = null;
-  let live = null;
+  const inst = instrumentById(symbol);
+  const isStock = !inst;
+  const compactOpt = Boolean(opts.compact);
+  const baseRange = opts.range || { range: '1Y' };
+  let range = baseRange;
+  let fetchWin = null;        // { from, to } after a zoom; null = the chosen range
+  let viewWin = null;         // { t0, t1 } to show once the data is in
+  let zoomed = false;
+  let userBar = null;
+  let style = ctx.store?.get?.(STYLE_KEY, 'line') === 'candle' ? 'candle' : 'line';
+  let compare = [...new Set((opts.compare || []).filter((s) => s && s !== symbol))].slice(0, MAX_COMPARE);
+  let data = null;            // the main series: { points, bar, ext, ... }
+  const cmpData = new Map();  // symbol -> { points } | { error }
   let quote = null;
-  let cleanup = null;
+  let live = null;
+  let events = null;
   let seq = 0;
-  const cmdFor = (r) => [symbol, rangeWords(r)].filter(Boolean).join(' ');
+  let ctrl = null;
+  let hoverI = null;
+  let flagHover = null;
+  let model = null;
   const today = nyToday();
-  const shade = instrumentById(symbol)?.kind !== 'crypto';
+
+  const cmdFor = (r, cmp = compare) => [symbol, rangeWords({ ...r, compare: cmp })].filter(Boolean).join(' ');
+  const decimalsFor = (pts) => opts.decimals ?? priceDecimals(pts[0].v);
+  const fmtYFor = (pts) => opts.fmtY || ((v) => fmtNum(v, decimalsFor(pts)));
+  const compact = () => compactOpt || root.classList.contains('is-tight');
+
+  // ---- Windows and bar sizes ---------------------------------------------------------
+
+  // What the data covers: a preset, or FROM/TO days (typed, or from a zoom).
+  const win = () => fetchWin || (range.from ? { from: range.from, to: range.to || null } : { range: range.range || '1Y' });
+  function spanOf(w) {
+    if (w.range) { const d = presetSpanDays(w.range); return { spanDays: d, ageDays: d + (w.range === '5D' ? 3 : 0) }; }
+    const f = Date.parse(`${w.from}T00:00:00Z`);
+    const t = w.to ? Date.parse(`${w.to}T00:00:00Z`) + DAY_MS : Date.now();
+    return { spanDays: Math.max(1, (t - f) / DAY_MS), ageDays: (Date.now() - f) / DAY_MS };
+  }
+  const barOk = (bar, w = win()) => barValid(bar, spanOf(w));
+  function barFor(w = win()) {
+    if (userBar && barOk(userBar, w)) return userBar;
+    if (w.range) return AUTO_BAR[w.range] ?? null;
+    const s = spanOf(w);
+    return zoomBar(s.spanDays * DAY_MS, s.ageDays * DAY_MS);
+  }
+
+  // ---- Markup ------------------------------------------------------------------------
 
   function controls() {
+    const w = win();
     const tabs = PRESETS.map((p) => {
       const on = !range.from && range.range === p;
       return navigate
-        ? `<a class="tab${on ? ' is-active' : ''}" href="${esc(q(cmdFor({ range: p })))}" data-cmd="${esc(cmdFor({ range: p }))}"${on ? ' aria-current="true"' : ''}>${p}</a>`
-        : `<button type="button" class="tab${on ? ' is-active' : ''}" data-range="${p}"${on ? ' aria-pressed="true"' : ''}>${p}</button>`;
+        ? `<a class="tab${on ? ' is-active' : ''}${on && zoomed ? ' is-zoomed' : ''}" href="${esc(q(cmdFor({ range: p })))}" data-cmd="${esc(cmdFor({ range: p }))}"${on ? ' aria-current="true"' : ''}>${p}</a>`
+        : `<button type="button" class="tab${on ? ' is-active' : ''}${on && zoomed ? ' is-zoomed' : ''}" data-range="${p}"${on ? ' aria-pressed="true"' : ''}>${p}</button>`;
     }).join('');
-    const from = range.from || (data?.points?.length ? isoFromMs(data.points[0].t) : '');
-    // TO shows the day the range ends: today unless a TO date was picked.
-    const to = range.to || today;
+    if (compact()) return `<div class="ch-bar"><nav class="tabs ch-tabs" aria-label="Chart range">${tabs}</nav></div>`;
+    const cur = data?.bar || barFor(w);
+    const bars = BARS.map((b) => {
+      const ok = barOk(b, w);
+      const on = cur === b;
+      return `<button type="button" class="tab ch-bsz${on ? ' is-active' : ''}" data-bar="${b}"${ok ? '' : ' disabled'}${on ? ' aria-pressed="true"' : ''} title="${esc(BAR_TITLE[b])}">${BAR_LABEL[b]}</button>`;
+    }).join('');
+    const chips = compare.map((s, k) => {
+      const c = cmpData.get(s);
+      return `<span class="ch-chip ${COMPARE_CLASSES[k]}"><span class="ch-chip-sw" aria-hidden="true"></span>${esc(s)} <span class="num ch-chip-pct" data-sym="${esc(s)}">${c?.error ? 'NO DATA' : ''}</span><button type="button" class="ch-chip-x" data-uncompare="${esc(s)}" aria-label="Remove ${esc(s)}">&times;</button></span>`;
+    }).join('');
+    const canCompare = compare.length < MAX_COMPARE;
     return `<div class="ch-bar">
       <nav class="tabs ch-tabs" aria-label="Chart range">${tabs}</nav>
-      <div class="ch-dates${range.from ? ' is-active' : ''}">
-        <label><span>FROM</span><input type="date" name="from" min="${FIRST_DAY}" max="${today}" value="${esc(from)}"></label>
-        <label><span>TO</span><input type="date" name="to" min="${FIRST_DAY}" max="${today}" value="${esc(to)}"></label>
+      <nav class="tabs ch-tabs ch-bars" aria-label="Bar size">${bars}</nav>
+      <div class="ch-tools">
+        <span class="ch-seg" role="group" aria-label="Chart style">${['line', 'candle'].map((k) => `<button type="button" class="tab${style === k ? ' is-active' : ''}" data-style="${k}"${style === k ? ' aria-pressed="true"' : ''}>${k === 'line' ? 'LINE' : 'CANDLES'}</button>`).join('')}</span>
+        ${canCompare ? '<button type="button" class="tab ch-add" data-compare-add>+ COMPARE</button>' : ''}
+        ${chips}
+      </div>
+      <div class="ch-dates${range.from || zoomed ? ' is-active' : ''}">
+        <label><span>FROM</span><input class="ch-date" name="from" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="10" placeholder="MM/DD/YYYY" aria-label="From date, MM/DD/YYYY"></label>
+        <label><span>TO</span><input class="ch-date" name="to" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="10" placeholder="MM/DD/YYYY" aria-label="To date, MM/DD/YYYY"></label>
       </div>
     </div>`;
   }
 
-  root.innerHTML = `${controls()}<p class="ch-strip" hidden></p><div class="chart-host ${opts.hostCls || ''}">${LOADING}</div>`;
+  root.innerHTML = `<div class="ch-bar"></div><div class="ch-head"><p class="ch-l1 num"></p><p class="ch-l2 num"></p></div><div class="chart-host ${opts.hostCls || ''}">${LOADING}</div>`;
+  root.classList.toggle('is-compact', compactOpt);
   const host = root.querySelector('.chart-host');
-  const strip = root.querySelector('.ch-strip');
-  const bar = () => root.querySelector('.ch-bar');
+  const l1 = root.querySelector('.ch-l1');
+  const l2 = root.querySelector('.ch-l2');
+  const repaintBar = () => {
+    const had = root.querySelector('.ch-bar');
+    const focused = had?.contains(document.activeElement) && document.activeElement.matches?.('input') ? document.activeElement.name : null;
+    const typed = focused ? document.activeElement.value : null;
+    had.outerHTML = controls();
+    fillDates();
+    paintChips();
+    if (focused) {
+      const el = root.querySelector(`input[name="${focused}"]`);
+      if (el) { el.value = typed; el.focus(); }
+    }
+  };
+  repaintBar();
 
-  const shown = () => withLive(data?.points || [], live, range);
-  const decimalsFor = (pts) => opts.decimals ?? priceDecimals(pts[0].v);
-  const fmtYFor = (pts) => opts.fmtY || ((v) => fmtNum(v, decimalsFor(pts)));
-  const specFor = (pts) => intradaySpec(pts, { bar: data?.bar, quote, shade, bp });
-
-  function summary(hoverIdx) {
-    const pts = shown();
-    if (!pts.length) {
-      if (meta) meta.innerHTML = `<span class="dim">${esc(rangeLabel(range))}</span>`;
-      strip.hidden = true;
-      return;
-    }
-    const spec = specFor(pts);
-    const fmtY = fmtYFor(pts);
-    const hover = hoverIdx === undefined || hoverIdx === null ? null : pts[hoverIdx];
-    // The strip: intraday numbers live here, crosshair included.
-    if (!spec || !hover) {
-      const items = stripItems(pts, spec, { fmtY, bp, hover: null, bar: data?.bar, rangeName: rangeLabel(range) });
-      strip.innerHTML = stripHtml(items);
-      strip.hidden = !items.length;
-    } else {
-      strip.innerHTML = stripHtml(stripItems(pts, spec, { fmtY, bp, hover }));
-    }
-    if (!meta) return;
-    const first = pts[0].v;
-    const dec = decimalsFor(pts);
-    if (spec) {
-      meta.innerHTML = `<span class="dim">${esc(rangeLabel(range))} · NEW YORK TIME</span>`;
-      return;
-    }
-    if (!hover) {
-      const c = changeFrom(first, pts[pts.length - 1].v, { bp, decimals: dec });
-      meta.innerHTML = `<span class="num ${c.dir}">${esc(bp ? c.text : fmtPct(c.pct))}</span> <span class="dim">${esc(rangeLabel(range))}</span>`;
-      return;
-    }
-    const c = changeFrom(first, hover.v, { bp, decimals: dec });
-    const when = hover.live ? 'NOW' : barDay(hover, data.bar);
-    meta.innerHTML = `<span class="num">${esc(when)}</span> <span class="num ch-hv">${esc(fmtY(hover.v))}</span> <span class="num ${c.dir}">${esc(c.text)}</span>`;
+  let view = null;
+  function ensureView() {
+    if (view) return view;
+    host.textContent = '';
+    view = createChartView(host, {
+      onHover: (i) => { hoverI = i; header(); },
+      onFlag: (f) => { flagHover = f; header(); },
+      onSettle: settle,
+      onReset: reset,
+    });
+    return view;
   }
 
-  function draw() {
+  // ---- The model the view draws --------------------------------------------------------
+
+  function shown() {
+    const pts = data?.points || [];
+    if (fetchWin?.to || range.to) return pts;
+    return withLive(pts, live, null);
+  }
+
+  function build() {
     const pts = shown();
-    if (pts.length < 2) return;
+    if (pts.length < 2) return null;
+    const bar = data.bar;
+    const info = barInfo(pts, isIntradayBar(bar) ? BAR_MS[bar] / 60_000 : 1);
+    // Pre-market and after hours only mean something on a stock's 1D (ext): everything else
+    // (an index settling at 16:05, FX, futures, crypto) is one session.
+    if (!data.ext) for (const x of info) x.session = 'regular';
+    const intraday = isIntradayBar(bar);
+    const times = pts.map((p) => p.t);
+    const oneDay = intraday && !fetchWin && !range.from && range.range === '1D';
+    // A 1D chart of today leaves room for the rest of the session (or after hours).
+    let pad = 0;
+    const sessionSym = isStock || (inst?.us && inst.kind === 'index' && !inst.allDay);
+    const last = info[info.length - 1];
+    if (oneDay && sessionSym && last.day === today) {
+      const end = data.ext ? 20 * 60 : 16 * 60;
+      pad = Math.max(0, (end - last.mins) / (BAR_MS[bar] / 60_000));
+    }
+    // A quote dated by day only ("2026-09-25") is about that New York day.
+    const q = quote && /^\d{4}-\d{2}-\d{2}$/.test(quote.asOf || '') ? { ...quote, asOf: `${quote.asOf}T12:00:00Z` } : quote;
+    const refs = oneDay ? sessionRefs(pts.filter((p) => !p.live), q, { multiDay: false }) : { prevClose: null };
     const fmtY = fmtYFor(pts);
-    cleanup?.();
-    host.textContent = '';
-    cleanup = mountChart(host, pts, {
-      fmtY,
-      fmtX: fmtXForSpan(pts[pts.length - 1].t - pts[0].t),
-      label: `${label}, ${rangeLabel(range)}`,
-      intraday: specFor(pts),
-      onHover: (p, i) => summary(p ? i : null),
-    });
-    summary();
+    const decimals = decimalsFor(pts);
+    const span = times[times.length - 1] - times[0];
+    const cmp = compare.map((s, k) => {
+      const c = cmpData.get(s);
+      return c?.points ? { sym: s, cls: COMPARE_CLASSES[k], vals: alignAsOf(times, c.points) } : null;
+    }).filter(Boolean);
+    const flags = events && !compact() ? eventFlags(events, info, bar) : [];
+    const periodBar = bar === '1W' || bar === '1MO';
+    return {
+      points: pts, info, times, bar, intraday, oneDay,
+      full: [0, pts.length - 1 + pad],
+      style, pct: cmp.length > 0, compare: cmp, refs, flags,
+      volume: !compact(), fmtY, bp, decimals, label: `${label}, ${rangeLabel(range)}`,
+      // The crosshair's time: with the year on daily bars and longer.
+      whenAt: (i) => {
+        const p = pts[i];
+        if (!p) return '';
+        if (p.live) return 'NOW';
+        if (periodBar) return barDay(p, bar);
+        if (intraday) return whenText(p.t, { intraday, spanMs: span });
+        return whenText(p.t, { nowYear: 0 });
+      },
+      // The strip's high and low: the year only when it is not this one.
+      whenShort: (i) => {
+        const p = pts[i];
+        if (!p) return '';
+        if (p.live) return 'NOW';
+        return whenText(p.t, { intraday, spanMs: span });
+      },
+    };
+  }
+
+  function eventFlags(ev, info, bar) {
+    const days = info.map((x) => x.day);
+    const n = days.length - 1;
+    const list = [
+      ...ev.earnings.map((e) => ({ date: e.date, kind: 'E', url: e.url, text: 'EARNINGS' })),
+      ...(ev.next ? [{ date: ev.next.date, kind: 'E', url: null, text: ev.next.est ? 'EARNINGS (EST)' : 'EARNINGS' }] : []),
+      ...ev.dividends.map((d) => ({ date: d.date, kind: 'D', url: null, text: Number.isFinite(d.amount) ? `EX-DIV $${fmtDiv(d.amount)}` : 'EX-DIV' })),
+    ].sort((a, b) => (a.date < b.date ? -1 : 1));
+    return placeEvents(list, days, 0, n, { bar }).map((f) => ({ ...f, title: `${f.text} ${isoToWhen(f.date)}` }));
+  }
+
+  function draw({ keepWindow = true } = {}) {
+    model = build();
+    if (!model) return;
+    const v = ensureView();
+    let w = null;
+    if (viewWin) {
+      const a = unitAt(model.times, viewWin.t0);
+      const b = Math.min(model.full[1], unitAt(model.times, viewWin.t1));
+      if (b - a >= 1) w = [a, b];
+      viewWin = null;
+    } else if (zoomed && keepWindow) {
+      w = v.window();
+    }
+    const mt = v.measureTimes();
+    v.set({ ...model, window: w || null, measureTimes: mt }, { keepWindow: false });
+    if (!w) zoomed = false;
+    header();
+    fillDates();
+    paintChips();
+    paintMeta();
+  }
+
+  // ---- Header strip ------------------------------------------------------------------
+
+  function visibleRange() {
+    const w = view?.window() || model.full;
+    const n = model.points.length;
+    return [Math.max(0, Math.ceil(w[0] - 1e-9)), Math.min(n - 1, Math.floor(w[1] + 1e-9))];
+  }
+
+  function baseFor(i0) {
+    // A whole 1D chart: change from the previous close. Otherwise from the first bar shown.
+    if (model.oneDay && !zoomed && Number.isFinite(model.refs.prevClose)) return model.refs.prevClose;
+    return model.points[i0].v;
+  }
+
+  function chgText(from, to) {
+    if (bp) { const c = changeFrom(from, to, { bp: true }); return { dir: c.dir, parts: [c.text] }; }
+    const d = to - from;
+    const pct = from ? (d / from) * 100 : 0;
+    return { dir: dirOf(Math.round(pct * 100)), parts: [fmtSigned(d, model.decimals), fmtPct(pct)] };
+  }
+
+  function header() {
+    if (!model) { l1.innerHTML = ''; l2.innerHTML = ''; return; }
+    const [i0, i1] = visibleRange();
+    if (i1 <= i0) return;
+    const fmtY = model.fmtY;
+    const base = baseFor(i0);
+    const st = headerStats(model.points, i0, i1, base);
+    const tight = compact();
+    const hi = hoverI !== null && hoverI >= i0 && hoverI <= i1 ? hoverI : null;
+    const lastP = model.points[i1];
+    const sess = model.intraday && model.info[i1]?.session !== 'regular' && !lastP.live
+      ? (model.info[i1].session === 'pre' ? 'PRE-MARKET' : 'AFTER HOURS') : '';
+    if (tight && hi !== null) {
+      const p = model.points[hi];
+      const c = chgText(base, p.v);
+      l1.innerHTML = `<span class="ch-k">${esc(model.whenAt(hi))}</span> <span class="ch-v">${esc(fmtY(p.v))}</span> <span class="${c.dir}">${esc(c.parts[c.parts.length - 1])}</span>`;
+    } else {
+      const c = chgText(st.base, st.last);
+      l1.innerHTML = `<span class="ch-k">LAST</span> <span class="ch-v">${esc(fmtY(st.last))}</span>${c.parts.map((t) => ` <span class="ch-c ${c.dir}">${esc(t)}</span>`).join('')}${sess ? ` <span class="ch-k">${sess}</span>` : ''}`;
+    }
+    if (tight) { l2.innerHTML = ''; return; }
+    const sep = '<span class="ch-sep" aria-hidden="true">·</span>';
+    if (flagHover) {
+      l2.innerHTML = `<span class="ch-k">${esc(flagHover.title)}</span>${flagHover.url ? ` ${sep} <span class="dim">CLICK E FOR THE SEC FILING</span>` : ''}`;
+      return;
+    }
+    if (hi !== null) {
+      const p = model.points[hi];
+      const parts = [`<span class="ch-when">${esc(model.whenAt(hi))}</span>`];
+      if (!p.live && Number.isFinite(p.o)) {
+        parts.push(`<span class="ch-k">O</span> ${esc(fmtY(p.o))} <span class="ch-k">H</span> ${esc(fmtY(p.h))} <span class="ch-k">L</span> ${esc(fmtY(p.l))} <span class="ch-k">C</span> <span class="ch-hv">${esc(fmtY(p.v))}</span>`);
+      } else {
+        parts.push(`<span class="ch-k">${p.live ? 'LAST' : 'C'}</span> <span class="ch-hv">${esc(fmtY(p.v))}</span>`);
+      }
+      if (p.x) parts.push(`<span class="ch-k">V</span> ${esc(fmtVol(p.x))}`);
+      const c = chgText(base, p.v);
+      parts.push(`<span class="${c.dir}">${esc(c.parts[c.parts.length - 1])}</span>`);
+      for (const cm of model.compare) {
+        const pv = rebase(cm.vals, i0)[hi];
+        if (Number.isFinite(pv)) parts.push(`<span class="ch-cmpk ${cm.cls}">${esc(cm.sym)}</span> <span class="${dirOf(Math.round(pv * 100))}">${esc(fmtPct(pv))}</span>`);
+      }
+      l2.innerHTML = parts.join(` ${sep} `);
+      return;
+    }
+    const w = (i) => model.whenShort(i);
+    const items = [
+      `<span class="ch-k">HIGH</span> ${esc(fmtY(st.high))} <span class="dim">${esc(w(st.highI))}</span>`,
+      `<span class="ch-k">LOW</span> ${esc(fmtY(st.low))} <span class="dim">${esc(w(st.lowI))}</span>`,
+      `<span class="ch-k">AVG</span> ${esc(fmtY(st.avg))}`,
+    ];
+    if (st.vol) items.push(`<span class="ch-k">VOL</span> ${esc(fmtVol(st.vol))}`);
+    l2.innerHTML = items.join(` ${sep} `);
+  }
+
+  // The compare chips: each symbol's change over the visible window.
+  function paintChips() {
+    if (!model || compact()) return;
+    const [i0, i1] = visibleRange();
+    for (const cm of model.compare) {
+      const el = root.querySelector(`.ch-chip-pct[data-sym="${cssEsc(cm.sym)}"]`);
+      if (!el) continue;
+      const pv = rebase(cm.vals, i0);
+      let j = i1;
+      while (j >= i0 && !Number.isFinite(pv[j])) j -= 1;
+      const v = j >= i0 ? pv[j] : null;
+      el.textContent = Number.isFinite(v) ? fmtPct(v) : '--';
+      el.className = `num ch-chip-pct ${Number.isFinite(v) ? dirOf(Math.round(v * 100)) : ''}`;
+    }
+  }
+
+  function paintMeta() {
+    if (!meta) return;
+    const bits = [rangeLabel(fetchWin ? { from: fetchWin.from, to: fetchWin.to } : range)];
+    if (data?.bar) bits.push((BAR_TITLE[data.bar] || 'Monthly bars').toUpperCase());
+    if (model?.intraday) bits.push('NEW YORK TIME');
+    meta.innerHTML = `<span class="dim">${esc(bits.join(' · '))}</span>`;
+  }
+
+  // The date boxes always show the window on screen.
+  function fillDates() {
+    const fi = root.querySelector('input[name="from"]');
+    const ti = root.querySelector('input[name="to"]');
+    if (!fi || !ti || !model) return;
+    const [i0, i1] = visibleRange();
+    const f = fmtDateBox(model.points[i0].t);
+    const t = fmtDateBox(model.points[i1].t);
+    for (const [el, v] of [[fi, f], [ti, t]]) {
+      if (document.activeElement === el) continue;
+      el.value = v;
+      el.defaultValue = v;
+      el.classList.remove('is-bad');
+    }
+  }
+
+  // ---- Loading -----------------------------------------------------------------------
+
+  async function load({ silent = false } = {}) {
+    const my = ++seq;
+    ctrl?.abort();
+    ctrl = new AbortController();
+    const signal = ctx.signal ? anySignal([ctx.signal, ctrl.signal]) : ctrl.signal;
+    const w = win();
+    const bar = barFor(w);
+    if (!silent && !data) host.innerHTML = LOADING;
+    root.classList.add('is-loading');
+    try {
+      // Compare lines use the same window and bar size, fetched alongside.
+      const cmps = compare.map(async (s) => {
+        try {
+          const c = await ctx.fetchJSON(chartQuery(s, w, bar), { signal });
+          return [s, { points: c.points }];
+        } catch (err) {
+          // A cancelled load resolves quietly (never an unhandled rejection).
+          if (err.name === 'AbortError') return [s, null];
+          if (err.status === 404 || err.status === 400) ctx.status?.(`NO CHART FOR ${s}`, 'warn');
+          return [s, { error: err.status === 404 ? 'none' : 'down' }];
+        }
+      });
+      const d = await ctx.fetchJSON(chartQuery(symbol, w, bar), { signal });
+      const got = await Promise.all(cmps);
+      if (my !== seq) return;
+      data = d;
+      for (const [s, c] of got) if (c) cmpData.set(s, c);
+      root.classList.remove('is-loading');
+      repaintBar();
+      draw();
+      if (isIntradayBar(d.bar) && range.range === '1D' && opts.quote !== 'external') loadQuote();
+      if (isStock && !events && !compact()) loadEvents();
+      opts.onLoad?.(d);
+    } catch (err) {
+      if (err.name === 'AbortError' || my !== seq) return;
+      root.classList.remove('is-loading');
+      if (silent && data) return;
+      data = null;
+      model = null;
+      view?.destroy();
+      view = null;
+      host.innerHTML = `<p class="panel-msg">${esc(err.status === 404 ? `No ${rangeLabel(fetchWin || range)} chart for ${symbol}. Try another range.` : err.message)}</p>`;
+      header();
+    }
   }
 
   const refKey = (d) => (d ? `${d.asOf}|${d.prevClose}|${d.open}` : '');
@@ -533,85 +826,207 @@ export function rangeChart(root, ctx, opts) {
       const changed = refKey(d) !== refKey(quote);
       quote = d;
       if (changed && data) draw();
-    } catch { /* the chart stands without reference lines */ }
+    } catch { /* the chart stands without the previous close */ }
   }
 
-  async function load() {
-    const my = ++seq;
+  async function loadEvents() {
+    events = { earnings: [], next: null, dividends: [] };
     try {
-      const d = await ctx.fetchJSON(chartQuery(symbol, range), { signal: ctx.signal });
-      if (my !== seq) return;
-      data = d;
-      bar().outerHTML = controls();
-      draw();
-      if (d.bar === '5M' && opts.quote !== 'external') loadQuote();
-      opts.onLoad?.(d);
-    } catch (err) {
-      if (err.name === 'AbortError' || my !== seq) return;
-      data = null;
-      cleanup?.();
-      cleanup = null;
-      host.innerHTML = `<p class="panel-msg">${esc(err.status === 404 ? `No ${rangeLabel(range)} chart for ${symbol}. Try another range.` : err.message)}</p>`;
-      summary();
-    }
+      const d = await ctx.fetchJSON(`/api/chart-events?s=${encodeURIComponent(symbol)}`, { signal: ctx.signal });
+      events = { earnings: d.earnings || [], next: d.next || null, dividends: d.dividends || [] };
+      if (data) draw();
+    } catch { /* no flags */ }
   }
+
+  // ---- Zoom --------------------------------------------------------------------------
+
+  // After a zoom or pan settles: show the window's dates, and fetch again when the window
+  // needs another bar size or reaches past the data.
+  function settle({ a, b }) {
+    if (!model) return;
+    zoomed = true;
+    const times = model.times;
+    const t0 = timeAt(times, a);
+    const t1 = Math.min(timeAt(times, b), Date.now());
+    fillDates();
+    header();
+    paintChips();
+    root.querySelector('.ch-dates')?.classList.add('is-active');
+    const n = times.length;
+    const barMs = BAR_MS[data.bar] || DAY_MS;
+    const covered = t0 >= times[0] - barMs && t1 <= times[n - 1] + barMs * 2;
+    const count = Math.floor(Math.min(b, n - 1)) - Math.ceil(Math.max(a, 0)) + 1;
+    const span = t1 - t0;
+    const age = Date.now() - t0;
+    const fits = (bar) => barValid(bar, { spanDays: Math.max(span / DAY_MS, 1 / 24), ageDays: age / DAY_MS });
+    const want = userBar && fits(userBar) ? userBar : zoomBar(span, age);
+    // The bars in hand still draw this window well: no request.
+    if (covered && count >= 20 && count <= 3000 && (data.bar === want || (fits(data.bar) && !userBar))) return;
+    if (covered && data.bar === want) return;
+    const { from, to } = windowDays(t0, t1, today);
+    fetchWin = { from, to };
+    viewWin = { t0, t1 };
+    if (userBar && !fits(userBar)) userBar = null;
+    load({ silent: true });
+  }
+
+  function reset() {
+    viewWin = null;
+    zoomed = false;
+    if (fetchWin) { fetchWin = null; load({ silent: true }); return; }
+    if (model) { view?.setWindow(model.full); header(); fillDates(); paintChips(); repaintBar(); }
+  }
+
+  // ---- Controls ----------------------------------------------------------------------
 
   function setRange(r) {
     if (navigate) { navigate(cmdFor(r)); return; }
     range = r;
-    bar().outerHTML = controls();
-    host.innerHTML = LOADING;
+    fetchWin = null;
+    viewWin = null;
+    zoomed = false;
+    if (userBar && !barOk(userBar)) userBar = null;
+    repaintBar();
     load();
   }
 
-  // Dates apply on Enter or when the field loses focus, so typing a year digit by
-  // digit does not reload the chart four times.
+  function setCompare(list) {
+    const next = [...new Set(list.filter((s) => s && s !== symbol))].slice(0, MAX_COMPARE);
+    if (navigate) { navigate(cmdFor(range, next)); return; }
+    compare = next;
+    for (const s of [...cmpData.keys()]) if (!compare.includes(s)) cmpData.delete(s);
+    repaintBar();
+    load({ silent: true });
+  }
+
+  // Dates apply on Enter. A box that does not hold a real day turns red and nothing loads.
   function applyDates() {
     const fi = root.querySelector('input[name="from"]');
     const ti = root.querySelector('input[name="to"]');
-    const f = fi.value;
-    const t = ti.value;
-    if (!f) return;
-    if (f === fi.defaultValue && t === ti.defaultValue) return;
-    if (t && f >= t) { ctx.status('FROM HAS TO BE BEFORE TO', 'warn'); return; }
-    if (f > today) { ctx.status('FROM IS IN THE FUTURE', 'warn'); return; }
-    setRange({ from: f, to: t && t < today ? t : null });
+    const f = parseDateBox(fi.value);
+    const t = parseDateBox(ti.value);
+    fi.classList.toggle('is-bad', !f || f > today);
+    ti.classList.toggle('is-bad', !t || (f && t <= f));
+    if (!f || !t) { ctx.status?.('DATES LOOK LIKE 09/25/2026', 'warn'); return; }
+    if (f > today) { ctx.status?.('FROM IS IN THE FUTURE', 'warn'); return; }
+    if (t <= f) { ctx.status?.('FROM HAS TO BE BEFORE TO', 'warn'); return; }
+    setRange({ from: f, to: t >= today ? null : t });
   }
 
   root.addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-range]');
-    if (b) setRange({ range: b.dataset.range });
+    const r = e.target.closest('button[data-range]');
+    if (r) { setRange({ range: r.dataset.range }); return; }
+    const b = e.target.closest('button[data-bar]');
+    if (b && !b.disabled) {
+      userBar = b.dataset.bar;
+      if (model && zoomed) { const w = view.window(); viewWin = { t0: timeAt(model.times, w[0]), t1: timeAt(model.times, w[1]) }; }
+      repaintBar();
+      load({ silent: true });
+      return;
+    }
+    const s = e.target.closest('button[data-style]');
+    if (s) {
+      style = s.dataset.style === 'candle' ? 'candle' : 'line';
+      ctx.store?.set?.(STYLE_KEY, style);
+      repaintBar();
+      draw();
+      return;
+    }
+    if (e.target.closest('button[data-compare-add]')) {
+      // The command bar takes the symbol: "+" is typed for you.
+      if (ctx.typeCommand) ctx.typeCommand('+');
+      return;
+    }
+    const x = e.target.closest('button[data-uncompare]');
+    if (x) setCompare(compare.filter((c) => c !== x.dataset.uncompare));
   });
   root.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && e.target.matches('input[type="date"]')) { e.preventDefault(); applyDates(); }
+    if (!e.target.matches?.('input.ch-date')) return;
+    if (e.key === 'Enter') { e.preventDefault(); applyDates(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.target.value = e.target.defaultValue; e.target.classList.remove('is-bad'); }
   });
-  root.addEventListener('focusout', (e) => {
-    if (!e.target.matches('input[type="date"]')) return;
-    // Moving from FROM to TO is not "done" yet.
-    if (e.relatedTarget && root.querySelector('.ch-dates')?.contains(e.relatedTarget)) return;
-    applyDates();
+  root.addEventListener('input', (e) => {
+    if (e.target.matches?.('input.ch-date')) e.target.classList.remove('is-bad');
   });
+
+  // Typing +QQQ (or +QQQ +SPY) in the command bar adds compare lines.
+  if (!compactOpt && ctx.setCommandHook) {
+    ctx.setCommandHook((clean) => {
+      const toks = String(clean).split(/\s+/);
+      if (!toks.length || !toks.every((t) => /^\+[A-Z0-9][A-Z0-9.\/=&-]{0,11}$/.test(t))) return false;
+      const add = toks.map((t) => t.slice(1));
+      const next = [...compare, ...add.filter((s) => !compare.includes(s))];
+      if (next.length > MAX_COMPARE) { ctx.status?.(`UP TO ${MAX_COMPARE} COMPARE LINES`, 'warn'); return true; }
+      setCompare(next);
+      return true;
+    });
+  }
+
+  // A panel too short for the full controls drops them (and the volume) before the plot.
+  let tightTimer = 0;
+  const ro = typeof ResizeObserver === 'function' && !compactOpt ? new ResizeObserver(() => {
+    clearTimeout(tightTimer);
+    tightTimer = setTimeout(() => {
+      // Hysteresis (tight under 290px, roomy again over 320px), so the switch cannot flip
+      // back and forth on its own change.
+      const h = root.clientHeight;
+      const was = root.classList.contains('is-tight');
+      const tight = h > 0 && (was ? h < 320 : h < 290);
+      if (tight === was) return;
+      root.classList.toggle('is-tight', tight);
+      repaintBar();
+      if (data) draw();
+    }, 120);
+  }) : null;
+  ro?.observe(root);
 
   load();
-  ctx.onCleanup(() => cleanup?.());
-  const intraday = () => /^\d+[MH]$/.test(data?.bar || '');
-  ctx.live(() => { if (intraday()) load(); }, 60_000);
-  ctx.live(() => { if (!intraday()) load(); }, 15 * 60_000);
+  ctx.onCleanup(() => { ctrl?.abort(); view?.destroy(); ro?.disconnect(); clearTimeout(tightTimer); });
+  const intradayNow = () => isIntradayBar(data?.bar || '') && !(fetchWin?.to || range.to);
+  const refresh = () => {
+    if (model && zoomed && view) { const w = view.window(); viewWin = { t0: timeAt(model.times, w[0]), t1: timeAt(model.times, w[1]) }; }
+    load({ silent: true });
+  };
+  ctx.live(() => { if (intradayNow()) refresh(); }, 60_000);
+  ctx.live(() => { if (data && !intradayNow() && !(fetchWin?.to || range.to)) refresh(); }, 15 * 60_000);
 
   return {
-    setLive(point) { live = point; if (data) draw(); },
+    setLive(point) {
+      const same = live && point && live.t === point.t && live.v === point.v;
+      live = point;
+      if (data && !same) draw();
+    },
     // The screen's own quote (the instrument screen refreshes it every 15 seconds).
     setQuote(d) {
       const changed = refKey(d) !== refKey(quote);
       quote = d;
-      if (changed && data?.bar === '5M') draw();
+      if (changed && data && range.range === '1D') draw();
     },
     get range() { return range; },
   };
 }
 
-function isoFromMs(t) {
-  return nyToday(new Date(t));
+const BAR_TITLE = { '1M': '1-minute bars', '5M': '5-minute bars', '30M': '30-minute bars', '1H': '1-hour bars', '1D': 'Daily bars', '1W': 'Weekly bars' };
+
+function fmtDiv(n) {
+  return n >= 0.1 ? n.toFixed(2) : n.toFixed(4).replace(/0+$/, '');
+}
+
+function isoToWhen(iso) {
+  return whenText(Date.parse(`${iso}T16:00:00Z`), { nowYear: 0 });
+}
+
+const cssEsc = (s) => (typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(s) : String(s).replace(/["\\]/g, '\\$&'));
+
+// One signal that aborts when any of these does.
+function anySignal(signals) {
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any(signals);
+  const c = new AbortController();
+  for (const s of signals) {
+    if (s.aborted) { c.abort(); break; }
+    s.addEventListener('abort', () => c.abort(), { once: true });
+  }
+  return c.signal;
 }
 
 export function priceDecimals(v) {

@@ -22,6 +22,11 @@
   --accent-tint: hsla(201, 100%, 71%, .1);
   --ink: hsl(213, 60%, 3%);          /* text on the accent */
 
+  /* Compare lines on a chart: white, a deeper ice blue, steel grey */
+  --cmp-1: hsl(0, 0%, 96%);
+  --cmp-2: hsl(222, 90%, 70%);
+  --cmp-3: hsl(210, 10%, 60%);
+
   --up: hsl(147, 70%, 55%);          /* #3DDC84 */
   --down: hsl(0, 100%, 68%);         /* #FF5C5C */
   --up-flash: hsla(147, 70%, 45%, .30);
@@ -318,56 +323,118 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .mk-group td.num { padding: 0 6px; }
 .mk-cols-time { columns: 3 400px; }
 
-/* ---- Range chart: presets, dates, chart ------------------------------- */
+/* ---- Range chart: presets, bar sizes, dates, header, chart --------------- */
 .rc { display: flex; flex-direction: column; min-width: 0; }
 .ch-bar {
-  display: flex; align-items: stretch; justify-content: space-between; flex-wrap: wrap; gap: 0 12px;
-  min-height: 24px;
+  display: flex; align-items: stretch; flex-wrap: wrap; gap: 0 12px;
+  min-height: 28px;
   border-bottom: 1px solid var(--rule);
   background: var(--panel);
 }
 .ch-tabs { margin-right: 0; border-left: 0; overflow-x: auto; scrollbar-width: none; }
 .ch-tabs::-webkit-scrollbar { display: none; }
-.ch-tabs .tab { height: 24px; }
-.ch-dates { display: flex; align-items: center; gap: 10px; padding-right: 8px; font-size: 11px; color: var(--dim); }
-.ch-dates label { display: flex; align-items: center; gap: 6px; letter-spacing: .06em; }
-.ch-dates input {
-  height: 20px; padding: 0 4px;
-  border: 1px solid var(--rule-strong); background: var(--bg);
-  color: var(--text-2); font-family: var(--font); font-size: 11px;
-  color-scheme: dark;
+.ch-tabs .tab { height: 28px; font-size: 12px; }
+.ch-tabs .tab.is-zoomed { background: var(--panel-3); color: var(--text); }
+.ch-bars { border-left: 1px solid var(--rule-strong); }
+.ch-bars .tab:disabled { color: var(--faint); cursor: default; background: transparent; }
+.ch-tools { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+.ch-tools > .tab { height: 28px; font-size: 12px; border: 1px solid var(--rule-strong); border-width: 0 1px; }
+.ch-seg { display: flex; align-self: stretch; border: 1px solid var(--rule-strong); border-width: 0 1px; }
+.ch-seg .tab { height: 28px; font-size: 12px; }
+.ch-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 0 0 8px;
+  border: 1px solid var(--rule-strong); font-size: 12px; color: var(--text); white-space: nowrap;
 }
-.ch-dates.is-active input { color: var(--text); border-color: var(--accent); }
-.ch-dates input:focus { outline: 1px solid var(--accent); outline-offset: 0; }
+.ch-chip-sw { width: 10px; height: 2px; background: currentColor; }
+.ch-chip.cmp-1 .ch-chip-sw { background: var(--cmp-1); }
+.ch-chip.cmp-2 .ch-chip-sw { background: var(--cmp-2); }
+.ch-chip.cmp-3 .ch-chip-sw { background: var(--cmp-3); }
+.ch-chip-x { height: 20px; padding: 0 7px; border: 0; background: transparent; color: var(--dim); font-family: var(--font); font-size: 13px; cursor: pointer; }
+.ch-chip-x:hover { color: var(--text); background: var(--panel-3); }
+.ch-dates { display: flex; align-items: center; gap: 10px; margin-left: auto; padding: 2px 8px 2px 0; font-size: 12px; color: var(--dim); }
+.ch-dates label { display: flex; align-items: center; gap: 6px; letter-spacing: .06em; }
+/* The date boxes: inverse ice blue, typed as MM/DD/YYYY; red when they hold no real day. */
+.ch-dates input {
+  width: 13ch; height: 28px; padding: 0 8px;
+  border: 0; background: var(--text-2); color: var(--ink);
+  font-family: var(--font); font-size: 13px; font-weight: 600; letter-spacing: .02em;
+}
+.ch-dates.is-active input { background: var(--accent); }
+.ch-dates input:focus { outline: 2px solid var(--text); outline-offset: 0; background: var(--text); }
+.ch-dates input.is-bad { background: var(--down); color: var(--ink); }
 .ch-hv { color: var(--text); }
+
+/* The header strip: last and the change over the window, big; the window's numbers or
+   the crosshair's bar under it. One line each, so hovering never moves the chart. */
+.ch-head { padding: 6px 10px 0; min-width: 0; }
+.ch-l1, .ch-l2 { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ch-l1 { height: 28px; font-size: 20px; line-height: 28px; letter-spacing: .01em; }
+.ch-l1 .ch-k { font-size: 12px; letter-spacing: .08em; color: var(--dim); vertical-align: 3px; }
+.ch-l1 .ch-v { color: var(--text); font-weight: 600; margin-right: 6px; }
+.ch-l1 .ch-c { margin-right: 6px; font-weight: 600; }
+.ch-l2 { height: 20px; font-size: 13px; line-height: 20px; color: var(--text-2); }
+.ch-l2 .ch-k { color: var(--dim); letter-spacing: .06em; }
+.ch-l2 .ch-when { color: var(--text); }
+.ch-l2 .ch-cmpk.cmp-1 { color: var(--cmp-1); }
+.ch-l2 .ch-cmpk.cmp-2 { color: var(--cmp-2); }
+.ch-l2 .ch-cmpk.cmp-3 { color: var(--cmp-3); }
+.ch-sep { color: var(--faint); margin: 0 4px; }
+.rc.is-compact .ch-l2, .rc.is-tight .ch-l2 { display: none; }
+.rc.is-compact .ch-head, .rc.is-tight .ch-head { padding-top: 2px; }
+/* Compact (HOME, short panels): the range row and the LAST line share one row, so the
+   plot keeps the height. */
+.rc.is-compact, .rc.is-tight {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);
+}
+.rc.is-compact > .ch-bar, .rc.is-tight > .ch-bar { grid-area: 1 / 1; }
+.rc.is-compact > .ch-head, .rc.is-tight > .ch-head { grid-area: 1 / 2; display: flex; align-items: center; justify-content: flex-end; padding: 0 10px; border-bottom: 1px solid var(--rule); background: var(--panel); }
+.rc.is-compact > .chart-host, .rc.is-tight > .chart-host { grid-area: 2 / 1 / 3 / 3; min-height: 0; height: auto; }
+.rc.is-compact .ch-tabs .tab, .rc.is-tight .ch-tabs .tab { padding: 0 6px; font-size: 11px; }
+.rc.is-compact .ch-l1, .rc.is-tight .ch-l1 { font-size: 16px; }
+.rc.is-loading .ch-head { opacity: .7; }
+
 .panel-body:has(> .rc-home) { position: relative; min-height: 330px; }
 .rc-home { position: absolute; inset: 0; }
-.rc-home .chart-host-home { position: relative; inset: auto; flex: 1; min-height: 0; height: auto; margin: 8px 0 0 10px; }
+.rc-home .chart-host-home { position: relative; inset: auto; flex: 1; min-height: 0; height: auto; margin: 4px 0 0 10px; }
 
 /* ---- Charts ----------------------------------------------------------- */
-.chart-host { position: relative; height: 320px; margin: 8px 0 0 10px; }
+/* The chart box takes its size from the layout only: the SVG sits absolutely inside and
+   is clipped, so drawing can never grow the box or its panel (no scrollbar loops). */
+.chart-host { position: relative; height: 320px; min-height: 0; overflow: hidden; margin: 4px 0 0 10px; }
 .chart-host-lg { height: 400px; }
-.chart { display: block; overflow: visible; touch-action: pan-y; }
+.chart-host:focus { outline: none; }
+.chart-host:focus-visible { outline: 1px solid var(--rule-strong); outline-offset: 2px; }
+.chart { display: block; overflow: visible; touch-action: pan-y; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.chart-host.is-measuring .chart { touch-action: none; }
 .ch-grid, .ch-vgrid { stroke: var(--rule); stroke-width: 1; shape-rendering: crispEdges; }
 .ch-axis { stroke: var(--rule-strong); stroke-width: 1; shape-rendering: crispEdges; }
-.ch-ylab, .ch-xlab { fill: var(--dim); font-family: var(--font); font-size: 11px; }
+.ch-zero { stroke: var(--text-2); stroke-width: 1; opacity: .5; shape-rendering: crispEdges; }
+.ch-ylab, .ch-xlab, .ch-vlab { fill: var(--dim); font-family: var(--font); font-size: 11px; }
+.ch-xlab.is-strong { fill: var(--text-2); }
+.ch-vlab { font-size: 9px; letter-spacing: .08em; }
 .ch-line { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
-.ch-stop { stop-color: var(--accent); }
+.ch-line.is-ext { opacity: .5; }
+.ch-area { fill: var(--accent); opacity: .07; }
+.ch-cmp { fill: none; stroke-width: 1.5; stroke-linejoin: round; }
+.ch-cmp.cmp-1 { stroke: var(--cmp-1); }
+.ch-cmp.cmp-2 { stroke: var(--cmp-2); }
+.ch-cmp.cmp-3 { stroke: var(--cmp-3); }
+.ch-candle.up { fill: var(--up); }
+.ch-candle.down { fill: var(--down); }
+.ch-wick { fill: none; stroke-width: 1; shape-rendering: crispEdges; }
+.ch-wick.up { stroke: var(--up); }
+.ch-wick.down { stroke: var(--down); }
+.ch-vol { opacity: .45; }
+.ch-vol.up { fill: var(--up); }
+.ch-vol.down { fill: var(--down); }
 .ch-last-line { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 2 3; opacity: .45; shape-rendering: crispEdges; }
 .ch-last-bg { fill: var(--accent); }
-.ch-last { fill: var(--ink); font-family: var(--font); font-size: 11px; font-weight: 600; }
-.ch-cross { stroke: var(--text-2); stroke-width: 1; stroke-dasharray: 2 2; shape-rendering: crispEdges; }
-.ch-dot { fill: var(--text); }
-
-/* Intraday: when things happened */
-.ch-strip {
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px;
-  padding: 4px 10px 0; font-size: 11px; color: var(--text-2); letter-spacing: .02em;
-}
-.ch-strip[hidden] { display: none; }
-.ch-si { white-space: nowrap; }
-.ch-sk { color: var(--dim); }
-.ch-sep { color: var(--faint); }
+.ch-last .ch-last-t, .ch-last-t { fill: var(--ink); font-family: var(--font); font-size: 11px; font-weight: 600; }
+.ch-last.cmp-1 .ch-last-bg { fill: var(--cmp-1); }
+.ch-last.cmp-2 .ch-last-bg { fill: var(--cmp-2); }
+.ch-last.cmp-3 .ch-last-bg { fill: var(--cmp-3); }
+.ch-cross { stroke: var(--text-2); stroke-width: 1; stroke-dasharray: 2 2; shape-rendering: crispEdges; pointer-events: none; }
+.ch-dot { fill: var(--text); pointer-events: none; }
 .ch-day { stroke: var(--rule-strong); stroke-width: 1; shape-rendering: crispEdges; }
 .ch-ext { fill: var(--panel-2); }
 .ch-ext-lab { fill: var(--dim); font-family: var(--font); font-size: 9px; letter-spacing: .08em; }
@@ -389,6 +456,30 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .ch-move.down { stroke: var(--down); }
 .ch-tag-bg { fill: var(--text-2); }
 .ch-tag { fill: var(--ink); font-family: var(--font); font-size: 11px; font-weight: 600; }
+/* Event flags: E earnings (links to the SEC filing), D ex-dividend. */
+.ch-flag { cursor: default; }
+a.ch-flag { cursor: pointer; }
+.ch-flag-box { fill: var(--bg); stroke: var(--text-2); stroke-width: 1; shape-rendering: crispEdges; }
+.ch-flag-t { fill: var(--text-2); font-family: var(--font); font-size: 9px; font-weight: 700; }
+.ch-flag.is-E .ch-flag-box { stroke: var(--accent); }
+.ch-flag.is-E .ch-flag-t { fill: var(--accent); }
+.ch-flag:hover .ch-flag-box { fill: var(--panel-3); }
+/* The measure: a shaded band between two bars and a big label. */
+.ch-meas { pointer-events: none; }
+.ch-meas-band { opacity: .14; }
+.ch-meas-band.up { fill: var(--up); }
+.ch-meas-band.down { fill: var(--down); }
+.ch-meas-band.flat { fill: var(--text-2); }
+.ch-meas-line { stroke-width: 1.5; stroke-dasharray: 4 3; }
+.ch-meas-line.up { stroke: var(--up); }
+.ch-meas-line.down { stroke: var(--down); }
+.ch-meas-line.flat { stroke: var(--text-2); }
+.ch-meas-dot { fill: var(--text); }
+.ch-meas-bg { fill: var(--bg); opacity: .92; stroke: var(--rule-strong); }
+.ch-meas-text { font-family: var(--font); font-size: 17px; font-weight: 700; white-space: pre; }
+.ch-meas-text.up { fill: var(--up); }
+.ch-meas-text.down { fill: var(--down); }
+.ch-meas-text.flat { fill: var(--text); }
 
 /* ---- Stats (key numbers) --------------------------------------------- */
 .stats { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; border-top: 1px solid var(--rule); }
@@ -716,8 +807,16 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   .mk-group .c-chg, .mk-group .c-time { width: 0; }
   .ch-bar { gap: 0; }
   .ch-tabs { width: 100%; border-bottom: 1px solid var(--rule); }
-  .ch-dates { padding: 4px 8px; gap: 8px; }
-  .ch-dates input { width: 128px; }
+  .ch-bars { border-left: 0; }
+  .ch-tools { padding: 4px 8px; width: 100%; border-bottom: 1px solid var(--rule); }
+  .ch-dates { margin-left: 0; padding: 4px 8px; gap: 8px; }
+  .ch-dates input { width: 13ch; padding: 0 6px; }
+  .ch-head { padding: 4px 6px 0; }
+  .ch-l1 { font-size: 18px; }
+  .ch-l2 { font-size: 12px; }
+  .rc.is-compact, .rc.is-tight { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); }
+  .rc.is-compact > .ch-head, .rc.is-tight > .ch-head { grid-area: 2 / 1; justify-content: flex-start; padding: 0 6px; }
+  .rc.is-compact > .chart-host, .rc.is-tight > .chart-host { grid-area: 3 / 1; }
   .panel-body:has(> .rc-home) { min-height: 300px; }
 
   .q-top { grid-template-columns: minmax(0, 1fr); gap: 12px; }
@@ -1205,7 +1304,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .is-embed .stack > .panel:has(#q-rc) { flex: 1 1 auto; min-height: 0; }
 .is-embed .panel-body:has(> #q-rc) { display: flex; flex-direction: column; min-height: 0; }
 .is-embed #q-rc { flex: 1 1 auto; min-height: 0; }
-.is-embed #q-rc > .ch-bar, .is-embed #q-rc > .ch-strip { flex: 0 0 auto; }
+.is-embed #q-rc > .ch-bar, .is-embed #q-rc > .ch-head { flex: 0 0 auto; }
 .is-embed #q-rc .chart-host { flex: 1 1 auto; height: auto; min-height: 140px; }
 .is-embed .q-top { grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .is-embed .q-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; }

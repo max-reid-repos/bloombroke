@@ -65,10 +65,11 @@ export function freshness(r) {
   };
 }
 
-export async function fetchCnbcRows(fetchImpl, symbols) {
+// extra: more query fields (events: '1' adds EventData: next earnings date, ex-dividend).
+export async function fetchCnbcRows(fetchImpl, symbols, extra = {}) {
   const qs = new URLSearchParams({
     symbols: symbols.join('|'),
-    requestMethod: 'itv', noform: '1', partnerId: '2', fund: '1', exthrs: '1', output: 'json',
+    requestMethod: 'itv', noform: '1', partnerId: '2', fund: '1', exthrs: '1', output: 'json', ...extra,
   });
   const res = await fetchImpl(`${CNBC_URL}?${qs}`, {
     headers: { 'User-Agent': UA, Accept: 'application/json' },

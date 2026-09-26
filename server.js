@@ -3,7 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getQuotes, getFxMajors, getQuote, getQuoteList, normalizeTicker, MAX_LIST } from './data/quotes.js';
 import { getFx, FxError } from './data/fx.js';
-import { getChart, ChartError } from './data/charts.js';
+import { getChart, ChartError, chartSpecFromQuery } from './data/charts.js';
+import { getChartEvents, ChartEventsError } from './data/chart-events.js';
 import { precise52 } from './data/range52.js';
 import { getCpi, CpiError, CPI_EXAMPLES } from './data/cpi.js';
 import { getRates } from './data/rates.js';
@@ -130,8 +131,8 @@ app.get('/api/search', async (req, res) => {
 
 app.get('/api/chart', async (req, res) => {
   try {
-    const from = str(req.query.from);
-    const range = from ? { from, to: str(req.query.to) || null } : str(req.query.r);
+    // ?bar= takes only the sizes in public/bars.js; anything else is a 400 (bad_bar).
+    const range = chartSpecFromQuery({ r: str(req.query.r), from: str(req.query.from), to: str(req.query.to), bar: str(req.query.bar) });
     const data = await getChart(str(req.query.s), range);
     res.set('Cache-Control', 'public, max-age=60');
     res.json(data);
@@ -142,6 +143,19 @@ app.get('/api/chart', async (req, res) => {
       return res.status(status).json({ error: err.code, message: err.message });
     }
     console.error('[chart]', err.message);
+    res.status(503).json({ error: 'unavailable', message: BREAK });
+  }
+});
+
+// Chart flags for a stock: earnings (SEC 8-K item 2.02 and the next date) and ex-dividend days.
+app.get('/api/chart-events', async (req, res) => {
+  try {
+    const data = await getChartEvents(str(req.query.s));
+    res.set('Cache-Control', 'public, max-age=900');
+    res.json(data);
+  } catch (err) {
+    if (err instanceof ChartEventsError) return res.status(400).json({ error: err.code, message: err.message });
+    console.error('[chart-events]', err.message);
     res.status(503).json({ error: 'unavailable', message: BREAK });
   }
 });

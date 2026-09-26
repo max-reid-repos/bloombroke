@@ -59,7 +59,7 @@ export function render(el, cmd, ctx) {
   };
 
   const chart = rangeChart(el.querySelector('#h-rc'), ctx, {
-    symbol: 'SPX', range: { range: '1D' }, meta: el.querySelector('#h-ch-meta'), hostCls: 'chart-host-home',
+    symbol: 'SPX', range: { range: '1D' }, meta: el.querySelector('#h-ch-meta'), hostCls: 'chart-host-home', compact: true,
     label: 'S&P 500', decimals: 2, fmtY: (v) => fmtNum(v, 0),
   });
 
