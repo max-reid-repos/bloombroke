@@ -10,6 +10,7 @@ export const MAX_PANELS = 12;
 export const MIN_W = 2;
 export const MIN_H = 3;
 export const MAX_H = 40;
+export const MAX_Y = 200; // a corrupt save far down the page cannot make settle() crawl
 export const LINKS = [null, 'blue', 'green'];
 // The screens that show one ticker, so a linked panel can switch to another one.
 export const TICKER_SCREENS = [
@@ -62,7 +63,7 @@ export function presetPanels(name) {
 }
 
 // The panels as { cmd, x, y, w, h, card }, in stack order, to compare two layouts.
-const shape = (panels) => stackOrder(panels).map((p) => `${p.cmd}|${p.x},${p.y},${p.w},${p.h}|${p.card ? 'card' : ''}`).join(';');
+const shape = (panels) => stackOrder(panels).map((p) => `${p.cmd}|${p.x},${p.y},${p.w},${p.h}|${p.card ? 'card' : ''}|${p.link || ''}`).join(';');
 
 // True when a desk holds panels the user put there: anything but empty, desk 1 out of
 // the box or an untouched preset. Loading a preset over them asks first.
@@ -88,7 +89,7 @@ export function clampPanel(p) {
   const w = Math.max(MIN_W, Math.min(COLS, int(p.w, 6)));
   const h = Math.max(MIN_H, Math.min(MAX_H, int(p.h, 6)));
   const x = Math.max(0, Math.min(COLS - w, int(p.x, 0)));
-  const y = Math.max(0, int(p.y, 0));
+  const y = Math.max(0, Math.min(MAX_Y, int(p.y, 0)));
   return { ...p, x, y, w, h };
 }
 
@@ -297,6 +298,22 @@ export function parseDeskArgs(args) {
 }
 
 // ---- Embedded panels ---------------------------------------------------------------
+
+// Keep the panel nodes in step with the panels. frames: Map id -> { cmd, card } (cmd:
+// the command a frame was last pointed at, card: its gauge or null). cardOf(panel):
+// the gauge a panel shows as a card, or null. A panel with no node gets one (make); a
+// node whose panel is gone, or that changed between card and frame, goes (drop); a
+// frame showing another command than its panel loads that command (reload).
+export function syncFrames(frames, panels, { cardOf, make, drop, reload }) {
+  const ids = new Set(panels.map((p) => p.id));
+  for (const [id, f] of [...frames]) if (!ids.has(id)) drop(id, f);
+  for (const p of panels) {
+    let f = frames.get(p.id);
+    if (f && f.card !== cardOf(p)) { drop(p.id, f); f = null; }
+    if (!f) make(p);
+    else if (!f.card && f.cmd !== p.cmd) reload(p, f);
+  }
+}
 
 // The page a panel frames: the app itself in embed mode.
 export function embedSrc(cmd) {

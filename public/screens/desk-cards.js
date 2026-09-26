@@ -18,12 +18,32 @@ export function cardGauge(cmd) {
   return gaugeByCommand(String(cmd ?? '').trim().toUpperCase());
 }
 
-// The + PANEL picker's "Weird data" group: every gauge, filtered by what is typed.
+// The + PANEL picker's "Weird data" group: every gauge, filtered by what is typed. A
+// gauge whose name or alias starts with it comes first, then one whose description has
+// every typed word as a whole word ("hormuz" finds CANAL; "ca" is not in "carloads").
+const words = (text) => String(text).toUpperCase().split(/[^A-Z0-9$]+/).filter(Boolean);
 export function weirdPickItems(text = '') {
-  const t = String(text).trim().toUpperCase().replace(/^\+\s*/, '');
-  return WEIRD_GAUGES
-    .map((g) => ({ name: g.command, value: g.command, hint: findCommand(g.command)?.summary || g.title }))
-    .filter((s) => !t || s.name.startsWith(t) || s.hint.toUpperCase().includes(t));
+  const t = String(text).trim().toUpperCase().replace(/^\+\s*/, '').replace(/\s+/g, ' ');
+  const all = WEIRD_GAUGES.map((g) => {
+    const c = findCommand(g.command);
+    return { name: g.command, value: g.command, hint: c?.summary || g.title, names: [g.command, ...(c?.aliases || [])] };
+  });
+  const out = (list) => list.map(({ name, value, hint }) => ({ name, value, hint }));
+  if (!t) return out(all);
+  const byName = all.filter((s) => s.names.some((n) => n.startsWith(t.replace(/ /g, ''))));
+  const typed = words(t);
+  const byWords = all.filter((s) => !byName.includes(s) && typed.every((w) => words(s.hint).includes(w)));
+  return out([...byName, ...byWords]);
+}
+
+// A key while a preset waits to replace the desk -> 'replace', 'keep' or null (the key
+// does what it always does). where: 'page' (nothing focused), 'command' (the empty
+// command bar), 'confirm' (the confirm line), 'typing' (a command being typed) or
+// 'control' (a button, link, tab, card or input). Enter on a control keeps its action.
+export function confirmKey(key, where) {
+  if (key === 'Escape') return where === 'typing' ? null : 'keep';
+  if (key === 'Enter') return ['page', 'command', 'confirm'].includes(where) ? 'replace' : null;
+  return null;
 }
 
 // A card: the WEIRD tile's panel, without its numbered head (the DESK panel head names
@@ -44,19 +64,23 @@ export function mergeCardRows(prev, rows) {
   return next;
 }
 
-// When to fetch /api/weird again (ms since epoch): when the first card's gauge is due,
-// at least CARD_MIN_MS after the last fetch. ids: the gauges with a card on the desk.
-export function nextCardFetch(rows, ids, lastFetch) {
+// When to fetch /api/weird again, in this browser's time: when the first card's gauge is
+// due, at least CARD_MIN_MS after the last fetch. ids: the gauges with a card on the
+// desk. lastFetch: when the last fetch ran here; serverNow: the summary's own updated
+// time (ms). Due times are worked out in server time (a gauge's updated + ttl, minus the
+// server's now), so a browser clock that runs fast or slow does not change them.
+export function nextCardFetch(rows, ids, lastFetch, serverNow = lastFetch) {
   if (!ids.length) return null;
-  let due = Infinity;
+  const now = Number.isFinite(serverNow) ? serverNow : lastFetch;
+  let wait = Infinity;
   for (const id of ids) {
     const r = rows.get(id);
     const at = Date.parse(r?.updated || '');
-    let t;
-    if (!r || r.pending) t = lastFetch + CARD_MIN_MS;
-    else if (r.ok === false || r.stale || !Number.isFinite(at)) t = lastFetch + CARD_RETRY_MS;
-    else t = at + (Number(r.ttl) > 0 ? Number(r.ttl) : CARD_TTL_MS) + GRACE_MS;
-    due = Math.min(due, t);
+    let w;
+    if (!r || r.pending) w = CARD_MIN_MS;
+    else if (r.ok === false || r.stale || !Number.isFinite(at)) w = CARD_RETRY_MS;
+    else w = at + (Number(r.ttl) > 0 ? Number(r.ttl) : CARD_TTL_MS) + GRACE_MS - now;
+    wait = Math.min(wait, w);
   }
-  return Math.max(lastFetch + CARD_MIN_MS, due);
+  return lastFetch + Math.max(CARD_MIN_MS, wait);
 }

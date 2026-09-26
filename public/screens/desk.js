@@ -11,7 +11,7 @@
 
 import { esc, q, panel, nyTime } from './markets.js';
 import * as L from '../desk-layout.js';
-import { cardGauge, cardHtml, cardBody, weirdPickItems, mergeCardRows, nextCardFetch, CARD_RETRY_MS } from './desk-cards.js';
+import { cardGauge, cardHtml, cardBody, weirdPickItems, mergeCardRows, nextCardFetch, confirmKey, CARD_RETRY_MS } from './desk-cards.js';
 
 const MOBILE = '(max-width: 699px)';
 const ROWS_FIT = 16; // desk 1 is 16 rows tall: it fills the window
@@ -67,7 +67,7 @@ export function render(el, cmd, ctx) {
       </form>
       <ul class="desk-pick-list" role="listbox" aria-label="Commands"></ul>
     </div>
-    <div class="desk-confirm" role="alertdialog" aria-label="Load a preset" hidden>
+    <div class="desk-confirm" role="alertdialog" aria-label="Load a preset" tabindex="-1" hidden>
       <span class="desk-confirm-text"></span>
       <button type="button" class="desk-btn" data-act="confirm-yes">ENTER: REPLACE</button>
       <button type="button" class="desk-btn" data-act="confirm-no">ESC: KEEP</button>
@@ -116,7 +116,7 @@ export function render(el, cmd, ctx) {
       <div class="dp-body">${g ? cardHtml(g, null) : '<iframe loading="lazy" referrerpolicy="same-origin"></iframe>'}</div>
       <span class="dp-resize" data-act="resize" aria-hidden="true"></span>`;
     const iframe = g ? null : node.querySelector('iframe');
-    const f = { node, iframe, card: g, html: '', loaded: false, visible: true };
+    const f = { node, iframe, card: g, cmd: p.cmd, html: '', loaded: false, visible: true };
     if (iframe) {
       iframe.addEventListener('load', () => {
         f.loaded = true;
@@ -137,11 +137,16 @@ export function render(el, cmd, ctx) {
     frames.delete(id);
   }
 
+  // A frame pointed at another command: load it (the load event sends visible and link).
+  function reloadFrame(p, f) {
+    f.cmd = p.cmd;
+    f.loaded = false;
+    f.iframe.src = L.embedSrc(p.cmd);
+    f.node.querySelector('.dp-asof').textContent = '';
+  }
+
   function paintPanel(p) {
-    let f = frames.get(p.id);
-    // A card that became a framed screen (or the other way round) gets a new node.
-    if (f && f.card !== (p.card ? cardGauge(p.cmd) : null)) { dropNode(p.id, f); f = null; }
-    f = f || makeNode(p);
+    const f = frames.get(p.id);
     const { node, iframe } = f;
     node.querySelector('.dp-title').textContent = nameOf(p.id);
     const full = node.querySelector('.dp-full');
@@ -159,9 +164,7 @@ export function render(el, cmd, ctx) {
   }
 
   function layout() {
-    for (const [id, f] of frames) {
-      if (!find(id)) dropNode(id, f);
-    }
+    L.syncFrames(frames, panels, { cardOf: (p) => (p.card ? cardGauge(p.cmd) : null), make: makeNode, drop: dropNode, reload: reloadFrame });
     panels.forEach(paintPanel);
     syncCards();
     empty.hidden = panels.length > 0;
@@ -221,6 +224,7 @@ export function render(el, cmd, ctx) {
     const card = Boolean(find(id)?.card && cardGauge(s));
     if (f.iframe && f.loaded) post(f, { type: 'bb:run', c });
     else if (f.iframe) f.iframe.src = L.embedSrc(c);
+    if (f.iframe) f.cmd = s; // the frame shows it now: no reload
     setPanels(panels.map((p) => (p.id === id ? { ...p, cmd: s, card } : p)));
     if (link) linkTicker(id, s);
   }
@@ -258,6 +262,7 @@ export function render(el, cmd, ctx) {
     const f = frames.get(id);
     if (m.type === 'bb:cmd' && typeof m.c === 'string') {
       const s = stored(m.c);
+      f.cmd = s; // moved inside the frame: it already shows this
       if (s !== find(id)?.cmd) {
         setPanels(panels.map((p) => (p.id === id ? { ...p, cmd: s } : p)));
         linkTicker(id, s);
@@ -300,11 +305,16 @@ export function render(el, cmd, ctx) {
   function onKey(e) {
     const t = e.target;
     const typed = t.matches?.('input, textarea, select') && t.value;
-    // A preset waiting to replace this desk: Enter replaces, Esc keeps.
-    if (pendingPreset && !typed && !e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'Enter' || e.key === 'Escape')) {
+    // A preset waiting to replace this desk: Enter on the page, the empty command bar or
+    // the confirm line replaces; Enter on a button, link or card does what it does. Esc keeps.
+    const where = t === document.body || t === document.documentElement ? 'page'
+      : t === confirmEl ? 'confirm'
+        : t.id === 'cmd' ? (t.value ? 'typing' : 'command') : 'control';
+    const act = pendingPreset && !e.altKey && !e.ctrlKey && !e.metaKey ? confirmKey(e.key, where) : null;
+    if (act) {
       e.preventDefault();
       e.stopPropagation();
-      if (e.key === 'Enter') loadPreset(pendingPreset);
+      if (act === 'replace') loadPreset(pendingPreset);
       else { closeConfirm(); ctx.status(`DESK ${n} KEPT`); }
       return;
     }
@@ -538,15 +548,22 @@ export function render(el, cmd, ctx) {
 
   // --- presets: load one into this desk, asking first over panels of your own ----------
   let pendingPreset = null;
+  let focusBack = null; // where focus was before the confirm line took it
   function closeConfirm() {
+    const had = confirmEl.contains(document.activeElement);
     pendingPreset = null;
     confirmEl.hidden = true;
+    if (had && focusBack?.isConnected) focusBack.focus({ preventScroll: true });
+    focusBack = null;
   }
   function loadPreset(name) {
     closeConfirm();
     closePicker();
     setFocus(null);
+    // New screens in new nodes: nothing of the old desk keeps running under a new title.
+    for (const [id, f] of [...frames]) dropNode(id, f);
     setPanels(L.presetPanels(name));
+    for (const p of panels) post(frames.get(p.id), { type: 'bb:link', on: Boolean(p.link) });
     ctx.status(`DESK ${n}: ${name}`);
   }
   function askPreset(name) {
@@ -555,12 +572,18 @@ export function render(el, cmd, ctx) {
     const k = panels.length;
     confirmEl.querySelector('.desk-confirm-text').textContent = `Replace the ${k} ${k === 1 ? 'panel' : 'panels'} on desk ${n} with ${name}?`;
     confirmEl.hidden = false;
+    // The line takes focus (a clicked preset button would take Enter otherwise); the
+    // command bar gets it back after.
+    const cmdBar = document.getElementById('cmd');
+    if (!confirmEl.contains(document.activeElement)) focusBack = document.activeElement === cmdBar ? cmdBar : null;
+    confirmEl.focus({ preventScroll: true });
     ctx.status('');
   }
 
   // --- cards: one /api/weird fetch for every card on this desk ---------------------------
   let cardRows = new Map();
   let cardFetchedAt = 0;
+  let cardServerAt = NaN; // the last summary's updated time, server clock
   let cardNext = 0;
   let cardBusy = false;
   let cardError = false;
@@ -576,7 +599,7 @@ export function render(el, cmd, ctx) {
     body.querySelectorAll('svg.spark').forEach((s) => s.setAttribute('preserveAspectRatio', 'none'));
   }
   function planCards() {
-    cardNext = cardError ? cardFetchedAt + CARD_RETRY_MS : nextCardFetch(cardRows, cardIds(), cardFetchedAt) || 0;
+    cardNext = cardError ? cardFetchedAt + CARD_RETRY_MS : nextCardFetch(cardRows, cardIds(), cardFetchedAt, cardServerAt) || 0;
   }
   async function loadCards() {
     if (cardBusy) return;
@@ -585,6 +608,7 @@ export function render(el, cmd, ctx) {
     try {
       const d = await ctx.fetchJSON('/api/weird', { signal: ctx.signal });
       cardRows = mergeCardRows(cardRows, d?.gauges);
+      cardServerAt = Date.parse(d?.updated || '');
       cardError = false;
     } catch (err) {
       if (err.name === 'AbortError') return;

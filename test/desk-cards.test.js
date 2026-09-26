@@ -3,10 +3,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   COLS, MAX_PANELS, DEFAULT_DESK, PRESETS, PRESET_NAMES, presetPanels, hasUserPanels, parseAdd, parseDeskArgs,
-  collides, settle, addPanel, parseDesks, serializeDesks, defaultDesks,
+  collides, settle, addPanel, parseDesks, serializeDesks, defaultDesks, clampPanel, syncFrames, embedSrc, MAX_Y,
 } from '../public/desk-layout.js';
 import {
-  cardGauge, cardHtml, cardBody, weirdPickItems, mergeCardRows, nextCardFetch, CARD_MIN_MS, CARD_RETRY_MS,
+  cardGauge, cardHtml, cardBody, weirdPickItems, mergeCardRows, nextCardFetch, confirmKey, CARD_MIN_MS, CARD_RETRY_MS,
 } from '../public/screens/desk-cards.js';
 import { tileBody } from '../public/screens/weird.js';
 import { WEIRD_GAUGES } from '../public/screens/weird-gauges.js';
@@ -81,6 +81,75 @@ test('a preset asks first only over panels of your own', () => {
   const moved = presetPanels('CRYPTO').map((p, i) => (i === 0 ? { ...p, cmd: 'MSFT 1D' } : p));
   assert.equal(hasUserPanels(moved), true);
   assert.equal(hasUserPanels([{ id: 'p1', cmd: 'NEWS', x: 0, y: 0, w: 6, h: 7, link: null }]), true);
+  const relinked = presetPanels('CRYPTO').map((p) => ({ ...p, link: p.link ? null : 'green' }));
+  assert.equal(hasUserPanels(relinked), true, 'changed link groups are your own work too');
+  assert.equal(hasUserPanels(DEFAULT_DESK.map((p) => ({ ...p, link: null }))), true);
+});
+
+test('confirm keys: Enter replaces only from the page, the empty bar or the line', () => {
+  for (const where of ['page', 'command', 'confirm']) assert.equal(confirmKey('Enter', where), 'replace', where);
+  assert.equal(confirmKey('Enter', 'control'), null, 'Enter on ESC: KEEP, a link, a tab or a card does its own thing');
+  assert.equal(confirmKey('Enter', 'typing'), null, 'a typed command runs');
+  for (const where of ['page', 'command', 'confirm', 'control']) assert.equal(confirmKey('Escape', where), 'keep', where);
+  assert.equal(confirmKey('Escape', 'typing'), null);
+  assert.equal(confirmKey('a', 'page'), null);
+});
+
+// The DESK grid's node bookkeeping (screens/desk.js runs syncFrames with DOM make, drop
+// and reload): a fake grid where each frame has the src it would load.
+function fakeGrid() {
+  const frames = new Map();
+  const log = [];
+  const cardOf = (p) => (p.card ? cardGauge(p.cmd) : null);
+  const ops = {
+    cardOf,
+    make: (p) => { const card = cardOf(p); frames.set(p.id, { cmd: p.cmd, card, src: card ? null : embedSrc(p.cmd) }); log.push(`make ${p.id}`); },
+    drop: (id) => { frames.delete(id); log.push(`drop ${id}`); },
+    reload: (p, f) => { f.cmd = p.cmd; f.src = embedSrc(p.cmd); log.push(`reload ${p.id}`); },
+  };
+  return { frames, log, sync: (panels) => syncFrames(frames, panels, ops) };
+}
+const srcMatches = (frames, panels) => panels.every((p) => {
+  const f = frames.get(p.id);
+  return f && (p.card ? f.card === cardGauge(p.cmd) && f.src === null : f.src === embedSrc(p.cmd));
+});
+
+test('a preset loaded in place runs its own screens, not the old ones', () => {
+  for (const name of PRESET_NAMES) {
+    // Load over desk 1 (ids p1.. reused), the way loadPreset does: drop all, then sync.
+    const g = fakeGrid();
+    g.sync(DEFAULT_DESK);
+    assert.ok(srcMatches(g.frames, DEFAULT_DESK));
+    for (const [id] of [...g.frames]) g.frames.delete(id);
+    const next = presetPanels(name);
+    g.sync(next);
+    assert.ok(srcMatches(g.frames, next), `${name}: every frame shows its panel command`);
+    assert.equal(g.frames.size, next.length);
+    // Enter-replace over another preset goes the same way.
+    for (const [id] of [...g.frames]) g.frames.delete(id);
+    g.sync(presetPanels('MACRO'));
+    assert.ok(srcMatches(g.frames, presetPanels('MACRO')));
+  }
+  // Without the drop, a reused id with another command still reloads (never a stale screen).
+  const g = fakeGrid();
+  g.sync(DEFAULT_DESK);
+  const macro = presetPanels('MACRO');
+  g.sync(macro);
+  assert.ok(srcMatches(g.frames, macro), 'SPX 1Y in p1, not AAPL 1D');
+  assert.ok(g.log.includes('reload p1'));
+  assert.ok(g.log.includes('drop p4'), 'HEATMAP p4 became the CHANCES card: a new node');
+  // The same command again: nothing reloads.
+  g.log.length = 0;
+  g.sync(macro);
+  assert.deepEqual(g.log, []);
+});
+
+test('a corrupt save far down the page is clamped, and settles fast', () => {
+  assert.equal(clampPanel({ id: 'p1', x: 0, y: 1e12, w: 4, h: 4 }).y, MAX_Y);
+  const t = Date.now();
+  const s = parseDesks({ v: 1, desks: [{ panels: [{ id: 'p1', cmd: 'NEWS', x: 0, y: 9e15, w: 12, h: 4 }, { id: 'p2', cmd: 'WATCH', x: 0, y: 9e15, w: 12, h: 4 }] }] }).state;
+  assert.ok(Date.now() - t < 500);
+  assert.deepEqual(s.desks[0].panels.map((p) => p.y), [0, 4]);
 });
 
 test('add syntax on DESK: +CANAL, +PANEL CANAL, + alone opens the picker', () => {
@@ -107,8 +176,13 @@ test('the + PANEL picker has every gauge in a Weird data group', () => {
   assert.equal(all.length, 23);
   assert.deepEqual(all.map((s) => s.value), WEIRD_GAUGES.map((g) => g.command));
   assert.ok(all.every((s) => s.hint && s.name === s.value));
-  assert.deepEqual(weirdPickItems('ca').map((s) => s.value).slice(0, 1), ['CANAL']);
-  assert.ok(weirdPickItems('hormuz').some((s) => s.value === 'CANAL'), 'found by its description too');
+  const ca = weirdPickItems('ca').map((s) => s.value);
+  assert.equal(ca[0], 'CANAL', 'names first');
+  assert.deepEqual(ca, ['CANAL', 'BOXES'], 'BOXES by its alias CARDBOARD; no substrings (carloads, Macau, casino)');
+  assert.deepEqual(weirdPickItems('hormuz').map((s) => s.value), ['CANAL'], 'a whole word of its description');
+  assert.deepEqual(weirdPickItems('ships').map((s) => s.value)[0], 'CANAL', 'an alias');
+  assert.ok(weirdPickItems('eggs').some((s) => s.value === 'EGGPRICE'));
+  assert.deepEqual(weirdPickItems('egg').map((s) => s.value), ['EGGPRICE']);
   assert.deepEqual(weirdPickItems('zzzz'), []);
 });
 
@@ -158,6 +232,11 @@ test('cards share one fetch, again when the first gauge is due', () => {
   assert.equal(nextCardFetch(rows, ['canal', 'nope'], t0), t0 + CARD_MIN_MS);
   const late = mergeCardRows(rows, [{ id: 'pizza', updated: iso(t0 - 11 * 60_000), ok: true, ttl: 10 * 60_000 }]);
   assert.equal(nextCardFetch(late, ['pizza'], t0), t0 + CARD_MIN_MS, 'never sooner than a minute after the last fetch');
+  // Server time: a browser clock 30 minutes fast still waits the gauge's own ttl, not a minute.
+  const fast = t0 + 30 * 60_000;
+  assert.equal(nextCardFetch(rows, ['pizza'], fast, t0), fast + 9 * 60_000 + 5_000);
+  const slow = t0 - 30 * 60_000;
+  assert.equal(nextCardFetch(rows, ['pizza'], slow, t0), slow + 9 * 60_000 + 5_000, 'a slow clock does not wait longer');
   // A gauge that comes back pending keeps the value it had.
   const kept = mergeCardRows(rows, [{ id: 'pizza', ok: false, pending: true }, { id: 'canal', ok: false, headline: 'NO DATA' }]);
   assert.equal(kept.get('pizza').ok, true);

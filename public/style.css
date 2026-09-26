@@ -1229,6 +1229,7 @@ a.ch-flag { cursor: pointer; }
 .desk-bar .desk-presets ~ .desk-add { margin-left: 0; }
 .desk-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-height: 30px; margin-bottom: 1px; padding: 4px 8px; background: var(--panel-2); border: 1px solid var(--accent); color: var(--text); font-size: 12px; }
 .desk-confirm[hidden] { display: none; }
+.desk-confirm:focus { outline: 0; }
 .desk-pick-list .desk-pick-group { display: flex; height: 22px; color: var(--dim); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; cursor: default; border-top: 1px solid var(--rule); }
 .desk-pick-list .desk-pick-group:first-child { border-top: 0; }
 .desk-pick-list .desk-pick-group:hover { background: transparent; }
