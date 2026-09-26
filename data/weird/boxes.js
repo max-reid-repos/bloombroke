@@ -17,6 +17,9 @@ export const SERIES = [
   { key: 'price', fred: 'PCU322211322211', label: 'Box prices', full: 'Corrugated box producer prices (index)' },
 ];
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const mon = (month) => MONTHS[Number(month.slice(5, 7)) - 1];
+
 // { output: rows | null, price: rows | null } -> the gauge.
 export function build(got) {
   const parts = SERIES.map((s) => {
@@ -31,8 +34,8 @@ export function build(got) {
   return {
     headline: `${signedPct(lead.yoy, 1)} YOY`,
     line: lead.key === 'output'
-      ? `Box output vs a year ago${other ? `; prices ${signedPct(other.yoy, 1)}` : ''}`
-      : 'Box prices vs a year ago',
+      ? `Box output vs a year ago (${mon(lead.month)})${other ? `; prices ${signedPct(other.yoy, 1)} (${mon(other.month)})` : ''}`
+      : `Box prices vs a year ago (${mon(lead.month)})`,
     spark: lead.spark,
     asOf: `${lead.month}-01`,
     source,

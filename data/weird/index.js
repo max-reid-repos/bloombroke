@@ -144,7 +144,9 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
       const late = new Promise((resolve) => { timer = setTimeout(resolve, wait, noData(g, { headline: 'LOADING', pending: true })); timer.unref?.(); });
       return Promise.race([getGauge(g.id), late]).finally(() => clearTimeout(timer));
     }));
-    return { gauges: rows.map(summarize), updated: new Date(now()).toISOString() };
+    // Stale when every gauge that has a value is showing a last good one.
+    const good = rows.filter((r) => r.ok);
+    return { gauges: rows.map(summarize), updated: new Date(now()).toISOString(), stale: good.length > 0 && good.every((r) => r.stale) };
   }
 
   return { getGauge, getWeird };

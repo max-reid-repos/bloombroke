@@ -13,6 +13,12 @@ export const retryMs = 30 * 60_000;
 const URL_WCI = 'https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/world-container-index-assessed-by-drewry';
 const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 
+// The composite's own clause: "World Container Index (WCI) [composite] decreased 1% to
+// $4,468 per 40ft". Only a few words may sit between the name and the price, so a route
+// rate elsewhere in the sentence ("Shanghai to Rotterdam rose to $3,000 per 40ft") is
+// never taken for it.
+export const WCI_CLAUSE = /World Container Index(?:\s*\(WCI\))?(?:\s+composite(?:\s+index)?)?\s+(?:[a-z]+\s+){0,4}?(?:by\s+)?(?:[\d.]+%\s+)?(?:to|at)\s+(?:US)?\$\s?(\d{1,3}(?:,\d{3})+|\d{3,6})(?:\.\d+)?\s+per\s+40\s?ft/i;
+
 // The page -> { usd, date: 'YYYY-MM-DD', text }. Throws NoData when it does not parse.
 export function parse(html) {
   const tags = String(html ?? '').match(/<meta[^>]+>/gi) || [];
@@ -20,7 +26,7 @@ export function parse(html) {
   const text = decodeEntities((/content="([^"]*)"/i.exec(tag || '') || /content='([^']*)'/i.exec(tag || ''))?.[1] || '').replace(/\s+/g, ' ').trim();
   if (!/World Container Index/i.test(text)) throw new NoData('Drewry: no WCI headline');
   const d = /\b(\d{1,2}) (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* (\d{4})\b/i.exec(text);
-  const p = /\$\s?(\d{1,3}(?:,\d{3})+|\d{3,6})(?:\.\d+)? per 40ft/i.exec(text);
+  const p = WCI_CLAUSE.exec(text);
   if (!d || !p) throw new NoData('Drewry: headline did not parse');
   const month = MONTHS[d[2].toLowerCase()];
   const day = Number(d[1]);

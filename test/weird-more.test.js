@@ -22,10 +22,11 @@ import * as canal from '../data/weird/canal.js';
 import { toMonths, changeAt, recentRows } from '../data/weird/fred.js';
 import { pool, decodeEntities } from '../data/weird/source.js';
 import { parseFredCsv } from '../data/economy.js';
-import { GAUGES, lastGoodStore } from '../data/weird/index.js';
+import { GAUGES, lastGoodStore, makeWeird } from '../data/weird/index.js';
 import { WEIRD_GAUGES } from '../public/screens/weird-gauges.js';
 import { tileBody, commandForNumber, tile } from '../public/screens/weird.js';
-import { numberedItem, panelNumberInput } from '../public/app.js';
+import { numberedItem, panelNumberInput, parseCommand } from '../public/app.js';
+import { REGISTRY } from '../public/registry.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -129,6 +130,13 @@ test('boxrate: the headline dollar figure and date, or NO DATA; never a guess', 
   assert.throws(() => boxrate.parse('<meta name="description" content="Something else, 24 Sep 2026, $4,468 per 40ft container.">'), noData);
   assert.throws(() => boxrate.parse(''), noData);
   assert.throws(() => boxrate.parse('<meta name="description" content="24 Sep 2026: World Container Index rose to $12 per 40ft container.">'), noData);
+  // The price is the composite's own clause, not the first dollar figure.
+  const meta = (t) => `<meta name="description" content="${t}">`;
+  assert.equal(boxrate.parse(meta('24 Sep 2026: Shanghai to Rotterdam rose 5% to $3,000 per 40ft; Drewry’s World Container Index composite fell 1% to $4,468 per 40ft container.')).usd, 4468);
+  assert.equal(boxrate.parse(meta('24 Sep 2026: Drewry’s World Container Index (WCI) remained stable at $2,100 per 40ft container.')).usd, 2100);
+  assert.equal(boxrate.parse(meta('24 Sep 2026: Drewry’s World Container Index (WCI) increased by 12% to $5,000 per 40ft container.')).usd, 5000);
+  assert.throws(() => boxrate.parse(meta('24 Sep 2026: World Container Index: Shanghai to Rotterdam up to $3,000 per 40ft.')), noData);
+  assert.throws(() => boxrate.parse(meta('24 Sep 2026: Shanghai to Genoa $3,900 per 40ft; World Container Index steady.')), noData);
 });
 
 test('eggs: latest price, a year before, and the peak', () => {
@@ -164,9 +172,9 @@ test('boxes: output leads, prices follow, each with its own month; one missing s
   assert.equal(g.series[0].month, '2026-06');
   assert.equal(g.series[1].month, '2026-08');
   assert.equal(g.asOf, '2026-06-01');
-  assert.match(g.line, /^Box output vs a year ago; prices [+−]\d+\.\d%$/);
+  assert.match(g.line, /^Box output vs a year ago \(Jun\); prices [+−]\d+\.\d% \(Aug\)$/);
   const only = boxes.build({ output: null, price: fred('fred-box-price.csv') });
-  assert.equal(only.line, 'Box prices vs a year ago');
+  assert.equal(only.line, 'Box prices vs a year ago (Aug)');
   assert.throws(() => boxes.build({ output: null, price: null }), noData);
 });
 
@@ -192,8 +200,15 @@ test('rides: open rides with a posted wait, closed parks say closed', () => {
   const shut = rides.build([{ park: rides.PARKS[0], rides: mk }]);
   assert.equal(shut.headline, 'PARKS CLOSED');
   assert.throws(() => rides.build([{ park: rides.PARKS[0], error: 'down' }]));
-  const tile = tileBody(WEIRD_GAUGES.find((x) => x.id === 'rides'), { id: 'rides', ok: true, ...g });
-  assert.match(tile, /Powered by Queue-Times\.com/);
+  const gauge = WEIRD_GAUGES.find((x) => x.id === 'rides');
+  const link = /Powered by <a href="https:\/\/queue-times\.com\/"[^>]*>Queue-Times\.com<\/a>/;
+  const tile = tileBody(gauge, { id: 'rides', ok: true, ...g });
+  assert.match(tile, link, 'the tile credit links to Queue-Times.com');
+  assert.match(tile, /target="_blank" rel="noopener noreferrer"/);
+  assert.match(tileBody(gauge, { id: 'rides', ok: false, headline: 'NO DATA', source: 'Queue-Times.com' }), /<a href="https:\/\/queue-times\.com\/"/);
+  assert.match(readFileSync('public/screens/weird.js', 'utf8'), /\$\{sourceHtml\(g, d\)\}<\/p>\s*`;\s*const host/, 'the detail footer uses the linked credit too');
+  // Other credits stay plain text.
+  assert.doesNotMatch(tileBody(WEIRD_GAUGES.find((x) => x.id === 'wsb'), { id: 'wsb', ok: true, headline: 'X', source: 'ApeWisdom', asOf: '2026-09-26' }), /<a /);
 });
 
 test('buzz: quarters, hit totals and the headline quarter', () => {
@@ -224,8 +239,16 @@ test('buzz: quarters, hit totals and the headline quarter', () => {
 
 test('beige: the edition list, article text only, and whole-word counts', () => {
   const eds = beige.parseEditions(fx('beige-index.html'), NOW);
-  assert.deepEqual(eds.slice(0, 8), ['202608', '202607', '202605', '202604', '202602', '202601', '202511', '202510']);
-  assert.ok(!beige.parseEditions(fx('beige-index.html'), Date.parse('2026-06-15T00:00:00Z')).includes('202607'));
+  assert.deepEqual(eds.slice(0, 8).map((e) => e.edition), ['202608', '202607', '202605', '202604', '202602', '202601', '202511', '202510']);
+  // The id is not the release month: the August 2026 edition came out on September 2.
+  assert.deepEqual(eds[0], { edition: '202608', released: '2026-09-02' });
+  assert.equal(eds[1].released, '2026-07-15');
+  assert.equal(eds[6].released, null, 'no PDF on the index row: read from the summary page');
+  assert.equal(beige.pdfDate(fx('beige-202510-summary-pdf.html')), '2025-10-15');
+  assert.equal(beige.pdfDate('<a href="x.pdf">'), null);
+  // On Sep 1 the edition released Sep 2 is not out yet; on Jul 10, neither is 202607 (Jul 15).
+  assert.equal(beige.parseEditions(fx('beige-index.html'), Date.parse('2026-09-01T12:00:00Z'))[0].edition, '202607');
+  assert.ok(!beige.parseEditions(fx('beige-index.html'), Date.parse('2026-07-10T00:00:00Z')).some((e) => e.edition === '202607'));
   const text = beige.articleText(fx('beige-202608-summary.html'));
   assert.match(text, /^National Summary/);
   assert.doesNotMatch(text, /menu|footer/i, 'navigation and footer are not counted');
@@ -234,12 +257,17 @@ test('beige: the edition list, article text only, and whole-word counts', () => 
     { uncertain: 2, tariff: 2, slow: 3, recession: 2, ai: 2 });
   assert.equal(beige.countWords('Tariffing sidewalk AIR said Brazil').tariff, 0);
   const g = beige.build([
-    { edition: '202608', counts: { uncertain: 29, tariff: 24, slow: 38, recession: 1, ai: 25 } },
-    { edition: '202607', counts: { uncertain: 34, tariff: 24, slow: 22, recession: 1, ai: 19 } },
+    { edition: '202608', released: '2026-09-02', counts: { uncertain: 29, tariff: 24, slow: 38, recession: 1, ai: 25 } },
+    { edition: '202607', released: '2026-07-15', counts: { uncertain: 34, tariff: 24, slow: 22, recession: 1, ai: 19 } },
   ]);
   assert.equal(g.headline, 'SLOW 38 TIMES');
   assert.deepEqual(g.spark, [22, 38]);
-  assert.equal(g.asOf, '2026-08-01');
+  assert.equal(g.asOf, '2026-09-02');
+  const gauge = WEIRD_GAUGES.find((x) => x.id === 'beige');
+  assert.match(tileBody(gauge, { id: 'beige', ok: true, stale: false, ...g }), /FEDERAL RESERVE · SEP 02|Federal Reserve · SEP 02/);
+  const html = gauge.detail(g).html;
+  assert.match(html, /Sep 2, 2026/);
+  assert.doesNotMatch(html, /AUG 2026/);
   assert.throws(() => beige.articleText('<html>no article</html>'));
   assert.throws(() => beige.build([]), noData);
 });
@@ -247,6 +275,16 @@ test('beige: the edition list, article text only, and whole-word counts', () => 
 test('sick: national median wastewater level per virus, with the 4-week change', () => {
   const g = sick.build(sick.parse(fxj('cdc-wval.json')));
   const covid = g.rows[0];
+  // Sep 19 had 820 sites and Sep 12 929, against 1,086 in a full week: both are thin, so
+  // the newest week with 90% of a full week is Sep 5 (1,074 sites).
+  assert.equal(covid.week, '2026-09-05');
+  assert.equal(covid.sites, 1074);
+  assert.equal(g.headline, 'COVID 2.7');
+  assert.equal(covid.points[covid.points.length - 1].week, '2026-09-05', 'thin weeks are not charted');
+  const s = (n) => ({ week: `w${n}`, level: 1, sites: n });
+  assert.equal(sick.settledIndex([s(1000), s(1000), s(950), s(600)]), 2);
+  assert.equal(sick.settledIndex([s(1000), s(899)]), 0);
+  assert.equal(sick.settledIndex([s(1000), s(900)]), 1);
   assert.equal(covid.label, 'COVID');
   assert.equal(g.asOf, covid.week);
   assert.equal(g.headline, `COVID ${covid.level.toFixed(1)}`);
@@ -340,4 +378,62 @@ test('WEIRD: 12 and Enter opens gauge 12 (WSB), not the tile maximised; a bare d
   assert.equal(numberedItem(root, 24), null);
   const src = readFileSync('public/app.js', 'utf8');
   assert.match(src, /const item = numberedItem\(screen, n\);\s+if \(item \|\| maximize\(String\(n\)\)\)/);
+});
+
+test('WEIRD follows the phase 1 status rules: the clock dot, and a status line only for NO DATA', () => {
+  const src = readFileSync('public/screens/weird.js', 'utf8');
+  assert.doesNotMatch(src, /statusLine|TYPE A NUMBER|GAUGES`|UPDATED/, 'no clock text or hint in the status line');
+  assert.equal((src.match(/ctx\.updated\(d\.updated, d\.stale\)/g) || []).length, 2, 'grid and gauge both set the dot');
+  assert.match(src, /ctx\.status\(bad \? `\$\{bad\} NO DATA` : '', bad \? 'warn' : ''\)/);
+});
+
+test('WEIRD summary is stale only when every gauge with a value is a last good one', async () => {
+  const mk = (id, stale) => ({ id, source: id, ttl: 1, load: async () => { if (stale) throw new Error('down'); return { headline: 'OK' }; } });
+  const w = makeWeird({ gauges: [mk('a', false), mk('b', true)], lastGoodDir: null });
+  const s = await w.getWeird({ wait: 500 });
+  assert.equal(s.stale, false);
+});
+
+test('no WEIRD command or alias is a US ticker (SEC lists checked Sep 26 2026)', () => {
+  // Names under 6 letters could be tickers; each short one here was checked against the
+  // SEC company_tickers.json and company_tickers_mf.json (funds and ETFs) and is not one.
+  // BUZZ, ODDS and EGGS are ETF tickers and EGG a stock, so those gauges are BUZZWORD,
+  // CHANCES and EGGPRICE.
+  const CHECKED_SHORT = ['WEIRD', 'CANAL', 'SHIPS', 'PIZZA', 'DEGEN', 'PANIC', 'OMENS', 'MOON', 'WSB', 'RIDES', 'BEIGE', 'BOXES', 'SICK', 'MACAU'];
+  const names = REGISTRY.filter((c) => c.category === 'Weird data').flatMap((c) => [c.name, ...(c.aliases || [])]);
+  for (const n of names) if (n.length < 6) assert.ok(CHECKED_SHORT.includes(n), `${n} is short: check it against the SEC ticker lists`);
+  for (const t of ['BUZZ', 'ODDS', 'EGGS', 'EGG']) {
+    assert.ok(!names.includes(t), t);
+    assert.equal(parseCommand(t).name, 'QUOTE', `${t} opens the ticker`);
+  }
+  assert.equal(parseCommand('BUZZWORD').name, 'BUZZWORD');
+  assert.equal(parseCommand('CHANCES').name, 'CHANCES');
+  assert.equal(parseCommand('EGGPRICE').name, 'EGGPRICE');
+  assert.equal(commandForNumber('13'), 'CHANCES');
+});
+
+test('pool: never more than `limit` at once, starts spaced by at least `gapMs`', async () => {
+  let running = 0;
+  let peak = 0;
+  const starts = [];
+  await pool([1, 2, 3, 4, 5, 6], 2, async () => {
+    starts.push(Date.now());
+    running += 1;
+    peak = Math.max(peak, running);
+    await new Promise((r) => setTimeout(r, 30));
+    running -= 1;
+  }, 20);
+  assert.equal(peak, 2);
+  for (let i = 1; i < starts.length; i += 1) assert.ok(starts[i] - starts[i - 1] >= 18, `gap ${starts[i] - starts[i - 1]} ms`);
+  let calls = 0;
+  await assert.rejects(pool([1, 2, 3, 4, 5], 1, async (x) => { calls += 1; if (x === 2) throw new Error('stop'); }, 0), /stop/);
+  assert.equal(calls, 2, 'no new work after a failure');
+});
+
+test('the disclaimer names every WEIRD source', () => {
+  const md = readFileSync('legal/disclaimer.md', 'utf8');
+  const line = md.split('\n').find((l) => l.startsWith('- WEIRD gauges:'));
+  assert.ok(line);
+  for (const s of ['IMF PortWatch', 'pizzint.watch', 'Apple App Store', 'NHC', 'OpenStreetMap (ODbL)', 'Wikimedia', 'Hacker News (Algolia)', 'FRED', 'NWS', 'NOAA SWPC', 'BLS',
+    'The Economist (CC BY 4.0)', 'Forbes', 'ApeWisdom', 'Polymarket', 'Drewry', 'Queue-Times.com', 'SEC EDGAR', 'the Federal Reserve', 'CDC', 'DICJ Macau']) assert.ok(line.includes(s), s);
 });

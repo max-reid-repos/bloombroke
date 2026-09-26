@@ -52,6 +52,15 @@ export function sourceLine(d, period) {
   return `${src} · last reading ${timed ? `${nyTime(d.asOf)} ET ${asOfLabel(d.asOf)}` : asOfLabel(d.asOf, period)}`;
 }
 
+// The source line as HTML. A gauge whose source asks for a linked credit (RIDES:
+// "Powered by Queue-Times.com") gets that name as a link, like the CoinGecko credit.
+export function sourceHtml(g, d) {
+  const text = esc(sourceLine(d, g.period));
+  const c = g.creditLink;
+  if (!c) return text;
+  return text.replace(esc(c.text), `<a href="${esc(c.href)}" target="_blank" rel="noopener noreferrer" title="${esc(c.title || c.text)}">${esc(c.text)}</a>`);
+}
+
 const stats = (rows) => `<dl class="stats wd-stats">${rows.map(([k, v]) => `<div class="stat"><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
 const table = (head, rows) => `<table class="grid-table wd-table"><thead><tr>${head.map(([h, cls]) => `<th scope="col"${cls ? ` class="${cls}"` : ''}>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
 const n0 = (v) => fmtNum(v, 0);
@@ -260,7 +269,7 @@ function wsbDetail(d) {
   return { html: table([['#', 'num'], ['Ticker'], ['Mentions', 'num'], ['24h before', 'num wd-hide-sm'], ['Rank then', 'num'], ['Places', 'num']], rows) };
 }
 
-// ---- ODDS --------------------------------------------------------------------------
+// ---- CHANCES -----------------------------------------------------------------------
 const pctText = (p) => (!Number.isFinite(p) ? '--' : p > 0 && p < 1 ? '<1%' : p > 99 && p < 100 ? '>99%' : `${Math.round(p)}%`);
 function oddsDetail(d) {
   const rec = d.recession
@@ -282,7 +291,7 @@ function boxrateDetail(d) {
   };
 }
 
-// ---- EGGS --------------------------------------------------------------------------
+// ---- EGGPRICE ----------------------------------------------------------------------
 function eggsDetail(d) {
   const rows = d.rows.map((r) => `<tr><th scope="row" class="name">${esc(monthLabel(r.month))}</th>
     <td class="num last">$${fmtNum(r.value, 2)}</td><td class="num ${dirCls(r.yoy)}">${signed(r.yoy, 0)}</td></tr>`);
@@ -311,7 +320,7 @@ function ridesDetail(d) {
   return { html: table([['Park'], ['Rides open', 'num'], ['Average wait', 'num'], ['Longest', 'wd-hide-sm']], rows) };
 }
 
-// ---- BUZZ --------------------------------------------------------------------------
+// ---- BUZZWORD ----------------------------------------------------------------------
 const BUZZ_WORDS = [['ai', 'AI'], ['tariff', 'Tariff'], ['recession', 'Recession']];
 function buzzDetail(d) {
   const cell = (r, k) => `${n0(r[k])}${(r.capped || []).includes(k) ? '+' : ''}`;
@@ -328,13 +337,13 @@ function buzzDetail(d) {
 
 // ---- BEIGE -------------------------------------------------------------------------
 function beigeDetail(d) {
-  const rows = d.editions.map((e) => `<tr><th scope="row" class="name">${esc(monthLabel(e.month))}</th>
+  const rows = d.editions.map((e) => `<tr><th scope="row" class="name">${esc(fmtDate(e.released, 'prose'))}</th>
     ${d.words.map((w) => `<td class="num${w.key === d.top ? ' last' : ''}">${n0(e[w.key])}</td>`).join('')}</tr>`);
   const ordered = d.editions.slice().reverse();
-  const series = d.words.map((w, i) => ({ id: w.key, cls: `ln-${i}`, label: w.label, points: ordered.map((e) => ({ x: dayMs(`${e.month}-01`), y: e[w.key] })) }));
+  const series = d.words.map((w, i) => ({ id: w.key, cls: `ln-${i}`, label: w.label, points: ordered.map((e) => ({ x: dayMs(e.released), y: e[w.key] })) }));
   return {
     html: `<div class="wd-chart-head">${legend(series)}</div>${chartHost('wd-chart')}`
-      + table([['Edition'], ...d.words.map((w) => [w.label, 'num'])], rows),
+      + table([['Released'], ...d.words.map((w) => [w.label, 'num'])], rows),
     chart: { series, fmtY: (v) => n0(v), fmtX: (x) => fmtDate(x, 'axis'), label: 'Word counts per Beige Book edition' },
   };
 }
@@ -498,7 +507,7 @@ export const WEIRD_GAUGES = [
     ],
   },
   {
-    id: 'odds', command: 'ODDS', title: 'Odds', period: 'time', detail: oddsDetail,
+    id: 'odds', command: 'CHANCES', title: 'Chances', period: 'time', detail: oddsDetail,
     method: [
       'Prices on Polymarket, a prediction market, read from its public Gamma API. A "Yes" price of 10 cents on the dollar is shown as a 10% chance. These are traders\' prices, not forecasts by us.',
       'Recession: the US recession market for this year, or the soonest one if there is none for this year. Fed: every outcome of the market on the next Fed meeting. Questions are shown in the market\'s own words.',
@@ -513,7 +522,7 @@ export const WEIRD_GAUGES = [
     ],
   },
   {
-    id: 'eggs', command: 'EGGS', title: 'Eggs', period: 'month', detail: eggsDetail,
+    id: 'eggs', command: 'EGGPRICE', title: 'Egg price', period: 'month', detail: eggsDetail,
     method: [
       'The average price of a dozen grade A large eggs in US cities, from the BLS average price survey (FRED series APU0000708111), monthly.',
       'The peak is the highest monthly price in the series, which starts in 1980. "From peak" compares the latest month with it.',
@@ -521,6 +530,7 @@ export const WEIRD_GAUGES = [
   },
   {
     id: 'rides', command: 'RIDES', title: 'Rides', period: 'time', detail: ridesDetail,
+    creditLink: { text: 'Queue-Times.com', href: 'https://queue-times.com/', title: 'Powered by Queue-Times.com' },
     method: [
       "Posted wait times from Queue-Times.com for Walt Disney World's four parks (Magic Kingdom, Epcot, Hollywood Studios, Animal Kingdom) and Disneyland.",
       'The average counts rides that are open and post a wait above zero, across all five parks. Shows and walk-on rides post zero, so they are left out. When no park has an open ride, this says the parks are closed.',
@@ -528,18 +538,18 @@ export const WEIRD_GAUGES = [
     ],
   },
   {
-    id: 'buzz', command: 'BUZZ', title: 'Buzz', detail: buzzDetail,
+    id: 'buzz', command: 'BUZZWORD', title: 'Buzzword', detail: buzzDetail,
     method: [
       'SEC EDGAR full-text search: the number of 10-Q quarterly reports that use the exact phrase "artificial intelligence", "tariff" or "recession", by the calendar quarter they were filed in. One filing counts once, however often it uses the phrase.',
       'Few 10-Qs are filed from January to March, when most companies file their annual 10-K instead, so those quarters are always low. The newest quarter is counted so far; the headline uses it in its last week, and the quarter before it until then.',
     ],
   },
   {
-    id: 'beige', command: 'BEIGE', title: 'Beige Book', period: 'month', detail: beigeDetail,
+    id: 'beige', command: 'BEIGE', title: 'Beige Book', detail: beigeDetail,
     method: [
       "The Fed's Beige Book gathers what businesses tell the 12 Federal Reserve Banks, eight times a year. Each edition here is its national summary plus the 12 District reports, from federalreserve.gov.",
       'Words are counted as whole words in any case, with their plain forms: uncertain counts uncertainty; tariff counts tariffs; slow counts slowed, slowing, slower, slowly and slowdown; recession counts recessions. AI counts only in capitals, plus "artificial intelligence".',
-      'The headline is whichever of the five words the latest edition uses most.',
+      'The headline is whichever of the five words the latest edition uses most. Each edition is dated by the day it came out: the one the Fed calls August 2026 came out on September 2.',
     ],
   },
   {
@@ -567,7 +577,7 @@ export const WEIRD_GAUGES = [
     id: 'sick', command: 'SICK', title: 'Sick', detail: sickDetail,
     method: [
       "CDC wastewater data (National Wastewater Surveillance System, dataset atcp-73re). Each sewage site gets a weekly viral activity level that compares it with that site's own baseline; 1 is the lowest the scale goes.",
-      'CDC publishes this per site. The national figure here is our summary: the median level of all sites reporting that week, for COVID (SARS-CoV-2), flu A and RSV. The latest week often has fewer sites and can change.',
+      'CDC publishes this per site. The national figure here is our summary: the median level of all sites reporting that week, for COVID (SARS-CoV-2), flu A and RSV. Sites report late, so the newest week or two have fewer sites and move a lot. This shows the newest week with at least 90% as many sites as a full week (the most sites any of the last 8 weeks had).',
     ],
   },
   {

@@ -459,8 +459,8 @@ export const REGISTRY = [
     source: 'ApeWisdom', delay: 'About hourly',
   },
   {
-    name: 'ODDS', category: 'Weird data', summary: 'Prediction-market odds of a US recession and the next Fed move',
-    syntax: 'ODDS', examples: ['ODDS'], keywords: ['prediction market', 'polymarket', 'recession', 'fed', 'fomc', 'probability'],
+    name: 'CHANCES', category: 'Weird data', summary: 'Prediction-market odds of a US recession and the next Fed move',
+    syntax: 'CHANCES', examples: ['CHANCES'], keywords: ['odds', 'prediction market', 'polymarket', 'recession', 'fed', 'fomc', 'probability'],
     source: 'Polymarket', delay: 'Minutes',
   },
   {
@@ -469,8 +469,8 @@ export const REGISTRY = [
     source: 'Drewry WCI', delay: 'Weekly, Thursdays',
   },
   {
-    name: 'EGGS', aliases: ['EGG'], category: 'Weird data', summary: 'Average price of a dozen eggs in the US, and how far from the peak',
-    syntax: 'EGGS', examples: ['EGGS'], keywords: ['eggs', 'food prices', 'grocery', 'inflation', 'bird flu'],
+    name: 'EGGPRICE', aliases: ['EGGPRICES'], category: 'Weird data', summary: 'Average price of a dozen eggs in the US, and how far from the peak',
+    syntax: 'EGGPRICE', examples: ['EGGPRICE'], keywords: ['eggs', 'food prices', 'grocery', 'inflation', 'bird flu'],
     source: 'FRED APU0000708111 (BLS)', delay: 'Monthly',
   },
   {
@@ -479,8 +479,8 @@ export const REGISTRY = [
     source: 'Powered by Queue-Times.com', delay: 'About 5 minutes',
   },
   {
-    name: 'BUZZ', category: 'Weird data', summary: '10-Q filings that say AI, tariff or recession, by quarter',
-    syntax: 'BUZZ', examples: ['BUZZ'], keywords: ['sec', 'edgar', '10-q', 'artificial intelligence', 'tariffs', 'recession', 'filings'],
+    name: 'BUZZWORD', aliases: ['BUZZWORDS'], category: 'Weird data', summary: '10-Q filings that say AI, tariff or recession, by quarter',
+    syntax: 'BUZZWORD', examples: ['BUZZWORD'], keywords: ['buzz', 'sec', 'edgar', '10-q', 'artificial intelligence', 'tariffs', 'recession', 'filings'],
     source: 'SEC EDGAR full-text search', delay: 'Daily',
   },
   {

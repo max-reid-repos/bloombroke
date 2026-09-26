@@ -3,7 +3,8 @@
 // Activity Level" (WVAL) dataset atcp-73re on data.cdc.gov (Socrata). WVAL compares
 // each site with its own baseline. The data is per site, so the national figure here
 // is the median of all reporting sites each week, worked out by the CDC's own query
-// engine. It is our summary, not a CDC national number.
+// engine. It is our summary, not a CDC national number. The newest weeks are thin (sites
+// report late), so the gauge uses the newest week with at least 90% of a full week's sites.
 
 import { NoData } from './source.js';
 
@@ -48,9 +49,22 @@ export function parse(body) {
 
 const weeksBack = (week, n) => new Date(Date.parse(`${week}T00:00:00Z`) - n * 7 * 86400_000).toISOString().slice(0, 10);
 
+// The newest week with at least 90% of a full week's sites. Sites keep reporting for
+// a while after a week ends, so the last week or two are thin and move a lot. A full
+// week is the most sites any of the last 8 weeks had.
+export const FULL_SHARE = 0.9;
+export function settledIndex(s) {
+  const counts = s.slice(-8).map((x) => x.sites).filter(Number.isFinite);
+  if (!counts.length) return s.length - 1;
+  const need = Math.max(...counts) * FULL_SHARE;
+  for (let i = s.length - 1; i >= 0; i -= 1) if (Number.isFinite(s[i].sites) && s[i].sites >= need) return i;
+  return s.length - 1;
+}
+
 export function build(series) {
   const rows = PATHOGENS.map((p) => {
-    const s = (series[p.key] || []).slice(-WEEKS);
+    const all = series[p.key] || [];
+    const s = all.slice(0, settledIndex(all) + 1).slice(-WEEKS);
     const last = s[s.length - 1];
     if (!last) return { key: p.key, label: p.label, level: null, points: [] };
     const before = s.find((x) => x.week === weeksBack(last.week, 4));

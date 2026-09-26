@@ -6,8 +6,7 @@
 import { esc, panel, LOADING } from './markets.js';
 import { sparkSvg } from './economy.js';
 import { mountLines } from './lines.js';
-import { statusLine } from '../freshness.js';
-import { WEIRD_GAUGES, gaugeByCommand, sourceLine } from './weird-gauges.js';
+import { WEIRD_GAUGES, gaugeByCommand, sourceHtml } from './weird-gauges.js';
 
 export { WEIRD_GAUGES };
 
@@ -28,7 +27,7 @@ export function tileBody(g, d) {
   return `<p class="wd-big${cls}">${esc(big)}</p>
     <p class="wd-line">${esc(bad ? '' : d.line || '')}</p>
     <div class="wd-spark">${!bad && Array.isArray(d.spark) && d.spark.length > 1 ? sparkSvg(d.spark, 120, 18) : ''}</div>
-    <p class="wd-src">${esc(sourceLine(d, g.period))}</p>`;
+    <p class="wd-src">${sourceHtml(g, d)}</p>`;
 }
 
 // data-num: a number and Enter in the command bar opens this tile's own screen (not the
@@ -39,6 +38,10 @@ export function tile(g, i) {
 
 function grid(el, ctx) {
   el.innerHTML = `<div class="wd-grid">${WEIRD_GAUGES.map(tile).join('')}</div>`;
+  // A credit link inside a tile opens its site; it does not open the tile.
+  el.querySelector('.wd-grid').addEventListener('click', (e) => {
+    if (e.target.closest('a[href^="https://"]')) e.stopPropagation();
+  });
   const fill = (d) => {
     const g = WEIRD_GAUGES.find((x) => x.id === d.id);
     const body = g && el.querySelector(`#wd-t-${g.id} .panel-body`);
@@ -61,8 +64,10 @@ function grid(el, ctx) {
       for (const p of d.gauges.filter((x) => x.pending)) {
         ctx.fetchJSON(`/api/weird/${encodeURIComponent(p.id)}`, { signal: ctx.signal }).then(fill).catch(() => {});
       }
+      // The dot by the clock says when; the status line only carries a warning.
+      ctx.updated(d.updated, d.stale);
       const bad = d.gauges.filter((x) => x.ok === false && !x.pending).length;
-      ctx.status(`${statusLine(d.updated, false)} · ${WEIRD_GAUGES.length} GAUGES${bad ? ` · ${bad} NO DATA` : ''} · TYPE A NUMBER TO OPEN`);
+      ctx.status(bad ? `${bad} NO DATA` : '', bad ? 'warn' : '');
     } catch (err) {
       if (err.name === 'AbortError') return;
       ctx.status('WEIRD: NO DATA', 'warn');
@@ -90,13 +95,13 @@ function detail(el, g, ctx) {
     body.innerHTML = `<div class="wd-head"><p class="wd-big${d.stale ? ' is-stale' : ''}">${esc(d.headline)}</p><p class="wd-line">${esc(d.line || '')}</p></div>
       <div class="wd-body">${part.html}</div>
       ${how}
-      <p class="wd-src">${esc(sourceLine(d, g.period))}</p>`;
+      <p class="wd-src">${sourceHtml(g, d)}</p>`;
     const host = body.querySelector('#wd-chart');
     if (host && part.chart) {
       const c = part.chart;
       cleanup = mountLines(host, c.series, { fmtY: c.fmtY, fmtTick: c.fmtY, fmtX: c.fmtX, label: c.label });
     }
-    ctx.status(`${statusLine(d.updated, d.stale)} · ${String(d.source).toUpperCase()}`, d.stale ? 'warn' : '');
+    ctx.updated(d.updated, d.stale);
   }).catch((err) => {
     if (err.name === 'AbortError') return;
     body.innerHTML = `<p class="wd-big is-none">NO DATA</p><p class="panel-msg">${esc(err.message)}</p>${how}`;

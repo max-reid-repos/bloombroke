@@ -61,6 +61,7 @@ You alone are responsible for your investment and financial decisions and for th
 - Exchange rates: ECB reference rates via Frankfurter, once a working day. Pairs without the euro are calculated from the euro rates.
 - Rates: US Treasury, Federal Reserve Bank of New York and Freddie Mac. Economy: FRED, Federal Reserve Bank of St. Louis. Inflation: US Bureau of Labor Statistics.
 - Economic calendar: Forex Factory. Options: Cboe, delayed 15 minutes. Crypto: CoinGecko.
+- WEIRD gauges: IMF PortWatch, pizzint.watch, Apple App Store, NHC, OpenStreetMap (ODbL), Wikimedia, Hacker News (Algolia), FRED, NWS, NOAA SWPC, BLS, The Economist (CC BY 4.0), Forbes, ApeWisdom, Polymarket, Drewry, Queue-Times.com, SEC EDGAR, the Federal Reserve, CDC and DICJ Macau.
 
 ## 10. Contact
 

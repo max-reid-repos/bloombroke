@@ -1,7 +1,10 @@
 // BEIGE: how often the Fed's Beige Book uses a few words, edition by edition, for the
 // last 8 editions. Each edition is a national summary plus one report per Fed District
 // (13 pages), all counted. Source: federalreserve.gov. The edition list comes from the
-// Beige Book index page. Words are whole words, any case, with their plain forms
+// Beige Book index page. An edition's id (beigebook202608) is not its release month:
+// the August 2026 edition came out September 2. The release date is read from the PDF
+// name (BeigeBook_20260902.pdf), in the index row or else on the edition's summary
+// page, and is the date shown. Words are whole words, any case, with their plain forms
 // ("tariffs" counts as tariff); "AI" counts only in capitals, plus "artificial
 // intelligence". Past editions never change, so their counts are kept in memory.
 
@@ -25,13 +28,32 @@ export const WORDS = [
   { key: 'ai', label: 'AI', res: [/\bAI\b/g, /\bartificial intelligence\b/gi] },
 ];
 
-// The index page -> edition ids 'YYYYMM', newest first, none after `now`.
+// 'BeigeBook_20260902.pdf' somewhere in `html` -> '2026-09-02', or null.
+export function pdfDate(html) {
+  const m = /BeigeBook_(\d{4})(\d{2})(\d{2})\.pdf/.exec(String(html ?? ''));
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10);
+
+// The index page -> [{ edition: 'YYYYMM', released: 'YYYY-MM-DD' | null }], newest
+// first. The release date comes from the PDF link in the same table cell. An edition
+// released after `now` is left out; one with no date on the index is kept only when its
+// id month is before this month (it cannot be out yet otherwise).
 export function parseEditions(html, now = Date.now()) {
-  const d = new Date(now);
-  const cap = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-  const ids = new Set();
-  for (const m of String(html ?? '').matchAll(/beigebook(\d{6})(?:-summary)?\.htm/g)) if (m[1] <= cap) ids.add(m[1]);
-  return [...ids].sort().reverse();
+  const s = String(html ?? '');
+  const today = isoDay(now);
+  const thisMonth = today.slice(0, 7).replace('-', '');
+  const found = new Map();
+  for (const m of s.matchAll(/beigebook(\d{6})(?:-summary)?\.htm/g)) {
+    const cell = s.slice(m.index, m.index + 300).split(/<\/td>|<li>|<\/li>/)[0];
+    const released = pdfDate(cell);
+    if (!found.has(m[1]) || (released && !found.get(m[1]))) found.set(m[1], released);
+  }
+  return [...found.entries()]
+    .map(([edition, released]) => ({ edition, released }))
+    .filter((e) => (e.released ? e.released <= today : e.edition < thisMonth))
+    .sort((a, b) => (a.edition < b.edition ? 1 : -1));
 }
 
 // One page -> the plain text of its article (no menus, no footer).
@@ -55,9 +77,9 @@ export function countWords(text) {
 }
 
 const addCounts = (a, b) => Object.fromEntries(WORDS.map((w) => [w.key, (a[w.key] || 0) + (b[w.key] || 0)]));
-export const editionMonth = (ed) => `${ed.slice(0, 4)}-${ed.slice(4, 6)}`;
 
 // editions: [{ edition, counts }] newest first -> the gauge.
+// editions: [{ edition, released, counts }] newest first -> the gauge.
 export function build(editions) {
   if (!editions.length) throw new NoData('Beige Book: no editions');
   const latest = editions[0];
@@ -66,27 +88,29 @@ export function build(editions) {
     headline: `${top.label.toUpperCase()} ${latest.counts[top.key]} TIMES`,
     line: 'Top word in the latest Beige Book',
     spark: editions.slice().reverse().map((e) => e.counts[top.key]),
-    asOf: `${editionMonth(latest.edition)}-01`,
+    asOf: latest.released,
     source,
     top: top.key,
     words: WORDS.map((w) => ({ key: w.key, label: w.label })),
-    editions: editions.map((e) => ({ edition: e.edition, month: editionMonth(e.edition), ...e.counts })),
+    editions: editions.map((e) => ({ edition: e.edition, released: e.released, ...e.counts })),
   };
 }
 
-const done = new Map(); // edition -> counts, for editions that are not the newest
+const done = new Map(); // edition -> { released, counts }, for editions that are not the newest
 
 export async function load(get, { now = Date.now } = {}) {
   const list = parseEditions(await get.text(INDEX, { timeout: 20_000 }), now()).slice(0, EDITIONS);
   if (!list.length) throw new NoData('Beige Book: no editions on the index page');
   const out = [];
-  for (const [i, ed] of list.entries()) {
-    if (done.has(ed)) { out.push({ edition: ed, counts: done.get(ed) }); continue; }
-    const texts = await pool(PAGES, 3, (p) => get.text(`${BASE}beigebook${ed}-${p}.htm`, { timeout: 20_000 }).then(articleText), 150);
-    const counts = texts.map(countWords).reduce(addCounts, {});
-    if (i > 0) done.set(ed, counts);
-    out.push({ edition: ed, counts });
+  for (const [i, { edition: ed, released: fromIndex }] of list.entries()) {
+    if (done.has(ed)) { out.push({ edition: ed, ...done.get(ed) }); continue; }
+    const pages = await pool(PAGES, 3, (p) => get.text(`${BASE}beigebook${ed}-${p}.htm`, { timeout: 20_000 }), 150);
+    const released = fromIndex || pdfDate(pages[0]);
+    if (!released) throw new NoData(`Beige Book: no release date for ${ed}`);
+    const counts = pages.map(articleText).map(countWords).reduce(addCounts, {});
+    if (i > 0) done.set(ed, { released, counts });
+    out.push({ edition: ed, released, counts });
   }
-  for (const k of done.keys()) if (!list.includes(k)) done.delete(k);
+  for (const k of done.keys()) if (!list.some((e) => e.edition === k)) done.delete(k);
   return build(out);
 }
