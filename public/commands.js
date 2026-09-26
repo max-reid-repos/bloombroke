@@ -29,6 +29,7 @@ import * as compound from './screens/compound.js';
 import * as pro from './screens/pro.js';
 import * as tape from './screens/tape.js';
 import * as legal from './screens/legal.js';
+import * as alerts from './screens/alerts.js'; // ALERTS
 
 export const EXTRA = [
   { name: 'WORLD', screen: world },
@@ -58,6 +59,8 @@ export const EXTRA = [
   { name: 'TERMS', screen: legal },
   { name: 'PRIVACY', screen: legal },
   { name: 'DISCLAIMER', screen: legal },
+  // ALERTS: changes the saved alerts, so a link only ever opens the list.
+  { name: 'ALERTS', screen: alerts, takesArgs: true, url: 'ALERTS' },
 ];
 
 // Screen modules by internal name.

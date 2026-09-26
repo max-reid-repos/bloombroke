@@ -53,6 +53,8 @@ export function build(seriesByPage) {
   const pct = head.pct;
   return {
     headline: signedPct(pct, 0),
+    value: Number.isFinite(pct) ? Math.round(pct) : null, // ALERTS: the headline number and its unit
+    unit: '%',
     line: 'Crash-page views vs 30-day average',
     spark: totals.slice(-90),
     asOf: dates[dates.length - 1],

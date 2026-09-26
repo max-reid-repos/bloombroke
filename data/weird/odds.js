@@ -75,6 +75,8 @@ export function build({ recession, fed }, now = Date.now()) {
   const top = fed?.outcomes[0];
   return {
     headline: recession ? `RECESSION ${pctLabel(recession.pct)}` : `FED ${pctLabel(top.pct)}`,
+    // ALERTS: the recession odds only; a FED headline is a different question, so no value.
+    ...(recession && Number.isFinite(recession.pct) ? { value: Math.round(recession.pct), unit: '%' } : {}),
     line: recession ? recession.question : top.question,
     spark: null,
     asOf: new Date(now).toISOString(),

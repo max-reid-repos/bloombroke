@@ -18,6 +18,8 @@ export function build(rows) {
   const fromPeak = (last.value / peak.value - 1) * 100;
   return {
     headline: `$${last.value.toFixed(2)} A DOZEN`,
+    value: Math.round(last.value * 100) / 100, // ALERTS: the headline number and its unit
+    unit: '$',
     line: last.month === peak.month ? 'US city average; a record high' : `US city average; ${signedPct(fromPeak, 0)} from peak`,
     spark: rows.slice(-60).map((r) => r.value),
     asOf: `${last.month}-01`,

@@ -33,6 +33,8 @@ export function build(got) {
   const other = parts.find((p) => p !== lead && Number.isFinite(p.yoy));
   return {
     headline: `${signedPct(lead.yoy, 1)} YOY`,
+    value: Math.round(lead.yoy * 10) / 10, // ALERTS: the headline number and its unit
+    unit: '%',
     line: lead.key === 'output'
       ? `Box output vs a year ago (${mon(lead.month)})${other ? `; prices ${signedPct(other.yoy, 1)} (${mon(other.month)})` : ''}`
       : `Box prices vs a year ago (${mon(lead.month)})`,

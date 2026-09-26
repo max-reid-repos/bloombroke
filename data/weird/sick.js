@@ -83,6 +83,8 @@ export function build(series) {
   if (!Number.isFinite(covid.level)) throw new NoData('CDC: no COVID wastewater values');
   return {
     headline: `COVID ${covid.level.toFixed(1)}`,
+    value: Math.round(covid.level * 10) / 10, // ALERTS: the headline number and its unit
+    unit: 'level',
     line: 'Wastewater virus level, national',
     spark: covid.points.map((p) => p.level),
     asOf: covid.week,

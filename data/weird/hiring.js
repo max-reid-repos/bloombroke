@@ -52,6 +52,8 @@ export function build(months, now = Date.now()) {
   const last = settled[0];
   return {
     headline: `${last.ratio.toFixed(2)} PER JOB`,
+    value: Math.round(last.ratio * 100) / 100, // ALERTS: the headline number and its unit
+    unit: 'per job',
     line: 'HN job seekers per job post',
     spark: settled.slice().reverse().map((m) => m.ratio),
     asOf: `${last.month}-01`,

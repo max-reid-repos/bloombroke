@@ -30,6 +30,8 @@ export function build(got) {
   if (!lead) throw new NoData('FRED: no freight values');
   return {
     headline: `${lead.short} ${signedPct(lead.yoy, 1)} YOY`,
+    value: Math.round(lead.yoy * 10) / 10, // ALERTS: the headline number and its unit
+    unit: '%',
     line: `${lead.label} vs a year ago`,
     spark: lead.spark,
     asOf: `${lead.month}-01`,

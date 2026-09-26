@@ -46,6 +46,8 @@ export function build(rows) {
   if (yoy === null) throw new NoData('BLS: no value a year before');
   return {
     headline: `${signedPct(yoy, 1)} YOY`,
+    value: Math.round(yoy * 10) / 10, // ALERTS: the headline number and its unit
+    unit: '%',
     line: "Men's underwear prices vs a year ago",
     spark: rows.map((r) => r.value),
     asOf: `${last.month}-01`,

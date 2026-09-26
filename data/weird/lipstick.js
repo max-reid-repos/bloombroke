@@ -20,6 +20,8 @@ export function build(rows) {
   if (yoy === null) throw new NoData('FRED: no value a year before');
   return {
     headline: `${signedPct(yoy, 1)} YOY`,
+    value: Math.round(yoy * 10) / 10, // ALERTS: the headline number and its unit
+    unit: '%',
     line: 'Cosmetics prices vs a year ago',
     spark: rows.slice(-36).map((r) => r.value),
     asOf: `${last.month}-01`,

@@ -42,6 +42,8 @@ export function build(obs) {
   series.push({ date: last.date.slice(0, 7), price });
   return {
     headline: `$${price.toFixed(2)}`,
+    value: Math.round(price * 100) / 100, // ALERTS: the headline number and its unit
+    unit: '$',
     line: "The $1.50 hot dog in today's money",
     spark: series.map((s) => s.price),
     asOf: last.date,
