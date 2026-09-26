@@ -7,14 +7,17 @@ import { esc, q, fmtNum, fmtPct, dirOf, panel, LOADING, fmtAsOf } from './market
 import { EXCHANGES, sessionState, statusOf, localParts } from './clock.js';
 import { sizeGuard } from './size-guard.js';
 import {
-  COUNTRY_INDEX, CITY_DOTS, indexFor, indexIds, moveFill, NO_INDEX_FILL, LEGEND_STEPS,
+  COUNTRY_INDEX, CITY_DOTS, indexFor, indexIds, moveFill, NO_INDEX_FILL, LEGEND_STEPS, FLAT_PCT,
   chokeMarkers, stormMarkers, stormKindWord, placeLabels, fitMap, project, MAP_W, MAP_H,
 } from './worldmap-geo.js';
 
 const GEO_URL = new URL('../geo/world-110m.json', import.meta.url).href;
 export const LAYERS = ['INDEXES', 'SHIPS', 'STORMS'];
 const STORE_KEY = 'bb.worldmap.layers';
-const HEADER = 'Stock indexes today · Ships through chokepoints · Active storms';
+// The header line. "today" only while some market on the map is open or at lunch.
+export function headerText(allClosed) {
+  return `${allClosed ? 'Stock indexes, last session' : 'Stock indexes today'} · Ships through chokepoints · Active storms`;
+}
 
 const n0 = (v) => (Number.isFinite(v) ? fmtNum(v, 0) : '--');
 const latLon = (lat, lon) => `${Math.abs(lat).toFixed(1)}${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(1)}${lon >= 0 ? 'E' : 'W'}`;
@@ -40,12 +43,33 @@ export function marketState(quote, exId, date = new Date()) {
   return { text: s.text, cls: s.cls, closed: s.text !== 'OPEN' && s.text !== 'LUNCH', day };
 }
 
+// Quotes (id -> quote) -> { up, down, open, allClosed } over the map's indexes. A market
+// with no quote counts as closed (its hours alone decide nothing on the map).
+export function mapCounts(quotes, date = new Date()) {
+  let up = 0;
+  let down = 0;
+  let open = 0;
+  for (const c of Object.values(COUNTRY_INDEX)) {
+    const qt = quotes?.get(c.id);
+    if (!qt) continue;
+    if (qt.changePct > 0) up += 1;
+    else if (qt.changePct < 0) down += 1;
+    if (!marketState(qt, c.ex, date).closed) open += 1;
+  }
+  return { up, down, open, allClosed: open === 0 };
+}
+
+// Before any quote: open or closed by the exchange hours alone.
+function allClosedByHours(date = new Date()) {
+  return Object.values(COUNTRY_INDEX).every((c) => marketState(null, c.ex, date).closed);
+}
+
 function legendHtml(layers, canal) {
   const parts = [];
   if (layers.INDEXES) {
     const sw = (fill) => `<svg class="wm-sw" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10" fill="${fill}"/></svg>`;
     const step = (fill, label) => `<span class="wm-step">${sw(fill)}<span>${label}</span></span>`;
-    parts.push(`<span class="wm-leg wm-leg-idx">${LEGEND_STEPS.map((p) => step(moveFill(p), `${p > 0 ? '+' : p < 0 ? '−' : ''}${Math.abs(p)}%`)).join('')}`
+    parts.push(`<span class="wm-leg wm-leg-idx">${LEGEND_STEPS.map((p) => step(moveFill(p), p === 0 ? `0 ±${FLAT_PCT}%` : `${p > 0 ? '+' : '−'}${Math.abs(p)}%`)).join('')}`
       + `${step(NO_INDEX_FILL, 'no index')}</span>`);
   }
   if (layers.SHIPS) {
@@ -68,7 +92,7 @@ export function render(el, cmd, ctx) {
   let layers = layerState(ctx.store?.get(STORE_KEY, null));
   const toggles = LAYERS.map((l) => `<button type="button" class="wm-tog${layers[l] ? ' is-on' : ''}" data-layer="${l}" aria-pressed="${layers[l]}">${l}</button>`).join('');
   el.innerHTML = panel('1', 'World map', `
-    <div class="wm-bar"><p class="wm-sub">${esc(HEADER)}</p><div class="wm-togs" role="group" aria-label="Map layers">${toggles}</div></div>
+    <div class="wm-bar"><p class="wm-sub" id="wm-sub">${esc(headerText(allClosedByHours()))}</p><div class="wm-togs" role="group" aria-label="Map layers">${toggles}</div></div>
     <p class="wm-read" id="wm-read" aria-live="polite">&nbsp;</p>
     <div class="wm-host" id="wm-host">${LOADING}</div>
     <div class="wm-foot" id="wm-foot"><div class="wm-legend" id="wm-legend"></div>
@@ -78,6 +102,7 @@ export function render(el, cmd, ctx) {
   const meta = el.querySelector('#wm-meta');
   const legend = el.querySelector('#wm-legend');
   const foot = el.querySelector('#wm-foot');
+  const sub = el.querySelector('#wm-sub');
 
   let geo = null;
   let quotes = null; // id -> quote
@@ -85,7 +110,6 @@ export function render(el, cmd, ctx) {
   let storms = null;
   let svg = null;
   let scale = 1;
-  let baseRead = '';
   const names = new Map();
 
   // ---- drawing ----------------------------------------------------------------
@@ -119,9 +143,19 @@ export function render(el, cmd, ctx) {
     return (px * k) / scale;
   }
 
+  // Built once; a refresh or a resize only changes the fill and the radius.
   function paintCities() {
     const g = svg?.querySelector('.wm-cities');
     if (!g) return;
+    if (g.firstChild) {
+      for (const dot of g.querySelectorAll('.wm-city')) {
+        const idx = indexFor(dot.dataset.cc);
+        const qt = idx && quotes?.get(idx.id);
+        dot.setAttribute('r', unit(3.2).toFixed(2));
+        dot.setAttribute('fill', qt ? moveFill(qt.changePct) : NO_INDEX_FILL);
+      }
+      return;
+    }
     g.innerHTML = Object.entries(CITY_DOTS).map(([cc, c]) => {
       const idx = indexFor(cc);
       names.set(cc, c.name);
@@ -227,10 +261,10 @@ export function render(el, cmd, ctx) {
   }
   function show(target) {
     const html = readFor(target);
-    read.innerHTML = html || baseRead || '&nbsp;';
+    read.innerHTML = html || '&nbsp;';
   }
   host.addEventListener('pointerover', (e) => show(e.target));
-  host.addEventListener('pointerleave', () => { read.innerHTML = baseRead || '&nbsp;'; });
+  host.addEventListener('pointerleave', () => { read.innerHTML = '&nbsp;'; });
   host.addEventListener('focusin', (e) => show(e.target));
 
   // On a touch screen the first tap shows the numbers, a second tap opens the screen.
@@ -304,26 +338,18 @@ export function render(el, cmd, ctx) {
 
   // ---- data ---------------------------------------------------------------------
   function summary() {
-    if (!quotes) return '';
-    const list = [...quotes.values()];
-    const up = list.filter((x) => x.changePct > 0).length;
-    const down = list.filter((x) => x.changePct < 0).length;
-    const open = Object.values(COUNTRY_INDEX).filter((c) => {
-      const qt = quotes.get(c.id);
-      return qt && !marketState(qt, c.ex).closed;
-    }).length;
-    meta.innerHTML = `<span class="up">${up} UP</span> <span class="down">${down} DOWN</span> <span class="dim">${open} OPEN</span>`;
-    return '<span class="dim">Hover or tap a country, a ship dot or a storm.</span>';
+    if (!quotes) return;
+    const n = mapCounts(quotes);
+    meta.innerHTML = `<span class="up">${n.up} UP</span> <span class="down">${n.down} DOWN</span> <span class="dim">${n.open} OPEN</span>`;
+    sub.textContent = headerText(n.allClosed);
   }
 
   async function loadQuotes() {
     try {
       const d = await ctx.fetchJSON(`/api/quotes?s=${encodeURIComponent(indexIds().join(','))}`, { signal: ctx.signal });
       quotes = new Map((d.quotes || []).map((x) => [x.ticker, x]));
-      baseRead = summary();
-      if (!host.matches(':hover')) read.innerHTML = baseRead;
+      summary();
       paintCountries();
-      paintCities();
       ctx.updated(d.updated, d.stale);
     } catch (err) {
       if (err.name === 'AbortError') return;
@@ -371,7 +397,7 @@ export function render(el, cmd, ctx) {
     ctx.every(loadQuotes, 60_000);
     ctx.every(loadCanal, 30 * 60_000);
     ctx.every(loadStorms, 30 * 60_000);
-    ctx.every(() => { if (quotes) baseRead = summary(); }, 30_000);
+    ctx.every(summary, 30_000);
   }
   start();
 }

@@ -85,10 +85,13 @@ export const CAP_PCT = 3;
 export const NO_INDEX_FILL = 'hsl(212, 16%, 13%)';
 export const FLAT_FILL = 'hsl(210, 12%, 30%)';
 
-// % change -> fill. Steel grey at 0, deeper green or red up to +-3% (and past it).
+// Moves smaller than this are flat (steel grey).
+export const FLAT_PCT = 0.1;
+
+// % change -> fill. Steel grey within +-0.1%, deeper green or red up to +-3% (and past it).
 export function moveFill(pct) {
   if (!Number.isFinite(pct)) return NO_INDEX_FILL;
-  if (Math.abs(pct) < 0.005) return FLAT_FILL;
+  if (Math.abs(pct) < FLAT_PCT) return FLAT_FILL;
   const t = Math.min(1, Math.abs(pct) / CAP_PCT);
   return pct > 0
     ? `hsl(147, ${Math.round(30 + 40 * t)}%, ${Math.round(28 + 16 * t)}%)`

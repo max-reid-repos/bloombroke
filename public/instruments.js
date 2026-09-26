@@ -147,14 +147,15 @@ export const INSTRUMENTS = [
   // The ones WORLD lists that had no instrument yet (Nifty 50 is NIFTY50, above). Ids are
   // 6+ letters or not a US ticker, so no stock is shadowed (IBEX is a Nasdaq stock: the
   // index is IBEX35). One entry per CNBC symbol: reuse an existing id, never add a twin.
-  I('TSX', 'S&P/TSX Composite', 'Americas', 'index', '.GSPTSE', 2, { markets: false, aliases: ['GSPTSE', 'CANADA'] }),
-  I('MEXBOL', 'S&P/BMV IPC', 'Americas', 'index', '.MXX', 2, { markets: false, aliases: ['MXX', 'MEXICO'] }),
-  I('BOVESPA', 'Bovespa', 'Americas', 'index', '.BVSP', 2, { markets: false, aliases: ['BVSP', 'BRAZIL'] }),
-  I('IBEX35', 'IBEX 35', 'Europe', 'index', '.IBEX', 2, { markets: false, aliases: ['SPAIN'] }),
-  I('FTSEMIB', 'FTSE MIB', 'Europe', 'index', '.FTMIB', 2, { markets: false, aliases: ['FTMIB', 'ITALY'] }),
-  I('AEX', 'AEX', 'Europe', 'index', '.AEX', 2, { markets: false, aliases: ['NETHERLANDS'] }),
-  I('SMI', 'SMI', 'Europe', 'index', '.SSMI', 2, { markets: false, aliases: ['SSMI', 'SWITZERLAND'] }),
-  I('TAIEX', 'Taiwan Weighted', 'Asia Pacific', 'index', '.TWII', 2, { markets: false, aliases: ['TWII', 'TAIWAN'] }),
+  // No country-name aliases: CANADA 10Y or ITALY 10Y must not turn into an index chart.
+  I('TSX', 'S&P/TSX Composite', 'Americas', 'index', '.GSPTSE', 2, { markets: false, aliases: ['GSPTSE'] }),
+  I('MEXBOL', 'Mexico IPC', 'Americas', 'index', '.MXX', 2, { markets: false, aliases: ['MXX'] }),
+  I('BOVESPA', 'Bovespa', 'Americas', 'index', '.BVSP', 2, { markets: false, aliases: ['BVSP'] }),
+  I('IBEX35', 'IBEX 35', 'Europe', 'index', '.IBEX', 2, { markets: false, aliases: [] }),
+  I('FTSEMIB', 'FTSE MIB', 'Europe', 'index', '.FTMIB', 2, { markets: false, aliases: ['FTMIB'] }),
+  I('AEX', 'AEX Amsterdam', 'Europe', 'index', '.AEX', 2, { markets: false, aliases: [] }),
+  I('SMI', 'Swiss Market Index', 'Europe', 'index', '.SSMI', 2, { markets: false, aliases: ['SSMI'] }),
+  I('TAIEX', 'Taiwan Weighted', 'Asia Pacific', 'index', '.TWII', 2, { markets: false, aliases: ['TWII'] }),
   // --- end WORLDMAP ------------------------------------------------------------------
 ];
 

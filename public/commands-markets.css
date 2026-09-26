@@ -176,5 +176,6 @@
   .wm-sub { font-size: 11px; }
   .wm-read { white-space: normal; min-height: 3em; }
   .wm-foot { flex-direction: column; align-items: flex-start; }
+  .wm-lab { display: none; } /* too small to label: tap a dot or a storm for its numbers */
 }
 /* ---- end WORLDMAP --------------------------------------------------------- */

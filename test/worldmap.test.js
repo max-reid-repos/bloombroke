@@ -4,12 +4,13 @@ import { readFileSync, statSync } from 'node:fs';
 import {
   robinson, project, MAP_W, MAP_H, LAT_TOP, LAT_BOTTOM,
   COUNTRY_INDEX, CITY_DOTS, indexFor, indexIds,
-  moveFill, NO_INDEX_FILL, FLAT_FILL, CAP_PCT,
+  moveFill, NO_INDEX_FILL, FLAT_FILL, CAP_PCT, FLAT_PCT,
   dotRadius, DOT_MIN, DOT_MAX, chokeLow, chokeMarkers, CHOKE_AT,
   stormCategory, stormMarkers, fitMap, placeLabels,
 } from '../public/screens/worldmap-geo.js';
 import { simplify, ringsToPath, buildMap } from '../scripts/build-worldmap.js';
-import { layerState, LAYERS } from '../public/screens/worldmap.js';
+import { layerState, LAYERS, marketState, mapCounts, headerText } from '../public/screens/worldmap.js';
+import { resolveInput } from '../public/resolve.js';
 import { INSTRUMENTS, instrumentById, instrumentBySrc, resolveInstrument } from '../public/instruments.js';
 import { EXCHANGES } from '../public/screens/clock.js';
 import { WORLD } from '../data/world.js';
@@ -168,6 +169,11 @@ test('worldmap colour: diverging green and red, capped at 3%', () => {
   assert.equal(moveFill(undefined), NO_INDEX_FILL);
   assert.equal(moveFill(0), FLAT_FILL);
   assert.equal(moveFill(0.004), FLAT_FILL);
+  assert.equal(FLAT_PCT, 0.1);
+  assert.equal(moveFill(0.09), FLAT_FILL, 'within +-0.1% is flat');
+  assert.equal(moveFill(-0.09), FLAT_FILL);
+  assert.notEqual(moveFill(0.1), FLAT_FILL);
+  assert.notEqual(moveFill(-0.1), FLAT_FILL);
   assert.match(moveFill(1), /^hsl\(147,/);
   assert.match(moveFill(-1), /^hsl\(0,/);
   assert.equal(moveFill(CAP_PCT), moveFill(7.5), 'capped at +3%');
@@ -268,4 +274,63 @@ test('worldmap copy: no em dashes, no amber, no banned brand word', () => {
     assert.doesNotMatch(s, /amber|hsl\((3[0-9]|4[0-5]),/i, `${f}: amber`);
     assert.doesNotMatch(s, new RegExp(['bloom', 'berg'].join(''), 'i'), f);
   }
+});
+
+// ---- names typed as words stay what they were ----------------------------------------
+
+test('worldmap indexes: no country-name alias takes over a typed command', async () => {
+  // What main does with these (no network: an empty search, no ticker is real).
+  const deps = { search: async () => [], checkTicker: async () => false };
+  assert.equal(parseCommand('CANADA 10Y').name, 'UNKNOWN');
+  assert.deepEqual(await resolveInput('CANADA 10Y', deps), { confident: false, from: 'CANADA 10Y', commands: [], symbols: [] });
+  const italy = parseCommand('ITALY 10Y');
+  assert.equal(italy.name, 'QUOTE');
+  assert.equal(italy.args.ticker, 'ITALY', 'a ticker-shaped word, looked up like on main');
+  assert.deepEqual(await resolveInput('ITALY 10Y', deps), { confident: false, from: 'ITALY 10Y', commands: [], symbols: [] });
+  assert.equal(parseCommand('taiwan semi').name, 'UNKNOWN');
+  assert.deepEqual(await resolveInput('taiwan semi', deps), { confident: false, from: 'taiwan semi', commands: [], symbols: [] });
+  for (const w of ['CANADA', 'MEXICO', 'BRAZIL', 'SPAIN', 'ITALY', 'NETHERLANDS', 'SWITZERLAND', 'TAIWAN', 'INDIA']) {
+    assert.equal(resolveInstrument(w), null, `${w} is not an index alias`);
+  }
+  // The bond yields keep their own ids.
+  assert.equal(parseCommand('CA10Y').args.ticker, 'CA10Y');
+  assert.equal(parseCommand('IT10Y').args.ticker, 'IT10Y');
+  // Plain names on the index screens.
+  assert.equal(instrumentById('SMI').name, 'Swiss Market Index');
+  assert.equal(instrumentById('AEX').name, 'AEX Amsterdam');
+  assert.equal(instrumentById('MEXBOL').name, 'Mexico IPC');
+});
+
+// ---- open or closed, and the counts ---------------------------------------------------
+
+test('worldmap marketState: open in session, closed with its last session day', () => {
+  const fri = new Date('2026-09-25T15:00:00Z'); // 11:00 in New York, 16:00 in London
+  const sat = new Date('2026-09-26T15:00:00Z');
+  const spx = { changePct: 0.5, asOf: '2026-09-25' };
+  assert.deepEqual(marketState(spx, 'NYSE', fri), { text: 'OPEN', cls: 'st-open', closed: false, day: '2026-09-25' });
+  const closed = marketState(spx, 'NYSE', sat);
+  assert.equal(closed.text, 'CLOSED');
+  assert.equal(closed.closed, true);
+  assert.equal(closed.day, '2026-09-25');
+  // A full timestamp: the day in the exchange's own time zone.
+  assert.equal(marketState({ asOf: '2026-09-25T20:00:00.000-0400' }, 'NYSE', sat).day, '2026-09-25');
+  assert.equal(marketState({ asOf: '2026-09-25T20:00:00.000-0400' }, 'TSE', sat).day, '2026-09-26');
+  // Scheduled open, but the index has not traded today: a holiday, so closed.
+  const holiday = marketState({ asOf: '2026-09-23' }, 'KRX', new Date('2026-09-25T03:00:00Z'));
+  assert.equal(holiday.text, 'HOLIDAY');
+  assert.equal(holiday.closed, true);
+  assert.equal(marketState(spx, 'NOPE', fri).text, '');
+  assert.equal(marketState(null, 'NYSE', fri).closed, false, 'hours alone before a quote');
+});
+
+test('worldmap counts: up, down, open, and the header when all are closed', () => {
+  const q = (changePct, asOf = '2026-09-25') => ({ changePct, asOf });
+  const quotes = new Map([['SPX', q(0.5)], ['FTSE', q(-0.2)], ['DAX', q(0)], ['N225', q(1.3)], ['NOTONMAP', q(9)]]);
+  const fri = new Date('2026-09-25T15:00:00Z'); // New York, London and Frankfurt open; Tokyo shut
+  assert.deepEqual(mapCounts(quotes, fri), { up: 2, down: 1, open: 3, allClosed: false });
+  const sat = new Date('2026-09-26T15:00:00Z');
+  assert.deepEqual(mapCounts(quotes, sat), { up: 2, down: 1, open: 0, allClosed: true });
+  assert.deepEqual(mapCounts(new Map(), fri), { up: 0, down: 0, open: 0, allClosed: true });
+  assert.match(headerText(false), /^Stock indexes today · Ships through chokepoints · Active storms$/);
+  assert.match(headerText(true), /^Stock indexes, last session · /);
 });
