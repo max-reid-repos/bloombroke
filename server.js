@@ -28,6 +28,7 @@ import { mountLegal } from './lib/legal.js';
 import { securityHeaders, isEmbedQuery, embedHtml } from './lib/embed.js';
 import { startPro } from './pro/index.js';
 import { getWeird, getGauge } from './data/weird/index.js';
+import { makeWeirdCards, weirdCommand } from './lib/og-weird.js'; // WEIRD share cards
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
@@ -342,6 +343,30 @@ function sendIndex(res, status = 200, html = INDEX) {
   res.status(status).set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }).send(html);
 }
 
+// ---- WEIRD share cards (weird-share) -----------------------------------------------------
+// /?c=CANAL (any of the 23 gauge commands or aliases) and /?c=WEIRD get their own title
+// and card, drawn at /og/weird.png?c=... (lib/og-weird.js). Only those commands draw a
+// card; anything else gets the site card.
+const weirdCards = makeWeirdCards({ getGauge, getWeird });
+async function weirdShareIndex(c) {
+  const command = weirdCommand(c, parseCommand);
+  if (!command) return null;
+  const meta = await weirdCards.meta(command, { wait: 2000 });
+  return meta ? withMeta(PAGE, meta) : null;
+}
+app.get('/og/weird.png', async (req, res) => {
+  try {
+    const command = weirdCommand(str(req.query.c) || '', parseCommand);
+    const card = command ? await weirdCards.png(command) : null;
+    if (!card) return sendPng(res, await defaultPng(), 300);
+    sendPng(res, card.png, card.maxAge);
+  } catch (err) {
+    console.error('[og]', err.message);
+    try { sendPng(res, await defaultPng(), 300); } catch { res.status(503).end(); }
+  }
+});
+// ---- end WEIRD share cards ------------------------------------------------------------------
+
 // A shared link gets its own title and image, so the card on X shows the result:
 // WHATIF (the certificate), AFFORD (cost per use and verdict) and a ticker (price and a
 // 1-month line). Anything else, or a slow answer, gets the site card.
@@ -352,6 +377,8 @@ async function shareIndex(c) {
   }
   const whatif = /^\s*WHATIF\s+\S/i.test(c);
   if (!whatif && !c.trim()) return INDEX;
+  const weirdPage = await weirdShareIndex(c).catch(() => null); // WEIRD share cards
+  if (weirdPage) return weirdPage;
   const timeout = new Promise((resolve) => { setTimeout(resolve, 2500, null).unref(); });
   try {
     if (whatif) {
