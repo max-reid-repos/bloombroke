@@ -383,11 +383,15 @@ export const REGISTRY = [
     syntax: 'LOGOUT', examples: ['LOGOUT'], keywords: ['sign out', 'account', 'device'],
     source: 'Built in', delay: 'None',
   },
+  // --- ALERTS (price and gauge alerts) ---
   {
-    name: 'ALERTS', soon: true, category: 'Pro', summary: 'Price alerts, coming next to Pro',
-    syntax: 'ALERTS', examples: [], keywords: ['alert', 'notify', 'price alert'],
-    source: 'Built in', delay: 'None',
+    name: 'ALERTS', aliases: ['ALERT'], category: 'Your stuff', summary: 'Price alerts: a note when a symbol or gauge crosses your level',
+    syntax: 'ALERTS [<symbol> >|< <level>|CLEAR]', examples: ['ALERTS', 'ALERTS AAPL > 350', 'ALERTS SPX > 7800', 'ALERTS CANAL < 5', 'ALERTS CLEAR'], usageExample: 'ALERTS AAPL > 350',
+    keywords: ['alert', 'alerts', 'notify', 'notification', 'price alert', 'target', 'level', 'cross'],
+    options: [['<symbol> > <level>', 'When it goes above the level'], ['<symbol> < <level>', 'When it goes below'], ['CLEAR', 'Remove them all (asks first)']],
+    source: 'Saved in this browser, up to 20; prices live', delay: 'Checked every 60 seconds while Bloombroke is open in a tab',
   },
+  // --- end ALERTS ---
 
   // --- Legal ----------------------------------------------------------------------------
   {
@@ -527,6 +531,13 @@ export const REGISTRY = [
     syntax: 'MACAU', examples: ['MACAU'], keywords: ['macau', 'casino', 'gaming revenue', 'china', 'dicj'],
     source: 'DICJ Macau', delay: 'Monthly, early in the next month',
   },
+  // --- FISHTANK (screens/fishtank.js) ---
+  {
+    name: 'FISHTANK', category: 'Weird data', summary: 'The market as fish',
+    syntax: 'FISHTANK', examples: ['FISHTANK'], keywords: ['aquarium', 'tank', 'easter egg', 'sea', 'swim', 's&p 100'],
+    source: 'CNBC, the S&P 100 batch HEATMAP uses', delay: 'May be delayed; refreshes every minute',
+  },
+  // --- end FISHTANK ---
 
   // --- Hidden ---------------------------------------------------------------------------
   { name: '420', hidden: true, category: 'Money tools', summary: 'Funding', syntax: '420', examples: ['420'], keywords: [] },

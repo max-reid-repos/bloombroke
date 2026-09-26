@@ -39,6 +39,8 @@ export function parse(html) {
 export function build(p) {
   return {
     headline: `$${p.usd.toLocaleString('en-US')}`,
+    value: p.usd, // ALERTS: the headline number and its unit
+    unit: '$',
     line: 'To ship one 40ft container',
     spark: null,
     asOf: p.date,

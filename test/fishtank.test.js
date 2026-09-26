@@ -1,0 +1,232 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import {
+  pctToDepth, depthRange, capToSize, fishColor, pickExtremes, tankHeader, sizeLimits, seeded, makeRunner, render,
+} from '../public/screens/fishtank.js';
+import { heatmapStocks, fishtankStocks } from '../data/sp100.js';
+import { parseCommand, FKEYS } from '../public/app.js';
+import { findCommand, byCategory } from '../public/registry.js';
+import { WEIRD_SCREENS } from '../public/commands-weird.js';
+
+test('fishtank: % change to depth, winners up top, losers at the floor', () => {
+  assert.equal(pctToDepth(0, 3), 0.5, 'flat swims mid-tank');
+  assert.equal(pctToDepth(3, 3), 0, 'the biggest move up reaches the surface');
+  assert.equal(pctToDepth(-3, 3), 1, 'the biggest move down reaches the floor');
+  assert.equal(pctToDepth(9, 3), 0, 'past the range: clamped');
+  assert.equal(pctToDepth(-9, 3), 1);
+  assert.ok(pctToDepth(1, 3) < pctToDepth(0.5, 3), 'a bigger gain swims higher');
+  assert.ok(pctToDepth(-1, 3) > pctToDepth(-0.5, 3), 'a bigger loss swims lower');
+  assert.ok(Math.abs(pctToDepth(0.75, 3) - (0.5 - 0.5 * Math.sqrt(0.25))) < 1e-12, 'square-root spread');
+  assert.equal(pctToDepth(NaN, 3), 0.5);
+  assert.equal(pctToDepth(1, 0), 0.5);
+});
+
+test('fishtank: depth range is the biggest move, never under 1%', () => {
+  assert.equal(depthRange([{ changePct: 0.2 }, { changePct: -0.4 }]), 1);
+  assert.equal(depthRange([{ changePct: 2.5 }, { changePct: -4.1 }, { changePct: NaN }]), 4.1);
+  assert.equal(depthRange([]), 1);
+});
+
+test('fishtank: market cap to size, length grows with sqrt(cap)', () => {
+  const lim = { max: 80, min: 10, fallback: 30 };
+  assert.equal(capToSize(4e12, 4e12, lim), 80, 'the biggest company is the longest fish');
+  assert.equal(capToSize(1e12, 4e12, lim), 40, 'a quarter of the cap: half the length');
+  assert.equal(capToSize(4e10, 4e12, lim), 10, 'never shorter than min');
+  assert.equal(capToSize(null, 4e12, lim), 30, 'no cap: the one fallback size');
+  assert.equal(capToSize(0, 4e12, lim), 30);
+  assert.equal(capToSize(1e12, 0, lim), 30, 'no caps at all: every fish the same');
+  const a = capToSize(1e12, 4e12, lim); const b = capToSize(2e12, 4e12, lim);
+  assert.ok(Math.abs((b / a) ** 2 - 2) < 1e-9, 'area follows cap');
+});
+
+test('fishtank: size limits scale with the tank and stay in bounds', () => {
+  const big = sizeLimits(1400, 720);
+  const phone = sizeLimits(372, 608);
+  assert.ok(big.max > phone.max);
+  for (const l of [big, phone, sizeLimits(10, 10), sizeLimits(5000, 3000)]) {
+    assert.ok(l.max >= 30 && l.max <= 88, `max ${l.max}`);
+    assert.ok(l.min >= 9 && l.min < l.max);
+    assert.ok(l.fallback > l.min && l.fallback < l.max);
+  }
+});
+
+test('fishtank: colour scale, green up, red down, brighter with the move', () => {
+  assert.equal(fishColor(1).h, 147);
+  assert.equal(fishColor(-1).h, 0);
+  assert.equal(fishColor(0).h, 208, 'flat is steel');
+  assert.equal(fishColor(NaN).h, 208);
+  assert.ok(fishColor(2).l > fishColor(0.5).l, 'bigger gain, brighter');
+  assert.ok(fishColor(-2).l > fishColor(-0.5).l, 'bigger loss, brighter');
+  assert.ok(fishColor(2).s > fishColor(0.5).s);
+  assert.deepEqual(fishColor(3), fishColor(8), 'full strength at 3%');
+  assert.deepEqual(fishColor(-3), fishColor(-8));
+});
+
+test('fishtank: biggest winner and loser, stable on ties', () => {
+  const s = [
+    { ticker: 'AAA', changePct: 1.2 }, { ticker: 'NVDA', changePct: 3.1 }, { ticker: 'AMD', changePct: 3.1 },
+    { ticker: 'PFE', changePct: -2.4 }, { ticker: 'XOM', changePct: 0 }, { ticker: 'BAD', changePct: NaN },
+  ];
+  const { winner, loser } = pickExtremes(s);
+  assert.equal(winner.ticker, 'AMD', 'a tie goes to the first ticker A-Z');
+  assert.equal(loser.ticker, 'PFE');
+  assert.deepEqual(pickExtremes([{ ticker: 'A', changePct: 1 }]), { winner: { ticker: 'A', changePct: 1 }, loser: null }, 'no loser on an all-up day');
+  assert.deepEqual(pickExtremes([{ ticker: 'A', changePct: 0 }]), { winner: null, loser: null });
+  assert.deepEqual(pickExtremes([]), { winner: null, loser: null });
+});
+
+test('fishtank: header line counts up and down', () => {
+  const h = tankHeader([{ changePct: 1 }, { changePct: 2 }, { changePct: -1 }, { changePct: 0 }], '2026-09-25T18:32:00Z');
+  assert.equal(h.up, 2);
+  assert.equal(h.down, 1);
+  assert.equal(h.text, 'S&P 100 · 2 up · 1 down · updated 14:32');
+});
+
+test('fishtank: seeded numbers are stable and in [0, 1)', () => {
+  assert.equal(seeded('AAPL', 3), seeded('AAPL', 3));
+  assert.notEqual(seeded('AAPL', 3), seeded('AAPL', 4));
+  for (const t of ['A', 'MSFT', 'BRK.B', '']) for (let i = 0; i < 20; i += 1) {
+    const v = seeded(t, i);
+    assert.ok(v >= 0 && v < 1, `${t} ${i}: ${v}`);
+  }
+});
+
+test('fishtank: routed, listed under Weird data, off the F-key bar', () => {
+  assert.equal(parseCommand('FISHTANK').name, 'FISHTANK');
+  assert.ok(WEIRD_SCREENS.FISHTANK?.render, 'has its own screen');
+  const c = findCommand('FISHTANK');
+  assert.equal(c.category, 'Weird data');
+  assert.ok(byCategory('Weird data').includes(c));
+  const words = c.summary.split(/\s+/).length;
+  assert.ok(words >= 3 && words <= 5, c.summary);
+  assert.equal(findCommand('FISH'), null, 'FISH is not a command');
+  assert.ok(!FKEYS.some((k) => k.cmd === 'FISHTANK'));
+});
+
+test('fishtank: copy rules, no banned brand word, no em dashes', () => {
+  for (const f of ['public/screens/fishtank.js']) {
+    const s = readFileSync(f, 'utf8');
+    assert.doesNotMatch(s, new RegExp(['bloom', 'berg'].join(''), 'i'), f);
+    assert.doesNotMatch(s, /\u2014/, `${f}: em dash`);
+  }
+});
+
+test('fishtank data: every member stays, a missing cap is null; HEATMAP still drops it', () => {
+  const rows = [
+    { ticker: 'AAPL', name: 'Apple', sector: 'TECH', last: 200, changePct: 1.2, marketCap: 3e12, volume: 1 },
+    { ticker: 'XYZ', name: 'No Cap', sector: 'FIN', last: 10, changePct: -0.5, marketCap: null, volume: 1 },
+    { ticker: 'ZER', name: 'Zero Cap', sector: 'FIN', last: 10, changePct: 0, marketCap: 0, volume: 1 },
+  ];
+  assert.deepEqual(fishtankStocks(rows), [
+    { ticker: 'AAPL', name: 'Apple', changePct: 1.2, marketCap: 3e12 },
+    { ticker: 'XYZ', name: 'No Cap', changePct: -0.5, marketCap: null },
+    { ticker: 'ZER', name: 'Zero Cap', changePct: 0, marketCap: null },
+  ]);
+  assert.deepEqual(heatmapStocks(rows), [{ ticker: 'AAPL', name: 'Apple', sector: 'TECH', last: 200, changePct: 1.2, marketCap: 3e12 }]);
+  const lim = { max: 80, min: 10, fallback: 30 };
+  assert.equal(capToSize(fishtankStocks(rows)[1].marketCap, 3e12, lim), 30, 'the no-cap fish gets the plain size');
+});
+
+// A fake requestAnimationFrame: callbacks wait in a queue until flush(ts).
+function fakeRaf() {
+  const q = new Map();
+  let n = 0;
+  return {
+    q,
+    raf: (cb) => { n += 1; q.set(n, cb); return n; },
+    caf: (id) => { q.delete(id); },
+    flush(ts) { const cbs = [...q.values()]; q.clear(); for (const cb of cbs) cb(ts); },
+  };
+}
+
+test('fishtank runner: holds stop the loop, releases restart it, at most about 60fps', () => {
+  const r = fakeRaf();
+  const drawn = [];
+  const run = makeRunner((t) => drawn.push(t), { raf: r.raf, caf: r.caf, frameMs: 15 });
+  run.hold('data');
+  assert.equal(r.q.size, 0, 'held: nothing scheduled');
+  run.hold('data', false);
+  assert.equal(run.running, true);
+  for (let i = 0; i <= 12; i += 1) r.flush(i * 8.33); // a 120 Hz display, 100 ms
+  assert.ok(drawn.length >= 6 && drawn.length <= 7, `about 60fps: ${drawn.length} frames in 100 ms`);
+  run.hold('offscreen');
+  assert.equal(run.running, false);
+  assert.equal(r.q.size, 0, 'the pending frame is cancelled');
+  run.hold('hidden');
+  run.hold('offscreen', false);
+  assert.equal(r.q.size, 0, 'still hidden');
+  run.hold('hidden', false);
+  assert.equal(r.q.size, 1, 'running again');
+  run.destroy();
+  assert.equal(r.q.size, 0);
+  run.hold('hidden', false);
+  run.hold('offscreen', false);
+  assert.equal(r.q.size, 0, 'after leaving, nothing restarts it');
+});
+
+test('fishtank: leaving the screen cancels the frame loop, observers and listeners', async () => {
+  const saved = {};
+  for (const k of ['window', 'document', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'ResizeObserver', 'IntersectionObserver', 'setTimeout', 'setInterval']) saved[k] = globalThis[k];
+  const r = fakeRaf();
+  const listeners = new Set(); // live listeners on document and media queries
+  const on = () => ({ addEventListener: (t, f) => listeners.add(f), removeEventListener: (t, f) => listeners.delete(f) });
+  const g2d = new Proxy({}, {
+    get: (o, k) => (k in o ? o[k] : k === 'createLinearGradient' ? () => ({ addColorStop() {} }) : k === 'measureText' ? () => ({ width: 20 }) : () => {}),
+    set: (o, k, v) => { o[k] = v; return true; },
+  });
+  const el = (extra = {}) => ({
+    innerHTML: '', style: {}, hidden: false, clientWidth: 800, clientHeight: 500, offsetWidth: 90, offsetHeight: 20,
+    setAttribute() {}, addEventListener() {}, removeEventListener() {}, getContext: () => g2d, ...extra,
+  });
+  const canvas = el(); const tip = el(); const sr = el();
+  const host = el({ querySelector: (sel) => ({ canvas, '.ft-tip': tip, '.ft-sr': sr }[sel]) });
+  const meta = el();
+  const root = el({ querySelector: (sel) => ({ '#ft-host': host, '#ft-meta': meta }[sel]) });
+  const observers = [];
+  class Obs { constructor(cb) { this.cb = cb; this.on = false; observers.push(this); } observe() { this.on = true; } disconnect() { this.on = false; } }
+  let timers = 0;
+  globalThis.setTimeout = (...a) => { timers += 1; return saved.setTimeout(...a); };
+  globalThis.setInterval = (...a) => { timers += 1; return saved.setInterval(...a); };
+  globalThis.window = { devicePixelRatio: 1, matchMedia: () => ({ matches: false, ...on() }) };
+  globalThis.document = { hidden: false, createElement: () => el(), ...on() };
+  globalThis.getComputedStyle = () => ({ fontFamily: 'monospace' });
+  globalThis.requestAnimationFrame = r.raf;
+  globalThis.cancelAnimationFrame = r.caf;
+  globalThis.ResizeObserver = Obs;
+  globalThis.IntersectionObserver = Obs;
+  try {
+    const cleanups = [];
+    const live = [];
+    const data = { stocks: [{ ticker: 'AAPL', name: 'Apple', changePct: 1, marketCap: 3e12 }, { ticker: 'PFE', name: 'Pfizer', changePct: -1, marketCap: null }], updated: '2026-09-25T18:32:00Z', stale: false };
+    const ctx = {
+      fetchJSON: async () => data, signal: null, run() {}, updated() {}, status() {},
+      onCleanup: (f) => cleanups.push(f), live: (f, ms) => live.push([f, ms]),
+    };
+    render(root, { name: 'FISHTANK' }, ctx);
+    await new Promise((res) => { setImmediate(res); });
+    assert.deepEqual(live.map(([, ms]) => ms), [60_000], 'the refresh goes through ctx.live (the app stops it on leave)');
+    assert.equal(timers, 0, 'no timers of its own');
+    assert.equal(r.q.size, 0, 'off screen until the observer says otherwise');
+    const io = observers[1]; // [0] is the ResizeObserver, [1] the IntersectionObserver
+    io.cb([{ isIntersecting: true }]);
+    assert.equal(r.q.size, 1, 'on screen: the loop runs');
+    r.flush(1000); r.flush(1017);
+    assert.equal(r.q.size, 1);
+    io.cb([{ isIntersecting: false }]);
+    assert.equal(r.q.size, 0, 'scrolled away: no frames');
+    io.cb([{ isIntersecting: true }]);
+    assert.equal(r.q.size, 1);
+    assert.ok(listeners.size >= 3, 'listening while on screen: visibility, motion, pixel ratio');
+    for (const f of cleanups) f();
+    assert.equal(r.q.size, 0, 'the pending frame is cancelled');
+    assert.ok(observers.every((o) => !o.on), 'observers disconnected');
+    assert.equal(listeners.size, 0, 'document and media listeners removed');
+    io.cb([{ isIntersecting: true }]);
+    await live[0][0]();
+    assert.equal(r.q.size, 0, 'a late callback or refresh never restarts it');
+    assert.equal(timers, 0);
+  } finally {
+    for (const [k, v] of Object.entries(saved)) globalThis[k] = v;
+  }
+});

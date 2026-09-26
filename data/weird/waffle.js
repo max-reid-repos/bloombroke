@@ -138,6 +138,8 @@ export function build(rows, fetchedAt) {
   const partial = failed.length > 0;
   return {
     headline: `${total} ${total === 1 ? 'STORE' : 'STORES'} IN STORMS${partial ? ' (PARTIAL)' : ''}`,
+    value: total, // ALERTS: the headline number and its unit
+    unit: 'stores',
     line: partial ? 'Partial: an NHC advisory did not load' : 'Waffle Houses inside storm winds',
     spark: null,
     asOf: updated,

@@ -464,19 +464,30 @@ test('no WEIRD command or alias is a US ticker (SEC lists checked Sep 26 2026)',
   assert.equal(commandForNumber('13'), 'CHANCES');
 });
 
-test('pool: never more than `limit` at once, starts spaced by at least `gapMs`', async () => {
+test('pool: never more than `limit` at once, starts spaced by at least `gapMs`', async (t) => {
+  // Fake clock (setTimeout and Date): a busy machine cannot fire one timer late and the
+  // next on time, so the spacing is checked exactly, not against wall-clock jitter.
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
   let running = 0;
   let peak = 0;
   const starts = [];
-  await pool([1, 2, 3, 4, 5, 6], 2, async () => {
+  let done = false;
+  const all = pool([1, 2, 3, 4, 5, 6], 2, async () => {
     starts.push(Date.now());
     running += 1;
     peak = Math.max(peak, running);
-    await new Promise((r) => setTimeout(r, 30));
+    await new Promise((r) => { setTimeout(r, 30); });
     running -= 1;
-  }, 20);
+  }, 20).then(() => { done = true; });
+  for (let ms = 0; !done && ms < 1000; ms += 1) {
+    await new Promise((r) => { setImmediate(r); }); // let the workers run up to their next wait
+    t.mock.timers.tick(1);
+  }
+  await all;
   assert.equal(peak, 2);
-  for (let i = 1; i < starts.length; i += 1) assert.ok(starts[i] - starts[i - 1] >= 18, `gap ${starts[i] - starts[i - 1]} ms`);
+  assert.equal(starts.length, 6);
+  for (let i = 1; i < starts.length; i += 1) assert.ok(starts[i] - starts[i - 1] >= 20, `gap ${starts[i] - starts[i - 1]} ms`);
+  t.mock.timers.reset();
   let calls = 0;
   await assert.rejects(pool([1, 2, 3, 4, 5], 1, async (x) => { calls += 1; if (x === 2) throw new Error('stop'); }, 0), /stop/);
   assert.equal(calls, 2, 'no new work after a failure');

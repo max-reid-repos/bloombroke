@@ -96,6 +96,16 @@ export function pickMovers(stocks, n = 10) {
   };
 }
 
+// HEATMAP boxes need a market cap: members without one are left out.
+export function heatmapStocks(stocks) {
+  return stocks.filter((s) => s.marketCap > 0).map(({ ticker, name, sector, last, changePct, marketCap }) => ({ ticker, name, sector, last, changePct, marketCap }));
+}
+
+// FISHTANK keeps every member; a missing cap is null (that fish gets the plain size).
+export function fishtankStocks(stocks) {
+  return stocks.map(({ ticker, name, changePct, marketCap }) => ({ ticker, name, changePct, marketCap: marketCap > 0 ? marketCap : null }));
+}
+
 export function makeSp100({ fetchImpl = globalThis.fetch, cache = createCache() } = {}) {
   async function load() {
     const { value, stale, fetchedAt } = await cache.cached('sp100', TTL, async () => {
@@ -115,14 +125,18 @@ export function makeSp100({ fetchImpl = globalThis.fetch, cache = createCache() 
     async getHeatmap() {
       const { stocks, stale, updated } = await load();
       return {
-        stocks: stocks.filter((s) => s.marketCap > 0).map(({ ticker, name, sector, last, changePct, marketCap }) => ({ ticker, name, sector, last, changePct, marketCap })),
+        stocks: heatmapStocks(stocks),
         sectors: SECTORS,
         asOfList: SP100_AS_OF,
         stale,
         updated,
       };
     },
+    async getFishtank() {
+      const { stocks, stale, updated } = await load();
+      return { stocks: fishtankStocks(stocks), stale, updated };
+    },
   };
 }
 
-export const { getMovers, getHeatmap } = makeSp100();
+export const { getMovers, getHeatmap, getFishtank } = makeSp100();

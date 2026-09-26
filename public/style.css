@@ -1432,3 +1432,75 @@ a.ch-flag { cursor: pointer; }
 .news-filing .news-link:hover { color: var(--accent); text-decoration: none; }
 .news-row.is-dim .news-title, .news-row.is-dim .news-src { color: var(--dim); }
 /* --- end NEWS SEC tab rows ------------------------------------------------------ */
+
+/* --- FISHTANK (screens/fishtank.js): the S&P 100 as fish ----------------------- */
+/* The canvas sits absolutely inside its box, so drawing never changes the box size. */
+.ft-host { position: relative; height: clamp(420px, 72vh, 760px); min-height: 0; overflow: hidden; background: hsl(213, 43%, 4%); }
+.ft-host > .loading, .ft-host > .panel-msg { padding: 8px; }
+.ft-canvas { position: absolute; left: 0; top: 0; display: block; touch-action: manipulation; }
+.ft-tip {
+  position: absolute; left: 0; top: 0; pointer-events: none; white-space: nowrap;
+  padding: 2px 6px; font-size: 11px; line-height: 16px;
+  background: var(--panel-2); border: 1px solid var(--rule-strong); color: var(--text-2);
+}
+.ft-tip b { color: var(--text); font-weight: 600; }
+.ft-sr { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; overflow: hidden; clip: rect(0 0 0 0); }
+.ft-sr:focus-within {
+  width: auto; height: auto; max-height: calc(100% - 32px); max-width: calc(100% - 16px); left: 8px; top: 24px; z-index: 2;
+  overflow: auto; clip: auto; list-style: none; padding: 4px 0;
+  background: var(--panel-2); border: 1px solid var(--rule-strong);
+}
+.ft-sr:focus-within a { display: block; padding: 0 8px; line-height: 20px; white-space: nowrap; color: var(--text-2); }
+.ft-sr:focus-within a:focus { color: var(--ink); background: var(--accent); outline: none; }
+@media (min-width: 1100px) {
+  html:not(.is-embed) .view > .panel .panel-body:has(> .ft-host) { display: flex; flex-direction: column; overflow: hidden; scrollbar-gutter: auto; }
+  html:not(.is-embed) .view > .panel .panel-body > .ft-host { flex: 1 1 0; height: auto; min-height: 200px; }
+}
+.is-embed .ft-host { height: calc(100vh - 28px); min-height: 160px; }
+.ft-short { display: none; }
+@media (max-width: 639px) {
+  .ft-idx, .ft-upd, .ft-sep, .ft-long { display: none; }
+  .ft-key { display: block; }
+  .ft-short { display: inline; }
+}
+/* --- end FISHTANK -------------------------------------------------------------- */
+
+/* --- ALERTS (price and gauge alerts) -------------------------------------------- */
+.status-alerts {
+  margin-left: auto; height: 16px; padding: 0 6px;
+  border: 0; background: var(--accent); color: var(--ink);
+  font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .08em; cursor: pointer;
+}
+.status-alerts:hover { background: var(--text); }
+.status-alerts[hidden] { display: none; }
+.al-honest { color: var(--dim); font-size: 12px; white-space: normal; }
+.al-perm { color: var(--text-2); }
+.al-perm .quiet { margin-left: 8px; }
+.al-table .al-cond { color: var(--text); }
+.al-table .al-dist { color: var(--dim); }
+.al-table .last.is-stale { color: var(--dim); font-weight: 400; }
+.al-stale { margin-left: 4px; color: var(--faint); font-size: 10px; letter-spacing: .06em; }
+.al-table .al-st { width: 1%; white-space: nowrap; }
+.al-table td.wl-act { text-align: right; }
+.al-state { color: var(--dim); font-size: 11px; font-weight: 600; letter-spacing: .08em; }
+.al-state.is-fired { padding: 1px 5px; background: var(--accent); color: var(--ink); }
+.al-table tr.is-fired .wl-sym a { color: var(--accent); }
+/* Phones: each alert is two lines, symbol, condition, state; then now, distance, actions. */
+@media (max-width: 639px) {
+  .al-table thead, .al-table .al-name { display: none; }
+  .al-table tbody tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: 12px; align-items: center;
+    grid-template-areas: "sym cond st" "now dist act";
+    padding: 3px 8px;
+  }
+  .al-table tbody th, .al-table tbody td { height: 22px; padding: 0 !important; width: auto; }
+  .al-table .wl-sym { grid-area: sym; }
+  .al-table .al-cond { grid-area: cond; }
+  .al-table .al-st { grid-area: st; text-align: right; }
+  .al-table .last { grid-area: now; text-align: left; }
+  .al-table .last::before { content: 'NOW '; color: var(--dim); font-size: 11px; font-weight: 400; letter-spacing: .06em; }
+  .al-table .al-dist { grid-area: dist; }
+  .al-table tbody .wl-act { grid-area: act; justify-self: end; text-align: right; }
+  .al-table .wl-btn { height: 22px; }
+}
+/* --- end ALERTS ----------------------------------------------------------------- */

@@ -43,7 +43,7 @@ test('router: PRO, TAPE, LOGIN, LOGOUT; LOGIN keeps the key out of the URL and t
   assert.equal(suggest('TAPE ADD ')[0].usage, true);
   assert.ok(COMMANDS.some((c) => c.name === 'PRO' && c.group === 'Pro'));
   assert.ok(!SOON.some((s) => s.name === 'PRO'), 'PRO is no longer coming soon');
-  assert.ok(SOON.some((s) => s.name === 'ALERTS'));
+  assert.ok(!SOON.some((s) => s.name === 'ALERTS'), 'ALERTS is built, no longer coming soon');
 });
 
 test('TAPE: parse ADD, REMOVE, RESET and bad symbols', () => {

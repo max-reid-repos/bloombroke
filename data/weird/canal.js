@@ -90,6 +90,8 @@ export function build(daily, avgs, asOf) {
   const perDay = Math.round(lead.week);
   return {
     headline: `${lead.name.toUpperCase()} ${perDay} ${shipWord(perDay)}/DAY`,
+    value: perDay, // ALERTS: the headline number and its unit
+    unit: 'ships/day',
     line: Number.isFinite(lead.avgTotal) ? `7-day average; 1-year average ${Math.round(lead.avgTotal)}` : '7-day average',
     spark: lead.spark,
     asOf,

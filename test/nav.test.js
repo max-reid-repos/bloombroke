@@ -84,7 +84,8 @@ test('registry feeds the command bar, the function bar and ticker-first grammar'
   assert.equal(parseCommand('AAPL EARNINGS').name, 'SOON');
   const names = COMMANDS.map((c) => c.name);
   assert.ok(!names.includes('420'), '420 stays hidden');
-  assert.ok(!names.includes('<TICKER>') && !names.includes('ALERTS') && !names.includes('BUY'));
+  assert.ok(!names.includes('<TICKER>') && !names.includes('BUY'));
+  assert.ok(names.includes('ALERTS'), 'ALERTS is built, no longer coming soon');
   assert.ok(names.includes('PRO') && names.includes('AFFORD') && names.includes('TERMS'));
   assert.deepEqual(names.slice(-2), ['HELP', 'MENU']);
   for (const c of COMMANDS) assert.equal(c.hint, findCommand(c.name).summary);
