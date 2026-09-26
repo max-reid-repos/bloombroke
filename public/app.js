@@ -1358,6 +1358,15 @@ function boot() {
     if (!coarse) input.focus();
   });
 
+  // --- ALERTS: the alert watcher (public/alerts.js), once per page, never in a DESK panel
+  if (!embed) {
+    import('./alerts.js').then((m) => m.startAlerts({
+      store, fetchJSON, status: (text) => setStatus(text), run: (c) => { run(c); if (!coarse) input.focus(); },
+      statusline: statusMsg.parentElement,
+    })).catch(() => { /* alerts are extra: the terminal runs without them */ });
+  }
+  // --- end ALERTS ------------------------------------------------------------
+
   // --- first render ---------------------------------------------------------
   const initial = urlFor(fromQuery(location.search)).url; // a link never runs LOGIN or TAPE ADD
   window.history.replaceState({ c: initial, d: embed ? 0 : depth() }, '', embed ? `${toQuery(initial)}&embed=1` : location.search ? toQuery(initial) : location.pathname);

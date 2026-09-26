@@ -72,6 +72,14 @@ export const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.leng
 export const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10);
 
 // +12% / −12% (a true minus sign, as elsewhere on the site). 0 has no sign.
+// ALERTS: the number a headline shows, as a number: the same rounding as signedPct and
+// toFixed (half away from zero on the digits shown), so -2.25 is -2.3 like its headline.
+export function headlineNumber(v, decimals = 1) {
+  if (!Number.isFinite(v)) return null;
+  const n = Number(Math.abs(v).toFixed(decimals));
+  return n === 0 ? 0 : Math.sign(v) * n;
+}
+
 export function signedPct(v, decimals = 1) {
   if (!Number.isFinite(v)) return '--';
   const s = Math.abs(v).toFixed(decimals);

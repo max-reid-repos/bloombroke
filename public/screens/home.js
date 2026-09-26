@@ -1,4 +1,4 @@
-// HOME: the default screen. A short MARKETS list, the S&P 500 chart and the news.
+// HOME: the default screen. A dense MARKETS list, the S&P 500 chart and the news.
 
 import { esc, fmtNum, fmtSigned, fmtPct, dirOf, panel, LOADING, marketsColumns, nameCell, rowAttrs, rerender, tick, settleTicks } from './markets.js';
 import { rangeChart } from './chart.js';
@@ -22,19 +22,45 @@ export function fxTable(pairs) {
   </table>`;
 }
 
-// HOME's short MARKETS list: four columns, each a group of the MARKETS screen's own
-// instruments (the full list stays on MARKETS).
+// HOME's MARKETS list: four columns of ten, each a group of the MARKETS screen's own
+// instruments under short names (the full list and full names stay on MARKETS). A plain
+// string starts a sub-heading bar inside the column (Europe, Asia, Energy...).
 export const HOME_MARKETS = [
-  { name: 'US', ids: ['SPX', 'NDX', 'DJI', 'RUT', 'VIX'] },
-  { name: 'World', ids: ['FTSE', 'DAX', 'N225', 'HSI', 'SHANGHAI'] },
-  { name: 'Commodities + crypto', ids: ['GOLD', 'WTI', 'COPPER', 'BALTICDRY', 'BTC', 'ETH'] },
-  { name: 'FX + rates', ids: ['EURUSD', 'USDJPY', 'GBPUSD', 'DXY', 'US10Y'] },
+  { name: 'US', rows: [
+    ['SPX', 'S&P 500'], ['NDX', 'Nasdaq 100'], ['DJI', 'Dow'], ['RUT', 'Russell 2000'], ['SPXEW', 'Equal weight'],
+    ['SOX', 'Semis'], ['DJTRANS', 'Transports'], ['SPFUT', 'S&P 500 fut'], ['NDFUT', 'Nasdaq 100 fut'], ['VIX', 'VIX'],
+  ] },
+  { name: 'World', rows: [
+    'Europe', ['STOXX50', 'Euro Stoxx 50'], ['FTSE', 'FTSE 100'], ['DAX', 'DAX'], ['CAC40', 'CAC 40'],
+    'Asia', ['N225', 'Nikkei 225'], ['HSI', 'Hang Seng'], ['SHANGHAI', 'Shanghai'], ['KOSPI', 'KOSPI'], ['NIFTY50', 'Nifty 50'], ['ASX200', 'ASX 200'],
+  ] },
+  { name: 'Commodities + crypto', rows: [
+    'Energy', ['WTI', 'WTI oil'], ['BRENT', 'Brent oil'], ['NATGAS', 'Natural gas'],
+    'Metals', ['GOLD', 'Gold (spot)'], ['SILVER', 'Silver (spot)'], ['COPPER', 'Copper'],
+    'Other', ['WHEAT', 'Wheat'], ['BALTICDRY', 'Baltic Dry'],
+    'Crypto', ['BTC', 'Bitcoin'], ['ETH', 'Ether'],
+  ] },
+  { name: 'FX + rates', rows: [
+    'FX', ['DXY', 'Dollar index'], ['EURUSD', 'EUR/USD'], ['USDJPY', 'USD/JPY'], ['GBPUSD', 'GBP/USD'], ['USDCNH', 'USD/CNH'],
+    'Rates', ['US3M', 'US 3M'], ['US2Y', 'US 2Y'], ['US10Y', 'US 10Y'], ['US30Y', 'US 30Y'], ['US2S10S', '2s10s'],
+  ] },
 ];
 
-// The HOME rows from /api/markets, regrouped, in the order above. Missing ids drop out.
+// The HOME rows from /api/markets, regrouped in the order above, each with its group,
+// sub-heading and short name. A missing id drops out; a sub-heading with no rows left
+// drops with it (it only shows above a row).
 export function homeMarkets(instruments) {
   const byId = new Map((instruments || []).map((m) => [m.id, m]));
-  return HOME_MARKETS.flatMap((g) => g.ids.filter((id) => byId.has(id)).map((id) => ({ ...byId.get(id), group: g.name })));
+  return HOME_MARKETS.flatMap((g) => {
+    let sub = null;
+    const out = [];
+    for (const r of g.rows) {
+      if (typeof r === 'string') { sub = r; continue; }
+      const [id, name] = r;
+      if (byId.has(id)) out.push({ ...byId.get(id), name, group: g.name, sub });
+    }
+    return out;
+  });
 }
 
 const HOME_NEWS_ROWS = 30;

@@ -60,6 +60,8 @@ export function build(parks) {
   const avg = waits.length ? mean(waits) : null;
   return {
     headline: avg === null ? 'PARKS CLOSED' : `${Math.round(avg)} MIN AVERAGE WAIT`,
+    value: avg === null ? null : Math.round(avg), // ALERTS: the headline number and its unit
+    unit: 'min',
     line: avg === null ? 'Walt Disney World and Disneyland' : `Disney parks, ${openParks} of ${parks.length} open`,
     spark: null,
     asOf: stamps.length ? new Date(Math.max(...stamps)).toISOString() : null,

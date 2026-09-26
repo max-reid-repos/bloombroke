@@ -105,6 +105,8 @@ export function summarize(detail) {
   if (!detail.ok) return detail;
   const out = { id: detail.id, ok: true, stale: detail.stale, updated: detail.updated };
   for (const k of SUMMARY_KEYS) if (detail[k] !== undefined) out[k] = detail[k];
+  // ALERTS: a gauge's headline number, only where the gauge gives it a unit.
+  if (Number.isFinite(detail.value) && detail.unit) { out.value = detail.value; out.unit = detail.unit; }
   return out;
 }
 
