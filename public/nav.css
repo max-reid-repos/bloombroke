@@ -11,11 +11,10 @@ body.has-tape .dock > .tape:not([hidden]) { display: block; }
 .tape[hidden] { display: none; }
 .tape.tape-panel { display: block; --tape-h: 26px; }
 
-/* Status line: the as-of time left (details in its tooltip), the legal line right. */
+/* Status line: messages left, the legal line right. */
 .status-msg { min-width: 0; }
 
-.fkey-menu {
-  margin-left: auto;
+.fkey-share, .fkey-menu {
   border: 0; border-left: 1px solid var(--rule);
   background: transparent;
   font-family: var(--font);
@@ -23,39 +22,29 @@ body.has-tape .dock > .tape:not([hidden]) { display: block; }
   padding: 0 12px;
   gap: 8px;
 }
+.fkey-share { margin-left: auto; }
 .fkey-menu .fkey-n { font-size: 11px; }
 
-/* ---- Screen header: back, title, what it is; actions on the right ---------- */
-.screenhead {
-  display: flex; align-items: center; gap: 12px;
-  min-height: 40px;
-  padding: 8px var(--inset) 0;
+/* ---- The screen's name in the command bar, with the watch star on stock screens -- */
+.cmd-label {
+  flex: 0 1 auto; min-width: 0; max-width: 28ch;
+  display: flex; align-items: center; gap: 2px;
+  height: 22px; padding: 0 0 0 8px;
+  background: var(--accent-tint); border-left: 2px solid var(--accent);
 }
-.back {
-  flex: 0 0 auto;
-  font-size: 11px; font-weight: 600; letter-spacing: .1em;
-  color: var(--dim);
-}
-.back:hover { color: var(--accent); text-decoration: none; }
-.back[hidden] { display: none; }
-.screen-title {
-  flex: 0 1 auto; min-width: 0;
-  margin: 0;
-  font-size: 14px; font-weight: 600; letter-spacing: .04em;
-  color: var(--text);
+.cmd-label-text {
+  min-width: 0; padding-right: 8px;
+  font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--accent);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.screen-sub {
-  flex: 1 1 auto; min-width: 0;
-  font-size: 12px; color: var(--dim);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.screen-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.screen-actions:empty { display: none; }
-
-/* ---- Stock screens: one watch star by the title, one tab strip under it ------ */
-.head-star { align-self: center; height: 24px; margin: 0 0 0 -4px; padding: 0 4px; border-right: 0; font-size: 16px; }
+.cmd-label-text:empty { display: none; }
+.cmd-label:has(> .cmd-label-text:empty):has(> .head-star[hidden]) { display: none; }
+.head-star { align-self: stretch; margin: 0; padding: 0 6px; border-right: 0; font-size: 14px; }
 .head-star[hidden] { display: none; }
+.cmd-label-text:not(:empty) + .head-star { margin-left: -6px; }
+
+/* ---- Stock screens: one tab strip under the command bar ------------------------ */
 .tickerbar { margin: 4px var(--inset) 0; border: 1px solid var(--rule-strong); }
 .tickerbar[hidden] { display: none; }
 /* More functions off to the right: an arrow over a fade at the edge says the strip
@@ -183,23 +172,19 @@ body.menu-open { overflow: hidden; }
 .hc-row-fn { grid-template-columns: 200px minmax(0, 1fr); }
 .hc-row-fn .hc-name { color: var(--accent); }
 
-.hs-card { display: grid; gap: 8px; margin-bottom: 24px; padding: 16px; background: var(--panel); }
-.help-main > .hs-h { margin-top: 24px; }
-.hs-card .hs-h + * { margin-bottom: 8px; }
-.hs-rules { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.hs-rule { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.hs-n {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px;
-  background: var(--accent-tint); color: var(--accent);
-  font-size: 12px; font-weight: 600;
+.hs-list { columns: 3 260px; column-gap: 32px; margin: 0 0 8px; }
+.hs-row {
+  display: grid; grid-template-columns: 124px minmax(0, 1fr); gap: 12px; align-items: baseline;
+  break-inside: avoid;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--rule);
 }
-.hs-text { color: var(--text); }
-.hs-tries { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.hs-try { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; background: var(--panel-2); }
-.hs-try:hover { background: var(--panel-3); text-decoration: none; }
-.hs-cmd { color: var(--accent); font-weight: 600; }
-.hs-what { font-size: 12px; color: var(--text-2); }
+.hs-row:hover { background: var(--panel-2); }
+.hs-cmd { font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.hs-cmd:hover { color: var(--accent); text-decoration: none; }
+.hs-what { color: var(--text-2); }
+.hs-keys { margin-top: 12px; font-size: 12px; color: var(--text-2); line-height: 2; }
+.hs-sep { margin: 0 6px; color: var(--faint); }
 
 .hd { max-width: 880px; }
 .hd-name { margin: 0; font-size: 24px; font-weight: 600; line-height: 1.2; color: var(--text); }
@@ -233,14 +218,13 @@ body.menu-open { overflow: hidden; }
 }
 
 @media (max-width: 639px) {
-  .screenhead { min-height: 36px; gap: 8px; }
-  .screen-sub { display: none; }
-  .screenhead .share { margin-left: auto; }
+  .cmd-label { max-width: 12ch; padding-left: 6px; }
+  .cmd-label-text { padding-right: 6px; font-size: 11px; }
 
   .fkeys .fkey:not(.is-mobile) { display: none; }
   .fkeys .fkey-n, .fkey-menu .fkey-n { display: none; }
   .fkeys .fkey { padding: 0 10px; }
-  .fkey-menu { padding: 0 12px; }
+  .fkey-share, .fkey-menu { padding: 0 10px; }
 
   .menu-overlay { padding: 8px; }
   .menu { max-height: calc(100vh - 16px); }
@@ -258,6 +242,6 @@ body.menu-open { overflow: hidden; }
   .help-n { display: none; }
   .help-q, .menu-q { font-size: 16px; }
   .hc-row, .hc-row-fn { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 8px; }
-  .hs-rules, .hs-tries { grid-template-columns: minmax(0, 1fr); }
+  .hs-list { columns: 1; }
   .hd-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 }

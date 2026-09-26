@@ -32,12 +32,14 @@
     <div class="clock" aria-live="off">
       <span class="label">NEW YORK</span>
       <time id="clock" class="clock-time">--:--:--</time>
+      <span id="fresh-dot" class="fresh-dot" data-state="none" role="img" aria-label="No data on this screen"></span>
       <span id="market-status" class="status" data-open="false"><span class="status-dot" aria-hidden="true"></span><span class="status-text">MARKET CLOSED</span></span>
     </div>
   </header>
 
   <div class="commandbar">
     <form id="cmd-form" class="cmd" autocomplete="off" role="search">
+      <span class="cmd-label"><span id="screen-title" class="cmd-label-text"></span><button type="button" id="head-star" class="star head-star" hidden aria-pressed="false"><span class="star-icon" aria-hidden="true">&#9734;</span><span class="offscreen"></span></button></span>
       <span class="prompt" aria-hidden="true">&gt;</span>
       <div class="cmd-field">
         <input id="cmd" name="c" type="text" maxlength="256" spellcheck="false" autocapitalize="characters" autocorrect="off"
@@ -51,15 +53,6 @@
     </form>
   </div>
 
-  <div class="screenhead">
-    <a id="back" class="back" href="#" hidden aria-label="Back to the previous screen">&lt; BACK</a>
-    <h1 id="screen-title" class="screen-title"></h1>
-    <button type="button" id="head-star" class="star head-star" hidden aria-pressed="false"><span class="star-icon" aria-hidden="true">&#9734;</span><span class="offscreen"></span></button>
-    <p id="screen-sub" class="screen-sub"></p>
-    <div id="screen-actions" class="screen-actions"></div>
-    <button type="button" id="share" class="share" aria-label="Copy a link to this screen">SHARE</button>
-  </div>
-
   <nav id="tickerbar" class="fnbar tickerbar" hidden aria-label="Stock functions"></nav>
 
   <main id="screen" class="screen" tabindex="-1" aria-live="polite"></main>
@@ -67,8 +60,8 @@
   <div class="dock">
     <div id="tape-bar" class="tape" aria-label="Market ticker" hidden><div class="tape-track"></div></div>
     <div class="statusline" role="status" aria-live="polite">
-      <span id="status-msg" class="status-msg" title="RT REAL TIME. DLY DELAYED.">READY</span>
-      <span id="status-legal" class="status-legal"><span class="legal-line legal-line-long">Information only. Not investment advice. Data may be delayed.</span><span class="legal-line legal-line-short">Info only, not advice.</span><a href="/terms">Terms</a></span>
+      <span id="status-msg" class="status-msg">READY</span>
+      <span id="status-legal" class="status-legal"><span class="legal-line">Not advice</span><span class="legal-terms"><span class="legal-sep" aria-hidden="true">&middot;</span><a href="/terms">Terms</a></span></span>
     </div>
     <nav id="keybar" class="keybar" aria-label="Function keys"></nav>
   </div>

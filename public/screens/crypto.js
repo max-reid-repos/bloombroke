@@ -13,9 +13,11 @@ export function fmtPrice(n) {
   return fmtNum(n, digits);
 }
 
+// CoinGecko's terms ask for a credit with a link wherever its data shows.
+const CRYPTO_META = 'TOP 20 EXCLUDING STABLECOINS, USD · Powered by <a href="https://www.coingecko.com/" target="_blank" rel="noopener noreferrer" title="Data provided by CoinGecko">CoinGecko</a>';
+
 export function render(el, cmd, ctx) {
-  el.innerHTML = panel('1', 'Crypto', LOADING, { cls: 'panel-solo', metaId: 'cr-meta', meta: 'TOP 20 EXCLUDING STABLECOINS, BY MARKET CAP, USD' })
-    + '<p class="footnote">Stablecoins and tokenised assets (gold, loans, fund shares) are left out: they track something outside crypto. Data provided by CoinGecko. Powered by <a href="https://www.coingecko.com/" target="_blank" rel="noopener noreferrer">CoinGecko</a>. DLY: prices can lag by a few minutes; the status line shows when they were last updated. Crypto trades all day, every day. Not financial advice.</p>';
+  el.innerHTML = panel('1', 'Crypto', LOADING, { cls: 'panel-solo', metaId: 'cr-meta', meta: CRYPTO_META });
   const body = el.querySelector('.panel-body');
 
   async function load() {

@@ -132,8 +132,7 @@ export function render(el, cmd, ctx) {
     right: dates(from || '', to || today),
     label: 'Range',
   });
-  el.innerHTML = panel('1', `${ticker} daily history`, `${bar}<div class="hist-main">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'hist-meta', bodyCls: 'flush' })
-    + '<p class="footnote">Daily prices from CNBC, adjusted for splits. Today shows once the day closes. Change is close to close. Not financial advice.</p>';
+  el.innerHTML = panel('1', `${ticker} daily history`, `${bar}<div class="hist-main">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'hist-meta', bodyCls: 'flush' });
   const main = el.querySelector('.hist-main');
   const meta = el.querySelector('#hist-meta');
   let csvUrl = null;

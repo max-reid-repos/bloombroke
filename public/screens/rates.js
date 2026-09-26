@@ -60,8 +60,7 @@ export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="stack">
     ${panel('1', 'Rates', LOADING, { metaId: 'rt-meta', meta: 'US, PERCENT A YEAR' })}
     ${panel('2', 'US 10-year yield', '<div class="rc" id="rt-rc"></div>', { cmd: 'US10Y', metaId: 'rt-ch-meta', bodyCls: 'flush' })}
-  </div>`
-    + `<p class="footnote">Treasury yields: CNBC, real time (RT). Fed funds: Federal Reserve Bank of New York, daily. Mortgages: Freddie Mac weekly survey (WEEKLY). 1 bp = 0.01%. Not financial advice.</p>`;
+  </div>`;
   const body = el.querySelector('.panel-body');
 
   const chart = rangeChart(el.querySelector('#rt-rc'), ctx, {

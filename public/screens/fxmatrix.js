@@ -5,7 +5,7 @@
 
 import { esc, q, dirOf, fmtPct, panel, LOADING } from './markets.js';
 import { fmtRate } from './fx.js';
-import { statusLine } from '../freshness.js';
+import { freshTag } from '../freshness.js';
 import { toolbar, segmented } from '../kit.js';
 
 export const FXM_MODES = ['RATES', 'HEAT'];
@@ -76,10 +76,7 @@ export function render(el, cmd, ctx) {
   const mode = cmd.args?.mode || 'RATES';
   const heat = mode === 'HEAT';
   const modes = segmented(FXM_MODES.map((m) => ({ label: m, cmd: m === 'RATES' ? 'FXMATRIX' : `FXMATRIX ${m}` })), mode, { label: 'Mode' });
-  el.innerHTML = panel('1', 'FX matrix', `${toolbar({ right: modes, label: 'Mode' })}<div class="fxm-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'fxm-meta', bodyCls: 'flush' })
-    + `<p class="footnote">${heat
-      ? 'Each cell: how much the row currency moved against the column currency today, in %. Real-time quotes from CNBC; if they are missing, the change between the last two ECB reference rates, labelled DAILY. Tap a cell to convert.'
-      : 'Read across: 1 unit of the row currency buys this much of the column currency. The small arrow = up or down on the day before. Source: ECB statistics via Frankfurter, reference rates published once a working day (DAILY), not live. Rates that do not involve the euro are calculated from the euro rates. Tap a rate to convert.'}</p>`;
+  el.innerHTML = panel('1', 'FX matrix', `${toolbar({ right: modes, label: 'Mode' })}<div class="fxm-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'fxm-meta', bodyCls: 'flush' });
   if (cmd.args?.error) ctx.status('FXMATRIX TAKES RATES OR HEAT', 'warn');
   const body = el.querySelector('.fxm-body');
   const meta = el.querySelector('#fxm-meta');
@@ -89,12 +86,12 @@ export function render(el, cmd, ctx) {
       const d = await ctx.fetchJSON('/api/fxmatrix', { signal: ctx.signal });
       if (heat && d.live) {
         body.innerHTML = matrixTable({ codes: d.codes, matrix: d.live.matrix, prev: d.live.prev }, { heat: true }) + heatLegend();
-        meta.innerHTML = `<span class="fresh ${d.live.realTime ? 'is-rt' : 'is-dly'}">${d.live.realTime ? 'RT' : 'DLY'}</span> CHANGE TODAY, CNBC`;
-        if (!cmd.args?.error) ctx.status(statusLine(d.live.updated, d.live.stale, [{ kind: 'fx', realTime: d.live.realTime }]), d.live.stale ? 'warn' : '');
+        meta.innerHTML = `${freshTag({ realTime: Boolean(d.live.realTime) })} CHANGE TODAY, CNBC`;
+        if (!cmd.args?.error) ctx.updated(d.live.updated, d.live.stale);
       } else if (heat) {
         body.innerHTML = matrixTable(d, { heat: true }) + heatLegend();
         meta.innerHTML = `<span class="fresh is-dly">DAILY</span> ECB ${esc(fmtDay(d.prevDate))} TO ${esc(fmtDay(d.date))}`;
-        if (!cmd.args?.error) ctx.status(`${statusLine(d.updated, d.stale)} · LIVE FX QUOTES MISSING, DAILY CHANGE SHOWN`, 'warn');
+        if (!cmd.args?.error) { ctx.updated(d.updated, d.stale); ctx.status('LIVE FX QUOTES MISSING, DAILY CHANGE SHOWN', 'warn'); }
       } else {
         body.innerHTML = matrixTable(d);
         meta.textContent = `${d.stale ? 'LAST KNOWN RATES' : 'ECB REFERENCE RATES'} ${fmtDay(d.date)}`;

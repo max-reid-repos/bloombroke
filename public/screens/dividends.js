@@ -76,7 +76,7 @@ export function render(el, cmd, ctx) {
     ${panel('1', `${ticker} dividends`, LOADING)}
     ${panel('2', 'Every payment', LOADING, { metaId: 'dv-meta', bodyCls: 'flush' })}
   </div>
-  <p class="footnote">Dividend data from Nasdaq. Yield = the yearly dividend divided by today's price. Per share, before tax. Not financial advice.</p>`;
+  <p class="footnote"></p>`;
   const [top, list] = el.querySelectorAll('.panel-body');
   const foot = el.querySelector('.footnote');
   let ro = null;
@@ -131,7 +131,7 @@ export function render(el, cmd, ctx) {
     draw();
     if (typeof ResizeObserver === 'function') { ro = new ResizeObserver(draw); ro.observe(host); }
     el.querySelector('#dv-meta').textContent = `${d.rows.length} PAYMENTS${adjusted ? ' · SPLIT-ADJUSTED' : ''}`;
-    foot.textContent = `Dividend data from Nasdaq. ${basisNote(d)} ${checkNote(d)} Yield = the yearly dividend divided by today's price. Per share, before tax. Not financial advice.`;
+    foot.textContent = `${basisNote(d)} ${checkNote(d)}`.trim();
     list.innerHTML = `<table class="grid-table dv-table">
       <thead><tr><th scope="col">Ex-date</th><th scope="col" class="num">Amount${adjusted ? ' (split-adj.)' : ''}</th><th scope="col" class="chg">Type</th><th scope="col" class="num time">Declared</th><th scope="col" class="num">Paid</th></tr></thead>
       <tbody>${d.rows.map((r) => `<tr>

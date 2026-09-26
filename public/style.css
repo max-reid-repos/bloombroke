@@ -114,6 +114,11 @@ kbd {
   color: var(--dim); letter-spacing: .08em; font-weight: 600;
 }
 .status-dot { width: 6px; height: 6px; background: var(--faint); }
+/* Freshness: ice blue when the screen's data is fresh, grey when stale; the time is in
+   the tooltip. No data on the screen, no dot. */
+.fresh-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); cursor: help; }
+.fresh-dot[data-state="stale"] { background: var(--faint); }
+.fresh-dot[data-state="none"] { visibility: hidden; }
 .status[data-open="true"] { color: var(--up); }
 .status[data-open="true"] .status-dot { background: var(--up); }
 
@@ -157,8 +162,8 @@ kbd {
 .suggest {
   position: absolute;
   top: 100%;
-  left: calc(var(--inset) + 18px);
-  width: min(600px, calc(100% - var(--inset) * 2 - 18px));
+  left: calc(var(--inset) + var(--label-w, 0px) + 28px);
+  width: min(600px, calc(100% - var(--inset) * 2 - var(--label-w, 0px) - 28px));
   background: var(--panel-2);
   border: 1px solid var(--rule-strong);
   z-index: 20;
@@ -178,23 +183,11 @@ kbd {
 .suggest li.is-usage { cursor: default; }
 .suggest li.is-usage .sug-name { color: var(--accent); font-weight: 400; }
 
-.share {
-  flex: 0 0 auto;
-  height: 22px;
-  padding: 0 8px;
-  border: 1px solid var(--rule-strong);
-  background: transparent;
-  color: var(--text-2);
-  font-family: var(--font);
-  font-size: 11px; font-weight: 600; letter-spacing: .1em;
-  cursor: pointer;
-}
-.share:hover { color: var(--ink); background: var(--accent); border-color: var(--accent); }
-
 /* ---- Screen ----------------------------------------------------------- */
 .screen { padding: 8px var(--inset) calc(var(--dock-h) + 16px); outline: 0; }
 
 .footnote { margin-top: 6px; font-size: 11px; color: var(--dim); }
+.footnote:empty { display: none; }
 .notice { font-size: 16px; font-weight: 600; line-height: 1.35; color: var(--text); margin-bottom: 6px; }
 .examples { margin-top: 8px; line-height: 2; }
 .examples .code { margin-right: 12px; }
@@ -1124,9 +1117,85 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .desk.is-mobile .dp-head { cursor: default; }
 .desk.is-mobile .dp-add { height: 44px; }
 
+/* ---- A numbered panel over the whole screen (keys 1 to 9 off stock screens) ---- */
+.panel.is-max {
+  position: fixed; z-index: 6;
+  top: var(--max-top, calc(var(--topbar-h) + var(--cmd-h)));
+  left: var(--inset); right: var(--inset); bottom: calc(var(--dock-h) + 8px);
+  border: 1px solid var(--rule-strong);
+}
+.panel.is-max > .panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.panel.is-max > .panel-body:has(> .rc-home) { min-height: 0; }
+.panel.is-max .panel-label { box-shadow: inset 0 -2px 0 var(--ink); }
+
+/* ---- Desktop: the screen fills the window exactly, panels scroll inside ---------
+   The page never scrolls: the screen area sits between the command bar and the dock,
+   the main panel of a screen stretches to the bottom and its body scrolls. When a
+   screen has more than fits, the screen area itself scrolls. Phones keep the stacked,
+   page-scrolling layout. */
+.chart-host > svg { position: absolute; top: 0; left: 0; }
+@media (min-width: 1100px) {
+  html:not(.is-embed) body {
+    display: flex; flex-direction: column;
+    height: 100vh; height: 100dvh; min-height: 0;
+    padding-bottom: var(--dock-h);
+    overflow: hidden;
+  }
+  html:not(.is-embed) .topbar, html:not(.is-embed) .commandbar, html:not(.is-embed) .tickerbar { flex: 0 0 auto; }
+  html:not(.is-embed) .screen {
+    display: flex; flex-direction: column;
+    flex: 1 1 auto; min-height: 0;
+    padding-bottom: 8px;
+    overflow: auto;
+    scrollbar-width: thin; scrollbar-color: var(--rule-strong) var(--bg);
+  }
+  html:not(.is-embed) .screen > .view { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }
+  html:not(.is-embed) .view > * { flex: 0 0 auto; }
+
+  /* The blocks of a screen: panels, stacks of panels, grids, a panel with a side. The
+     last one takes the room left; the ones above keep their size. */
+  html:not(.is-embed) .view > :is(.panel, .stack, .grid, .with-side, #er-host) { flex: 0 1 auto; min-height: 96px; }
+  html:not(.is-embed) .view > :nth-last-child(1 of :is(.panel, .stack, .grid, .with-side, #er-host):not([hidden])) { flex: 1 1 auto; min-height: 240px; }
+  html:not(.is-embed) .view > .panel > .panel-body,
+  html:not(.is-embed) .view > #er-host > .panel > .panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+  html:not(.is-embed) .view > #er-host { display: flex; flex-direction: column; }
+  html:not(.is-embed) .view > #er-host > .panel { flex: 1 1 auto; min-height: 0; }
+
+  /* A stack: the last part takes the room left, the ones above keep their size. */
+  html:not(.is-embed) .view > .stack { display: flex; flex-direction: column; }
+  html:not(.is-embed) .view > .stack > * { flex: 0 1 auto; min-height: 96px; }
+  html:not(.is-embed) .view > .stack > :nth-last-child(1 of :not([hidden])) { flex: 1 1 auto; min-height: 160px; }
+  html:not(.is-embed) .view > .stack > .panel > .panel-body,
+  html:not(.is-embed) .view > .stack > :not(.panel) > .panel > .panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+  html:not(.is-embed) .view > .stack > :not(.panel) > .panel { min-height: 0; }
+
+  /* A grid or a panel with a side: rows stretch, each panel scrolls inside. */
+  html:not(.is-embed) .view > .grid { grid-auto-rows: minmax(0, auto); align-content: stretch; }
+  html:not(.is-embed) .view > :is(.grid, .with-side) > .panel { min-height: 0; }
+  html:not(.is-embed) .view > :is(.grid, .with-side) > .panel > .panel-body { min-height: 0; overflow: auto; }
+  html:not(.is-embed) .view > .with-side { align-items: stretch; }
+
+  /* A chart in a stretched panel grows with it; the chart redraws to its box. */
+  html:not(.is-embed) .view .panel-body:has(> .rc:not(.rc-home)),
+  html:not(.is-embed) .view > :is(.stack, .panel) .panel-body:has(> .chart-host) { display: flex; flex-direction: column; }
+  html:not(.is-embed) .view .panel-body > .rc:not(.rc-home) { flex: 1 1 auto; min-height: 0; }
+  html:not(.is-embed) .view .panel-body > .rc:not(.rc-home) > :not(.chart-host) { flex: 0 0 auto; }
+  html:not(.is-embed) .view .panel-body > .rc:not(.rc-home) > .chart-host,
+  html:not(.is-embed) .view > :is(.stack, .panel) .panel-body > .chart-host { flex: 1 1 0; height: auto; min-height: 160px; }
+  html:not(.is-embed) .view > :is(.stack, .panel) .panel-body:has(> .chart-host) > :not(.chart-host) { flex: 0 0 auto; }
+
+  /* HOME: MARKETS at its own height (it scrolls when the window is short), the S&P 500
+     chart and the movers share the rest with NEWS, which keeps at least 160px. */
+  html:not(.is-embed) .view > .grid-home {
+    grid-template-rows: minmax(0, max-content) minmax(180px, 1.6fr) minmax(160px, 1fr);
+    min-height: 0;
+  }
+  html:not(.is-embed) .grid-home .panel-body:has(> .rc-home) { min-height: 0; }
+}
+
 /* ---- Embed mode: the app inside a DESK panel ------------------------------- */
 .is-embed body { min-height: 0; }
-.is-embed .topbar, .is-embed .commandbar, .is-embed .screenhead, .is-embed .dock, .is-embed .footnote { display: none; }
+.is-embed .topbar, .is-embed .commandbar, .is-embed .dock, .is-embed .footnote { display: none; }
 .is-embed .screen { padding: 0; }
 .is-embed .grid, .is-embed .stack, .is-embed .panel-solo { border: 0; }
 .is-embed { scrollbar-width: thin; scrollbar-color: var(--rule-strong) var(--bg); }

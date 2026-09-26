@@ -515,7 +515,7 @@ export function render(el, cmd, ctx) {
   mq.addEventListener?.('change', onResize);
   fitRows();
   layout();
-  ctx.status(panels.length ? `DESK ${n}: PICK A PANEL, TYPE A COMMAND FOR IT` : `DESK ${n} IS EMPTY`);
+  ctx.status(panels.length ? '' : `DESK ${n} IS EMPTY`);
 
   return () => {
     window.removeEventListener('message', onMessage);

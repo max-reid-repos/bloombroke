@@ -222,7 +222,7 @@ function renderPicker(el, ctx, cat, picks) {
     const spent = once.reduce((n, p) => n + p.price, 0);
     countEl.textContent = picks.size ? `${picks.size} PICKED${once.length ? `, ${fmtUsd(spent)} ONE-OFF` : ''}` : 'NOTHING PICKED';
     cmdEl.textContent = picks.size ? commandFor(picks, cat) : 'WHATIF ...';
-    ctx.status(picks.size ? `WHATIF: ${picks.size} PICKED` : 'WHATIF: PICK WHAT YOU BOUGHT');
+    ctx.status(picks.size ? `WHATIF: ${picks.size} PICKED` : '');
   }
 
   function toggle(row) {

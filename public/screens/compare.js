@@ -68,8 +68,7 @@ export function render(el, cmd, ctx) {
   const body = toolbar({ left: tickerChips(tickers, range), label: 'Tickers' })
     + `<div class="ch-bar cp-bar">${rangePills(range, (r) => compareCmd(tickers, r), RANGES)}</div>`
     + `<div class="chart-host chart-host-lg" id="cp-chart">${LOADING}</div><div id="cp-legend"></div>`;
-  el.innerHTML = panel('1', `Compare ${range}`, body, { cls: 'panel-solo', metaId: 'cp-meta', bodyCls: 'flush' })
-    + '<p class="footnote">Price change from the first price in the range, dividends left out. Prices from CNBC, may be delayed. Not financial advice.</p>';
+  el.innerHTML = panel('1', `Compare ${range}`, body, { cls: 'panel-solo', metaId: 'cp-meta', bodyCls: 'flush' });
   const host = el.querySelector('#cp-chart');
   const leg = el.querySelector('#cp-legend');
   const meta = el.querySelector('#cp-meta');

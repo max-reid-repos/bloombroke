@@ -54,8 +54,7 @@ export function render(el, cmd, ctx) {
     ${panel('1', 'Top gainers', LOADING, { meta: 'S&P 100' })}
     ${panel('2', 'Top losers', LOADING, { meta: 'S&P 100' })}
     ${panel('3', 'Most active', LOADING, { meta: 'BY SHARES TRADED' })}
-  </div>
-  <p class="footnote">S&P 100 members, prices from CNBC, may be delayed. Tap a ticker for its chart. Not financial advice.</p>`;
+  </div>`;
   const [g, l, a] = el.querySelectorAll('.panel-body');
 
   async function load() {

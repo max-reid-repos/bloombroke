@@ -60,15 +60,14 @@
 
 /* ---- Status bar: the always-visible short line ------------------------- */
 /* The legal line never shrinks: the status message on the left gives way (ellipsis). */
-.status-legal { display: flex; flex: 0 0 auto; gap: 12px; color: var(--faint, #4a5a6b); }
+.status-legal { display: flex; flex: 0 0 auto; gap: 6px; color: var(--faint, #4a5a6b); }
 .status-legal .legal-line { color: var(--dim, #7f93a8); }
+.status-legal .legal-terms { display: inline-flex; gap: 6px; }
 .status-legal a { color: var(--accent, #6CCBFF); }
 .status-legal a:hover { color: var(--text, #CFEAFF); text-decoration: none; }
-.legal-line-short { display: none; }
+/* Phones: "Not advice" alone. */
 @media (max-width: 639px) {
-  .status-legal .legal-line-long { display: none; }
-  .status-legal .legal-line-short { display: inline; }
-  .status-legal .legal-legend { display: none; }
+  .status-legal .legal-terms { display: none; }
 }
 
 /* ---- First-visit notice ----------------------------------------------- */

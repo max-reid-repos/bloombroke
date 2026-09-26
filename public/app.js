@@ -25,7 +25,7 @@ import { panel } from './screens/markets.js';
 import { matchInstrument, searchInstruments, instrumentById } from './instruments.js';
 import { edgeFade } from './kit.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
-import { statusLine } from './freshness.js';
+import { updatedTitle } from './freshness.js';
 import { EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra, urlCommand, isSecret } from './commands.js';
 import { getTape, loadTapeRows, bareKey, looksLikeKey } from './pro.js';
 import { ensureConsent, consentNeeded } from './consent.js';
@@ -419,12 +419,11 @@ export function nyClock(date = new Date()) {
   return `${p(hour)}:${p(minute)}:${p(second)}`;
 }
 
-// The status line keeps to the as-of time; what is real time and what is delayed goes in
-// its tooltip (and every price carries its own RT or DLY tag).
-export const FRESH_LEGEND = 'RT REAL TIME. DLY DELAYED.';
-export function shortStatus(iso, stale, items) {
-  const full = statusLine(iso, stale, items);
-  return { text: full.split(' · ')[0], title: `${full}. ${FRESH_LEGEND}` };
+// The freshness dot by the New York clock: ice blue when the screen's data is fresh,
+// grey when it is stale. The time is in its tooltip; every price carries its own RT or
+// DLY tag.
+export function freshDot(iso, stale) {
+  return { state: stale ? 'stale' : 'fresh', title: updatedTitle(iso, stale) };
 }
 
 export function escapeHtml(s) {
@@ -469,8 +468,6 @@ const SCREENS = {
   MENU: helpScreen,
 };
 
-// The screen header: title and one line on what the screen is. Internal screen names
-// map back to the registry (TICKERNEWS is NEWS <ticker>).
 // Screens about one stock share one tab strip under the title: the same functions, in
 // the same order, with the same names, on every one of them. null for other screens
 // (and for named instruments like GOLD or SPX, which have no company functions).
@@ -483,7 +480,7 @@ export function tickerStripFor(cmd) {
   return FUNCTION_BAR.includes(current) ? { ticker, current } : null;
 }
 
-// The ticker the watch star by the screen title is for: the stock of a strip, or a
+// The ticker the watch star by the screen name is for: the stock of a strip, or a
 // named instrument's chart (GOLD, BTC, EURUSD, SPX). One star, one place, every time.
 export function starTickerFor(cmd) {
   const strip = tickerStripFor(cmd);
@@ -500,6 +497,23 @@ export function tickerStripHtml(ticker, current) {
   }).join('');
 }
 
+// The key bar: the function keys, then SHARE and MENU on the right.
+export function keybarHtml() {
+  return `<div class="fkeys">${FKEYS.map((k) => `<a class="fkey${k.mobile ? ' is-mobile' : ''}" href="${toQuery(k.cmd)}" data-cmd="${escapeHtml(k.cmd)}" data-name="${parseCommand(k.cmd).name}"><span class="fkey-n">${k.key}</span><span class="fkey-l">${k.label}</span></a>`).join('')}</div>
+    <button type="button" class="fkey fkey-share" id="share" aria-label="Copy a link to this screen"><span class="fkey-l">SHARE</span></button>
+    <button type="button" class="fkey fkey-menu" id="menu-btn" aria-haspopup="dialog"><span class="fkey-l">MENU</span><span class="fkey-n">Ctrl K</span></button>`;
+}
+
+// The panel labelled "<n>) ..." on a screen (HOME: 1 MARKETS, 2 S&P 500...), or null.
+export function panelByNumber(root, n) {
+  const prefix = `${n})`;
+  for (const p of root.querySelectorAll('.panel')) {
+    const label = p.querySelector('.panel-head > .panel-label');
+    if (label && String(label.textContent).trim().startsWith(prefix)) return p;
+  }
+  return null;
+}
+
 // A command with its full name first: PF ADD AAPL -> PORTFOLIO ADD AAPL, M -> MARKETS.
 export function fullName(input) {
   const toks = tokenize(input);
@@ -508,6 +522,9 @@ export function fullName(input) {
   return toks.join(' ');
 }
 
+// The screen's name for the label in the command bar (sub: its one line from the
+// registry, which HELP and MENU show). Internal screen names map back to the registry
+// (TICKERNEWS is NEWS <ticker>).
 export function screenTitle(cmd) {
   const strip = tickerStripFor(cmd);
   if (strip) {
@@ -565,10 +582,8 @@ function boot() {
   const tapeBar = $('tape-bar');
   const statusMsg = $('status-msg');
   const keybar = $('keybar');
-  const backBtn = $('back');
   const titleEl = $('screen-title');
-  const subEl = $('screen-sub');
-  const actionsEl = $('screen-actions');
+  const freshEl = $('fresh-dot');
   const tickerBar = $('tickerbar');
   const headStar = $('head-star');
   const coarse = window.matchMedia('(pointer: coarse)').matches;
@@ -602,21 +617,25 @@ function boot() {
   let statusNote = '';
   function setStatus(text, kind = '') {
     const t = String(text).toUpperCase();
-    statusMsg.textContent = statusNote ? `${statusNote} · ${t}` : t;
+    statusMsg.textContent = statusNote && t ? `${statusNote} · ${t}` : (statusNote || t);
     statusMsg.dataset.kind = kind;
-    statusMsg.title = FRESH_LEGEND;
   }
-  // items: the instruments on screen, so the line can say what is real time and what is delayed.
-  function setUpdated(iso, stale, items) {
-    const line = shortStatus(iso, stale, items);
-    setStatus(line.text, stale ? 'warn' : '');
-    statusMsg.title = line.title;
+  // The data on screen was updated: the dot by the clock says fresh or stale, the time
+  // goes in its tooltip, and a LOADING... left in the status line clears.
+  function setFresh(state, title = '') {
+    freshEl.dataset.state = state;
+    freshEl.title = title;
+    freshEl.setAttribute('aria-label', title || 'No data on this screen');
+  }
+  function setUpdated(iso, stale) {
+    const dot = freshDot(iso, stale);
+    setFresh(dot.state, dot.title);
+    if (statusMsg.textContent === 'LOADING...' || statusMsg.textContent === `${statusNote} · LOADING...`) setStatus('');
     toParent({ type: 'bb:updated', iso: String(iso || ''), stale: Boolean(stale) });
   }
 
   // --- function keys ----------------------------------------------------------
-  keybar.innerHTML = `<div class="fkeys">${FKEYS.map((k) => `<a class="fkey${k.mobile ? ' is-mobile' : ''}" href="${toQuery(k.cmd)}" data-cmd="${escapeHtml(k.cmd)}" data-name="${parseCommand(k.cmd).name}"><span class="fkey-n">${k.key}</span><span class="fkey-l">${k.label}</span></a>`).join('')}</div>
-    <button type="button" class="fkey fkey-menu" id="menu-btn" aria-haspopup="dialog"><span class="fkey-l">MENU</span><span class="fkey-n">Ctrl K</span></button>`;
+  keybar.innerHTML = keybarHtml();
   const fkeysEl = keybar.querySelector('.fkeys');
   edgeFade(fkeysEl);
   edgeFade(tickerBar);
@@ -639,10 +658,42 @@ function boot() {
   $('menu-btn').addEventListener('click', (e) => { e.stopPropagation(); menu?.open(); });
   window.addEventListener('bb:run', (e) => run(String(e.detail || ''), { typed: true }));
 
-  // --- back: history entries carry their depth, so BACK only shows with somewhere to go
+  // --- the screen's name, at the left of the command bar -------------------------------
+  function setLabel(title) {
+    titleEl.textContent = title;
+    titleEl.title = title;
+    requestAnimationFrame(() => form.style.setProperty('--label-w', `${titleEl.parentElement.offsetWidth}px`));
+  }
+
+  // --- back: history entries carry their depth, so Esc only goes back with somewhere to go
   const depth = () => Number(window.history.state?.d) || 0;
   function goBack() { if (depth() > 0) window.history.back(); }
-  backBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); goBack(); });
+
+  // --- panel numbers: on a screen without a stock function bar, 1 to 9 open that
+  // numbered panel over the whole screen area; Esc or the same number again returns.
+  let maxPanel = null;
+  function unmaximize() {
+    if (!maxPanel) return false;
+    maxPanel.classList.remove('is-max');
+    maxPanel.style.removeProperty('--max-top');
+    document.body.classList.remove('has-max-panel');
+    maxPanel = null;
+    window.dispatchEvent(new Event('resize'));
+    return true;
+  }
+  function maximize(n) {
+    const target = panelByNumber(screen, n);
+    if (!target) return false;
+    const same = target === maxPanel;
+    unmaximize();
+    if (same) return true;
+    maxPanel = target;
+    target.style.setProperty('--max-top', `${Math.round(screen.getBoundingClientRect().top + (window.innerWidth >= 1100 ? 0 : window.scrollY))}px`);
+    target.classList.add('is-max');
+    document.body.classList.add('has-max-panel');
+    window.dispatchEvent(new Event('resize'));
+    return true;
+  }
 
   // --- one watch star, by the title of a stock screen ----------------------------
   let starTicker = null;
@@ -795,6 +846,9 @@ function boot() {
     const cmd = parseCommand(raw);
     currentCmd = raw;
     runCleanups();
+    maxPanel = null;
+    document.body.classList.remove('has-max-panel');
+    setFresh('none');
     if (screenAbort) screenAbort.abort();
     screenAbort = new AbortController();
     const signal = screenAbort.signal;
@@ -815,10 +869,7 @@ function boot() {
     }
     setKeys(cmd.name === 'TICKERNEWS' ? '' : cmd.name);
     document.title = cmd.name === 'HOME' || cmd.name === 'UNKNOWN' ? DEFAULT_TITLE : `${cmd.name === 'QUOTE' ? cmd.input : fullName(cmd.input)} | Bloombroke`;
-    const head = screenTitle(cmd);
-    titleEl.textContent = head.title;
-    subEl.textContent = head.sub;
-    actionsEl.replaceChildren();
+    setLabel(screenTitle(cmd).title);
     const strip = embed ? null : tickerStripFor(cmd);
     document.body.classList.toggle('has-tickerbar', Boolean(strip));
     tickerBar.hidden = !strip;
@@ -828,7 +879,6 @@ function boot() {
     starTicker = embed ? null : starTickerFor(cmd);
     headStar.hidden = !starTicker;
     if (starTicker) paintStar();
-    backBtn.hidden = embed || depth() === 0;
     if (cmd.name === 'MENU' && fromUrl) setTimeout(() => menu?.open(), 0);
 
     const ctx = {
@@ -836,8 +886,6 @@ function boot() {
       tickerFunctions: (t) => tickerFunctions(t),
       commands: COMMANDS, soon: SOON, fkeys: FKEYS,
       status: setStatus, updated: setUpdated,
-      // Screen-level controls (tabs, toggles) go in the header, left of SHARE.
-      actions(html) { actionsEl.innerHTML = html; return actionsEl; },
       // No such ticker: drop the stock tab strip and the star.
       hideTickerStrip() { tickerBar.hidden = true; headStar.hidden = true; starTicker = null; document.body.classList.remove('has-tickerbar'); },
       tapeOn: () => tapeOn(store),
@@ -926,15 +974,12 @@ function boot() {
   function neutralHead(title) {
     setKeys('');
     document.title = DEFAULT_TITLE;
-    titleEl.textContent = title;
-    subEl.textContent = '';
-    actionsEl.replaceChildren();
+    setLabel(title);
     tickerBar.hidden = true;
     tickerBar.innerHTML = '';
     document.body.classList.remove('has-tickerbar');
     headStar.hidden = true;
     starTicker = null;
-    backBtn.hidden = embed || depth() === 0;
   }
   // Put the resolved command in the address bar in place of the typed words.
   function replaceUrl(command) {
@@ -1088,6 +1133,7 @@ function boot() {
     } else if (e.key === 'Escape') {
       // Esc: close the list, then clear the bar, then go back a screen.
       if (e.defaultPrevented) return;
+      if (!input.value && list.hidden && unmaximize()) { e.preventDefault(); return; }
       if (escGoesBack({ inputValue: input.value, suggestOpen: !list.hidden, depth: embed ? 0 : depth() })) { e.preventDefault(); goBack(); return; }
       if (!list.hidden) closeSuggest(); else { input.value = ''; placeCursor(); }
     }
@@ -1168,7 +1214,12 @@ function boot() {
       if (!coarse) input.focus();
       return;
     }
-    // Esc away from any text field goes back a screen.
+    // Esc away from any text field closes a maximised panel, then goes back a screen.
+    if (e.key === 'Escape' && !e.defaultPrevented && e.target !== input && !e.target.closest?.('input, select, textarea')
+      && !menu?.isOpen() && unmaximize()) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === 'Escape' && !e.defaultPrevented && e.target !== input && !e.target.closest?.('input, select, textarea')
       && escGoesBack({ menuOpen: Boolean(menu?.isOpen()), depth: embed ? 0 : depth() })) {
       e.preventDefault();
@@ -1182,6 +1233,11 @@ function boot() {
       if (item) {
         e.preventDefault();
         item.click();
+        return;
+      }
+      // No stock function bar: the number opens that panel over the screen.
+      if (!embed && tickerBar.hidden && maximize(e.key)) {
+        e.preventDefault();
         return;
       }
     }
