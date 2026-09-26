@@ -78,18 +78,53 @@ test('HOME rows: yields show bp, 2s10s last in bp, a 2% move gets a box, the spr
   assert.match(mk, />30\.5bp</);
 });
 
+test('HOME columns: all four the same shape, a title, two sub-headings and ten rows', () => {
+  // Same shape, same height: the four columns end on one line.
+  const shape = HOME_MARKETS.map((g) => g.rows.map((r) => (typeof r === 'string' ? 'S' : 'R')).join(''));
+  for (const s of shape) assert.equal(s.replace(/R/g, '').length, 2, 'two sub-headings');
+  for (const s of shape) assert.equal(s.replace(/S/g, '').length, 10, 'ten rows');
+  assert.ok(HOME_MARKETS.every((g) => typeof g.rows[0] === 'string'), 'every column opens with a sub-heading');
+  const byGroup = (name) => {
+    const out = [];
+    for (const r of HOME_MARKETS.find((g) => g.name === name).rows) {
+      if (typeof r === 'string') out.push([r, []]); else out[out.length - 1][1].push(r[1]);
+    }
+    return out;
+  };
+  assert.deepEqual(byGroup('US'), [
+    ['Indexes', ['S&P 500', 'Nasdaq 100', 'Dow', 'Russell 2000', 'Equal weight', 'Semis', 'Transports']],
+    ['Futures + vol', ['S&P 500 fut', 'Nasdaq 100 fut', 'VIX']],
+  ]);
+  assert.deepEqual(byGroup('Commodities + crypto'), [
+    ['Commodities', ['WTI oil', 'Brent oil', 'Natural gas', 'Gold (spot)', 'Silver (spot)', 'Copper', 'Wheat', 'Baltic Dry']],
+    ['Crypto', ['Bitcoin', 'Ether']],
+  ]);
+  assert.deepEqual(byGroup('World').map(([s, r]) => [s, r.length]), [['Europe', 4], ['Asia', 6]]);
+  assert.deepEqual(byGroup('FX + rates').map(([s, r]) => [s, r.length]), [['FX', 5], ['Rates', 5]]);
+  // Rendered: four tables, each with one title bar, two sub-heading bars and ten rows.
+  const all = HOME_MARKETS.flatMap((g) => g.rows.filter((r) => typeof r !== 'string').map(([id]) => id));
+  const html = marketsColumns(homeMarkets(all.map((id) => px(id, 'X', 0.1))), { chg: false, cls: 'mk-cols h-mk' });
+  const tables = html.split('<table').slice(1);
+  assert.equal(tables.length, 4);
+  for (const t of tables) {
+    assert.equal((t.match(/class="group-row"/g) || []).length, 1, 'one title bar');
+    assert.equal((t.match(/class="group-row sub-row"/g) || []).length, 2, 'two sub-heading bars');
+    assert.equal((t.match(/class="row-link"/g) || []).length, 10, 'ten rows');
+  }
+});
+
 test('HOME rows: a missing symbol drops out cleanly, and a sub-heading with it', () => {
   const all = HOME_MARKETS.flatMap((g) => g.rows.filter((r) => typeof r !== 'string').map(([id]) => id));
   const full = all.map((id) => px(id, 'X', 0.1));
   assert.equal(homeMarkets(full).length, 40);
-  // No Nifty, no Brent, no metals at all.
-  const gone = new Set(['NIFTY50', 'BRENT', 'GOLD', 'SILVER', 'COPPER']);
+  // No Nifty, no Brent, no crypto at all.
+  const gone = new Set(['NIFTY50', 'BRENT', 'BTC', 'ETH']);
   const rows = homeMarkets(full.filter((r) => !gone.has(r.id)));
-  assert.equal(rows.length, 35);
+  assert.equal(rows.length, 36);
   assert.ok(rows.every((r) => !gone.has(r.id)));
   const html = marketsColumns(rows, { chg: false, cls: 'mk-cols h-mk' });
-  assert.doesNotMatch(html, /Nifty|Brent|>Metals</);
-  assert.match(html, />Energy</);
+  assert.doesNotMatch(html, /Nifty|Brent|>Crypto</);
+  assert.match(html, />Commodities</);
   assert.match(html, />Asia</);
   assert.doesNotMatch(html, /undefined|NaN/);
   assert.deepEqual(homeMarkets([]), []);

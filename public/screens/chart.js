@@ -5,7 +5,7 @@
 
 import { esc, q, fmtNum, fmtSigned, fmtPct, dirOf, LOADING } from './markets.js';
 import { PRESETS, chartQuery, rangeWords, rangeLabel, nyToday, MAX_COMPARE } from '../ranges.js';
-import { BARS, BAR_LABEL, BAR_MS, AUTO_BAR, barValid, presetSpanDays, zoomBar, isIntradayBar } from '../bars.js';
+import { BAR_MS, AUTO_BAR, barValid, barsForPreset, presetSpanDays, zoomBar, isIntradayBar } from '../bars.js';
 import { instrumentById } from '../instruments.js';
 import {
   intradayStats, sessionDomain, timeTicks, dayStarts, sessionRuns, sessionRefs, withRefs,
@@ -465,7 +465,13 @@ export function rangeChart(root, ctx, opts) {
   let fetchWin = null;        // { from, to } after a zoom; null = the chosen range
   let viewWin = null;         // { t0, t1 } to show once the data is in
   let zoomed = false;
+  // The user's bar size, or null for the range's own. A pick from the period grid on the
+  // instrument screen survives the navigation it causes (see pendingBar).
   let userBar = null;
+  if (pendingBar && pendingBar.symbol === symbol && !baseRange.from && baseRange.range === pendingBar.range) userBar = pendingBar.bar;
+  pendingBar = null;
+  let perOpen = false;
+  const perId = `ch-per-${++perSeq}`;
   let style = ctx.store?.get?.(STYLE_KEY, 'line') === 'candle' ? 'candle' : 'line';
   let compare = [...new Set((opts.compare || []).filter((s) => s && s !== symbol))].slice(0, MAX_COMPARE);
   let data = null;            // the main series: { points, bar, ext, ... }
@@ -479,6 +485,7 @@ export function rangeChart(root, ctx, opts) {
   let flagHover = null;
   let model = null;
   const today = nyToday();
+  const todayDate = new Date();
 
   const cmdFor = (r, cmp = compare) => [symbol, rangeWords({ ...r, compare: cmp })].filter(Boolean).join(' ');
   // Decimals from the latest price (a MAX chart from 1980 starts under a dollar).
@@ -515,29 +522,29 @@ export function rangeChart(root, ctx, opts) {
         : `<button type="button" class="tab${on ? ' is-active' : ''}${on && zoomed ? ' is-zoomed' : ''}" data-range="${p}"${on ? ' aria-pressed="true"' : ''}>${p}</button>`;
     }).join('');
     if (compact()) return `<div class="ch-bar"><nav class="tabs ch-tabs" aria-label="Chart range">${tabs}</nav></div>`;
-    const cur = data?.bar || barFor(w);
-    const bars = BARS.map((b) => {
-      const ok = barOk(b, w);
-      const on = cur === b;
-      const text = on && data?.merged > 1 ? `${data.merged}${BAR_LABEL[b]}` : BAR_LABEL[b];
-      return `<button type="button" class="tab ch-bsz${on ? ' is-active' : ''}" data-bar="${b}"${ok ? '' : ' disabled'}${on ? ' aria-pressed="true"' : ''} title="${esc(BAR_TITLE[b])}">${text}</button>`;
-    }).join('');
+    const per = periodMenu({
+      cur: data?.bar || barFor(w), merged: data?.merged || 1, open: perOpen, id: perId,
+      range: !range.from && !fetchWin ? range.range || '1Y' : null, today: todayDate,
+    });
     const chips = compare.map((s, k) => {
       const c = cmpData.get(s);
       return `<span class="ch-chip ${COMPARE_CLASSES[k]}"><span class="ch-chip-sw" aria-hidden="true"></span>${esc(s)} <span class="num ch-chip-pct" data-sym="${esc(s)}">${c?.error ? 'NO DATA' : ''}</span><button type="button" class="ch-chip-x" data-uncompare="${esc(s)}" aria-label="Remove ${esc(s)}">&times;</button></span>`;
     }).join('');
     const canCompare = compare.length < MAX_COMPARE;
+    // The ranges and the bar period on the left; the dates, the chart style and compare on
+    // the right (one group, so a narrow box wraps it whole onto a second row).
     return `<div class="ch-bar">
-      <nav class="tabs ch-tabs" aria-label="Chart range">${tabs}</nav>
-      <nav class="tabs ch-tabs ch-bars" aria-label="Bar size">${bars}</nav>
-      <div class="ch-tools">
-        <span class="ch-seg" role="group" aria-label="Chart style">${['line', 'candle'].map((k) => `<button type="button" class="tab${style === k ? ' is-active' : ''}" data-style="${k}"${style === k ? ' aria-pressed="true"' : ''}>${k === 'line' ? 'LINE' : 'CANDLES'}</button>`).join('')}</span>
-        ${canCompare ? '<button type="button" class="tab ch-add" data-compare-add>+ COMPARE</button>' : ''}
-        ${chips}
-      </div>
-      <div class="ch-dates${range.from || zoomed ? ' is-active' : ''}">
-        <label><span>FROM</span><input class="ch-date" name="from" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="10" placeholder="MM/DD/YYYY" aria-label="From date, MM/DD/YYYY"></label>
-        <label><span>TO</span><input class="ch-date" name="to" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="10" placeholder="MM/DD/YYYY" aria-label="To date, MM/DD/YYYY"></label>
+      <div class="ch-rng"><nav class="tabs ch-tabs" aria-label="Chart range">${tabs}</nav>${per}</div>
+      <div class="ch-right">
+        <div class="ch-dates${range.from || zoomed ? ' is-active' : ''}">
+          <label><span>FROM</span><input class="ch-date" name="from" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="10" placeholder="MM/DD/YYYY" aria-label="From date, MM/DD/YYYY"></label>
+          <label><span>TO</span><input class="ch-date" name="to" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="10" placeholder="MM/DD/YYYY" aria-label="To date, MM/DD/YYYY"></label>
+        </div>
+        <div class="ch-tools">
+          <span class="ch-seg" role="group" aria-label="Chart style">${['line', 'candle'].map((k) => `<button type="button" class="tab${style === k ? ' is-active' : ''}" data-style="${k}"${style === k ? ' aria-pressed="true"' : ''}>${k === 'line' ? 'LINE' : 'CANDLES'}</button>`).join('')}</span>
+          ${canCompare ? '<button type="button" class="tab ch-add" data-compare-add>+ COMPARE</button>' : ''}
+          ${chips}
+        </div>
       </div>
     </div>`;
   }
@@ -547,16 +554,25 @@ export function rangeChart(root, ctx, opts) {
   const host = root.querySelector('.chart-host');
   const l1 = root.querySelector('.ch-l1');
   const l2 = root.querySelector('.ch-l2');
+  // A focused date box keeps its focus and what was typed; the bar period button and
+  // its grid cells keep their focus.
+  const focusKey = (el) => {
+    if (el.matches?.('input.ch-date')) return `input[name="${el.name}"]`;
+    if (el.dataset?.per) return `[data-per="${el.dataset.per}"]`;
+    if (el.hasAttribute?.('data-per-toggle')) return '[data-per-toggle]';
+    return null;
+  };
   const repaintBar = () => {
     const had = root.querySelector('.ch-bar');
-    const focused = had?.contains(document.activeElement) && document.activeElement.matches?.('input') ? document.activeElement.name : null;
-    const typed = focused ? document.activeElement.value : null;
+    const act = document.activeElement;
+    const focused = had?.contains(act) ? focusKey(act) : null;
+    const typed = focused && act.matches('input') ? act.value : null;
     had.outerHTML = controls();
     fillDates();
     paintChips();
     if (focused) {
-      const el = root.querySelector(`input[name="${focused}"]`);
-      if (el) { el.value = typed; el.focus(); }
+      const el = root.querySelector(`.ch-bar ${focused}`);
+      if (el) { if (typed !== null) el.value = typed; el.focus(); }
     }
   };
   repaintBar();
@@ -915,7 +931,8 @@ export function rangeChart(root, ctx, opts) {
     fetchWin = null;
     viewWin = null;
     zoomed = false;
-    if (userBar && !barOk(userBar)) userBar = null;
+    // A new range starts on AUTO again.
+    userBar = null;
     repaintBar();
     load();
   }
@@ -943,15 +960,81 @@ export function rangeChart(root, ctx, opts) {
     setRange({ from: f, to: t >= today ? null : t });
   }
 
+  // ---- The bar period grid ------------------------------------------------------------
+
+  // A cell sets the period and the range together; the range's own period is AUTO.
+  function pickPeriod(bar, p) {
+    const next = periodPick(bar, p);
+    if (navigate) { pendingBar = { symbol, range: p, bar: next }; navigate(cmdFor({ range: p })); return; }
+    range = { range: p };
+    fetchWin = null;
+    viewWin = null;
+    zoomed = false;
+    userBar = next;
+    repaintBar();
+    load();
+  }
+
+  // Open and close without a repaint: the grid floats over the chart (absolute), so it
+  // never changes a size.
+  function setPerOpen(open, { focus = false } = {}) {
+    perOpen = open;
+    const grid = root.querySelector('.ch-per-grid');
+    const btn = root.querySelector('[data-per-toggle]');
+    if (!grid || !btn) return;
+    grid.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+    if (open && focus) grid.querySelector('[data-per][tabindex="0"]')?.focus();
+    if (!open && focus) btn.focus();
+  }
+
+  function perMove(e) {
+    const cell = e.target.closest('[data-per]');
+    if (!cell) return;
+    const rows = [...root.querySelectorAll('.ch-per-grid [role="row"]')];
+    const at = (r) => [...rows[r].querySelectorAll('[role="gridcell"]')];
+    const r = rows.indexOf(cell.closest('[role="row"]'));
+    const c = at(r).indexOf(cell.closest('[role="gridcell"]'));
+    const btnAt = (ri, ci) => at(ri)[ci]?.querySelector('[data-per]');
+    let next = null;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      const d = e.key === 'ArrowLeft' ? -1 : 1;
+      for (let ci = c + d; ci >= 0 && ci < at(r).length && !next; ci += d) next = btnAt(r, ci);
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const d = e.key === 'ArrowUp' ? -1 : 1;
+      for (let ri = r + d; ri >= 0 && ri < rows.length && !next; ri += d) {
+        // The cell in the same column, else the nearest one in that row.
+        const cells = at(ri);
+        let best = null;
+        cells.forEach((x, ci) => { if (x.querySelector('[data-per]') && (best === null || Math.abs(ci - c) < Math.abs(best - c))) best = ci; });
+        if (best !== null) next = btnAt(ri, best);
+      }
+    } else if (e.key === 'Home' || e.key === 'End') {
+      const btns = at(r).map((x) => x.querySelector('[data-per]')).filter(Boolean);
+      next = e.key === 'Home' ? btns[0] : btns[btns.length - 1];
+    } else return;
+    e.preventDefault();
+    if (!next) return;
+    for (const b of root.querySelectorAll('.ch-per-grid [data-per]')) b.tabIndex = -1;
+    next.tabIndex = 0;
+    next.focus();
+  }
+
+  // A click anywhere outside the button and the grid closes it.
+  const perOutside = (e) => {
+    if (perOpen && !e.target.closest?.('.ch-per')) setPerOpen(false);
+  };
+  if (!compactOpt && typeof document === 'object') document.addEventListener('pointerdown', perOutside, true);
+
   root.addEventListener('click', (e) => {
     const r = e.target.closest('button[data-range]');
     if (r) { setRange({ range: r.dataset.range }); return; }
-    const b = e.target.closest('button[data-bar]');
-    if (b && !b.disabled) {
-      userBar = b.dataset.bar;
-      if (model && zoomed) { const w = view.window(); viewWin = { t0: timeAt(model.times, w[0]), t1: timeAt(model.times, w[1]) }; }
-      repaintBar();
-      load({ silent: true });
+    if (e.target.closest('button[data-per-toggle]')) { setPerOpen(!perOpen, { focus: !perOpen }); return; }
+    const cell = e.target.closest('button[data-per]');
+    if (cell) {
+      const [bar, p] = cell.dataset.per.split(':');
+      setPerOpen(false);
+      pickPeriod(bar, p);
       return;
     }
     const s = e.target.closest('button[data-style]');
@@ -971,9 +1054,18 @@ export function rangeChart(root, ctx, opts) {
     if (x) setCompare(compare.filter((c) => c !== x.dataset.uncompare));
   });
   root.addEventListener('keydown', (e) => {
+    if (perOpen && e.target.closest?.('.ch-per')) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setPerOpen(false, { focus: true }); return; }
+      if (e.target.closest('.ch-per-grid')) { perMove(e); return; }
+    }
+    if (e.key === 'ArrowDown' && e.target.matches?.('[data-per-toggle]') && !perOpen) { e.preventDefault(); setPerOpen(true, { focus: true }); return; }
     if (!e.target.matches?.('input.ch-date')) return;
     if (e.key === 'Enter') { e.preventDefault(); applyDates(); }
     else if (e.key === 'Escape') { e.preventDefault(); e.target.value = e.target.defaultValue; e.target.classList.remove('is-bad'); }
+  });
+  // Tabbing out of the grid closes it.
+  root.addEventListener('focusout', (e) => {
+    if (perOpen && e.target.closest?.('.ch-per') && e.relatedTarget && !e.relatedTarget.closest?.('.ch-per')) setPerOpen(false);
   });
   root.addEventListener('input', (e) => {
     if (e.target.matches?.('input.ch-date')) e.target.classList.remove('is-bad');
@@ -1015,7 +1107,10 @@ export function rangeChart(root, ctx, opts) {
   ro?.observe(root);
 
   load();
-  ctx.onCleanup(() => { ctrl?.abort(); view?.destroy(); ro?.disconnect(); clearTimeout(tightTimer); });
+  ctx.onCleanup(() => {
+    ctrl?.abort(); view?.destroy(); ro?.disconnect(); clearTimeout(tightTimer);
+    if (typeof document === 'object') document.removeEventListener('pointerdown', perOutside, true);
+  });
   const intradayNow = () => isIntradayBar(data?.bar || '') && !(fetchWin?.to || range.to);
   const refresh = () => {
     if (model && zoomed && view) { const w = view.window(); viewWin = { t0: timeAt(model.times, w[0]), t1: timeAt(model.times, w[1]) }; }
@@ -1042,6 +1137,61 @@ export function rangeChart(root, ctx, opts) {
 
 const MERGED_UNIT = { '1D': 'DAY', '1W': 'WEEK', '1MO': 'MONTH' };
 const BAR_TITLE = { '1M': '1-minute bars', '5M': '5-minute bars', '30M': '30-minute bars', '1H': '1-hour bars', '1D': 'Daily bars', '1W': 'Weekly bars' };
+
+// ---- The bar period button and grid --------------------------------------------------
+
+// A period pick from a grid cell hands over to the chart the instrument screen draws
+// after the navigation the pick causes: { symbol, range, bar }, used once.
+let pendingBar = null;
+let perSeq = 0;
+
+// The bar period in plain words, as the button reads.
+export const PERIOD_LABEL = {
+  '1M': '1 MIN', '5M': '5 MIN', '30M': '30 MIN', '1H': '60 MIN', '1D': 'DAILY', '1W': 'WEEKLY', '1MO': 'MONTHLY',
+};
+
+// The button's words: the period drawn now (null is the source default, monthly), or the
+// span of merged bars ("3-DAY") when a long window merges them.
+export function periodLabel(bar, merged = 1) {
+  const b = bar || '1MO';
+  if (merged > 1 && MERGED_UNIT[b]) return `${merged}-${MERGED_UNIT[b]}`;
+  return PERIOD_LABEL[b] || 'BARS';
+}
+
+// The grid: one row per period, cells for the presets it may draw (the validity rules in
+// bars.js). Monthly bars are the source's own for MAX, which no ?bar= asks for.
+export function periodRows(today = new Date()) {
+  const ok = new Map(PRESETS.map((p) => [p, new Set(barsForPreset(p, today).filter((b) => b.ok).map((b) => b.bar))]));
+  const row = (bar) => ({ bar, label: PERIOD_LABEL[bar], ranges: PRESETS.filter((p) => (bar === '1MO' ? AUTO_BAR[p] === null : ok.get(p).has(bar))) });
+  return [
+    { group: 'INTRADAY', rows: ['1M', '5M', '30M', '1H'].map(row) },
+    { group: 'HISTORICAL', rows: ['1D', '1W', '1MO'].map(row) },
+  ];
+}
+
+// The user bar a cell sets: null (AUTO) when it is the range's own period.
+export function periodPick(bar, p) {
+  return bar === '1MO' || bar === AUTO_BAR[p] ? null : bar;
+}
+
+// The button right of MAX and its grid (hidden until opened). cur: the bar drawn now;
+// range: the preset shown, or null for typed or zoomed dates (no cell is active then).
+export function periodMenu({ cur = null, merged = 1, range = null, open = false, id = 'ch-per', today = new Date() } = {}) {
+  const curBar = cur || '1MO';
+  const groups = periodRows(today);
+  const cells = groups.flatMap((g) => g.rows.flatMap((r) => r.ranges.map((p) => `${r.bar}:${p}`)));
+  const active = range && cells.includes(`${curBar}:${range}`) ? `${curBar}:${range}` : null;
+  // The one cell Tab reaches: the active one, else the first of the period drawn now.
+  const home = active || cells.find((c) => c.startsWith(`${curBar}:`)) || cells[0];
+  const body = groups.map((g) => `<div role="rowgroup" aria-label="${g.group === 'INTRADAY' ? 'Intraday' : 'Historical'}">
+    <div class="ch-per-g" aria-hidden="true">${g.group}</div>${g.rows.map((r) => `<div class="ch-per-row" role="row"><span class="ch-per-k" role="rowheader">${r.label}</span>${PRESETS.map((p) => {
+    if (!r.ranges.includes(p)) return '<span role="gridcell"></span>';
+    const key = `${r.bar}:${p}`;
+    const on = key === active;
+    return `<span role="gridcell"><button type="button" class="ch-per-c${on ? ' is-active' : ''}" data-per="${key}" tabindex="${key === home ? 0 : -1}" aria-label="${esc(`${r.label.toLowerCase()} bars, ${p}`)}"${on ? ' aria-current="true"' : ''}>${p}</button></span>`;
+  }).join('')}</div>`).join('')}</div>`).join('');
+  return `<div class="ch-per"><button type="button" class="tab ch-per-btn" data-per-toggle aria-haspopup="grid" aria-expanded="${open}" aria-controls="${id}" title="Bar period">${esc(periodLabel(cur, merged))}<span class="ch-caret" aria-hidden="true">\u25be</span></button><div class="ch-per-grid" id="${id}" role="grid" aria-label="Bar period and range"${open ? '' : ' hidden'}>${body}</div></div>`;
+}
 
 function fmtDiv(n) {
   return n >= 0.1 ? n.toFixed(2) : n.toFixed(4).replace(/0+$/, '');

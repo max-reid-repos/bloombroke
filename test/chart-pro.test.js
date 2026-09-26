@@ -12,8 +12,9 @@ import {
 } from '../public/screens/chart-math.js';
 import { earningsFrom8K, exDivFromRows, parseEventData, makeChartEvents } from '../data/chart-events.js';
 import { parseSubmissions } from '../data/filings.js';
-import { parseRangeArgs, rangeWords, chartQuery, splitCompare } from '../public/ranges.js';
+import { parseRangeArgs, rangeWords, chartQuery, splitCompare, PRESETS } from '../public/ranges.js';
 import { parseCommand } from '../public/app.js';
+import { periodLabel, periodRows, periodMenu, periodPick } from '../public/screens/chart.js';
 
 const DAY = 86_400_000;
 const NOW = new Date('2026-09-25T15:00:00Z');
@@ -74,6 +75,58 @@ test('chart window: an explicit bar is checked against the range', () => {
   assert.equal(parts[0].start.toISOString(), '2026-03-25T00:00:00.000Z');
   assert.equal(parts[2].end.toISOString(), '2026-09-26T00:00:00.000Z');
   assert.equal(chunks(new Date(0), new Date(400 * DAY), '1D').length, 1, 'daily bars in one call');
+});
+
+test('bar period button: plain words, the range own period after a range click', () => {
+  assert.deepEqual(['1M', '5M', '30M', '1H', '1D', '1W', '1MO'].map((b) => periodLabel(b)), ['1 MIN', '5 MIN', '30 MIN', '60 MIN', 'DAILY', 'WEEKLY', 'MONTHLY']);
+  assert.equal(periodLabel(null), 'MONTHLY', 'no bar asked: the source default (MAX)');
+  assert.equal(periodLabel('1D', 3), '3-DAY', 'merged bars say their span');
+  // A range click drops the user's period: the button reads the range's own (AUTO_BAR).
+  const own = (p) => periodLabel(AUTO_BAR[p]);
+  assert.deepEqual(PRESETS.map((p) => [p, own(p)]), [
+    ['1D', '1 MIN'], ['5D', '5 MIN'], ['1M', 'DAILY'], ['3M', 'DAILY'], ['6M', 'DAILY'], ['YTD', 'DAILY'],
+    ['1Y', 'DAILY'], ['2Y', 'DAILY'], ['5Y', 'WEEKLY'], ['10Y', 'WEEKLY'], ['MAX', 'MONTHLY'],
+  ]);
+  const html = periodMenu({ cur: '1D', range: '1Y', today: NOW });
+  assert.match(html, /data-per-toggle aria-haspopup="grid" aria-expanded="false"[^>]*>DAILY<span class="ch-caret" aria-hidden="true">\u25be<\/span>/);
+  assert.doesNotMatch(html, /AUTO/);
+  assert.match(html, /role="grid"[^>]* hidden>/, 'closed until the button opens it');
+  assert.match(periodMenu({ cur: '1D', range: '1Y', open: true, today: NOW }), /aria-expanded="true"[\s\S]*role="grid" aria-label="Bar period and range">/);
+});
+
+test('bar period grid: each row the ranges bars.js allows, the active cell marked', () => {
+  const rows = periodRows(NOW);
+  assert.deepEqual(rows.map((g) => [g.group, g.rows.map((r) => r.label)]), [
+    ['INTRADAY', ['1 MIN', '5 MIN', '30 MIN', '60 MIN']],
+    ['HISTORICAL', ['DAILY', 'WEEKLY', 'MONTHLY']],
+  ]);
+  const cells = Object.fromEntries(rows.flatMap((g) => g.rows).map((r) => [r.bar, r.ranges]));
+  // The same rules as the ?bar= check: a cell is there exactly when bars.js says the pair is valid.
+  for (const bar of BARS) {
+    assert.deepEqual(cells[bar], PRESETS.filter((p) => barsForPreset(p, NOW).find((b) => b.bar === bar).ok), bar);
+  }
+  assert.deepEqual(cells['1M'], ['1D', '5D']);
+  assert.deepEqual(cells['5M'], ['1D', '5D', '1M']);
+  assert.deepEqual(cells['1W'], ['1Y', '2Y', '5Y', '10Y', 'MAX']);
+  assert.deepEqual(cells['1MO'], ['MAX'], 'monthly bars: the source default for MAX');
+  // Rendered: a button per valid pair, an empty cell otherwise, one row per period.
+  const html = periodMenu({ cur: '1W', range: '5Y', today: NOW });
+  const btns = [...html.matchAll(/data-per="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(btns, rows.flatMap((g) => g.rows.flatMap((r) => r.ranges.map((p) => `${r.bar}:${p}`))));
+  assert.equal((html.match(/role="row"/g) || []).length, 7);
+  for (const row of html.split('role="row"').slice(1)) assert.equal((row.match(/role="gridcell"/g) || []).length, PRESETS.length);
+  assert.match(html, /class="ch-per-c is-active" data-per="1W:5Y" tabindex="0"[^>]*aria-current="true">5Y</);
+  assert.equal((html.match(/is-active/g) || []).length, 1);
+  assert.equal((html.match(/tabindex="0"/g) || []).length, 1, 'one cell in the tab order');
+  assert.match(periodMenu({ cur: '1MO', range: 'MAX', today: NOW }), /is-active" data-per="1MO:MAX"/);
+  assert.doesNotMatch(periodMenu({ cur: '1H', range: null, today: NOW }), /is-active/, 'typed or zoomed dates: no cell active');
+  assert.match(periodMenu({ cur: '1H', range: null, today: NOW }), /data-per="1H:1D" tabindex="0"/);
+  // A cell sets the period and range together; the range's own period is AUTO (null).
+  assert.equal(periodPick('1D', '1Y'), null);
+  assert.equal(periodPick('1W', '1Y'), '1W');
+  assert.equal(periodPick('30M', '1D'), '30M');
+  assert.equal(periodPick('1MO', 'MAX'), null);
+  assert.doesNotMatch(html, /undefined|null|NaN/);
 });
 
 // ---- CNBC 1-minute bars --------------------------------------------------------------

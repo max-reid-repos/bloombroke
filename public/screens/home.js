@@ -22,22 +22,23 @@ export function fxTable(pairs) {
   </table>`;
 }
 
-// HOME's MARKETS list: four columns of ten, each a group of the MARKETS screen's own
+// HOME's MARKETS list: four columns, each a group of the MARKETS screen's own
 // instruments under short names (the full list and full names stay on MARKETS). A plain
-// string starts a sub-heading bar inside the column (Europe, Asia, Energy...).
+// string starts a sub-heading bar inside the column (Europe, Asia, Commodities...). Every
+// column is the same shape, two sub-headings and ten rows, so all four end on one line.
 export const HOME_MARKETS = [
   { name: 'US', rows: [
-    ['SPX', 'S&P 500'], ['NDX', 'Nasdaq 100'], ['DJI', 'Dow'], ['RUT', 'Russell 2000'], ['SPXEW', 'Equal weight'],
-    ['SOX', 'Semis'], ['DJTRANS', 'Transports'], ['SPFUT', 'S&P 500 fut'], ['NDFUT', 'Nasdaq 100 fut'], ['VIX', 'VIX'],
+    'Indexes', ['SPX', 'S&P 500'], ['NDX', 'Nasdaq 100'], ['DJI', 'Dow'], ['RUT', 'Russell 2000'], ['SPXEW', 'Equal weight'],
+    ['SOX', 'Semis'], ['DJTRANS', 'Transports'],
+    'Futures + vol', ['SPFUT', 'S&P 500 fut'], ['NDFUT', 'Nasdaq 100 fut'], ['VIX', 'VIX'],
   ] },
   { name: 'World', rows: [
     'Europe', ['STOXX50', 'Euro Stoxx 50'], ['FTSE', 'FTSE 100'], ['DAX', 'DAX'], ['CAC40', 'CAC 40'],
     'Asia', ['N225', 'Nikkei 225'], ['HSI', 'Hang Seng'], ['SHANGHAI', 'Shanghai'], ['KOSPI', 'KOSPI'], ['NIFTY50', 'Nifty 50'], ['ASX200', 'ASX 200'],
   ] },
   { name: 'Commodities + crypto', rows: [
-    'Energy', ['WTI', 'WTI oil'], ['BRENT', 'Brent oil'], ['NATGAS', 'Natural gas'],
-    'Metals', ['GOLD', 'Gold (spot)'], ['SILVER', 'Silver (spot)'], ['COPPER', 'Copper'],
-    'Other', ['WHEAT', 'Wheat'], ['BALTICDRY', 'Baltic Dry'],
+    'Commodities', ['WTI', 'WTI oil'], ['BRENT', 'Brent oil'], ['NATGAS', 'Natural gas'], ['GOLD', 'Gold (spot)'],
+    ['SILVER', 'Silver (spot)'], ['COPPER', 'Copper'], ['WHEAT', 'Wheat'], ['BALTICDRY', 'Baltic Dry'],
     'Crypto', ['BTC', 'Bitcoin'], ['ETH', 'Ether'],
   ] },
   { name: 'FX + rates', rows: [
