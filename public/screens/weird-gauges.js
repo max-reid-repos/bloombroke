@@ -11,7 +11,7 @@
 //
 // To add a gauge: add an entry here, a data module on the server, a registry entry.
 
-import { esc, fmtNum, nyTime } from './markets.js';
+import { esc, q, fmtNum, nyTime } from './markets.js';
 import { sparkSvg } from './economy.js';
 import { legend } from './lines.js';
 import { fmtDate } from '../kit.js';
@@ -223,6 +223,190 @@ function bigmacDetail(d) {
   };
 }
 
+// ---- BILLIONS ----------------------------------------------------------------------
+const bn = (v) => (Number.isFinite(v) ? `$${fmtNum(v, 1)}B` : '--');
+function signedBn(v) {
+  if (!Number.isFinite(v)) return '--';
+  const s = fmtNum(Math.abs(v), 1);
+  if (Number(s) === 0) return '$0.0B';
+  return `${v > 0 ? '+' : '−'}$${s}B`;
+}
+function billionsDetail(d) {
+  const row = (r) => `<tr><th scope="row" class="name">${esc(r.name)}</th>
+    <td class="num dim wd-hide-sm">${r.rank ? `#${esc(r.rank)}` : '--'}</td>
+    <td class="num">${bn(r.worth)}</td>
+    <td class="num last ${dirCls(r.change)}">${signedBn(r.change)}</td>
+    <td class="num ${dirCls(r.pct)}">${signed(r.pct, 1)}</td></tr>`;
+  const head = [['Person'], ['Rank', 'num wd-hide-sm'], ['Net worth', 'num'], ['Today', 'num'], ['%', 'num']];
+  return {
+    html: `<p class="wd-sub">Biggest moves today</p>${table(head, d.moves.map(row))}
+      <p class="wd-sub">The five richest</p>${table(head, d.richest.map(row))}`,
+  };
+}
+
+// ---- WSB ---------------------------------------------------------------------------
+function wsbDetail(d) {
+  const moved = (r) => {
+    if (!Number.isFinite(r.rankAgo)) return '<span class="dim">new</span>';
+    if (r.moved === 0) return '<span class="flat">0</span>';
+    return `<span class="${r.moved > 0 ? 'up' : 'down'}">${r.moved > 0 ? '+' : '−'}${esc(Math.abs(r.moved))}</span>`;
+  };
+  const rows = d.rows.map((r) => `<tr><td class="num dim">${esc(r.rank)}</td>
+    <th scope="row" class="name"><a class="code" href="${esc(q(r.ticker))}" data-cmd="${esc(r.ticker)}">${esc(r.ticker)}</a> <span class="dim wd-hide-sm">${esc(r.name)}</span></th>
+    <td class="num last">${n0(r.mentions)}</td>
+    <td class="num dim wd-hide-sm">${Number.isFinite(r.mentionsAgo) ? n0(r.mentionsAgo) : '--'}</td>
+    <td class="num dim">${Number.isFinite(r.rankAgo) ? `#${esc(r.rankAgo)}` : '--'}</td>
+    <td class="num">${moved(r)}</td></tr>`);
+  return { html: table([['#', 'num'], ['Ticker'], ['Mentions', 'num'], ['24h before', 'num wd-hide-sm'], ['Rank then', 'num'], ['Places', 'num']], rows) };
+}
+
+// ---- ODDS --------------------------------------------------------------------------
+const pctText = (p) => (!Number.isFinite(p) ? '--' : p > 0 && p < 1 ? '<1%' : p > 99 && p < 100 ? '>99%' : `${Math.round(p)}%`);
+function oddsDetail(d) {
+  const rec = d.recession
+    ? table([['Market'], ['Chance', 'num']], [`<tr><th scope="row" class="name wd-wrap">${esc(d.recession.question)}</th><td class="num last">${esc(pctText(d.recession.pct))}</td></tr>`])
+    : '<p class="panel-msg">NO DATA: no active US recession market found.</p>';
+  const fed = d.fed
+    ? `<p class="wd-sub">${esc(d.fed.title)}</p>${table([['Market'], ['Chance', 'num']], d.fed.outcomes.map((o) => `<tr><th scope="row" class="name wd-wrap">${esc(o.question)}</th><td class="num last">${esc(pctText(o.pct))}</td></tr>`))}`
+    : '<p class="panel-msg">NO DATA: no active Fed decision market found.</p>';
+  return { html: `<p class="wd-sub">US recession</p>${rec}${fed}` };
+}
+
+// ---- BOXRATE -----------------------------------------------------------------------
+function boxrateDetail(d) {
+  return {
+    html: stats([
+      ['40ft container', `$${esc(fmtNum(d.usd, 0))}`],
+      ['Index date', esc(fmtDate(d.date, 'prose'))],
+    ]),
+  };
+}
+
+// ---- EGGS --------------------------------------------------------------------------
+function eggsDetail(d) {
+  const rows = d.rows.map((r) => `<tr><th scope="row" class="name">${esc(monthLabel(r.month))}</th>
+    <td class="num last">$${fmtNum(r.value, 2)}</td><td class="num ${dirCls(r.yoy)}">${signed(r.yoy, 0)}</td></tr>`);
+  const pts = d.points.map((p) => ({ x: dayMs(`${p.month}-01`), y: p.price }));
+  return {
+    html: stats([
+      [`Price ${monthLabel(d.month)}`, `$${fmtNum(d.price, 2)}`],
+      ['Change on a year', `<span class="${dirCls(d.yoy)}">${signed(d.yoy, 0)}</span>`],
+      [`Peak ${monthLabel(d.peak.month)}`, `$${fmtNum(d.peak.price, 2)}`],
+      ['From peak', `<span class="${dirCls(d.fromPeak)}">${signed(d.fromPeak, 0)}</span>`],
+    ]) + chartHost('wd-chart') + table([['Month'], ['Dozen', 'num'], ['vs year before', 'num']], rows),
+    chart: { series: [{ id: 'e', cls: 'ln-0', label: 'Price of a dozen eggs', points: pts }], fmtY: (v) => `$${fmtNum(v, 2)}`, fmtX: (x) => String(new Date(x).getUTCFullYear()), label: 'Price of a dozen eggs, monthly' },
+  };
+}
+
+// ---- RIDES -------------------------------------------------------------------------
+function ridesDetail(d) {
+  const rows = d.parks.map((p) => {
+    if (p.status === 'error') return `<tr><th scope="row" class="name">${esc(p.name)}</th><td colspan="3" class="dim">NO DATA</td></tr>`;
+    if (p.status === 'closed') return `<tr><th scope="row" class="name">${esc(p.name)}</th><td class="num dim">closed</td><td class="num dim">--</td><td class="dim wd-hide-sm"></td></tr>`;
+    return `<tr><th scope="row" class="name">${esc(p.name)}</th>
+      <td class="num">${n0(p.openRides)}</td>
+      <td class="num last">${Number.isFinite(p.avg) ? `${n0(p.avg)} min` : '<span class="dim">no waits</span>'}</td>
+      <td class="wd-hide-sm">${p.longest ? `${esc(p.longest.name)} <span class="dim">${n0(p.longest.wait)} min</span>` : ''}</td></tr>`;
+  });
+  return { html: table([['Park'], ['Rides open', 'num'], ['Average wait', 'num'], ['Longest', 'wd-hide-sm']], rows) };
+}
+
+// ---- BUZZ --------------------------------------------------------------------------
+const BUZZ_WORDS = [['ai', 'AI'], ['tariff', 'Tariff'], ['recession', 'Recession']];
+function buzzDetail(d) {
+  const cell = (r, k) => `${n0(r[k])}${(r.capped || []).includes(k) ? '+' : ''}`;
+  const rows = d.rows.map((r) => `<tr><th scope="row" class="name">${esc(r.label)}${r.partial ? ' <span class="dim">so far</span>' : ''}</th>
+    ${BUZZ_WORDS.map(([k], i) => `<td class="num${i === 0 ? ' last' : ''}">${cell(r, k)}</td>`).join('')}</tr>`);
+  const ordered = d.rows.slice().reverse();
+  const series = BUZZ_WORDS.map(([k, label], i) => ({ id: k, cls: `ln-${i}`, label, points: ordered.map((r) => ({ x: dayMs(r.start), y: r[k] })) }));
+  return {
+    html: `<div class="wd-chart-head">${legend(series)}</div>${chartHost('wd-chart')}`
+      + table([['Filed in'], ['AI', 'num'], ['Tariff', 'num'], ['Recession', 'num']], rows),
+    chart: { series, fmtY: (v) => n0(v), fmtX: (x) => { const t = new Date(x); return `Q${Math.floor(t.getUTCMonth() / 3) + 1} '${String(t.getUTCFullYear()).slice(-2)}`; }, label: '10-Q filings using each phrase, by quarter' },
+  };
+}
+
+// ---- BEIGE -------------------------------------------------------------------------
+function beigeDetail(d) {
+  const rows = d.editions.map((e) => `<tr><th scope="row" class="name">${esc(monthLabel(e.month))}</th>
+    ${d.words.map((w) => `<td class="num${w.key === d.top ? ' last' : ''}">${n0(e[w.key])}</td>`).join('')}</tr>`);
+  const ordered = d.editions.slice().reverse();
+  const series = d.words.map((w, i) => ({ id: w.key, cls: `ln-${i}`, label: w.label, points: ordered.map((e) => ({ x: dayMs(`${e.month}-01`), y: e[w.key] })) }));
+  return {
+    html: `<div class="wd-chart-head">${legend(series)}</div>${chartHost('wd-chart')}`
+      + table([['Edition'], ...d.words.map((w) => [w.label, 'num'])], rows),
+    chart: { series, fmtY: (v) => n0(v), fmtX: (x) => fmtDate(x, 'axis'), label: 'Word counts per Beige Book edition' },
+  };
+}
+
+// ---- TRUCKS ------------------------------------------------------------------------
+function trucksDetail(d) {
+  const rows = d.rows.map((r) => `<tr><th scope="row" class="name">${esc(r.label)}</th>
+    <td class="dim">${esc(monthLabel(r.month))}</td>
+    <td class="num">${Number.isFinite(r.value) ? fmtNum(r.value, r.dp) : '--'}</td>
+    <td class="num last ${dirCls(r.yoy)}">${signed(r.yoy, 1)}</td>
+    <td class="wd-spark-cell wd-hide-sm">${sparkSvg(r.spark)}</td></tr>`);
+  return { html: table([['Series'], ['Latest'], ['Value', 'num'], ['vs year before', 'num'], ['3 years', 'wd-hide-sm']], rows) };
+}
+
+// ---- BOXES -------------------------------------------------------------------------
+function boxesDetail(d) {
+  const summary = d.series.map((s) => `<tr><th scope="row" class="name">${esc(s.full)}</th>
+    <td class="dim">${esc(monthLabel(s.month))}</td>
+    <td class="num">${Number.isFinite(s.value) ? fmtNum(s.value, 1) : '--'}</td>
+    <td class="num last ${dirCls(s.yoy)}">${signed(s.yoy, 1)}</td></tr>`);
+  const monthly = (s) => table([['Month'], ['Index', 'num'], ['vs year before', 'num']], s.rows.map((r) => `<tr><th scope="row" class="name">${esc(monthLabel(r.month))}</th>
+    <td class="num">${fmtNum(r.value, 1)}</td><td class="num ${dirCls(r.yoy)}">${signed(r.yoy, 1)}</td></tr>`));
+  return {
+    html: table([['Series'], ['Latest'], ['Index', 'num'], ['vs year before', 'num']], summary)
+      + `<div class="wd-two">${d.series.map((s) => `<div><p class="wd-sub">${esc(s.label)}</p>${monthly(s)}</div>`).join('')}</div>`,
+  };
+}
+
+// ---- LIPSTICK ----------------------------------------------------------------------
+function lipstickDetail(d) {
+  const rows = d.rows.map((r) => `<tr><th scope="row" class="name">${esc(monthLabel(r.month))}</th>
+    <td class="num last">${fmtNum(r.value, 1)}</td><td class="num ${dirCls(r.yoy)}">${signed(r.yoy, 1)}</td></tr>`);
+  return {
+    html: stats([
+      ['Change on a year', `<span class="${dirCls(d.yoy)}">${signed(d.yoy, 1)}</span>`],
+      ['Change on a month', `<span class="${dirCls(d.mom)}">${signed(d.mom, 1)}</span>`],
+      [`Index ${monthLabel(d.month)}`, fmtNum(d.index, 1)],
+    ]) + table([['Month'], ['Index', 'num'], ['vs year before', 'num']], rows),
+  };
+}
+
+// ---- SICK --------------------------------------------------------------------------
+function sickDetail(d) {
+  const lvl = (v) => (Number.isFinite(v) ? fmtNum(v, 1) : '--');
+  const rows = d.rows.map((r) => `<tr><th scope="row" class="name">${esc(r.label)}</th>
+    <td class="num last">${lvl(r.level)}</td>
+    <td class="num dim">${lvl(r.level4w)}</td>
+    <td class="num ${dirCls(r.change4w)}">${signed(r.change4w, 1, '')}</td>
+    <td class="num dim wd-hide-sm">${Number.isFinite(r.sites) ? n0(r.sites) : '--'}</td></tr>`);
+  const series = d.rows.map((r, i) => ({ id: r.key, cls: `ln-${i}`, label: r.label, points: r.points.map((p) => ({ x: dayMs(p.week), y: p.level })) }));
+  return {
+    html: table([['Virus'], [`Week to ${fmtDate(d.asOf, 'table')}`, 'num'], ['4 weeks before', 'num'], ['Change', 'num'], ['Sites', 'num wd-hide-sm']], rows)
+      + `<div class="wd-chart-head">${legend(series)}</div>${chartHost('wd-chart')}`,
+    chart: { series, fmtY: (v) => fmtNum(v, 1), fmtX: (x) => fmtDate(x, 'axis'), label: 'Wastewater viral activity level, national median, weekly' },
+  };
+}
+
+// ---- MACAU -------------------------------------------------------------------------
+const mop = (v) => (Number.isFinite(v) ? `MOP ${fmtNum(v / 1000, 1)}B` : '--');
+function macauDetail(d) {
+  const rows = d.rows.map((r) => `<tr><th scope="row" class="name">${esc(monthLabel(r.month))}</th>
+    <td class="num last">${mop(r.value)}</td><td class="num dim wd-hide-sm">${mop(r.prev)}</td><td class="num ${dirCls(r.yoy)}">${signed(r.yoy, 1)}</td></tr>`);
+  return {
+    html: stats([
+      [`Revenue ${monthLabel(d.month)}`, mop(d.value)],
+      ['A year before', mop(d.prev)],
+      ['Change on a year', `<span class="${dirCls(d.yoy)}">${signed(d.yoy, 1)}</span>`],
+      ['Year to date vs last year', `<span class="${dirCls(d.ytdYoy)}">${signed(d.ytdYoy, 1)}</span>`],
+    ]) + table([['Month'], ['Revenue', 'num'], ['Year before', 'num wd-hide-sm'], ['Change', 'num']], rows),
+  };
+}
+
 export const WEIRD_GAUGES = [
   {
     id: 'canal', command: 'CANAL', title: 'Canal', detail: canalDetail,
@@ -297,6 +481,100 @@ export const WEIRD_GAUGES = [
       "The Economist's Big Mac index: the price of a Big Mac in each country, turned into dollars at the market exchange rate, against the US price.",
       '+45% means a Big Mac costs 45% more in dollars there than in the US, a rough hint that the currency is dear against the dollar. This is the raw index, not the GDP-adjusted one. Updated twice a year.',
       'Data: The Economist, CC BY 4.0, github.com/TheEconomist/big-mac-data.',
+    ],
+  },
+  {
+    id: 'billions', command: 'BILLIONS', title: 'Billions', period: 'time', detail: billionsDetail,
+    method: [
+      "The Forbes real-time billionaires list. Forbes estimates each person's net worth through the day from share prices, and keeps the estimate from the previous close. Today's change is the live estimate minus that previous estimate.",
+      'The headline is the person with the biggest change in dollars, up or down, of everyone on the list. The feed is unofficial and can lag or pause; weekends show the last trading day.',
+    ],
+  },
+  {
+    id: 'wsb', command: 'WSB', title: 'WallStreetBets', period: 'time', detail: wsbDetail,
+    method: [
+      "ApeWisdom counts how often each ticker is named in posts and comments on Reddit's WallStreetBets over the last 24 hours, and where it ranked 24 hours before.",
+      'A ticker here is talked about, which says nothing about whether it is a good or bad idea. Click a ticker to open its quote screen here.',
+    ],
+  },
+  {
+    id: 'odds', command: 'ODDS', title: 'Odds', period: 'time', detail: oddsDetail,
+    method: [
+      'Prices on Polymarket, a prediction market, read from its public Gamma API. A "Yes" price of 10 cents on the dollar is shown as a 10% chance. These are traders\' prices, not forecasts by us.',
+      'Recession: the US recession market for this year, or the soonest one if there is none for this year. Fed: every outcome of the market on the next Fed meeting. Questions are shown in the market\'s own words.',
+      'If no matching market is open, this shows NO DATA.',
+    ],
+  },
+  {
+    id: 'boxrate', command: 'BOXRATE', title: 'Box rate', detail: boxrateDetail,
+    method: [
+      "The Drewry World Container Index: the average spot price to ship one 40-foot container on eight main routes between Asia, Europe and the US. Drewry publishes it every Thursday.",
+      "Only the headline figure and its date are read from Drewry's page. If they cannot be read, this shows NO DATA.",
+    ],
+  },
+  {
+    id: 'eggs', command: 'EGGS', title: 'Eggs', period: 'month', detail: eggsDetail,
+    method: [
+      'The average price of a dozen grade A large eggs in US cities, from the BLS average price survey (FRED series APU0000708111), monthly.',
+      'The peak is the highest monthly price in the series, which starts in 1980. "From peak" compares the latest month with it.',
+    ],
+  },
+  {
+    id: 'rides', command: 'RIDES', title: 'Rides', period: 'time', detail: ridesDetail,
+    method: [
+      "Posted wait times from Queue-Times.com for Walt Disney World's four parks (Magic Kingdom, Epcot, Hollywood Studios, Animal Kingdom) and Disneyland.",
+      'The average counts rides that are open and post a wait above zero, across all five parks. Shows and walk-on rides post zero, so they are left out. When no park has an open ride, this says the parks are closed.',
+      'Powered by Queue-Times.com.',
+    ],
+  },
+  {
+    id: 'buzz', command: 'BUZZ', title: 'Buzz', detail: buzzDetail,
+    method: [
+      'SEC EDGAR full-text search: the number of 10-Q quarterly reports that use the exact phrase "artificial intelligence", "tariff" or "recession", by the calendar quarter they were filed in. One filing counts once, however often it uses the phrase.',
+      'Few 10-Qs are filed from January to March, when most companies file their annual 10-K instead, so those quarters are always low. The newest quarter is counted so far; the headline uses it in its last week, and the quarter before it until then.',
+    ],
+  },
+  {
+    id: 'beige', command: 'BEIGE', title: 'Beige Book', period: 'month', detail: beigeDetail,
+    method: [
+      "The Fed's Beige Book gathers what businesses tell the 12 Federal Reserve Banks, eight times a year. Each edition here is its national summary plus the 12 District reports, from federalreserve.gov.",
+      'Words are counted as whole words in any case, with their plain forms: uncertain counts uncertainty; tariff counts tariffs; slow counts slowed, slowing, slower, slowly and slowdown; recession counts recessions. AI counts only in capitals, plus "artificial intelligence".',
+      'The headline is whichever of the five words the latest edition uses most.',
+    ],
+  },
+  {
+    id: 'trucks', command: 'TRUCKS', title: 'Trucks', period: 'month', detail: trucksDetail,
+    method: [
+      'Three monthly freight series from FRED, each against the same month a year before: the Cass Freight Index for shipments (FRGSHPUSM649NCIS), the ATA truck tonnage index (TRUCKD11) and rail freight carloads (RAILFRTCARLOADSD11).',
+      'They come out at different times, so each row has its own latest month.',
+    ],
+  },
+  {
+    id: 'boxes', command: 'BOXES', title: 'Boxes', period: 'month', detail: boxesDetail,
+    method: [
+      'Cardboard boxes carry most goods, so box demand is watched as an early read on shipping. Output: the Fed industrial production index for paperboard containers (FRED IPN32221S). Prices: the producer price index for corrugated and solid fiber boxes (FRED PCU322211322211).',
+      'Each is compared with the same month a year before, and each has its own latest month.',
+    ],
+  },
+  {
+    id: 'lipstick', command: 'LIPSTICK', title: 'Lipstick', period: 'month', detail: lipstickDetail,
+    method: [
+      'The BLS consumer price index for cosmetics, perfume, bath and nail products (FRED series CUUR0000SEGB02), US city average, not seasonally adjusted. It measures prices, not sales.',
+      'The "lipstick index" is folklore: Leonard Lauder said lipstick sells better when money is tight. Shown for fun, with no claim either way.',
+    ],
+  },
+  {
+    id: 'sick', command: 'SICK', title: 'Sick', detail: sickDetail,
+    method: [
+      "CDC wastewater data (National Wastewater Surveillance System, dataset atcp-73re). Each sewage site gets a weekly viral activity level that compares it with that site's own baseline; 1 is the lowest the scale goes.",
+      'CDC publishes this per site. The national figure here is our summary: the median level of all sites reporting that week, for COVID (SARS-CoV-2), flu A and RSV. The latest week often has fewer sites and can change.',
+    ],
+  },
+  {
+    id: 'macau', command: 'MACAU', title: 'Macau', period: 'month', detail: macauDetail,
+    method: [
+      "Macau casinos' gross gaming revenue per month, from DICJ, Macau's gaming regulator, in millions of patacas (MOP).",
+      'The change compares each month with the same month a year before.',
     ],
   },
 ];

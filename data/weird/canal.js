@@ -33,15 +33,17 @@ function features(body) {
   return body.features.map((f) => f.attributes || {});
 }
 
-// Daily rows -> { portid: [{ date, total, tanker }] } oldest first.
+// Daily rows -> { portid: [{ date, total, tanker }] } oldest first, one row per date
+// (a repeated date keeps its last row, so the 7-day window never holds 8 rows).
 export function parseDaily(body) {
-  const out = {};
+  const byPort = {};
   for (const a of features(body)) {
     if (!a.portid || !/^\d{4}-\d{2}-\d{2}$/.test(String(a.date))) continue;
     if (!Number.isFinite(a.n_total)) continue;
-    (out[a.portid] ||= []).push({ date: a.date, total: a.n_total, tanker: Number.isFinite(a.n_tanker) ? a.n_tanker : null });
+    (byPort[a.portid] ||= new Map()).set(a.date, { date: a.date, total: a.n_total, tanker: Number.isFinite(a.n_tanker) ? a.n_tanker : null });
   }
-  for (const k of Object.keys(out)) out[k].sort((x, y) => (x.date < y.date ? -1 : 1));
+  const out = {};
+  for (const [k, m] of Object.entries(byPort)) out[k] = [...m.values()].sort((x, y) => (x.date < y.date ? -1 : 1));
   return out;
 }
 

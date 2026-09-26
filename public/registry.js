@@ -389,9 +389,9 @@ export const REGISTRY = [
 
   // --- Weird data (WEIRD and one command per gauge; screens in screens/weird*.js) ------
   {
-    name: 'WEIRD', category: 'Weird data', summary: 'Odd live gauges on one screen: ships, pizza, waffles, omens',
+    name: 'WEIRD', category: 'Weird data', summary: 'Odd live gauges on one screen: ships, pizza, waffles, eggs, omens',
     syntax: 'WEIRD', examples: ['WEIRD'], keywords: ['odd', 'fun', 'alternative data', 'gauges', 'indicators', 'strange'],
-    source: 'Ten public sources, named on each tile', delay: 'Each tile shows its own date',
+    source: 'Public sources, named on each tile', delay: 'Each tile shows its own date',
   },
   {
     name: 'CANAL', aliases: ['SHIPS', 'CHOKEPOINTS'], category: 'Weird data', summary: 'Ships through Hormuz, Suez, Panama and other chokepoints',
@@ -442,6 +442,71 @@ export const REGISTRY = [
     name: 'BIGMAC', aliases: ['BURGER'], category: 'Weird data', summary: 'Big Mac index: where a Big Mac costs more or less than in the US',
     syntax: 'BIGMAC', examples: ['BIGMAC'], keywords: ['big mac index', 'burger', 'currency', 'valuation', 'economist', 'ppp'],
     source: 'The Economist, CC BY 4.0', delay: 'Twice a year',
+  },
+  {
+    name: 'BILLIONS', aliases: ['BILLIONAIRES'], category: 'Weird data', summary: 'How much the richest people made or lost today',
+    syntax: 'BILLIONS', examples: ['BILLIONS'], keywords: ['billionaires', 'rich list', 'net worth', 'forbes', 'wealth'],
+    source: 'Forbes real-time billionaires (unofficial feed)', delay: 'Minutes',
+  },
+  {
+    name: 'WSB', aliases: ['WALLSTREETBETS'], category: 'Weird data', summary: 'Most-mentioned tickers on WallStreetBets, 24 hours',
+    syntax: 'WSB', examples: ['WSB'], keywords: ['reddit', 'wallstreetbets', 'mentions', 'meme stocks', 'apewisdom'],
+    source: 'ApeWisdom', delay: 'About hourly',
+  },
+  {
+    name: 'ODDS', category: 'Weird data', summary: 'Prediction-market odds of a US recession and the next Fed move',
+    syntax: 'ODDS', examples: ['ODDS'], keywords: ['prediction market', 'polymarket', 'recession', 'fed', 'fomc', 'probability'],
+    source: 'Polymarket', delay: 'Minutes',
+  },
+  {
+    name: 'BOXRATE', aliases: ['FREIGHTRATE'], category: 'Weird data', summary: 'Cost to ship one 40ft container, Drewry World Container Index',
+    syntax: 'BOXRATE', examples: ['BOXRATE'], keywords: ['container', 'shipping', 'freight rate', 'drewry', 'wci'],
+    source: 'Drewry WCI', delay: 'Weekly, Thursdays',
+  },
+  {
+    name: 'EGGS', aliases: ['EGG'], category: 'Weird data', summary: 'Average price of a dozen eggs in the US, and how far from the peak',
+    syntax: 'EGGS', examples: ['EGGS'], keywords: ['eggs', 'food prices', 'grocery', 'inflation', 'bird flu'],
+    source: 'FRED APU0000708111 (BLS)', delay: 'Monthly',
+  },
+  {
+    name: 'RIDES', aliases: ['QUEUES'], category: 'Weird data', summary: 'Average ride wait at Walt Disney World and Disneyland right now',
+    syntax: 'RIDES', examples: ['RIDES'], keywords: ['disney', 'theme park', 'wait times', 'queues', 'consumer'],
+    source: 'Powered by Queue-Times.com', delay: 'About 5 minutes',
+  },
+  {
+    name: 'BUZZ', category: 'Weird data', summary: '10-Q filings that say AI, tariff or recession, by quarter',
+    syntax: 'BUZZ', examples: ['BUZZ'], keywords: ['sec', 'edgar', '10-q', 'artificial intelligence', 'tariffs', 'recession', 'filings'],
+    source: 'SEC EDGAR full-text search', delay: 'Daily',
+  },
+  {
+    name: 'BEIGE', aliases: ['BEIGEBOOK'], category: 'Weird data', summary: 'Word counts in the Fed Beige Book: uncertain, tariff, slow, recession, AI',
+    syntax: 'BEIGE', examples: ['BEIGE'], keywords: ['beige book', 'federal reserve', 'fed', 'words', 'uncertainty'],
+    source: 'Federal Reserve Beige Book', delay: 'Eight editions a year',
+  },
+  {
+    name: 'TRUCKS', aliases: ['FREIGHT'], category: 'Weird data', summary: 'Freight shipments, truck tonnage and rail carloads vs a year ago',
+    syntax: 'TRUCKS', examples: ['TRUCKS'], keywords: ['freight', 'cass', 'trucking', 'rail', 'carloads', 'shipping'],
+    source: 'FRED: Cass, ATA, rail carloads', delay: 'Monthly, each with its own lag',
+  },
+  {
+    name: 'BOXES', aliases: ['CARDBOARD'], category: 'Weird data', summary: 'Cardboard box output and box prices vs a year ago',
+    syntax: 'BOXES', examples: ['BOXES'], keywords: ['cardboard', 'corrugated', 'packaging', 'boxes', 'industrial production'],
+    source: 'FRED IPN32221S, PCU322211322211', delay: 'Monthly',
+  },
+  {
+    name: 'LIPSTICK', category: 'Weird data', summary: 'Cosmetics price index vs a year ago, the lipstick folklore gauge',
+    syntax: 'LIPSTICK', examples: ['LIPSTICK'], keywords: ['lipstick index', 'cosmetics', 'cpi', 'prices', 'beauty'],
+    source: 'FRED CUUR0000SEGB02 (BLS)', delay: 'Monthly',
+  },
+  {
+    name: 'SICK', aliases: ['WASTEWATER'], category: 'Weird data', summary: 'Wastewater virus level, national: COVID, flu A and RSV',
+    syntax: 'SICK', examples: ['SICK'], keywords: ['wastewater', 'covid', 'flu', 'rsv', 'cdc', 'virus'],
+    source: 'CDC NWSS wastewater data', delay: 'Weekly',
+  },
+  {
+    name: 'MACAU', category: 'Weird data', summary: 'Macau casino gaming revenue by month, vs a year ago',
+    syntax: 'MACAU', examples: ['MACAU'], keywords: ['macau', 'casino', 'gaming revenue', 'china', 'dicj'],
+    source: 'DICJ Macau', delay: 'Monthly, early in the next month',
   },
 
   // --- Hidden ---------------------------------------------------------------------------

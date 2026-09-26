@@ -84,7 +84,7 @@ function detail(el, g, ctx) {
       return;
     }
     const part = g.detail(d);
-    body.innerHTML = `<div class="wd-head"><p class="wd-big${d.stale ? ' is-stale' : ''}">${esc(d.headline)}</p><p class="wd-line">${esc(d.line || '')}</p>${d.stale ? `<p class="wd-src">${esc(sourceLine(d, g.period))}</p>` : ''}</div>
+    body.innerHTML = `<div class="wd-head"><p class="wd-big${d.stale ? ' is-stale' : ''}">${esc(d.headline)}</p><p class="wd-line">${esc(d.line || '')}</p></div>
       <div class="wd-body">${part.html}</div>
       ${how}
       <p class="wd-src">${esc(sourceLine(d, g.period))}</p>`;

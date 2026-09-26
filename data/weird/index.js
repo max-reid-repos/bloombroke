@@ -31,8 +31,25 @@ import * as hotdog from './hotdog.js';
 import * as omens from './omens.js';
 import * as undies from './undies.js';
 import * as bigmac from './bigmac.js';
+import * as billions from './billions.js';
+import * as wsb from './wsb.js';
+import * as odds from './odds.js';
+import * as boxrate from './boxrate.js';
+import * as eggs from './eggs.js';
+import * as rides from './rides.js';
+import * as buzz from './buzz.js';
+import * as beige from './beige.js';
+import * as trucks from './trucks.js';
+import * as boxes from './boxes.js';
+import * as lipstick from './lipstick.js';
+import * as sick from './sick.js';
+import * as macau from './macau.js';
 
-export const GAUGES = [canal, pizza, degen, waffle, panic, hiring, hotdog, omens, undies, bigmac];
+// Tile order: the first ten (phase 3a), then the rest, most fun first.
+export const GAUGES = [
+  canal, pizza, degen, waffle, panic, hiring, hotdog, omens, undies, bigmac,
+  billions, wsb, odds, boxrate, eggs, rides, buzz, beige, trucks, boxes, lipstick, sick, macau,
+];
 
 // How long the summary waits for one gauge before it says "pending".
 export const SUMMARY_WAIT = 9000;
@@ -52,19 +69,27 @@ export function noData(g, extra = {}) {
 export const LAST_GOOD_DIR = fileURLToPath(new URL('../.cache/weird/', import.meta.url));
 
 // dir -> { read(id), write(id, value, fetchedAt) }. No dir: a store that keeps nothing.
+// A file is read from disk once; after that the copy in memory is used (and kept in
+// step with every write), so a remembered failure does not re-read the file per request.
 export function lastGoodStore(dir) {
   if (!dir) return { read: () => null, write: () => {} };
   const file = (id) => path.join(dir, `${id}.json`);
+  const mem = new Map();
   return {
     read(id) {
+      if (mem.has(id)) return mem.get(id);
+      let got = null;
       try {
         const j = JSON.parse(readFileSync(file(id), 'utf8'));
-        return j?.value?.headline && Number.isFinite(j.fetchedAt) ? j : null;
+        got = j?.value?.headline && Number.isFinite(j.fetchedAt) ? j : null;
       } catch {
-        return null;
+        got = null;
       }
+      mem.set(id, got);
+      return got;
     },
     write(id, value, fetchedAt) {
+      mem.set(id, { fetchedAt, value });
       try {
         mkdirSync(dir, { recursive: true });
         writeFileSync(`${file(id)}.tmp`, JSON.stringify({ fetchedAt, value }));

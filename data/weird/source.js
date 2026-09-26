@@ -78,3 +78,40 @@ export function signedPct(v, decimals = 1) {
   if (Number(s) === 0) return `${s}%`;
   return `${v > 0 ? '+' : '−'}${s}%`;
 }
+
+// Run fn(item) for every item, at most `limit` at a time, with at least `gapMs` between
+// starts (for sources with a request-rate rule, like SEC EDGAR). Results in item order;
+// the first failure rejects.
+export async function pool(items, limit, fn, gapMs = 0) {
+  const out = new Array(items.length);
+  let next = 0;
+  let slot = 0;
+  const wait = (ms) => new Promise((r) => { setTimeout(r, ms); });
+  async function worker() {
+    while (next < items.length) {
+      const i = next;
+      next += 1;
+      const at = Math.max(Date.now(), slot);
+      slot = at + gapMs;
+      if (at > Date.now()) await wait(at - Date.now());
+      try {
+        out[i] = await fn(items[i], i);
+      } catch (err) {
+        next = items.length; // stop the other workers too
+        throw err;
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+// '&amp;' and friends in a plain-text field -> the characters. The screen escapes again.
+export function decodeEntities(s) {
+  return String(s ?? '')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&(amp|lt|gt|quot|apos|nbsp|rsquo|lsquo|rdquo|ldquo|ndash|mdash);/g, (_, k) => ({
+      amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', rsquo: "'", lsquo: "'", rdquo: '"', ldquo: '"', ndash: '-', mdash: '-',
+    }[k]));
+}

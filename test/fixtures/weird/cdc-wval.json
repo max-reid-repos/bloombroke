@@ -1,0 +1,87 @@
+[{"week_end":"2026-03-07","pathogen_target":"Influenza A virus","median_wval":"1","sites":"986"}
+,{"week_end":"2026-03-07","pathogen_target":"RSV","median_wval":"5","sites":"935"}
+,{"week_end":"2026-03-07","pathogen_target":"SARS-CoV-2","median_wval":"2.775","sites":"1132"}
+,{"week_end":"2026-03-14","pathogen_target":"Influenza A virus","median_wval":"1","sites":"1011"}
+,{"week_end":"2026-03-14","pathogen_target":"RSV","median_wval":"3.4","sites":"961"}
+,{"week_end":"2026-03-14","pathogen_target":"SARS-CoV-2","median_wval":"1.74","sites":"1166"}
+,{"week_end":"2026-03-21","pathogen_target":"Influenza A virus","median_wval":"1","sites":"1000"}
+,{"week_end":"2026-03-21","pathogen_target":"RSV","median_wval":"3.18","sites":"951"}
+,{"week_end":"2026-03-21","pathogen_target":"SARS-CoV-2","median_wval":"1.74","sites":"1153"}
+,{"week_end":"2026-03-28","pathogen_target":"Influenza A virus","median_wval":"1","sites":"981"}
+,{"week_end":"2026-03-28","pathogen_target":"RSV","median_wval":"2.31","sites":"933"}
+,{"week_end":"2026-03-28","pathogen_target":"SARS-CoV-2","median_wval":"1.6","sites":"1136"}
+,{"week_end":"2026-04-04","pathogen_target":"Influenza A virus","median_wval":"1","sites":"999"}
+,{"week_end":"2026-04-04","pathogen_target":"RSV","median_wval":"1.82","sites":"953"}
+,{"week_end":"2026-04-04","pathogen_target":"SARS-CoV-2","median_wval":"1.43","sites":"1154"}
+,{"week_end":"2026-04-11","pathogen_target":"Influenza A virus","median_wval":"1","sites":"978"}
+,{"week_end":"2026-04-11","pathogen_target":"RSV","median_wval":"1.17","sites":"925"}
+,{"week_end":"2026-04-11","pathogen_target":"SARS-CoV-2","median_wval":"1.1","sites":"1139"}
+,{"week_end":"2026-04-18","pathogen_target":"Influenza A virus","median_wval":"1","sites":"1028"}
+,{"week_end":"2026-04-18","pathogen_target":"RSV","median_wval":"1","sites":"992"}
+,{"week_end":"2026-04-18","pathogen_target":"SARS-CoV-2","median_wval":"1","sites":"1191"}
+,{"week_end":"2026-04-25","pathogen_target":"Influenza A virus","median_wval":"1","sites":"970"}
+,{"week_end":"2026-04-25","pathogen_target":"RSV","median_wval":"1","sites":"928"}
+,{"week_end":"2026-04-25","pathogen_target":"SARS-CoV-2","median_wval":"1","sites":"1124"}
+,{"week_end":"2026-05-02","pathogen_target":"Influenza A virus","median_wval":"1","sites":"1025"}
+,{"week_end":"2026-05-02","pathogen_target":"RSV","median_wval":"1","sites":"975"}
+,{"week_end":"2026-05-02","pathogen_target":"SARS-CoV-2","median_wval":"1","sites":"1182"}
+,{"week_end":"2026-05-09","pathogen_target":"Influenza A virus","median_wval":"1","sites":"1031"}
+,{"week_end":"2026-05-09","pathogen_target":"RSV","median_wval":"1","sites":"978"}
+,{"week_end":"2026-05-09","pathogen_target":"SARS-CoV-2","median_wval":"1","sites":"1179"}
+,{"week_end":"2026-05-16","pathogen_target":"Influenza A virus","median_wval":"1","sites":"1017"}
+,{"week_end":"2026-05-16","pathogen_target":"RSV","median_wval":"1","sites":"964"}
+,{"week_end":"2026-05-16","pathogen_target":"SARS-CoV-2","median_wval":"1","sites":"1172"}
+,{"week_end":"2026-05-23","pathogen_target":"Influenza A virus","median_wval":"1","sites":"1024"}
+,{"week_end":"2026-05-23","pathogen_target":"RSV","median_wval":"1","sites":"970"}
+,{"week_end":"2026-05-23","pathogen_target":"SARS-CoV-2","median_wval":"1","sites":"1168"}
+,{"week_end":"2026-05-30","pathogen_target":"Influenza A virus","median_wval":"1","sites":"985"}
+,{"week_end":"2026-05-30","pathogen_target":"RSV","median_wval":"1","sites":"928"}
+,{"week_end":"2026-05-30","pathogen_target":"SARS-CoV-2","median_wval":"1","sites":"1109"}
+,{"week_end":"2026-06-06","pathogen_target":"Influenza A virus","median_wval":"1","sites":"1015"}
+,{"week_end":"2026-06-06","pathogen_target":"RSV","median_wval":"1","sites":"953"}
+,{"week_end":"2026-06-06","pathogen_target":"SARS-CoV-2","median_wval":"1","sites":"1142"}
+,{"week_end":"2026-06-13","pathogen_target":"Influenza A virus","median_wval":"1","sites":"996"}
+,{"week_end":"2026-06-13","pathogen_target":"RSV","median_wval":"1","sites":"943"}
+,{"week_end":"2026-06-13","pathogen_target":"SARS-CoV-2","median_wval":"1","sites":"1126"}
+,{"week_end":"2026-06-20","pathogen_target":"Influenza A virus","median_wval":"1","sites":"952"}
+,{"week_end":"2026-06-20","pathogen_target":"RSV","median_wval":"1","sites":"897"}
+,{"week_end":"2026-06-20","pathogen_target":"SARS-CoV-2","median_wval":"1","sites":"1083"}
+,{"week_end":"2026-06-27","pathogen_target":"Influenza A virus","median_wval":"1","sites":"983"}
+,{"week_end":"2026-06-27","pathogen_target":"RSV","median_wval":"1","sites":"925"}
+,{"week_end":"2026-06-27","pathogen_target":"SARS-CoV-2","median_wval":"1","sites":"1111"}
+,{"week_end":"2026-07-04","pathogen_target":"Influenza A virus","median_wval":"1","sites":"894"}
+,{"week_end":"2026-07-04","pathogen_target":"RSV","median_wval":"1","sites":"844"}
+,{"week_end":"2026-07-04","pathogen_target":"SARS-CoV-2","median_wval":"1","sites":"1016"}
+,{"week_end":"2026-07-11","pathogen_target":"Influenza A virus","median_wval":"1","sites":"964"}
+,{"week_end":"2026-07-11","pathogen_target":"RSV","median_wval":"1","sites":"904"}
+,{"week_end":"2026-07-11","pathogen_target":"SARS-CoV-2","median_wval":"1","sites":"1086"}
+,{"week_end":"2026-07-18","pathogen_target":"Influenza A virus","median_wval":"1","sites":"1003"}
+,{"week_end":"2026-07-18","pathogen_target":"RSV","median_wval":"1","sites":"948"}
+,{"week_end":"2026-07-18","pathogen_target":"SARS-CoV-2","median_wval":"1","sites":"1135"}
+,{"week_end":"2026-07-25","pathogen_target":"Influenza A virus","median_wval":"1","sites":"983"}
+,{"week_end":"2026-07-25","pathogen_target":"RSV","median_wval":"1","sites":"925"}
+,{"week_end":"2026-07-25","pathogen_target":"SARS-CoV-2","median_wval":"1","sites":"1100"}
+,{"week_end":"2026-08-01","pathogen_target":"Influenza A virus","median_wval":"1","sites":"1015"}
+,{"week_end":"2026-08-01","pathogen_target":"RSV","median_wval":"1","sites":"961"}
+,{"week_end":"2026-08-01","pathogen_target":"SARS-CoV-2","median_wval":"1","sites":"1129"}
+,{"week_end":"2026-08-08","pathogen_target":"Influenza A virus","median_wval":"1","sites":"982"}
+,{"week_end":"2026-08-08","pathogen_target":"RSV","median_wval":"1","sites":"931"}
+,{"week_end":"2026-08-08","pathogen_target":"SARS-CoV-2","median_wval":"1.15","sites":"1112"}
+,{"week_end":"2026-08-15","pathogen_target":"Influenza A virus","median_wval":"1","sites":"989"}
+,{"week_end":"2026-08-15","pathogen_target":"RSV","median_wval":"1","sites":"935"}
+,{"week_end":"2026-08-15","pathogen_target":"SARS-CoV-2","median_wval":"1.55","sites":"1103"}
+,{"week_end":"2026-08-22","pathogen_target":"Influenza A virus","median_wval":"1","sites":"966"}
+,{"week_end":"2026-08-22","pathogen_target":"RSV","median_wval":"1","sites":"916"}
+,{"week_end":"2026-08-22","pathogen_target":"SARS-CoV-2","median_wval":"1.975","sites":"1086"}
+,{"week_end":"2026-08-29","pathogen_target":"Influenza A virus","median_wval":"1","sites":"960"}
+,{"week_end":"2026-08-29","pathogen_target":"RSV","median_wval":"1","sites":"917"}
+,{"week_end":"2026-08-29","pathogen_target":"SARS-CoV-2","median_wval":"2.32","sites":"1085"}
+,{"week_end":"2026-09-05","pathogen_target":"Influenza A virus","median_wval":"1","sites":"964"}
+,{"week_end":"2026-09-05","pathogen_target":"RSV","median_wval":"1","sites":"922"}
+,{"week_end":"2026-09-05","pathogen_target":"SARS-CoV-2","median_wval":"2.705","sites":"1074"}
+,{"week_end":"2026-09-12","pathogen_target":"Influenza A virus","median_wval":"1","sites":"858"}
+,{"week_end":"2026-09-12","pathogen_target":"RSV","median_wval":"1","sites":"810"}
+,{"week_end":"2026-09-12","pathogen_target":"SARS-CoV-2","median_wval":"2.95","sites":"929"}
+,{"week_end":"2026-09-19","pathogen_target":"Influenza A virus","median_wval":"1","sites":"724"}
+,{"week_end":"2026-09-19","pathogen_target":"RSV","median_wval":"1","sites":"668"}
+,{"week_end":"2026-09-19","pathogen_target":"SARS-CoV-2","median_wval":"2.885","sites":"820"}]
