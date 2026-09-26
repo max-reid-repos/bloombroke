@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/"
+  xmlns:foaf="http://xmlns.com/foaf/0.1/" xmlns:og="http://ogp.me/ns#"
+  xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xmlns:schema="http://schema.org/"
+  xmlns:sioc="http://rdfs.org/sioc/ns#" xmlns:sioct="http://rdfs.org/sioc/types#"
+  xmlns:skos="http://www.w3.org/2004/02/skos/core#" xmlns:xsd="http://www.w3.org/2001/XMLSchema#"
+  xmlns:nasdaq="http://nasdaq.com/reference/feeds/1.0" version="2.0" xml:base="https://www.nasdaq.com/feed/rssoutbound">
+ <channel>
+  <title>AAPL Feed</title>
+  <link>https://www.nasdaq.com/feed/rssoutbound</link>
+  <description>trimmed</description>
+  <language>en</language>
+  <item>
+   <title>Is Dogecoin the Best Crypto You Can Buy Right Now?</title>
+   <link>https://www.nasdaq.com/articles/dogecoin-best-crypto-you-can-buy-right-now</link>
+   <description>trimmed</description>
+   <pubDate>Fri, 25 Sep 2026 20:47:00 +0000</pubDate>
+   <guid isPermaLink="true">https://www.nasdaq.com/articles/dogecoin-best-crypto-you-can-buy-right-now?time=1790369220</guid>
+   <dc:creator>The Motley Fool</dc:creator>
+   <category>Markets</category>
+   <nasdaq:tickers>DOGE,DOGE,GOOGL,AAPL,GOOG,BTC,DOJE</nasdaq:tickers>
+  </item>
+<item>
+   <title>Apple (AAPL) Rises Higher Than Market: Key Facts</title>
+   <link>https://www.nasdaq.com/articles/apple-aapl-rises-higher-market-key-facts-0</link>
+   <description>trimmed</description>
+   <pubDate>Fri, 25 Sep 2026 20:45:01 +0000</pubDate>
+   <guid isPermaLink="true">https://www.nasdaq.com/articles/apple-aapl-rises-higher-market-key-facts-0?time=1790369101</guid>
+   <dc:creator>Zacks</dc:creator>
+   <category>Technology</category>
+   <nasdaq:tickers>AAPL</nasdaq:tickers>
+  </item>
+<item>
+   <title>Trump-Xi Meeting Puts These 5 Chinese AI Stocks in Focus</title>
+   <link>https://www.nasdaq.com/articles/trump-xi-meeting-puts-these-5-chinese-ai-stocks-focus</link>
+   <description>trimmed</description>
+   <pubDate>Fri, 25 Sep 2026 18:33:00 +0000</pubDate>
+   <guid isPermaLink="true">https://www.nasdaq.com/articles/trump-xi-meeting-puts-these-5-chinese-ai-stocks-focus?time=1790361180</guid>
+   <dc:creator>Zacks</dc:creator>
+   <category>Investing,How to Invest,Stocks</category>
+   <nasdaq:tickers>BIDU,BABA,KC,AAPL,AMD,NVDA,TSLA,WRD,HSAI,PONY</nasdaq:tickers>
+  </item>
+ </channel>
+</rss>

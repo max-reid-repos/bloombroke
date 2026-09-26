@@ -1,0 +1,60 @@
+<?xml version="1.0"?>
+<rss xmlns:sa="https://seekingalpha.com/api/1.0" xmlns:media="http://search.yahoo.com/mrss/" version="2.0">
+  <channel>
+    <title>Apple Inc. - News and Analysis on Seeking Alpha</title>
+    <link>https://seekingalpha.com</link>
+    <description>trimmed</description>
+    <item>
+      <title>Apple's new HomePod mini 2 to come in new variants: report</title>
+      <link>https://seekingalpha.com/symbol/AAPL/news?source=feed_symbol_AAPL</link>
+      <guid isPermaLink="false">https://seekingalpha.com/MarketCurrent:4647212</guid>
+      <pubDate>Fri, 25 Sep 2026 11:26:14 -0400</pubDate>
+      <sa:author_name>Chris Ciaccia</sa:author_name>
+      <media:thumbnail url=""/>
+      <sa:picture/>
+      <sa:stock>
+        <sa:symbol>AAPL</sa:symbol>
+        <sa:company_name>Apple Inc.</sa:company_name>
+      </sa:stock>
+    </item>
+<item>
+      <title>Apple: Why I'm Betting Against This Valuable Company (Rating Downgrade)</title>
+      <link>https://seekingalpha.com/article/4949762-apple-why-im-betting-against-this-valuable-company-rating-downgrade?source=feed_symbol_AAPL</link>
+      <guid isPermaLink="false">https://seekingalpha.com/Article:4949762</guid>
+      <pubDate>Fri, 25 Sep 2026 10:01:41 -0400</pubDate>
+      <sa:author_name>Johnny Zhang, CFA</sa:author_name>
+      <media:thumbnail url=""/>
+      <sa:picture/>
+      <sa:stock>
+        <sa:symbol>AAPL</sa:symbol>
+        <sa:company_name>Apple Inc.</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>AAPL:CA</sa:symbol>
+        <sa:company_name>Apple Inc.</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>ZAAP:CA</sa:symbol>
+        <sa:company_name>Apple Inc.</sa:company_name>
+      </sa:stock>
+    </item>
+<item>
+      <title>Qualcomm slips even as it renews patent license agreement with Apple</title>
+      <link>https://seekingalpha.com/symbol/AAPL/news?source=feed_symbol_AAPL</link>
+      <guid isPermaLink="false">https://seekingalpha.com/MarketCurrent:4646542</guid>
+      <pubDate>Thu, 24 Sep 2026 07:40:16 -0400</pubDate>
+      <sa:author_name>Chris Ciaccia</sa:author_name>
+      <media:thumbnail url=""/>
+      <sa:picture/>
+      <sa:stock>
+        <sa:symbol>AAPL</sa:symbol>
+        <sa:company_name>Apple Inc.</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>QCOM</sa:symbol>
+        <sa:company_name>QUALCOMM Incorporated</sa:company_name>
+      </sa:stock>
+    </item>
+  </channel>
+</rss>
+

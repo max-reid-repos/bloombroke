@@ -38,12 +38,13 @@ const escRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const wordRe = (t, flags = '') => new RegExp(`(^|[^A-Za-z0-9])${escRe(t)}([^A-Za-z0-9]|$)`, flags);
 
 // The feed tags many market-wide stories with a ticker. A story is about the company
-// when its headline names the ticker or the first word of the company name.
+// when its headline names the ticker or the first word of the company name. The
+// company's own SEC filings (about: true) always are.
 export function aboutTicker(items, ticker, name) {
   const tests = [wordRe(ticker)];
   const word = nameWord(name);
   if (word) tests.push(wordRe(word, 'i'));
-  return items.filter((n) => tests.some((t) => t.test(n.title || '')));
+  return items.filter((n) => n.about === true || tests.some((t) => t.test(n.title || '')));
 }
 
 export function render(el, cmd, ctx) {
