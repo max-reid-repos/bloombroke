@@ -102,8 +102,11 @@ export function heatmapStocks(stocks) {
 }
 
 // FISHTANK keeps every member; a missing cap is null (that fish gets the plain size).
+// The sector picks its species (null: a plain fish).
 export function fishtankStocks(stocks) {
-  return stocks.map(({ ticker, name, changePct, marketCap }) => ({ ticker, name, changePct, marketCap: marketCap > 0 ? marketCap : null }));
+  return stocks.map(({ ticker, name, sector, changePct, marketCap }) => ({
+    ticker, name, sector: sector || null, changePct, marketCap: marketCap > 0 ? marketCap : null,
+  }));
 }
 
 export function makeSp100({ fetchImpl = globalThis.fetch, cache = createCache() } = {}) {
@@ -134,7 +137,7 @@ export function makeSp100({ fetchImpl = globalThis.fetch, cache = createCache() 
     },
     async getFishtank() {
       const { stocks, stale, updated } = await load();
-      return { stocks: fishtankStocks(stocks), stale, updated };
+      return { stocks: fishtankStocks(stocks), sectors: SECTORS, stale, updated };
     },
   };
 }

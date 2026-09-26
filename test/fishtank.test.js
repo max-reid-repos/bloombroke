@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   pctToDepth, depthRange, capToSize, fishColor, pickExtremes, tankHeader, sizeLimits, seeded, makeRunner, render,
+  SPECIES, SPECIES_NAME, speciesOf, legendItems, legendHtml, toggleSector, sectorAlpha, DIM, sectorCentre, schoolStep,
 } from '../public/screens/fishtank.js';
-import { heatmapStocks, fishtankStocks } from '../data/sp100.js';
+import { heatmapStocks, fishtankStocks, SP100, SECTORS } from '../data/sp100.js';
 import { parseCommand, FKEYS } from '../public/app.js';
 import { findCommand, byCategory } from '../public/registry.js';
 import { WEIRD_SCREENS } from '../public/commands-weird.js';
@@ -104,11 +105,13 @@ test('fishtank: routed, listed under Weird data, off the F-key bar', () => {
   assert.ok(!FKEYS.some((k) => k.cmd === 'FISHTANK'));
 });
 
-test('fishtank: copy rules, no banned brand word, no em dashes', () => {
+test('fishtank: copy rules, no banned brand word, no em dashes, no amber', () => {
   for (const f of ['public/screens/fishtank.js']) {
     const s = readFileSync(f, 'utf8');
     assert.doesNotMatch(s, new RegExp(['bloom', 'berg'].join(''), 'i'), f);
     assert.doesNotMatch(s, /\u2014/, `${f}: em dash`);
+    // Every fixed colour is a blue, a green, a red or steel: no amber or orange hues.
+    for (const m of s.matchAll(/hsla?\((\d+),/g)) assert.ok(Number(m[1]) < 15 || Number(m[1]) > 70, `${f}: hue ${m[1]}`);
   }
 });
 
@@ -119,9 +122,9 @@ test('fishtank data: every member stays, a missing cap is null; HEATMAP still dr
     { ticker: 'ZER', name: 'Zero Cap', sector: 'FIN', last: 10, changePct: 0, marketCap: 0, volume: 1 },
   ];
   assert.deepEqual(fishtankStocks(rows), [
-    { ticker: 'AAPL', name: 'Apple', changePct: 1.2, marketCap: 3e12 },
-    { ticker: 'XYZ', name: 'No Cap', changePct: -0.5, marketCap: null },
-    { ticker: 'ZER', name: 'Zero Cap', changePct: 0, marketCap: null },
+    { ticker: 'AAPL', name: 'Apple', sector: 'TECH', changePct: 1.2, marketCap: 3e12 },
+    { ticker: 'XYZ', name: 'No Cap', sector: 'FIN', changePct: -0.5, marketCap: null },
+    { ticker: 'ZER', name: 'Zero Cap', sector: 'FIN', changePct: 0, marketCap: null },
   ]);
   assert.deepEqual(heatmapStocks(rows), [{ ticker: 'AAPL', name: 'Apple', sector: 'TECH', last: 200, changePct: 1.2, marketCap: 3e12 }]);
   const lim = { max: 80, min: 10, fallback: 30 };
@@ -177,12 +180,13 @@ test('fishtank: leaving the screen cancels the frame loop, observers and listene
   });
   const el = (extra = {}) => ({
     innerHTML: '', style: {}, hidden: false, clientWidth: 800, clientHeight: 500, offsetWidth: 90, offsetHeight: 20,
-    setAttribute() {}, addEventListener() {}, removeEventListener() {}, getContext: () => g2d, ...extra,
+    setAttribute() {}, addEventListener() {}, removeEventListener() {}, getContext: () => g2d, querySelectorAll: () => [], ...extra,
   });
   const canvas = el(); const tip = el(); const sr = el();
   const host = el({ querySelector: (sel) => ({ canvas, '.ft-tip': tip, '.ft-sr': sr }[sel]) });
   const meta = el();
-  const root = el({ querySelector: (sel) => ({ '#ft-host': host, '#ft-meta': meta }[sel]) });
+  const leg = el();
+  const root = el({ querySelector: (sel) => ({ '#ft-host': host, '#ft-meta': meta, '#ft-leg': leg }[sel]) });
   const observers = [];
   class Obs { constructor(cb) { this.cb = cb; this.on = false; observers.push(this); } observe() { this.on = true; } disconnect() { this.on = false; } }
   let timers = 0;
@@ -198,7 +202,7 @@ test('fishtank: leaving the screen cancels the frame loop, observers and listene
   try {
     const cleanups = [];
     const live = [];
-    const data = { stocks: [{ ticker: 'AAPL', name: 'Apple', changePct: 1, marketCap: 3e12 }, { ticker: 'PFE', name: 'Pfizer', changePct: -1, marketCap: null }], updated: '2026-09-25T18:32:00Z', stale: false };
+    const data = { stocks: [{ ticker: 'AAPL', name: 'Apple', sector: 'TECH', changePct: 1, marketCap: 3e12 }, { ticker: 'PFE', name: 'Pfizer', sector: 'HEALTH', changePct: -1, marketCap: null }, { ticker: 'AMT', name: 'American Tower', sector: 'RE', changePct: 0.4, marketCap: 9e10 }, { ticker: 'NEW', name: 'No Sector', sector: null, changePct: 0, marketCap: 1e11 }], sectors: SECTORS, updated: '2026-09-25T18:32:00Z', stale: false };
     const ctx = {
       fetchJSON: async () => data, signal: null, run() {}, updated() {}, status() {},
       onCleanup: (f) => cleanups.push(f), live: (f, ms) => live.push([f, ms]),
@@ -217,7 +221,9 @@ test('fishtank: leaving the screen cancels the frame loop, observers and listene
     assert.equal(r.q.size, 0, 'scrolled away: no frames');
     io.cb([{ isIntersecting: true }]);
     assert.equal(r.q.size, 1);
-    assert.ok(listeners.size >= 3, 'listening while on screen: visibility, motion, pixel ratio');
+    assert.equal(leg.hidden, false, 'the legend shows once there is data');
+    assert.match(leg.innerHTML, /data-sector="TECH"/);
+    assert.ok(listeners.size >= 4, 'listening while on screen: visibility, Esc, motion, pixel ratio');
     for (const f of cleanups) f();
     assert.equal(r.q.size, 0, 'the pending frame is cancelled');
     assert.ok(observers.every((o) => !o.on), 'observers disconnected');
@@ -229,4 +235,102 @@ test('fishtank: leaving the screen cancels the frame loop, observers and listene
   } finally {
     for (const [k, v] of Object.entries(saved)) globalThis[k] = v;
   }
+});
+
+test('fishtank species: every S&P 100 member gets its sector species, the rest a plain fish', () => {
+  for (const k of Object.keys(SECTORS)) assert.ok(SPECIES[k], `${k} has a species`);
+  const kinds = Object.values(SPECIES).map((v) => v.kind);
+  assert.equal(new Set(kinds).size, kinds.length, 'one species per sector');
+  for (const m of SP100) {
+    const kind = speciesOf(m.sector);
+    assert.notEqual(kind, 'fish', `${m.ticker} (${m.sector})`);
+    assert.ok(SPECIES_NAME[kind], kind);
+  }
+  assert.equal(speciesOf('TECH'), 'swordfish');
+  assert.equal(speciesOf('FIN'), 'shark');
+  assert.equal(speciesOf('RE'), 'crab');
+  assert.equal(speciesOf(null), 'fish', 'no sector: the plain fish');
+  assert.equal(speciesOf('SPACE'), 'fish', 'unknown sector: the plain fish');
+  assert.equal(speciesOf(undefined), 'fish');
+  assert.deepEqual(Object.values(SPECIES).map((v) => v.short),
+    ['TECH', 'FIN', 'UTIL', 'ENERGY', 'COMM', 'HEALTH', 'DISC', 'STAPLES', 'INDUS', 'RE', 'MAT']);
+});
+
+test('fishtank legend: sectors present, in order, with counts; unknown sectors left out', () => {
+  const items = legendItems([
+    { sector: 'RE' }, { sector: 'TECH' }, { sector: 'TECH' }, { sector: null }, { sector: 'NOPE' }, { sector: 'FIN' },
+  ]);
+  assert.deepEqual(items.map((i) => [i.key, i.count, i.kind]), [['TECH', 2, 'swordfish'], ['FIN', 1, 'shark'], ['RE', 1, 'crab']]);
+  assert.deepEqual(legendItems([]), []);
+});
+
+test('fishtank legend: pressing a sector lights it, pressing it again clears it', () => {
+  let active = null;
+  active = toggleSector(active, 'TECH');
+  assert.equal(active, 'TECH');
+  assert.equal(sectorAlpha('TECH', active), 1, 'the lit sector at full');
+  assert.equal(sectorAlpha('FIN', active), DIM, 'the rest dimmed');
+  assert.equal(sectorAlpha(null, active), DIM, 'a plain fish dims too');
+  assert.equal(DIM, 0.25);
+  active = toggleSector(active, 'FIN');
+  assert.equal(active, 'FIN', 'another sector switches straight to it');
+  active = toggleSector(active, 'FIN');
+  assert.equal(active, null, 'the same button again clears it');
+  assert.equal(sectorAlpha('FIN', null), 1, 'nothing lit: everything at full');
+  const html = legendHtml(legendItems([{ sector: 'TECH' }, { sector: 'FIN' }, { sector: 'FIN' }]), 'FIN', { FIN: 'Financials' });
+  const buttons = html.match(/<button[^>]*>/g);
+  assert.equal(buttons.length, 2, 'a focusable button per sector');
+  assert.ok(buttons.every((b) => /type="button"/.test(b)));
+  assert.match(buttons[0], /data-sector="TECH" aria-pressed="false"/);
+  assert.match(buttons[1], /data-sector="FIN" aria-pressed="true"/);
+  assert.match(buttons[1], /aria-label="Financials: shark, 2 stocks"/);
+  assert.match(html, /<span>TECH<\/span>/);
+});
+
+test('fishtank schools: fish stay in the tank, depth never moves, schools gather', () => {
+  const W = 1200;
+  const sectors = ['TECH', 'FIN', 'HEALTH', 'RE', null];
+  const fish = [];
+  for (let i = 0; i < 60; i += 1) {
+    const sector = sectors[i % sectors.length];
+    fish.push({
+      sector, x: seeded(`x${i}`) * W, vx: (seeded(`v${i}`) - 0.5) * 30, speed: 8 + seeded(`s${i}`) * 20, face: 1,
+      len: 10 + seeded(`l${i}`) * 50, y: 40 + seeded(`y${i}`) * 400, depth: seeded(`d${i}`),
+    });
+  }
+  const ys = fish.map((f) => [f.y, f.depth]);
+  const centre = (k) => sectorCentre(k, 0, W);
+  const spreadOf = (k) => {
+    const xs = fish.filter((f) => f.sector === k).map((f) => Math.abs(f.x - centre(k)));
+    return xs.reduce((a, b) => a + b, 0) / xs.length;
+  };
+  const before = spreadOf('TECH') + spreadOf('FIN') + spreadOf('HEALTH');
+  for (let i = 0; i < 3600; i += 1) {
+    schoolStep(fish, 1 / 60, W, { centre });
+    for (const f of fish) assert.ok(f.x >= 0 && f.x <= W && Number.isFinite(f.x), `x ${f.x}`);
+  }
+  assert.deepEqual(fish.map((f) => [f.y, f.depth]), ys, 'schooling never changes depth');
+  const after = spreadOf('TECH') + spreadOf('FIN') + spreadOf('HEALTH');
+  assert.ok(after < before * 0.8, `schools gather: ${before.toFixed(0)} -> ${after.toFixed(0)}`);
+  for (const k of ['TECH', 'FIN', 'HEALTH', 'RE']) assert.ok(spreadOf(k) < W * 0.2, `${k} stays near its centre`);
+  // A hovered fish holds still; nothing moves with no time step or no tank.
+  const f = fish[0]; const x = f.x;
+  for (let i = 0; i < 120; i += 1) schoolStep(fish, 1 / 60, W, { centre, hold: f });
+  assert.ok(Math.abs(f.x - x) < 30, 'the held fish slows to a stop');
+  const snap = fish.map((g) => g.x);
+  schoolStep(fish, 0, W, { centre });
+  schoolStep(fish, 1 / 60, 0, { centre });
+  assert.deepEqual(fish.map((g) => g.x), snap);
+});
+
+test('fishtank schools: sector centres drift slowly inside the tank', () => {
+  for (const k of Object.keys(SPECIES)) {
+    for (let t = 0; t < 600; t += 7) {
+      const c = sectorCentre(k, t, 1000);
+      assert.ok(c >= 70 && c <= 930, `${k} at ${t}s: ${c}`);
+    }
+    assert.ok(Math.abs(sectorCentre(k, 1, 1000) - sectorCentre(k, 0, 1000)) < 5, 'slow');
+  }
+  assert.equal(sectorCentre(null, 0, 1000), null);
+  assert.equal(sectorCentre('TECH', 0, 0), null);
 });
