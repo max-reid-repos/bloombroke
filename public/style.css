@@ -1125,16 +1125,29 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   left: var(--inset); right: var(--inset); bottom: calc(var(--dock-h) + 8px);
   border: 1px solid var(--rule-strong);
 }
-.panel.is-max > .panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
-.panel.is-max > .panel-body:has(> .rc-home) { min-height: 0; }
+.panel.is-max > .panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
+.panel.is-max > .panel-body:has(> .rc-home) { min-height: 0; overflow: hidden; scrollbar-gutter: auto; }
 .panel.is-max .panel-label { box-shadow: inset 0 -2px 0 var(--ink); }
+
+/* A chart takes its size from the layout, never from its own drawing: the SVG covers
+   its box exactly (a drawing a moment out of date is scaled, not spilled), so a redraw
+   cannot grow or scroll anything around it. */
+.chart-host > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* Scrollbars: thin and dark, the terminal's own colours (classic Windows scrollbars
+   too). */
+:root { scrollbar-color: var(--rule-strong) var(--bg); }
+* { scrollbar-width: thin; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--rule-strong); border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--faint); }
 
 /* ---- Desktop: the screen fills the window exactly, panels scroll inside ---------
    The page never scrolls: the screen area sits between the command bar and the dock,
    the main panel of a screen stretches to the bottom and its body scrolls. When a
    screen has more than fits, the screen area itself scrolls. Phones keep the stacked,
    page-scrolling layout. */
-.chart-host > svg { position: absolute; top: 0; left: 0; }
 @media (min-width: 1100px) {
   html:not(.is-embed) body {
     display: flex; flex-direction: column;
@@ -1148,6 +1161,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
     flex: 1 1 auto; min-height: 0;
     padding-bottom: 8px;
     overflow: auto;
+    scrollbar-gutter: stable;
     scrollbar-width: thin; scrollbar-color: var(--rule-strong) var(--bg);
   }
   html:not(.is-embed) .screen > .view { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }
@@ -1158,7 +1172,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   html:not(.is-embed) .view > :is(.panel, .stack, .grid, .with-side, #er-host) { flex: 0 1 auto; min-height: 96px; }
   html:not(.is-embed) .view > :nth-last-child(1 of :is(.panel, .stack, .grid, .with-side, #er-host):not([hidden])) { flex: 1 1 auto; min-height: 240px; }
   html:not(.is-embed) .view > .panel > .panel-body,
-  html:not(.is-embed) .view > #er-host > .panel > .panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+  html:not(.is-embed) .view > #er-host > .panel > .panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
   html:not(.is-embed) .view > #er-host { display: flex; flex-direction: column; }
   html:not(.is-embed) .view > #er-host > .panel { flex: 1 1 auto; min-height: 0; }
 
@@ -1167,13 +1181,13 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   html:not(.is-embed) .view > .stack > * { flex: 0 1 auto; min-height: 96px; }
   html:not(.is-embed) .view > .stack > :nth-last-child(1 of :not([hidden])) { flex: 1 1 auto; min-height: 160px; }
   html:not(.is-embed) .view > .stack > .panel > .panel-body,
-  html:not(.is-embed) .view > .stack > :not(.panel) > .panel > .panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+  html:not(.is-embed) .view > .stack > :not(.panel) > .panel > .panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
   html:not(.is-embed) .view > .stack > :not(.panel) > .panel { min-height: 0; }
 
   /* A grid or a panel with a side: rows stretch, each panel scrolls inside. */
   html:not(.is-embed) .view > .grid { grid-auto-rows: minmax(0, auto); align-content: stretch; }
   html:not(.is-embed) .view > :is(.grid, .with-side) > .panel { min-height: 0; }
-  html:not(.is-embed) .view > :is(.grid, .with-side) > .panel > .panel-body { min-height: 0; overflow: auto; }
+  html:not(.is-embed) .view > :is(.grid, .with-side) > .panel > .panel-body { min-height: 0; overflow: auto; scrollbar-gutter: stable; }
   html:not(.is-embed) .view > .with-side { align-items: stretch; }
 
   /* A chart in a stretched panel grows with it; the chart redraws to its box. */
@@ -1191,7 +1205,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
     grid-template-rows: minmax(0, max-content) minmax(224px, 1fr) minmax(112px, .5fr);
     min-height: 0;
   }
-  html:not(.is-embed) .grid-home .panel-body:has(> .rc-home) { min-height: 0; }
+  html:not(.is-embed) .grid-home .panel-body:has(> .rc-home) { min-height: 0; overflow: hidden; scrollbar-gutter: auto; }
 }
 /* Wide windows: HOME's MARKETS in four columns, change in % only (MARKETS has both), so
    the chart gets the height. */

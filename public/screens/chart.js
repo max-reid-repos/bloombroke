@@ -11,6 +11,7 @@ import {
   intradayStats, sessionDomain, timeTicks, dayStarts, sessionRuns, sessionRefs, withRefs,
   placeLabels, labelWidth, whenLabel,
 } from './intraday.js';
+import { sizeGuard } from './size-guard.js';
 
 // ---- Line chart --------------------------------------------------------------
 
@@ -224,14 +225,25 @@ function intradayLayers(points, g, { refs = {}, multiDay = false, bar = '5M', sh
   return { xlabs, under, over };
 }
 
+// One size guard per chart box, kept across redraws of new data (see size-guard.js).
+const guards = new WeakMap();
+const now = () => (typeof performance === 'object' ? performance.now() : Date.now());
+
 // Draw a chart that fills `host`, redraw on resize, report the hovered point.
 export function mountChart(host, points, opts = {}) {
-  let lastKey = '';
-  function draw() {
-    const w = Math.floor(host.clientWidth);
-    const h = Math.floor(host.clientHeight) || opts.height || 240;
-    if (!w || `${w}x${h}` === lastKey) return;
-    lastKey = `${w}x${h}`;
+  if (!guards.has(host)) guards.set(host, sizeGuard());
+  const guard = guards.get(host);
+  const boxSize = () => ({ w: Math.floor(host.clientWidth), h: Math.floor(host.clientHeight) || opts.height || 240 });
+  function draw(resized = false) {
+    let { w, h } = boxSize();
+    if (!w) return;
+    if (resized) {
+      const s = guard.next(w, h, now());
+      if (!s) return;
+      ({ w, h } = s);
+    } else {
+      guard.drawn(w, h, now());
+    }
     host.innerHTML = chartSvg(points, { ...opts, width: w, height: h });
     const svg = host.querySelector('svg');
     if (!svg) return;
@@ -283,7 +295,7 @@ export function mountChart(host, points, opts = {}) {
   // The chart follows its box (a panel that stretches to the window): redraw once the
   // size settles, not on every frame of a resize.
   let timer = 0;
-  const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { clearTimeout(timer); timer = setTimeout(draw, 80); }) : null;
+  const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { clearTimeout(timer); timer = setTimeout(() => draw(true), 80); }) : null;
   ro?.observe(host);
   return () => { clearTimeout(timer); ro?.disconnect(); };
 }
