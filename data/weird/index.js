@@ -19,7 +19,7 @@
 // waits (briefly) and then says pending. NO DATA only when there has never been a good
 // value and the source failed.
 
-import { mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sourceClient } from './source.js';
@@ -75,11 +75,15 @@ export function noData(g, extra = {}) {
 
 export const LAST_GOOD_DIR = fileURLToPath(new URL('../.cache/weird/', import.meta.url));
 
-// dir -> { read(id), write(id, value, fetchedAt) }. No dir: a store that keeps nothing.
-// A file is read from disk once; after that the copy in memory is used (and kept in
-// step with every write), so a remembered failure does not re-read the file per request.
+// dir -> { read(id), write(id, value, fetchedAt), readHold(id), writeHold(id, until) }.
+// No dir: a store that keeps nothing. A file is read from disk once; after that the copy
+// in memory is used (and kept in step with every write), so a remembered failure does not
+// re-read the file per request. A hold (<id>.hold.json: no fetch before `until`, after a
+// failure) survives a restart, so repeated deploys do not spend a source's daily quota
+// (BLS allows 25 a day); writeHold(id, 0) removes it.
 export function lastGoodStore(dir) {
-  if (!dir) return { read: () => null, write: () => {} };
+  if (!dir) return { read: () => null, write: () => {}, readHold: () => 0, writeHold: () => {} };
+  const holdFile = (id) => path.join(dir, `${id}.hold.json`);
   const file = (id) => path.join(dir, `${id}.json`);
   const mem = new Map();
   return {
@@ -105,6 +109,24 @@ export function lastGoodStore(dir) {
         console.error(`[weird:${id}] last good not saved:`, err.message);
       }
     },
+    readHold(id) {
+      try {
+        const until = JSON.parse(readFileSync(holdFile(id), 'utf8'))?.until;
+        return Number.isFinite(until) ? until : 0;
+      } catch {
+        return 0;
+      }
+    },
+    writeHold(id, until) {
+      try {
+        if (!(until > 0)) { rmSync(holdFile(id), { force: true }); return; }
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(`${holdFile(id)}.tmp`, JSON.stringify({ until }));
+        renameSync(`${holdFile(id)}.tmp`, holdFile(id));
+      } catch (err) {
+        console.error(`[weird:${id}] hold not saved:`, err.message);
+      }
+    },
   };
 }
 
@@ -124,7 +146,10 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
   const latest = new Map();
   for (const g of gauges) { const l = store.read(g.id); if (l) latest.set(g.id, l); }
   const inflight = new Map(); // id -> the one refresh running for that gauge
-  const holdUntil = new Map(); // id -> no new refresh before this time (after a failure)
+  // id -> no new refresh before this time (after a failure); from disk at boot too.
+  const holdUntil = new Map();
+  for (const g of gauges) { const h = store.readHold(g.id); if (h > now()) holdUntil.set(g.id, h); }
+  const held = (g) => now() < (holdUntil.get(g.id) || 0);
   const queued = new Set(); // ids the boot pre-warm will refresh soon: a request leaves them to it
 
   const shape = (g, value, stale, fetchedAt) => ({ id: g.id, ok: true, ...value, stale, updated: new Date(fetchedAt).toISOString() });
@@ -137,7 +162,7 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
   // new value came, else null.
   function refresh(g) {
     if (inflight.has(g.id)) return inflight.get(g.id);
-    if (now() < (holdUntil.get(g.id) || 0)) return Promise.resolve(null);
+    if (held(g)) return Promise.resolve(null);
     const p = (async () => {
       try {
         const value = await g.load(get, { now });
@@ -145,11 +170,13 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
         const got = { value, fetchedAt: now() };
         latest.set(g.id, got);
         store.write(g.id, value, got.fetchedAt);
-        holdUntil.delete(g.id);
+        if (holdUntil.delete(g.id)) store.writeHold(g.id, 0);
         return got;
       } catch (err) {
         if (err?.code !== 'no_data') console.error(`[weird:${g.id}]`, err?.message || err);
-        holdUntil.set(g.id, now() + (err?.code === 'no_data' ? g.ttl : g.retryMs || 5 * 60_000));
+        const until = now() + (err?.code === 'no_data' ? g.ttl : g.retryMs || 5 * 60_000);
+        holdUntil.set(g.id, until);
+        store.writeHold(g.id, until);
         return null;
       } finally {
         inflight.delete(g.id);
@@ -176,6 +203,9 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
       if (!isFresh(g, last) && !queued.has(g.id)) refresh(g);
       return current(g);
     }
+    // Its pre-warm turn has not come: no fetch of its own, so a cold start never hits
+    // every source at once.
+    if (queued.has(g.id)) return noData(g, { headline: 'LOADING', pending: true });
     // A value that just came is fresh, however short the ttl.
     const done = refresh(g).then((got) => (got ? shape(g, got.value, false, got.fetchedAt) : current(g) || noData(g)));
     if (!Number.isFinite(wait)) return done;
@@ -195,10 +225,11 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
 
   // Boot pre-warm: refresh every gauge that has no value or an expired one, gauges with
   // no value first, one started every gapMs. Until its turn, a request serves a queued
-  // gauge's last good value without starting a fetch of its own, so a burst of visitors
-  // right after a deploy does not hit every source at once. Returns a stop function.
+  // gauge's last good value (or pending) without starting a fetch of its own, so a burst
+  // of visitors right after a deploy does not hit every source at once. A gauge still on
+  // hold after a failure is left out. Returns a stop function.
   function startPrewarm({ gapMs = PREWARM_GAP_MS } = {}) {
-    const due = gauges.filter((g) => { const l = latest.get(g.id); return !l || !isFresh(g, l); });
+    const due = gauges.filter((g) => { const l = latest.get(g.id); return !held(g) && (!l || !isFresh(g, l)); });
     due.sort((a, b) => Number(latest.has(a.id)) - Number(latest.has(b.id)));
     for (const g of due) queued.add(g.id);
     const timers = due.map((g, i) => {

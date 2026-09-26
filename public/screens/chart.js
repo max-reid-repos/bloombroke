@@ -567,7 +567,10 @@ export function rangeChart(root, ctx, opts) {
   // A group that starts a row (the bar wrapped) drops its separator. Only a background
   // changes, never a width, so this cannot flip the wrap back.
   const markRows = () => {
-    for (const g of root.querySelectorAll('.ch-bar .ch-grp')) g.classList.toggle('is-row-start', g.offsetLeft < 2);
+    const bar = root.querySelector('.ch-bar');
+    if (!bar) return;
+    const left = bar.getBoundingClientRect().left;
+    for (const g of bar.querySelectorAll('.ch-grp')) g.classList.toggle('is-row-start', g.getBoundingClientRect().left - left < 2);
   };
   const repaintBar = () => {
     const had = root.querySelector('.ch-bar');

@@ -135,3 +135,48 @@ test('boot pre-warm: gauges with no value first, fresh ones skipped, one start p
   assert.deepEqual(order, ['none', 'old']);
   assert.equal((await w.getGauge('none')).headline, 'NONE');
 }));
+
+test('a cold start with no cache: a request right away starts no more loads than the pre-warm stagger', async () => {
+  let loads = 0;
+  const mk = (id) => ({ id, source: id, ttl: HOUR, load: () => { loads += 1; return never(); } });
+  const w = makeWeird({ gauges: ['a', 'b', 'c', 'd', 'e'].map(mk), lastGoodDir: null, now: () => NOW });
+  const stop = w.startPrewarm({ gapMs: 10_000 });
+  try {
+    const s = await w.getWeird({ wait: 50 });
+    assert.ok(s.gauges.every((g) => g.pending), 'no value yet: pending');
+    assert.ok(loads <= 1, `${loads} loads: only the first turn of the stagger`);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal((await w.getGauge('e', { wait: 50 })).pending, true);
+    assert.equal(loads, 1, 'the first turn has started, the rest wait');
+  } finally {
+    stop();
+  }
+});
+
+test('a failure hold is kept on disk: a restart inside retryMs does not ask the source again', () => withDir({}, async (dir) => {
+  let t = NOW;
+  let loads = 0;
+  const g = { id: 'bls', source: 'BLS', ttl: HOUR, retryMs: 6 * HOUR, load: async () => { loads += 1; throw new Error('daily threshold'); } };
+  const err = console.error;
+  console.error = () => {};
+  try {
+    const first = makeWeird({ gauges: [g], lastGoodDir: dir, now: () => t });
+    assert.equal((await first.getGauge('bls')).headline, 'NO DATA');
+    assert.equal(loads, 1);
+    // A deploy an hour later: no fetch from a request, none from the pre-warm.
+    t = NOW + HOUR;
+    const again = makeWeird({ gauges: [g], lastGoodDir: dir, now: () => t });
+    const stop = again.startPrewarm({ gapMs: 1 });
+    await new Promise((r) => setTimeout(r, 20));
+    stop();
+    assert.equal((await again.getGauge('bls')).headline, 'NO DATA');
+    assert.equal(loads, 1, 'the hold survived the restart');
+    // Past retryMs it is asked again.
+    t = NOW + 7 * HOUR;
+    const later = makeWeird({ gauges: [g], lastGoodDir: dir, now: () => t });
+    await later.getGauge('bls');
+    assert.equal(loads, 2);
+  } finally {
+    console.error = err;
+  }
+}));
