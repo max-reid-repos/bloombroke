@@ -111,6 +111,12 @@ export function dayMove(r, fill = null) {
   }
   const last = parseNum(r?.last);
   if (fill && Number.isFinite(fill.close) && Math.abs(fill.close - last) <= Math.abs(last) * 0.005) {
+    // From the close before the fill's last session to this price (the same thing when
+    // the price is that session's close).
+    if (fill.prevClose > 0) {
+      const c = Math.round((last - fill.prevClose) * 1e6) / 1e6;
+      return { change: c, changePct: Math.round((c / fill.prevClose) * 1e6) / 1e4 };
+    }
     return { change: fill.change, changePct: fill.changePct };
   }
   return { change: null, changePct: null };
@@ -159,30 +165,33 @@ export function dailyMove(bars, { allWeek = false } = {}) {
   return { close: b.v, change, changePct: Math.round((change / Math.abs(a.v)) * 1e6) / 1e4, prevClose: a.v, day: b.d, ...ohl };
 }
 
-// Is an ISO time (the source's last_time) on a Saturday or Sunday in New York? A plain
-// day ("2026-09-25") is not a print time: false.
-function weekendPrint(iso) {
-  if (!iso || /^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
-  const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return false;
-  const dow = dayOfWeek(nyDayOf(ms));
-  return dow === 0 || dow === 6;
+// A row whose previous close was rolled onto the last price while it still carries a
+// move: weekend spot silver says +0.3755 with a previous close equal to its last price.
+export function rolledPrev(r) {
+  const prev = parseChange(r?.previous_day_closing);
+  const last = parseNum(r?.last);
+  const chg = parseChange(r?.change);
+  return Number.isFinite(prev) && Number.isFinite(last) && Number.isFinite(chg) && chg !== 0
+    && Math.abs(prev - last) <= Math.abs(last) * 1e-6;
 }
 
-// A row with no day's move (weekend, holiday) and a usable fill (dayMove): its numbers
-// from the last real session, so they agree with each other. change and changePct are
-// the fill's; prevClose is the close that move is from; last is the row's own price,
-// unless the row's price is a stray weekend print (a Saturday tick on spot gold), which
-// gives way to the session's close, and asOf then says that day (YYYY-MM-DD). open, high
-// and low are the session's from the daily bar when the row has only placeholders (0.00,
-// or the last price rolled onto all three). null when the row has its own move or no
-// fill fits.
+// Rows that take their move from the daily bars when those are ready: no move (UNCH on a
+// weekend or holiday), or a rolled previous close.
+export const needsFill = (r) => noDayMove(r) || rolledPrev(r);
+
+// A row that needs a fill (needsFill) and has one that fits: the row's own last price
+// (spot gold's weekend 4,286.25 stays), the previous close from the daily bars (the close
+// before the session the price belongs to: Thursday's on a Saturday), and the move
+// between them, so price, change and previous close agree on every screen. The fill fits
+// when its last daily close is the row's price within 0.5%. open, high and low are that
+// session's from the daily bar when the row has only placeholders (0.00, or the last
+// price rolled onto all three). null when the row needs no fill or none fits.
 export function filledRow(r, fill) {
-  if (!r || !fill || !noDayMove(r)) return null;
-  const m = dayMove(r, fill);
-  if (!Number.isFinite(m.change)) return null;
+  if (!r || !fill || !needsFill(r)) return null;
   const last = parseNum(r.last);
-  const stray = weekendPrint(r.last_time) && fill.close !== last && /^\d{8}$/.test(fill.day || '');
+  if (!Number.isFinite(last) || !Number.isFinite(fill.close) || !(fill.prevClose > 0)) return null;
+  if (Math.abs(fill.close - last) > Math.abs(last) * 0.005) return null;
+  const change = Math.round((last - fill.prevClose) * 1e6) / 1e6;
   const o = numOrNull(r.open);
   const h = numOrNull(r.high);
   const l = numOrNull(r.low);
@@ -191,11 +200,11 @@ export function filledRow(r, fill) {
     ? { open: fill.open ?? null, high: fill.high ?? null, low: fill.low ?? null }
     : { open: o, high: h, low: l };
   return {
-    last: stray ? fill.close : last,
-    asOf: stray ? `${fill.day.slice(0, 4)}-${fill.day.slice(4, 6)}-${fill.day.slice(6, 8)}` : r.last_time || null,
-    change: m.change,
-    changePct: m.changePct,
-    prevClose: Number.isFinite(fill.prevClose) ? fill.prevClose : null,
+    last,
+    asOf: r.last_time || null,
+    change,
+    changePct: Math.round((change / fill.prevClose) * 1e6) / 1e4,
+    prevClose: fill.prevClose,
     ...ohl,
   };
 }
@@ -215,10 +224,10 @@ export function parseListRows(list, rows, fillFor = () => null) {
     const { src, aliases, markets, ...rest } = item;
     out.push({
       ...rest,
-      last: filled ? filled.last : last,
+      last,
       change,
       changePct,
-      asOf: filled ? filled.asOf : r.last_time || null,
+      asOf: r.last_time || null,
       ...freshness(r),
     });
   }
@@ -298,10 +307,10 @@ export function parseQuoteRow(r, ticker = r?.symbol, fill = null) {
     type: r.type || null,
     exchange: r.exchange || null,
     currency: r.currencyCode || null,
-    last: filled ? filled.last : last,
+    last,
     change: move.change,
     changePct: move.changePct,
-    asOf: filled ? filled.asOf : r.last_time || null,
+    asOf: r.last_time || null,
     marketCap: r.mktcapView || null,
     // A price's 52-week low or high of 0 is a placeholder (spot gold sends "0.00"), not
     // a number: missing, so the range comes from daily closes (data/range52.js).
@@ -328,9 +337,9 @@ export function parseQuoteRow(r, ticker = r?.symbol, fill = null) {
   };
 }
 
-// Rows with no day's move (weekends, holidays) get it from the last two daily closes of
-// the CNBC bars service: one call per symbol, kept 10 minutes (a failure too, so a dead
-// source is not asked again), at most 4 at a time. A batch refresh waits for them at
+// Rows with no day's move (weekends, holidays) or a rolled previous close (needsFill) get
+// it from the daily closes of the CNBC bars service: one call per symbol, kept 10 minutes
+// (a failure too, so a dead source is not asked again, and it keeps the last good fill), at most 4 at a time. A batch refresh waits for them at
 // most FILL_WAIT_MS; one still running lands on a later read, and until then the row
 // shows --.
 const BARS_URL = 'https://ts-api.cnbc.com/harmony/app/bars';
@@ -362,7 +371,8 @@ export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache()
       fetchDailyMove(fetchImpl, src, now())
         .catch(() => null)
         .then((value) => {
-          fills.set(src, { at: now(), value });
+          // A failed or empty refill keeps the last good fill (tried again after the TTL).
+          fills.set(src, { at: now(), value: value ?? fills.get(src)?.value ?? null });
           pending.delete(src);
           running -= 1;
           done();
@@ -391,7 +401,7 @@ export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache()
       for (const r of ok) lastGood.set(r.symbol, r);
       const have = new Set(ok.map((r) => r.symbol));
       const all = [...ok, ...ALL.filter((i) => !have.has(i.src) && lastGood.has(i.src)).map((i) => lastGood.get(i.src))];
-      const noMove = all.filter(noDayMove);
+      const noMove = all.filter(needsFill);
       if (noMove.length) {
         let timer;
         const wait = new Promise((r) => { timer = setTimeout(r, fillWaitMs); timer.unref?.(); });

@@ -89,8 +89,7 @@ test('getChart: custom ranges reach the source with the right bar size', async (
   assert.match(urls[1], /\/AAPL\/1D\/20200101000000\/20250101000000\//, 'daily bars for the weekly end dates');
   await ch.getChart('goldfut', 'MAX');
   assert.match(urls[2], /\/%40GC\.1\/1MO\/19000101000000\//);
-  // The fixture's two bars are a lone print a day each: not a session, so no chart.
-  await assert.rejects(ch.getChart('eur/usd', '5D'), (e) => e.code === 'no_data');
+  await ch.getChart('eur/usd', '5D');
   assert.match(urls[4], /\/EUR%3D\/5M\//);
   assert.equal(urls.length, 5, 'intraday ranges make one call');
 });

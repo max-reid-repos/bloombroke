@@ -191,7 +191,7 @@ test('history fill: one bars call per symbol, cached 10 minutes, none when the m
   let unch = true;
   const json = (b) => ({ ok: true, json: async () => b });
   const batch = () => REGISTRY.map((i) => (i.src === '@LCO.1'
-    ? { ...UNCH, ...(unch ? {} : { change: '-2.28', change_pct: '-2.14%' }) }
+    ? { ...UNCH, ...(unch ? {} : { change: '-2.28', change_pct: '-2.14%', previous_day_closing: '106.60' }) }
     : { symbol: i.src, code: 0, last: '10', change: '1', change_pct: '10%', realTime: 'true' }));
   const fetchImpl = async (url) => {
     if (url.includes('/bars/')) {

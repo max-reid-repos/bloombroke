@@ -6,7 +6,7 @@
 import { createCache } from './cache.js';
 import { iso } from './lists.js';
 import { isoDaysAgo } from './fx.js';
-import { fetchCnbcRows, parseNum, parseChange, noDayMove, filledRow, fetchDailyMove, DAILY_FILL_TTL } from './quotes.js';
+import { fetchCnbcRows, parseNum, parseChange, needsFill, filledRow, fetchDailyMove, DAILY_FILL_TTL } from './quotes.js';
 
 export const MATRIX_CODES = ['USD', 'EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD', 'CNY', 'THB'];
 const BASE = 'https://api.frankfurter.dev/v1';
@@ -50,8 +50,8 @@ const LIVE_TTL = 30_000;
 
 // CNBC rows -> units per USD now and at the previous close (last minus change), or null
 // when any currency is missing, so the matrix never mixes sources. A row with no day's
-// move (weekends: UNCH) takes it from its daily closes, fillFor(src) (see filledRow in
-// quotes.js); with none, its previous close is unknown (null), so every cell with that
+// move (weekends: UNCH) or a rolled previous close takes it from its daily closes,
+// fillFor(src) (see filledRow in quotes.js); with none, its previous close is unknown (null), so every cell with that
 // currency shows --, never a made-up 0.00%.
 export function liveRates(rows, codes = MATRIX_CODES, fillFor = () => null) {
   const bySrc = new Map((rows || []).map((r) => [r.symbol, r]));
@@ -67,7 +67,7 @@ export function liveRates(rows, codes = MATRIX_CODES, fillFor = () => null) {
     if (!r || Number(r.code) !== 0 || !(last > 0)) return null;
     const chg = parseChange(r.change);
     let before = Number.isFinite(chg) ? last - chg : null;
-    const filled = noDayMove(r) ? filledRow(r, fillFor(spec.src)) : null;
+    const filled = filledRow(r, fillFor(spec.src));
     if (filled && filled.last > 0 && filled.prevClose > 0) {
       last = filled.last;
       before = filled.prevClose;
@@ -85,9 +85,9 @@ export function makeFxMatrix({ fetchImpl = globalThis.fetch, cache = createCache
     try {
       const { value, stale, fetchedAt } = await cache.cached('fxmatrix:live', LIVE_TTL, async () => {
         const rows = await fetchCnbcRows(fetchImpl, Object.values(LIVE_FX).map((x) => x.src));
-        // Weekend rows (no move): their daily closes, one bars call per pair, kept 10
+        // Weekend rows (no move, or a rolled previous close): their daily closes, one bars call per pair, kept 10
         // minutes. A failed call leaves that pair's move unknown.
-        const fills = new Map(await Promise.all(rows.filter(noDayMove).map(async (r) => {
+        const fills = new Map(await Promise.all(rows.filter(needsFill).map(async (r) => {
           try {
             const got = await cache.cached(`fxmatrix:fill:${r.symbol}`, DAILY_FILL_TTL, () => fetchDailyMove(fetchImpl, r.symbol, now().getTime()));
             return [r.symbol, got.value];

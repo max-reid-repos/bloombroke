@@ -136,12 +136,17 @@ export function sessionRuns(points) {
 }
 
 // Previous close and today's open from a quote, only when the quote is about the same
-// New York day as the last bar (so a 1D chart of Friday never gets Monday's numbers).
+// New York day as the last bar (so a 1D chart of Friday never gets Monday's numbers), or
+// is a weekend quote at most three days after it (spot gold's Saturday price belongs to
+// Friday's session: no session lies between them).
 // A 5D chart without a matching quote still gets the previous close from its bars.
 export function sessionRefs(points, quote, { multiDay = false } = {}) {
-  const lastDay = points.length ? etParts(points[points.length - 1].t).day : '';
+  const lastT = points.length ? points[points.length - 1].t : NaN;
+  const lastDay = points.length ? etParts(lastT).day : '';
   const qt = Date.parse(quote?.asOf || '');
-  if (quote && Number.isFinite(qt) && etParts(qt).day === lastDay) {
+  const q = Number.isFinite(qt) ? etParts(qt) : null;
+  const weekendAfter = q && (q.weekday.startsWith('SAT') || q.weekday.startsWith('SUN')) && qt > lastT && qt - lastT < 3 * 86_400_000;
+  if (quote && q && (q.day === lastDay || weekendAfter)) {
     const ok = (v) => (Number.isFinite(v) && v > 0 ? v : null);
     return { prevClose: ok(quote.prevClose), open: ok(quote.open) };
   }

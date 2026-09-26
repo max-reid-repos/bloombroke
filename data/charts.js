@@ -169,17 +169,17 @@ export function sessionDay(d, roll = false) {
   return startMin(d) >= 17 * 60 ? nextDay(day) : day;
 }
 
-// Fewer intraday bars than this in a trading day is a stray print, not a session.
+// A Sunday with fewer intraday bars than this is a stray print, not a session.
 export const MIN_SESSION_BARS = 3;
 
-// Intraday bars without the stray ones, for everything but crypto. The source now and
-// then sends a lone print on a day the market is shut (AAPL at 12:20 on a Saturday, the
-// S&P 500 at 12:10 on a Sunday), which would otherwise be "the last session". Dropped:
-// every bar on a Saturday trading day (see sessionDay), and every day with fewer than
-// MIN_SESSION_BARS bars, except a weekday session still running (today, or with roll
-// a Monday that opened on Sunday evening), which may have just begun.
-// today: the New York day, YYYYMMDD.
-export function dropStrays(points, { roll = false, today = '' } = {}) {
+// Intraday bars without the stray weekend ones, for everything but crypto. The source now
+// and then sends a lone print on a day the market is shut (AAPL at 12:20 on a Saturday,
+// the S&P 500 at 12:10 on a Sunday), which would otherwise be "the last session".
+// Dropped: every bar on a Saturday trading day (see sessionDay), and a Sunday with fewer
+// than MIN_SESSION_BARS bars (a Sunday with more is a real session: Asian markets open on
+// Sunday evening, New York time). Weekdays are always kept, however few bars they have:
+// some series (the Baltic Dry index) print once a day, and a session may have just begun.
+export function dropStrays(points, { roll = false } = {}) {
   const count = new Map();
   for (const p of points) {
     const day = sessionDay(p.d, roll);
@@ -188,8 +188,7 @@ export function dropStrays(points, { roll = false, today = '' } = {}) {
   const keep = (day) => {
     const dow = dayOfWeek(day);
     if (dow === 6) return false;
-    if (count.get(day) >= MIN_SESSION_BARS) return true;
-    return dow !== 0 && Boolean(today) && day >= today;
+    return dow !== 0 || count.get(day) >= MIN_SESSION_BARS;
   };
   return points.filter((p) => keep(sessionDay(p.d, roll)));
 }
@@ -435,7 +434,7 @@ export function makeCharts({ fetchImpl = globalThis.fetch, cache = createCache({
     const roll = rollsAt17(ticker);
     // Stray weekend prints out first, so the last session is a real one (Friday's, on a
     // weekend) and the chart ends on its close.
-    if (!allWeek && intraday) points = dropStrays(points, { roll, today: nyToday(now()).replace(/-/g, '') });
+    if (!allWeek && intraday) points = dropStrays(points, { roll });
     if (!allWeek && win.bar === '1D') points = dropWeekendDaily(points);
     const dailyBars = () => {
       const d = daily.status === 'fulfilled' ? shapeBars(daily.value?.barData?.priceBars) : [];
