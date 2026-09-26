@@ -6,9 +6,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   parseFeed, parseSec8k, parseWsb, parseSeekingAlpha, itemWords, filingTitle, companyName, maskProfanity,
-  isWsbNoise, stripEmoji, cleanLink, fetchCapped, makeNewsFeeds, TAB_FEEDS, NEWS_TABS as SERVER_TABS, FEED_UA, notLawFirm, mergeItems, dedupeKey,
+  isWsbNoise, stripEmoji, cleanLink, parseSecTickers, withTickers, fetchCapped, makeNewsFeeds, TAB_FEEDS, NEWS_TABS as SERVER_TABS, FEED_UA, notLawFirm, mergeItems, dedupeKey,
 } from '../data/newsfeeds.js';
-import { makeTickerNews, parseSec8kSubmissions } from '../data/tickernews.js';
+import { makeTickerNews, parseSec8kSubmissions, filingTime, nyNoon } from '../data/tickernews.js';
+import { retarget } from '../public/desk-layout.js';
+import { fmtNewsTime } from '../public/screens/news.js';
 import { createCache } from '../data/cache.js';
 import { newsList, shortSource, parse as parseNewsArgs, NEWS_TABS, tabCommand, newsApi } from '../public/screens/news.js';
 import { aboutTicker, tickerNewsList } from '../public/screens/tickernews.js';
@@ -26,7 +28,9 @@ test('8-K item codes become plain words; 9.01 and unknown codes drop out', () =>
   assert.equal(itemWords('1.01, 2.03, 9.01'), 'Deal, New debt');
   assert.equal(itemWords('8.01'), 'Other');
   assert.equal(itemWords('9.01'), '');
-  assert.equal(itemWords('7.7, x, 2.02, 2.02'), 'Results', 'junk ignored, no repeats');
+  assert.equal(itemWords('x, 2.02, 2.02'), 'Results', 'junk ignored, no repeats');
+  assert.equal(itemWords('2.2'), 'Results', 'a short code is item 2.02');
+  assert.equal(itemWords('5.04, 6.01'), 'Benefit plan blackout, ABS material');
   assert.equal(filingTitle('Apple Inc.', '2.02,9.01'), 'Apple Inc.: Results');
   assert.equal(filingTitle('Apple Inc.', '9.01'), 'Apple Inc.: 8-K filing');
   assert.equal(filingTitle('Apple Inc.', '5.02', '8-K/A'), 'Apple Inc.: Exec change (amended)');
@@ -34,6 +38,40 @@ test('8-K item codes become plain words; 9.01 and unknown codes drop out', () =>
   assert.equal(companyName('KEYCORP /NEW/'), 'Keycorp');
   assert.equal(companyName('UNITED STATES OIL FUND, LP'), 'United States Oil Fund, LP');
   assert.equal(companyName('Co-Diagnostics, Inc.'), 'Co-Diagnostics, Inc.', 'mixed case stays as filed');
+});
+
+test('filing times: EDGAR acceptance is UTC; a bare filing day is noon in New York', () => {
+  assert.equal(new Date(filingTime('2026-07-30T20:30:28.000Z', '2026-07-30')).toISOString(), '2026-07-30T20:30:28.000Z');
+  assert.equal(new Date(filingTime('', '2026-07-30')).toISOString(), '2026-07-30T16:00:00.000Z', 'summer: UTC-4');
+  assert.equal(new Date(nyNoon('2026-01-15')).toISOString(), '2026-01-15T17:00:00.000Z', 'winter: UTC-5');
+  assert.equal(fmtNewsTime(new Date(filingTime(null, '2026-03-09')).toISOString(), new Date('2026-09-26T12:00:00Z')), 'MAR 09', 'never the day before');
+  assert.ok(Number.isNaN(filingTime('junk', 'junk')));
+});
+
+test('SEC tab rows carry the filer ticker; filers without one are dimmed', async () => {
+  const map = parseSecTickers({ 0: { cik_str: 98222, ticker: 'TDW', title: 'Tidewater' }, 1: { cik_str: 1067983, ticker: 'BRK-B', title: 'Berkshire' }, 2: { cik_str: 1067983, ticker: 'BRK-A', title: 'Berkshire' } });
+  assert.equal(map.byCik.get(1067983), 'BRK.B', 'the first ticker, written with a dot');
+  const rows = withTickers(parseSec8k(fx('sec-8k.atom', 'latin1')), map.byCik);
+  assert.equal(rows.find((n) => n.title.startsWith('Tidewater')).ticker, 'TDW');
+  assert.equal(rows.find((n) => n.title.startsWith('United States')).ticker, null);
+  assert.ok(rows.every((n) => !('cik' in n)));
+  assert.ok(withTickers(parseSec8k(fx('sec-8k.atom', 'latin1')), null).every((n) => !('ticker' in n) && !('cik' in n)), 'map down: rows as they are');
+  const html = newsList(rows);
+  assert.match(html, /<a class="news-tkr" href="\?c=TDW" data-cmd="TDW">TDW<\/a><a class="news-link" href="https:\/\/www\.sec\.gov\/[^"]+" target="_blank" rel="noopener noreferrer">Tidewater Inc: Deal, New debt<\/a>/);
+  assert.equal((html.match(/is-dim/g) || []).length, rows.filter((n) => !n.ticker).length);
+
+  const feeds = { SEC: [{ id: 'sec', name: 'SEC EDGAR', url: 'https://sec/feed', parse: parseSec8k }] };
+  const fetchImpl = async (url) => (url === 'https://sec/feed' ? textRes(fx('sec-8k.atom', 'latin1'))
+    : url.endsWith('company_tickers.json') ? textRes(JSON.stringify({ 0: { cik_str: 98222, ticker: 'TDW', title: 'Tidewater' } })) : textRes('', 404));
+  const d = await makeNewsFeeds({ fetchImpl, cache: createCache(), feeds }).getNewsTab('SEC');
+  assert.equal(d.items.find((n) => n.title.startsWith('Tidewater')).ticker, 'TDW');
+});
+
+test('DESK: a linked NEWS tab keeps its tab; plain NEWS and NEWS <ticker> follow the ticker', () => {
+  assert.equal(retarget('NEWS WSB', 'MSFT', parseCommand), null);
+  assert.equal(retarget('NEWS SEC', 'MSFT', parseCommand), null);
+  assert.equal(retarget('NEWS', 'MSFT', parseCommand), 'NEWS MSFT');
+  assert.equal(retarget('NEWS AAPL', 'MSFT', parseCommand), 'NEWS MSFT');
 });
 
 test('SEC tab: latest 8-Ks by company, with plain item words and a filing link', () => {
@@ -75,8 +113,10 @@ test('WSB: daily and weekend threads skipped, titles masked, links to the post',
   assert.equal(isWsbNoise('Weekly Earnings Thread Sep 28 - Oct 2, 2026'), true);
   assert.equal(isWsbNoise('Anything at all', '/u/AutoModerator'), true);
   assert.equal(isWsbNoise('NVDA earnings play', '/u/someone'), false);
+  assert.equal(isWsbNoise('NVDA earnings thread was wild', '/u/someone'), false, 'only titles that start that way');
   assert.equal(stripEmoji('META printer went BRRRR \u{1F680} to the moon \u{1F31D}\u{FE0F}'), 'META printer went BRRRR to the moon');
   assert.equal(stripEmoji('Microbot Medical\u00AE'), 'Microbot Medical\u00AE', 'marks like (R) stay');
+  assert.equal(stripEmoji('Up \u2B06\uFE0F only \u2B50 \u231B'), 'Up only');
 });
 
 test('profanity and slurs are masked; ordinary words are not', () => {
@@ -89,6 +129,11 @@ test('profanity and slurs are masked; ordinary words are not', () => {
   assert.equal(maskProfanity('Scunthorpe United'), 'Scunthorpe United');
   assert.equal(maskProfanity('motherfuckers'), 'm************', 'a compound is masked whole');
   assert.equal(maskProfanity(null), '');
+  for (const ok of ['Wankel engine maker', 'Fire retardant stocks rally', 'Niggling doubts', 'A chink in the armor', 'SPIC bond yields']) {
+    assert.equal(maskProfanity(ok), ok, ok);
+  }
+  assert.equal(maskProfanity('retarded calls'), 'r******* calls');
+  assert.equal(maskProfanity('my niggas'), 'my n*****');
 });
 
 // ---- other feeds ----------------------------------------------------------------------
@@ -140,6 +185,13 @@ test('fetchCapped: sends the Bloombroke UA, stops past the size cap', async () =
   assert.match(FEED_UA, /^Bloombroke\/1\.0 \(hello@bloombroke\.com\)$/);
   await assert.rejects(fetchCapped(async () => new Response('x'.repeat(5000)), 'https://x.test/', { maxBytes: 1000 }), /too large/);
   await assert.rejects(fetchCapped(async () => textRes('', 403), 'https://x.test/'), /HTTP 403/);
+  const hang = (url, { signal }) => new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason)));
+  const t0 = Date.now();
+  await assert.rejects(fetchCapped(hang, 'https://x.test/', { timeoutMs: 40 }), /timeout after 40 ms/);
+  assert.ok(Date.now() - t0 < 1000, 'gives up on time');
+  let ua2 = null;
+  await fetchCapped(async (u, o) => { ua2 = o.headers['User-Agent']; return textRes('ok'); }, 'https://x.test/', { ua: 'Browser' });
+  assert.equal(ua2, 'Browser', 'a source that needs a browser UA can have one');
   const iso = await fetchCapped(async () => new Response(Buffer.from('<?xml version="1.0" encoding="ISO-8859-1"?><t>caf\xe9</t>', 'latin1')), 'https://x.test/');
   assert.match(iso, /café/);
 });
@@ -206,6 +258,13 @@ test('NEWS <ticker>: Nasdaq, Seeking Alpha and SEC merged; one source down is fi
   assert.ok(n.items.some((x) => x.source !== 'SA' && x.source !== 'SEC'), 'Nasdaq rows keep their publisher');
   assert.ok(!n.items.some((x) => x.source === 'SA'));
   await assert.rejects(makeTickerNews({ fetchImpl: async () => textRes('', 500), cache: createCache() }).getTickerNews('AAPL'), (e) => e.code === 'unavailable');
+
+  // A slow SEC lookup does not hold the answer: past the budget it goes out without filings.
+  const slowSec = async (url) => (url.includes('/submissions/') ? new Promise((r) => setTimeout(() => r(textRes(JSON.stringify(sub))), 300)) : fetchImpl(url));
+  const t0 = Date.now();
+  const quick = await makeTickerNews({ fetchImpl: slowSec, cache: createCache(), secBudgetMs: 30 }).getTickerNews('AAPL');
+  assert.ok(Date.now() - t0 < 250, 'did not wait for SEC');
+  assert.ok(!quick.items.some((x) => x.source === 'SEC'));
 });
 
 // ---- screen: tabs, tags, escaping -------------------------------------------------

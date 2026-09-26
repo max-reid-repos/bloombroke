@@ -259,7 +259,8 @@ export function tickerOf(cmd, parse) {
 
 // The same screen for another ticker: "NEWS AAPL" + MSFT -> "NEWS MSFT", or null when
 // the screen does not show one ticker or does not take that one (FINANCIALS GOLD).
-// NEWS (every headline) narrows to NEWS MSFT; a ticker screen still waiting for one
+// NEWS (every headline) narrows to NEWS MSFT, but a NEWS tab (NEWS WSB) keeps its tab;
+// a ticker screen still waiting for one
 // (INSIDERS) takes it; OPTIONS drops the old expiry, since dates differ by ticker.
 export function retarget(cmd, ticker, parse) {
   const p = parse(cmd);
@@ -268,7 +269,7 @@ export function retarget(cmd, ticker, parse) {
     const next = parse(c);
     return same(next.name) && !next.error && next.args?.ticker === ticker ? next.input : null;
   };
-  if (p.name === 'NEWS' && !p.error) return check(`NEWS ${ticker}`);
+  if (p.name === 'NEWS' && !p.error) return p.args?.tab && p.args.tab !== 'MARKETS' ? null : check(`NEWS ${ticker}`);
   if (!TICKER_SCREENS.includes(p.name)) return null;
   const old = p.args?.ticker;
   if (!old) return p.error === 'usage' && p.input === p.name ? check(`${p.name} ${ticker}`) : null;

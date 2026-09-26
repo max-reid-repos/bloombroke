@@ -17,6 +17,11 @@ export function parse(args) {
   return args.length === 1 && NEWS_TABS.includes(args[0]) ? { tab: args[0] } : null;
 }
 
+// Each tab's sources, in the panel's title strip.
+export const TAB_SOURCES = {
+  MARKETS: 'CNBC · MKTW · YHOO', MACRO: 'FED · BLS', SEC: 'SEC EDGAR', WIRES: 'GNW · PRN · BW', WSB: 'REDDIT',
+};
+
 export const newsApi = (tab) => (tab === 'MARKETS' ? '/api/news' : `/api/news?tab=${encodeURIComponent(tab)}`);
 export const shortSource = (name) => SHORT[name] || String(name || '').slice(0, 4).toUpperCase();
 
@@ -62,15 +67,26 @@ export function filterNews(items, src) {
   return !src || src === 'ALL' ? items : items.filter((n) => shortSource(n.source) === src);
 }
 
+const TICKER = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
+
+// SEC tab rows (they carry a ticker field): the filer's ticker opens its screen, then
+// "Company: item words" opens the filing. Filers with no listed ticker are dimmed.
+function filingCell(n, href) {
+  const t = TICKER.test(n.ticker || '') ? n.ticker : null;
+  const tk = t ? `<a class="news-tkr" href="?${esc(new URLSearchParams({ c: t }).toString())}" data-cmd="${esc(t)}">${esc(t)}</a>` : '<span class="news-tkr"></span>';
+  return `<span class="news-title news-filing">${tk}<a class="news-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(n.title)}</a></span>`;
+}
+
 export function newsList(items) {
   const rows = items.map((n) => {
     const href = safeHref(n.link);
     if (!href) return '';
     const src = shortSource(n.source);
-    return `<li class="news-row">
+    const filing = 'ticker' in n;
+    return `<li class="news-row${filing && !n.ticker ? ' is-dim' : ''}">
       ${newsTimeHtml(n.time)}
       <span class="news-src" title="${esc(n.source || '')}">${esc(src)}</span>
-      <a class="news-title" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(n.title)}</a>
+      ${filing ? filingCell(n, href) : `<a class="news-title" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(n.title)}</a>`}
     </li>`;
   }).join('');
   return `<ol class="news">${rows}</ol>`;
@@ -78,11 +94,9 @@ export function newsList(items) {
 
 export function render(el, cmd, ctx) {
   const tab = NEWS_TABS.includes(cmd.args?.tab) ? cmd.args.tab : 'MARKETS';
-  el.innerHTML = panel('1', 'News', `<div class="news-bar">${LOADING}</div><div class="news-body"></div>`, { cls: 'panel-solo', metaId: 'news-meta', bodyCls: 'flush' })
-    + '<p class="footnote">Headlines from the CNBC, MarketWatch and Yahoo Finance feeds: the headline, the publisher and a link only. Each one opens on the original publisher\'s site, in a new tab. The status line shows when the list was last updated.</p>';
+  el.innerHTML = panel('1', 'News', `<div class="news-bar">${LOADING}</div><div class="news-body"></div>`, { cls: 'panel-solo', metaId: 'news-meta', bodyCls: 'flush', meta: esc(TAB_SOURCES[tab]) });
   const bar = el.querySelector('.news-bar');
   const body = el.querySelector('.news-body');
-  const meta = el.querySelector('#news-meta');
   let data = null;
   let src = 'ALL';
   const tabs = segmented(NEWS_TABS.map((t) => ({ label: t, cmd: tabCommand(t) })), tab, { label: 'News tab' });
@@ -95,7 +109,6 @@ export function render(el, cmd, ctx) {
     const pick = sources.length > 1 ? segmented([{ label: 'ALL', value: 'ALL' }, ...sources.map((x) => ({ label: x, value: x }))], src, { label: 'Source' }) : '';
     bar.innerHTML = toolbar({ left: tabs, right: pick, label: 'News' });
     body.innerHTML = items.length ? newsList(items) : '<p class="panel-msg">NO DATA</p>';
-    meta.textContent = `${items.length} HEADLINES`;
   }
 
   bar.addEventListener('click', (e) => {

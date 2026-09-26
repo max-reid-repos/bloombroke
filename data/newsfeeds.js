@@ -8,6 +8,7 @@
 
 import { createCache } from './cache.js';
 import { cleanText, safeLink, titleKey } from './news.js';
+import { parseTickerMap } from './financials.js';
 
 export const FEED_UA = 'Bloombroke/1.0 (hello@bloombroke.com)';
 export const FEED_TTL = 3 * 60_000;
@@ -21,11 +22,11 @@ export const NEWS_TABS = ['MARKETS', 'MACRO', 'SEC', 'WIRES', 'WSB'];
 
 // GET a URL as text, with a timeout and a size cap. Past the cap the download is
 // aborted and the call fails.
-export async function fetchCapped(fetchImpl, url, { accept = 'application/rss+xml, application/atom+xml, application/xml, text/xml', timeoutMs = FEED_TIMEOUT_MS, maxBytes = FEED_MAX_BYTES } = {}) {
+export async function fetchCapped(fetchImpl, url, { accept = 'application/rss+xml, application/atom+xml, application/xml, text/xml', timeoutMs = FEED_TIMEOUT_MS, maxBytes = FEED_MAX_BYTES, ua = FEED_UA } = {}) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(new Error(`timeout after ${timeoutMs} ms`)), timeoutMs);
   try {
-    const res = await fetchImpl(url, { headers: { 'User-Agent': FEED_UA, Accept: accept }, signal: ctl.signal, redirect: 'follow' });
+    const res = await fetchImpl(url, { headers: { 'User-Agent': ua, Accept: accept }, signal: ctl.signal, redirect: 'follow' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const declared = Number(res.headers?.get?.('content-length'));
     if (declared > maxBytes) { ctl.abort(); throw new Error('response too large'); }
@@ -117,8 +118,8 @@ export const ITEM_WORDS = {
   '2.01': 'Bought or sold assets', '2.02': 'Results', '2.03': 'New debt', '2.04': 'Debt called early',
   '2.05': 'Restructuring', '2.06': 'Write-down', '3.01': 'Listing notice', '3.02': 'Share sale',
   '3.03': 'Holder rights change', '4.01': 'Auditor change', '4.02': 'Restatement', '5.01': 'Control change',
-  '5.02': 'Exec change', '5.03': 'Bylaws change', '5.04': 'Pension plan pause', '5.05': 'Ethics code change',
-  '5.06': 'Shell company change', '5.07': 'Vote results', '5.08': 'Director nominations', '6.01': 'Fund filing',
+  '5.02': 'Exec change', '5.03': 'Bylaws change', '5.04': 'Benefit plan blackout', '5.05': 'Ethics code change',
+  '5.06': 'Shell company change', '5.07': 'Vote results', '5.08': 'Director nominations', '6.01': 'ABS material',
   '7.01': 'Investor update', '8.01': 'Other',
 };
 
@@ -129,7 +130,7 @@ export function itemWords(items) {
   for (const c of codes) {
     const m = /^(\d)\.(\d{1,2})$/.exec(String(c).trim());
     if (!m) continue;
-    const w = ITEM_WORDS[`${m[1]}.${m[2].padEnd(2, '0')}`];
+    const w = ITEM_WORDS[`${m[1]}.${m[2].padStart(2, '0')}`];
     if (w && !words.includes(w)) words.push(w);
   }
   return words.join(', ');
@@ -164,21 +165,54 @@ export function parseSec8k(xml) {
     if (!link || seen.has(acc)) continue;
     seen.add(acc);
     const codes = [...cleanText(tag(b, 'summary')).matchAll(/Item (\d\.\d{2})/g)].map((x) => x[1]);
-    items.push({ title: filingTitle(companyName(m[2]), codes, m[1]).slice(0, 300), link, time: isoOf(tag(b, 'updated')), source: 'SEC EDGAR' });
+    items.push({ title: filingTitle(companyName(m[2]), codes, m[1]).slice(0, 300), link, time: isoOf(tag(b, 'updated')), source: 'SEC EDGAR', cik: Number(m[3]) });
   }
   return items;
+}
+
+// ---- SEC ticker map ---------------------------------------------------------------
+
+export const SEC_TICKERS_URL = 'https://www.sec.gov/files/company_tickers.json';
+export const SEC_MAP_TTL = 24 * 60 * 60_000;
+
+// company_tickers.json -> { byTicker: Map("BRK-B" -> { cik, title }), byCik: Map(cik -> "BRK.B") }.
+// The file lists the biggest companies first, so a CIK's first ticker is its main one.
+export function parseSecTickers(body) {
+  const byTicker = parseTickerMap(body);
+  const byCik = new Map();
+  for (const [t, v] of byTicker) if (!byCik.has(v.cik)) byCik.set(v.cik, t.replace('-', '.'));
+  return { byTicker, byCik };
+}
+
+// One map per fetch function, cached a day, shared by the SEC tab and NEWS <ticker>.
+const secMaps = new Map();
+export function secTickersFor(fetchImpl) {
+  if (!secMaps.has(fetchImpl)) {
+    const cache = createCache({ retryMs: 60_000 });
+    secMaps.set(fetchImpl, () => cache.cached('sec:tickers', SEC_MAP_TTL, async () => parseSecTickers(JSON.parse(
+      await fetchCapped(fetchImpl, SEC_TICKERS_URL, { accept: 'application/json' }),
+    ))));
+  }
+  return secMaps.get(fetchImpl);
+}
+
+// SEC tab rows get the filer's ticker (null: no listed ticker, a fund or trust). When the
+// map is down (byCik null) the rows go out without one.
+export function withTickers(items, byCik) {
+  return items.map(({ cik, ...n }) => (byCik ? { ...n, ticker: byCik.get(cik) || null } : n));
 }
 
 // ---- WSB --------------------------------------------------------------------------
 
 // Strong profanity and slurs, masked to the first letter: "f***ing".
-const ANYWHERE = ['fuck', 'shit', 'nigg', 'faggot'];
-const WORD_START = ['cunt', 'retard', 'wank', 'whore', 'slut', 'bitch', 'pussy', 'twat', 'tranny'];
-const WHOLE = ['fag', 'fags', 'cock', 'cocks', 'spic', 'spics', 'kike', 'kikes', 'chink', 'chinks'];
-const BAD_RE = new RegExp(
-  `[a-z]*(?:${ANYWHERE.join('|')})[a-z]*|\\b(?:${WORD_START.join('|')})[a-z]*|\\b(?:${WHOLE.join('|')})\\b`,
-  'gi',
-);
+// ANYWHERE words are masked inside any word (bullshit); WHOLE ones only as the listed
+// word forms, so Wankel, retardant and niggling stay.
+const ANYWHERE = ['fuck', 'shit', 'faggot'];
+const WHOLE = [
+  'retard(?:s|ed)?', 'nigg(?:a|er)s?', 'wank(?:s|ed|er|ers|ing)?', 'cunts?', 'whores?', 'sluts?', 'bitch(?:es|ing|y)?',
+  'puss(?:y|ies)', 'twats?', 'trann(?:y|ies)', 'fags?', 'cocks?', 'kikes?',
+];
+const BAD_RE = new RegExp(`[a-z]*(?:${ANYWHERE.join('|')})[a-z]*|\\b(?:${WHOLE.join('|')})\\b`, 'gi');
 
 export function maskProfanity(s) {
   return String(s ?? '').replace(BAD_RE, (w) => w[0] + '*'.repeat(w.length - 1));
@@ -186,15 +220,17 @@ export function maskProfanity(s) {
 
 // Pinned and daily threads, by the bots that post them and by their fixed titles.
 const MOD_AUTHORS = new Set(['automoderator', 'visualmod', 'wsbapp']);
-const THREAD_TITLE = /\b(daily|weekend|weekly|earnings|megathread|discussion) (discussion )?thread\b|what are your moves|\bmegathread\b|\bdaily discussion\b/i;
+const THREAD_TITLE = /^(?:(?:daily|weekend|weekly|earnings|discussion)\s+)+thread\b|^what are your moves|\bmegathread\b/i;
 
 export function isWsbNoise(title, author = '') {
   const a = String(author).replace(/^\/?u\//i, '').toLowerCase();
   return MOD_AUTHORS.has(a) || THREAD_TITLE.test(String(title));
 }
 
-// Emoji: the terminal font has none, so they show as empty boxes.
-const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}]/gu;
+// Emoji and other symbols the terminal font cannot draw (they show as empty boxes):
+// pictographs, dingbats, arrows and stars (2B00-2BFF), technical symbols, keycaps,
+// flags, joiners, variation selectors, tag characters and private use.
+const EMOJI = /[\u{1F000}-\u{1FBFF}\u{2300}-\u{23FF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{3030}\u{303D}\u{3297}\u{3299}\u{20E3}\u{200D}\u{FE00}-\u{FE0F}\u{E0000}-\u{E007F}\u{E000}-\u{F8FF}\u{F0000}-\u{10FFFF}]/gu;
 export const stripEmoji = (s) => String(s ?? '').replace(EMOJI, '').replace(/\s+/g, ' ').trim();
 
 export function parseWsb(xml) {
@@ -277,7 +313,7 @@ export const TAB_FEEDS = {
   ],
 };
 
-export function makeNewsFeeds({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: 60_000 }), feeds = TAB_FEEDS } = {}) {
+export function makeNewsFeeds({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: 60_000 }), feeds = TAB_FEEDS, secTickers = secTickersFor(fetchImpl) } = {}) {
   function load(f) {
     return cache.cached(`newsfeed:${f.id}`, FEED_TTL, async () => {
       const xml = await fetchCapped(fetchImpl, f.url);
@@ -293,13 +329,16 @@ export function makeNewsFeeds({ fetchImpl = globalThis.fetch, cache = createCach
     const tab = String(rawTab || '').toUpperCase();
     const list = feeds[tab];
     if (!list) throw new Error(`unknown news tab ${tab}`);
+    // The SEC tab needs the ticker map too: fetch it alongside the feed, not after.
+    const mapP = tab === 'SEC' ? secTickers().then((g) => g.value.byCik, () => null) : null;
     const results = await Promise.allSettled(list.map(load));
     const ok = results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
     for (const [i, r] of results.entries()) if (r.status === 'rejected') console.error(`[news ${list[i].id}]`, r.reason?.message);
+    const merged = mergeItems(ok.map((r) => r.value), MAX_ITEMS);
     const names = (pick) => [...new Set(list.filter((_, i) => pick(results[i])).map((f) => f.name))];
     return {
       tab,
-      items: mergeItems(ok.map((r) => r.value), MAX_ITEMS),
+      items: mapP ? withTickers(merged, await mapP) : merged,
       sources: names((r) => r.status === 'fulfilled'),
       failed: names((r) => r.status === 'rejected').filter((n) => !names((r) => r.status === 'fulfilled').includes(n)),
       stale: ok.some((r) => r.stale),
