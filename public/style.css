@@ -1252,6 +1252,56 @@ a.ch-flag { cursor: pointer; }
 .desk.is-mobile .dp-head { cursor: default; }
 .desk.is-mobile .dp-add { height: 44px; }
 
+/* ---- DESK cards and presets (screens/desk-cards.js) ------------------------------ */
+/* A card is its WEIRD tile's panel in a DESK panel. It sizes with CSS only (container
+   queries), so no script redraws it when the box changes. */
+.desk-bar .desk-presets { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.desk-bar .desk-presets ~ .desk-add { margin-left: 0; }
+.desk-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-height: 30px; margin-bottom: 1px; padding: 4px 8px; background: var(--panel-2); border: 1px solid var(--accent); color: var(--text); font-size: 12px; }
+.desk-confirm[hidden] { display: none; }
+.desk-confirm:focus { outline: 0; }
+.desk-pick-list .desk-pick-group { display: flex; height: 22px; color: var(--dim); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; cursor: default; border-top: 1px solid var(--rule); }
+.desk-pick-list .desk-pick-group:first-child { border-top: 0; }
+.desk-pick-list .desk-pick-group:hover { background: transparent; }
+.dp.is-card .dp-link, .dp.is-card .dp-asof { visibility: hidden; }
+.dp.is-card .dp-body { display: flex; overflow: hidden; }
+.dp .dp-card { flex: 1 1 auto; min-width: 0; min-height: 0; box-shadow: none; container: dpcard / size; }
+.dp .dp-card:focus { box-shadow: inset 2px 0 0 var(--accent); }
+.dp .dp-card > .panel { min-height: 0; }
+.dp .dp-card .panel-body { min-height: 0; overflow: hidden; }
+.dp .dp-card .wd-line { overflow: hidden; }
+/* Narrow or short: each line on one row. */
+@container dpcard (max-height: 104px) or (max-width: 300px) {
+  .dp .dp-card :is(.wd-big, .wd-line, .wd-src) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+/* Short (3 x 3 cells on a short screen): tighter. */
+@container dpcard (max-height: 104px) {
+  .dp .dp-card .panel-body { padding: 4px 8px; gap: 1px; }
+  .dp .dp-card .wd-big { font-size: 18px; line-height: 1.15; }
+  .dp .dp-card .wd-line { min-height: 0; font-size: 11px; line-height: 15px; }
+  .dp .dp-card .wd-spark { min-height: 0; }
+  .dp .dp-card .wd-spark svg { height: 14px; }
+  .dp .dp-card .wd-src { margin-top: 1px; line-height: 12px; }
+}
+/* Bigger cards: a bigger headline, and the sparkline takes the room left. */
+@container dpcard (min-width: 420px) and (min-height: 200px) {
+  .dp .dp-card .panel-body { padding: 12px 14px; gap: 4px; }
+  .dp .dp-card .wd-big { font-size: 30px; }
+  .dp .dp-card .wd-line { font-size: 13px; }
+  .dp .dp-card .wd-spark { flex: 1 1 18px; min-height: 18px; max-height: 72px; }
+  .dp .dp-card .wd-spark svg { width: 100%; height: 100%; }
+  .dp .dp-card .wd-spark polyline { vector-effect: non-scaling-stroke; }
+}
+@container dpcard (min-width: 640px) and (min-height: 320px) {
+  .dp .dp-card .wd-big { font-size: 40px; }
+  .dp .dp-card .wd-line { font-size: 14px; }
+}
+.desk.is-mobile .dp.is-card { height: calc(var(--h) * 34px); min-height: 124px; }
+.desk.is-mobile .desk-bar { flex-wrap: wrap; height: auto; min-height: 26px; }
+.desk.is-mobile .desk-bar .desk-presets { order: 9; flex: 1 0 100%; margin: 0; padding: 3px 0 3px 8px; border-top: 1px solid var(--rule-strong); }
+.desk.is-mobile .desk-bar .desk-presets ~ .desk-add { margin-left: auto; }
+/* ---- end DESK cards ---- */
+
 /* ---- A numbered panel over the whole screen (keys 1 to 9 off stock screens) ---- */
 .panel.is-max {
   position: fixed; z-index: 6;

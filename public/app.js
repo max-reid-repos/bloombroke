@@ -266,7 +266,8 @@ export function parseCommand(raw, depth = 0) {
   if (head === 'DESK') {
     const args = parseDeskArgs(rest);
     const view = args.n ? `DESK ${args.n}` : 'DESK';
-    return { name: 'DESK', args, error: args.error, input: ['DESK', ...rest].join(' '), mutates: Boolean(args.reset), view };
+    // DESK cards: a preset (DESK WEIRD) changes the saved desk like RESET does.
+    return { name: 'DESK', args, error: args.error, input: ['DESK', ...rest].join(' '), mutates: Boolean(args.reset || args.preset), view };
   }
   if (head === 'PORTFOLIO') {
     const args = parsePfArgs(rest);

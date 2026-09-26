@@ -1,13 +1,17 @@
 // DESK: your own screen. Four desks, each a 12-column grid of panels. Every panel runs
 // any command in a same-origin frame of the app in embed mode (so every screen works
 // as it is), with its own command input, link group, as-of time, FULL and close.
-// + PANEL (in the bar, and the tile after the last panel) adds one. Drag a header to
-// move a panel; EDIT shows the corner to resize it. Keys: Alt+Arrows
+// + PANEL (in the bar, and the tile after the last panel) adds one; so does +CANAL or
+// +PANEL AAPL 1D typed on DESK. A WEIRD gauge added on its own is a card: its WEIRD
+// tile, not a frame (desk-cards.js). The presets in the bar (and DESK WEIRD, MACRO,
+// CRYPTO) load a whole desk, asking first when the desk holds panels of your own.
+// Drag a header to move a panel; EDIT shows the corner to resize it. Keys: Alt+Arrows
 // move the focused panel, Alt+Shift+Arrows resize it, Ctrl+[ and Ctrl+] cycle focus.
 // The layout maths and the saved state live in ../desk-layout.js.
 
 import { esc, q, panel, nyTime } from './markets.js';
 import * as L from '../desk-layout.js';
+import { cardGauge, cardHtml, cardBody, weirdPickItems, mergeCardRows, nextCardFetch, confirmKey, CARD_RETRY_MS } from './desk-cards.js';
 
 const MOBILE = '(max-width: 699px)';
 const ROWS_FIT = 16; // desk 1 is 16 rows tall: it fills the window
@@ -25,8 +29,8 @@ export function render(el, cmd, ctx) {
   }
   if (cmd.error) {
     el.innerHTML = panel('1', 'Desk', `
-      <p class="notice">DESK takes a desk number and RESET.</p>
-      <p class="muted examples">Try ${['DESK', 'DESK 2', 'DESK RESET'].map((c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`).join(' ')}</p>`, { cls: 'panel-solo' });
+      <p class="notice">DESK takes a desk number, RESET or a preset.</p>
+      <p class="muted examples">Try ${['DESK', 'DESK 2', 'DESK RESET', 'DESK WEIRD'].map((c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`).join(' ')}</p>`, { cls: 'panel-solo' });
     ctx.status('DESK: CHECK THE WORDS AFTER IT', 'warn');
     return undefined;
   }
@@ -50,6 +54,7 @@ export function render(el, cmd, ctx) {
       <nav class="tabs desk-tabs" aria-label="Desks">${[1, 2, 3, 4].map((k) => `<a class="tab${k === n ? ' is-active' : ''}" href="${esc(q(`DESK ${k}`))}" data-cmd="DESK ${k}"${k === n ? ' aria-current="page"' : ''}>${k}</a>`).join('')}</nav>
       <span class="desk-focus" aria-live="polite"></span>
       <span class="desk-hint">Drag a header to move, the corner to resize. Alt+Arrows move, Alt+Shift+Arrows resize, Ctrl+[ ] focus.</span>
+      <span class="desk-presets" role="group" aria-label="Preset desks">${L.PRESET_NAMES.map((k) => `<button type="button" class="desk-btn desk-preset" data-act="preset" data-preset="${k}">${k}</button>`).join('')}</span>
       <button type="button" class="desk-btn desk-add" data-act="add">+ PANEL</button>
       <button type="button" class="desk-btn desk-edit" data-act="edit" aria-pressed="false">EDIT</button>
     </div>
@@ -62,11 +67,16 @@ export function render(el, cmd, ctx) {
       </form>
       <ul class="desk-pick-list" role="listbox" aria-label="Commands"></ul>
     </div>
+    <div class="desk-confirm" role="alertdialog" aria-label="Load a preset" tabindex="-1" hidden>
+      <span class="desk-confirm-text"></span>
+      <button type="button" class="desk-btn" data-act="confirm-yes">ENTER: REPLACE</button>
+      <button type="button" class="desk-btn" data-act="confirm-no">ESC: KEEP</button>
+    </div>
     <div class="desk-grid" role="list"><button type="button" class="dp-add" data-act="add">+ PANEL</button></div>
     <div class="desk-empty" hidden>
       <p class="notice">Desk ${n} is empty.</p>
       <p class="muted">Add a panel and give it any command: a chart, NEWS, WATCH, HEATMAP, FX 500 USD THB.</p>
-      <p class="examples"><button type="button" class="desk-btn" data-act="add">+ PANEL</button></p>
+      <p class="examples"><button type="button" class="desk-btn" data-act="add">+ PANEL</button> ${L.PRESET_NAMES.map((k) => `<button type="button" class="desk-btn" data-act="preset" data-preset="${k}">${k}</button>`).join('')}</p>
     </div>
   </div>`;
   const desk = el.querySelector('.desk');
@@ -77,18 +87,20 @@ export function render(el, cmd, ctx) {
   const pickList = el.querySelector('.desk-pick-list');
   const empty = el.querySelector('.desk-empty');
   const addTile = el.querySelector('.dp-add');
+  const confirmEl = el.querySelector('.desk-confirm');
 
   const find = (id) => panels.find((p) => p.id === id);
   const order = () => L.stackOrder(panels);
   const numberOf = (id) => order().findIndex((p) => p.id === id) + 1;
   const nameOf = (id) => `${numberOf(id)}) ${find(id)?.cmd || ''}`;
-  const post = (f, msg) => { if (f?.loaded) f.iframe.contentWindow?.postMessage(msg, location.origin); };
+  const post = (f, msg) => { if (f?.loaded && f.iframe) f.iframe.contentWindow?.postMessage(msg, location.origin); };
 
   // --- panels in the DOM. A panel's node is never moved or re-created while it lives:
   // moving an iframe in the DOM reloads it. Position is CSS grid placement only.
   function makeNode(p) {
+    const g = p.card ? cardGauge(p.cmd) : null;
     const node = document.createElement('section');
-    node.className = 'dp';
+    node.className = g ? 'dp is-card' : 'dp';
     node.dataset.id = p.id;
     node.setAttribute('role', 'listitem');
     node.innerHTML = `<header class="dp-head">
@@ -101,24 +113,40 @@ export function render(el, cmd, ctx) {
         <a class="dp-btn dp-full" title="Open full screen">FULL</a>
         <button type="button" class="dp-btn dp-close" data-act="close" aria-label="Close panel">×</button>
       </header>
-      <div class="dp-body"><iframe loading="lazy" referrerpolicy="same-origin"></iframe></div>
+      <div class="dp-body">${g ? cardHtml(g, null) : '<iframe loading="lazy" referrerpolicy="same-origin"></iframe>'}</div>
       <span class="dp-resize" data-act="resize" aria-hidden="true"></span>`;
-    const iframe = node.querySelector('iframe');
-    const f = { node, iframe, loaded: false, visible: true };
-    iframe.addEventListener('load', () => {
-      f.loaded = true;
-      post(f, { type: 'bb:visible', on: f.visible });
-      post(f, { type: 'bb:link', on: Boolean(find(p.id)?.link) });
-    });
-    iframe.src = L.embedSrc(p.cmd);
+    const iframe = g ? null : node.querySelector('iframe');
+    const f = { node, iframe, card: g, cmd: p.cmd, html: '', loaded: false, visible: true };
+    if (iframe) {
+      iframe.addEventListener('load', () => {
+        f.loaded = true;
+        post(f, { type: 'bb:visible', on: f.visible });
+        post(f, { type: 'bb:link', on: Boolean(find(p.id)?.link) });
+      });
+      iframe.src = L.embedSrc(p.cmd);
+    }
     frames.set(p.id, f);
     grid.appendChild(node);
     io?.observe(node);
     return f;
   }
 
+  function dropNode(id, f) {
+    io?.unobserve(f.node);
+    f.node.remove();
+    frames.delete(id);
+  }
+
+  // A frame pointed at another command: load it (the load event sends visible and link).
+  function reloadFrame(p, f) {
+    f.cmd = p.cmd;
+    f.loaded = false;
+    f.iframe.src = L.embedSrc(p.cmd);
+    f.node.querySelector('.dp-asof').textContent = '';
+  }
+
   function paintPanel(p) {
-    const f = frames.get(p.id) || makeNode(p);
+    const f = frames.get(p.id);
     const { node, iframe } = f;
     node.querySelector('.dp-title').textContent = nameOf(p.id);
     const full = node.querySelector('.dp-full');
@@ -127,7 +155,7 @@ export function render(el, cmd, ctx) {
     const link = node.querySelector('.dp-link');
     link.dataset.link = p.link || 'none';
     link.title = p.link ? `Linked (${p.link}): a ticker picked here goes to the other ${p.link} panels. Click to change.` : 'Not linked. Click to link this panel with others.';
-    iframe.title = p.cmd;
+    if (iframe) iframe.title = p.cmd;
     node.classList.toggle('is-focused', p.id === focusedId);
     node.style.gridColumn = `${p.x + 1} / span ${p.w}`;
     node.style.gridRow = `${p.y + 1} / span ${p.h}`;
@@ -136,13 +164,9 @@ export function render(el, cmd, ctx) {
   }
 
   function layout() {
-    for (const [id, f] of frames) {
-      if (find(id)) continue;
-      io?.unobserve(f.node);
-      f.node.remove();
-      frames.delete(id);
-    }
+    L.syncFrames(frames, panels, { cardOf: (p) => (p.card ? cardGauge(p.cmd) : null), make: makeNode, drop: dropNode, reload: reloadFrame });
     panels.forEach(paintPanel);
+    syncCards();
     empty.hidden = panels.length > 0;
     grid.hidden = panels.length === 0;
     // The add tile: a row under the lowest panel, the whole width.
@@ -195,10 +219,13 @@ export function render(el, cmd, ctx) {
   function sendTo(id, c, { link = true } = {}) {
     const f = frames.get(id);
     if (!f) return;
-    if (f.loaded) post(f, { type: 'bb:run', c });
-    else f.iframe.src = L.embedSrc(c);
     const s = stored(c);
-    setPanels(panels.map((p) => (p.id === id ? { ...p, cmd: s } : p)));
+    // A card stays a card for another gauge; any other command makes it a framed screen.
+    const card = Boolean(find(id)?.card && cardGauge(s));
+    if (f.iframe && f.loaded) post(f, { type: 'bb:run', c });
+    else if (f.iframe) f.iframe.src = L.embedSrc(c);
+    if (f.iframe) f.cmd = s; // the frame shows it now: no reload
+    setPanels(panels.map((p) => (p.id === id ? { ...p, cmd: s, card } : p)));
     if (link) linkTicker(id, s);
   }
 
@@ -217,6 +244,7 @@ export function render(el, cmd, ctx) {
   }
 
   ctx.setCommandHook((c) => {
+    if (plusAdd(c)) return true;
     if (!focusedId || /^DESK\b/.test(c)) return false;
     const name = numberOf(focusedId);
     sendTo(focusedId, c);
@@ -228,12 +256,13 @@ export function render(el, cmd, ctx) {
   function onMessage(e) {
     if (e.origin !== location.origin) return;
     let id = null;
-    for (const [k, f] of frames) if (f.iframe.contentWindow === e.source) id = k;
+    for (const [k, f] of frames) if (f.iframe && f.iframe.contentWindow === e.source) id = k;
     if (!id) return;
     const m = e.data || {};
     const f = frames.get(id);
     if (m.type === 'bb:cmd' && typeof m.c === 'string') {
       const s = stored(m.c);
+      f.cmd = s; // moved inside the frame: it already shows this
       if (s !== find(id)?.cmd) {
         setPanels(panels.map((p) => (p.id === id ? { ...p, cmd: s } : p)));
         linkTicker(id, s);
@@ -276,6 +305,26 @@ export function render(el, cmd, ctx) {
   function onKey(e) {
     const t = e.target;
     const typed = t.matches?.('input, textarea, select') && t.value;
+    // A preset waiting to replace this desk: Enter on the page, the empty command bar or
+    // the confirm line replaces; Enter on a button, link or card does what it does. Esc keeps.
+    const where = t === document.body || t === document.documentElement ? 'page'
+      : t === confirmEl ? 'confirm'
+        : t.id === 'cmd' ? (t.value ? 'typing' : 'command') : 'control';
+    const act = pendingPreset && !e.altKey && !e.ctrlKey && !e.metaKey ? confirmKey(e.key, where) : null;
+    if (act) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (act === 'replace') loadPreset(pendingPreset);
+      else { closeConfirm(); ctx.status(`DESK ${n} KEPT`); }
+      return;
+    }
+    // Enter on a card opens its gauge.
+    if (e.key === 'Enter' && t.matches?.('.dp-card') && !e.altKey && !e.ctrlKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      ctx.run(t.dataset.card);
+      return;
+    }
     if (typed && (e.altKey || e.key === 'Escape')) return; // Alt+Arrows move by word in text
     if (!e.ctrlKey && !e.altKey && e.key !== 'Escape') return;
     if (deskKey({ key: e.key, alt: e.altKey, shift: e.shiftKey, ctrl: e.ctrlKey })) {
@@ -391,6 +440,12 @@ export function render(el, cmd, ctx) {
   });
 
   grid.addEventListener('click', (e) => {
+    // A card opens its gauge's own screen (a credit link in it opens its site).
+    const cardEl = e.target.closest('.dp-card');
+    if (cardEl) {
+      if (!e.target.closest('a[href]')) ctx.run(cardEl.dataset.card);
+      return;
+    }
     const b = e.target.closest('[data-act]');
     const node = e.target.closest('.dp');
     if (!b || !node) return;
@@ -421,6 +476,7 @@ export function render(el, cmd, ctx) {
     if (!c) return;
     inp.value = '';
     if (/^DESK\b/i.test(c)) { ctx.run(c); return; }
+    if (plusAdd(c)) return;
     setFocus(id);
     sendTo(id, c);
   });
@@ -435,15 +491,22 @@ export function render(el, cmd, ctx) {
     if (!on) closePicker();
   }
 
+  // Two groups: commands (framed screens), then every WEIRD gauge (cards).
   function pickItems() {
     const seen = new Set();
-    return ctx.suggest(pickInput.value)
-      .filter((s) => !s.usage && !/^DESK\b/.test(s.value) && !seen.has(s.value) && seen.add(s.value))
+    const weird = weirdPickItems(pickInput.value);
+    const inWeird = new Set(weird.map((s) => s.value));
+    const cmds = ctx.suggest(pickInput.value)
+      .filter((s) => !s.usage && !/^DESK\b/.test(s.value) && !inWeird.has(s.value) && !seen.has(s.value) && seen.add(s.value))
       .slice(0, 14);
+    return { cmds, weird };
   }
   function renderPicker() {
-    const items = pickItems();
-    pickList.innerHTML = items.map((s, i) => `<li role="option" data-i="${i}" data-value="${esc(s.value)}"><span class="sug-name">${esc(s.name)}</span><span class="sug-hint">${esc(s.hint)}</span></li>`).join('');
+    const { cmds, weird } = pickItems();
+    const li = (s) => `<li role="option" data-value="${esc(s.value)}"><span class="sug-name">${esc(s.name)}</span><span class="sug-hint">${esc(s.hint)}</span></li>`;
+    const head = (t) => `<li class="desk-pick-group" role="presentation">${esc(t)}</li>`;
+    pickList.innerHTML = (cmds.length && weird.length ? head('Commands') : '') + cmds.map(li).join('')
+      + (weird.length ? head('Weird data') + weird.map(li).join('') : '');
   }
   function openPicker() {
     picker.hidden = false;
@@ -460,7 +523,10 @@ export function render(el, cmd, ctx) {
     if (p.name === 'DESK') { ctx.status('A PANEL CANNOT HOLD A DESK', 'warn'); return; }
     if (p.name === 'UNKNOWN') { ctx.status('UNKNOWN COMMAND. TYPE HELP IN A PANEL TO SEE THEM ALL', 'warn'); return; }
     if (panels.length >= L.MAX_PANELS) { ctx.status(`A DESK HOLDS ${L.MAX_PANELS} PANELS`, 'warn'); return; }
-    const next = L.addPanel(panels, stored(c), L.newPanelSize(stored(c), ctx.parseCommand));
+    // A WEIRD gauge on its own is a card, 3 x 4 cells.
+    const card = Boolean(cardGauge(stored(c)));
+    const size = card ? { w: 3, h: 4, card } : L.newPanelSize(stored(c), ctx.parseCommand);
+    const next = L.addPanel(panels, stored(c), size);
     const added = next.find((o) => !find(o.id));
     setPanels(next);
     closePicker();
@@ -471,14 +537,111 @@ export function render(el, cmd, ctx) {
     ctx.status(`PANEL ADDED: ${stored(c)}`);
   }
 
+  // Typed on DESK: +CANAL, +PANEL AAPL 1D add a panel; + or +PANEL opens the picker.
+  function plusAdd(c) {
+    const plus = L.parseAdd(c);
+    if (!plus) return false;
+    if (plus.cmd) add(plus.cmd);
+    else openPicker();
+    return true;
+  }
+
+  // --- presets: load one into this desk, asking first over panels of your own ----------
+  let pendingPreset = null;
+  let focusBack = null; // where focus was before the confirm line took it
+  function closeConfirm() {
+    const had = confirmEl.contains(document.activeElement);
+    pendingPreset = null;
+    confirmEl.hidden = true;
+    if (had && focusBack?.isConnected) focusBack.focus({ preventScroll: true });
+    focusBack = null;
+  }
+  function loadPreset(name) {
+    closeConfirm();
+    closePicker();
+    setFocus(null);
+    // New screens in new nodes: nothing of the old desk keeps running under a new title.
+    for (const [id, f] of [...frames]) dropNode(id, f);
+    setPanels(L.presetPanels(name));
+    for (const p of panels) post(frames.get(p.id), { type: 'bb:link', on: Boolean(p.link) });
+    ctx.status(`DESK ${n}: ${name}`);
+  }
+  function askPreset(name) {
+    if (!L.hasUserPanels(panels)) { loadPreset(name); return; }
+    pendingPreset = name;
+    const k = panels.length;
+    confirmEl.querySelector('.desk-confirm-text').textContent = `Replace the ${k} ${k === 1 ? 'panel' : 'panels'} on desk ${n} with ${name}?`;
+    confirmEl.hidden = false;
+    // The line takes focus (a clicked preset button would take Enter otherwise); the
+    // command bar gets it back after.
+    const cmdBar = document.getElementById('cmd');
+    if (!confirmEl.contains(document.activeElement)) focusBack = document.activeElement === cmdBar ? cmdBar : null;
+    confirmEl.focus({ preventScroll: true });
+    ctx.status('');
+  }
+
+  // --- cards: one /api/weird fetch for every card on this desk ---------------------------
+  let cardRows = new Map();
+  let cardFetchedAt = 0;
+  let cardServerAt = NaN; // the last summary's updated time, server clock
+  let cardNext = 0;
+  let cardBusy = false;
+  let cardError = false;
+  const cardIds = () => [...new Set(panels.map((p) => (p.card ? cardGauge(p.cmd)?.id : null)).filter(Boolean))];
+  function fillCard(f) {
+    const d = cardRows.get(f.card.id) || (cardError ? { ok: false } : null);
+    const html = cardBody(f.card, d);
+    if (html === f.html) return; // the same reading: nothing is redrawn
+    f.html = html;
+    const body = f.node.querySelector('.dp-card .panel-body');
+    body.innerHTML = html;
+    // A big card stretches its sparkline to the width (CSS), so it may lose its shape.
+    body.querySelectorAll('svg.spark').forEach((s) => s.setAttribute('preserveAspectRatio', 'none'));
+  }
+  function planCards() {
+    cardNext = cardError ? cardFetchedAt + CARD_RETRY_MS : nextCardFetch(cardRows, cardIds(), cardFetchedAt, cardServerAt) || 0;
+  }
+  async function loadCards() {
+    if (cardBusy) return;
+    cardBusy = true;
+    cardFetchedAt = Date.now();
+    try {
+      const d = await ctx.fetchJSON('/api/weird', { signal: ctx.signal });
+      cardRows = mergeCardRows(cardRows, d?.gauges);
+      cardServerAt = Date.parse(d?.updated || '');
+      cardError = false;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      cardError = !cardRows.size;
+    } finally {
+      cardBusy = false;
+    }
+    planCards();
+    for (const f of frames.values()) if (f.card) fillCard(f);
+  }
+  function syncCards() {
+    if (!cardIds().length) return;
+    for (const f of frames.values()) if (f.card) fillCard(f);
+    if (!cardFetchedAt) loadCards();
+    else if (!cardBusy) planCards();
+  }
+  function tickCards() {
+    if (!document.hidden && cardNext && Date.now() >= cardNext && cardIds().length) loadCards();
+  }
+  const cardTimer = setInterval(tickCards, 15_000);
+  document.addEventListener('visibilitychange', tickCards);
+
   desk.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]');
     if (!b || b.closest('.dp')) {
       // A click on the bare desk lets go of the focused panel.
-      if (!e.target.closest('.dp, .desk-bar, .desk-picker')) setFocus(null);
+      if (!e.target.closest('.dp, .desk-bar, .desk-picker, .desk-confirm')) setFocus(null);
       return;
     }
-    if (b.dataset.act === 'edit') setEditing(!editing);
+    if (b.dataset.act === 'preset') askPreset(b.dataset.preset);
+    else if (b.dataset.act === 'confirm-yes') { if (pendingPreset) loadPreset(pendingPreset); }
+    else if (b.dataset.act === 'confirm-no') { closeConfirm(); ctx.status(`DESK ${n} KEPT`); }
+    else if (b.dataset.act === 'edit') setEditing(!editing);
     else if (b.dataset.act === 'add') { if (picker.hidden) openPicker(); else closePicker(); }
     else if (b.dataset.act === 'pick-close') closePicker();
   });
@@ -486,7 +649,7 @@ export function render(el, cmd, ctx) {
   pickInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closePicker(); } });
   el.querySelector('.desk-pick-form').addEventListener('submit', (e) => {
     e.preventDefault();
-    const c = pickInput.value.trim();
+    const c = L.parseAdd(pickInput.value)?.cmd ?? pickInput.value.trim();
     if (c) add(c);
   });
   pickList.addEventListener('mousedown', (e) => {
@@ -516,6 +679,7 @@ export function render(el, cmd, ctx) {
   fitRows();
   layout();
   ctx.status(panels.length ? '' : `DESK ${n} IS EMPTY`);
+  if (cmd.args.preset) askPreset(cmd.args.preset);
 
   return () => {
     window.removeEventListener('message', onMessage);
@@ -523,5 +687,7 @@ export function render(el, cmd, ctx) {
     window.removeEventListener('resize', onResize);
     mq.removeEventListener?.('change', onResize);
     io?.disconnect();
+    clearInterval(cardTimer);
+    document.removeEventListener('visibilitychange', tickCards);
   };
 }
