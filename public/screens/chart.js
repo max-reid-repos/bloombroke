@@ -531,17 +531,19 @@ export function rangeChart(root, ctx, opts) {
       return `<span class="ch-chip ${COMPARE_CLASSES[k]}"><span class="ch-chip-sw" aria-hidden="true"></span>${esc(s)} <span class="num ch-chip-pct" data-sym="${esc(s)}">${c?.error ? 'NO DATA' : ''}</span><button type="button" class="ch-chip-x" data-uncompare="${esc(s)}" aria-label="Remove ${esc(s)}">&times;</button></span>`;
     }).join('');
     const canCompare = compare.length < MAX_COMPARE;
-    // The ranges and the bar period on the left; the dates, the chart style and compare on
-    // the right (one group, so a narrow box wraps it whole onto a second row).
+    // One row, left to right: the ranges and the bar period | FROM TO | LINE CANDLES |
+    // + COMPARE. Everything after the bar period is one group (ch-right), so a narrow box
+    // wraps it whole onto a second row. Each .ch-grp starts with a thin separator, left
+    // off when the group starts a row (markRows).
     return `<div class="ch-bar">
       <div class="ch-rng"><nav class="tabs ch-tabs" aria-label="Chart range">${tabs}</nav>${per}</div>
       <div class="ch-right">
-        <div class="ch-dates${range.from || zoomed ? ' is-active' : ''}">
+        <div class="ch-dates ch-grp${range.from || zoomed ? ' is-active' : ''}">
           <label><span>FROM</span><input class="ch-date" name="from" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="10" placeholder="MM/DD/YYYY" aria-label="From date, MM/DD/YYYY"></label>
           <label><span>TO</span><input class="ch-date" name="to" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="10" placeholder="MM/DD/YYYY" aria-label="To date, MM/DD/YYYY"></label>
         </div>
-        <div class="ch-tools">
-          <span class="ch-seg" role="group" aria-label="Chart style">${['line', 'candle'].map((k) => `<button type="button" class="tab${style === k ? ' is-active' : ''}" data-style="${k}"${style === k ? ' aria-pressed="true"' : ''}>${k === 'line' ? 'LINE' : 'CANDLES'}</button>`).join('')}</span>
+        <span class="ch-seg ch-grp" role="group" aria-label="Chart style">${['line', 'candle'].map((k) => `<button type="button" class="tab${style === k ? ' is-active' : ''}" data-style="${k}"${style === k ? ' aria-pressed="true"' : ''}>${k === 'line' ? 'LINE' : 'CANDLES'}</button>`).join('')}</span>
+        <div class="ch-tools ch-grp">
           ${canCompare ? '<button type="button" class="tab ch-add" data-compare-add>+ COMPARE</button>' : ''}
           ${chips}
         </div>
@@ -562,6 +564,11 @@ export function rangeChart(root, ctx, opts) {
     if (el.hasAttribute?.('data-per-toggle')) return '[data-per-toggle]';
     return null;
   };
+  // A group that starts a row (the bar wrapped) drops its separator. Only a background
+  // changes, never a width, so this cannot flip the wrap back.
+  const markRows = () => {
+    for (const g of root.querySelectorAll('.ch-bar .ch-grp')) g.classList.toggle('is-row-start', g.offsetLeft < 2);
+  };
   const repaintBar = () => {
     const had = root.querySelector('.ch-bar');
     const act = document.activeElement;
@@ -570,6 +577,7 @@ export function rangeChart(root, ctx, opts) {
     had.outerHTML = controls();
     fillDates();
     paintChips();
+    markRows();
     if (focused) {
       const el = root.querySelector(`.ch-bar ${focused}`);
       if (el) { if (typed !== null) el.value = typed; el.focus(); }
@@ -1090,6 +1098,7 @@ export function rangeChart(root, ctx, opts) {
   const ro = typeof ResizeObserver === 'function' && !compactOpt ? new ResizeObserver(() => {
     clearTimeout(tightTimer);
     tightTimer = setTimeout(() => {
+      markRows();
       // By the plot the full controls would leave: tight under 180px of plot, roomy again
       // over 220px (hysteresis, so the switch cannot flip on its own change). The full
       // controls' height is measured while they are shown (they wrap on narrow boxes).
@@ -1105,6 +1114,7 @@ export function rangeChart(root, ctx, opts) {
     }, 120);
   }) : null;
   ro?.observe(root);
+  if (!compactOpt && typeof document === 'object') document.fonts?.ready.then(markRows);
 
   load();
   ctx.onCleanup(() => {
