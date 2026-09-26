@@ -10,7 +10,7 @@ import {
 } from '../public/screens/worldmap-geo.js';
 import { simplify, ringsToPath, buildMap } from '../scripts/build-worldmap.js';
 import { layerState, LAYERS } from '../public/screens/worldmap.js';
-import { instrumentById, resolveInstrument } from '../public/instruments.js';
+import { INSTRUMENTS, instrumentById, instrumentBySrc, resolveInstrument } from '../public/instruments.js';
 import { EXCHANGES } from '../public/screens/clock.js';
 import { WORLD } from '../data/world.js';
 import { MAX_LIST } from '../data/quotes.js';
@@ -142,6 +142,23 @@ test('worldmap mapping: each country has a known index, its CNBC symbol and exch
   assert.equal(resolveInstrument('IBEX'), null);
   assert.equal(resolveInstrument('ibex35').id, 'IBEX35');
   assert.equal(resolveInstrument('nifty').id, 'NIFTY50');
+});
+
+test('instruments: each CNBC symbol, id and alias exists once', () => {
+  const seen = new Map();
+  for (const i of INSTRUMENTS) {
+    assert.ok(!seen.has(i.src), `${i.src}: ${seen.get(i.src)} and ${i.id}`);
+    seen.set(i.src, i.id);
+  }
+  const keys = new Map();
+  for (const i of INSTRUMENTS) {
+    for (const k of [i.id, ...i.aliases].map((x) => x.toUpperCase())) {
+      assert.ok(!keys.has(k) || keys.get(k) === i.id, `${k}: ${keys.get(k)} and ${i.id}`);
+      keys.set(k, i.id);
+    }
+  }
+  // WORLDMAP reuses whatever id already carries its symbol.
+  for (const c of Object.values(COUNTRY_INDEX)) assert.equal(instrumentBySrc(c.src).id, c.id, c.src);
 });
 
 // ---- colour scale -----------------------------------------------------------------
