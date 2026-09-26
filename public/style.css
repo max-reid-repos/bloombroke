@@ -1276,3 +1276,10 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   .wd-table th, .wd-table td { padding: 0 6px; }
   .wd-chart { height: 200px; }
 }
+
+/* --- NEWS SEC tab rows (phase 4) ------------------------------------------------ */
+.news-filing .news-tkr { display: inline-block; width: 7ch; color: var(--accent); }
+.news-filing .news-link { color: inherit; }
+.news-filing .news-link:hover { color: var(--accent); text-decoration: none; }
+.news-row.is-dim .news-title, .news-row.is-dim .news-src { color: var(--dim); }
+/* --- end NEWS SEC tab rows ------------------------------------------------------ */

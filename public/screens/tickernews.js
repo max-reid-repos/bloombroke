@@ -7,6 +7,9 @@ import { errorHtml } from './profile.js';
 
 const TICKER = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 
+// The sources, in the panel's title strip.
+export const TICKER_SOURCES = 'NASDAQ · SA · SEC';
+
 // NEWS <ticker>. Returns null for plain NEWS so the market-wide screen handles it.
 export function parse(args) {
   if (!args.length) return null;
@@ -38,12 +41,13 @@ const escRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const wordRe = (t, flags = '') => new RegExp(`(^|[^A-Za-z0-9])${escRe(t)}([^A-Za-z0-9]|$)`, flags);
 
 // The feed tags many market-wide stories with a ticker. A story is about the company
-// when its headline names the ticker or the first word of the company name.
+// when its headline names the ticker or the first word of the company name. The
+// company's own SEC filings (about: true) always are.
 export function aboutTicker(items, ticker, name) {
   const tests = [wordRe(ticker)];
   const word = nameWord(name);
   if (word) tests.push(wordRe(word, 'i'));
-  return items.filter((n) => tests.some((t) => t.test(n.title || '')));
+  return items.filter((n) => n.about === true || tests.some((t) => t.test(n.title || '')));
 }
 
 export function render(el, cmd, ctx) {
@@ -53,7 +57,7 @@ export function render(el, cmd, ctx) {
     return;
   }
   const { ticker } = cmd.args;
-  el.innerHTML = panel('1', `${ticker} news`, `<div class="news-bar"></div><div class="news-body">${LOADING}</div>`, { cls: 'panel-solo', bodyCls: 'flush' });
+  el.innerHTML = panel('1', `${ticker} news`, `<div class="news-bar"></div><div class="news-body">${LOADING}</div>`, { cls: 'panel-solo', bodyCls: 'flush', meta: TICKER_SOURCES });
   const bar = el.querySelector('.news-bar');
   const body = el.querySelector('.news-body');
   let items = [];

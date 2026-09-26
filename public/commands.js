@@ -18,6 +18,7 @@ import * as profile from './screens/profile.js';
 import * as history from './screens/history.js';
 import * as dividends from './screens/dividends.js';
 import * as tickernews from './screens/tickernews.js';
+import * as news from './screens/news.js';
 import * as curve from './screens/curve.js';
 import * as bonds from './screens/bonds.js';
 import * as fxmatrix from './screens/fxmatrix.js';
@@ -41,6 +42,7 @@ export const EXTRA = [
   { name: 'PROFILE', screen: profile, takesArgs: true },
   { name: 'HISTORY', screen: history, takesArgs: true },
   { name: 'DIVIDENDS', screen: dividends, takesArgs: true },
+  { name: 'NEWS', screen: news }, // NEWS <tab> (MACRO, SEC, WIRES, WSB); plain NEWS falls through
   { name: 'NEWS', id: 'TICKERNEWS', screen: tickernews },
   { name: 'CURVE', screen: curve },
   { name: 'BONDS', screen: bonds },

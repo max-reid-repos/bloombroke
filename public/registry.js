@@ -96,9 +96,14 @@ export const REGISTRY = [
   },
   {
     name: 'NEWS', category: 'Markets', summary: 'Headlines that move markets, or about one company', takesTicker: true, bar: 2,
-    syntax: 'NEWS [<ticker>]', examples: ['NEWS', 'NEWS AAPL', 'TSLA NEWS'], keywords: ['headlines', 'stories', 'articles', 'press'],
-    options: [['<ticker>', 'Only headlines about that company']],
-    source: 'Nasdaq news feed', delay: 'A few minutes',
+    syntax: 'NEWS [MACRO|SEC|WIRES|WSB|<ticker>]', examples: ['NEWS', 'NEWS AAPL', 'TSLA NEWS', 'NEWS MACRO', 'NEWS SEC', 'NEWS WIRES', 'NEWS WSB'],
+    keywords: ['headlines', 'stories', 'articles', 'press', 'press releases', 'fed', 'bls', '8-k', 'wires', 'reddit', 'wallstreetbets', 'wsb'],
+    options: [
+      ['MARKETS', 'Market headlines (the default)'], ['MACRO', 'Fed and BLS releases'], ['SEC', 'Latest 8-K company filings'],
+      ['WIRES', 'Company press releases'], ['WSB', 'Hot posts on wallstreetbets'], ['<ticker>', 'Only headlines about that company'],
+    ],
+    source: 'CNBC, MarketWatch, Yahoo Finance; Federal Reserve, BLS; SEC EDGAR; PR Newswire, GlobeNewswire, Business Wire; Reddit; per company Nasdaq, Seeking Alpha, SEC EDGAR',
+    delay: 'A few minutes',
   },
 
   // --- Stocks and companies -----------------------------------------------------------

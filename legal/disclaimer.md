@@ -57,7 +57,7 @@ You alone are responsible for your investment and financial decisions and for th
 - Prices and charts: CNBC. US stocks: Nasdaq Last Sale.
 - RT means real time. DLY means delayed: futures about 10 minutes, indexes about 15 minutes.
 - Company data, calendars and the stock screener: Nasdaq. Filings and financial statements: US SEC EDGAR.
-- Headlines: CNBC, MarketWatch, Yahoo Finance and the Nasdaq news feed. Each headline links to the original publisher.
+- Headlines: CNBC, MarketWatch, Yahoo Finance, Nasdaq, Seeking Alpha, the Federal Reserve, BLS, SEC EDGAR, GlobeNewswire, PR Newswire, Business Wire and Reddit (r/wallstreetbets). Each headline links to the original publisher.
 - Exchange rates: ECB reference rates via Frankfurter, once a working day. Pairs without the euro are calculated from the euro rates.
 - Rates: US Treasury, Federal Reserve Bank of New York and Freddie Mac. Economy: FRED, Federal Reserve Bank of St. Louis. Inflation: US Bureau of Labor Statistics.
 - Economic calendar: Forex Factory. Options: Cboe, delayed 15 minutes. Crypto: CoinGecko.
