@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   pctToDepth, depthRange, capToSize, fishColor, pickExtremes, tankHeader, sizeLimits, seeded, makeRunner, render,
-  SPECIES, SPECIES_NAME, speciesOf, legendItems, legendHtml, toggleSector, sectorAlpha, DIM, sectorCentre, schoolStep,
+  SPECIES, SPECIES_NAME, speciesOf, FISH_SCALE, MAX_OF_H, legendItems, legendHtml, toggleSector, sectorAlpha, DIM, sectorCentre, schoolStep,
 } from '../public/screens/fishtank.js';
 import { heatmapStocks, fishtankStocks, SP100, SECTORS } from '../data/sp100.js';
 import { parseCommand, FKEYS } from '../public/app.js';
@@ -45,11 +45,15 @@ test('fishtank: size limits scale with the tank and stay in bounds', () => {
   const big = sizeLimits(1400, 720);
   const phone = sizeLimits(372, 608);
   assert.ok(big.max > phone.max);
-  for (const l of [big, phone, sizeLimits(10, 10), sizeLimits(5000, 3000)]) {
-    assert.ok(l.max >= 30 && l.max <= 88, `max ${l.max}`);
+  for (const l of [big, phone, sizeLimits(10, 10), sizeLimits(5000, 3000), sizeLimits(1400, 240)]) {
+    assert.ok(l.max >= 30 && l.max <= 88 * FISH_SCALE, `max ${l.max}`);
     assert.ok(l.min >= 9 && l.min < l.max);
     assert.ok(l.fallback > l.min && l.fallback < l.max);
   }
+  // Every species about 1.4 times the old size, the biggest held to a share of the height.
+  assert.ok(Math.abs(phone.max / (Math.sqrt(372 * 608) * 0.085) - FISH_SCALE) < 1e-9);
+  assert.ok(sizeLimits(1500, 520).max <= 520 * MAX_OF_H + 1e-9, 'a short, wide tank caps the mega-caps');
+  assert.ok(sizeLimits(1400, 720).max <= 720 * MAX_OF_H + 1e-9);
 });
 
 test('fishtank: colour scale, green up, red down, brighter with the move', () => {
@@ -285,6 +289,15 @@ test('fishtank legend: pressing a sector lights it, pressing it again clears it'
   assert.match(buttons[1], /data-sector="FIN" aria-pressed="true"/);
   assert.match(buttons[1], /aria-label="Financials: shark, 2 stocks"/);
   assert.match(html, /<span>TECH<\/span>/);
+});
+
+test('fishtank schools: the biggest fish at one depth keep clear of each other', () => {
+  const W = 1400; const L = sizeLimits(1400, 700).max;
+  const fish = Array.from({ length: 4 }, (_, i) => ({ sector: 'TECH', x: 700 + i * 4, vx: 10, speed: 15, face: 1, len: L, y: 300, depth: 0.5 }));
+  for (let i = 0; i < 60 * 20; i += 1) schoolStep(fish, 1 / 60, W, { centre: () => 700 });
+  const xs = fish.map((f) => f.x).sort((a, b) => a - b);
+  const gap = Math.min(...xs.slice(1).map((x, i) => x - xs[i]));
+  assert.ok(gap >= L * 0.9, `gap ${gap.toFixed(0)} for fish ${L.toFixed(0)} long`);
 });
 
 test('fishtank schools: fish stay in the tank, depth never moves, schools gather', () => {

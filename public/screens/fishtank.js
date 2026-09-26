@@ -167,16 +167,18 @@ export function schoolStep(fish, dt, W, { centre = () => null, hold = null, spre
     m.v += f.vx; m.n += 1;
     mean.set(f.sector, m);
   }
-  // Separation: fish that share a depth push apart sideways.
+  // Separation: fish that share a depth push apart sideways. The reach follows the fish
+  // lengths (plus a fifth for room), and the push grows with FISH_SCALE, so bigger fish clear
+  // each other as fast as the old, smaller ones did.
   for (let i = 0; i < fish.length; i += 1) {
     const a = fish[i];
     for (let j = i + 1; j < fish.length; j += 1) {
       const b = fish[j];
-      const reach = (a.len + b.len) * 0.5;
+      const reach = (a.len + b.len) * 0.6;
       if (Math.abs(a.y - b.y) > reach * 0.55) continue;
       const dx = b.x - a.x;
       if (Math.abs(dx) >= reach) continue;
-      const push = (1 - Math.abs(dx) / reach) * 36;
+      const push = (1 - Math.abs(dx) / reach) * 36 * FISH_SCALE;
       const s = dx > 0 ? 1 : dx < 0 ? -1 : (i % 2 ? 1 : -1);
       a.ax -= s * push; b.ax += s * push;
     }
@@ -852,10 +854,15 @@ const FLOOR = 22; // px of sand at the bottom
 const FRAME_MS = 1000 / 60 - 1.5; // about 60fps at most, whatever the display rate
 const ICE = 'hsla(201, 100%, 78%,';
 
-// Fish length limits for a tank w x h.
+// Fish length limits for a tank w x h. FISH_SCALE sizes every species up together; the
+// longest fish is also held to MAX_OF_H of the tank height, so on a short, wide tank the
+// mega-caps do not fill the water.
+export const FISH_SCALE = 1.4;
+export const MAX_OF_H = 0.19;
 export function sizeLimits(w, h) {
-  const max = clamp(Math.sqrt(w * h) * 0.085, 30, 88);
-  return { max, min: Math.max(9, max * 0.16), fallback: max * 0.4 };
+  const k = FISH_SCALE;
+  const max = Math.max(30, Math.min(clamp(Math.sqrt(w * h) * 0.085 * k, 30 * k, 88 * k), h * MAX_OF_H));
+  return { max, min: Math.min(Math.max(9 * k, max * 0.16), max * 0.3), fallback: max * 0.4 };
 }
 
 // The animation loop. It draws at most about 60 times a second, and only while nothing
