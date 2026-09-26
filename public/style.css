@@ -1226,18 +1226,17 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 }
 
 /* ---- WEIRD (phase 3: screens/weird.js, weird-gauges.js) --------------------------- */
-/* Rules between tiles come from each tile's right and bottom edge, so a short last row
-   leaves plain background, not a grey block. */
+/* The rules between tiles are each tile's own 1px outline, drawn into the 1px gaps, so
+   a short last row or a tall screen leaves plain background, not grey blocks or lines. */
 .wd-grid {
-  display: grid; gap: 0;
+  display: grid; gap: 1px; padding: 1px;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   align-content: start;
-  border-top: 1px solid var(--rule-strong); border-left: 1px solid var(--rule-strong);
 }
-.wd-tile { display: flex; min-width: 0; background: var(--bg); cursor: pointer; outline: 0; border-right: 1px solid var(--rule-strong); border-bottom: 1px solid var(--rule-strong); }
+.wd-tile { display: flex; min-width: 0; background: var(--bg); cursor: pointer; outline: 0; box-shadow: 0 0 0 1px var(--rule-strong); }
 .wd-tile > .panel { flex: 1; }
 .wd-tile:hover .panel-body, .wd-tile:focus .panel-body { background: var(--panel-2); }
-.wd-tile:focus { box-shadow: inset 2px 0 0 var(--accent); }
+.wd-tile:focus { box-shadow: 0 0 0 1px var(--rule-strong), inset 2px 0 0 var(--accent); }
 .wd-tile .panel-body { display: flex; flex-direction: column; gap: 2px; min-height: 112px; }
 .wd-big { font-size: 22px; font-weight: 600; line-height: 1.2; color: var(--text); overflow-wrap: anywhere; }
 .wd-big.is-none { color: var(--dim); }

@@ -31,8 +31,10 @@ export function tileBody(g, d) {
     <p class="wd-src">${esc(sourceLine(d, g.period))}</p>`;
 }
 
-function tile(g, i) {
-  return `<div class="wd-tile" data-cmd="${esc(g.command)}" tabindex="0" id="wd-t-${esc(g.id)}">${panel(String(i + 1), g.command, tileBody(g, null))}</div>`;
+// data-num: a number and Enter in the command bar opens this tile's own screen (not the
+// tile maximised). A bare digit stays typing, so 12 can be typed.
+export function tile(g, i) {
+  return `<div class="wd-tile" data-cmd="${esc(g.command)}" data-num="${i + 1}" tabindex="0" id="wd-t-${esc(g.id)}">${panel(String(i + 1), g.command, tileBody(g, null))}</div>`;
 }
 
 function grid(el, ctx) {
@@ -42,7 +44,8 @@ function grid(el, ctx) {
     const body = g && el.querySelector(`#wd-t-${g.id} .panel-body`);
     if (body) body.innerHTML = tileBody(g, d);
   };
-  // Type a tile's number and press Enter to open it.
+  // Type a tile's number and press Enter to open it. The command bar finds the tile by
+  // data-num; this hook covers a DESK panel, where that lookup is off.
   ctx.setCommandHook((c) => {
     const cmd = commandForNumber(c);
     if (!cmd) return false;

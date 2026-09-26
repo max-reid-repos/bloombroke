@@ -24,7 +24,8 @@ import { pool, decodeEntities } from '../data/weird/source.js';
 import { parseFredCsv } from '../data/economy.js';
 import { GAUGES, lastGoodStore } from '../data/weird/index.js';
 import { WEIRD_GAUGES } from '../public/screens/weird-gauges.js';
-import { tileBody, commandForNumber } from '../public/screens/weird.js';
+import { tileBody, commandForNumber, tile } from '../public/screens/weird.js';
+import { numberedItem, panelNumberInput } from '../public/app.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -321,4 +322,22 @@ test('3a fixes: canal drops repeated dates; last good is read from disk once', (
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('WEIRD: 12 and Enter opens gauge 12 (WSB), not the tile maximised; a bare digit stays typing', () => {
+  const html = tile(WEIRD_GAUGES[11], 11);
+  assert.match(html, /data-cmd="WSB"/);
+  assert.match(html, /data-num="12"/);
+  assert.doesNotMatch(html, /data-key=/, 'no instant key: 1 then 2 must type 12');
+  // The command bar's resolver: the numbered item comes before any panel to maximise.
+  const tiles = WEIRD_GAUGES.map((g, i) => ({ num: String(i + 1), cmd: g.command }));
+  const root = { querySelector: (sel) => {
+    const m = /^\[data-num="(\d+)"\]$/.exec(sel);
+    return m ? tiles.find((t) => t.num === m[1]) || null : null;
+  } };
+  assert.equal(numberedItem(root, panelNumberInput('12')).cmd, 'WSB');
+  assert.equal(numberedItem(root, panelNumberInput('23')).cmd, 'MACAU');
+  assert.equal(numberedItem(root, 24), null);
+  const src = readFileSync('public/app.js', 'utf8');
+  assert.match(src, /const item = numberedItem\(screen, n\);\s+if \(item \|\| maximize\(String\(n\)\)\)/);
 });

@@ -520,6 +520,14 @@ export function panelNumberInput(clean) {
   return /^[1-9]\d?$/.test(t) ? Number(t) : null;
 }
 
+// The item a number and Enter opens on a screen, or null: a did-you-mean row
+// (data-key, which keys 1 to 9 also open at once where digits are keys), or a numbered
+// item that opens only on number and Enter, never on a bare digit (data-num: WEIRD tile
+// 12 opens its gauge's own screen, WSB).
+export function numberedItem(root, n) {
+  return root.querySelector(`[data-key="${n}"]`) || root.querySelector(`[data-num="${n}"]`);
+}
+
 // The panel labelled "<n>) ..." on a screen (HOME: 1 MARKETS, 2 S&P 500...), or null.
 export function panelByNumber(root, n) {
   const prefix = `${n})`;
@@ -1077,7 +1085,7 @@ function boot() {
     // row 2, HOME panel 3). The same number again closes the panel. Otherwise it runs.
     const n = typed && !embed && tickerBar.hidden ? panelNumberInput(clean) : null;
     if (n) {
-      const item = screen.querySelector(`[data-key="${n}"]`);
+      const item = numberedItem(screen, n);
       if (item || maximize(String(n))) {
         input.value = '';
         draft = '';
