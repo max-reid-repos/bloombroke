@@ -316,7 +316,7 @@ test('FX live: XXX/USD quotes are inverted, the previous close is last minus cha
   close(l.prevRates.EUR, 1 / 1.2);
   close(l.rates.JPY, 150);
   close(l.prevRates.JPY, 151.5);
-  close(l.prevRates.THB, 33);
+  assert.equal(l.prevRates.THB, null, 'UNCH with no daily closes: the move is unknown, not 0');
   assert.equal(l.realTime, true);
   const m = crossRates(l.rates);
   close(m.EUR.JPY, 187.5);

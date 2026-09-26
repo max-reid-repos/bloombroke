@@ -33,8 +33,14 @@ export function parseNum(s) {
   return Number.isFinite(n) ? n : NaN;
 }
 
+// A number the source really sent: a blank or a word (UNCH) is NaN, never 0 (parseNum
+// reads '' as 0).
+export function parseChange(s) {
+  return /\d/.test(String(s ?? '')) ? parseNum(s) : NaN;
+}
+
 function numOrNull(s) {
-  const n = parseNum(s);
+  const n = parseChange(s);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -87,7 +93,7 @@ export async function fetchCnbcRows(fetchImpl, symbols, extra = {}) {
 // previous close onto the last price, so the real move is gone from the row (and a
 // previous close that differs is a rounded one, not a move either).
 export function noDayMove(r) {
-  return Boolean(r) && !Number.isFinite(parseNum(r.change)) && Number.isFinite(parseNum(r.last));
+  return Boolean(r) && !Number.isFinite(parseChange(r.change)) && Number.isFinite(parseNum(r.last));
 }
 
 // The day's move for one row: the source's change, or for a row with none the move
@@ -95,9 +101,14 @@ export function noDayMove(r) {
 // used only when that last close is the row's price within 0.5%. Otherwise null: unknown
 // shows as --, never as 0.00%.
 export function dayMove(r, fill = null) {
-  const change = parseNum(r?.change);
-  const pct = parseNum(r?.change_pct);
-  if (Number.isFinite(change)) return { change, changePct: Number.isFinite(pct) ? pct : 0 };
+  const change = parseChange(r?.change);
+  const pct = parseChange(r?.change_pct);
+  if (Number.isFinite(change)) {
+    // No percent from the source: from the change and the price before it, or unknown.
+    const before = parseNum(r?.last) - change;
+    const derived = Number.isFinite(before) && before !== 0 ? Math.round((change / Math.abs(before)) * 1e6) / 1e4 : null;
+    return { change, changePct: Number.isFinite(pct) ? pct : derived };
+  }
   const last = parseNum(r?.last);
   if (fill && Number.isFinite(fill.close) && Math.abs(fill.close - last) <= Math.abs(last) * 0.005) {
     return { change: fill.change, changePct: fill.changePct };
@@ -105,17 +116,88 @@ export function dayMove(r, fill = null) {
   return { change: null, changePct: null };
 }
 
-// Daily bars (oldest first) -> the move between the last two closes, or null.
-export function dailyMove(bars) {
+const NY = 'America/New_York';
+const nyDayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: NY, year: 'numeric', month: '2-digit', day: '2-digit' });
+// ms -> the New York day, YYYYMMDD.
+export const nyDayOf = (ms) => nyDayFmt.format(new Date(ms)).replace(/-/g, '');
+
+// Day of the week of a New York day (YYYYMMDD...): 0 Sunday to 6 Saturday.
+export const dayOfWeek = (d) => new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(4, 6)) - 1, Number(d.slice(6, 8)))).getUTCDay();
+
+// A daily bar the source dates on a weekend while the market was shut: any Saturday bar,
+// or a Sunday bar that never moved (open, high and low all the close, or no open at all:
+// spot gold gets one), which only repeats Friday's price. d: YYYYMMDD..., v the close,
+// o h l the open, high and low. Never used for crypto, which trades on weekends.
+export function weekendPlaceholder({ d, o, h, l, v }) {
+  const dow = dayOfWeek(d);
+  if (dow === 6) return true;
+  if (dow !== 0) return false;
+  return !Number.isFinite(o) || (o === v && h === v && l === v);
+}
+
+// Daily bars (oldest first) -> the move between the last two closes, or null, with the
+// close before it (prevClose), the New York day of the last bar (day, YYYYMMDD) and that
+// day's open, high and low when the source sent them. Weekend placeholder bars are left
+// out (allWeek: crypto keeps them), so on a Saturday the move is Friday's.
+export function dailyMove(bars, { allWeek = false } = {}) {
+  const pos = (n) => (Number.isFinite(n) && n > 0 ? n : undefined);
   const closes = (Array.isArray(bars) ? bars : [])
-    .map((b) => ({ t: Number(b?.tradeTimeinMills), v: Number(b?.close) }))
-    .filter((b) => Number.isFinite(b.t) && Number.isFinite(b.v))
+    .map((b) => {
+      const t = Number(b?.tradeTimeinMills);
+      const raw = String(b?.tradeTime || '');
+      const d = /^\d{8}/.test(raw) ? raw.slice(0, 8) : Number.isFinite(t) ? nyDayOf(t) : '';
+      return { t, d, v: Number(b?.close), o: pos(Number(b?.open)), h: pos(Number(b?.high)), l: pos(Number(b?.low)) };
+    })
+    .filter((b) => Number.isFinite(b.t) && Number.isFinite(b.v) && b.d)
+    .filter((b) => allWeek || !weekendPlaceholder(b))
     .sort((a, b) => a.t - b.t);
   if (closes.length < 2) return null;
   const [a, b] = closes.slice(-2);
   if (a.v === 0) return null;
   const change = Math.round((b.v - a.v) * 1e6) / 1e6;
-  return { close: b.v, change, changePct: Math.round((change / Math.abs(a.v)) * 1e6) / 1e4 };
+  const ohl = b.o !== undefined && b.h !== undefined && b.l !== undefined && b.h >= b.l ? { open: b.o, high: b.h, low: b.l } : {};
+  return { close: b.v, change, changePct: Math.round((change / Math.abs(a.v)) * 1e6) / 1e4, prevClose: a.v, day: b.d, ...ohl };
+}
+
+// Is an ISO time (the source's last_time) on a Saturday or Sunday in New York? A plain
+// day ("2026-09-25") is not a print time: false.
+function weekendPrint(iso) {
+  if (!iso || /^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return false;
+  const dow = dayOfWeek(nyDayOf(ms));
+  return dow === 0 || dow === 6;
+}
+
+// A row with no day's move (weekend, holiday) and a usable fill (dayMove): its numbers
+// from the last real session, so they agree with each other. change and changePct are
+// the fill's; prevClose is the close that move is from; last is the row's own price,
+// unless the row's price is a stray weekend print (a Saturday tick on spot gold), which
+// gives way to the session's close, and asOf then says that day (YYYY-MM-DD). open, high
+// and low are the session's from the daily bar when the row has only placeholders (0.00,
+// or the last price rolled onto all three). null when the row has its own move or no
+// fill fits.
+export function filledRow(r, fill) {
+  if (!r || !fill || !noDayMove(r)) return null;
+  const m = dayMove(r, fill);
+  if (!Number.isFinite(m.change)) return null;
+  const last = parseNum(r.last);
+  const stray = weekendPrint(r.last_time) && fill.close !== last && /^\d{8}$/.test(fill.day || '');
+  const o = numOrNull(r.open);
+  const h = numOrNull(r.high);
+  const l = numOrNull(r.low);
+  const placeholder = ![o, h, l].every((n) => Number.isFinite(n) && n > 0) || (o === h && h === l);
+  const ohl = placeholder
+    ? { open: fill.open ?? null, high: fill.high ?? null, low: fill.low ?? null }
+    : { open: o, high: h, low: l };
+  return {
+    last: stray ? fill.close : last,
+    asOf: stray ? `${fill.day.slice(0, 4)}-${fill.day.slice(4, 6)}-${fill.day.slice(6, 8)}` : r.last_time || null,
+    change: m.change,
+    changePct: m.changePct,
+    prevClose: Number.isFinite(fill.prevClose) ? fill.prevClose : null,
+    ...ohl,
+  };
 }
 
 // Rows for a fixed list ({ id, src, ... }) -> [{ ...item, last, change, changePct, asOf }].
@@ -127,14 +209,16 @@ export function parseListRows(list, rows, fillFor = () => null) {
     const r = bySrc.get(item.src);
     const last = parseNum(r?.last);
     if (!r || !Number.isFinite(last)) continue;
-    const { change, changePct } = dayMove(r, fillFor(r.symbol));
+    const fill = fillFor(r.symbol);
+    const filled = filledRow(r, fill);
+    const { change, changePct } = filled || dayMove(r, fill);
     const { src, aliases, markets, ...rest } = item;
     out.push({
       ...rest,
-      last,
+      last: filled ? filled.last : last,
       change,
       changePct,
-      asOf: r.last_time || null,
+      asOf: filled ? filled.asOf : r.last_time || null,
       ...freshness(r),
     });
   }
@@ -180,6 +264,16 @@ export function withBp(rows) {
   return out;
 }
 
+// The row's previous close. On weekends the source can send a real move (spot silver
+// +0.3755) and still roll its previous close onto the last price: that previous close
+// is the price before the move (last minus change), so the screen agrees with itself.
+function prevCloseOf(r, last, change) {
+  const prev = numOrNull(r.previous_day_closing);
+  if (!Number.isFinite(prev) || !Number.isFinite(change) || change === 0) return prev;
+  if (Math.abs(prev - last) > Math.abs(last) * 1e-6) return prev;
+  return Math.round((last - change) * 1e6) / 1e6;
+}
+
 // One CNBC row -> a single quote for the ticker screen, or null if the symbol is unknown.
 export function parseQuoteRow(r, ticker = r?.symbol, fill = null) {
   if (!r || Number(r.code) !== 0) return null;
@@ -188,6 +282,10 @@ export function parseQuoteRow(r, ticker = r?.symbol, fill = null) {
   const x = r.ExtendedMktQuote;
   const extLast = parseNum(x?.last);
   const inst = instrumentById(ticker);
+  // A weekend row takes its move, previous close, open and range from the daily bars
+  // when that is ready (filledRow); otherwise an unknown move stays null (shown as --).
+  const filled = filledRow(r, fill);
+  const move = filled || dayMove(r);
   return {
     ticker,
     symbol: r.symbol,
@@ -200,15 +298,10 @@ export function parseQuoteRow(r, ticker = r?.symbol, fill = null) {
     type: r.type || null,
     exchange: r.exchange || null,
     currency: r.currencyCode || null,
-    last,
-    // A weekend row with no move takes it from the daily closes when that is ready.
-    ...(() => {
-      const m = noDayMove(r) ? dayMove(r, fill) : null;
-      return m && Number.isFinite(m.change)
-        ? { change: m.change, changePct: m.changePct }
-        : { change: numOrNull(r.change) ?? 0, changePct: numOrNull(r.change_pct) ?? 0 };
-    })(),
-    asOf: r.last_time || null,
+    last: filled ? filled.last : last,
+    change: move.change,
+    changePct: move.changePct,
+    asOf: filled ? filled.asOf : r.last_time || null,
     marketCap: r.mktcapView || null,
     // A price's 52-week low or high of 0 is a placeholder (spot gold sends "0.00"), not
     // a number: missing, so the range comes from daily closes (data/range52.js).
@@ -221,15 +314,15 @@ export function parseQuoteRow(r, ticker = r?.symbol, fill = null) {
     eps: numOrNull(r.eps),
     divYield: r.dividendyield || null,
     volume: r.volume_alt || null,
-    open: numOrNull(r.open) || null,
-    high: numOrNull(r.high) || null,
-    low: numOrNull(r.low) || null,
-    prevClose: numOrNull(r.previous_day_closing),
+    open: filled ? filled.open : numOrNull(r.open) || null,
+    high: filled ? filled.high : numOrNull(r.high) || null,
+    low: filled ? filled.low : numOrNull(r.low) || null,
+    prevClose: filled ? filled.prevClose : prevCloseOf(r, last, move.change),
     extended: x && Number.isFinite(extLast) ? {
       session: x.type === 'POST_MKT' ? 'AFTER HOURS' : x.type === 'PRE_MKT' ? 'PRE-MARKET' : 'EXTENDED',
       last: extLast,
-      change: numOrNull(x.change) ?? 0,
-      changePct: numOrNull(x.change_pct) ?? 0,
+      change: numOrNull(x.change),
+      changePct: numOrNull(x.change_pct),
       asOf: x.last_time || null,
     } : null,
   };
@@ -245,12 +338,14 @@ export const DAILY_FILL_TTL = 10 * 60_000;
 export const FILL_WAIT_MS = 1500;
 const FILL_CONCURRENCY = 4;
 const ymd = (ms) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, '');
+// Crypto trades every day: its weekend daily bars are real ones.
+const allWeekSrc = (src) => ALL.some((i) => i.src === src && i.kind === 'crypto');
 export async function fetchDailyMove(fetchImpl, src, nowMs = Date.now()) {
   const url = `${BARS_URL}/${encodeURIComponent(src)}/1D/${ymd(nowMs - 14 * 86_400_000)}000000/${ymd(nowMs + 86_400_000)}000000/adjusted/EST5EDT.json`;
   const res = await fetchImpl(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
   if (!res.ok) throw new Error(`bars source HTTP ${res.status}`);
   const body = await res.json();
-  return dailyMove(body?.barData?.priceBars);
+  return dailyMove(body?.barData?.priceBars, { allWeek: allWeekSrc(src) });
 }
 
 export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache(), now = () => Date.now(), fillWaitMs = FILL_WAIT_MS } = {}) {

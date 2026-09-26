@@ -61,7 +61,7 @@ function statsHtml(d) {
 
 // "+1.9 bp" for yields, "+1.23 +0.37%" for everything else.
 export function changeText(d) {
-  if (isYield(d)) return `${fmtSigned(d.change * 100, 1)} bp`;
+  if (isYield(d)) return Number.isFinite(d.change) ? `${fmtSigned(d.change * 100, 1)} bp` : '--';
   return `${fmtSigned(d.change, decimalsOf(d))} ${fmtPct(d.changePct)}`;
 }
 

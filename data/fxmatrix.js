@@ -6,7 +6,7 @@
 import { createCache } from './cache.js';
 import { iso } from './lists.js';
 import { isoDaysAgo } from './fx.js';
-import { fetchCnbcRows, parseNum } from './quotes.js';
+import { fetchCnbcRows, parseNum, parseChange, noDayMove, filledRow, fetchDailyMove, DAILY_FILL_TTL } from './quotes.js';
 
 export const MATRIX_CODES = ['USD', 'EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD', 'CNY', 'THB'];
 const BASE = 'https://api.frankfurter.dev/v1';
@@ -49,8 +49,11 @@ export const LIVE_FX = {
 const LIVE_TTL = 30_000;
 
 // CNBC rows -> units per USD now and at the previous close (last minus change), or null
-// when any currency is missing, so the matrix never mixes sources.
-export function liveRates(rows, codes = MATRIX_CODES) {
+// when any currency is missing, so the matrix never mixes sources. A row with no day's
+// move (weekends: UNCH) takes it from its daily closes, fillFor(src) (see filledRow in
+// quotes.js); with none, its previous close is unknown (null), so every cell with that
+// currency shows --, never a made-up 0.00%.
+export function liveRates(rows, codes = MATRIX_CODES, fillFor = () => null) {
   const bySrc = new Map((rows || []).map((r) => [r.symbol, r]));
   const now = {};
   const prev = {};
@@ -60,13 +63,17 @@ export function liveRates(rows, codes = MATRIX_CODES) {
     if (c === 'USD') continue;
     const spec = LIVE_FX[c];
     const r = spec && bySrc.get(spec.src);
-    const last = parseNum(r?.last);
+    let last = parseNum(r?.last);
     if (!r || Number(r.code) !== 0 || !(last > 0)) return null;
-    const chg = parseNum(r.change);
-    const before = last - (Number.isFinite(chg) ? chg : 0);
-    if (!(before > 0)) return null;
+    const chg = parseChange(r.change);
+    let before = Number.isFinite(chg) ? last - chg : null;
+    const filled = noDayMove(r) ? filledRow(r, fillFor(spec.src)) : null;
+    if (filled && filled.last > 0 && filled.prevClose > 0) {
+      last = filled.last;
+      before = filled.prevClose;
+    }
     now[c] = spec.inverse ? 1 / last : last;
-    prev[c] = spec.inverse ? 1 / before : before;
+    prev[c] = before > 0 ? (spec.inverse ? 1 / before : before) : null;
     if (r.last_time && (!oldest || Date.parse(r.last_time) < Date.parse(oldest))) oldest = r.last_time;
     if (!(r.realTime === true || r.realTime === 'true')) realTime = false;
   }
@@ -77,7 +84,18 @@ export function makeFxMatrix({ fetchImpl = globalThis.fetch, cache = createCache
   async function getLive() {
     try {
       const { value, stale, fetchedAt } = await cache.cached('fxmatrix:live', LIVE_TTL, async () => {
-        const l = liveRates(await fetchCnbcRows(fetchImpl, Object.values(LIVE_FX).map((x) => x.src)));
+        const rows = await fetchCnbcRows(fetchImpl, Object.values(LIVE_FX).map((x) => x.src));
+        // Weekend rows (no move): their daily closes, one bars call per pair, kept 10
+        // minutes. A failed call leaves that pair's move unknown.
+        const fills = new Map(await Promise.all(rows.filter(noDayMove).map(async (r) => {
+          try {
+            const got = await cache.cached(`fxmatrix:fill:${r.symbol}`, DAILY_FILL_TTL, () => fetchDailyMove(fetchImpl, r.symbol, now().getTime()));
+            return [r.symbol, got.value];
+          } catch {
+            return [r.symbol, null];
+          }
+        })));
+        const l = liveRates(rows, MATRIX_CODES, (src) => fills.get(src) || null);
         if (!l) throw new Error('quotes source: missing FX rows');
         return { matrix: crossRates(l.rates), prev: crossRates(l.prevRates), asOf: l.asOf, realTime: l.realTime };
       });

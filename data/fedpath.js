@@ -9,7 +9,7 @@
 // chart and the table never close up around it.
 
 import { createCache } from './cache.js';
-import { fetchCnbcRows, parseNum } from './quotes.js';
+import { fetchCnbcRows, parseNum, parseChange } from './quotes.js';
 import { getRates } from './rates.js';
 
 export const FF_MONTHS = 18;
@@ -47,12 +47,13 @@ export function parseFedFutures(rows) {
     const price = /\d/.test(String(r.last ?? '')) ? parseNum(r.last) : NaN;
     const month = contractMonthOf(r);
     if (!Number.isFinite(price) || !month) continue;
-    const change = parseNum(r.change);
+    const change = parseChange(r.change);
     out.push({
       symbol: r.symbol,
       month,
       price,
-      change: Number.isFinite(change) ? change : 0,
+      // UNCH is the source saying unchanged; a missing change is unknown (null, shown --).
+      change: Number.isFinite(change) ? change : String(r.change ?? '').trim().toUpperCase() === 'UNCH' ? 0 : null,
       implied: impliedRate(price),
       asOf: r.last_time || null,
       realTime: r.realTime === true || r.realTime === 'true',

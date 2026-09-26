@@ -154,7 +154,7 @@ test('UNCH rows: filled from the last two daily closes, else null (never 0.00%)'
   assert.equal(noDayMove({ ...UNCH, previous_day_closing: '104.30' }), true, 'a rounded previous close is not a move either');
   // Brent's Friday: 106.60 -> 104.32, oldest first whatever order the bars come in.
   const fill = dailyMove([bar(25, 104.32), bar(23, 103.08), bar(24, 106.6)]);
-  assert.deepEqual(fill, { close: 104.32, change: -2.28, changePct: -2.1388 });
+  assert.deepEqual(fill, { close: 104.32, change: -2.28, changePct: -2.1388, prevClose: 106.6, day: '20260925' });
   assert.equal(dailyMove([bar(25, 104.32)]), null, 'one close is not a move');
   assert.equal(dailyMove(undefined), null);
   assert.deepEqual(dayMove(UNCH, fill), { change: -2.28, changePct: -2.1388 });

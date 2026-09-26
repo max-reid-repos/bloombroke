@@ -81,7 +81,9 @@ export function valuePortfolio(holdings, quotes = {}) {
     if (!q || !Number.isFinite(q.last)) return { ...base, ok: false, reason: 'noquote' };
     if (q.currency && q.currency !== 'USD') return { ...base, ok: false, reason: 'currency', last: q.last };
     const value = h.shares * q.last;
-    const change = Number.isFinite(q.change) ? q.change : 0;
+    // An unknown move (no change from the source) is unknown here too: NaN shows as --,
+    // and the day total is unknown while any counted holding's is.
+    const change = Number.isFinite(q.change) ? q.change : NaN;
     const dayGain = h.shares * change;
     const prev = value - dayGain;
     return {

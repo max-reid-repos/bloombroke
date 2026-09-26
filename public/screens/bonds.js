@@ -58,7 +58,7 @@ const pct = (v) => (Number.isFinite(v) ? `${fmtNum(v, 3)}%` : '--');
 
 function yieldCell(c, key) {
   if (!c) return `<td class="num bg-cell${key ? ' bg-key' : ''}"><span class="dim">--</span></td>`;
-  return `<td class="num bg-cell${key ? ' bg-key' : ''}"><a class="bg-y${tick(`bg:${c.id}`, c.last)}" href="${esc(q(c.cmd || c.id))}" data-cmd="${esc(c.cmd || c.id)}" tabindex="-1" title="${esc(`${c.id} as of ${c.asOf || '--'}`)}">${esc(fmtNum(c.last, 3))}</a> <span class="bg-d ${dirOf(Math.round(c.change * 1000))}">${esc(fmtSigned(c.change * 100, 1))}</span></td>`;
+  return `<td class="num bg-cell${key ? ' bg-key' : ''}"><a class="bg-y${tick(`bg:${c.id}`, c.last)}" href="${esc(q(c.cmd || c.id))}" data-cmd="${esc(c.cmd || c.id)}" tabindex="-1" title="${esc(`${c.id} as of ${c.asOf || '--'}`)}">${esc(fmtNum(c.last, 3))}</a> <span class="bg-d ${dirOf(Math.round(c.change * 1000))}">${esc(Number.isFinite(c.change) ? fmtSigned(c.change * 100, 1) : '--')}</span></td>`;
 }
 
 const groupRow = (region, cols) => `<tr class="group-row"><th colspan="${cols}" scope="rowgroup">${esc(region)}</th></tr>`;
