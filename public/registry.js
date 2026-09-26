@@ -79,6 +79,13 @@ export const REGISTRY = [
     syntax: 'MOVERS', examples: ['MOVERS'], keywords: ['gainers', 'losers', 'top', 'active', 'volume'],
     source: 'CNBC', delay: 'May be delayed',
   },
+  // --- TRENDING: most opened tickers here (data/trending.js) ---
+  {
+    name: 'TRENDING', category: 'Markets', summary: 'Most opened tickers on Bloombroke',
+    syntax: 'TRENDING', examples: ['TRENDING'], keywords: ['popular', 'most viewed', 'most opened', 'people', 'crowd', 'trending'],
+    source: 'Anonymous counts of ticker screens opened on Bloombroke; prices from CNBC', delay: 'The last hour, refreshed every minute',
+  },
+  // --- end TRENDING ---
   {
     name: 'HEATMAP', category: 'Markets', summary: 'The S&P 100 by sector, size and colour',
     syntax: 'HEATMAP', examples: ['HEATMAP'], keywords: ['map', 'treemap', 'sectors', 'colour', 'color'],
