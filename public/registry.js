@@ -303,8 +303,9 @@ export const REGISTRY = [
   },
   {
     name: 'DESK', category: 'Your stuff', summary: 'Build your own screen: any commands side by side, four desks',
-    syntax: 'DESK [1-4] [RESET]', examples: ['DESK', 'DESK 2', 'DESK RESET'], keywords: ['layout', 'workspace', 'panels', 'dashboard', 'custom'],
-    options: [['1-4', 'Which desk'], ['RESET', 'Start that desk again']],
+    // DESK cards: presets, and +<command> typed on DESK.
+    syntax: 'DESK [1-4] [RESET|WEIRD|MACRO|CRYPTO]', examples: ['DESK', 'DESK 2', 'DESK RESET', 'DESK WEIRD', 'DESK MACRO', 'DESK CRYPTO'], keywords: ['layout', 'workspace', 'panels', 'dashboard', 'custom', 'preset', 'cards'],
+    options: [['1-4', 'Which desk'], ['RESET', 'Start that desk again'], ['WEIRD', 'Twelve weird gauge cards'], ['MACRO', 'Rates, FX, CPI, macro news'], ['CRYPTO', 'Bitcoin, Ether, coins, news'], ['+<command>', 'On DESK: add a panel']],
     source: 'Saved in this browser', delay: 'Each panel its own',
   },
   {

@@ -146,7 +146,8 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
     }));
     // Stale when every gauge that has a value is showing a last good one.
     const good = rows.filter((r) => r.ok);
-    return { gauges: rows.map(summarize), updated: new Date(now()).toISOString(), stale: good.length > 0 && good.every((r) => r.stale) };
+    // ttl: DESK cards fetch this summary again when their gauge is due.
+    return { gauges: rows.map((r, i) => ({ ...summarize(r), ttl: gauges[i].ttl })), updated: new Date(now()).toISOString(), stale: good.length > 0 && good.every((r) => r.stale) };
   }
 
   return { getGauge, getWeird };

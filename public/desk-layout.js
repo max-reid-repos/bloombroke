@@ -1,5 +1,5 @@
 // DESK: the maths and the saved state behind the multi-panel workspace. A desk is a
-// 12-column grid of panels { id, cmd, x, y, w, h, link }, in grid units. Pure
+// 12-column grid of panels { id, cmd, x, y, w, h, link, card? }, in grid units. Pure
 // functions, so node:test can check them; screens/desk.js does the DOM.
 
 export const COLS = 12;
@@ -29,6 +29,57 @@ export const DEFAULT_DESK = [
   { id: 'p4', cmd: 'HEATMAP', x: 4, y: 9, w: 5, h: 7, link: null },
   { id: 'p5', cmd: 'MARKETS', x: 9, y: 9, w: 3, h: 7, link: null },
 ];
+
+// ---- Preset desks ------------------------------------------------------------------
+// One click (the bar) or DESK WEIRD / MACRO / CRYPTO loads one into the desk on show.
+// Each fills the 12 columns and the 16 rows that fit the window. card: true is a WEIRD
+// gauge drawn as its tile (screens/desk-cards.js), not a framed screen.
+const card = (cmd, x, y, w, h) => ({ cmd, x, y, w, h, card: true });
+const pane = (cmd, x, y, w, h, link = null) => ({ cmd, x, y, w, h, link });
+export const PRESETS = {
+  WEIRD: [
+    card('CANAL', 0, 0, 4, 4), card('PIZZA', 4, 0, 4, 4), card('DEGEN', 8, 0, 4, 4),
+    card('WAFFLE', 0, 4, 4, 4), card('PANIC', 4, 4, 4, 4), card('BILLIONS', 8, 4, 4, 4),
+    card('CHANCES', 0, 8, 4, 4), card('BOXRATE', 4, 8, 4, 4), card('EGGPRICE', 8, 8, 4, 4),
+    card('HOTDOG', 0, 12, 4, 4), card('OMENS', 4, 12, 4, 4), card('WSB', 8, 12, 4, 4),
+  ],
+  MACRO: [
+    pane('SPX 1Y', 0, 0, 6, 9), pane('CURVE', 6, 0, 3, 9), pane('NEWS MACRO', 9, 0, 3, 7),
+    card('CHANCES', 9, 7, 3, 3), card('BEIGE', 9, 10, 3, 3), card('TRUCKS', 9, 13, 3, 3),
+    pane('FXMATRIX', 0, 9, 5, 7), pane('CPI', 5, 9, 4, 7),
+  ],
+  CRYPTO: [
+    pane('BTC 1D', 0, 0, 6, 9, 'blue'), pane('ETH 1D', 6, 0, 6, 9),
+    pane('CRYPTO', 0, 9, 5, 7, 'blue'), pane('NEWS', 5, 9, 4, 7),
+    card('DEGEN', 9, 9, 3, 4), card('WSB', 9, 13, 3, 3),
+  ],
+};
+export const PRESET_NAMES = Object.keys(PRESETS);
+
+// A preset as desk panels, with ids p1, p2, ...
+export function presetPanels(name) {
+  return (PRESETS[name] || []).map((p, i) => ({ id: `p${i + 1}`, link: null, ...p }));
+}
+
+// The panels as { cmd, x, y, w, h, card }, in stack order, to compare two layouts.
+const shape = (panels) => stackOrder(panels).map((p) => `${p.cmd}|${p.x},${p.y},${p.w},${p.h}|${p.card ? 'card' : ''}`).join(';');
+
+// True when a desk holds panels the user put there: anything but empty, desk 1 out of
+// the box or an untouched preset. Loading a preset over them asks first.
+export function hasUserPanels(panels) {
+  if (!panels.length) return false;
+  const now = shape(panels);
+  return ![DEFAULT_DESK, ...PRESET_NAMES.map(presetPanels)].some((d) => shape(d) === now);
+}
+
+// Typed on DESK: +CANAL, + CANAL, +PANEL CANAL add a panel; + or +PANEL alone opens the
+// picker. -> { cmd } (cmd '' for the picker) or null for anything else.
+export function parseAdd(text) {
+  const m = /^\+\s*(.*)$/.exec(String(text ?? '').replace(/\s+/g, ' ').trim().toUpperCase());
+  if (!m) return null;
+  const rest = m[1].replace(/^PANEL\b\s*/, '').trim();
+  return { cmd: rest };
+}
 
 const int = (v, d) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : d);
 
@@ -136,11 +187,12 @@ export function newPanelSize(cmd, parse) {
   return { w: 6, h: CHART_SCREENS.includes(p.name) ? CHART_MIN_H : 7 };
 }
 
-export function addPanel(panels, cmd, { w = 6, h = 7 } = {}) {
+// card: a WEIRD gauge drawn as its tile (DESK cards), not a framed screen.
+export function addPanel(panels, cmd, { w = 6, h = 7, card = false } = {}) {
   if (panels.length >= MAX_PANELS) return panels;
   const size = clampPanel({ w, h });
   const spot = findSpot(panels, size.w, size.h);
-  return settle([...panels, { id: nextId(panels), cmd, ...size, ...spot, link: null }]);
+  return settle([...panels, { id: nextId(panels), cmd, ...size, ...spot, link: null, ...(card ? { card: true } : {}) }]);
 }
 
 export function removePanel(panels, id) {
@@ -195,7 +247,8 @@ function cleanPanels(list) {
     const id = /^p\d{1,4}$/.test(String(raw.id)) && !seen.has(raw.id) ? String(raw.id) : null;
     if (!cmd || !id) continue;
     seen.add(id);
-    out.push(clampPanel({ id, cmd, x: raw.x, y: raw.y, w: raw.w, h: raw.h, link: LINKS.includes(raw.link) ? raw.link : null }));
+    const card = raw.card === true ? { card: true } : {};
+    out.push(clampPanel({ id, cmd, x: raw.x, y: raw.y, w: raw.w, h: raw.h, link: LINKS.includes(raw.link) ? raw.link : null, ...card }));
   }
   return settle(out);
 }
@@ -215,7 +268,7 @@ export function serializeDesks(state, now = new Date()) {
   return {
     v: DESK_VERSION,
     active: state.active,
-    desks: state.desks.map((d) => ({ panels: d.panels.map(({ id, cmd, x, y, w, h, link }) => ({ id, cmd, x, y, w, h, link: link || null })) })),
+    desks: state.desks.map((d) => ({ panels: d.panels.map(({ id, cmd, x, y, w, h, link, card }) => ({ id, cmd, x, y, w, h, link: link || null, ...(card ? { card: true } : {}) })) })),
     updatedAt: now.toISOString(),
   };
 }
@@ -228,16 +281,19 @@ export function saveDesks(store, state, writable = true) {
   if (writable) store.set(DESK_KEY, serializeDesks(state));
 }
 
-// DESK, DESK 2, DESK RESET, DESK 3 RESET -> { n, reset } or { error: 'usage' }.
+// DESK, DESK 2, DESK RESET, DESK 3 RESET, DESK WEIRD, DESK 2 MACRO -> { n, reset,
+// preset? } or { error: 'usage' }. RESET and a preset do not go together.
 export function parseDeskArgs(args) {
   let n = null;
   let reset = false;
+  let preset = null;
   for (const t of args) {
     if (/^[1-4]$/.test(t) && n === null) n = Number(t);
-    else if (t === 'RESET' && !reset) reset = true;
+    else if (t === 'RESET' && !reset && !preset) reset = true;
+    else if (PRESETS[t] && !preset && !reset) preset = t;
     else return { error: 'usage' };
   }
-  return { n, reset };
+  return preset ? { n, reset, preset } : { n, reset };
 }
 
 // ---- Embedded panels ---------------------------------------------------------------
