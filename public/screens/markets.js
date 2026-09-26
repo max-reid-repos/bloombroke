@@ -94,30 +94,31 @@ export function nameCell(name, cmd, extra = '') {
     : `<th scope="row" class="name">${esc(name)}${extra}</th>`;
 }
 
-// Yields show their change in basis points (+0.3bp, worked out on the server), and the
-// 2s10s spread's last is in bp too. Prices show their change in %.
-export function fmtBp(n, decimals = 1) {
-  return Number.isFinite(n) ? `${fmtSigned(n, decimals)}bp` : '--';
+// Basis points (0.01 of a percentage point), the one format on every screen: a change
+// is signed (+3.8bp), a level such as the 2s10s spread is not (30.5bp). Takes bp.
+export function fmtBp(bp, { level = false } = {}) {
+  if (!Number.isFinite(bp)) return '--';
+  return `${level ? fmtNum(bp, 1) : fmtSigned(bp, 1)}bp`;
 }
 
 // A price that moved 2% or more either way: its change cell gets a thin box.
 export const BIG_MOVE_PCT = 2;
 
+// Yields and the 2s10s spread show their change in bp (changeBp, worked out on the
+// server) in the change cell; the Chg column, where there is one, stays empty for them.
+// A price shows its change in %, or -- when the source has no day's move for it.
 function marketRow(m, compact, chg = true) {
-  const bp = Number.isFinite(m.changeBp);
+  const bp = m.kind === 'yield';
   const d = dirOf(bp ? m.changeBp : m.change);
   const cmd = m.cmd || cmdForInstrument(m.id);
-  const last = m.unit === 'bp' ? fmtBp(m.last, 0) : fmtNum(m.last, m.decimals);
+  const last = m.unit === 'bp' ? fmtBp(m.lastBp, { level: true }) : fmtNum(m.last, m.decimals);
   const big = !bp && Math.abs(m.changePct) >= BIG_MOVE_PCT ? ' is-big' : '';
-  // With a change column (MARKETS) a yield's bp sits there and its % cell stays empty;
-  // without one (HOME) the bp takes the % cell.
-  const pct = bp ? (chg ? '' : fmtBp(m.changeBp)) : fmtPct(m.changePct);
   return `<tr${rowAttrs(cmd)}>
       ${nameCell(m.name, cmd)}
       <td class="tag">${freshTag(m)}</td>
       <td class="num last${tick(`mk:${m.id}:last`, m.last)}">${last}</td>
-      ${chg ? `<td class="num chg ${d}">${bp ? fmtBp(m.changeBp) : fmtSigned(m.change, m.decimals)}</td>` : ''}
-      <td class="num pct ${d}${big}">${pct}</td>
+      ${chg ? `<td class="num chg ${d}">${bp ? '' : fmtSigned(m.change, m.decimals)}</td>` : ''}
+      <td class="num pct ${d}${big}">${bp ? fmtBp(m.changeBp) : fmtPct(m.changePct)}</td>
       ${compact ? '' : `<td class="num time dim">${esc(fmtAsOf(m.asOf))}</td>`}
     </tr>`;
 }

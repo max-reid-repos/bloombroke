@@ -2,8 +2,7 @@
 // against today's target range. 100 minus the futures price is the average rate the
 // market is paying for that month. No meeting probabilities: this is the prices only.
 
-import { esc, fmtNum, fmtSigned, fmtAsOf, panel, LOADING } from './markets.js';
-import { fmtBp } from './rates.js';
+import { esc, fmtNum, fmtBp, fmtAsOf, panel, LOADING } from './markets.js';
 import { mountLines, legend } from './lines.js';
 import { freshTag } from '../freshness.js';
 
@@ -86,8 +85,8 @@ export function render(el, cmd, ctx) {
             <th scope="row" class="name">${esc(monthLabel(m.month))}</th>
             <td class="num last">${esc(`${fmtNum(m.implied, 3)}%`)}</td>
             <td class="num">${esc(fmtNum(m.price, 4))}</td>
-            <td class="num">${esc(Number.isFinite(m.vsEffective) ? `${fmtSigned(m.vsEffective, 1)} bp` : '--')}</td>
-            <td class="num chg bp">${esc(Number.isFinite(move) ? fmtBp(move) : '--')}</td>
+            <td class="num">${esc(fmtBp(m.vsEffective))}</td>
+            <td class="num chg bp">${esc(Number.isFinite(move) ? fmtBp(move * 100) : '--')}</td>
             <td class="num time dim">${esc(fmtAsOf(m.asOf))}</td>
           </tr>`;
         }).join('')}</tbody>
