@@ -82,7 +82,7 @@ The terminal stays free. Pro is $4.20 a month (Stripe subscription, USD): your o
 - Code: `pro/` (server), `migrations/` (SQLite schema, applied at start), `public/pro.js` and `public/screens/pro.js`, `public/screens/tape.js` (browser). Data lives in `var/pro.db` (SQLite via better-sqlite3, WAL).
 - Checkout requires ticking the Terms box (`consent_collection`), and the time is stored as `terms_accepted_at`. Stripe needs a Terms of service URL in the account's public details for that, and `/terms` must exist.
 - The PRO screen states the price, the monthly renewal, how to cancel, and: if we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month. `node scripts/shutdown-refunds.js <path/to/.env>` (admin only) does that: a dry run by default that prints counts and amounts, `--execute` (plus `--live` for a live key) to refund and cancel.
-- Bloombroke is run by Bloombroke, Singapore. Contact: hello@bloombroke.com.
+- Contact: hello@bloombroke.com.
 - One-time setup: `node scripts/stripe-setup.js <path/to/.env> [--live]` finds or makes the product, the $4.20 monthly price, a Billing Portal configuration and the webhook endpoint, and writes `STRIPE_PRICE_ID`, `STRIPE_PORTAL_CONFIG_ID`, `STRIPE_WEBHOOK_SECRET` and `PRO_SECRET` into that .env without printing them. Checkout stays closed until `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` and `PRO_SECRET` are all set.
 
 | Route | Does |

@@ -11,7 +11,7 @@ export const FEATURES = [
 export const COMING_NEXT = 'Coming next: price alerts. Not part of Pro yet.';
 
 export const SAVE_LINE = 'Save this key. It is your login on any device.';
-export const OPERATOR = 'Bloombroke is run by Bloombroke, Singapore.';
+export const OPERATOR = 'Run by Bloombroke.';
 export const CONTACT = 'hello@bloombroke.com';
 export const SHUTDOWN_LINE = 'If we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month.';
 

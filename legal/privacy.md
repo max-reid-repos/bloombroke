@@ -4,7 +4,7 @@ This policy explains what personal data Bloombroke collects, why, who receives i
 
 ## 1. Who we are
 
-Bloombroke (bloombroke.com) is run by {{OPERATOR}}, a company registered in Singapore ("we", "us"). We decide how your personal data is used.
+{{OPERATOR}} ("we", "us") runs bloombroke.com. We decide how your personal data is used.
 
 Our Data Protection Officer can be reached at {{CONTACT}}. Write to this address for any question, request or complaint about your personal data.
 
@@ -111,6 +111,6 @@ We may change this policy. The version number and date at the top of this page s
 
 ## 13. Contact
 
-{{OPERATOR}}, Singapore. Data Protection Officer: {{CONTACT}}.
+{{OPERATOR}}. Data Protection Officer: {{CONTACT}}.
 
 If you are not satisfied with our reply, you may contact Singapore's Personal Data Protection Commission.

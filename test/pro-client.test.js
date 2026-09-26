@@ -142,7 +142,7 @@ test('PRO screen copy: the save line, the key file, the mask, the free-user line
   assert.match(terms, /renews automatically every month/);
   assert.match(terms, /Cancel any time: type PRO and press MANAGE/);
   assert.ok(BUY_TERMS.includes('If we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month.'));
-  assert.equal(OPERATOR, 'Bloombroke is run by Bloombroke, Singapore.');
+  assert.equal(OPERATOR, 'Run by Bloombroke.');
   assert.equal(CONTACT, 'hello@bloombroke.com');
   assert.ok(txt.includes(CONTACT));
 });

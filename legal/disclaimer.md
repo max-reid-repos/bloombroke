@@ -4,7 +4,7 @@ Please read this before you rely on anything you see on Bloombroke. It forms par
 
 ## 1. Information and education only
 
-Bloombroke is run by {{OPERATOR}}, a company registered in Singapore ("we", "us"). Everything on bloombroke.com, including prices, charts, news headlines, screens, calculators, share images and the WHATIF certificates, is general information for education and entertainment only.
+{{OPERATOR}} ("we", "us") runs bloombroke.com. Everything on bloombroke.com, including prices, charts, news headlines, screens, calculators, share images and the WHATIF certificates, is general information for education and entertainment only.
 
 It is general in nature. It does not take into account your investment objectives, your financial situation or your particular needs, and nobody at Bloombroke has looked at your circumstances.
 

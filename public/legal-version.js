@@ -4,6 +4,6 @@
 // in a way people should agree to again, and LEGAL_UPDATED whenever any legal text changes.
 
 export const TERMS_VERSION = '1.0';
-export const LEGAL_UPDATED = '25 September 2026';
+export const LEGAL_UPDATED = '26 September 2026';
 export const OPERATOR = 'Bloombroke';
 export const CONTACT = 'hello@bloombroke.com';

@@ -1,6 +1,6 @@
 # Terms of Use
 
-These terms are a legal agreement between you and {{OPERATOR}}, a company registered in Singapore ("we", "us", "our"), which runs Bloombroke at bloombroke.com (the "service"). They cover the free terminal and the paid Pro plan.
+These terms are a legal agreement between you and {{OPERATOR}} ("we", "us", "our"), which runs the website at bloombroke.com (the "service"). They cover the free terminal and the paid Pro plan.
 
 Please read them. They limit what we are responsible for, and they say that the service gives information only, not investment advice.
 
@@ -126,4 +126,4 @@ We may change these terms. The version number and the date at the top of this pa
 
 ## 18. Contact
 
-{{OPERATOR}}, Singapore. Email: {{CONTACT}}.
+{{OPERATOR}}. Email: {{CONTACT}}.
