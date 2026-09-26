@@ -8,7 +8,7 @@
 // Without the daily call the bars carry no `e`, and the screen says "week of".
 
 import { createCache } from './cache.js';
-import { normalizeTicker, tickerSource, UA } from './quotes.js';
+import { normalizeTicker, tickerSource, UA, dayOfWeek, weekendPlaceholder } from './quotes.js';
 import { instrumentById } from '../public/instruments.js';
 import { PRESETS, parseDate, isoDay, nyToday } from '../public/ranges.js';
 import { barValid, isIntradayBar, presetSpanDays, parseBar, BARS } from '../public/bars.js';
@@ -65,6 +65,13 @@ const hasExtendedHours = (ticker) => !instrumentById(ticker);
 const hasVolume = (ticker) => { const inst = instrumentById(ticker); return !inst || inst.kind === 'future'; };
 // Crypto trades around the clock: its 1D and 5D are the last 24 hours and 5 days.
 const aroundTheClock = (ticker) => instrumentById(ticker)?.kind === 'crypto';
+// FX, spot metals, futures and the round-the-clock US indexes (the dollar index) trade
+// from Sunday evening to Friday 17:00 New York time. Their trading day runs 17:00 to
+// 17:00, as the market dates it (see sessionDay).
+const rollsAt17 = (ticker) => {
+  const inst = instrumentById(ticker);
+  return Boolean(inst) && (inst.kind === 'fx' || inst.kind === 'spot' || inst.kind === 'future' || (inst.kind === 'index' && Boolean(inst.allDay)));
+};
 
 export class ChartError extends Error {
   constructor(code, message) {
@@ -144,17 +151,66 @@ export function sessionVolume(points, mins) {
 // A bar from 04:00 to 20:00 New York time: pre-market, the session and after hours.
 const inExtended = (d) => { const hm = Number(d.slice(8, 12)); return hm >= 400 && hm < 2000; };
 
+const nextDay = (day, n = 1) => {
+  const t = new Date(Date.UTC(Number(day.slice(0, 4)), Number(day.slice(4, 6)) - 1, Number(day.slice(6, 8)) + n));
+  return t.toISOString().slice(0, 10).replace(/-/g, '');
+};
+
+// The trading day (YYYYMMDD) a bar starting at New York time d belongs to. By default its
+// calendar day. With roll (FX, spot metals, futures) the day runs 17:00 to 17:00: a bar
+// from 17:00 on belongs to the next day, and Sunday's bars to Monday. A Saturday bar, or
+// one from Friday 17:00 on, lands on a Saturday: no such market trades then.
+export function sessionDay(d, roll = false) {
+  const day = d.slice(0, 8);
+  if (!roll) return day;
+  const dow = dayOfWeek(day);
+  if (dow === 6) return day;
+  if (dow === 0) return nextDay(day);
+  return startMin(d) >= 17 * 60 ? nextDay(day) : day;
+}
+
+// A Sunday with fewer intraday bars than this is a stray print, not a session.
+export const MIN_SESSION_BARS = 3;
+
+// Intraday bars without the stray weekend ones, for everything but crypto. The source now
+// and then sends a lone print on a day the market is shut (AAPL at 12:20 on a Saturday,
+// the S&P 500 at 12:10 on a Sunday), which would otherwise be "the last session".
+// Dropped: every bar on a Saturday trading day (see sessionDay), and a Sunday with fewer
+// than MIN_SESSION_BARS bars (a Sunday with more is a real session: Asian markets open on
+// Sunday evening, New York time). Weekdays are always kept, however few bars they have:
+// some series (the Baltic Dry index) print once a day, and a session may have just begun.
+export function dropStrays(points, { roll = false } = {}) {
+  const count = new Map();
+  for (const p of points) {
+    const day = sessionDay(p.d, roll);
+    count.set(day, (count.get(day) || 0) + 1);
+  }
+  const keep = (day) => {
+    const dow = dayOfWeek(day);
+    if (dow === 6) return false;
+    return dow !== 0 || count.get(day) >= MIN_SESSION_BARS;
+  };
+  return points.filter((p) => keep(sessionDay(p.d, roll)));
+}
+
+// Daily bars without the placeholders the source dates on a weekend (weekendPlaceholder
+// in quotes.js: a Saturday bar, or a Sunday bar that never moved), for everything but
+// crypto: the market was shut, and the price is Friday's again.
+export const dropWeekendDaily = (points) => points.filter((p) => !weekendPlaceholder(p));
+
 // Keep the most recent trading day(s). For US symbols keep the regular session only,
-// or with ext (a stock's 1D) pre-market and after hours too.
-export function lastSession(points, { usSession = true, sessions = 1, ext = false, mins = 5 } = {}) {
+// or with ext (a stock's 1D) pre-market and after hours too. roll: days run 17:00 to
+// 17:00 (sessionDay). Stray days are dropped before this (dropStrays).
+export function lastSession(points, { usSession = true, sessions = 1, ext = false, mins = 5, roll = false } = {}) {
   const inSession = (p) => {
     if (!usSession) return true;
     return ext ? inExtended(p.d) : inRegular(p.d, mins);
   };
   const kept = points.filter(inSession);
   if (!kept.length) return [];
-  const days = [...new Set(kept.map((p) => p.d.slice(0, 8)))].slice(-sessions);
-  return kept.filter((p) => days.includes(p.d.slice(0, 8)));
+  const dayOf = (p) => sessionDay(p.d, roll);
+  const days = [...new Set(kept.map(dayOf))].slice(-sessions);
+  return kept.filter((p) => days.includes(dayOf(p)));
 }
 
 // The last `days` x 24 hours before the last bar (crypto).
@@ -374,16 +430,26 @@ export function makeCharts({ fetchImpl = globalThis.fetch, cache = createCache({
     if (body?.status === 'ERROR' || !body?.barData) return { points: [], notFound: true };
     let points = shapeBars(body.barData.priceBars, { volume: hasVolume(ticker) });
     const mins = ({ '1M': 1, '5M': 5, '30M': 30, '1H': 60 }[win.bar]) || 5;
-    if (win.sessions && aroundTheClock(ticker)) points = lastHours(points, win.sessions);
-    else if (win.sessions) points = lastSession(points, { usSession: session, sessions: win.sessions, ext: win.ext && hasExtendedHours(ticker), mins });
-    else if (win.regular && session) points = points.filter((p) => inRegular(p.d, mins));
-    if (intraday && session) {
+    const allWeek = aroundTheClock(ticker);
+    const roll = rollsAt17(ticker);
+    // Stray weekend prints out first, so the last session is a real one (Friday's, on a
+    // weekend) and the chart ends on its close.
+    if (!allWeek && intraday) points = dropStrays(points, { roll });
+    if (!allWeek && win.bar === '1D') points = dropWeekendDaily(points);
+    const dailyBars = () => {
       const d = daily.status === 'fulfilled' ? shapeBars(daily.value?.barData?.priceBars) : [];
-      points = officialCloses(points, d, mins);
-    }
+      return allWeek ? d : dropWeekendDaily(d);
+    };
+    // 1D and 5D: intraday bars keep the last trading day(s); daily bars (5D with D) are
+    // the last five, with no session filter (a daily bar is stamped at midnight).
+    if (win.sessions && !intraday) points = points.slice(-win.sessions);
+    else if (win.sessions && allWeek) points = lastHours(points, win.sessions);
+    else if (win.sessions) points = lastSession(points, { usSession: session, sessions: win.sessions, ext: win.ext && hasExtendedHours(ticker), mins, roll });
+    else if (win.regular && session) points = points.filter((p) => inRegular(p.d, mins));
+    if (intraday && session) points = officialCloses(points, dailyBars(), mins);
     if (intraday) points = sessionVolume(points, mins);
     if (long) {
-      const d = daily.status === 'fulfilled' ? shapeBars(daily.value?.barData?.priceBars) : [];
+      const d = dailyBars();
       if (d.length) points = barEnds(points, d);
       const today = nyToday(now());
       points = points.map((p) => (isPartial(p.d, win.bar, today) ? { ...p, p: true } : p));

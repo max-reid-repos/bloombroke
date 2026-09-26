@@ -3,7 +3,7 @@
 // via Wikipedia). Update the list when the index changes.
 
 import { createCache } from './cache.js';
-import { fetchCnbcRows, parseNum } from './quotes.js';
+import { fetchCnbcRows, parseNum, parseChange } from './quotes.js';
 import { capNum, iso } from './lists.js';
 
 export const SP100_AS_OF = '2026-09-21';
@@ -61,6 +61,8 @@ export const SP100 = [
 
 const TTL = 2 * 60_000;
 
+const isUnch = (s) => String(s ?? '').trim().toUpperCase() === 'UNCH';
+
 // CNBC rows -> one entry per member that has a price.
 export function parseSp100(rows, members = SP100) {
   const bySym = new Map(rows.map((r) => [r.symbol, r]));
@@ -70,14 +72,16 @@ export function parseSp100(rows, members = SP100) {
     if (!r || Number(r.code) !== 0) continue;
     const last = parseNum(r.last);
     if (!Number.isFinite(last)) continue;
-    const change = parseNum(r.change);
-    const changePct = parseNum(r.change_pct);
+    const change = parseChange(r.change);
+    const changePct = parseChange(r.change_pct);
     const volume = parseNum(r.volume);
     out.push({
       ...m,
       last,
-      change: Number.isFinite(change) ? change : 0,
-      changePct: Number.isFinite(changePct) ? changePct : 0,
+      // The source's UNCH is a flat day (a stock keeps its last session's move through the
+      // weekend); a missing change stays null (shown as --), never a made-up 0.00%.
+      change: Number.isFinite(change) ? change : isUnch(r.change) ? 0 : null,
+      changePct: Number.isFinite(changePct) ? changePct : isUnch(r.change_pct) ? 0 : null,
       volume: Number.isFinite(volume) ? volume : null,
       marketCap: capNum(r.mktcapView),
       asOf: r.last_time || null,

@@ -101,9 +101,11 @@ export function sectorLabel(name, pctText, w) {
 }
 
 // Cap-weighted % change of a group.
+// Stocks with an unknown move are left out of it.
 export function weightedPct(stocks) {
-  const cap = stocks.reduce((t, s) => t + s.marketCap, 0);
-  return cap > 0 ? stocks.reduce((t, s) => t + s.changePct * s.marketCap, 0) / cap : 0;
+  const known = stocks.filter((s) => Number.isFinite(s.changePct));
+  const cap = known.reduce((t, s) => t + s.marketCap, 0);
+  return cap > 0 ? known.reduce((t, s) => t + s.changePct * s.marketCap, 0) / cap : null;
 }
 
 export function heatmapSvg(stocks, width, height) {
