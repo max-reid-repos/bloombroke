@@ -206,7 +206,7 @@ test('chart bars: shape, sort, and the last regular session', () => {
   assert.equal(pts.length, 5);
   assert.ok(pts.every((p, i) => i === 0 || p.t >= pts[i - 1].t));
   const day = lastSession(pts);
-  assert.deepEqual(day.map((p) => p.d), ['20260924093000', '20260924160000'], 'pre-market today and after-hours ticks are dropped');
+  assert.deepEqual(day.map((p) => p.d), ['20260924093000'], 'pre-market today, the 16:00 bar (after-bell prints) and after-hours ticks are dropped');
   assert.equal(lastSession(pts, { usSession: false }).length, 1);
 });
 

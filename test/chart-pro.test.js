@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { BARS, barValid, barsForPreset, AUTO_BAR, zoomBar, parseBar, presetSpanDays } from '../public/bars.js';
 import {
   shapeBars, lastSession, inRegular, lastHours, mergeBars, chartWindow, chunks, chartSpecFromQuery, makeCharts, readJson,
+  officialCloses, sessionVolume, clipBars, mergeFactor,
 } from '../data/charts.js';
+import { createCache } from '../data/cache.js';
 import {
-  lineIndexes, candleBuckets, zoomWindow, timeAt, unitAt, durationText, measure, alignAsOf, rebase,
+  lineIndexes, candleBuckets, zoomWindow, timeAt, unitAt, durationText, measure, alignAsOf, rebase, commonStart,
   placeEvents, axisLabels, barInfo, headerStats, fmtVol, whenText, fmtDateBox, parseDateBox, windowDays,
 } from '../public/screens/chart-math.js';
 import { earningsFrom8K, exDivFromRows, parseEventData, makeChartEvents } from '../data/chart-events.js';
@@ -37,7 +39,7 @@ test('bar sizes: only valid combos per range', () => {
   assert.equal(barValid('1M', { spanDays: 2, ageDays: 400 }), false, 'too old for 1m bars');
   assert.equal(barValid('15M', { spanDays: 1 }), false);
   assert.equal(presetSpanDays('YTD', NOW), 268);
-  assert.deepEqual([AUTO_BAR['1D'], AUTO_BAR['5D'], AUTO_BAR['1M'], AUTO_BAR['1Y'], AUTO_BAR['5Y'], AUTO_BAR.MAX], ['1M', '5M', '1H', '1D', '1W', null]);
+  assert.deepEqual([AUTO_BAR['1D'], AUTO_BAR['5D'], AUTO_BAR['1M'], AUTO_BAR['1Y'], AUTO_BAR['5Y'], AUTO_BAR.MAX], ['1M', '5M', '1D', '1D', '1W', null]);
   for (const r of Object.keys(AUTO_BAR)) if (AUTO_BAR[r]) assert.ok(barsForPreset(r, NOW).find((b) => b.bar === AUTO_BAR[r]).ok, `${r} auto bar is valid`);
 });
 
@@ -99,22 +101,87 @@ test('CNBC 1m bars: OHLC and volume, pre-market, session and after hours', () =>
   const ext = lastSession(pts, { ext: true, mins: 1 });
   assert.deepEqual(ext.map((p) => p.d.slice(8, 12)), ['0400', '0929', '0930', '1000', '1559', '1600', '1601', '1959']);
   const reg = lastSession(pts, { mins: 1 });
-  assert.deepEqual(reg.map((p) => p.d.slice(8, 12)), ['0930', '1000', '1559', '1600']);
-  // An index settles a few minutes after 16:00.
-  assert.equal(inRegular('20260925160400', 1, 1605), true);
-  assert.equal(inRegular('20260925160600', 1, 1605), false);
+  assert.deepEqual(reg.map((p) => p.d.slice(8, 12)), ['0930', '1000', '1559'], 'the 16:00 bar holds only prints after the bell');
+  assert.equal(inRegular('20260925155900', 1), true);
+  assert.equal(inRegular('20260925160000', 1), false);
+  assert.equal(inRegular('20260925155500', 5), true);
+  assert.equal(inRegular('20260925160000', 5), false, 'the 16:00 5m bar closes on a 16:04 trade');
   // 1h bars: the 09:00 bar holds the open, the 16:00 bar is after hours.
   assert.equal(inRegular('20260925090000', 60), true);
   assert.equal(inRegular('20260925160000', 60), false);
   assert.equal(inRegular('20260925080000', 60), false);
   // The chart's sessions: by New York time and bar length.
   const info = barInfo(ext, 1);
-  assert.deepEqual(info.map((x) => x.session), ['pre', 'pre', 'regular', 'regular', 'regular', 'regular', 'post', 'post']);
+  assert.deepEqual(info.map((x) => x.session), ['pre', 'pre', 'regular', 'regular', 'regular', 'post', 'post', 'post']);
   assert.equal(barInfo([{ t: ET('09:00') }], 60)[0].session, 'regular');
   assert.equal(barInfo([{ t: ET('08:00') }], 60)[0].session, 'pre');
   // Crypto: the last 24 hours, not the last calendar day.
   const btc = [{ t: 0, v: 1 }, { t: DAY - 60_000, v: 2 }, { t: DAY + 5 * 60_000, v: 3 }];
   assert.deepEqual(lastHours(btc, 1).map((p) => p.v), [2, 3]);
+});
+
+test('the session closes on the official close; intraday volume only in the session', () => {
+  const day = (d) => ({ d: `${d}000000`, t: 0, v: d === '20260925' ? 341.07 : 335.92 });
+  const pts = shapeBars([
+    cnbc('15:55', 340.9, { o: 340.8, h: 341.0, l: 340.7, vol: 900_000, day: '20260924' }),
+    cnbc('16:00', 336.0, { vol: 1_360_000_000, day: '20260924' }),
+    cnbc('09:30', 336.5, { vol: 2_000_000 }),
+    cnbc('15:55', 340.98, { o: 340.9, h: 341.0, l: 340.85, vol: 5_000_000 }),
+    cnbc('16:00', 341.2, { vol: 4_930_000 }),
+  ]);
+  const reg = pts.filter((p) => inRegular(p.d, 5));
+  const fixed = officialCloses(reg, [day('20260924'), day('20260925')], 5);
+  assert.deepEqual(fixed.map((p) => p.v), [335.92, 336.5, 341.07], 'each finished session ends on its daily close');
+  assert.equal(fixed[2].h, 341.07, 'the high widens to hold the close');
+  assert.equal(fixed[0].l, 335.92);
+  // An unfinished session (the last bar is before 16:00) keeps its last trade.
+  const live = officialCloses([{ ...reg[1] }], [day('20260925')], 5);
+  assert.equal(live[0].v, 336.5);
+  // Volume outside 09:30-15:59 is dropped (repeated after-hours prints, a 1.36B 16:00 bar).
+  const vol = sessionVolume(pts, 5);
+  assert.deepEqual(vol.map((p) => p.x ?? null), [900_000, null, 2_000_000, 5_000_000, null]);
+  // FX, indexes and crypto get no volume at all (the source sends tick counts).
+  assert.equal(shapeBars([cnbc('10:00', 1.14, { vol: 38_700 })], { volume: false })[0].x, undefined);
+});
+
+test('getChart: FX has no volume; intraday LAST is the official close', async () => {
+  const intradayBody = { barData: { priceBars: [cnbc('15:55', 340.98, { vol: 10 }), cnbc('16:00', 341.2, { vol: 4_930_000 }), cnbc('09:30', 336, { day: '20260925' })] } };
+  const dailyBody = { barData: { priceBars: [cnbc('00:00', 341.07, { day: '20260925' })] } };
+  const fetchImpl = async (url) => ({ ok: true, status: 200, headers: new Map(), json: async () => (url.includes('/1D/') ? dailyBody : intradayBody) });
+  const ch = makeCharts({ fetchImpl, now: () => new Date('2026-09-26T15:00:00Z') });
+  const d = await ch.getChart('AAPL', { range: '5D', bar: '5M' });
+  assert.equal(d.points[d.points.length - 1].v, 341.07, 'the 15:55 bar closes on the official close, the 16:00 bar is gone');
+  const fx = await ch.getChart('EURUSD', { range: '5D', bar: '5M' });
+  assert.ok(fx.points.every((p) => p.x === undefined), 'no FX volume');
+});
+
+test('chart cache: long daily windows share month keys; merged bars say their span', async () => {
+  const w1 = chartWindow({ from: '2024-03-07', to: '2025-02-11' }, NOW);
+  const w2 = chartWindow({ from: '2024-03-19', to: '2025-02-03' }, NOW);
+  assert.equal(w1.key, w2.key, 'windows a few days apart share one cache entry');
+  assert.equal(w1.key, '2024-03-01:2025-03-01');
+  assert.deepEqual([w1.from, w1.to], ['2024-03-07', '2025-02-11'], 'the answer still says the dates asked for');
+  assert.equal(chartWindow({ from: '2026-09-01', to: '2026-09-20' }, NOW).clip, null, 'short windows are not snapped');
+  const bars = [{ t: Date.parse('2024-03-06T05:00:00Z') }, { t: Date.parse('2024-03-07T05:00:00Z') }, { t: Date.parse('2025-02-11T05:00:00Z') }, { t: Date.parse('2025-02-12T05:00:00Z') }];
+  assert.equal(clipBars(bars, w1.clip, '1D').length, 2);
+  // Merged bars keep their last bar's time.
+  const many = Array.from({ length: 12 }, (_, i) => ({ t: i, d: 'x', v: i }));
+  const m = mergeBars(many, 6);
+  assert.deepEqual([m.length, m[0].t, m[0].te, m[0].v], [6, 0, 1, 1]);
+  assert.equal(mergeFactor(12, 6), 2);
+  assert.equal(mergeFactor(5, 6), 1);
+  // The cache keeps the most recently used charts.
+  const c = createCache({ maxEntries: 2, lru: true });
+  await c.cached('a', 1e6, async () => 1);
+  await c.cached('b', 1e6, async () => 2);
+  await c.cached('a', 1e6, async () => 9);
+  await c.cached('c', 1e6, async () => 3);
+  assert.equal((await c.cached('a', 1e6, async () => 'reloaded')).value, 1, 'a was used, so b went');
+  assert.equal((await c.cached('b', 1e6, async () => 'reloaded')).value, 'reloaded');
+  // And stays under a total number of bars.
+  const wc = createCache({ lru: true, weigh: (v) => v.points.length, maxWeight: 10 });
+  for (const k of ['x', 'y', 'z']) await wc.cached(k, 1e6, async () => ({ points: new Array(4).fill(0) }));
+  assert.deepEqual([wc.size(), wc.weight()], [2, 8], 'the oldest chart went to stay under 10 bars');
 });
 
 test('getChart: an explicit 1m 1D asks the source for 1m bars and keeps after hours', async () => {
@@ -126,6 +193,7 @@ test('getChart: an explicit 1m 1D asks the source for 1m bars and keeps after ho
   assert.match(urls[0], /\/AAPL\/1M\//);
   assert.deepEqual([d.bar, d.ext, d.points.length], ['1M', true, 4]);
   assert.deepEqual(d.points[1], { t: ET('10:00'), v: 11, o: 10, h: 12, l: 9, x: 100 });
+  assert.equal(d.points[0].x, undefined, 'pre-market volume is dropped');
   const idx = await ch.getChart('SPX', { range: '1D', bar: '1M' });
   assert.deepEqual([idx.ext, idx.points.map((p) => p.v)], [false, [11, 11.5]], 'an index: the session only');
 });
@@ -228,6 +296,13 @@ test('compare: aligned to the main bars and rebased to 0% at the window start', 
   assert.deepEqual(rebase([100, 110, 90, 120], 1), [null, 0, (90 - 110) / 110 * 100, (120 - 110) / 110 * 100], 'from the first bar shown');
   assert.deepEqual(rebase(vals, 0), [null, 0, 10, 20], 'a series that starts later starts at 0% on its first bar');
   assert.deepEqual(rebase([null, null], 0), [null, null]);
+  // A stock from 04:00 against an index from 09:30: both start at 0% at 09:30.
+  const stock = [100, 101, 102, 104];
+  const index = alignAsOf([1, 2, 3, 4], [{ t: 3, v: 50 }, { t: 4, v: 51 }]);
+  const base = commonStart([stock, index], 0, 3);
+  assert.equal(base, 2);
+  assert.deepEqual([rebase(stock, base)[2], rebase(index, base)[2]], [0, 0]);
+  assert.equal(commonStart([[null, null]], 0, 1), 0);
   // Compare words ride in the command, so a shared link keeps them.
   assert.deepEqual(parseRangeArgs(['5D', '+QQQ']), { range: '5D', compare: ['QQQ'] });
   assert.deepEqual(parseRangeArgs(['VS', 'QQQ', 'SPY']), { range: '1Y', compare: ['QQQ', 'SPY'] });

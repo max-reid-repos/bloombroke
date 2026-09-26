@@ -13,7 +13,7 @@ import {
 } from './intraday.js';
 import { createChartView, COMPARE_CLASSES } from './chart-view.js';
 import {
-  barInfo, alignAsOf, rebase, placeEvents, headerStats, fmtVol, whenText, fmtDateBox, parseDateBox,
+  barInfo, alignAsOf, rebase, commonStart, placeEvents, headerStats, fmtVol, whenText, fmtDateBox, parseDateBox,
   timeAt, unitAt, windowDays,
 } from './chart-math.js';
 
@@ -469,7 +469,8 @@ export function rangeChart(root, ctx, opts) {
   const today = nyToday();
 
   const cmdFor = (r, cmp = compare) => [symbol, rangeWords({ ...r, compare: cmp })].filter(Boolean).join(' ');
-  const decimalsFor = (pts) => opts.decimals ?? priceDecimals(pts[0].v);
+  // Decimals from the latest price (a MAX chart from 1980 starts under a dollar).
+  const decimalsFor = (pts) => opts.decimals ?? priceDecimals(pts[pts.length - 1].v);
   const fmtYFor = (pts) => opts.fmtY || ((v) => fmtNum(v, decimalsFor(pts)));
   const compact = () => compactOpt || root.classList.contains('is-tight');
 
@@ -506,7 +507,8 @@ export function rangeChart(root, ctx, opts) {
     const bars = BARS.map((b) => {
       const ok = barOk(b, w);
       const on = cur === b;
-      return `<button type="button" class="tab ch-bsz${on ? ' is-active' : ''}" data-bar="${b}"${ok ? '' : ' disabled'}${on ? ' aria-pressed="true"' : ''} title="${esc(BAR_TITLE[b])}">${BAR_LABEL[b]}</button>`;
+      const text = on && data?.merged > 1 ? `${data.merged}${BAR_LABEL[b]}` : BAR_LABEL[b];
+      return `<button type="button" class="tab ch-bsz${on ? ' is-active' : ''}" data-bar="${b}"${ok ? '' : ' disabled'}${on ? ' aria-pressed="true"' : ''} title="${esc(BAR_TITLE[b])}">${text}</button>`;
     }).join('');
     const chips = compare.map((s, k) => {
       const c = cmpData.get(s);
@@ -590,6 +592,11 @@ export function rangeChart(root, ctx, opts) {
     // A quote dated by day only ("2026-09-25") is about that New York day.
     const q = quote && /^\d{4}-\d{2}-\d{2}$/.test(quote.asOf || '') ? { ...quote, asOf: `${quote.asOf}T12:00:00Z` } : quote;
     const refs = oneDay ? sessionRefs(pts.filter((p) => !p.live), q, { multiDay: false }) : { prevClose: null };
+    // 1D: the day's volume from the quote (the source's intraday volume is partial).
+    const qDay = q && Date.parse(q.asOf || '');
+    // Stocks and futures only: the source's FX and index "volume" is not shares.
+    const volumeKind = isStock || inst?.kind === 'future';
+    const dayVolume = oneDay && volumeKind && q?.volume && /[1-9]/.test(String(q.volume)) && Number.isFinite(qDay) && barInfo([{ t: qDay }])[0].day === last.day ? String(q.volume) : null;
     const fmtY = fmtYFor(pts);
     const decimals = decimalsFor(pts);
     const span = times[times.length - 1] - times[0];
@@ -599,8 +606,10 @@ export function rangeChart(root, ctx, opts) {
     }).filter(Boolean);
     const flags = events && !compact() ? eventFlags(events, info, bar) : [];
     const periodBar = bar === '1W' || bar === '1MO';
+    // Merged bars (a long daily range over the size cap) say the span they cover.
+    const span2 = (p, o) => (p.te ? `${whenText(p.t, o)} - ${whenText(p.te, o)}` : null);
     return {
-      points: pts, info, times, bar, intraday, oneDay,
+      points: pts, info, times, bar, intraday, oneDay, dayVolume, merged: data.merged || 1,
       full: [0, pts.length - 1 + pad],
       style, pct: cmp.length > 0, compare: cmp, refs, flags,
       volume: !compact(), fmtY, bp, decimals, label: `${label}, ${rangeLabel(range)}`,
@@ -609,6 +618,7 @@ export function rangeChart(root, ctx, opts) {
         const p = pts[i];
         if (!p) return '';
         if (p.live) return 'NOW';
+        if (p.te) return span2(p, { nowYear: 0 });
         if (periodBar) return barDay(p, bar);
         if (intraday) return whenText(p.t, { intraday, spanMs: span });
         return whenText(p.t, { nowYear: 0 });
@@ -618,6 +628,7 @@ export function rangeChart(root, ctx, opts) {
         const p = pts[i];
         if (!p) return '';
         if (p.live) return 'NOW';
+        if (p.te) return span2(p, { intraday, spanMs: span });
         return whenText(p.t, { intraday, spanMs: span });
       },
     };
@@ -657,6 +668,11 @@ export function rangeChart(root, ctx, opts) {
   }
 
   // ---- Header strip ------------------------------------------------------------------
+
+  // The bar compare lines are rebased at (see commonStart).
+  function pctBase(i0, i1) {
+    return commonStart([model.points.map((p) => p.v), ...model.compare.map((c) => c.vals)], i0, i1);
+  }
 
   function visibleRange() {
     const w = view?.window() || model.full;
@@ -711,11 +727,12 @@ export function rangeChart(root, ctx, opts) {
       } else {
         parts.push(`<span class="ch-k">${p.live ? 'LAST' : 'C'}</span> <span class="ch-hv">${esc(fmtY(p.v))}</span>`);
       }
-      if (p.x) parts.push(`<span class="ch-k">V</span> ${esc(fmtVol(p.x))}`);
+      // Intraday volume is drawn as relative bars only: the source's intraday counts are partial.
+      if (p.x && !model.intraday) parts.push(`<span class="ch-k">V</span> ${esc(fmtVol(p.x))}`);
       const c = chgText(base, p.v);
       parts.push(`<span class="${c.dir}">${esc(c.parts[c.parts.length - 1])}</span>`);
       for (const cm of model.compare) {
-        const pv = rebase(cm.vals, i0)[hi];
+        const pv = rebase(cm.vals, pctBase(i0, i1))[hi];
         if (Number.isFinite(pv)) parts.push(`<span class="ch-cmpk ${cm.cls}">${esc(cm.sym)}</span> <span class="${dirOf(Math.round(pv * 100))}">${esc(fmtPct(pv))}</span>`);
       }
       l2.innerHTML = parts.join(` ${sep} `);
@@ -727,7 +744,8 @@ export function rangeChart(root, ctx, opts) {
       `<span class="ch-k">LOW</span> ${esc(fmtY(st.low))} <span class="dim">${esc(w(st.lowI))}</span>`,
       `<span class="ch-k">AVG</span> ${esc(fmtY(st.avg))}`,
     ];
-    if (st.vol) items.push(`<span class="ch-k">VOL</span> ${esc(fmtVol(st.vol))}`);
+    if (st.vol && !model.intraday) items.push(`<span class="ch-k">VOL</span> ${esc(fmtVol(st.vol))}`);
+    if (model.dayVolume) items.push(`<span class="ch-k">DAY VOLUME</span> ${esc(model.dayVolume)}`);
     l2.innerHTML = items.join(` ${sep} `);
   }
 
@@ -738,7 +756,7 @@ export function rangeChart(root, ctx, opts) {
     for (const cm of model.compare) {
       const el = root.querySelector(`.ch-chip-pct[data-sym="${cssEsc(cm.sym)}"]`);
       if (!el) continue;
-      const pv = rebase(cm.vals, i0);
+      const pv = rebase(cm.vals, pctBase(i0, i1));
       let j = i1;
       while (j >= i0 && !Number.isFinite(pv[j])) j -= 1;
       const v = j >= i0 ? pv[j] : null;
@@ -750,7 +768,7 @@ export function rangeChart(root, ctx, opts) {
   function paintMeta() {
     if (!meta) return;
     const bits = [rangeLabel(fetchWin ? { from: fetchWin.from, to: fetchWin.to } : range)];
-    if (data?.bar) bits.push((BAR_TITLE[data.bar] || 'Monthly bars').toUpperCase());
+    if (data?.bar) bits.push(data.merged > 1 ? `${data.merged}-${MERGED_UNIT[data.bar] || 'BAR'} BARS` : (BAR_TITLE[data.bar] || 'Monthly bars').toUpperCase());
     if (model?.intraday) bits.push('NEW YORK TIME');
     meta.innerHTML = `<span class="dim">${esc(bits.join(' · '))}</span>`;
   }
@@ -1006,6 +1024,7 @@ export function rangeChart(root, ctx, opts) {
   };
 }
 
+const MERGED_UNIT = { '1D': 'DAY', '1W': 'WEEK', '1MO': 'MONTH' };
 const BAR_TITLE = { '1M': '1-minute bars', '5M': '5-minute bars', '30M': '30-minute bars', '1H': '1-hour bars', '1D': 'Daily bars', '1W': 'Weekly bars' };
 
 function fmtDiv(n) {

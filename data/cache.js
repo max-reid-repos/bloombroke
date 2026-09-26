@@ -9,10 +9,28 @@
 //   touching the source.
 // refresh(key, ttlMs, loader) reloads a key now, fresh or not (background prewarm).
 // - maxEntries caps memory: past it, the oldest entry is dropped (custom chart ranges
-//   and symbol searches make many keys).
+//   and symbol searches make many keys). With lru, a hit counts as new, so the entry
+//   dropped is the one least recently used.
+// - weigh(value) and maxWeight cap memory by size (chart bars): past it, the oldest
+//   entries are dropped until the total fits (the newest is always kept).
 
-export function createCache({ retryMs = 30_000, now = () => Date.now(), maxEntries = Infinity } = {}) {
+export function createCache({ retryMs = 30_000, now = () => Date.now(), maxEntries = Infinity, lru = false, weigh = null, maxWeight = Infinity } = {}) {
   const entries = new Map();
+  let weight = 0;
+  const w = (entry) => entry?.w || 0;
+  function store(key, entry) {
+    const old = entries.get(key);
+    weight -= w(old);
+    entries.delete(key);
+    entry.w = weigh ? weigh(entry.value) || 0 : 0;
+    weight += entry.w;
+    entries.set(key, entry);
+    while (entries.size > maxEntries || (weight > maxWeight && entries.size > 1)) {
+      const k = entries.keys().next().value;
+      weight -= w(entries.get(k));
+      entries.delete(k);
+    }
+  }
   const failures = new Map();
   const inflight = new Map();
 
@@ -20,6 +38,7 @@ export function createCache({ retryMs = 30_000, now = () => Date.now(), maxEntri
     const entry = entries.get(key);
     const t = now();
     if (entry && t < entry.expiresAt) {
+      if (lru) { entries.delete(key); entries.set(key, entry); }
       return { value: entry.value, stale: entry.stale, fetchedAt: entry.fetchedAt };
     }
     if (!entry) {
@@ -32,9 +51,7 @@ export function createCache({ retryMs = 30_000, now = () => Date.now(), maxEntri
       try {
         const value = await loader();
         const fetchedAt = now();
-        entries.delete(key);
-        entries.set(key, { value, fetchedAt, expiresAt: fetchedAt + ttlMs, stale: false });
-        while (entries.size > maxEntries) entries.delete(entries.keys().next().value);
+        store(key, { value, fetchedAt, expiresAt: fetchedAt + ttlMs, stale: false });
         failures.delete(key);
         return { value, stale: false, fetchedAt };
       } catch (err) {
@@ -63,9 +80,7 @@ export function createCache({ retryMs = 30_000, now = () => Date.now(), maxEntri
       try {
         const value = await loader();
         const fetchedAt = now();
-        entries.delete(key);
-        entries.set(key, { value, fetchedAt, expiresAt: fetchedAt + ttlMs, stale: false });
-        while (entries.size > maxEntries) entries.delete(entries.keys().next().value);
+        store(key, { value, fetchedAt, expiresAt: fetchedAt + ttlMs, stale: false });
         failures.delete(key);
         return { value, stale: false, fetchedAt };
       } finally {
@@ -79,7 +94,8 @@ export function createCache({ retryMs = 30_000, now = () => Date.now(), maxEntri
   return {
     cached,
     refresh,
-    clear: () => { entries.clear(); failures.clear(); },
+    clear: () => { entries.clear(); failures.clear(); weight = 0; },
+    weight: () => weight,
     size: () => entries.size,
   };
 }

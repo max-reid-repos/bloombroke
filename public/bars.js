@@ -43,7 +43,7 @@ export function barsForPreset(range, today = new Date()) {
 
 // The bar a preset draws with unless the user picks one. MAX keeps the source default
 // (monthly), which is not in the row.
-export const AUTO_BAR = { '1D': '1M', '5D': '5M', '1M': '1H', '3M': '1D', '6M': '1D', YTD: '1D', '1Y': '1D', '2Y': '1D', '5Y': '1W', '10Y': '1W', MAX: null };
+export const AUTO_BAR = { '1D': '1M', '5D': '5M', '1M': '1D', '3M': '1D', '6M': '1D', YTD: '1D', '1Y': '1D', '2Y': '1D', '5Y': '1W', '10Y': '1W', MAX: null };
 
 // The best bar for a zoomed window: about one to a few hundred bars across it.
 // A week gets 30m bars, an hour or a day keeps 1m bars. Falls back to daily when the

@@ -60,6 +60,9 @@ function usSession(ticker) {
 
 // Plain stock and ETF tickers (not in the registry) trade before and after the session.
 const hasExtendedHours = (ticker) => !instrumentById(ticker);
+// Volume is shares or contracts only for stocks, ETFs and futures; for FX, indexes,
+// yields and crypto the source's number is a tick count or zero.
+const hasVolume = (ticker) => { const inst = instrumentById(ticker); return !inst || inst.kind === 'future'; };
 // Crypto trades around the clock: its 1D and 5D are the last 24 hours and 5 days.
 const aroundTheClock = (ticker) => instrumentById(ticker)?.kind === 'crypto';
 
@@ -76,8 +79,9 @@ export function stamp(date) {
 
 // CNBC priceBars -> [{ t, d, v, o, h, l, x }], oldest first. d is "YYYYMMDDHHMMSS" in
 // New York time, v the close, o h l the open, high and low (when the source sends them
-// and they make sense), x the volume (when above zero).
-export function shapeBars(bars) {
+// and they make sense), x the volume (when above zero, and only with volume: true; the
+// source's FX and index "volume" is a tick count, not shares or contracts).
+export function shapeBars(bars, { volume = true } = {}) {
   return (Array.isArray(bars) ? bars : [])
     .map((b) => {
       const p = { t: Number(b?.tradeTimeinMills), d: String(b?.tradeTime || ''), v: Number(b?.close) };
@@ -88,22 +92,53 @@ export function shapeBars(bars) {
         p.o = o; p.h = h; p.l = l;
       }
       const x = Number(b?.volume);
-      if (Number.isFinite(x) && x > 0) p.x = x;
+      if (volume && Number.isFinite(x) && x > 0) p.x = x;
       return p;
     })
     .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.v) && p.v > 0 && /^\d{14}$/.test(p.d))
     .sort((a, b) => a.t - b.t);
 }
 
+const OPEN_MIN = 9 * 60 + 30;
+const CLOSE_MIN = 16 * 60;
+const startMin = (d) => { const hm = Number(d.slice(8, 12)); return Math.floor(hm / 100) * 60 + (hm % 100); };
+
 // A bar of `mins` minutes starting at New York time d: inside the 09:30 to 16:00
-// session? 1- and 5-minute bars keep the 16:00 bar (the close); longer bars keep any bar
-// that overlaps the session (a 1h bar from 09:00 holds the open). closeHm: the last bar
-// kept (an index settles a few minutes after 16:00: its 1-minute bars run to 16:05).
-export function inRegular(d, mins = 5, closeHm = 1600) {
-  const hm = Number(d.slice(8, 12));
-  const start = Math.floor(hm / 100) * 60 + (hm % 100);
-  if (mins <= 5) return hm >= 930 && hm <= closeHm;
-  return start + mins > 9 * 60 + 30 && start < 16 * 60;
+// session? Any bar that overlaps it (a 1h bar from 09:00 holds the open). A bar from
+// 16:00 on holds only after-hours prints (the 16:00 bar closes on trades after the bell),
+// so it is not in the session: the session's close comes from the daily bar instead
+// (officialCloses).
+export function inRegular(d, mins = 5) {
+  const start = startMin(d);
+  return start + mins > OPEN_MIN && start < CLOSE_MIN;
+}
+
+// The official close of each finished session on its last bar. The source's last
+// session bar closes on its last trade, not on the closing auction, so its close is set
+// to that day's daily close (and its high and low widened to hold it). Only a session
+// whose last bar reaches 16:00 is finished.
+export function officialCloses(points, daily, mins) {
+  const closes = new Map((daily || []).map((p) => [p.d.slice(0, 8), p.v]));
+  const lastOfDay = new Map();
+  points.forEach((p, i) => { if (inRegular(p.d, mins)) lastOfDay.set(p.d.slice(0, 8), i); });
+  const out = points.slice();
+  for (const [day, i] of lastOfDay) {
+    const c = closes.get(day);
+    const p = out[i];
+    if (!Number.isFinite(c) || startMin(p.d) + mins < CLOSE_MIN) continue;
+    out[i] = { ...p, v: c, ...(p.o !== undefined ? { h: Math.max(p.h, c), l: Math.min(p.l, c) } : {}) };
+  }
+  return out;
+}
+
+// Intraday volume only inside the session: the source repeats and inflates prints
+// outside it. Daily and longer bars keep theirs.
+export function sessionVolume(points, mins) {
+  return points.map((p) => {
+    if (!p.x || inRegular(p.d, mins)) return p;
+    const { x, ...rest } = p;
+    return rest;
+  });
 }
 
 // A bar from 04:00 to 20:00 New York time: pre-market, the session and after hours.
@@ -111,10 +146,10 @@ const inExtended = (d) => { const hm = Number(d.slice(8, 12)); return hm >= 400 
 
 // Keep the most recent trading day(s). For US symbols keep the regular session only,
 // or with ext (a stock's 1D) pre-market and after hours too.
-export function lastSession(points, { usSession = true, sessions = 1, ext = false, mins = 5, closeHm = 1600 } = {}) {
+export function lastSession(points, { usSession = true, sessions = 1, ext = false, mins = 5 } = {}) {
   const inSession = (p) => {
     if (!usSession) return true;
-    return ext ? inExtended(p.d) : inRegular(p.d, mins, closeHm);
+    return ext ? inExtended(p.d) : inRegular(p.d, mins);
   };
   const kept = points.filter(inSession);
   if (!kept.length) return [];
@@ -165,16 +200,18 @@ export function thin(points, max = MAX_POINTS) {
 
 // A series over `max` bars becomes `max` merged bars: each keeps the first bar's time,
 // the open of its first bar, the highest high, the lowest low, the close of its last bar
-// and the summed volume, so no high or low is lost. The newest bar is always kept whole.
+// and the summed volume, so no high or low is lost. te is the last bar's time, so the
+// chart can say the span ("SEP 1 - SEP 2"). mergeFactor says how many bars each holds.
+export const mergeFactor = (n, max = MAX_POINTS) => (n <= max ? 1 : Math.ceil(n / max));
 export function mergeBars(points, max = MAX_POINTS) {
   if (points.length <= max) return points;
-  const k = Math.ceil(points.length / max);
+  const k = mergeFactor(points.length, max);
   const out = [];
   for (let i = 0; i < points.length; i += k) {
     const g = points.slice(i, i + k);
     const first = g[0];
     const last = g[g.length - 1];
-    const m = { ...last, t: first.t, d: first.d };
+    const m = { ...last, t: first.t, d: first.d, te: last.t };
     const hs = g.map((p) => p.h ?? p.v);
     const ls = g.map((p) => p.l ?? p.v);
     m.o = first.o ?? first.v;
@@ -204,11 +241,26 @@ export function chartWindow({ range, from, to, bar: wantBar = null }, now = new 
     const spanDays = (Math.min(toMs, nowMs) - f.getTime()) / DAY;
     if (wantBar && !barValid(wantBar, { spanDays: Math.max(spanDays, 1), ageDays: (nowMs - f.getTime()) / DAY })) throw badBar();
     const bar = wantBar || barFor(f.getTime(), Math.min(toMs, nowMs), nowMs);
-    const ended = t && toMs < nowMs;
-    const ttl = ended ? 6 * 60 * MIN : isIntradayBar(bar) ? MIN : 15 * MIN;
+    // Long daily-or-longer windows are fetched and cached by whole months, so windows
+    // that differ by a few days (a zoom, a typed date) share one entry; the answer is cut
+    // back to the dates asked for (clip).
+    let start = f;
+    let end = new Date(toMs);
+    let snapped = false;
+    if (!isIntradayBar(bar) && spanDays > 120) {
+      start = new Date(Date.UTC(f.getUTCFullYear(), f.getUTCMonth(), 1));
+      const e = new Date(toMs - 1);
+      const monthEnd = Date.UTC(e.getUTCFullYear(), e.getUTCMonth() + 1, 1);
+      end = t && monthEnd < nowMs ? new Date(monthEnd) : new Date(nowMs + DAY);
+      snapped = true;
+    }
+    const open = end.getTime() > nowMs;
+    const ttl = !open ? 6 * 60 * MIN : isIntradayBar(bar) ? MIN : 15 * MIN;
+    const keyEnd = snapped ? (open ? 'now' : isoDay(end)) : t ? isoDay(t) : 'now';
     return {
-      key: `${isoDay(f)}:${t ? isoDay(t) : 'now'}${wantBar ? `:${wantBar}` : ''}`, start: f, end: new Date(toMs), bar, ttl,
+      key: `${isoDay(start)}:${keyEnd}${wantBar ? `:${wantBar}` : ''}`, start, end, bar, ttl,
       from: isoDay(f), to: t ? isoDay(t) : null, regular: Boolean(wantBar) && isIntradayBar(bar),
+      clip: snapped ? [f.getTime(), toMs] : null,
     };
   }
   const r = String(range || '1Y').toUpperCase();
@@ -272,7 +324,17 @@ export async function readJson(res, cap = MAX_BODY) {
   return JSON.parse(Buffer.concat(parts.map((p) => Buffer.from(p))).toString('utf8'));
 }
 
-export function makeCharts({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 3000 }), now = () => new Date() } = {}) {
+// Clip cached bars back to [fromMs, toMs): weekly and monthly bars whose period started
+// a little before FROM stay.
+export function clipBars(points, [fromMs, toMs], bar) {
+  const lead = bar === '1W' ? 7 * DAY : bar === '1MO' ? 31 * DAY : 0;
+  return points.filter((p) => p.t < toMs && (lead ? p.t > fromMs - lead : p.t >= fromMs));
+}
+
+// Charts are the biggest cache values (up to MAX_POINTS bars each): at most 200 of them
+// and 250,000 bars in all (tens of MB), least recently used dropped first.
+export const CHART_CACHE = { maxEntries: 200, maxWeight: 250_000 };
+export function makeCharts({ fetchImpl = globalThis.fetch, cache = createCache({ ...CHART_CACHE, lru: true, weigh: (v) => v?.points?.length || 0 }), now = () => new Date() } = {}) {
   async function bars(src, bar, win) {
     const url = `${BARS_URL}/${encodeURIComponent(src)}/${bar}/${stamp(win.start)}000000/${stamp(win.end)}000000/adjusted/EST5EDT.json`;
     // 1-minute bars are the biggest answers: a little longer to arrive.
@@ -301,23 +363,34 @@ export function makeCharts({ fetchImpl = globalThis.fetch, cache = createCache({
   async function load(ticker, win) {
     const src = tickerSource(ticker);
     const long = win.bar === '1W' || win.bar === '1MO';
-    const [main, daily] = await Promise.allSettled([barsJoined(src, win.bar, win), long ? bars(src, '1D', win) : Promise.resolve(null)]);
+    const intraday = isIntradayBar(win.bar);
+    const session = usSession(ticker);
+    // Daily bars alongside: the end days of weekly and monthly bars, and the official
+    // close of each session on intraday bars.
+    const wantDaily = long || (intraday && session);
+    const [main, daily] = await Promise.allSettled([barsJoined(src, win.bar, win), wantDaily ? bars(src, '1D', win) : Promise.resolve(null)]);
     if (main.status === 'rejected') throw main.reason;
     const body = main.value;
     if (body?.status === 'ERROR' || !body?.barData) return { points: [], notFound: true };
-    let points = shapeBars(body.barData.priceBars);
+    let points = shapeBars(body.barData.priceBars, { volume: hasVolume(ticker) });
     const mins = ({ '1M': 1, '5M': 5, '30M': 30, '1H': 60 }[win.bar]) || 5;
-    const closeHm = mins === 1 && !hasExtendedHours(ticker) ? 1605 : 1600;
     if (win.sessions && aroundTheClock(ticker)) points = lastHours(points, win.sessions);
-    else if (win.sessions) points = lastSession(points, { usSession: usSession(ticker), sessions: win.sessions, ext: win.ext && hasExtendedHours(ticker), mins, closeHm });
-    else if (win.regular && usSession(ticker)) points = points.filter((p) => inRegular(p.d, mins, closeHm));
+    else if (win.sessions) points = lastSession(points, { usSession: session, sessions: win.sessions, ext: win.ext && hasExtendedHours(ticker), mins });
+    else if (win.regular && session) points = points.filter((p) => inRegular(p.d, mins));
+    if (intraday && session) {
+      const d = daily.status === 'fulfilled' ? shapeBars(daily.value?.barData?.priceBars) : [];
+      points = officialCloses(points, d, mins);
+    }
+    if (intraday) points = sessionVolume(points, mins);
     if (long) {
       const d = daily.status === 'fulfilled' ? shapeBars(daily.value?.barData?.priceBars) : [];
       if (d.length) points = barEnds(points, d);
       const today = nyToday(now());
       points = points.map((p) => (isPartial(p.d, win.bar, today) ? { ...p, p: true } : p));
     }
-    return { points: mergeBars(points), notFound: false };
+    // The New York day string (d) was only needed above: the cache keeps bars without it.
+    const merged = mergeBars(points).map(({ d, ...rest }) => rest);
+    return { points: merged, merged: mergeFactor(points.length), notFound: false };
   }
 
   // getChart('AAPL', '5Y') or getChart('AAPL', { from: '2020-01-01', to: '2024-12-31' }),
@@ -336,12 +409,14 @@ export function makeCharts({ fetchImpl = globalThis.fetch, cache = createCache({
     const { value, stale, fetchedAt } = got;
     const label = win.range || `${win.from} to ${win.to || 'today'}`;
     if (value.notFound) throw new ChartError('not_found', `No chart for ${ticker}.`);
-    if (value.points.length < 2) throw new ChartError('no_data', `No ${label} chart for ${ticker} yet.`);
+    const pts = win.clip ? clipBars(value.points, win.clip, win.bar) : value.points;
+    if (pts.length < 2) throw new ChartError('no_data', `No ${label} chart for ${ticker} yet.`);
     return {
       ticker, range: win.range || null, from: win.from || null, to: win.to || null, bar: win.bar,
       ext: Boolean(win.ext && hasExtendedHours(ticker)),
-      points: value.points.map(({ t, v, o, h, l, x, e, p }) => ({
-        t, v, ...(o !== undefined ? { o, h, l } : {}), ...(x ? { x } : {}), ...(e ? { e } : {}), ...(p ? { p: true } : {}),
+      ...(value.merged > 1 ? { merged: value.merged } : {}),
+      points: pts.map(({ t, v, o, h, l, x, e, p, te }) => ({
+        t, v, ...(o !== undefined ? { o, h, l } : {}), ...(x ? { x } : {}), ...(e ? { e } : {}), ...(p ? { p: true } : {}), ...(te ? { te } : {}),
       })),
       stale, updated: new Date(fetchedAt).toISOString(),
     };

@@ -13,7 +13,7 @@
 
 import { esc } from './markets.js';
 import { niceTicks, nearestIndex } from './chart.js';
-import { lineIndexes, candleBuckets, zoomWindow, axisLabels, measure as measureMath, rebase } from './chart-math.js';
+import { lineIndexes, candleBuckets, zoomWindow, axisLabels, measure as measureMath, rebase, commonStart } from './chart-math.js';
 import { labelWidth } from './intraday.js';
 
 const PAD_R = 64;
@@ -427,8 +427,10 @@ export function svgFor(model, win, width, height) {
   // Series: closes, or percent from the window's first bar with compares.
   const vals = points.map((p) => p.v);
   const pct = model.pct && i1 >= i0;
-  const main = pct ? rebase(vals, i0) : vals;
-  const cmps = pct ? (model.compare || []).map((c) => ({ ...c, pv: rebase(c.vals, i0) })) : [];
+  // Percent mode: every line starts at 0% on the first bar where all of them have a value.
+  const base = pct ? commonStart([vals, ...(model.compare || []).map((c) => c.vals)], i0, i1) : i0;
+  const main = pct ? rebase(vals, base) : vals;
+  const cmps = pct ? (model.compare || []).map((c) => ({ ...c, pv: rebase(c.vals, base) })) : [];
   const series = (i) => main[i];
 
   // Value range over the window.

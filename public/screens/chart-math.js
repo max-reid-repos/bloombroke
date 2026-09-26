@@ -148,6 +148,13 @@ export function alignAsOf(times, other) {
   return out;
 }
 
+// Where compare lines start: the first bar in i0..i1 where every series has a value (a
+// stock from 04:00 against an index from 09:30 starts at 09:30), else i0.
+export function commonStart(series, i0, i1) {
+  for (let i = i0; i <= i1; i += 1) if (series.every((s) => Number.isFinite(s[i]))) return i;
+  return i0;
+}
+
 // Values -> percent change from the value at index `base` (the window's first bar).
 // A series with no value at the base starts at its first value after it.
 export function rebase(vals, base) {
@@ -269,11 +276,11 @@ export function axisLabels(info, i0, i1, pxPerBar, { minGap = 72, intraday = fal
 
 // Per-bar New York parts, computed once per load: [{ day, mins, session }]. A bar is
 // pre-market when it ends by 09:30 (a 1h bar from 09:00 holds the open, so it is in the
-// session) and after hours when it starts after 16:00 (the 16:00 bar is the close).
+// session) and after hours from 16:00 on (the 16:00 bar holds only prints after the bell).
 export function barInfo(points, barMins = 1) {
   return points.map((p) => {
     const e = etParts(p.t);
-    const session = e.mins + barMins <= 570 ? 'pre' : e.mins > 960 ? 'post' : 'regular';
+    const session = e.mins + barMins <= 570 ? 'pre' : e.mins >= 960 ? 'post' : 'regular';
     return { day: e.day, mins: e.mins, session, weekday: e.weekday };
   });
 }
