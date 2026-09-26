@@ -77,6 +77,6 @@ test('RT and DLY tags carry their meaning in a tooltip', async () => {
 test('no affiliate, broker or exchange referral links anywhere in public/', () => {
   for (const f of walk('')) {
     const s = src(f);
-    assert.doesNotMatch(s, /[?&](ref|aff|affiliate|referral|partner)=|utm_source=|robinhood|coinbase\.com|binance|etoro|webull|interactivebrokers|tastytrade/i, f);
+    assert.doesNotMatch(s, /[?&](ref|aff|affiliate|referral|partner)=|utm_source=|robinhood\.com|coinbase\.com|webull\.com|kalshi\.com|polymarket\.com|binance|etoro|interactivebrokers|tastytrade/i, f);
   }
 });

@@ -57,7 +57,10 @@ export function inflate(amount, year, latest) {
   return { base, result, pct, perYear, years };
 }
 
-export function makeCpi({ fetchImpl = globalThis.fetch, cache = createCache() } = {}) {
+// A failed BLS call is not retried for 6 hours: keyless BLS allows 25 queries a day.
+export const CPI_RETRY_MS = 6 * 60 * 60_000;
+
+export function makeCpi({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: CPI_RETRY_MS }) } = {}) {
   async function latest() {
     try {
       const { value, stale, fetchedAt } = await cache.cached('cpi:latest', CPI_TTL, async () => {
