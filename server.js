@@ -351,7 +351,7 @@ const weirdCards = makeWeirdCards({ getGauge, getWeird });
 async function weirdShareIndex(c) {
   const command = weirdCommand(c, parseCommand);
   if (!command) return null;
-  const meta = await weirdCards.meta(command, { wait: 2000 });
+  const meta = await weirdCards.meta(command, { wait: 800 });
   return meta ? withMeta(PAGE, meta) : null;
 }
 app.get('/og/weird.png', async (req, res) => {

@@ -81,7 +81,9 @@ function grid(el, ctx) {
 // The link opens this gauge; its card (/og/weird.png) shows the same number.
 export function gaugeShareLinks(g, d, origin) {
   const url = `${origin}/?${new URLSearchParams({ c: g.command })}`;
-  const text = [`${g.command}: ${d.headline}.`, d.line || ''].join(' ').trim();
+  const line = String(d.line || '').replace(/\s+/g, ' ').trim();
+  const short = line.length > 100 ? `${line.slice(0, 97).trimEnd()}...` : line;
+  const text = [`${g.command}: ${d.headline}${d.stale ? ' (last good reading)' : ''}.`, short].join(' ').trim();
   return { url, x: `https://x.com/intent/post?${new URLSearchParams({ text, url })}` };
 }
 const shareRow = (links) => `<div class="wi-share"><a class="wi-btn" href="${esc(links.x)}" target="_blank" rel="noopener noreferrer">SHARE ON X</a></div>`;

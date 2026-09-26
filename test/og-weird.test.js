@@ -171,7 +171,7 @@ test('weird cards: drawn once per gauge and data, cache and render work are boun
   assert.equal(cards.cache.bytes, 3000);
   data = { ...data, eggs: { ...data.eggs, stale: true } };
   assert.equal((await cards.png('EGGPRICE')).maxAge, 120, 'a stale card is kept briefly downstream');
-  await cards.png('HOTDOG');
+  const hot = await cards.png('HOTDOG');
   assert.equal(renders, 8);
   const over = await cards.png('BIGMAC');
   assert.equal(renders, 8, 'past the render budget nothing new is drawn');
@@ -181,9 +181,48 @@ test('weird cards: drawn once per gauge and data, cache and render work are boun
   assert.equal(await cards.png('AAPL'), null, 'not a gauge: nothing drawn');
   assert.equal(await cards.meta('AAPL'), null);
 
+  data = { ...data, hotdog: reading(byId('hotdog'), { headline: '$9.99' }) };
+  const kept = await cards.png('HOTDOG');
+  assert.equal(renders, 8, 'still past the budget');
+  assert.equal(kept.png, hot.png, 'past the budget: the newest cached card for that command');
+  assert.equal(kept.maxAge, 60);
+  assert.equal(fallbacks, 1);
+
   const slow = makeWeirdCards({ getGauge: () => new Promise(() => {}), getWeird: async () => ({ gauges: [] }), render: async () => Buffer.from('x') });
   const m = await slow.model('CANAL', { wait: 20 });
   assert.equal(m.ok, false, 'no answer in time: the no-number card, never an invented one');
+});
+
+test('weird meta: the page never waits long for gauge data', async () => {
+  let answer = null;
+  let calls = 0;
+  let t = 0;
+  const cards = makeWeirdCards({
+    getGauge: (id) => { calls += 1; return answer ? Promise.resolve(answer(id)) : new Promise(() => {}); },
+    getWeird: () => new Promise(() => {}),
+    render: async () => Buffer.from('x'),
+    now: () => t,
+  });
+  const started = Date.now();
+  const cold = await cards.meta('CANAL', { wait: 30 });
+  assert.ok(Date.now() - started < 500);
+  assert.equal(cold.title, `${byId('canal').title === 'Canal' ? 'Ships through Hormuz, Suez, Panama and other chokepoints' : ''} (CANAL)`, 'slow: the no-number meta');
+  const grid = await cards.meta('WEIRD', { wait: 30 });
+  assert.equal(grid.title, 'WEIRD: odd live gauges on Bloombroke');
+  assert.equal(await cards.meta('AAPL', { wait: 30 }), null);
+
+  answer = (id) => reading(byId(id), { headline: 'HORMUZ 3 SHIPS/DAY' });
+  await cards.png('EGGPRICE');
+  const known = await cards.meta('EGGPRICE', { wait: 30 });
+  assert.equal(known.title, 'EGGPRICE: HORMUZ 3 SHIPS/DAY', 'a drawn card leaves its meta behind');
+  answer = null;
+  const before = calls;
+  const again = await cards.meta('EGGPRICE', { wait: 30 });
+  assert.equal(again, known, 'remembered meta comes back at once, even when the source hangs');
+  assert.equal(calls, before, 'no refresh while it is fresh');
+  t = 60_000;
+  assert.equal(await cards.meta('EGGPRICE', { wait: 30 }), known);
+  assert.equal(calls, before + 1, 'an old one is refreshed in the background');
 });
 
 test('weird cards: real PNGs at 1200x630 (gauge, stale, no data, grid)', async () => {
@@ -211,6 +250,10 @@ test('weird share: a gauge screen links its clean command, and posts it on X', (
   assert.equal(x.origin + x.pathname, 'https://x.com/intent/post');
   assert.equal(x.searchParams.get('url'), 'https://bloombroke.com/?c=CANAL');
   assert.equal(x.searchParams.get('text'), 'CANAL: HORMUZ 3 SHIPS/DAY. 7-day average');
+  const stale = new URL(gaugeShareLinks(g, { headline: 'HORMUZ 3 SHIPS/DAY', line: 'x'.repeat(300), stale: true }, 'https://bloombroke.com').x);
+  const text = stale.searchParams.get('text');
+  assert.match(text, /^CANAL: HORMUZ 3 SHIPS\/DAY \(last good reading\)\. x+\.\.\.$/);
+  assert.ok(text.length < 160);
 });
 
 test('weird share copy rules: no banned brand word, no em dashes, no amber', () => {
