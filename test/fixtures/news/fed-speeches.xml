@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<rss version="2.0">
+    <channel>
+        <title>FRB: Speeches</title>
+        <link><![CDATA[https://www.federalreserve.gov/feeds/feeds.htm]]></link>
+        <description>trimmed</description>
+        <language>en</language>
+        <item>
+            <title>Barr, A Long-Term View on the Costs of Shelter</title>
+            <link><![CDATA[https://www.federalreserve.gov/newsevents/speech/barr20260923a.htm]]></link>
+            <guid><![CDATA[https://www.federalreserve.gov/newsevents/speech/barr20260923a.htm]]></guid>            
+            <description>trimmed</description>
+            <category>Speech</category>
+            <pubDate><![CDATA[Wed, 23 Sep 2026 14:05:00 GMT]]></pubDate>    
+        </item>
+<item>
+            <title>Jefferson, Discount Window Modernization and Treasury Market Functioning</title>
+            <link><![CDATA[https://www.federalreserve.gov/newsevents/speech/jefferson20260922a.htm]]></link>
+            <guid><![CDATA[https://www.federalreserve.gov/newsevents/speech/jefferson20260922a.htm]]></guid>            
+            <description>trimmed</description>
+            <category>Speech</category>
+            <pubDate><![CDATA[Tue, 22 Sep 2026 14:20:00 GMT]]></pubDate>    
+        </item>
+    </channel>
+</rss>

@@ -73,7 +73,7 @@ export function render(el, cmd, ctx) {
   }
   const { ticker } = cmd.args;
   el.innerHTML = `<div class="stack">
-    ${panel('1', `${ticker} dividends`, LOADING)}
+    ${panel('1', `${ticker} dividends`, LOADING, { meta: 'YIELD = YEARLY DIVIDEND / PRICE, BEFORE TAX' })}
     ${panel('2', 'Every payment', LOADING, { metaId: 'dv-meta', bodyCls: 'flush' })}
   </div>
   <p class="footnote"></p>`;

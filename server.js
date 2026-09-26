@@ -9,6 +9,7 @@ import { precise52 } from './data/range52.js';
 import { getCpi, CpiError, CPI_EXAMPLES } from './data/cpi.js';
 import { getRates } from './data/rates.js';
 import { getNews } from './data/news.js';
+import { getNewsTab, NEWS_TABS } from './data/newsfeeds.js';
 import { search } from './data/search.js';
 import { getCatalog, getWhatif, getFunding, catalog } from './data/whatif-service.js';
 import { WhatifError } from './data/whatif.js';
@@ -184,6 +185,14 @@ app.get('/api/rates', async (req, res) => {
 });
 
 app.get('/api/news', async (req, res) => {
+  const tab = String(req.query.tab || 'MARKETS').toUpperCase();
+  if (!NEWS_TABS.includes(tab)) return res.status(400).json({ error: 'bad_tab', message: 'No such news tab.' });
+  if (tab !== 'MARKETS') {
+    // Never an error: a tab whose feeds all failed comes back with no items.
+    const data = await getNewsTab(tab);
+    res.set('Cache-Control', 'public, max-age=60');
+    return res.json(data);
+  }
   try {
     const data = await getNews();
     res.set('Cache-Control', 'public, max-age=60');

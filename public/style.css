@@ -119,10 +119,11 @@ kbd {
   color: var(--dim); letter-spacing: .08em; font-weight: 600;
 }
 .status-dot { width: 6px; height: 6px; background: var(--faint); }
-/* Freshness: ice blue when the screen's data is fresh, grey when stale; the time is in
-   the tooltip. No data on the screen, no dot. */
+/* Freshness: ice blue when the screen's data is fresh, a hollow red ring when it is
+   stale (old data, or no update for a while); the time is in the tooltip. No data on
+   the screen, no dot. */
 .fresh-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); cursor: help; }
-.fresh-dot[data-state="stale"] { background: var(--faint); }
+.fresh-dot[data-state="stale"] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--down); }
 .fresh-dot[data-state="none"] { visibility: hidden; }
 .status[data-open="true"] { color: var(--up); }
 .status[data-open="true"] .status-dot { background: var(--up); }
@@ -1283,13 +1284,20 @@ a.ch-flag { cursor: pointer; }
   html:not(.is-embed) .view > :is(.stack, .panel) .panel-body > .chart-host { flex: 1 1 0; height: auto; min-height: 160px; }
   html:not(.is-embed) .view > :is(.stack, .panel) .panel-body:has(> .chart-host) > :not(.chart-host) { flex: 0 0 auto; }
 
-  /* HOME: MARKETS at its own height (it scrolls when the window is short), the S&P 500
-     chart and the movers share the rest with NEWS, which keeps at least 160px. */
+  /* HOME: MARKETS at its own height (it scrolls inside when the window is short), then
+     the S&P 500 chart and the movers, then NEWS with room for three headlines at least. */
   html:not(.is-embed) .view > .grid-home {
-    grid-template-rows: minmax(0, max-content) minmax(180px, 1.6fr) minmax(160px, 1fr);
+    grid-template-rows: minmax(0, max-content) minmax(224px, 1fr) minmax(112px, .5fr);
     min-height: 0;
   }
   html:not(.is-embed) .grid-home .panel-body:has(> .rc-home) { min-height: 0; }
+}
+/* Wide windows: HOME's MARKETS in four columns, change in % only (MARKETS has both), so
+   the chart gets the height. */
+@media (min-width: 1200px) {
+  html:not(.is-embed) .grid-home .mk-cols { columns: 4 290px; }
+  html:not(.is-embed) .grid-home .mk-group .chg { display: none; }
+  html:not(.is-embed) .grid-home .mk-group .c-chg { width: 0; }
 }
 
 /* ---- Embed mode: the app inside a DESK panel ------------------------------- */
@@ -1315,3 +1323,10 @@ a.ch-flag { cursor: pointer; }
 @media (max-height: 560px) {
   .is-embed .q-top .stats, .is-embed .q-ext { display: none; }
 }
+
+/* --- NEWS SEC tab rows (phase 4) ------------------------------------------------ */
+.news-filing .news-tkr { display: inline-block; width: 7ch; color: var(--accent); }
+.news-filing .news-link { color: inherit; }
+.news-filing .news-link:hover { color: var(--accent); text-decoration: none; }
+.news-row.is-dim .news-title, .news-row.is-dim .news-src { color: var(--dim); }
+/* --- end NEWS SEC tab rows ------------------------------------------------------ */

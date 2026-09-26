@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss 
+  version="2.0">
+  <channel xmlns:dc="http://dublincore.org/documents/dcmi-namespace/" xmlns:media="http://search.yahoo.com/mrss/">
+    <title>GlobeNewswire - News about Public Companies</title>
+    <link>https://rss.globenewswire.com/RssFeed/orgclass/1/feedTitle/GlobeNewswire%20-%20News%20about%20Public%20Companies</link>
+    <description>trimmed</description>
+    <managingEditor>newsdesk@globenewswire.com (NewsDesk)</managingEditor>
+    <lastBuildDate>Sat, 26 Sep 2026 01:43:15 GMT</lastBuildDate>
+    <webMaster>webmaster@globenewswire.com (Webmaster)</webMaster>
+    <item>
+      <guid
+        isPermaLink="true">https://www.globenewswire.com/news-release/2026/09/26/3369387/0/en/mission-success-rocket-lab-launches-97th-electron-mission.html</guid>
+      <link>https://www.globenewswire.com/news-release/2026/09/26/3369387/0/en/mission-success-rocket-lab-launches-97th-electron-mission.html</link>
+      <category
+        domain="https://www.globenewswire.com/rss/stock">Nasdaq:RKLB</category>
+      <category
+        domain="https://www.globenewswire.com/rss/ISIN">US7731211089</category>
+      <title>MISSION SUCCESS: Rocket Lab Launches 97th Electron Mission</title>
+      <description>trimmed</description>
+      <pubDate>Sat, 26 Sep 2026 01:43 GMT</pubDate>
+      <dc:identifier>3369387</dc:identifier>
+      <dc:language>en</dc:language>
+      <dc:publisher>GlobeNewswire Inc.</dc:publisher>
+      <dc:contributor>Rocket Lab Corporation</dc:contributor>
+      <dc:modified>Sat, 26 Sep 2026 01:43 GMT</dc:modified>
+      <dc:subject>Product / Services Announcement</dc:subject>
+      <dc:keyword>$RKLB</dc:keyword>
+      <dc:keyword>Electron</dc:keyword>
+      <dc:keyword>Electron Launch</dc:keyword>
+    </item>
+<item>
+      <guid
+        isPermaLink="true">https://www.globenewswire.com/news-release/2026/09/25/3369375/0/id/berkendara-dengan-lebih-percaya-diri-freelander-8-hadirkan-teknologi-cerdas-untuk-segala-kondisi-medan.html</guid>
+      <link>https://www.globenewswire.com/news-release/2026/09/25/3369375/0/id/berkendara-dengan-lebih-percaya-diri-freelander-8-hadirkan-teknologi-cerdas-untuk-segala-kondisi-medan.html</link>
+      <category
+        domain="https://www.globenewswire.com/rss/stock">HKSE:9973.HK</category>
+      <category
+        domain="https://www.globenewswire.com/rss/ISIN">CNE1000073Z4</category>
+      <title>Berkendara dengan Lebih Percaya Diri: FREELANDER 8 Hadirkan Teknologi Cerdas untuk Segala Kondisi Medan</title>
+      <description>trimmed</description>
+      <pubDate>Fri, 25 Sep 2026 23:46 GMT</pubDate>
+      <dc:identifier>3369375</dc:identifier>
+      <dc:language>id</dc:language>
+      <dc:publisher>GlobeNewswire Inc.</dc:publisher>
+      <dc:contributor>Chery Group</dc:contributor>
+      <dc:modified>Fri, 25 Sep 2026 23:46 GMT</dc:modified>
+      <dc:subject>Product / Services Announcement</dc:subject>
+    </item>
+<item>
+      <guid
+        isPermaLink="true">https://www.globenewswire.com/news-release/2026/09/25/3369365/0/en/skyworks-announces-extension-of-expiration-date-of-exchange-offers-for-qorvo-s-senior-notes-due-2029-and-2031.html</guid>
+      <link>https://www.globenewswire.com/news-release/2026/09/25/3369365/0/en/skyworks-announces-extension-of-expiration-date-of-exchange-offers-for-qorvo-s-senior-notes-due-2029-and-2031.html</link>
+      <category
+        domain="https://www.globenewswire.com/rss/stock">Nasdaq:SWKS</category>
+      <category
+        domain="https://www.globenewswire.com/rss/ISIN">US83088M1027</category>
+      <title>Skyworks Announces Extension of Expiration Date of Exchange Offers for Qorvo’s Senior Notes due 2029 and 2031</title>
+      <description>trimmed</description>
+      <pubDate>Fri, 25 Sep 2026 22:34 GMT</pubDate>
+      <dc:identifier>3369365</dc:identifier>
+      <dc:language>en</dc:language>
+      <dc:publisher>GlobeNewswire Inc.</dc:publisher>
+      <dc:contributor>Skyworks Solutions, Inc.</dc:contributor>
+      <dc:modified>Fri, 25 Sep 2026 22:35 GMT</dc:modified>
+      <dc:subject>Changes in company's own shares</dc:subject>
+    </item>
+  </channel>
+</rss>
