@@ -1,104 +1,135 @@
 # Bloombroke
 
-A market terminal for normal people. Type a plain English command, press Enter, get the answer.
+**The $32,000 terminal, now $4.20/mo.**
 
-## Commands
+Keyboard-first market info: live quotes, charts, SEC financials, screener, options, watchlist, portfolio, 50+ plain-English commands. Type HELP.
 
-```
-> HOME                         markets, S&P 500 and news on one screen
-> MARKETS                      world markets at a glance
-> RATES                        Fed rate, Treasury yields, mortgage rates
-> NEWS                         headlines that move markets
-> AAPL [1D|5D|1M|3M|6M|YTD|1Y|2Y|5Y|10Y|MAX]   any ticker: price, chart and key numbers
-> AAPL 2020-01-01 2024-12-31   the chart for any dates (or AAPL FROM 2020-01-01)
-> GOLD, EURUSD, SPX, BTC, US10Y   indexes, currency pairs, futures, crypto, yields: same screen
-> FX 500 USD THB               convert money, with a 30 day chart
-> CPI 100 2015                 what money from a past year is worth today
-> AFFORD 1200 [2 PER WEEK] [FOR 3Y]   can I afford it? cost per use of a thing you buy, and a verdict (was BUY)
-> WAGE 35                      save your hourly pay (this browser only); AFFORD then shows hours of work
-> WHATIF                       in hindsight: what the money would be worth in the maker's stock, with the worst drop along the way
-> WHATIF IPHONE6 LATTE:3Y NETFLIX:2015-2024   the same, typed
-> HELP                         every command
-> TERMS, PRIVACY, DISCLAIMER   open /terms, /privacy, /disclaimer
-```
+Live at **[bloombroke.com](https://bloombroke.com)**. Free to use, no account.
 
-## Legal
+![The HOME screen: world markets, a 1-minute S&P 500 chart and market news in three numbered panels](docs/img/home.webp)
 
-`/terms`, `/privacy` and `/disclaimer` are server-rendered from `legal/terms.md`, `legal/privacy.md` and `legal/disclaimer.md` at boot (restart to publish an edit). The version, date, operator and contact live in `public/legal-version.js`. Raise `TERMS_VERSION` there when people should accept again: the first-visit notice stores `{ version, acceptedAt }` under `bb.consent` in localStorage and asks again when the version changes.
+## Try these
 
-Readable names work too: `EUR/USD`, `S&P 500`, `OIL`, `BITCOIN`, `EURO STOXX 50`. Every row with a price opens its own screen (click it, or focus it and press Enter). Typing in the command bar suggests symbols with their names. Each price carries a tag: `RT` real time (US stocks via Nasdaq Last Sale, US indexes, FX, crypto, yields) or `DLY` delayed (futures about 10 minutes, most non-US indexes about 15). The named instruments live in `public/instruments.js`.
+Open [bloombroke.com](https://bloombroke.com), type a command, press Enter. Every screen is a link: the command lives in the URL (`/?c=AAPL+1Y`).
 
-`WHATIF IPHONE` opens the picker with every iPhone picked. Habits take years (`:3Y`) or dates (`:2015-2024`). F1 to F8 jump between screens. Every screen is a shareable link: the command lives in the URL (`/?c=FX+500+USD+THB`).
+| Command | What you get |
+| --- | --- |
+| `HOME` | Markets, the S&P 500 and news on one screen |
+| `AAPL` | Any ticker: price, chart and key numbers |
+| `AAPL 1Y WEEKLY` | A range and a bar period, typed |
+| `MARKETS` | World indexes, futures, commodities, FX and rates |
+| `NEWS SEC` | The latest 8-K filings from SEC EDGAR |
+| `WEIRD` | 23 odd live gauges on one screen |
+| `CANAL` | Ships through Hormuz, Suez, Panama and other chokepoints |
+| `FISHTANK` | The S&P 100 as fish |
+| `WORLDMAP` | Indexes, shipping chokepoints and active storms on a map |
+| `DESK WEIRD` | Your own screen, loaded with twelve weird gauges |
+| `WHATIF` | What the money would be worth in the maker's stock |
+| `AFFORD` | Cost per use of a thing you buy, and a verdict |
+| `ALERTS AAPL > 350` | A note when a price crosses your level |
+| `TRENDING` | The most opened tickers on Bloombroke |
+| `HELP` | Every command, with search and examples |
 
-## Run
+## The terminal
+
+<img src="docs/img/phone-home.webp" width="320" alt="The HOME screen on a phone">
+
+- One command bar. Type a command or a symbol and press Enter. Tab completes, Esc goes back, Ctrl K opens a menu of every command.
+- Screens are split into numbered panels. Type the number and press Enter to jump into one.
+- F1 to F10 switch between the main screens. On a stock, 1 to 9 open its functions: chart, news, financials, profile, history, dividends, options, insiders, owners.
+- Readable names work: `EUR/USD`, `S&P 500`, `OIL`, `BITCOIN`. Every row with a price opens its own screen.
+- Each price carries a tag: `RT` real time or `DLY` delayed.
+- It works on a phone too.
+
+## Charts
+
+![AAPL over one year with a click-drag measure: +15.47%, +42.24, 192 days](docs/img/chart-measure.webp)
+
+- Down to 1-minute bars for the day, up to monthly bars over the full history.
+- Click and drag to measure: percent, price change and days between two points. Long press on touch.
+- Wheel to zoom, double-click to reset. Earnings (E) and ex-dividend (D) flags on the axis.
+- `+ COMPARE` races up to five tickers in percent. `COMPARE KO PEP 5Y` does it typed.
+- Any dates: `AAPL 2020-01-01 2024-12-31`.
+
+The bar period grid sets the period and the range in one click:
+
+![The bar period grid open over the chart: intraday and historical bar sizes by range](docs/img/chart-periods.webp)
+
+## Weird data
+
+![The WEIRD screen: 23 gauges, each with its source and date](docs/img/weird.webp)
+
+`WEIRD` shows 23 live gauges from public sources, each with its source and its own date: ships through Hormuz, the Pentagon Pizza Index, the App Store rank of trading apps, Waffle Houses inside storms, Wikipedia views of "Recession", Costco's hot dog in today's money, the Big Mac index, Disney ride waits, AI mentions in 10-Q filings, words in the Fed Beige Book, cardboard box output and more. Each gauge is also its own command (`CANAL`, `PIZZA`, `BIGMAC`, `RIDES`), and each can be an alert (`ALERTS CANAL < 5`). A source with nothing to report shows NO DATA, never a guess.
+
+Gauge sources: IMF PortWatch; pizzint.watch (unofficial); Apple App Store; National Hurricane Center with stores © OpenStreetMap contributors, ODbL; Wikimedia pageviews; HN Algolia; FRED; BLS; NWS; NOAA SWPC; The Economist, CC BY 4.0; Forbes; ApeWisdom; Polymarket; Drewry WCI; Powered by Queue-Times.com; SEC EDGAR; Federal Reserve Beige Book; CDC NWSS; DICJ Macau.
+
+## FISHTANK
+
+![FISHTANK: the S&P 100 as sea life, with MSFT hovered](docs/img/fishtank.webp)
+
+The S&P 100 as sea life. Each sector is a species, size is company size, depth is today's move. Winners swim high, losers sink. Hover a fish for its name, click it to open the stock.
+
+## WORLDMAP
+
+![WORLDMAP: country indexes coloured by move, ships through chokepoints, active storms](docs/img/worldmap.webp)
+
+Stock indexes by country, coloured by the last session's move. Daily ship counts through six chokepoints, ringed by their one-year average (red when under half). Active storms from the National Hurricane Center.
+
+## DESK
+
+![DESK WEIRD: twelve weird gauge cards on one desk](docs/img/desk-weird.webp)
+
+Build your own screen: any commands side by side, on four desks. Drag a header to move a panel, resize from the corner, or type `+CANAL` on a desk to add a panel. Presets load a whole desk: `DESK WEIRD`, `DESK MACRO`, `DESK CRYPTO`.
+
+## WHATIF
+
+![A WHATIF certificate: a $599 GTX 1080 in 2016 would be worth $117,488 in Nvidia stock](docs/img/whatif.webp)
+
+In hindsight: what the money would be worth if you had bought the maker's stock instead of the product. A $599 GTX 1080 in May 2016 is a certificate for 522 shares of Nvidia. Habits work too: `WHATIF LATTE:3Y`. It shows the worst drop along the way, and every certificate has a share link and a downloadable image.
+
+`data/whatif-products.json` lists each product's US launch date, US launch price and a source link. Past closes are CNBC daily bars, each cross-checked against Yahoo Finance, and the build stops if they differ by more than 1%. Today's price is live. Price return only: dividends and spin-offs are left out.
+
+## News
+
+![NEWS SEC: the latest 8-K filings with ticker and what the filing is about](docs/img/news-sec.webp)
+
+`NEWS` has five tabs: market headlines, Fed and BLS releases, 8-K filings from SEC EDGAR, company press releases, and WallStreetBets. `NEWS AAPL` shows one company.
+
+## Data and honesty
+
+- Every number comes from a named live source, shown on the screen.
+- Unknown shows `--`, never a made-up value.
+- Stale values are marked with their real date.
+- Prices can be delayed. Nothing here is investment advice.
+
+Sources and credits: CNBC, Nasdaq, SEC EDGAR, Federal Reserve, New York Fed, BLS, FRED (St. Louis Fed), US Treasury, Freddie Mac, Cboe, CoinGecko, Frankfurter API (ECB reference rates), MarketWatch, Yahoo Finance, PR Newswire, GlobeNewswire, Business Wire, Reddit, Forex Factory, IMF PortWatch, NOAA National Hurricane Center, NOAA SWPC, NWS, CDC NWSS, Wikimedia pageviews, HN Algolia, Apple App Store, Polymarket, ApeWisdom, Forbes, Drewry WCI, DICJ Macau, pizzint.watch (unofficial). Map: Natural Earth. Waffle House stores © OpenStreetMap contributors, ODbL. Big Mac data: The Economist, CC BY 4.0. Ride waits: Powered by Queue-Times.com.
+
+## Pro
+
+The terminal stays free. Pro is $4.20 a month (Stripe subscription, USD): your own ticker tape and sync of the watchlist, portfolio and tape across devices. There are no accounts: checkout makes a licence key, and the server keeps only its hash. Cancel any time: type `PRO` and press MANAGE. If we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month.
+
+## Built with
+
+- Node and Express 5. One server, `server.js`, serves `public/` and the JSON routes.
+- Vanilla JS: plain ES modules, no front-end framework, no build step. One file per screen in `public/screens/`.
+- Hand-rolled SVG and canvas charts. No chart library.
+- `data/`: each source behind a small function, with a cache that serves the last good value when a source fails. `data/weird/` holds one module per gauge.
+- SQLite (better-sqlite3) for Pro licences and sync only.
+- 663 tests (`npm test`, Node's built-in test runner).
+
+## Run locally
 
 Requires Node 20.12 or newer.
 
 ```
 cp .env.example .env
-npm install
+npm ci
 npm start          # http://localhost:3020
 npm test
 ```
 
-## How it is built
+## Legal
 
-- `server.js`: Express 5. Serves `public/` and the JSON routes below.
-- `data/`: data sources behind small functions, with an in-memory cache that serves the last good data if a source fails. Quotes are cached 15 seconds and fetched once for every visitor.
-- Assets load from `/v/<build>/` (a hash of `public/`), so a deploy never mixes old and new files in a browser or at the edge.
-- `public/`: plain ES modules, no build step, no framework. One file per screen in `public/screens/`.
+Run by Bloombroke. Contact: hello@bloombroke.com.
 
-| Route | Returns |
-| --- | --- |
-| `GET /api/markets` | every named instrument on MARKETS, with real time or delayed |
-| `GET /api/fxmajors` | major currency pairs against the dollar |
-| `GET /api/fx?amount=&from=&to=` | a conversion plus 30 days of rates |
-| `GET /api/quote?s=` | one ticker: price, change, key numbers |
-| `GET /api/chart?s=&r=` or `?s=&from=&to=` | price history for a symbol, a preset range or dates |
-| `GET /api/search?q=` | symbol suggestions with names |
-| `GET /api/cpi?amount=&year=` | CPI-U inflation maths and the series |
-| `GET /api/rates` | Fed funds, Treasury yields, mortgage rates |
-| `GET /api/news` | market headlines |
-| `GET /api/whatif/catalog` | the WHATIF product list |
-| `GET /api/whatif?c=` | a WHATIF result, for the words after WHATIF |
-
-## Pro
-
-The terminal stays free. Pro is $4.20 a month (Stripe subscription, USD): your own ticker tape (`TAPE ADD AAPL`, `TAPE REMOVE AAPL`, `TAPE RESET`) and sync of the watchlist, portfolio and tape across devices. Price alerts are planned, not part of Pro yet.
-
-```
-> PRO                          what Pro gives, SUBSCRIBE, or your status with MANAGE and LOGOUT
-> LOGIN <key>                  use your key on this device (the key never goes in the URL or history)
-> LOGOUT                       forget the key on this device
-> TAPE ADD AAPL                your own ticker tape (Pro)
-```
-
-- There are no accounts. Checkout (cards only) makes a licence key like `BB-7KQ2-M9XD-HT4P-WZ3C`. The server stores only its SHA-256 hash and last 4 characters. The success page takes the session id out of the address bar, then POSTs it to get the full key. The server keeps the key AES-256-GCM encrypted with `PRO_SECRET` until the browser confirms it saved it, and 24 hours at most.
-- A pasted key on its own counts as `LOGIN <key>`. A key never goes in the URL, the title, the command history or symbol search.
-- A browser whose key has lapsed sees REACTIVATE: the new subscription joins the same licence (same key, same synced data). Checkout is refused while the licence or the customer still has a live Pro subscription, and other open checkouts of that customer are expired, so two tabs cannot buy twice.
-- Lost key: `node scripts/pro-reissue.js <path/to/.env> --subscription sub_... | --email address` gives the licence a new key, prints it once, and the old key stops working.
-- `STRIPE_MODE=test` switches to the `*_TEST` Stripe settings and shows a demo-checkout banner on PRO. Licences from test checkouts give no Pro on the live site. `TERMS_VERSION` is stored with each acceptance.
-- Stripe is the source of truth. The webhook reads each subscription's status fresh from Stripe. Pro is on while the status is `active` or `trialing`, and for 7 days of `past_due`.
-- Code: `pro/` (server), `migrations/` (SQLite schema, applied at start), `public/pro.js` and `public/screens/pro.js`, `public/screens/tape.js` (browser). Data lives in `var/pro.db` (SQLite via better-sqlite3, WAL).
-- Checkout requires ticking the Terms box (`consent_collection`), and the time is stored as `terms_accepted_at`. Stripe needs a Terms of service URL in the account's public details for that, and `/terms` must exist.
-- The PRO screen states the price, the monthly renewal, how to cancel, and: if we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month. `node scripts/shutdown-refunds.js <path/to/.env>` (admin only) does that: a dry run by default that prints counts and amounts, `--execute` (plus `--live` for a live key) to refund and cancel.
-- Contact: hello@bloombroke.com.
-- One-time setup: `node scripts/stripe-setup.js <path/to/.env> [--live]` finds or makes the product, the $4.20 monthly price, a Billing Portal configuration and the webhook endpoint, and writes `STRIPE_PRICE_ID`, `STRIPE_PORTAL_CONFIG_ID`, `STRIPE_WEBHOOK_SECRET` and `PRO_SECRET` into that .env without printing them. Checkout stays closed until `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` and `PRO_SECRET` are all set.
-
-| Route | Does |
-| --- | --- |
-| `POST /api/pro/checkout` | a Stripe Checkout Session URL (rate limited per IP) |
-| `POST /api/stripe/webhook` | Stripe events, signature checked, each event handled once |
-| `GET /api/pro/config` | `{ mode, open }` for the PRO screen |
-| `POST /api/pro/claim` | `{ session_id }` to the new key, for a paid session, within 24 hours |
-| `POST /api/pro/claim/confirm` | the browser saved the key: the server forgets its copy |
-| `POST /api/pro/login` | `{ key }` to status (rate limited, slowed down) |
-| `GET /api/pro/status` | status for the key in the `X-Pro-Key` header |
-| `POST /api/pro/portal` | a Stripe Billing Portal URL |
-| `GET/PUT /api/pro/sync` | named JSON documents per key, last write wins, 64 KB cap |
-
-## WHATIF data
-
-`data/whatif-products.json` lists each product's US launch date, US launch price and a source link. `data/whatif-prices.json` holds the split-adjusted closes WHATIF needs, baked by `node scripts/build-whatif-prices.js`: CNBC daily bars, each close cross-checked against Yahoo Finance, and the build stops if they differ by more than 1%. Today's price is live. Price return only: dividends and spin-offs are left out.
-
-Quotes come from a free public quote service and currency rates from the Frankfurter API (ECB reference rates). Prices can be delayed. Nothing here is financial advice.
+[Terms](https://bloombroke.com/terms), [Privacy](https://bloombroke.com/privacy) and [Disclaimer](https://bloombroke.com/disclaimer) (also the commands `TERMS`, `PRIVACY`, `DISCLAIMER`). They are server-rendered from `legal/*.md`, and the version lives in `public/legal-version.js`. Information only, not investment advice.
