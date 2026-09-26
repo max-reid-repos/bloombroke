@@ -576,13 +576,26 @@ export function screenTitle(cmd) {
 }
 // What a saved-list command changes, for the "this link wants to change" question.
 const SAVED_LIST = { PORTFOLIO: ['Portfolio', 'portfolio'], WATCH: ['Watchlist', 'watchlist'], DESK: ['Desk', 'desk layout'] };
-const LINK_CHANGES = { PORTFOLIO: 'portfolio', WATCH: 'watchlist', DESK: 'desk layout', ALERTS: 'alerts', TAPE: 'ticker tape' };
+const LINK_CHANGES = { PORTFOLIO: 'portfolio', WATCH: 'watchlist', DESK: 'desk layout', ALERTS: 'alerts', TAPE: 'ticker tape', WAGE: 'saved wage' };
+// The plain screen each one shows (DESK: its own view, DESK or DESK 2).
+const LINK_SCREEN = { PORTFOLIO: 'PF', WATCH: 'WATCH', ALERTS: 'ALERTS', TAPE: 'TAPE', WAGE: 'WAGE' };
+
+// Does this command change something saved in this browser (anything but a pure show)?
+export function linkChanges(cmd) {
+  if (!cmd || !LINK_CHANGES[cmd.name] || cmd.error) return false;
+  const a = cmd.args || {};
+  if (cmd.name === 'WAGE') return !a.show;
+  if (cmd.name === 'ALERTS' || cmd.name === 'TAPE') return a.action !== 'show';
+  return Boolean(cmd.mutates);
+}
 
 // The one-line question for a link that would change something saved in this browser.
 export function linkQuestion(cmd) {
   const a = cmd.args || {};
   if (cmd.name === 'ALERTS' && a.alert) return { question: `Add alert ${a.alert.sym} ${a.alert.op} ${a.alert.level}?`, verb: 'ADD' };
   if (cmd.name === 'ALERTS' && a.action === 'clear') return { question: 'Clear all your alerts?', verb: 'CLEAR' };
+  if (cmd.name === 'WAGE' && a.clear) return { question: 'Forget your saved wage?', verb: 'FORGET' };
+  if (cmd.name === 'WAGE' && Number.isFinite(a.wage)) return { question: `Save your wage as $${a.wage} an hour?`, verb: 'SAVE' };
   if (cmd.name === 'WATCH' && a.action === 'add' && a.ids?.length) return { question: `Add ${a.ids.join(', ')} to your watchlist?`, verb: 'ADD' };
   if (cmd.name === 'WATCH' && a.action === 'remove' && a.ids?.length) return { question: `Remove ${a.ids.join(', ')} from your watchlist?`, verb: 'REMOVE' };
   return { question: `Run ${cmd.input}? It changes your ${LINK_CHANGES[cmd.name] || 'saved settings'}.`, verb: 'RUN' };
@@ -592,15 +605,17 @@ export function linkQuestion(cmd) {
 // the address bar; show: the command to render; ask: null, or { run, question, verb } for
 // a one-line confirm over the screen. A link never changes anything saved by itself:
 // WATCH ADD, PF BUY, ALERTS AAPL > 350, TAPE ADD and DESK RESET open their screen and
-// ask. A DESK preset (DESK WEIRD) loads like typed: DESK asks first over panels of your
-// own. LOGIN and LOGOUT only ever show PRO.
+// ask, whatever the words (ALERT AAPL > 350 too), and the address bar keeps only the
+// plain screen. A DESK preset (DESK WEIRD) loads like typed: DESK asks first over panels
+// of your own. LOGIN and LOGOUT only ever show PRO.
 export function linkPlan(raw) {
   const clean = tokenize(raw).join(' ') || DEFAULT_COMMAND;
   const cmd = parseCommand(clean);
   const { url } = urlFor(clean);
   if (cmd.name === 'DESK' && cmd.args?.preset && !cmd.error) return { url, show: clean, ask: null };
-  if (url === clean || cmd.error || cmd.secret || cmd.name === 'LOGIN' || cmd.name === 'LOGOUT') return { url, show: url, ask: null };
-  return { url, show: url, ask: { run: clean, ...linkQuestion(cmd) } };
+  if (cmd.secret || cmd.name === 'LOGIN' || cmd.name === 'LOGOUT' || !linkChanges(cmd)) return { url, show: url, ask: null };
+  const plain = cmd.view || LINK_SCREEN[cmd.name];
+  return { url: plain, show: plain, ask: { run: clean, url: plain, ...linkQuestion(cmd) } };
 }
 export const DEFAULT_TITLE = 'Bloombroke: a free market terminal. Pro $4.20/mo.';
 
@@ -1191,6 +1206,7 @@ function boot() {
   });
 
   input.addEventListener('keydown', (e) => {
+    if (e.isComposing || e.keyCode === 229) return; // an IME is composing: its keys are its own
     if (e.key === 'Tab') {
       if (!input.value.trim() && !items.length) return;
       e.preventDefault();
@@ -1244,7 +1260,8 @@ function boot() {
     }
   });
 
-  input.addEventListener('input', () => { renderSuggest(); placeCursor(); });
+  // Typed, pasted or picked text starts a new Tab cycle.
+  input.addEventListener('input', () => { tabbing = false; renderSuggest(); placeCursor(); });
   ['keyup', 'click', 'select', 'scroll'].forEach((ev) => input.addEventListener(ev, placeCursor));
   input.addEventListener('focus', () => { document.body.classList.add('cmd-focused'); placeCursor(); });
   input.addEventListener('blur', () => { document.body.classList.remove('cmd-focused'); setTimeout(closeSuggest, 120); });
@@ -1439,13 +1456,16 @@ function boot() {
       if (b) { e.preventDefault(); e.stopPropagation(); answerLink(b.dataset.act === 'yes'); }
     });
     screen.prepend(bar);
-    linkAsk = { run: ask.run, bar };
+    linkAsk = { run: ask.run, url: ask.url, bar };
   }
   function answerLink(yes) {
     const r = linkAsk?.run;
+    const url = linkAsk?.url;
     closeLinkAsk();
-    if (yes && r) run(r, { typed: true });
+    // Not pushed: the address bar keeps the plain screen, so a reload never runs it again.
+    if (yes && r) run(r, { push: false });
     else setStatus('LINK SKIPPED: NOTHING CHANGED');
+    if (url) window.history.replaceState({ ...(window.history.state || {}), c: url }, '', toQuery(url));
     if (!coarse) input.focus();
   }
   // Enter on the page, the empty command bar or the line runs it; Enter on another
@@ -1454,6 +1474,8 @@ function boot() {
     if (!linkAsk || e.altKey || e.ctrlKey || e.metaKey || (e.key !== 'Enter' && e.key !== 'Escape')) return;
     const t = e.target;
     if (t === input && input.value.trim()) return;
+    // A held key repeating is not an answer (and must not submit the bar either).
+    if (e.repeat) { e.preventDefault(); e.stopPropagation(); return; }
     if (e.key === 'Enter' && t !== input && t.closest?.('button, a, input, select, textarea, [data-cmd], [tabindex="0"]')) return;
     e.preventDefault();
     e.stopPropagation();

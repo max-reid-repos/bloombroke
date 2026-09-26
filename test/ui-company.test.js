@@ -8,7 +8,7 @@ import { monthlyTotals, insidersTable } from '../public/screens/insiders.js';
 import { shortQuarter, beatsGroups, beatsTable, nextLine } from '../public/screens/beats.js';
 import { trendPoints, shortsTable } from '../public/screens/shorts.js';
 import { chips as filingChips, filingsTable } from '../public/screens/filings.js';
-import { holdersTable, notRefiledHtml, ownersNote } from '../public/screens/owners.js';
+import { holdersTable, notRefiledHtml, ownersNote, ownersMeta } from '../public/screens/owners.js';
 import { parseNextReport } from '../data/beats.js';
 import { filterFilings, isKeyFiling } from '../data/filings.js';
 import { panelTools } from '../public/kit.js';
@@ -174,6 +174,11 @@ test('owners: holders that did not refile are greyed apart, and the note says wh
   assert.match(note, /287 holders whose latest filing is older/);
   assert.match(note, /own total, with them, is 76\.57%/);
   assert.match(ownersNote({ quarterOnly: false }), /old ones too/);
+  // The title strip: holdings are at a quarter end, filed up to 45 days after it.
+  assert.equal(ownersMeta({ quarterOnly: false }), '13F: HOLDINGS AT QUARTER END, FILED UP TO 45 DAYS LATER');
+  assert.equal(ownersMeta(null), '13F: HOLDINGS AT QUARTER END, FILED UP TO 45 DAYS LATER');
+  assert.equal(ownersMeta({ quarterOnly: true, quarter: '2026-06-30' }), '13F: HOLDINGS AT QUARTER END, FILED UP TO 45 DAYS LATER · TOTALS: JUN 30, 2026 FILINGS ONLY');
+  assert.doesNotMatch(ownersMeta({ quarterOnly: false }), /DAYS OLD/, 'never claims the data is at most 45 days old');
 });
 
 test('watch and pf: the same row actions at the right edge, remove last', () => {

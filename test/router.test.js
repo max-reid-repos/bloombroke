@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  parseCommand, parseFxArgs, parseCpiArgs, toQuery, fromQuery, suggest, complete, completeFrom, linkPlan, marketStatus, nyClock, DEFAULT_COMMAND, COMMANDS,
+  parseCommand, parseFxArgs, parseCpiArgs, toQuery, fromQuery, suggest, complete, completeFrom, linkPlan, urlFor, marketStatus, nyClock, DEFAULT_COMMAND, COMMANDS,
 } from '../public/app.js';
 
 test('empty input and empty URL mean HOME', () => {
@@ -112,8 +112,8 @@ test('Tab completes to the top of the list on screen, and cycles through it', ()
 });
 
 test('a link that would change something saved never runs by itself: it asks in one line', () => {
-  assert.deepEqual(linkPlan('ALERTS AAPL > 350'), { url: 'ALERTS', show: 'ALERTS', ask: { run: 'ALERTS AAPL > 350', question: 'Add alert AAPL > 350?', verb: 'ADD' } });
-  assert.deepEqual(linkPlan('WATCH ADD TSLA NVDA').ask, { run: 'WATCH ADD TSLA NVDA', question: 'Add TSLA, NVDA to your watchlist?', verb: 'ADD' });
+  assert.deepEqual(linkPlan('ALERTS AAPL > 350'), { url: 'ALERTS', show: 'ALERTS', ask: { run: 'ALERTS AAPL > 350', url: 'ALERTS', question: 'Add alert AAPL > 350?', verb: 'ADD' } });
+  assert.deepEqual(linkPlan('WATCH ADD TSLA NVDA').ask, { run: 'WATCH ADD TSLA NVDA', url: 'WATCH', question: 'Add TSLA, NVDA to your watchlist?', verb: 'ADD' });
   assert.equal(linkPlan('WATCH REMOVE AAPL').ask.question, 'Remove AAPL from your watchlist?');
   assert.equal(linkPlan('ALERTS CLEAR').ask.verb, 'CLEAR');
   assert.equal(linkPlan('DESK RESET').ask.run, 'DESK RESET');
@@ -127,6 +127,27 @@ test('a link that would change something saved never runs by itself: it asks in 
   // address bar keeps just DESK.
   for (const p of ['WEIRD', 'MACRO', 'CRYPTO']) assert.deepEqual(linkPlan(`DESK ${p}`), { url: 'DESK', show: `DESK ${p}`, ask: null });
   assert.deepEqual(linkPlan('DESK 2 CRYPTO'), { url: 'DESK 2', show: 'DESK 2 CRYPTO', ask: null });
+});
+
+test('aliases never slip past the link confirm, and the URL keeps only the plain screen', () => {
+  assert.equal(urlFor('ALERT AAPL > 350').url, 'ALERTS', 'ALERT is ALERTS: the words never reach the URL');
+  assert.equal(urlFor('ALERT CLEAR').url, 'ALERTS');
+  assert.deepEqual(linkPlan('ALERT AAPL > 350'), { url: 'ALERTS', show: 'ALERTS', ask: { run: 'ALERT AAPL > 350', url: 'ALERTS', question: 'Add alert AAPL > 350?', verb: 'ADD' } });
+  assert.equal(linkPlan('ALERT CLEAR').ask.verb, 'CLEAR');
+  assert.equal(linkPlan('WATCHLIST ADD TSLA').ask.question, 'Add TSLA to your watchlist?');
+  assert.equal(linkPlan('WATCHLIST ADD TSLA').url, 'WATCH');
+  assert.equal(linkPlan('PORTFOLIO BUY AAPL 10 @ 200').url, 'PF');
+  assert.equal(linkPlan('W ADD TSLA').url, 'WATCH');
+  // WAGE saves a number in this browser: a link asks; WAGE alone only shows it.
+  assert.deepEqual(linkPlan('WAGE 35'), { url: 'WAGE', show: 'WAGE', ask: { run: 'WAGE 35', url: 'WAGE', question: 'Save your wage as $35 an hour?', verb: 'SAVE' } });
+  assert.equal(linkPlan('WAGE OFF').ask.verb, 'FORGET');
+  assert.equal(linkPlan('WAGE').ask, null);
+  // TAPE ON, OFF and CLEAR change the tape; TAPE alone shows it.
+  for (const c of ['TAPE ON', 'TAPE OFF', 'TAPE CLEAR']) assert.equal(linkPlan(c).url, 'TAPE', c), assert.ok(linkPlan(c).ask, c);
+  assert.equal(linkPlan('TAPE').ask, null);
+  // Every question carries the plain screen the address bar goes back to.
+  for (const c of ['ALERTS AAPL > 350', 'WATCH ADD TSLA', 'DESK RESET', 'DESK 3 RESET']) assert.equal(linkPlan(c).ask.url, linkPlan(c).url, c);
+  assert.equal(linkPlan('DESK 3 RESET').url, 'DESK 3');
 });
 
 test('NYSE hours: 9:30 to 16:00 ET, weekdays only', () => {

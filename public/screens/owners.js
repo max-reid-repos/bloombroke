@@ -59,9 +59,11 @@ export function notRefiledHtml(rows, quarter) {
   </div>`;
 }
 
-// The short note in the title strip: how old the holdings can be, and what the totals count.
+// The short note in the title strip: what date the holdings are from, and what the
+// totals count. A 13F gives holdings at a quarter end and is filed up to 45 days later.
+export const OWNERS_13F = '13F: HOLDINGS AT QUARTER END, FILED UP TO 45 DAYS LATER';
 export function ownersMeta(s) {
-  return s?.quarterOnly ? `13F, UP TO 45 DAYS OLD · TOTALS: ${fmtDay(s.quarter)} FILINGS ONLY` : '13F, UP TO 45 DAYS OLD';
+  return s?.quarterOnly ? `${OWNERS_13F} · TOTALS: ${fmtDay(s.quarter)} FILINGS ONLY` : OWNERS_13F;
 }
 
 // The long form of that note (its tooltip): what the totals count, and the source's own

@@ -319,4 +319,6 @@ test('CLOCK: the table is drawn once; each second writes only the text that chan
   for (let i = 0; i < 6; i += 1) tick();
   assert.equal(bodySets, 1, 'never redrawn after the first paint');
   assert.ok(writes <= CLOCK_LIST.length, 'the now mark moves once, then only when the minute does');
+  const { HOLIDAY_RULE } = await import('../public/screens/clock.js');
+  assert.match(HOLIDAY_RULE, /30 minutes after the open/, 'the holiday rule is the title strip note\'s tooltip');
 });

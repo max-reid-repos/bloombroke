@@ -6,6 +6,7 @@
 //
 // `id` is the internal screen key when it differs from the typed name.
 
+import { ALIASES } from './registry.js';
 import * as world from './screens/world.js';
 import * as movers from './screens/movers.js';
 import * as heatmap from './screens/heatmap.js';
@@ -86,14 +87,17 @@ export function matchExtra(head, rest) {
 // What goes in the URL and the command history for a command. LOGIN never puts its key
 // there, and commands that change something (LOGIN, LOGOUT, TAPE ADD) are not replayed
 // from a link: the URL keeps only the screen they show.
+// An alias counts as its command: ALERT AAPL > 350 keeps only ALERTS.
 export function urlCommand(clean) {
-  const head = String(clean).split(' ')[0];
+  const first = String(clean).split(' ')[0];
+  const head = ALIASES[first] || first;
   const c = EXTRA.find((x) => x.name === head && x.url);
   return c ? c.url : clean;
 }
 
 // Commands whose words must never be kept (LOGIN <key>).
 export function isSecret(clean) {
-  const head = String(clean).split(' ')[0];
+  const first = String(clean).split(' ')[0];
+  const head = ALIASES[first] || first;
   return EXTRA.some((x) => x.name === head && x.secret);
 }

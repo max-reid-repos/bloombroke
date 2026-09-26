@@ -5,7 +5,7 @@
 // Only NYSE and Nasdaq know their holidays here; for the others a holiday shows up when
 // the exchange's main index has not traded today (see holidayFromQuote).
 
-import { esc, panel, LOADING } from './markets.js';
+import { esc, panel, metaNote, LOADING } from './markets.js';
 import { NYSE_HOLIDAYS, NYSE_EARLY_CLOSES } from '../app.js';
 
 const hm = (h, m = 0) => h * 60 + m;
@@ -192,8 +192,11 @@ function rows(list) {
   }).join('');
 }
 
+// How holidays show: the long form of the title strip's note (its tooltip).
+export const HOLIDAY_RULE = 'NYSE and Nasdaq holidays are built in; other holidays show once the main index has not traded by 30 minutes after the open.';
+
 export function render(el, cmd, ctx) {
-  el.innerHTML = `<div class="with-side">${panel('1', 'Market clocks', '', { cls: 'panel-solo', metaId: 'ck-meta', meta: 'REGULAR HOURS, LOCAL TIME' })}${panel('2', 'Next bells', '', { cls: 'panel-solo' })}</div>`;
+  el.innerHTML = `<div class="with-side">${panel('1', 'Market clocks', '', { cls: 'panel-solo', metaId: 'ck-meta', meta: metaNote('REGULAR HOURS, LOCAL TIME', HOLIDAY_RULE) })}${panel('2', 'Next bells', '', { cls: 'panel-solo' })}</div>`;
   const [body, side] = el.querySelectorAll('.panel-body');
   const asOfByIdx = new Map();
 
