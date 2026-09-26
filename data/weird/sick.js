@@ -6,7 +6,7 @@
 // engine. It is our summary, not a CDC national number. The newest weeks are thin (sites
 // report late), so the gauge uses the newest week with at least 90% of a full week's sites.
 
-import { NoData } from './source.js';
+import { NoData, headlineNumber } from './source.js';
 
 export const id = 'sick';
 export const source = 'CDC NWSS';
@@ -83,6 +83,8 @@ export function build(series) {
   if (!Number.isFinite(covid.level)) throw new NoData('CDC: no COVID wastewater values');
   return {
     headline: `COVID ${covid.level.toFixed(1)}`,
+    value: headlineNumber(covid.level, 1), // ALERTS: the headline number and its unit
+    unit: 'level',
     line: 'Wastewater virus level, national',
     spark: covid.points.map((p) => p.level),
     asOf: covid.week,

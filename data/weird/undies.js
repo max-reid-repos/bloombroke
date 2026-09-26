@@ -4,7 +4,7 @@
 // swimwear, and accessories", US city average, not seasonally adjusted.
 // BLS allows 25 keyless queries a day, so the result is kept 24 hours.
 
-import { NoData, signedPct } from './source.js';
+import { NoData, signedPct, headlineNumber } from './source.js';
 
 export const id = 'undies';
 export const source = 'BLS';
@@ -46,6 +46,8 @@ export function build(rows) {
   if (yoy === null) throw new NoData('BLS: no value a year before');
   return {
     headline: `${signedPct(yoy, 1)} YOY`,
+    value: headlineNumber(yoy, 1), // ALERTS: the headline number and its unit
+    unit: '%',
     line: "Men's underwear prices vs a year ago",
     spark: rows.map((r) => r.value),
     asOf: `${last.month}-01`,

@@ -1464,3 +1464,43 @@ a.ch-flag { cursor: pointer; }
   .ft-short { display: inline; }
 }
 /* --- end FISHTANK -------------------------------------------------------------- */
+
+/* --- ALERTS (price and gauge alerts) -------------------------------------------- */
+.status-alerts {
+  margin-left: auto; height: 16px; padding: 0 6px;
+  border: 0; background: var(--accent); color: var(--ink);
+  font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .08em; cursor: pointer;
+}
+.status-alerts:hover { background: var(--text); }
+.status-alerts[hidden] { display: none; }
+.al-honest { color: var(--dim); font-size: 12px; white-space: normal; }
+.al-perm { color: var(--text-2); }
+.al-perm .quiet { margin-left: 8px; }
+.al-table .al-cond { color: var(--text); }
+.al-table .al-dist { color: var(--dim); }
+.al-table .last.is-stale { color: var(--dim); font-weight: 400; }
+.al-stale { margin-left: 4px; color: var(--faint); font-size: 10px; letter-spacing: .06em; }
+.al-table .al-st { width: 1%; white-space: nowrap; }
+.al-table td.wl-act { text-align: right; }
+.al-state { color: var(--dim); font-size: 11px; font-weight: 600; letter-spacing: .08em; }
+.al-state.is-fired { padding: 1px 5px; background: var(--accent); color: var(--ink); }
+.al-table tr.is-fired .wl-sym a { color: var(--accent); }
+/* Phones: each alert is two lines, symbol, condition, state; then now, distance, actions. */
+@media (max-width: 639px) {
+  .al-table thead, .al-table .al-name { display: none; }
+  .al-table tbody tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: 12px; align-items: center;
+    grid-template-areas: "sym cond st" "now dist act";
+    padding: 3px 8px;
+  }
+  .al-table tbody th, .al-table tbody td { height: 22px; padding: 0 !important; width: auto; }
+  .al-table .wl-sym { grid-area: sym; }
+  .al-table .al-cond { grid-area: cond; }
+  .al-table .al-st { grid-area: st; text-align: right; }
+  .al-table .last { grid-area: now; text-align: left; }
+  .al-table .last::before { content: 'NOW '; color: var(--dim); font-size: 11px; font-weight: 400; letter-spacing: .06em; }
+  .al-table .al-dist { grid-area: dist; }
+  .al-table tbody .wl-act { grid-area: act; justify-self: end; text-align: right; }
+  .al-table .wl-btn { height: 22px; }
+}
+/* --- end ALERTS ----------------------------------------------------------------- */

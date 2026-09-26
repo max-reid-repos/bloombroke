@@ -4,7 +4,7 @@
 //   ATA truck tonnage index (TRUCKD11)
 //   Rail freight carloads (RAILFRTCARLOADSD11)
 
-import { NoData, signedPct } from './source.js';
+import { NoData, signedPct, headlineNumber } from './source.js';
 import { FRED_TTL, FRED_RETRY, fredMonthly, latestYoy } from './fred.js';
 
 export const id = 'trucks';
@@ -30,6 +30,8 @@ export function build(got) {
   if (!lead) throw new NoData('FRED: no freight values');
   return {
     headline: `${lead.short} ${signedPct(lead.yoy, 1)} YOY`,
+    value: headlineNumber(lead.yoy, 1), // ALERTS: the headline number and its unit
+    unit: '%',
     line: `${lead.label} vs a year ago`,
     spark: lead.spark,
     asOf: `${lead.month}-01`,

@@ -2,7 +2,7 @@
 // stagflation and bank runs. Source: Wikimedia pageviews REST API (people only, bots
 // excluded). The headline is the latest full day against the 30 days before it.
 
-import { NoData, mean, signedPct } from './source.js';
+import { NoData, mean, signedPct, headlineNumber } from './source.js';
 
 export const id = 'panic';
 export const source = 'Wikimedia';
@@ -53,6 +53,8 @@ export function build(seriesByPage) {
   const pct = head.pct;
   return {
     headline: signedPct(pct, 0),
+    value: headlineNumber(pct, 0), // ALERTS: the headline number and its unit
+    unit: '%',
     line: 'Crash-page views vs 30-day average',
     spark: totals.slice(-90),
     asOf: dates[dates.length - 1],

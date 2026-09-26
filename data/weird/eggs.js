@@ -2,7 +2,7 @@
 // average price data, US city average, via FRED (series APU0000708111). Also shown:
 // the highest monthly price on record and how far today's price is from it.
 
-import { NoData, signedPct } from './source.js';
+import { NoData, signedPct, headlineNumber } from './source.js';
 import { FRED_TTL, FRED_RETRY, fredMonthly, latestYoy, recentRows } from './fred.js';
 
 export const id = 'eggs';
@@ -18,6 +18,8 @@ export function build(rows) {
   const fromPeak = (last.value / peak.value - 1) * 100;
   return {
     headline: `$${last.value.toFixed(2)} A DOZEN`,
+    value: headlineNumber(last.value, 2), // ALERTS: the headline number and its unit
+    unit: '$',
     line: last.month === peak.month ? 'US city average; a record high' : `US city average; ${signedPct(fromPeak, 0)} from peak`,
     spark: rows.slice(-60).map((r) => r.value),
     asOf: `${last.month}-01`,

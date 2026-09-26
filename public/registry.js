@@ -376,11 +376,15 @@ export const REGISTRY = [
     syntax: 'LOGOUT', examples: ['LOGOUT'], keywords: ['sign out', 'account', 'device'],
     source: 'Built in', delay: 'None',
   },
+  // --- ALERTS (price and gauge alerts) ---
   {
-    name: 'ALERTS', soon: true, category: 'Pro', summary: 'Price alerts, coming next to Pro',
-    syntax: 'ALERTS', examples: [], keywords: ['alert', 'notify', 'price alert'],
-    source: 'Built in', delay: 'None',
+    name: 'ALERTS', aliases: ['ALERT'], category: 'Your stuff', summary: 'Price alerts: a note when a symbol or gauge crosses your level',
+    syntax: 'ALERTS [<symbol> >|< <level>|CLEAR]', examples: ['ALERTS', 'ALERTS AAPL > 350', 'ALERTS SPX > 7800', 'ALERTS CANAL < 5', 'ALERTS CLEAR'], usageExample: 'ALERTS AAPL > 350',
+    keywords: ['alert', 'alerts', 'notify', 'notification', 'price alert', 'target', 'level', 'cross'],
+    options: [['<symbol> > <level>', 'When it goes above the level'], ['<symbol> < <level>', 'When it goes below'], ['CLEAR', 'Remove them all (asks first)']],
+    source: 'Saved in this browser, up to 20; prices live', delay: 'Checked every 60 seconds while Bloombroke is open in a tab',
   },
+  // --- end ALERTS ---
 
   // --- Legal ----------------------------------------------------------------------------
   {
