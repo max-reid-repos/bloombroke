@@ -33,6 +33,7 @@ import * as deskScreen from './screens/desk.js';
 import { parseDeskArgs, isEmbedSearch, tickerOf, TICKER_SCREENS } from './desk-layout.js';
 import { COMPANY_SCREENS, COMPANY_TAKES_ARGS, matchCompany } from './company.js';
 import { MARKETS_SCREENS, MARKETS_TAKES_ARGS, matchMarkets } from './commands-markets.js';
+import { WEIRD_SCREENS, matchWeird } from './commands-weird.js';
 import { LISTED, ALIASES, FUNCTION_BAR, TICKER_FUNCTIONS, findCommand } from './registry.js';
 import { tapeOn, setTapeOn, mountTape, tapeItems } from './tape.js';
 import { createMenu } from './menu.js';
@@ -281,6 +282,7 @@ export function parseCommand(raw, depth = 0) {
   }
   const company = matchCompany(head, rest); if (company) return company;
   const markets = matchMarkets(head, rest); if (markets) return markets;
+  const weird = matchWeird(head); if (weird) return weird;
   // Add new commands above this line: commands win over symbols of the same name.
   const quote = parseSymbolCommand(toks);
   if (quote) return quote;
@@ -859,7 +861,7 @@ function boot() {
         placeCursor();
       },
     };
-    const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name] || COMPANY_SCREENS[cmd.name] || MARKETS_SCREENS[cmd.name];
+    const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name] || COMPANY_SCREENS[cmd.name] || MARKETS_SCREENS[cmd.name] || WEIRD_SCREENS[cmd.name];
     if (cmd.mutates && fromUrl) {
       // A link that changes saved lists never runs by itself: ask first.
       const [title, what] = SAVED_LIST[cmd.name] || SAVED_LIST.WATCH;

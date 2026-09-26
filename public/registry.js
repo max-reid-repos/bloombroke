@@ -30,6 +30,7 @@ export const CATEGORIES = [
   'Crypto and commodities',
   'Economy and calendars',
   'Screens and lists',
+  'Weird data',
   'Your stuff',
   'Money tools',
   'Pro',
@@ -384,6 +385,63 @@ export const REGISTRY = [
     name: 'DISCLAIMER', category: 'Legal', summary: 'Disclaimer: data may be delayed or wrong, investing is risky',
     syntax: 'DISCLAIMER', examples: ['DISCLAIMER'], keywords: ['risk', 'advice', 'legal', 'warning'],
     source: 'Built in', delay: 'None',
+  },
+
+  // --- Weird data (WEIRD and one command per gauge; screens in screens/weird*.js) ------
+  {
+    name: 'WEIRD', category: 'Weird data', summary: 'Odd live gauges on one screen: ships, pizza, waffles, omens',
+    syntax: 'WEIRD', examples: ['WEIRD'], keywords: ['odd', 'fun', 'alternative data', 'gauges', 'indicators', 'strange'],
+    source: 'Ten public sources, named on each tile', delay: 'Each tile shows its own date',
+  },
+  {
+    name: 'CANAL', aliases: ['SHIPS', 'CHOKEPOINTS'], category: 'Weird data', summary: 'Ships through Hormuz, Suez, Panama and other chokepoints',
+    syntax: 'CANAL', examples: ['CANAL'], keywords: ['shipping', 'hormuz', 'suez', 'panama', 'tankers', 'strait', 'chokepoint'],
+    source: 'IMF PortWatch', delay: 'Daily, about 6 days behind',
+  },
+  {
+    name: 'PIZZA', aliases: ['PIZZINT'], category: 'Weird data', summary: 'Pentagon Pizza Index: pizza place traffic near the Pentagon',
+    syntax: 'PIZZA', examples: ['PIZZA'], keywords: ['pentagon', 'pizza index', 'defcon', 'pizzint'],
+    source: 'pizzint.watch (unofficial)', delay: 'Minutes; often empty overnight',
+  },
+  {
+    name: 'DEGEN', category: 'Weird data', summary: 'App Store rank of betting and trading apps, like Kalshi',
+    syntax: 'DEGEN', examples: ['DEGEN'], keywords: ['app store', 'kalshi', 'polymarket', 'prediction markets', 'betting', 'trading apps', 'apps'],
+    source: 'Apple App Store top free chart, US', delay: 'About daily',
+  },
+  {
+    name: 'WAFFLE', aliases: ['WAFFLEHOUSE'], category: 'Weird data', summary: 'Waffle House stores inside active tropical storms',
+    syntax: 'WAFFLE', examples: ['WAFFLE'], keywords: ['waffle house index', 'hurricane', 'storm', 'fema', 'tropical'],
+    source: 'National Hurricane Center; stores © OpenStreetMap contributors', delay: 'Latest NHC advisory',
+  },
+  {
+    name: 'PANIC', category: 'Weird data', summary: 'Wikipedia views of Recession, Stock market crash and more',
+    syntax: 'PANIC', examples: ['PANIC'], keywords: ['wikipedia', 'recession', 'crash', 'stagflation', 'bank run', 'fear'],
+    source: 'Wikimedia pageviews', delay: 'Daily, up to yesterday',
+  },
+  {
+    name: 'HIRING', category: 'Weird data', summary: 'Hacker News job seekers per job post, by month',
+    syntax: 'HIRING', examples: ['HIRING'], keywords: ['hacker news', 'who is hiring', 'tech jobs', 'hn', 'job market'],
+    source: 'HN Algolia search', delay: 'Monthly threads, counts grow during the month',
+  },
+  {
+    name: 'HOTDOG', aliases: ['HOTDOGS'], category: 'Weird data', summary: "Costco's $1.50 hot dog, adjusted for inflation",
+    syntax: 'HOTDOG', examples: ['HOTDOG'], keywords: ['costco', 'hot dog', 'inflation', 'cpi'],
+    source: 'FRED CPIAUCSL', delay: 'Monthly CPI',
+  },
+  {
+    name: 'OMENS', aliases: ['MOON'], category: 'Weird data', summary: 'Moon phase, New York sky and sunspots',
+    syntax: 'OMENS', examples: ['OMENS'], keywords: ['moon', 'lunar', 'weather', 'sunshine', 'sunspots', 'solar'],
+    source: 'Computed moon; NWS KNYC; NOAA SWPC', delay: 'Live moon, hourly sky, monthly sunspots',
+  },
+  {
+    name: 'UNDIES', aliases: ['UNDERWEAR'], category: 'Weird data', summary: "Men's underwear price index, the Greenspan folklore gauge",
+    syntax: 'UNDIES', examples: ['UNDIES'], keywords: ['underwear', 'greenspan', 'cpi', 'prices', 'clothing'],
+    source: 'BLS CPI CUUR0000SEAA02', delay: 'Monthly',
+  },
+  {
+    name: 'BIGMAC', aliases: ['BURGER'], category: 'Weird data', summary: 'Big Mac index: currencies over or under the dollar',
+    syntax: 'BIGMAC', examples: ['BIGMAC'], keywords: ['big mac index', 'burger', 'currency', 'valuation', 'economist', 'ppp'],
+    source: 'The Economist, CC BY 4.0', delay: 'Twice a year',
   },
 
   // --- Hidden ---------------------------------------------------------------------------

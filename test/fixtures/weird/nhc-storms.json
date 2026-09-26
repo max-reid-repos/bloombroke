@@ -1,0 +1,79 @@
+{
+"activeStorms": [
+{
+"id": "al062026",
+"name": "Fay",
+"classification": "TS",
+"intensity": "35",
+"latitudeNumeric": 29.9,
+"longitudeNumeric": -43.4,
+"lastUpdate": "2026-09-26T03:00:00.000Z",
+"forecastAdvisory": {
+"advNum": "024",
+"issuance": "2026-09-26T03:00:00.000Z",
+"fileUpdateTime": "2026-09-26T02:58:20.299Z",
+"url": "https://www.nhc.noaa.gov/text/MIATCMAT1.shtml"
+}
+},
+{
+"id": "al072026",
+"name": "Gonzalo",
+"classification": "TS",
+"intensity": "40",
+"latitudeNumeric": 16.9,
+"longitudeNumeric": -22.5,
+"lastUpdate": "2026-09-26T03:00:00.000Z",
+"forecastAdvisory": {
+"advNum": "005",
+"issuance": "2026-09-26T03:00:00.000Z",
+"fileUpdateTime": "2026-09-26T02:32:18.278Z",
+"url": "https://www.nhc.noaa.gov/text/MIATCMAT2.shtml"
+}
+},
+{
+"id": "ep162026",
+"name": "Odalys",
+"classification": "HU",
+"intensity": "105",
+"latitudeNumeric": 18.8,
+"longitudeNumeric": -123.6,
+"lastUpdate": "2026-09-26T03:00:00.000Z",
+"forecastAdvisory": {
+"advNum": "025",
+"issuance": "2026-09-26T03:00:00.000Z",
+"fileUpdateTime": "2026-09-26T02:51:51.996Z",
+"url": "https://www.nhc.noaa.gov/text/MIATCMEP1.shtml"
+}
+},
+{
+"id": "ep172026",
+"name": "Polo",
+"classification": "HU",
+"intensity": "150",
+"latitudeNumeric": 17.4,
+"longitudeNumeric": -110.1,
+"lastUpdate": "2026-09-26T03:00:00.000Z",
+"forecastAdvisory": {
+"advNum": "022",
+"issuance": "2026-09-26T03:00:00.000Z",
+"fileUpdateTime": "2026-09-26T02:55:19.768Z",
+"url": "https://www.nhc.noaa.gov/text/MIATCMEP2.shtml"
+}
+},
+{
+"id": "ep152026",
+"name": "Nolo",
+"classification": "HU",
+"intensity": "90",
+"latitudeNumeric": 16.9,
+"longitudeNumeric": -155.3,
+"lastUpdate": "2026-09-26T03:00:00.000Z",
+"forecastAdvisory": {
+"advNum": "022",
+"issuance": "2026-09-26T03:00:00.000Z",
+"fileUpdateTime": "2026-09-26T02:46:19.073Z",
+"url": "https://www.nhc.noaa.gov/text/HFOTCMCP2.shtml"
+}
+}
+]
+}

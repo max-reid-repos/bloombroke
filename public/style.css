@@ -1147,3 +1147,46 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 @media (max-height: 560px) {
   .is-embed .q-top .stats, .is-embed .q-ext { display: none; }
 }
+
+/* ---- WEIRD (phase 3: screens/weird.js, weird-gauges.js) --------------------------- */
+.wd-grid {
+  display: grid; gap: 1px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  background: var(--rule-strong); border: 1px solid var(--rule-strong);
+}
+.wd-tile { display: flex; min-width: 0; background: var(--bg); cursor: pointer; outline: 0; }
+.wd-tile > .panel { flex: 1; }
+.wd-tile:hover .panel-body, .wd-tile:focus .panel-body { background: var(--panel-2); }
+.wd-tile:focus { box-shadow: inset 2px 0 0 var(--accent); }
+.wd-tile .panel-body { display: flex; flex-direction: column; gap: 2px; min-height: 112px; }
+.wd-big { font-size: 22px; font-weight: 600; line-height: 1.2; color: var(--text); overflow-wrap: anywhere; }
+.wd-big.is-none { color: var(--dim); }
+.wd-line { color: var(--text-2); font-size: 12px; min-height: 17px; }
+.wd-spark { min-height: 18px; margin-top: auto; }
+.wd-src { font-size: 10px; letter-spacing: .04em; color: var(--dim); text-transform: uppercase; margin-top: 2px; }
+.wd-head { margin-bottom: 8px; }
+.wd-head .wd-big { font-size: 28px; }
+.wd-body { display: grid; gap: 10px; min-width: 0; overflow-x: auto; }
+.wd-body .stats { max-width: 520px; }
+.wd-stats dd { gap: 6px; }
+.wd-table { max-width: 820px; }
+.wd-table .name { width: auto; max-width: none; }
+.wd-spark-cell { width: 1%; }
+.wd-chart { height: 240px; margin-left: 0; max-width: 820px; }
+.wd-chart-head .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; color: var(--text-2); }
+.wd-sub { font-size: 11px; color: var(--dim); letter-spacing: .06em; text-transform: uppercase; margin: 4px 0; }
+.wd-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; max-width: 820px; }
+.wd-how { max-width: 820px; margin-top: 12px; }
+.wd-how + .wd-src { margin-top: 8px; }
+@media (max-width: 639px) {
+  .wd-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wd-tile .panel-body { min-height: 96px; padding: 6px 8px; }
+  .wd-big { font-size: 16px; }
+  .wd-head .wd-big { font-size: 22px; }
+  .wd-line { font-size: 11px; }
+  .wd-spark svg { width: 100%; }
+  .wd-hide-sm { display: none; }
+  .wd-two { grid-template-columns: minmax(0, 1fr); }
+  .wd-table th, .wd-table td { padding: 0 6px; }
+  .wd-chart { height: 200px; }
+}
