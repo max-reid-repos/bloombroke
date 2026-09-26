@@ -223,23 +223,32 @@ test('SECTORS: the bar sits in the TODAY cell; leaders by period', async () => {
   assert.equal(lead[2].best.id, 'XLE');
 });
 
-test('HOME markets: a short list in four groups, % change only', () => {
+test('HOME markets: four groups of ten, change column only, sub-heading bars', () => {
   assert.deepEqual(HOME_MARKETS.map((g) => g.name), ['US', 'World', 'Commodities + crypto', 'FX + rates']);
-  const ids = HOME_MARKETS.flatMap((g) => g.ids);
-  assert.deepEqual(ids, ['SPX', 'NDX', 'DJI', 'RUT', 'VIX', 'FTSE', 'DAX', 'N225', 'HSI', 'SHANGHAI',
-    'GOLD', 'WTI', 'COPPER', 'BALTICDRY', 'BTC', 'ETH', 'EURUSD', 'USDJPY', 'GBPUSD', 'DXY', 'US10Y']);
-  // Every one is an instrument the MARKETS screen already shows: no new data source.
+  for (const g of HOME_MARKETS) assert.equal(g.rows.filter((r) => typeof r !== 'string').length, 10, `${g.name} has ten rows`);
+  const subs = HOME_MARKETS.map((g) => g.rows.filter((r) => typeof r === 'string'));
+  assert.deepEqual(subs, [[], ['Europe', 'Asia'], ['Energy', 'Metals', 'Other', 'Crypto'], ['FX', 'Rates']]);
+  // Every one is an instrument the MARKETS screen shows (one shared batch), or the 2s10s
+  // spread the server adds to it.
   const onMarkets = new Set(INSTRUMENTS.filter((m) => m.markets !== false).map((m) => m.id));
-  for (const id of ids) assert.ok(onMarkets.has(id), id);
-  // Regrouped in HOME's order, whatever order /api/markets sends; missing ids drop out.
-  const api = [inst('ETH', 'Crypto'), inst('SPX', 'Americas'), inst('CAC40', 'Europe'), inst('US10Y', 'Rates'), inst('NDX', 'Americas')];
+  for (const [id] of HOME_MARKETS.flatMap((g) => g.rows.filter((r) => typeof r !== 'string'))) {
+    assert.ok(onMarkets.has(id) || id === 'US2S10S', id);
+  }
+  // Regrouped in HOME's order, whatever order /api/markets sends, under the short names;
+  // missing ids drop out.
+  const api = [inst('ETH', 'Crypto'), inst('SPX', 'Americas'), inst('CAC40', 'Europe'), inst('US10Y', 'Rates', { kind: 'yield', changeBp: 0.3 }), inst('SPFUT', 'US futures')];
   const rows = homeMarkets(api);
-  assert.deepEqual(rows.map((r) => `${r.group}:${r.id}`), ['US:SPX', 'US:NDX', 'Commodities + crypto:ETH', 'FX + rates:US10Y']);
+  assert.deepEqual(rows.map((r) => `${r.group}:${r.sub}:${r.id}:${r.name}`), [
+    'US:null:SPX:S&P 500', 'US:null:SPFUT:S&P 500 fut', 'World:Europe:CAC40:CAC 40',
+    'Commodities + crypto:Crypto:ETH:Ether', 'FX + rates:Rates:US10Y:US 10Y',
+  ]);
   const html = marketsColumns(rows, { chg: false, cls: 'mk-cols h-mk' });
-  assert.equal(html.match(/<table/g).length, 3);
+  assert.equal(html.match(/<table/g).length, 4);
   assert.doesNotMatch(html, /c-chg|class="num chg/);
   assert.match(html, /class="num pct/);
   assert.match(html, /colspan="4"/);
   assert.match(html, /class="mk-cols h-mk"/);
   assert.match(html, /title="/, 'RT/DLY tags keep their hover titles');
+  assert.equal((html.match(/class="group-row sub-row"/g) || []).length, 3, 'Europe, Crypto, Rates: only the subs that have a row');
+  assert.match(html, /\+0\.3bp/, 'the yield shows bp in the change column');
 });
