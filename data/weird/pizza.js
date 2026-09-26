@@ -10,6 +10,12 @@ export const ttl = 10 * 60_000;
 
 const URL_DATA = 'https://www.pizzint.watch/api/dashboard-data';
 
+// The site's own page adds ?_t=<time, in 30-second steps>. Without it the CDN can hand
+// back a copy more than an hour old.
+export function dataUrl(now = Date.now()) {
+  return `${URL_DATA}?_t=${Math.floor(now / 30_000) * 30_000}`;
+}
+
 const num = (v) => (v === null || v === undefined || v === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
 
 export function parse(body) {
@@ -47,6 +53,6 @@ export function build(p) {
   };
 }
 
-export async function load(get) {
-  return build(parse(await get.json(URL_DATA)));
+export async function load(get, { now = Date.now } = {}) {
+  return build(parse(await get.json(dataUrl(now()))));
 }
