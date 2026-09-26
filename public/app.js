@@ -33,6 +33,7 @@ import * as deskScreen from './screens/desk.js';
 import { parseDeskArgs, isEmbedSearch, tickerOf, TICKER_SCREENS } from './desk-layout.js';
 import { COMPANY_SCREENS, COMPANY_TAKES_ARGS, matchCompany } from './company.js';
 import { MARKETS_SCREENS, MARKETS_TAKES_ARGS, matchMarkets } from './commands-markets.js';
+import { WEIRD_SCREENS, matchWeird } from './commands-weird.js';
 import { LISTED, ALIASES, FUNCTION_BAR, TICKER_FUNCTIONS, findCommand } from './registry.js';
 import { tapeOn, setTapeOn, mountTape, tapeItems } from './tape.js';
 import { createMenu } from './menu.js';
@@ -281,6 +282,7 @@ export function parseCommand(raw, depth = 0) {
   }
   const company = matchCompany(head, rest); if (company) return company;
   const markets = matchMarkets(head, rest); if (markets) return markets;
+  const weird = matchWeird(head); if (weird) return weird;
   // Add new commands above this line: commands win over symbols of the same name.
   const quote = parseSymbolCommand(toks);
   if (quote) return quote;
@@ -516,6 +518,14 @@ export function keybarHtml() {
 export function panelNumberInput(clean) {
   const t = String(clean ?? '').trim();
   return /^[1-9]\d?$/.test(t) ? Number(t) : null;
+}
+
+// The item a number and Enter opens on a screen, or null: a did-you-mean row
+// (data-key, which keys 1 to 9 also open at once where digits are keys), or a numbered
+// item that opens only on number and Enter, never on a bare digit (data-num: WEIRD tile
+// 12 opens its gauge's own screen, WSB).
+export function numberedItem(root, n) {
+  return root.querySelector(`[data-key="${n}"]`) || root.querySelector(`[data-num="${n}"]`);
 }
 
 // The panel labelled "<n>) ..." on a screen (HOME: 1 MARKETS, 2 S&P 500...), or null.
@@ -930,7 +940,7 @@ function boot() {
         placeCursor();
       },
     };
-    const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name] || COMPANY_SCREENS[cmd.name] || MARKETS_SCREENS[cmd.name];
+    const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name] || COMPANY_SCREENS[cmd.name] || MARKETS_SCREENS[cmd.name] || WEIRD_SCREENS[cmd.name];
     if (cmd.mutates && fromUrl) {
       // A link that changes saved lists never runs by itself: ask first.
       const [title, what] = SAVED_LIST[cmd.name] || SAVED_LIST.WATCH;
@@ -1075,7 +1085,7 @@ function boot() {
     // row 2, HOME panel 3). The same number again closes the panel. Otherwise it runs.
     const n = typed && !embed && tickerBar.hidden ? panelNumberInput(clean) : null;
     if (n) {
-      const item = screen.querySelector(`[data-key="${n}"]`);
+      const item = numberedItem(screen, n);
       if (item || maximize(String(n))) {
         input.value = '';
         draft = '';

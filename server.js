@@ -26,6 +26,7 @@ import { mountCommandRoutes } from './command-routes.js';
 import { mountLegal } from './lib/legal.js';
 import { securityHeaders, isEmbedQuery, embedHtml } from './lib/embed.js';
 import { startPro } from './pro/index.js';
+import { getWeird, getGauge } from './data/weird/index.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
@@ -254,6 +255,21 @@ app.get('/api/screen', async (req, res) => {
     console.error('[screen]', err.message);
     res.status(503).json({ error: 'unavailable', message: 'Screener data is taking a break. Try again in a minute.' });
   }
+});
+
+// WEIRD: odd live gauges (data/weird/). The summary waits a few seconds per gauge; a
+// slow one comes back pending and the screen asks for it alone. A failed source is
+// { ok: false, headline: 'NO DATA', source }, never an error page.
+app.get('/api/weird', async (req, res) => {
+  const data = await getWeird();
+  res.set('Cache-Control', 'public, max-age=60');
+  res.json(data);
+});
+app.get('/api/weird/:name', async (req, res) => {
+  const data = await getGauge(str(req.params.name));
+  if (!data) return res.status(404).json({ error: 'not_found', message: 'No such WEIRD gauge. Type WEIRD for the list.' });
+  res.set('Cache-Control', `public, max-age=${data.ok ? 300 : 30}`);
+  res.json(data);
 });
 
 mountCommandRoutes(app);
