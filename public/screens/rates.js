@@ -1,6 +1,6 @@
 // RATES: the interest rates that touch your money.
 
-import { esc, fmtNum, fmtSigned, dirOf, fmtAsOf, panel, LOADING, tick, settleTicks, nameCell, rowAttrs, rerender } from './markets.js';
+import { esc, fmtNum, fmtBp, dirOf, fmtAsOf, panel, LOADING, tick, settleTicks, nameCell, rowAttrs, rerender } from './markets.js';
 import { rangeChart } from './chart.js';
 import { freshTag } from '../freshness.js';
 
@@ -14,11 +14,8 @@ function isoDay(s) {
   return s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? fmtAsOf(s) : '--';
 }
 
-// Change in basis points (0.01 of a percent).
-export function fmtBp(change) {
-  if (!Number.isFinite(change)) return '--';
-  return `${fmtSigned(change * 100, 1)} bp`;
-}
+// Basis points: the one helper, shared with MARKETS, HOME and CURVE (takes bp).
+export { fmtBp };
 
 // Every row opens something: a yield its chart, the Fed funds rows FEDPATH (where the
 // rate is expected to go), the mortgage rows LOAN (a payment at that rate).
@@ -49,7 +46,7 @@ function table(rows) {
       ${nameCell(r.name, r.cmd)}
       <td class="tag">${freshTag(r.item)}</td>
       <td class="num last${Number.isFinite(r.num) ? tick(`rt:${r.id}`, r.num) : ''}">${esc(r.value)}</td>
-      <td class="num bp ${Number.isFinite(r.chg) ? dirOf(Math.round(r.chg * 1000)) : 'flat'}">${esc(Number.isFinite(r.chg) ? fmtBp(r.chg) : '--')}</td>
+      <td class="num bp ${Number.isFinite(r.chg) ? dirOf(Math.round(r.chg * 1000)) : 'flat'}">${esc(Number.isFinite(r.chg) ? fmtBp(r.chg * 100) : '--')}</td>
       <td class="num time dim">${esc(r.asOf)}</td>
       <td class="moves dim">${esc(r.moves)}</td>
     </tr>`).join('')}</tbody>
