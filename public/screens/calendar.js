@@ -66,8 +66,7 @@ export function render(el, cmd, ctx) {
     return;
   }
   const scope = cmd.args.scope;
-  el.innerHTML = panel('1', CAL_TITLE, `${scopeFilter(scope)}<div class="cal-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'cal-meta', bodyCls: 'flush' })
-    + '<p class="footnote">Times in New York (ET). Forecast and previous values only: actual results are not shown.</p>';
+  el.innerHTML = panel('1', CAL_TITLE, `${scopeFilter(scope)}<div class="cal-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'cal-meta', bodyCls: 'flush', meta: 'TIMES ET' });
   const body = el.querySelector('.cal-body');
 
   async function load() {
@@ -75,7 +74,7 @@ export function render(el, cmd, ctx) {
       const d = await ctx.fetchJSON('/api/calendar', { signal: ctx.signal });
       const list = filterEvents(d.events, scope);
       body.innerHTML = list.length ? calendarTable(list) : '<p class="panel-msg">No events this week for this filter.</p>';
-      el.querySelector('#cal-meta').textContent = `${list.length} EVENTS`;
+      el.querySelector('#cal-meta').textContent = `${list.length} EVENTS · TIMES ET`;
       ctx.updated(d.updated, d.stale);
     } catch (err) {
       if (err.name === 'AbortError') return;

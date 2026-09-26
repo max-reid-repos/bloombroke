@@ -3,7 +3,7 @@
 //   FINANCIALS MSFT BALANCE              balance sheet
 //   FINANCIALS NVDA CASHFLOW QUARTERLY   cash flow, last 8 quarters
 
-import { esc, q, fmtNum, dirOf, panel, LOADING } from './markets.js';
+import { esc, q, fmtNum, dirOf, panel, metaNote, LOADING } from './markets.js';
 import { niceTicks } from './chart.js';
 
 export const FIN_TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
@@ -249,7 +249,7 @@ function tabBar(args, withBasis = false) {
   return `<div class="ch-bar fin-bar"><nav class="tabs ch-tabs" aria-label="Statement">${st}</nav>${ba}<nav class="tabs ch-tabs fin-periods" aria-label="Period">${pe}</nav></div>`;
 }
 
-// The footnote words on the per-share basis.
+// The per-share basis, in words (the tooltip on the title strip's note).
 export function basisNote(d, basis = 'adjusted') {
   const list = d?.split?.splits || [];
   const names = list.map((x) => `${x.ratio} split on ${x.date}`).join(' and the ');
@@ -273,11 +273,9 @@ export function render(el, cmd, ctx) {
   const basis = args.basis || 'adjusted';
   el.innerHTML = `<div class="stack">
     ${panel('1', `${args.ticker} financials`, `${tabBar(args)}<div class="fin-body">${LOADING}</div>`, { metaId: 'fin-meta', bodyCls: 'flush' })}
-  </div>
-  <p class="footnote"></p>`;
+  </div>`;
   const body = el.querySelector('.fin-body');
   const meta = el.querySelector('#fin-meta');
-  const foot = el.querySelector('.footnote');
   let ro = null;
   ctx.onCleanup(() => ro?.disconnect());
 
@@ -334,10 +332,19 @@ export function render(el, cmd, ctx) {
     scroller.addEventListener('scroll', draw, { passive: true });
     if (typeof ResizeObserver === 'function') { ro = new ResizeObserver(draw); ro.observe(host); }
     const derived = mode === 'quarterly' || Object.values(m.values).some((arr) => arr.some((c) => c?.derived));
-    foot.textContent = [
-      args.statement === 'income' ? basisNote(d, basis) : '',
+    // How to read the per-share rows and the dotted cells: short in the title strip,
+    // the long form as its tooltip.
+    const income = args.statement === 'income';
+    const short = [
+      income && hasSplits ? (basis === 'reported' ? 'EPS AS REPORTED' : 'EPS SPLIT-ADJUSTED') : '',
+      income && !d.split ? 'EPS AS FILED, SPLITS UNKNOWN' : '',
+      derived ? 'DOTTED = WORKED OUT FROM YEAR TO DATE' : '',
+    ].filter(Boolean).join(' · ');
+    const long = [
+      income ? basisNote(d, basis) : '',
       derived ? 'Underlined dotted: a quarter the filing only gives as part of a year-to-date total, worked out as that total minus the earlier quarters (always the case for Q4).' : '',
     ].filter(Boolean).join(' ');
+    if (short) meta.insertAdjacentHTML('beforeend', ` · ${metaNote(short, long)}`);
     const lastP = m.periods[m.periods.length - 1];
     ctx.status(`${d.stale ? 'LAST KNOWN DATA · ' : ''}SEC FILINGS · LATEST ${lastP.label} (${lastP.form} FILED ${lastP.filed})`, d.stale ? 'warn' : '');
   }).catch((err) => {

@@ -1,7 +1,7 @@
 // HEATMAP: the S&P 100 as a treemap. Grouped by sector, sized by market cap,
 // coloured by today's % change. Tap a box to open the ticker.
 
-import { esc, q, fmtNum, fmtPct, panel, LOADING } from './markets.js';
+import { esc, q, fmtNum, fmtPct, panel, metaNote, LOADING } from './markets.js';
 
 // ---- Squarified treemap (Bruls, Huizing, van Wijk) ---------------------------
 
@@ -164,9 +164,11 @@ function scaleHtml() {
   return `<div class="hm-scale" aria-hidden="true">${steps.map((p) => `<svg class="hm-sw" viewBox="0 0 10 10" preserveAspectRatio="none"><rect width="10" height="10" fill="${heatFill(p)}"/></svg><span>${p > 0 ? '+' : p < 0 ? '−' : ''}${Math.abs(p)}%</span>`).join('')}</div>`;
 }
 
+const HM_NOTE = metaNote('BOX = MARKET CAP, COLOUR = TODAY\'S % CHANGE');
+
 export function render(el, cmd, ctx) {
-  el.innerHTML = panel('1', 'S&P 100 heatmap', `<div class="hm-host" id="hm-host">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'hm-meta', bodyCls: 'flush' })
-    + `<div class="hm-foot">${scaleHtml()}<p class="footnote">Box size = market cap. Colour = today's % change.</p></div>`;
+  el.innerHTML = panel('1', 'S&P 100 heatmap', `<div class="hm-host" id="hm-host">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'hm-meta', bodyCls: 'flush', meta: HM_NOTE })
+    + `<div class="hm-foot">${scaleHtml()}</div>`;
   const host = el.querySelector('#hm-host');
   const meta = el.querySelector('#hm-meta');
   let stocks = null;
@@ -203,7 +205,7 @@ export function render(el, cmd, ctx) {
       stocks = d.stocks;
       const up = stocks.filter((s) => s.changePct > 0).length;
       const down = stocks.filter((s) => s.changePct < 0).length;
-      baseMeta = `<span class="up">${up} UP</span> <span class="down">${down} DOWN</span>`;
+      baseMeta = `<span class="up">${up} UP</span> <span class="down">${down} DOWN</span> · ${HM_NOTE}`;
       meta.innerHTML = baseMeta;
       draw(true);
       ctx.updated(d.updated, d.stale);

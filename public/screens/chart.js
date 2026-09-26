@@ -475,11 +475,9 @@ export function rangeChart(root, ctx, opts) {
   let fetchWin = null;        // { from, to } after a zoom; null = the chosen range
   let viewWin = null;         // { t0, t1 } to show once the data is in
   let zoomed = false;
-  // The user's bar size, or null for the range's own. A pick from the period grid on the
-  // instrument screen survives the navigation it causes (see pendingBar).
-  let userBar = null;
-  if (pendingBar && pendingBar.symbol === symbol && !baseRange.from && baseRange.range === pendingBar.range) userBar = pendingBar.bar;
-  pendingBar = null;
+  // The user's bar size, or null for the range's own. On the instrument screen it comes
+  // from the command (AAPL 1Y WEEKLY), so SHARE, reload and Back keep it.
+  let userBar = baseRange.bar || null;
   let perOpen = false;
   const perId = `ch-per-${++perSeq}`;
   let style = ctx.store?.get?.(STYLE_KEY, 'line') === 'candle' ? 'candle' : 'line';
@@ -996,7 +994,7 @@ export function rangeChart(root, ctx, opts) {
   // A cell sets the period and the range together; the range's own period is AUTO.
   function pickPeriod(bar, p) {
     const next = periodPick(bar, p);
-    if (navigate) { pendingBar = { symbol, range: p, bar: next }; navigate(cmdFor({ range: p })); return; }
+    if (navigate) { navigate(cmdFor({ range: p, bar: next })); return; }
     range = { range: p };
     fetchWin = null;
     viewWin = null;
@@ -1177,9 +1175,6 @@ const BAR_TITLE = { '1M': '1-minute bars', '5M': '5-minute bars', '30M': '30-min
 
 // ---- The bar period button and grid --------------------------------------------------
 
-// A period pick from a grid cell hands over to the chart the instrument screen draws
-// after the navigation the pick causes: { symbol, range, bar }, used once.
-let pendingBar = null;
 let perSeq = 0;
 
 // The bar period in plain words, as the button reads.

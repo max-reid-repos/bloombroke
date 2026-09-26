@@ -2,7 +2,7 @@
 // against today's target range. 100 minus the futures price is the average rate the
 // market is paying for that month. No meeting probabilities: this is the prices only.
 
-import { esc, fmtNum, fmtBp, fmtAsOf, panel, LOADING } from './markets.js';
+import { esc, fmtNum, fmtBp, fmtAsOf, panel, metaNote, LOADING } from './markets.js';
 import { mountLines, legend } from './lines.js';
 import { freshTag } from '../freshness.js';
 
@@ -33,13 +33,15 @@ const METHOD = `<details class="fp-method"><summary>HOW THIS IS WORKED OUT</summ
   <p>This screen shows prices only. It does not turn them into odds for each Fed meeting, and it is not a forecast.</p>
 </details>`;
 
+// "Not a forecast", short, in the futures panel's title strip.
+const FP_NOTE = metaNote('IMPLIED BY FUTURES, NOT A FORECAST', LABEL);
+
 export function render(el, cmd, ctx) {
-  // The "not a forecast" line is a quiet source line under the panels, not a box on top.
+  // The "not a forecast" line is a short note in the futures panel's title strip.
   el.innerHTML = `<div class="stack">
     ${panel('1', 'Fed funds path', `<div class="chart-host" id="fp-chart">${LOADING}</div><div id="fp-legend"></div>`, { metaId: 'fp-meta', bodyCls: 'flush' })}
-    ${panel('2', 'Fed funds futures', LOADING, { metaId: 'fp-t-meta', meta: `${freshTag({ realTime: false })} CBOT` })}
+    ${panel('2', 'Fed funds futures', LOADING, { metaId: 'fp-t-meta', meta: `${FP_NOTE} · ${freshTag({ realTime: false })} CBOT` })}
   </div>
-  <p class="footnote fp-src">${esc(LABEL)}</p>
   ${METHOD}`;
   const host = el.querySelector('#fp-chart');
   const leg = el.querySelector('#fp-legend');
@@ -92,7 +94,7 @@ export function render(el, cmd, ctx) {
         }).join('')}</tbody>
       </table>`;
       const gaps = months.filter((m) => m.gap).length;
-      el.querySelector('#fp-t-meta').innerHTML = `${freshTag({ realTime: false })} ${months.length - gaps} CONTRACTS${gaps ? ` · ${gaps} WITHOUT A PRICE` : ''}`;
+      el.querySelector('#fp-t-meta').innerHTML = `${FP_NOTE} · ${freshTag({ realTime: false })} ${months.length - gaps} CONTRACTS${gaps ? ` · ${gaps} WITHOUT A PRICE` : ''}`;
       ctx.updated(d.updated, d.stale);
     } catch (err) {
       if (err.name === 'AbortError') return;

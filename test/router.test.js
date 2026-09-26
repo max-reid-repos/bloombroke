@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  parseCommand, parseFxArgs, parseCpiArgs, toQuery, fromQuery, suggest, complete, marketStatus, nyClock, DEFAULT_COMMAND, COMMANDS,
+  parseCommand, parseFxArgs, parseCpiArgs, toQuery, fromQuery, suggest, complete, completeFrom, linkPlan, marketStatus, nyClock, DEFAULT_COMMAND, COMMANDS,
 } from '../public/app.js';
 
 test('empty input and empty URL mean HOME', () => {
@@ -95,6 +95,38 @@ test('Tab completes and cycles', () => {
   assert.equal(complete('cp'), 'CPI ');
   const all = COMMANDS.map((_, i) => complete('', i));
   assert.equal(new Set(all).size, COMMANDS.length);
+});
+
+test('Tab completes to the top of the list on screen, and cycles through it', () => {
+  // The list the dropdown shows for AAP: the server's symbols, AAP first.
+  const shown = [{ name: 'AAP', value: 'AAP', symbol: true }, { name: 'AAPL', value: 'AAPL', symbol: true }, { name: 'AAPB', value: 'AAPB', symbol: true }];
+  assert.equal(completeFrom(shown, 'AAP', 0), 'AAPL', 'what is typed already is skipped');
+  assert.equal(completeFrom(shown, 'aap', 1), 'AAPB');
+  assert.equal(completeFrom(shown, 'AAP', 2), 'AAPL', 'and round again');
+  assert.equal(completeFrom(shown, 'AAP', -1), 'AAPB', 'Shift+Tab from the start: the last');
+  // APPL: nothing local, but the server's search puts AAPL on top.
+  assert.equal(complete('APPL'), 'APPL');
+  assert.equal(completeFrom([{ name: 'AAPL', value: 'AAPL' }, { name: 'APP', value: 'APP' }], 'APPL', 0), 'AAPL');
+  assert.equal(completeFrom([], 'XYZ', 0), 'XYZ');
+  assert.equal(completeFrom(suggest('fx'), 'fx', 0), 'FX ', 'FX with a space is not what was typed');
+});
+
+test('a link that would change something saved never runs by itself: it asks in one line', () => {
+  assert.deepEqual(linkPlan('ALERTS AAPL > 350'), { url: 'ALERTS', show: 'ALERTS', ask: { run: 'ALERTS AAPL > 350', question: 'Add alert AAPL > 350?', verb: 'ADD' } });
+  assert.deepEqual(linkPlan('WATCH ADD TSLA NVDA').ask, { run: 'WATCH ADD TSLA NVDA', question: 'Add TSLA, NVDA to your watchlist?', verb: 'ADD' });
+  assert.equal(linkPlan('WATCH REMOVE AAPL').ask.question, 'Remove AAPL from your watchlist?');
+  assert.equal(linkPlan('ALERTS CLEAR').ask.verb, 'CLEAR');
+  assert.equal(linkPlan('DESK RESET').ask.run, 'DESK RESET');
+  assert.equal(linkPlan('PF BUY AAPL 10 @ 200').show, 'PF');
+  assert.match(linkPlan('PF BUY AAPL 10 @ 200').ask.question, /changes your portfolio/);
+  assert.match(linkPlan('TAPE ADD AAPL').ask.question, /changes your ticker tape/);
+  // Nothing to ask: plain screens, LOGIN and LOGOUT (PRO only), and bad words.
+  for (const c of ['AAPL', 'ALERTS', 'WATCH', 'HOME', 'LOGOUT', 'LOGIN BB-7KQ2-M9XD-HT4P-WZ3C', 'ALERTS ZZZZZZZ > 5']) assert.equal(linkPlan(c).ask, null, c);
+  assert.equal(linkPlan('LOGIN BB-7KQ2-M9XD-HT4P-WZ3C').show, 'PRO', 'a key in a link never runs');
+  // A DESK preset loads like typed (DESK itself asks over panels of your own); the
+  // address bar keeps just DESK.
+  for (const p of ['WEIRD', 'MACRO', 'CRYPTO']) assert.deepEqual(linkPlan(`DESK ${p}`), { url: 'DESK', show: `DESK ${p}`, ask: null });
+  assert.deepEqual(linkPlan('DESK 2 CRYPTO'), { url: 'DESK 2', show: 'DESK 2 CRYPTO', ask: null });
 });
 
 test('NYSE hours: 9:30 to 16:00 ET, weekdays only', () => {

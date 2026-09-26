@@ -2,7 +2,7 @@
 // volume and days to cover, newest first, with the short interest trend beside it.
 
 import { esc, fmtNum, fmtSigned, dirOf, panel, LOADING } from './markets.js';
-import { sourceLine, errorHtml, tickerUsage, fmtInt, fmtBig, fmtDay, dash } from './company-kit.js';
+import { metaNote, errorHtml, tickerUsage, fmtInt, fmtBig, fmtDay, dash } from './company-kit.js';
 import { dataTable, sortRows, nextSort, fmtDate } from '../kit.js';
 import { mountLines } from './lines.js';
 
@@ -30,7 +30,8 @@ export function trendPoints(rows) {
     .sort((a, b) => a.x - b.x);
 }
 
-const NOTE = 'Short interest = shares sold short and not yet bought back, on the settlement date. Days to cover = short interest / average daily volume, as published. Change is against the settlement before it. Nasdaq-listed stocks only.';
+const NOTE = 'NASDAQ-LISTED STOCKS ONLY';
+const NOTE_LONG = 'Short interest = shares sold short and not yet bought back, on the settlement date. Days to cover = short interest / average daily volume, as published. Change is against the settlement before it.';
 
 export function render(el, cmd, ctx) {
   if (cmd.error) {
@@ -39,8 +40,7 @@ export function render(el, cmd, ctx) {
     return;
   }
   const { ticker } = cmd.args;
-  el.innerHTML = `${panel('1', `${ticker} short interest`, LOADING, { cls: 'panel-solo', metaId: 'si-meta', bodyCls: 'flush' })}
-  <div id="si-foot">${sourceLine('Nasdaq short interest')}</div>`;
+  el.innerHTML = panel('1', `${ticker} short interest`, LOADING, { cls: 'panel-solo', metaId: 'si-meta', bodyCls: 'flush' });
   const body = el.querySelector('.panel-body');
   let stopChart = null;
   ctx.onCleanup(() => stopChart?.());
@@ -79,8 +79,7 @@ export function render(el, cmd, ctx) {
         onHover: (h) => { hover.textContent = h ? `${fmtDay(new Date(h.x).toISOString().slice(0, 10))}  ${fmtInt(h.values[0].y)}` : ''; },
       });
     }
-    el.querySelector('#si-meta').innerHTML = `<span class="panel-tools"><span class="tools-count">${d.rows.length} SETTLEMENTS</span></span>`;
-    el.querySelector('#si-foot').innerHTML = sourceLine(d.source, NOTE);
+    el.querySelector('#si-meta').innerHTML = `<span class="panel-tools"><span class="tools-count">${d.rows.length} SETTLEMENTS</span></span> · ${metaNote(NOTE, NOTE_LONG)}`;
     ctx.updated(d.updated, d.stale);
   }).catch((err) => {
     if (err.name === 'AbortError') return;

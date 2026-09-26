@@ -2,7 +2,7 @@
 // many funds added, trimmed, opened or closed a position last quarter.
 
 import { esc, fmtSigned, dirOf, panel, LOADING } from './markets.js';
-import { sourceLine, errorHtml, tickerUsage, fmtInt, fmtBig, fmtBigMoney, fmtPlainPct, fmtDay, dash } from './company-kit.js';
+import { metaNote, errorHtml, tickerUsage, fmtInt, fmtBig, fmtBigMoney, fmtPlainPct, fmtDay, dash } from './company-kit.js';
 import { panelTools, dataTable, sortRows, nextSort } from '../kit.js';
 
 export { parseTicker as parse } from './company-kit.js';
@@ -59,7 +59,13 @@ export function notRefiledHtml(rows, quarter) {
   </div>`;
 }
 
-// The footnote: what the totals count, and the source's own total when it differs.
+// The short note in the title strip: how old the holdings can be, and what the totals count.
+export function ownersMeta(s) {
+  return s?.quarterOnly ? `13F, UP TO 45 DAYS OLD · TOTALS: ${fmtDay(s.quarter)} FILINGS ONLY` : '13F, UP TO 45 DAYS OLD';
+}
+
+// The long form of that note (its tooltip): what the totals count, and the source's own
+// total when it differs.
 export function ownersNote(s) {
   const base = 'Holdings as of each holder\'s latest 13F filing (the As of date). % of shares = shares held / shares outstanding, both from the source.';
   if (!s?.quarterOnly) return `${base} The source's totals count every holder's latest filing, old ones too.`;
@@ -76,10 +82,9 @@ export function render(el, cmd, ctx) {
   }
   const { ticker } = cmd.args;
   el.innerHTML = `<div class="stack">
-    ${panel('1', `${ticker} institutional owners`, LOADING)}
+    ${panel('1', `${ticker} institutional owners`, LOADING, { metaId: 'own-note' })}
     ${panel('2', 'Top holders', LOADING, { metaId: 'own-meta', bodyCls: 'flush' })}
-  </div>
-  <div id="own-foot">${sourceLine('Nasdaq institutional holdings (SEC Form 13F)')}</div>`;
+  </div>`;
   const [top, list] = el.querySelectorAll('.panel-body');
 
   ctx.fetchJSON(`/api/owners?s=${encodeURIComponent(ticker)}`, { signal: ctx.signal }).then((d) => {
@@ -96,7 +101,7 @@ export function render(el, cmd, ctx) {
     });
     draw();
     el.querySelector('#own-meta').innerHTML = panelTools(Number.isFinite(d.totalRecords) ? { shown: d.rows.length, total: d.totalRecords } : { total: d.rows.length });
-    el.querySelector('#own-foot').innerHTML = sourceLine(d.source, ownersNote(d.summary));
+    el.querySelector('#own-note').innerHTML = metaNote(ownersMeta(d.summary), ownersNote(d.summary));
     ctx.updated(d.updated, d.stale);
   }).catch((err) => {
     if (err.name === 'AbortError') return;

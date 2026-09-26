@@ -6,7 +6,7 @@
 // WHATIF EDIT IPHONE6 LATTE   the picker, with these picked
 // WHATIF IPHONE6 LATTE:3Y     the result
 
-import { esc, q, fmtNum, panel, LOADING, nyTime } from './markets.js';
+import { esc, q, fmtNum, panel, metaNote, LOADING, nyTime } from './markets.js';
 
 let catalogCache = null;
 async function loadCatalog(ctx) {
@@ -196,7 +196,7 @@ function itemRow(p, picks) {
 function renderPicker(el, ctx, cat, picks) {
   const groups = splitGroups(groupsOf(cat));
   el.innerHTML = panel('1', WHATIF_TITLE, `
-    <p class="wi-intro">Pick the things you bought. See what that money would be worth today in the maker's stock.</p>
+    <p class="wi-intro">Pick the things you bought. See what that money would be worth today in the maker's stock. Or type it: ${code(EXAMPLES[0])}</p>
     <div class="wi-groups" role="listbox" aria-multiselectable="true" aria-label="Things you bought" data-own-focus>
       ${groups.map((g) => `<section class="wi-group">
         <h3 class="wi-co">${esc(g.name.toUpperCase())}${g.ticker ? ` <span class="dim">${esc(g.ticker)}</span>` : ''}${g.part > 1 ? ' <span class="dim">CONTINUED</span>' : ''}</h3>
@@ -208,8 +208,7 @@ function renderPicker(el, ctx, cat, picks) {
       <span class="wi-cmd code" id="wi-cmd"></span>
       <span class="wi-keys dim"><kbd>Space</kbd> pick <kbd>Enter</kbd> run</span>
       <button type="button" class="wi-run" id="wi-run">RUN</button>
-    </div>`, { cls: 'panel-solo', meta: 'ARROWS MOVE, SPACE PICKS' })
-    + `<p class="footnote">Or type it: ${EXAMPLES.slice(0, 2).map(code).join(' ')}. Habits take years (<span class="code">LATTE:3Y</span>) or dates (<span class="code">NETFLIX:2015-2024</span>).</p>`;
+    </div>`, { cls: 'panel-solo', meta: 'ARROWS MOVE, SPACE PICKS' });
 
   const list = el.querySelector('.wi-groups');
   const rows = [...el.querySelectorAll('.wi-item')];
@@ -462,8 +461,8 @@ export function render(el, cmd, ctx) {
       if (d.picker) { renderPicker(el, ctx, cat, plan.picks); return; }
       const links = d.cert ? shareLinks(d.cert, location.origin) : null;
       el.innerHTML = panel('1', WHATIF_TITLE, resultHtml(d, key, links), {
-        cls: 'panel-solo', meta: `${d.rows.length} ${d.rows.length === 1 ? 'ITEM' : 'ITEMS'}`,
-      }) + `<p class="footnote">${esc(HINDSIGHT_NOTE)}</p>`;
+        cls: 'panel-solo', meta: `${d.rows.length} ${d.rows.length === 1 ? 'ITEM' : 'ITEMS'} · ${metaNote(HINDSIGHT_NOTE)}`,
+      });
       sizeCert(el);
       el.querySelector('[data-copy]')?.addEventListener('click', async (e) => {
         const ok = await copyText(e.currentTarget.dataset.copy);

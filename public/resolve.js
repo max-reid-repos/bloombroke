@@ -10,7 +10,7 @@
 
 import { PHRASES, LISTED, findCommand, searchCommands } from './registry.js';
 import { matchInstrument } from './instruments.js';
-import { PRESETS } from './ranges.js';
+import { PRESETS, PERIOD_WORDS } from './ranges.js';
 import { tickerForName, LISTED_TICKERS, nameKey } from './known-tickers.js';
 
 export const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
@@ -45,7 +45,7 @@ export function cleanWord(w) {
   return String(w).toLowerCase().replace(/^\$(?=[a-z])/, '').replace(/['’]s$/, '').replace(/[?!,;:]+$/, '').replace(/\.$/, '');
 }
 
-const isRangeWord = (w) => PRESETS.includes(w.toUpperCase()) || /^\d{4}(-\d{2}-\d{2})?$/.test(w);
+const isRangeWord = (w) => PRESETS.includes(w.toUpperCase()) || Boolean(PERIOD_WORDS[w.toUpperCase()]) || /^\d{4}(-\d{2}-\d{2})?$/.test(w);
 const tickerShaped = (w) => TICKER_RE.test(w.toUpperCase());
 
 // Does this command need a ticker to run? NEWS [<ticker>] does not; SHORTS <ticker> does.

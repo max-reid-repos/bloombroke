@@ -1,6 +1,6 @@
 // COMPOUND: what regular saving grows to at a steady yearly return, compounded monthly.
 
-import { esc, q, fmtNum, panel } from './markets.js';
+import { esc, q, fmtNum, panel, metaNote } from './markets.js';
 import { mountLines, legend } from './lines.js';
 import { parseMoney, takeYears, compactUsd } from './loan.js';
 
@@ -101,7 +101,7 @@ export function render(el, cmd, ctx) {
         <div class="stat"><dt>Growth share</dt><dd class="num">${res.final > 0 ? esc(fmtNum((res.growth / res.final) * 100, 1)) : '0.0'}%</dd></div>
         <div class="stat"><dt>Multiple</dt><dd class="num">${res.paid > 0 ? esc(fmtNum(res.final / res.paid, 2)) : '--'}x</dd></div>
       </dl>
-    </div>`, { meta: 'COMPOUNDED MONTHLY' })}
+    </div>`, { meta: `COMPOUNDED MONTHLY · ${metaNote('YOUR RATE, NOT A FORECAST · BEFORE TAX, FEES AND INFLATION', 'The return is your assumption, not a forecast. Real markets go up and down and there are no guarantees.')}` })}
     <div class="chart-by-year">
     ${panel('2', 'Growth', `<div class="chart-host" id="cp-g-chart"></div><div id="cp-g-legend"></div>`, { metaId: 'cp-g-meta', bodyCls: 'flush' })}
     ${panel('3', 'By year', `<table class="grid-table">
@@ -109,8 +109,7 @@ export function render(el, cmd, ctx) {
       <tbody>${tableRows.map((r) => `<tr><th scope="row" class="name">${r.year}</th><td class="num dim">${esc(usd(r.paid))}</td><td class="num up">${esc(usd(r.balance - r.paid))}</td><td class="num last">${esc(usd(r.balance))}</td></tr>`).join('')}</tbody>
     </table>`, { cls: 'by-year', bodyCls: 'flush' })}
     </div>
-  </div>
-  <p class="footnote">The return is your assumption, not a forecast. Real markets go up and down and there are no guarantees. Before tax, fees and inflation. Not financial advice.</p>`;
+  </div>`;
   const series = [
     { id: 'bal', cls: 'ln-0', label: 'Balance', points: res.rows.map((r) => ({ x: r.year, y: r.balance })) },
     { id: 'paid', cls: 'ln-4', label: 'Money put in', points: res.rows.map((r) => ({ x: r.year, y: r.paid })) },

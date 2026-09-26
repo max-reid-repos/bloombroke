@@ -99,7 +99,7 @@ export function buyHtml(r, share = '') {
     r.hours === null
       ? 'Hours of work: save your hourly pay with WAGE and AFFORD divides the price by it.'
       : `Hours of work: ${fmtMoney(r.price)} divided by ${fmtMoney(r.wage)} an hour is ${fmtNum(r.hours, 1)} hours, before tax.`,
-    `Invested instead: ${fmtMoney(r.price)} growing ${Math.round(r.rate * 100)}% a year, compounded, for ${yearsWord(r.years)} is ${fmtMoney(r.invested)}. The ${Math.round(r.rate * 100)}% is an assumption, not a promise. Real returns go up and down.`,
+    `Invested instead: ${fmtMoney(r.price)} growing ${Math.round(r.rate * 100)}% a year, compounded, for ${yearsWord(r.years)} is ${fmtMoney(r.invested)}. The ${Math.round(r.rate * 100)}% is an assumption, not a forecast or a promise. Real returns go up and down.`,
     'Verdict: WORTH IT under $2 a use, SLEEP ON IT under $10 a use, SKIP IT at $10 or more. A rule of thumb for things you buy, not investments.',
   ];
   return `<div class="buy">
@@ -165,7 +165,7 @@ export function render(el, cmd, ctx) {
   el.innerHTML = panel('1', TITLE, buyHtml(r, affordShare(r, cmd.input, origin)), {
     cls: 'panel-solo',
     meta: esc(`${r.label ? `${r.label.toUpperCase()}  ` : ''}${fmtMoney(r.price)}  ${plain(r.times)} PER ${r.unit}  ${yearsWord(r.years).toUpperCase()}`),
-  }) + '<p class="footnote">A rule of thumb for things you buy. The growth rate is an assumption, not a forecast. Not financial advice.</p>';
+  });
   el.querySelector('.wage-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
     const wage = readWageInput(e.currentTarget.elements.wage.value);

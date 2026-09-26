@@ -62,6 +62,12 @@ export function panel(n, label, body, { meta = '', cmd = '', cls = '', metaId = 
   </section>`;
 }
 
+// A short note on how to read a panel's numbers, in its title strip: never a footnote
+// under the panel. The long form, if any, is the tooltip. It wraps instead of being cut.
+export function metaNote(text, title = '') {
+  return `<span class="meta-note"${title ? ` title="${esc(title)}"` : ''}>${esc(text)}</span>`;
+}
+
 export const LOADING = '<p class="loading">LOADING...</p>';
 
 // Price tick flash: compare with the last value seen for this key.

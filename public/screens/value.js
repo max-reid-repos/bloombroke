@@ -3,7 +3,7 @@
 // 52 week range and market cap. A number the source leaves out shows --.
 
 import { esc, fmtNum, fmtAsOf, panel, LOADING } from './markets.js';
-import { sourceLine, errorHtml, tickerUsage, fmtBigMoney, fmtBig, fmtPlainPct, fmtDay, dash } from './company-kit.js';
+import { metaNote, errorHtml, tickerUsage, fmtBigMoney, fmtBig, fmtPlainPct, fmtDay, dash } from './company-kit.js';
 
 export { parseTicker as parse } from './company-kit.js';
 
@@ -46,7 +46,9 @@ function groupsHtml(d) {
   </div>`).join('')}</div>`;
 }
 
-const NOTE = 'Every number is as the source publishes it; none are computed here. The last price is the live quote with its trade time; the other figures are a snapshot taken at the time shown above them, so a price elsewhere may differ by the time between the two. Trailing = the last 12 months. Forward = the source\'s forward figure. Debt / equity is from the latest quarter. The source has no price/book figure.';
+// As the source publishes them, none computed here. The long form is the tooltip.
+const NOTE = 'TRAILING = LAST 12 MONTHS, AS PUBLISHED';
+const NOTE_LONG = 'Every number is as the source publishes it; none are computed here. The last price is the live quote with its trade time; the other figures are a snapshot taken at the time shown above them. Forward = the source\'s forward figure. Debt / equity is from the latest quarter.';
 
 export function render(el, cmd, ctx) {
   if (cmd.error) {
@@ -55,14 +57,12 @@ export function render(el, cmd, ctx) {
     return;
   }
   const { ticker } = cmd.args;
-  el.innerHTML = `${panel('1', `${ticker} valuation`, LOADING, { cls: 'panel-solo', metaId: 'val-meta' })}
-  <div id="val-foot">${sourceLine('CNBC quote service')}</div>`;
+  el.innerHTML = panel('1', `${ticker} valuation`, LOADING, { cls: 'panel-solo', metaId: 'val-meta' });
   const body = el.querySelector('.panel-body');
 
   ctx.fetchJSON(`/api/value?s=${encodeURIComponent(ticker)}`, { signal: ctx.signal }).then((d) => {
     body.innerHTML = `<p class="q-name co-title-line">${esc(d.name || ticker)}${d.exchange ? ` <span class="dim">${esc(d.exchange)}</span>` : ''}${d.fundAsOf ? ` <span class="dim co-when">FIGURES AS OF ${esc(fmtAsOf(d.fundAsOf))} ET</span>` : ''}</p>${groupsHtml(d)}`;
-    el.querySelector('#val-meta').textContent = d.currency && d.currency !== 'USD' ? `IN ${d.currency}` : '';
-    el.querySelector('#val-foot').innerHTML = sourceLine(d.source, NOTE);
+    el.querySelector('#val-meta').innerHTML = `${d.currency && d.currency !== 'USD' ? `IN ${esc(d.currency)} · ` : ''}${metaNote(NOTE, NOTE_LONG)}`;
     ctx.updated(d.updated, d.stale);
   }).catch((err) => {
     if (err.name === 'AbortError') return;

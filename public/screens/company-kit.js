@@ -1,16 +1,14 @@
 // Shared bits for the company-data screens (INSIDERS, OWNERS, FILINGS, SHORTS, BEATS,
-// VALUE, IPOS, SPLITS, EXDIV): the source line and number formats. The stock tab strip
+// VALUE, IPOS, SPLITS, EXDIV): number formats. How to read a screen's numbers is a short
+// note in its title strip (metaNote), not a footnote. The stock tab strip
 // and the watch star come from the frame (app.js), not from the screens.
 
-import { esc, q, fmtNum } from './markets.js';
+import { esc, q, fmtNum, metaNote } from './markets.js';
 import { fmtCompact } from './movers.js';
 
 export { errorHtml, tickerUsage, parseTicker } from './profile.js';
 
-// Every screen says where its numbers come from.
-export function sourceLine(source, extra = '') {
-  return extra ? `<p class="footnote co-source">${esc(extra)}</p>` : '';
-}
+export { metaNote };
 
 export const dash = '--';
 export const fmtInt = (n) => (Number.isFinite(n) ? fmtNum(n, 0) : dash);

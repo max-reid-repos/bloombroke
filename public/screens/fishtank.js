@@ -128,11 +128,29 @@ export const sectorAlpha = (sector, active) => (!active || sector === active ? 1
 export function legendHtml(items, active, names = {}) {
   return items.map((it) => {
     const name = names[it.key] || it.short;
-    const label = `${name}: ${SPECIES_NAME[it.kind]}, ${it.count} ${it.count === 1 ? 'stock' : 'stocks'}`;
+    // The accessible name starts with the words on the button (TECH, Technology: ...).
+    const head = name === it.short ? it.short : `${it.short}, ${name}`;
+    const label = `${head}: ${SPECIES_NAME[it.kind]}, ${it.count} ${it.count === 1 ? 'stock' : 'stocks'}`;
     return `<button type="button" class="ft-leg-btn" data-sector="${esc(it.key)}" aria-pressed="${it.key === active}"`
       + ` aria-label="${esc(label)}" title="${esc(label)}"><canvas class="ft-glyph" width="52" height="32" aria-hidden="true"></canvas>`
       + `<span>${esc(it.short)}</span></button>`;
   }).join('');
+}
+
+// The ticker tags to draw, in order: [{ f, tag }] with tag crab, winner, loser or sector.
+// Nothing lit: every crab, then the day's winner and loser. A sector lit: only its own
+// fish are tagged (a dimmed tag would take the room first), crabs, winner and loser, then
+// the rest of the sector.
+export function tagPlan(fish, { winner = null, loser = null, active = null } = {}) {
+  const lit = (f) => !active || f.sector === active;
+  const out = [];
+  for (const f of fish) if (f.kind === 'crab' && lit(f)) out.push({ f, tag: 'crab' });
+  const tagged = new Set();
+  for (const [tag, f] of [['winner', winner], ['loser', loser]]) {
+    if (f && f.kind !== 'crab' && lit(f) && !tagged.has(f)) { out.push({ f, tag }); tagged.add(f); }
+  }
+  if (active) for (const f of fish) if (f.sector === active && f.kind !== 'crab' && !tagged.has(f)) out.push({ f, tag: 'sector' });
+  return out;
 }
 
 // ---- Schools ------------------------------------------------------------------------
@@ -1244,19 +1262,13 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
     }
     for (const f of fish) drawFish(f, t, f === hover, calm || !dt);
     drawBubbles(t, dt);
+    for (const f of fish) if (f.kind === 'crab') drawTick(f);
     const taken = [];
-    for (const f of fish) {
-      if (f.kind !== 'crab') continue;
-      drawTick(f);
-      drawLabel(f, `${f.s.ticker} ${fmtPct(f.s.changePct)}`, f.s.changePct >= 0 ? 'hsl(147, 70%, 62%)' : 'hsl(0, 100%, 74%)', f.a, taken);
-    }
-    const tagged = new Set();
-    for (const kind of ['winner', 'loser']) {
-      const f = labels[kind] && byTicker.get(labels[kind]);
-      if (f && f.kind !== 'crab') { drawLabel(f, f.s.ticker, kind === 'winner' ? 'hsl(147, 70%, 62%)' : 'hsl(0, 100%, 74%)', f.a, taken); tagged.add(f); }
-    }
-    if (active) {
-      for (const f of fish) if (f.sector === active && f.kind !== 'crab' && !tagged.has(f)) drawLabel(f, f.s.ticker, 'hsl(206, 45%, 80%)', 0.9, taken);
+    const plan = tagPlan(fish, { winner: labels.winner && byTicker.get(labels.winner), loser: labels.loser && byTicker.get(labels.loser), active });
+    for (const { f, tag } of plan) {
+      if (tag === 'crab') drawLabel(f, `${f.s.ticker} ${fmtPct(f.s.changePct)}`, f.s.changePct >= 0 ? 'hsl(147, 70%, 62%)' : 'hsl(0, 100%, 74%)', f.a, taken);
+      else if (tag === 'sector') drawLabel(f, f.s.ticker, 'hsl(206, 45%, 80%)', 0.9, taken);
+      else drawLabel(f, f.s.ticker, tag === 'winner' ? 'hsl(147, 70%, 62%)' : 'hsl(0, 100%, 74%)', f.a, taken);
     }
     placeTip();
   }

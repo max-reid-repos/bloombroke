@@ -302,3 +302,21 @@ test('formats: compact numbers and coin prices', () => {
   assert.equal(fmtPrice(0.1234567), '0.1235');
   assert.equal(fmtPrice(0.00001234), '0.00001234');
 });
+
+test('CLOCK: the table is drawn once; each second writes only the text that changed', async () => {
+  const { render, CLOCK_LIST } = await import('../public/screens/clock.js');
+  let writes = 0;
+  const text = (v = '') => ({ nodeValue: v });
+  const cell = () => ({ firstChild: text(), className: '', textContent: '', querySelector: () => ({ firstChild: text() }), getAttribute() { return this.x; }, setAttribute(k, v) { this.x = v; writes += 1; } });
+  const row = () => { const c = { last: cell(), st: cell(), next: cell(), now: cell() }; return { querySelector: (s) => ({ '.last': c.last, '.st': c.st, '.next': c.next, '.db-now': c.now })[s] }; };
+  const rows = CLOCK_LIST.map(row);
+  let bodySets = 0;
+  const body = { set innerHTML(v) { bodySets += 1; }, querySelectorAll: () => rows };
+  const side = { innerHTML: '' };
+  const el = { set innerHTML(v) {}, querySelectorAll: () => [body, side] };
+  let tick = null;
+  render(el, {}, { every: (fn) => { tick = fn; }, status() {}, fetchJSON: () => new Promise(() => {}), signal: null });
+  for (let i = 0; i < 6; i += 1) tick();
+  assert.equal(bodySets, 1, 'never redrawn after the first paint');
+  assert.ok(writes <= CLOCK_LIST.length, 'the now mark moves once, then only when the minute does');
+});

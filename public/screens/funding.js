@@ -1,15 +1,14 @@
 // 420: Tesla since 7 Aug 2018, the "funding secured" day. Not listed anywhere.
 
-import { esc, fmtNum, panel, LOADING, nyTime } from './markets.js';
+import { esc, fmtNum, panel, metaNote, LOADING, nyTime } from './markets.js';
 import { rangeChart } from './chart.js';
 import { fmtUsd, fmtX, fmtDay } from './whatif.js';
 
 export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="stack">
-    ${panel('1', '420', LOADING, { meta: 'TSLA' })}
+    ${panel('1', '420', LOADING, { meta: `TSLA · ${metaNote('Hindsight only. Past returns do not predict future returns. Not a recommendation. Definitely not funding advice.')}` })}
     ${panel('2', 'TSLA since 7 Aug 2018', '<div class="rc" id="f-rc"></div>', { cmd: 'TSLA FROM 2018-08-07', metaId: 'f-meta', bodyCls: 'flush' })}
-  </div>
-  <p class="footnote">Hindsight only. Past returns do not predict future returns. Not a recommendation. Definitely not funding advice.</p>`;
+  </div>`;
   const [body] = el.querySelectorAll('.panel-body');
   const chart = rangeChart(el.querySelector('#f-rc'), ctx, {
     symbol: 'TSLA', range: { from: '2018-08-07', to: null }, meta: el.querySelector('#f-meta'),

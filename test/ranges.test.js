@@ -114,3 +114,36 @@ test('symbol search: our names first, then US stocks and ETFs', async () => {
   const d = await down.search('gold');
   assert.deepEqual([d.results[0].id, d.degraded], ['GOLD', true]);
 });
+
+test('a bar period word in the command: kept when valid, dropped when not or when it is the default', async () => {
+  const { parseCommand } = await import('../public/app.js');
+  const { PERIOD_WORDS, rangeBar } = await import('../public/ranges.js');
+  assert.deepEqual(parseRangeArgs(['1Y', 'WEEKLY'], TODAY), { range: '1Y', bar: '1W' });
+  assert.deepEqual(parseRangeArgs(['WEEKLY', '1Y'], TODAY), { range: '1Y', bar: '1W' }, 'either order');
+  assert.deepEqual(parseRangeArgs(['1M', '60MIN'], TODAY), { range: '1M', bar: '1H' });
+  assert.deepEqual(parseRangeArgs(['5D', '30MIN', 'VS', 'QQQ'], TODAY), { range: '5D', bar: '30M', compare: ['QQQ'] });
+  // The range's own period, or one bars.js does not allow: the default, no word.
+  assert.deepEqual(parseRangeArgs(['5D', '5MIN'], TODAY), { range: '5D' });
+  assert.deepEqual(parseRangeArgs(['1D', '1MIN'], TODAY), { range: '1D' });
+  assert.deepEqual(parseRangeArgs(['1Y', 'DAILY'], TODAY), { range: '1Y' });
+  assert.deepEqual(parseRangeArgs(['MAX', 'MONTHLY'], TODAY), { range: 'MAX' });
+  assert.deepEqual(parseRangeArgs(['1D', 'WEEKLY'], TODAY), { range: '1D' });
+  assert.deepEqual(parseRangeArgs(['5Y', '1MIN'], TODAY), { range: '5Y' });
+  assert.equal(parseRangeArgs(['1Y', 'WEEKLY', 'DAILY'], TODAY).error, 'usage', 'one period at most');
+  assert.equal(rangeBar({ from: '2026-09-01', to: null }, '30M', TODAY), '30M');
+  assert.equal(rangeBar({ from: '2001-01-01', to: null }, '1M', TODAY), null);
+  // The words round-trip through the command and the URL.
+  assert.equal(rangeWords({ range: '1Y', bar: '1W' }), '1Y WEEKLY', 'the default range is said when a period is');
+  assert.equal(rangeWords({ range: '5D', bar: '30M', compare: ['QQQ'] }), '5D 30MIN VS QQQ');
+  assert.equal(parseCommand('AAPL 1Y WEEKLY').input, 'AAPL 1Y WEEKLY');
+  assert.equal(parseCommand('aapl weekly').input, 'AAPL 1Y WEEKLY');
+  assert.equal(parseCommand('AAPL 5D 5MIN').input, 'AAPL 5D');
+  assert.equal(parseCommand('SPX 3M 60MIN').args.bar, '1H');
+  assert.equal(parseCommand('AAPL CHART 5D 30MIN').input, 'AAPL 5D 30MIN');
+  // No period word is a ticker or a range.
+  const { LISTED_TICKERS } = await import('../public/known-tickers.js');
+  for (const w of Object.keys(PERIOD_WORDS)) {
+    assert.ok(!PRESETS.includes(w), w);
+    assert.ok(!LISTED_TICKERS.has(w), w);
+  }
+});

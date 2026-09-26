@@ -3,7 +3,7 @@
 // EPS against the estimate sits beside it.
 
 import { esc, fmtNum, fmtSigned, dirOf, panel, LOADING } from './markets.js';
-import { sourceLine, errorHtml, tickerUsage, fmtDay, dash } from './company-kit.js';
+import { metaNote, errorHtml, tickerUsage, fmtDay, dash } from './company-kit.js';
 import { mountBars, barsLegend } from './minibars.js';
 
 export { parseTicker as parse } from './company-kit.js';
@@ -49,7 +49,8 @@ export function beatsTable(rows, next = null) {
   </table>`;
 }
 
-const NOTE = 'EPS = earnings per share, in USD, as reported. Consensus = the consensus estimate as published by the source. Surprise = how far reported EPS was from it, as published. The next report date is from the Nasdaq earnings calendar (Zacks); an estimated date is projected from past report dates and may move.';
+const NOTE = 'EPS IN USD, AS REPORTED';
+const NOTE_LONG = 'EPS = earnings per share, in USD, as reported. Consensus = the consensus estimate as published by the source. Surprise = how far reported EPS was from it, as published. An estimated next report date is projected from past report dates and may move.';
 
 export function render(el, cmd, ctx) {
   if (cmd.error) {
@@ -58,8 +59,7 @@ export function render(el, cmd, ctx) {
     return;
   }
   const { ticker } = cmd.args;
-  el.innerHTML = `${panel('1', `${ticker} earnings vs estimates`, LOADING, { cls: 'panel-solo', metaId: 'bt-meta', bodyCls: 'flush' })}
-  <div id="bt-foot">${sourceLine('Nasdaq earnings surprise')}</div>`;
+  el.innerHTML = panel('1', `${ticker} earnings vs estimates`, LOADING, { cls: 'panel-solo', metaId: 'bt-meta', bodyCls: 'flush' });
   const body = el.querySelector('.panel-body');
   let stopChart = null;
   ctx.onCleanup(() => stopChart?.());
@@ -78,8 +78,7 @@ export function render(el, cmd, ctx) {
     stopChart = mountBars(body.querySelector('#bt-chart'), beatsGroups(d.rows, d.next), series, {
       label: `${ticker} reported EPS and consensus by quarter`, fmtY: (v) => fmtNum(v, 2),
     });
-    el.querySelector('#bt-meta').textContent = `LAST ${d.rows.length} QUARTERS`;
-    el.querySelector('#bt-foot').innerHTML = sourceLine(d.source, NOTE);
+    el.querySelector('#bt-meta').innerHTML = `LAST ${d.rows.length} QUARTERS · ${metaNote(NOTE, NOTE_LONG)}`;
     ctx.updated(d.updated, d.stale);
   }).catch((err) => {
     if (err.name === 'AbortError') return;

@@ -135,7 +135,9 @@ export function render(el, cmd, ctx) {
     ctx.status(`${ticker}: CHECK THE DATES`, 'warn');
     return;
   }
-  const range = cmd.args.from ? { from: cmd.args.from, to: cmd.args.to || null } : { range: cmd.args.range || '1Y' };
+  // A bar period from the command (AAPL 1Y WEEKLY) rides along to the chart.
+  const bar = cmd.args.bar ? { bar: cmd.args.bar } : {};
+  const range = cmd.args.from ? { from: cmd.args.from, to: cmd.args.to || null, ...bar } : { range: cmd.args.range || '1Y', ...bar };
   el.innerHTML = `<div class="stack">
     ${panel('1', ticker, LOADING, { metaId: 'q-meta' })}
     ${panel('2', `Chart ${rangeLabel(range)}`, '<div class="rc" id="q-rc"></div>', { metaId: 'q-ch-meta', bodyCls: 'flush' })}

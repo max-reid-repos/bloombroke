@@ -378,11 +378,19 @@ export function symbolSuggestions(results, existing = []) {
     .map((r) => ({ name: r.id, hint: `${r.name}${KIND_LABEL[r.kind] ? ` · ${KIND_LABEL[r.kind]}` : ''}`, value: r.id, symbol: true }));
 }
 
-// Tab completion: complete to the n-th suggestion.
+// Tab completion over a suggestion list (the one the dropdown shows): the n-th entry,
+// counting from the top. An entry that is already exactly what was typed is skipped, so
+// AAP + Tab goes to AAPL, not back to AAP. No entries: the text stays.
+export function completeFrom(list, raw, index = 0) {
+  const typed = String(raw ?? '').replace(/^\s+/, '').toUpperCase();
+  const opts = (list || []).filter((s) => s.value !== typed);
+  if (!opts.length) return raw;
+  return opts[((index % opts.length) + opts.length) % opts.length].value;
+}
+
+// Tab completion from the local suggestions alone.
 export function complete(raw, index = 0) {
-  const list = suggest(raw);
-  if (!list.length) return raw;
-  return list[((index % list.length) + list.length) % list.length].value;
+  return completeFrom(suggest(raw), raw, index);
 }
 
 // New York market hours: 9:30 to 16:00 ET, Monday to Friday, NYSE holidays closed,
@@ -568,6 +576,32 @@ export function screenTitle(cmd) {
 }
 // What a saved-list command changes, for the "this link wants to change" question.
 const SAVED_LIST = { PORTFOLIO: ['Portfolio', 'portfolio'], WATCH: ['Watchlist', 'watchlist'], DESK: ['Desk', 'desk layout'] };
+const LINK_CHANGES = { PORTFOLIO: 'portfolio', WATCH: 'watchlist', DESK: 'desk layout', ALERTS: 'alerts', TAPE: 'ticker tape' };
+
+// The one-line question for a link that would change something saved in this browser.
+export function linkQuestion(cmd) {
+  const a = cmd.args || {};
+  if (cmd.name === 'ALERTS' && a.alert) return { question: `Add alert ${a.alert.sym} ${a.alert.op} ${a.alert.level}?`, verb: 'ADD' };
+  if (cmd.name === 'ALERTS' && a.action === 'clear') return { question: 'Clear all your alerts?', verb: 'CLEAR' };
+  if (cmd.name === 'WATCH' && a.action === 'add' && a.ids?.length) return { question: `Add ${a.ids.join(', ')} to your watchlist?`, verb: 'ADD' };
+  if (cmd.name === 'WATCH' && a.action === 'remove' && a.ids?.length) return { question: `Remove ${a.ids.join(', ')} from your watchlist?`, verb: 'REMOVE' };
+  return { question: `Run ${cmd.input}? It changes your ${LINK_CHANGES[cmd.name] || 'saved settings'}.`, verb: 'RUN' };
+}
+
+// What a link (?c=...) does when the page opens: { url, show, ask }. url: what stays in
+// the address bar; show: the command to render; ask: null, or { run, question, verb } for
+// a one-line confirm over the screen. A link never changes anything saved by itself:
+// WATCH ADD, PF BUY, ALERTS AAPL > 350, TAPE ADD and DESK RESET open their screen and
+// ask. A DESK preset (DESK WEIRD) loads like typed: DESK asks first over panels of your
+// own. LOGIN and LOGOUT only ever show PRO.
+export function linkPlan(raw) {
+  const clean = tokenize(raw).join(' ') || DEFAULT_COMMAND;
+  const cmd = parseCommand(clean);
+  const { url } = urlFor(clean);
+  if (cmd.name === 'DESK' && cmd.args?.preset && !cmd.error) return { url, show: clean, ask: null };
+  if (url === clean || cmd.error || cmd.secret || cmd.name === 'LOGIN' || cmd.name === 'LOGOUT') return { url, show: url, ask: null };
+  return { url, show: url, ask: { run: clean, ...linkQuestion(cmd) } };
+}
 export const DEFAULT_TITLE = 'Bloombroke: a free market terminal. Pro $4.20/mo.';
 
 // A ticker screen whose ticker is not known yet: check it has a quote before showing
@@ -631,8 +665,12 @@ function boot() {
   let cmdHistory = store.get('bb.history', []);
   let histIndex = cmdHistory.length;
   let draft = '';
-  let tabIndex = -1;
+  // Tab cycling: the text Tab started from, the list it showed then, and the press count.
+  let linkAsk = null; // a link waiting for Enter or Esc: { run, bar } (offerLink below)
+  let tabbing = false;
+  let tabIndex = 0;
   let tabBase = '';
+  let tabList = [];
   let active = -1;
   let cleanups = [];
   let screenAbort = null;
@@ -804,13 +842,18 @@ function boot() {
       } catch { /* the local suggestions stand */ }
     }, 120);
   }
-  function renderSuggest({ keepActive = false } = {}) {
-    items = document.activeElement === input ? suggest(input.value) : [];
-    const qText = remoteQuery(input.value);
-    if (qText && items.every((it) => !it.usage)) {
-      if (remote.has(qText)) items = [...items, ...symbolSuggestions(remote.get(qText), items)].slice(0, 10);
+  // The suggestion list for a text: the local rows, then the server's symbols once known.
+  function listFor(text) {
+    let out = suggest(text);
+    const qText = remoteQuery(text);
+    if (qText && out.every((it) => !it.usage)) {
+      if (remote.has(qText)) out = [...out, ...symbolSuggestions(remote.get(qText), out)].slice(0, 10);
       else fetchRemote(qText);
     }
+    return out;
+  }
+  function renderSuggest({ keepActive = false } = {}) {
+    items = document.activeElement === input ? listFor(input.value) : [];
     if (!keepActive) active = -1;
     if (active >= items.length) active = -1;
     const exact = items.length === 1 && !items[0].usage && items[0].value.trim() === input.value.trim().toUpperCase();
@@ -892,6 +935,7 @@ function boot() {
     const view = document.createElement('section');
     view.className = 'view';
     screen.replaceChildren(view);
+    linkAsk = null; // any new screen drops a link's question with the line
     // DESK panels: no repeated title or "1)" numbering (embed.js).
     if (embed) cleanups.push(compactEmbed(view));
     // Words that are not a command, or a ticker nobody has checked: look them up first.
@@ -943,8 +987,9 @@ function boot() {
       },
     };
     const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name] || COMPANY_SCREENS[cmd.name] || MARKETS_SCREENS[cmd.name] || WEIRD_SCREENS[cmd.name];
-    if (cmd.mutates && fromUrl) {
-      // A link that changes saved lists never runs by itself: ask first.
+    if (cmd.mutates && fromUrl && !(cmd.name === 'DESK' && cmd.args?.preset)) {
+      // A link that changes saved lists never runs by itself: ask first. (A DESK preset
+      // asks on the desk itself, and only over panels of your own.)
       const [title, what] = SAVED_LIST[cmd.name] || SAVED_LIST.WATCH;
       view.innerHTML = panel('1', title, `
         <p class="notice">This link wants to change your ${what}.</p>
@@ -1149,16 +1194,23 @@ function boot() {
     if (e.key === 'Tab') {
       if (!input.value.trim() && !items.length) return;
       e.preventDefault();
-      if (tabIndex === -1) tabBase = input.value;
+      // The first Tab takes the top of the list on screen (server symbols included);
+      // more presses cycle through that same list, Shift+Tab backwards.
+      if (!tabbing) {
+        tabbing = true;
+        tabBase = input.value;
+        tabList = items.length ? items.slice() : listFor(tabBase);
+        tabIndex = e.shiftKey ? 0 : -1;
+      }
       tabIndex = e.shiftKey ? tabIndex - 1 : tabIndex + 1;
-      input.value = complete(tabBase, tabIndex);
+      input.value = completeFrom(tabList, tabBase, tabIndex);
       input.setSelectionRange(input.value.length, input.value.length);
       active = -1;
       renderSuggest();
       placeCursor();
       return;
     }
-    tabIndex = -1;
+    if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) tabbing = false; // Shift+Tab keeps cycling
     // With the suggestion list open, the arrows move through it; otherwise they walk history.
     const pickable = !list.hidden && items.length && !items.every((it) => it.usage);
     if (pickable && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
@@ -1367,8 +1419,55 @@ function boot() {
   }
   // --- end ALERTS ------------------------------------------------------------
 
+  // --- a link that would change something: one line over the screen, Enter or Esc ---
+  function closeLinkAsk() {
+    linkAsk?.bar.remove();
+    linkAsk = null;
+  }
+  function offerLink(ask) {
+    closeLinkAsk();
+    const bar = document.createElement('div');
+    bar.className = 'desk-confirm link-confirm';
+    bar.setAttribute('role', 'alertdialog');
+    bar.setAttribute('aria-label', 'This link wants to change something');
+    bar.tabIndex = -1;
+    bar.innerHTML = `<span class="desk-confirm-text">${escapeHtml(ask.question)}</span>
+      <button type="button" class="desk-btn" data-act="yes">ENTER: ${escapeHtml(ask.verb)}</button>
+      <button type="button" class="desk-btn" data-act="no">ESC: SKIP</button>`;
+    bar.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-act]');
+      if (b) { e.preventDefault(); e.stopPropagation(); answerLink(b.dataset.act === 'yes'); }
+    });
+    screen.prepend(bar);
+    linkAsk = { run: ask.run, bar };
+  }
+  function answerLink(yes) {
+    const r = linkAsk?.run;
+    closeLinkAsk();
+    if (yes && r) run(r, { typed: true });
+    else setStatus('LINK SKIPPED: NOTHING CHANGED');
+    if (!coarse) input.focus();
+  }
+  // Enter on the page, the empty command bar or the line runs it; Enter on another
+  // button or link does what it does. Esc skips, unless you are typing.
+  document.addEventListener('keydown', (e) => {
+    if (!linkAsk || e.altKey || e.ctrlKey || e.metaKey || (e.key !== 'Enter' && e.key !== 'Escape')) return;
+    const t = e.target;
+    if (t === input && input.value.trim()) return;
+    if (e.key === 'Enter' && t !== input && t.closest?.('button, a, input, select, textarea, [data-cmd], [tabindex="0"]')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    answerLink(e.key === 'Enter');
+  }, true);
+
   // --- first render ---------------------------------------------------------
-  const initial = urlFor(fromQuery(location.search)).url; // a link never runs LOGIN or TAPE ADD
+  const plan = embed ? { url: urlFor(fromQuery(location.search)).url, ask: null } : linkPlan(fromQuery(location.search));
+  if (!plan.show) plan.show = plan.url;
+  const initial = plan.url; // a link never runs LOGIN or TAPE ADD
+  const openLink = () => {
+    render(plan.show, { fromUrl: true });
+    if (plan.ask) offerLink(plan.ask);
+  };
   window.history.replaceState({ c: initial, d: embed ? 0 : depth() }, '', embed ? `${toQuery(initial)}&embed=1` : location.search ? toQuery(initial) : location.pathname);
   const firstVisit = !embed && !store.get('bb.booted', false);
   // First visit: the notice. Never inside a DESK panel: the desk page around it shows
@@ -1380,7 +1479,7 @@ function boot() {
     ensureConsent().then((accepted) => {
       const typedNow = input.value.trim();
       if (accepted && typedNow) run(typedNow, { typed: true });
-      else if (holdLink) render(initial, { fromUrl: true });
+      else if (holdLink) openLink();
       placeCursor();
     });
   }
@@ -1389,7 +1488,7 @@ function boot() {
     setStatus('STARTING');
     bootSequence(screen, (key) => {
       if (key) input.value += key; // the key that skipped the boot log is the first letter typed
-      render(initial, { fromUrl: true });
+      openLink();
       if (needsNotice) notice();
     });
   } else if (holdLink) {
@@ -1397,7 +1496,7 @@ function boot() {
     setStatus('ACCEPT THE NOTICE TO CONTINUE');
     notice();
   } else {
-    render(initial, { fromUrl: true });
+    openLink();
     if (needsNotice) notice();
   }
   if (!coarse) input.focus();

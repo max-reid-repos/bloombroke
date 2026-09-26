@@ -3,7 +3,7 @@
 //   OPTIONS AAPL              nearest expiry
 //   OPTIONS AAPL 2026-10-16   one expiry (the tabs list them all)
 
-import { esc, q, fmtNum, fmtSigned, fmtPct, dirOf, fmtAsOf, panel, LOADING } from './markets.js';
+import { esc, q, fmtNum, fmtSigned, fmtPct, dirOf, fmtAsOf, panel, metaNote, LOADING } from './markets.js';
 import { instrumentById, resolveInstrument } from '../instruments.js';
 import { edgeFade } from '../kit.js';
 
@@ -129,9 +129,8 @@ export function render(el, cmd, ctx) {
   }
   const { ticker } = args;
   el.innerHTML = `<div class="stack">
-    ${panel('1', `${ticker} options`, `<div class="oc-top" id="oc-top">${LOADING}</div><div id="oc-tabs"></div><div id="oc-chain"></div>`, { metaId: 'oc-meta', bodyCls: 'flush', meta: '<span class="fresh is-dly" title="Delayed: about 15 min">DLY</span> CBOE, 15 MIN' })}
-  </div>
-  <p class="footnote">Shaded: in the money. IV: implied volatility.</p>`;
+    ${panel('1', `${ticker} options`, `<div class="oc-top" id="oc-top">${LOADING}</div><div id="oc-tabs"></div><div id="oc-chain"></div>`, { metaId: 'oc-meta', bodyCls: 'flush', meta: `${metaNote('SHADED = IN THE MONEY', 'IV = implied volatility')} · <span class="fresh is-dly" title="Delayed: about 15 min">DLY</span> CBOE, 15 MIN` })}
+  </div>`;
   const top = el.querySelector('#oc-top');
   const tabs = el.querySelector('#oc-tabs');
   const chain = el.querySelector('#oc-chain');

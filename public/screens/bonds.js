@@ -3,7 +3,7 @@
 //   BONDS SPREADS   each 10Y against the US 10Y and the German 10Y
 //   BONDS CURVE     10Y minus 2Y for each country
 
-import { esc, q, fmtNum, fmtSigned, dirOf, panel, LOADING, tick, settleTicks, rowAttrs, nameCell, rerender } from './markets.js';
+import { esc, q, fmtNum, fmtSigned, dirOf, panel, metaNote, LOADING, tick, settleTicks, rowAttrs, nameCell, rerender } from './markets.js';
 import { toolbar, segmented } from '../kit.js';
 
 export const BOND_TABS = ['YIELDS', 'SPREADS', 'CURVE'];
@@ -109,17 +109,17 @@ export function curveTable(figs) {
   </table>`;
 }
 
+// How to read each view, short, in the title strip; the long form is the tooltip.
 const NOTES = {
-  YIELDS: 'Each cell: the yield in percent, then today\'s change in basis points (1 bp = 0.01%). Tap a yield to chart it. -- means the source has no quote for that maturity.',
-  SPREADS: 'Spread: the country\'s 10-year yield minus the US or German 10-year, in basis points. Chg: how much that gap moved today.',
-  CURVE: '10-year yield minus 2-year yield, in basis points. Below zero the curve is inverted: short-term borrowing costs more than long-term.',
+  YIELDS: ['CHG IN BP, 1 BP = 0.01%', 'Each cell: the yield in percent, then today\'s change in basis points (1 bp = 0.01%). Tap a yield to chart it. -- means the source has no quote for that maturity.'],
+  SPREADS: ['VS THE US OR GERMAN 10Y', 'Spread: the country\'s 10-year yield minus the US or German 10-year, in basis points. Chg: how much that gap moved today.'],
+  CURVE: ['BELOW 0 = INVERTED', '10-year yield minus 2-year yield, in basis points. Below zero the curve is inverted: short-term borrowing costs more than long-term.'],
 };
 
 export function render(el, cmd, ctx) {
   const tab = cmd.args?.tab || 'YIELDS';
   const views = segmented(BOND_TABS.map((t) => ({ label: t, cmd: t === 'YIELDS' ? 'BONDS' : `BONDS ${t}` })), tab, { label: 'View' });
-  el.innerHTML = panel('1', 'Government bonds', `${toolbar({ left: views, label: 'View' })}<div class="bg-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'bd-meta', meta: 'YIELD, PERCENT A YEAR', bodyCls: 'flush' })
-    + `<p class="footnote">${esc(NOTES[tab])}</p>`;
+  el.innerHTML = panel('1', 'Government bonds', `${toolbar({ left: views, label: 'View' })}<div class="bg-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'bd-meta', meta: metaNote(...NOTES[tab]), bodyCls: 'flush' });
   if (cmd.args?.error) ctx.status('BONDS TAKES YIELDS, SPREADS OR CURVE', 'warn');
   const body = el.querySelector('.bg-body');
 
@@ -130,7 +130,7 @@ export function render(el, cmd, ctx) {
       const html = tab === 'SPREADS' ? spreadsTable(bondFigures(grid)) : tab === 'CURVE' ? curveTable(bondFigures(grid)) : yieldsTable(grid, d.terms);
       rerender(body, html);
       settleTicks(body);
-      el.querySelector('#bd-meta').innerHTML = `<span class="m-hide">${grid.length} COUNTRIES · </span>${tab === 'YIELDS' ? 'PERCENT A YEAR' : 'BASIS POINTS'}`;
+      el.querySelector('#bd-meta').innerHTML = `<span class="m-hide">${grid.length} COUNTRIES · </span>${tab === 'YIELDS' ? 'PERCENT A YEAR' : 'BASIS POINTS'} · ${metaNote(...NOTES[tab])}`;
       const items = grid.flatMap((r) => Object.values(r.cells).filter(Boolean).map((c) => ({ kind: 'yield', realTime: c.realTime })));
       if (!cmd.args?.error) ctx.updated(d.updated, d.stale, items);
     } catch (err) {

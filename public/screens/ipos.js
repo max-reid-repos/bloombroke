@@ -2,7 +2,7 @@
 // price) and filed (paperwork in, no date yet). Rows with a symbol open its quote.
 
 import { esc, fmtNum, panel, LOADING } from './markets.js';
-import { sourceLine, symbolCell, symbolRow, fmtBig, fmtBigMoney, dash } from './company-kit.js';
+import { metaNote, symbolCell, symbolRow, fmtBig, fmtBigMoney, dash } from './company-kit.js';
 import { moreButton, fmtDate } from '../kit.js';
 
 export function priceText(low, high) {
@@ -29,13 +29,15 @@ export function ipoTable(rows, { kind }) {
   </table>`;
 }
 
+// Which months each list covers. Upcoming dates are the source's and can move.
+const SPAN = { upcoming: 'THIS MONTH AND NEXT, DATES CAN MOVE', priced: 'THIS MONTH AND LAST', filed: 'THIS MONTH AND LAST' };
+
 export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="stack">
     ${panel('1', 'IPOs: upcoming', LOADING, { metaId: 'ipo-m1', bodyCls: 'flush' })}
     ${panel('2', 'IPOs: priced', LOADING, { metaId: 'ipo-m2', bodyCls: 'flush' })}
     ${panel('3', 'IPOs: filed', LOADING, { metaId: 'ipo-m3', bodyCls: 'flush' })}
-  </div>
-  <div id="ipo-foot">${sourceLine('Nasdaq IPO calendar')}</div>`;
+  </div>`;
   const bodies = el.querySelectorAll('.panel-body');
 
   ctx.fetchJSON('/api/ipos', { signal: ctx.signal }).then((d) => {
@@ -43,10 +45,11 @@ export function render(el, cmd, ctx) {
       const cut = kind === 'filed' && d[kind].length > FILED_SHOWN;
       bodies[i].innerHTML = ipoTable(cut ? d[kind].slice(0, FILED_SHOWN) : d[kind], { kind })
         + (cut ? moreButton(`SHOW ALL ${d[kind].length}`, 'data-ipo-more') : '');
-      el.querySelector(`#ipo-m${i + 1}`).textContent = cut ? `${FILED_SHOWN} OF ${d[kind].length} DEALS` : `${d[kind].length} DEALS`;
-      bodies[i].querySelector('[data-ipo-more]')?.addEventListener('click', () => { bodies[i].innerHTML = ipoTable(d[kind], { kind }); el.querySelector(`#ipo-m${i + 1}`).textContent = `${d[kind].length} DEALS`; });
+      const meta = el.querySelector(`#ipo-m${i + 1}`);
+      const note = ` · ${metaNote(SPAN[kind])}`;
+      meta.innerHTML = `${cut ? `${FILED_SHOWN} OF ${d[kind].length} DEALS` : `${d[kind].length} DEALS`}${note}`;
+      bodies[i].querySelector('[data-ipo-more]')?.addEventListener('click', () => { bodies[i].innerHTML = ipoTable(d[kind], { kind }); meta.innerHTML = `${d[kind].length} DEALS${note}`; });
     });
-    el.querySelector('#ipo-foot').innerHTML = sourceLine(d.source, 'Upcoming covers this month and next; priced and filed cover this month and last. Offer = the dollar amount of the offering, as published. Dates are what the source lists and can move.');
     ctx.updated(d.updated, d.stale);
   }).catch((err) => {
     if (err.name === 'AbortError') return;

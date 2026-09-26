@@ -65,7 +65,25 @@ test('no per-screen source footnotes: the removed lines never render', () => {
     for (const g of gone) assert.ok(!s.includes(g), `${f}: ${g}`);
     assert.doesNotMatch(s, /class="footnote[^"]*">\s*(Source:|Prices|Futures prices|Index levels|Daily prices)/, f);
   }
-  assert.match(src('screens/company-kit.js'), /return extra \?/, 'company screens keep only their notes, not a source line');
+  assert.doesNotMatch(src('screens/company-kit.js'), /sourceLine/, 'company screens carry their notes in the title strip');
+});
+
+test('no prose footnotes under panels: reading notes live in the title strip', async () => {
+  // Only the Pro page keeps one: the operator and contact line.
+  const keep = new Set(['screens/pro.js']);
+  for (const f of walk('screens/')) {
+    if (keep.has(f)) continue;
+    // The WORLD phone legend borrows the class for its look; it is a legend, not a note.
+    const s = src(f).replace(/<p class="footnote st-legend"/g, '');
+    assert.doesNotMatch(s, /class="footnote/, f);
+  }
+  const { metaNote } = await import('../public/screens/markets.js');
+  assert.equal(metaNote('A = B', 'long <form>'), '<span class="meta-note" title="long &lt;form&gt;">A = B</span>');
+  // The legally required small print keeps its exact words, now in the title strip.
+  assert.match(src('screens/whatif.js'), /metaNote\(HINDSIGHT_NOTE\)/);
+  assert.match(src('screens/fedpath.js'), /FP_NOTE = metaNote\('IMPLIED BY FUTURES, NOT A FORECAST', LABEL\)/);
+  assert.match(src('screens/funding.js'), /Hindsight only\. Past returns do not predict future returns\. Not a recommendation\./);
+  assert.match(src('screens/compound.js'), /The return is your assumption, not a forecast\./);
 });
 
 test('RT and DLY tags carry their meaning in a tooltip', async () => {

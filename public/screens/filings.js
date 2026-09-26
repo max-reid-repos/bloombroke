@@ -3,7 +3,7 @@
 // no ownership paperwork) is the default.
 
 import { esc, q, panel, LOADING } from './markets.js';
-import { sourceLine, errorHtml, fmtInt, fmtDay, dash } from './company-kit.js';
+import { metaNote, errorHtml, fmtInt, fmtDay, dash } from './company-kit.js';
 import { toolbar, panelTools, dataTable, sortRows, nextSort, edgeFade } from '../kit.js';
 
 const TICKER = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
@@ -61,15 +61,14 @@ export function render(el, cmd, ctx) {
     return;
   }
   const { ticker, form } = cmd.args;
-  el.innerHTML = `${panel('1', `${ticker} SEC filings`, `${toolbar({ left: chips(ticker, form), label: 'Filing type' })}<div class="fil-body co-wide">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'fil-meta', bodyCls: 'flush' })}
-  <div id="fil-foot">${sourceLine('US SEC EDGAR filing index')}</div>`;
+  el.innerHTML = `${panel('1', `${ticker} SEC filings`, `${toolbar({ left: chips(ticker, form), label: 'Filing type' })}<div class="fil-body co-wide">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'fil-meta', bodyCls: 'flush' })}`;
   const body = el.querySelector('.fil-body');
 
   const params = new URLSearchParams({ s: ticker, f: form });
   ctx.fetchJSON(`/api/filings?${params}`, { signal: ctx.signal }).then((d) => {
     el.querySelector('.fil-seg').outerHTML = chips(ticker, form, d.counts);
     ctx.onCleanup(edgeFade(el.querySelector('.fil-seg')));
-    el.querySelector('#fil-meta').innerHTML = panelTools({ shown: d.rows.length, total: d.matched });
+    el.querySelector('#fil-meta').innerHTML = `${panelTools({ shown: d.rows.length, total: d.matched })}${d.cik ? ` · ${metaNote(`CIK ${d.cik}`, d.name || ticker)}` : ''}`;
     const more = d.matched > d.rows.length ? `<p class="more muted co-pad">The newest ${d.rows.length} of ${fmtInt(d.matched)}. Every filing: <a href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&amp;CIK=${esc(String(d.cik))}" target="_blank" rel="noopener noreferrer">sec.gov</a></p>` : '';
     let sort = { key: 'filed', dir: 'desc' };
     const draw = () => { body.innerHTML = filingsTable(d.rows, sort) + more; };
@@ -82,7 +81,6 @@ export function render(el, cmd, ctx) {
       body.querySelector(`.th-sort[data-sort="${col.key}"]`)?.focus();
     });
     draw();
-    el.querySelector('#fil-foot').innerHTML = sourceLine(d.source, `${d.name || ticker}, CIK ${d.cik}. Links open the document on sec.gov. Descriptions are the form's plain-English name.`);
     ctx.updated(d.updated, d.stale);
   }).catch((err) => {
     if (err.name === 'AbortError') return;

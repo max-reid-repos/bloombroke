@@ -271,6 +271,17 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .fresh.is-dly { color: var(--dim); }
 /* In a panel head (DLY CBOE, 15 MIN) the tag is a word in the line, not a column. */
 .panel-meta .fresh { width: auto; }
+/* A note on how to read the numbers (metaNote): it wraps inside the title strip rather
+   than being cut off, so the strip grows a line when it has to. */
+.panel-head:has(.meta-note) { height: auto; min-height: 22px; }
+.panel-meta:has(.meta-note) { flex-wrap: wrap; white-space: normal; text-align: right; line-height: 14px; padding-top: 4px; padding-bottom: 4px; row-gap: 0; column-gap: 6px; }
+.meta-note { min-width: 0; overflow-wrap: anywhere; text-transform: uppercase; }
+/* Phones: the note takes its own line under the panel title, full width. */
+@media (max-width: 639px) {
+  .panel-head:has(.meta-note) { flex-wrap: wrap; }
+  .panel-meta:has(.meta-note) { flex: 1 1 100%; justify-content: flex-start; text-align: left; padding-left: 8px; }
+}
+.meta-note[title] { cursor: help; }
 
 /* ---- Tables ----------------------------------------------------------- */
 .grid-table { width: 100%; border-collapse: collapse; }
@@ -1331,6 +1342,8 @@ a.ch-flag { cursor: pointer; }
 .desk-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-height: 30px; margin-bottom: 1px; padding: 4px 8px; background: var(--panel-2); border: 1px solid var(--accent); color: var(--text); font-size: 12px; }
 .desk-confirm[hidden] { display: none; }
 .desk-confirm:focus { outline: 0; }
+/* The same line over any screen, for a link that would change something saved here. */
+.link-confirm { flex: 0 0 auto; margin-bottom: 8px; }
 .desk-pick-list .desk-pick-group { display: flex; height: 22px; color: var(--dim); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; cursor: default; border-top: 1px solid var(--rule); }
 .desk-pick-list .desk-pick-group:first-child { border-top: 0; }
 .desk-pick-list .desk-pick-group:hover { background: transparent; }

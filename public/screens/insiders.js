@@ -3,7 +3,7 @@
 // dollar value bought and sold each month.
 
 import { esc, panel, LOADING } from './markets.js';
-import { sourceLine, errorHtml, tickerUsage, fmtInt, fmtMoney, fmtBigMoney, fmtDay, dash } from './company-kit.js';
+import { metaNote, errorHtml, tickerUsage, fmtInt, fmtMoney, fmtBigMoney, fmtDay, dash } from './company-kit.js';
 import { panelTools, moreButton, dataTable, sortRows, nextSort } from '../kit.js';
 import { mountBars, barsLegend } from './minibars.js';
 
@@ -72,7 +72,8 @@ export function insidersTable(rows, sort = { key: 'date', dir: 'desc' }) {
   return dataTable({ columns: COLUMNS, rows, sort, caption: 'Insider transactions' });
 }
 
-const NOTE = 'Types: BUY and SELL are open-market trades; PLAN SELL is a sale under a pre-set trading plan (10b5-1); AWARD and DISPOSED are shares acquired or given up outside the open market; OPTION is an option exercise. Value = shares x price, as filed. The monthly chart adds up the value of BUY and PLAN BUY, and of SELL and PLAN SELL.';
+const NOTE = 'VALUE = SHARES X PRICE, AS FILED';
+const NOTE_LONG = 'BUY and SELL are open-market trades; PLAN SELL is a sale under a pre-set trading plan (10b5-1); AWARD and DISPOSED are shares acquired or given up outside the open market; OPTION is an option exercise. The monthly chart adds up BUY and PLAN BUY, and SELL and PLAN SELL.';
 
 export function render(el, cmd, ctx) {
   if (cmd.error) {
@@ -82,10 +83,9 @@ export function render(el, cmd, ctx) {
   }
   const { ticker } = cmd.args;
   el.innerHTML = `<div class="stack">
-    ${panel('1', `${ticker} insider trades`, LOADING, { bodyCls: 'flush' })}
+    ${panel('1', `${ticker} insider trades`, LOADING, { bodyCls: 'flush', meta: metaNote(NOTE, NOTE_LONG) })}
     ${panel('2', 'Recent transactions', LOADING, { metaId: 'ins-meta', bodyCls: 'flush' })}
-  </div>
-  <div id="ins-foot">${sourceLine('Nasdaq insider activity (SEC Forms 3, 4 and 5)')}</div>`;
+  </div>`;
   const [top, list] = el.querySelectorAll('.panel-body');
   let stopChart = null;
   ctx.onCleanup(() => stopChart?.());
@@ -128,7 +128,6 @@ export function render(el, cmd, ctx) {
       if (e.target.closest('[data-more]')) { shown += PAGE; draw(); }
     });
     draw();
-    el.querySelector('#ins-foot').innerHTML = sourceLine(d.source, NOTE);
     ctx.updated(d.updated, d.stale);
   }).catch((err) => {
     if (err.name === 'AbortError') return;

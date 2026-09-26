@@ -14,7 +14,7 @@ export function fmtPrice(n) {
 }
 
 // CoinGecko's terms ask for a credit with a link wherever its data shows.
-const CRYPTO_META = 'TOP 20 EXCLUDING STABLECOINS, USD · Powered by <a href="https://www.coingecko.com/" target="_blank" rel="noopener noreferrer" title="Data provided by CoinGecko">CoinGecko</a>';
+const CRYPTO_META = 'TOP 20, NO STABLECOINS OR TOKENISED ASSETS, USD · Powered by <a href="https://www.coingecko.com/" target="_blank" rel="noopener noreferrer" title="Data provided by CoinGecko">CoinGecko</a>';
 
 export function render(el, cmd, ctx) {
   el.innerHTML = panel('1', 'Crypto', LOADING, { cls: 'panel-solo', metaId: 'cr-meta', meta: CRYPTO_META });
@@ -35,7 +35,10 @@ export function render(el, cmd, ctx) {
           <td class="num time dim">${esc(fmtCompact(c.volume))}</td>
         </tr>`).join('')}</tbody>
       </table>`;
-      if (d.excluded?.length) body.insertAdjacentHTML('beforeend', `<p class="more dim">${esc(d.note || 'Top 20 excluding stablecoins')}. Left out: ${esc(d.excluded.map((c) => `${c.symbol} (${c.why})`).join(', '))}. # is the CoinGecko rank.</p>`);
+      // Which coins were left out: a tooltip on the title strip, not a line under the table.
+      const meta = el.querySelector('#cr-meta');
+      if (d.excluded?.length) meta.title = `Left out: ${d.excluded.map((c) => `${c.symbol} (${c.why})`).join(', ')}`;
+      else meta.removeAttribute('title');
       settleTicks(body);
       ctx.updated(d.updated, d.stale);
     } catch (err) {

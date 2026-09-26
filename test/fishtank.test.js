@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   pctToDepth, depthRange, capToSize, fishColor, pickExtremes, tankHeader, sizeLimits, seeded, makeRunner, render,
-  SPECIES, SPECIES_NAME, speciesOf, FISH_SCALE, MAX_OF_H, legendItems, legendHtml, toggleSector, sectorAlpha, DIM, sectorCentre, schoolStep,
+  SPECIES, SPECIES_NAME, speciesOf, FISH_SCALE, MAX_OF_H, legendItems, legendHtml, tagPlan, toggleSector, sectorAlpha, DIM, sectorCentre, schoolStep,
 } from '../public/screens/fishtank.js';
 import { heatmapStocks, fishtankStocks, SP100, SECTORS } from '../data/sp100.js';
 import { parseCommand, FKEYS } from '../public/app.js';
@@ -287,8 +287,23 @@ test('fishtank legend: pressing a sector lights it, pressing it again clears it'
   assert.ok(buttons.every((b) => /type="button"/.test(b)));
   assert.match(buttons[0], /data-sector="TECH" aria-pressed="false"/);
   assert.match(buttons[1], /data-sector="FIN" aria-pressed="true"/);
-  assert.match(buttons[1], /aria-label="Financials: shark, 2 stocks"/);
+  assert.match(buttons[1], /aria-label="FIN, Financials: shark, 2 stocks"/, 'the name starts with the words on the button');
+  assert.match(buttons[0], /aria-label="TECH: /, 'no name of its own: the short name once');
   assert.match(html, /<span>TECH<\/span>/);
+});
+
+test('fishtank tags: a lit sector tags its own fish first and skips the dimmed ones', () => {
+  const fish = [
+    { sector: 'TECH', kind: 'crab', s: { ticker: 'A' } },
+    { sector: 'FIN', kind: 'crab', s: { ticker: 'B' } },
+    { sector: 'TECH', kind: 'fish', s: { ticker: 'C' } },
+    { sector: 'FIN', kind: 'shark', s: { ticker: 'D' } },
+    { sector: 'FIN', kind: 'shark', s: { ticker: 'E' } },
+  ];
+  const ids = (plan) => plan.map((p) => `${p.f.s.ticker}:${p.tag}`);
+  assert.deepEqual(ids(tagPlan(fish, { winner: fish[2], loser: fish[3] })), ['A:crab', 'B:crab', 'C:winner', 'D:loser']);
+  assert.deepEqual(ids(tagPlan(fish, { winner: fish[2], loser: fish[3], active: 'FIN' })), ['B:crab', 'D:loser', 'E:sector']);
+  assert.deepEqual(ids(tagPlan(fish, { active: 'TECH' })), ['A:crab', 'C:sector']);
 });
 
 test('fishtank schools: the biggest fish at one depth keep clear of each other', () => {

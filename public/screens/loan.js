@@ -1,7 +1,7 @@
 // LOAN: monthly payment and total interest on a fixed-rate loan.
 // Without a rate it uses this week's average 30-year fixed mortgage rate (Freddie Mac, via RATES).
 
-import { esc, q, fmtNum, panel, LOADING } from './markets.js';
+import { esc, q, fmtNum, panel, metaNote, LOADING } from './markets.js';
 import { mountLines, legend } from './lines.js';
 
 export const MAX_LOAN = 1e10;
@@ -105,7 +105,7 @@ function show(el, ctx, a, rate, source) {
         <div class="stat"><dt>Interest share</dt><dd class="num">${esc(fmtNum((res.totalInterest / res.totalPaid) * 100, 1))}%</dd></div>
         <div class="stat"><dt>Payments</dt><dd class="num">${Math.round(a.years * 12)}</dd></div>
       </dl>
-    </div>`, { meta: 'FIXED RATE, MONTHLY' })}
+    </div>`, { meta: `FIXED RATE, MONTHLY · ${metaNote('PRINCIPAL AND INTEREST ONLY, NO TAX, INSURANCE OR FEES')}` })}
     <div class="chart-by-year">
     ${panel('2', 'Balance and interest paid', `<div class="chart-host" id="ln-chart"></div><div id="ln-legend"></div>`, { metaId: 'ln-meta', bodyCls: 'flush' })}
     ${panel('3', 'By year', `<table class="grid-table loan-table">
@@ -113,8 +113,7 @@ function show(el, ctx, a, rate, source) {
       <tbody>${res.rows.map((r) => `<tr><th scope="row" class="name">${r.year}</th><td class="num">${esc(usd(r.principal))}</td><td class="num dim">${esc(usd(r.interest))}</td><td class="num last">${esc(usd(r.balance))}</td></tr>`).join('')}</tbody>
     </table>`, { cls: 'by-year', bodyCls: 'flush' })}
     </div>
-  </div>
-  <p class="footnote">Principal and interest only. Taxes, insurance and fees are extra. Not financial advice.</p>`;
+  </div>`;
   const series = [
     { id: 'bal', cls: 'ln-0', label: 'Balance left', points: [{ x: 0, y: a.amount }, ...res.rows.map((r) => ({ x: r.year, y: r.balance }))] },
     { id: 'int', cls: 'ln-2', label: 'Interest paid so far', points: [{ x: 0, y: 0 }, ...res.rows.map((r) => ({ x: r.year, y: r.interestToDate }))] },

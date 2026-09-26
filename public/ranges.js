@@ -1,10 +1,34 @@
 // Chart ranges, shared by the browser (command parsing, the range bar) and the server.
 // Presets: 1D 5D 1M 3M 6M YTD 1Y 2Y 5Y 10Y MAX. Custom: FROM and TO dates, YYYY-MM-DD.
-// Compare symbols ride along: AAPL 1Y VS QQQ (typed as +QQQ on a chart).
+// Compare symbols ride along: AAPL 1Y VS QQQ (typed as +QQQ on a chart). A bar period
+// word may too: AAPL 1Y WEEKLY, AAPL 5D 5MIN, SPX 1D 1MIN.
+
+import { AUTO_BAR, barsForPreset, barValid } from './bars.js';
 
 export const PRESETS = ['1D', '5D', '1M', '3M', '6M', 'YTD', '1Y', '2Y', '5Y', '10Y', 'MAX'];
 export const DEFAULT_RANGE = '1Y';
 export const FIRST_DAY = '1900-01-01';
+
+// Bar period words -> bar sizes (public/bars.js). None is a ticker on the SEC list or a
+// preset. MONTHLY is MAX's own period, so it never needs saying.
+export const PERIOD_WORDS = { '1MIN': '1M', '5MIN': '5M', '30MIN': '30M', '60MIN': '1H', DAILY: '1D', WEEKLY: '1W', MONTHLY: '1MO' };
+const WORD_FOR_BAR = Object.fromEntries(Object.entries(PERIOD_WORDS).map(([w, b]) => [b, w]));
+const DAY_MS = 86_400_000;
+
+// The bar a range keeps: the picked bar when it can draw that window and is not the
+// window's own period anyway (the rules in bars.js), otherwise null (the default).
+export function rangeBar(r, bar, today = nyToday()) {
+  if (!bar || bar === '1MO' || !r || r.error) return null;
+  const now = new Date(`${today}T12:00:00Z`);
+  if (!r.from) {
+    const p = r.range || DEFAULT_RANGE;
+    if (bar === AUTO_BAR[p]) return null;
+    return barsForPreset(p, now).some((b) => b.bar === bar && b.ok) ? bar : null;
+  }
+  const f = Date.parse(`${r.from}T00:00:00Z`);
+  const t = r.to ? Date.parse(`${r.to}T00:00:00Z`) + DAY_MS : now.getTime();
+  return barValid(bar, { spanDays: Math.max(1, (t - f) / DAY_MS), ageDays: (now.getTime() - f) / DAY_MS }) ? bar : null;
+}
 
 // "2020-01-31" -> a UTC midnight Date, or null for anything that is not a real day.
 export function parseDate(s) {
@@ -36,11 +60,17 @@ export function nyToday(date = new Date()) {
 // Compare symbols (an overlay line on the chart): "+QQQ" anywhere, or "VS QQQ SPY" at the
 // end, up to MAX_COMPARE -> { ..., compare: ['QQQ', 'SPY'] } (left out when there are none).
 // Errors: { error: 'usage' | 'date' | 'order' | 'future' }.
+// A bar period word (WEEKLY, 5MIN) anywhere before VS: { ..., bar } when that bar can
+// draw the window (rangeBar), left out when it cannot or is the window's own period.
 export function parseRangeArgs(args, today = nyToday()) {
   const all = args.map((t) => String(t).toUpperCase());
   const cmp = splitCompare(all);
   if (!cmp) return { error: 'usage' };
-  const r = parseRangeOnly(cmp.rest, today);
+  const periods = cmp.rest.filter((t) => PERIOD_WORDS[t]);
+  if (periods.length > 1) return { error: 'usage' };
+  let r = parseRangeOnly(cmp.rest.filter((t) => !PERIOD_WORDS[t]), today);
+  const bar = periods.length && !r.error ? rangeBar(r, PERIOD_WORDS[periods[0]], today) : null;
+  if (bar) r = { ...r, bar };
   return cmp.compare.length && !r.error ? { ...r, compare: cmp.compare } : r;
 }
 
@@ -91,8 +121,10 @@ export function rangeWords(r) {
   const cmp = r.compare?.length ? `VS ${r.compare.join(' ')}` : '';
   let words;
   if (r.from) words = r.to ? `${r.from} ${r.to}` : `FROM ${r.from}`;
-  else words = r.range && r.range !== DEFAULT_RANGE ? r.range : '';
-  return [words, cmp].filter(Boolean).join(' ');
+  // A picked bar says its range too: AAPL 1Y WEEKLY, not AAPL WEEKLY.
+  else words = r.range && (r.range !== DEFAULT_RANGE || WORD_FOR_BAR[r.bar]) ? r.range : '';
+  const per = WORD_FOR_BAR[r.bar] && r.bar !== '1MO' ? WORD_FOR_BAR[r.bar] : '';
+  return [words, per, cmp].filter(Boolean).join(' ');
 }
 
 export function rangeLabel(r) {

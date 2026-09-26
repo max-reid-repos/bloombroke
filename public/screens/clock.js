@@ -193,18 +193,41 @@ function rows(list) {
 }
 
 export function render(el, cmd, ctx) {
-  el.innerHTML = `<div class="with-side">${panel('1', 'Market clocks', '', { cls: 'panel-solo', metaId: 'ck-meta', meta: 'LOCAL TIME' })}${panel('2', 'Next bells', '', { cls: 'panel-solo' })}</div>`
-    + '<p class="footnote">Regular hours in local time. NYSE and Nasdaq holidays are built in; other holidays show once the main index has not traded by 30 minutes after the open.</p>';
+  el.innerHTML = `<div class="with-side">${panel('1', 'Market clocks', '', { cls: 'panel-solo', metaId: 'ck-meta', meta: 'REGULAR HOURS, LOCAL TIME' })}${panel('2', 'Next bells', '', { cls: 'panel-solo' })}</div>`;
   const [body, side] = el.querySelectorAll('.panel-body');
   const asOfByIdx = new Map();
 
+  // The table is drawn once. Each second only the text that changed is written: the
+  // seconds, then once a minute the time, the countdown and the now mark.
+  let cells = null;
+  let sideWas = '';
+  const put = (node, text) => { if (node.nodeValue !== text) node.nodeValue = text; };
   function paint() {
     const list = clockList(asOfByIdx, new Date());
-    body.innerHTML = `<table class="grid-table clock-table">
-      <thead><tr><th scope="col">Exchange</th><th scope="col" class="num">Local</th><th scope="col">Status</th><th scope="col" class="num next">Next</th><th scope="col" class="bar-cell">${DAY_SCALE}</th><th scope="col" class="num time">Hours</th></tr></thead>
-      <tbody>${rows(list)}</tbody>
-    </table>`;
-    side.innerHTML = sideHtml(list);
+    if (!cells) {
+      body.innerHTML = `<table class="grid-table clock-table">
+        <thead><tr><th scope="col">Exchange</th><th scope="col" class="num">Local</th><th scope="col">Status</th><th scope="col" class="num next">Next</th><th scope="col" class="bar-cell">${DAY_SCALE}</th><th scope="col" class="num time">Hours</th></tr></thead>
+        <tbody>${rows(list)}</tbody>
+      </table>`;
+      cells = [...body.querySelectorAll('tbody tr')].map((tr) => {
+        const last = tr.querySelector('.last');
+        return { hm: last.firstChild, secs: last.querySelector('.secs').firstChild, st: tr.querySelector('.st'), next: tr.querySelector('.next').firstChild, now: tr.querySelector('.db-now') };
+      });
+    } else {
+      list.forEach(({ st, s }, i) => {
+        const c = cells[i];
+        put(c.hm, st.local.slice(0, 5));
+        put(c.secs, st.local.slice(5));
+        const cls = `st ${s.cls}`;
+        if (c.st.className !== cls) c.st.className = cls;
+        if (c.st.textContent !== s.text) c.st.textContent = s.text;
+        put(c.next, s.next);
+        const x = Math.max(0, Math.min(1436, st.mins - 2)).toFixed(0);
+        if (c.now.getAttribute('x') !== x) c.now.setAttribute('x', x);
+      });
+    }
+    const sideNow = sideHtml(list);
+    if (sideNow !== sideWas) { side.innerHTML = sideNow; sideWas = sideNow; }
   }
 
   paint();

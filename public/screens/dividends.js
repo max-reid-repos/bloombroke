@@ -1,6 +1,6 @@
 // DIVIDENDS: yield, the annual dividend, the next dates, and every payment on record.
 
-import { esc, fmtNum, panel, LOADING } from './markets.js';
+import { esc, fmtNum, panel, metaNote, LOADING } from './markets.js';
 import { niceTicks } from './chart.js';
 import { errorHtml, tickerUsage } from './profile.js';
 
@@ -9,7 +9,7 @@ export { parseTicker as parse } from './profile.js';
 const fmtDay = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).toUpperCase() : '--');
 const cash = (n) => (Number.isFinite(n) ? `$${fmtNum(n, n < 0.01 ? 6 : n < 1 ? 4 : 2).replace(/(\.\d\d\d*?)0+$/, '$1')}` : '--');
 
-// Per-share basis words for the panel and the footnote.
+// Per-share basis words (the tooltip on the title strip's note).
 export function basisNote(d) {
   const list = d?.split?.splits || [];
   if (!d?.split) return 'Amounts as paid: the split history is unavailable right now, so a payment before a stock split is on the old share basis.';
@@ -19,7 +19,7 @@ export function basisNote(d) {
 
 const mismatchTitle = (y) => `Not shown: Nasdaq lists ${y.nasdaq.count} payments (${cash(y.nasdaq.total)}), Yahoo Finance ${y.other.count} (${cash(y.other.total)})`;
 
-// The footnote words on the yearly cross-check.
+// The words on the yearly cross-check (the same tooltip).
 export function checkNote(d) {
   if (!d?.checkSource) return 'Yearly totals are not cross-checked right now.';
   const bad = (d.years || []).filter((y) => y.check === 'mismatch').map((y) => y.year);
@@ -75,10 +75,8 @@ export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="stack">
     ${panel('1', `${ticker} dividends`, LOADING, { meta: 'YIELD = YEARLY DIVIDEND / PRICE, BEFORE TAX' })}
     ${panel('2', 'Every payment', LOADING, { metaId: 'dv-meta', bodyCls: 'flush' })}
-  </div>
-  <p class="footnote"></p>`;
+  </div>`;
   const [top, list] = el.querySelectorAll('.panel-body');
-  const foot = el.querySelector('.footnote');
   let ro = null;
   ctx.onCleanup?.(() => ro?.disconnect());
 
@@ -130,8 +128,9 @@ export function render(el, cmd, ctx) {
     };
     draw();
     if (typeof ResizeObserver === 'function') { ro = new ResizeObserver(draw); ro.observe(host); }
-    el.querySelector('#dv-meta').textContent = `${d.rows.length} PAYMENTS${adjusted ? ' · SPLIT-ADJUSTED' : ''}`;
-    foot.textContent = `${basisNote(d)} ${checkNote(d)}`.trim();
+    const disagree = (d.years || []).some((y) => y.check === 'mismatch');
+    const short = [adjusted ? 'SPLIT-ADJUSTED' : d.split ? 'AS PAID' : 'AS PAID, SPLITS UNKNOWN', disagree ? '* = SOURCES DISAGREE' : ''].filter(Boolean).join(' · ');
+    el.querySelector('#dv-meta').innerHTML = `${d.rows.length} PAYMENTS · ${metaNote(short, `${basisNote(d)} ${checkNote(d)}`.trim())}`;
     list.innerHTML = `<table class="grid-table dv-table">
       <thead><tr><th scope="col">Ex-date</th><th scope="col" class="num">Amount${adjusted ? ' (split-adj.)' : ''}</th><th scope="col" class="chg">Type</th><th scope="col" class="num time">Declared</th><th scope="col" class="num">Paid</th></tr></thead>
       <tbody>${d.rows.map((r) => `<tr>
