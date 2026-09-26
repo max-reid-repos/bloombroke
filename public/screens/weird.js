@@ -77,6 +77,18 @@ function grid(el, ctx) {
   ctx.live(load, 10 * 60_000);
 }
 
+// ---- WEIRD share cards (weird-share): SHARE ON X on a gauge screen ----------------------
+// The link opens this gauge; its card (/og/weird.png) shows the same number.
+export function gaugeShareLinks(g, d, origin) {
+  const url = `${origin}/?${new URLSearchParams({ c: g.command })}`;
+  const line = String(d.line || '').replace(/\s+/g, ' ').trim();
+  const short = line.length > 100 ? `${line.slice(0, 97).trimEnd()}...` : line;
+  const text = [`${g.command}: ${d.headline}${d.stale ? ' (last good reading)' : ''}.`, short].join(' ').trim();
+  return { url, x: `https://x.com/intent/post?${new URLSearchParams({ text, url })}` };
+}
+const shareRow = (links) => `<div class="wi-share"><a class="wi-btn" href="${esc(links.x)}" target="_blank" rel="noopener noreferrer">SHARE ON X</a></div>`;
+// ---- end WEIRD share cards ----------------------------------------------------------------
+
 function detail(el, g, ctx) {
   const n = WEIRD_GAUGES.indexOf(g) + 1;
   el.innerHTML = `<div class="stack">${panel(String(n), g.title, LOADING, { metaId: 'wd-meta' })}</div>`;
@@ -101,6 +113,7 @@ function detail(el, g, ctx) {
       const c = part.chart;
       cleanup = mountLines(host, c.series, { fmtY: c.fmtY, fmtTick: c.fmtY, fmtX: c.fmtX, label: c.label });
     }
+    body.insertAdjacentHTML('beforeend', shareRow(gaugeShareLinks(g, d, location.origin))); // WEIRD share cards
     ctx.updated(d.updated, d.stale);
   }).catch((err) => {
     if (err.name === 'AbortError') return;
