@@ -189,7 +189,9 @@ test('getQuotes: too few rows is a failure, not an empty table', async () => {
   await assert.rejects(makeQuotes({ fetchImpl }).getQuotes(), /too few rows/);
   const all = async () => json({ FormattedQuoteResult: { FormattedQuote: batchRows() } });
   const r = await makeQuotes({ fetchImpl: all }).getQuotes();
-  assert.equal(r.instruments.length, INSTRUMENTS.length);
+  // Every MARKETS instrument, plus the 2s10s spread worked out from the 2Y and 10Y.
+  assert.equal(r.instruments.length, INSTRUMENTS.length + 1);
+  assert.ok(r.instruments.some((i) => i.id === 'US2S10S'));
   assert.ok(r.instruments.every((i) => typeof i.realTime === 'boolean' && !('src' in i) && !('aliases' in i)));
 });
 

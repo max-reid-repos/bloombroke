@@ -106,6 +106,40 @@ export function parseListRows(list, rows) {
   return out;
 }
 
+// Yields move in basis points: 1bp is 0.01 of a percentage point. A change in points
+// (the source's +0.035) -> +3.5bp, kept to 0.1bp so float noise never shows.
+export function toBp(points) {
+  return Number.isFinite(points) ? Math.round(points * 1000) / 10 : null;
+}
+
+// Every yield row gets its change in bp; the 2s10s spread (the 10Y yield less the 2Y)
+// is added after the last yield, from the live 2Y and 10Y rows only. Its last and change
+// are both in bp (a 10Y change of +0.003 and a 2Y change of -0.035 is +3.8bp). Left out
+// when either yield is missing.
+export const SPREAD_ID = 'US2S10S';
+export function withBp(rows) {
+  const out = rows.map((r) => (r.kind === 'yield' ? { ...r, changeBp: toBp(r.change) } : r));
+  const y2 = out.find((r) => r.id === 'US2Y');
+  const y10 = out.find((r) => r.id === 'US10Y');
+  if (!y2 || !y10 || !Number.isFinite(y2.last) || !Number.isFinite(y10.last)) return out;
+  const times = [y2.asOf, y10.asOf].filter((t) => t && !Number.isNaN(Date.parse(t)));
+  const spread = {
+    id: SPREAD_ID, name: '2s10s spread', group: y10.group, kind: 'yield', unit: 'bp', cmd: 'CURVE', decimals: 0,
+    tape: false, us: true,
+    last: toBp(y10.last - y2.last),
+    change: toBp(y10.change - y2.change),
+    changePct: null,
+    changeBp: toBp(y10.change - y2.change),
+    // The older of the two times, and real time only when both are.
+    asOf: times.sort((a, b) => Date.parse(a) - Date.parse(b))[0] || null,
+    realTime: y2.realTime && y10.realTime,
+    marketState: y10.marketState,
+  };
+  const at = out.map((r) => r.kind === 'yield').lastIndexOf(true);
+  out.splice(at + 1, 0, spread);
+  return out;
+}
+
 // One CNBC row -> a single quote for the ticker screen, or null if the symbol is unknown.
 export function parseQuoteRow(r, ticker = r?.symbol) {
   if (!r || Number(r.code) !== 0) return null;
@@ -182,7 +216,7 @@ export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache()
   const api = {
     async getQuotes() {
       const { value, stale, updated } = await list(INSTRUMENTS);
-      return { instruments: value, stale, updated };
+      return { instruments: withBp(value), stale, updated };
     },
     async getFxMajors() {
       const { value, stale, updated } = await list(FX_MAJORS);
