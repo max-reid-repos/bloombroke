@@ -1401,3 +1401,23 @@ a.ch-flag { cursor: pointer; }
 .news-filing .news-link:hover { color: var(--accent); text-decoration: none; }
 .news-row.is-dim .news-title, .news-row.is-dim .news-src { color: var(--dim); }
 /* --- end NEWS SEC tab rows ------------------------------------------------------ */
+
+/* --- FISHTANK (screens/fishtank.js): the S&P 100 as fish ----------------------- */
+/* The canvas sits absolutely inside its box, so drawing never changes the box size. */
+.ft-host { position: relative; height: clamp(420px, 72vh, 760px); min-height: 0; overflow: hidden; background: hsl(213, 43%, 4%); }
+.ft-host > .loading, .ft-host > .panel-msg { padding: 8px; }
+.ft-canvas { position: absolute; left: 0; top: 0; display: block; touch-action: manipulation; }
+.ft-tip {
+  position: absolute; left: 0; top: 0; pointer-events: none; white-space: nowrap;
+  padding: 2px 6px; font-size: 11px; line-height: 16px;
+  background: var(--panel-2); border: 1px solid var(--rule-strong); color: var(--text-2);
+}
+.ft-tip b { color: var(--text); font-weight: 600; }
+.ft-sr { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; overflow: hidden; clip: rect(0 0 0 0); }
+@media (min-width: 1100px) {
+  html:not(.is-embed) .view > .panel .panel-body:has(> .ft-host) { display: flex; flex-direction: column; overflow: hidden; scrollbar-gutter: auto; }
+  html:not(.is-embed) .view > .panel .panel-body > .ft-host { flex: 1 1 0; height: auto; min-height: 200px; }
+}
+.is-embed .ft-host { height: calc(100vh - 28px); min-height: 160px; }
+@media (max-width: 639px) { .ft-idx { display: none; } }
+/* --- end FISHTANK -------------------------------------------------------------- */

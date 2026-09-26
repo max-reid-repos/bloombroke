@@ -513,6 +513,13 @@ export const REGISTRY = [
     syntax: 'MACAU', examples: ['MACAU'], keywords: ['macau', 'casino', 'gaming revenue', 'china', 'dicj'],
     source: 'DICJ Macau', delay: 'Monthly, early in the next month',
   },
+  // --- FISHTANK (screens/fishtank.js) ---
+  {
+    name: 'FISHTANK', category: 'Weird data', summary: 'The market as fish',
+    syntax: 'FISHTANK', examples: ['FISHTANK'], keywords: ['aquarium', 'tank', 'easter egg', 'sea', 'swim', 's&p 100'],
+    source: 'CNBC, the S&P 100 batch HEATMAP uses', delay: 'May be delayed; refreshes every minute',
+  },
+  // --- end FISHTANK ---
 
   // --- Hidden ---------------------------------------------------------------------------
   { name: '420', hidden: true, category: 'Money tools', summary: 'Funding', syntax: '420', examples: ['420'], keywords: [] },

@@ -5,9 +5,15 @@
 import * as weird from './screens/weird.js';
 import { WEIRD_GAUGES } from './screens/weird-gauges.js';
 
-export const WEIRD_COMMANDS = ['WEIRD', ...WEIRD_GAUGES.map((g) => g.command)];
+// --- FISHTANK: the S&P 100 as fish (screens/fishtank.js), a screen of its own ---
+import * as fishtank from './screens/fishtank.js';
 
-export const WEIRD_SCREENS = Object.fromEntries(WEIRD_COMMANDS.map((n) => [n, weird]));
+const OWN_SCREENS = { FISHTANK: fishtank };
+// --- end FISHTANK ---
+
+export const WEIRD_COMMANDS = ['WEIRD', ...WEIRD_GAUGES.map((g) => g.command), ...Object.keys(OWN_SCREENS)];
+
+export const WEIRD_SCREENS = { ...Object.fromEntries(WEIRD_COMMANDS.map((n) => [n, weird])), ...OWN_SCREENS };
 
 // head + rest -> { name, args, input } or null.
 export function matchWeird(head) {
