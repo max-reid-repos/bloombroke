@@ -139,8 +139,7 @@ export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="stack">
     ${panel('1', ticker, LOADING, { metaId: 'q-meta' })}
     ${panel('2', `Chart ${rangeLabel(range)}`, '<div class="rc" id="q-rc"></div>', { metaId: 'q-ch-meta', bodyCls: 'flush' })}
-  </div>
-  <p class="footnote">Prices and charts from CNBC. RT: real time. DLY: delayed, futures about 10 minutes, indexes about 15. Not financial advice.</p>`;
+  </div>`;
   const [qBody, cBody] = el.querySelectorAll('.panel-body');
   const qMeta = el.querySelector('#q-meta');
   // The watch star is the frame's, by the screen title, for stocks and named

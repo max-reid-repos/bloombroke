@@ -56,7 +56,7 @@ export const REGISTRY = [
   {
     name: 'HOME', category: 'Markets', summary: 'Markets, the S&P 500, currencies and news on one screen',
     syntax: 'HOME', examples: ['HOME'], keywords: ['start', 'overview', 'dashboard', 'front page'],
-    source: 'CNBC quotes, Nasdaq news', delay: 'Real time or delayed, marked RT or DLY on each row',
+    source: 'CNBC quotes; headlines from CNBC, MarketWatch and Yahoo Finance', delay: 'Real time or delayed, marked RT or DLY on each row',
   },
   {
     name: 'MARKETS', aliases: ['M', 'MARKET'], category: 'Markets', summary: 'World markets at a glance: indexes, futures, commodities, FX, rates',
@@ -498,18 +498,30 @@ export const PHRASES = {
   FX: ['exchange rate', 'exchange rates', 'currency converter'],
 };
 
-// "Start here": six things to try, and the three rules of the command bar.
+// "Start here": the commands to know, one short line each, and the keys.
 export const START_HERE = [
-  ['AAPL', 'A stock: price, chart, key numbers'],
-  ['AAPL NEWS', 'Headlines about one company'],
-  ['MARKETS', 'The whole world on one screen'],
-  ['HEATMAP', 'The S&P 100 in colour'],
+  ['AAPL', 'A stock: price and chart'],
+  ['AAPL NEWS', 'Ticker, then a function'],
+  ['MARKETS', 'World markets'],
+  ['NEWS', 'Market headlines'],
   ['FX 500 USD THB', 'Convert money'],
-  ['WHATIF', "In hindsight: the maker's stock instead"],
+  ['RATES', 'US rates and yields'],
+  ['CPI 100 2000', 'Inflation since a year'],
+  ['HEATMAP', 'S&P 100 in colour'],
+  ['MOVERS', 'Top gainers and losers'],
+  ['SCREEN', 'Filter US stocks'],
+  ['EARNINGS', 'Earnings calendar'],
+  ['WATCH', 'Your watchlist'],
+  ['PORTFOLIO', 'Your holdings'],
+  ['DESK', 'Build your own screen'],
+  ['WHATIF', "The maker's stock instead"],
+  ['AFFORD 1200', 'Can you afford it'],
+  ['MENU', 'Every command (Ctrl K)'],
+  ['HELP FX', 'How one command works'],
 ];
 
-export const GRAMMAR_RULES = [
-  ['Type a command', 'MARKETS'],
-  ['Type a ticker', 'AAPL'],
-  ['Ticker, then a function', 'AAPL NEWS'],
+// The one line of keys under the list.
+export const START_KEYS = [
+  ['Enter', 'run'], ['Tab', 'complete'], ['Esc', 'back'], ['Ctrl K', 'menu'], ['/', 'search'],
+  ['1-9', 'stock functions'], ['number Enter', 'panel'], ['F1-F10', 'screens'],
 ];

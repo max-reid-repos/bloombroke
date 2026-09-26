@@ -9,7 +9,7 @@ export { errorHtml, tickerUsage, parseTicker } from './profile.js';
 
 // Every screen says where its numbers come from.
 export function sourceLine(source, extra = '') {
-  return `<p class="footnote co-source">Source: ${esc(source)}.${extra ? ` ${esc(extra)}` : ''} Not financial advice.</p>`;
+  return extra ? `<p class="footnote co-source">${esc(extra)}</p>` : '';
 }
 
 export const dash = '--';

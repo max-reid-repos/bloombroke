@@ -98,8 +98,7 @@ export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="stack">
     ${panel('1', `FX ${a.from}/${a.to}`, `${toolbar({ left: fxForm(a), label: 'Convert' })}<div class="fx-out">${LOADING}</div>`, { metaId: 'fx-meta', bodyCls: 'flush' })}
     ${panel('2', `${a.from}/${a.to} 30 days`, `<div class="chart-host" id="fx-chart">${LOADING}</div>`, { metaId: 'fx-ch-meta', bodyCls: 'flush' })}
-  </div>
-  <p class="footnote">${esc(FX_SOURCE)}</p>`;
+  </div>`;
   const body = el.querySelector('.fx-out');
   const form = el.querySelector('.fx-form');
   const go = (swap) => {
@@ -111,6 +110,7 @@ export function render(el, cmd, ctx) {
   form.addEventListener('submit', (e) => { e.preventDefault(); go(false); });
   form.querySelector('[data-swap]').addEventListener('click', () => go(true));
   const meta = el.querySelector('#fx-meta');
+  meta.title = FX_SOURCE;
   const chMeta = el.querySelector('#fx-ch-meta');
   const host = el.querySelector('#fx-chart');
   let chartCleanup = null;

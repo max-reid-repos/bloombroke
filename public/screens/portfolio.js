@@ -197,8 +197,7 @@ export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="stack">
     ${panel('1', 'Portfolio', `${toolbar({ left: pfForm(), right: '<span class="list-tools"></span>', label: 'Portfolio' })}<div class="pf-top"></div><div class="pf-body"></div>`, { metaId: 'pf-meta', meta: 'USD ONLY', bodyCls: 'flush' })}
     ${panel('2', 'Allocation', '<div class="pf-alloc"></div>', { metaId: 'pf-alloc-meta', meta: 'BY MARKET VALUE' })}
-  </div>
-  <p class="footnote">Prices from CNBC, refreshed every 15 seconds, RT or DLY as tagged. USD only: a holding quoted in another currency is shown but left out of the totals. Day gain uses today's change for every share. Saved in this browser only. Not financial advice.</p>`;
+  </div>`;
   const top = el.querySelector('.pf-top');
   const body = el.querySelector('.pf-body');
   const alloc = el.querySelector('.pf-alloc');

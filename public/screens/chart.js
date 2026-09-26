@@ -280,9 +280,12 @@ export function mountChart(host, points, opts = {}) {
     });
   }
   draw();
-  const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(draw) : null;
+  // The chart follows its box (a panel that stretches to the window): redraw once the
+  // size settles, not on every frame of a resize.
+  let timer = 0;
+  const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { clearTimeout(timer); timer = setTimeout(draw, 80); }) : null;
   ro?.observe(host);
-  return () => ro?.disconnect();
+  return () => { clearTimeout(timer); ro?.disconnect(); };
 }
 
 // X axis formats per range.

@@ -44,8 +44,7 @@ function leadersHtml(sectors) {
 }
 
 export function render(el, cmd, ctx) {
-  el.innerHTML = `<div class="with-side">${panel('1', 'Sectors', LOADING, { cls: 'panel-solo', metaId: 'sc-meta', meta: 'SPDR SECTOR ETFS' })}${panel('2', 'Leaders', LOADING, { cls: 'panel-solo' })}</div>`
-    + '<p class="footnote">Today from live quotes. 1M and YTD from daily closes. Prices from CNBC, may be delayed. Not financial advice.</p>';
+  el.innerHTML = `<div class="with-side">${panel('1', 'Sectors', LOADING, { cls: 'panel-solo', metaId: 'sc-meta', meta: 'SPDR SECTOR ETFS' })}${panel('2', 'Leaders', LOADING, { cls: 'panel-solo' })}</div>`;
   const [body, side] = el.querySelectorAll('.panel-body');
 
   async function load() {

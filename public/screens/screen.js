@@ -212,8 +212,6 @@ export function asOfLine(asOf, today) {
   return `<p class="sc-rule sc-asof"><span class="sc-rule-k">DATA</span> Screener data as of ${esc(day)}${old ? ' close' : ''}: last price and % change are for that session${old ? ', not today' : ''}. <a class="code" href="${esc(q('MOVERS'))}" data-cmd="MOVERS">MOVERS</a> has today's live moves.</p>`;
 }
 
-const FOOT = 'Source: Nasdaq stock screener, all stocks listed on Nasdaq, NYSE and NYSE American. Prices are the last sale on the date shown. P/E and dividend yield from CNBC, may be missing for some stocks: a stock without the number is left out of a PE or DIV filter. A negative P/E (a loss) shows as loss and never passes a PE filter. Not financial advice.';
-
 export function render(el, cmd, ctx) {
   const bad = cmd.error ? SCREEN_ERRORS[cmd.error]?.(cmd.args.bad) : null;
   const spec = cmd.error ? parseScreenArgs([]) : cmd.args;
@@ -221,10 +219,9 @@ export function render(el, cmd, ctx) {
   // On a phone the results come first: the filters fold away once there are results.
   const narrow = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 639px)').matches;
   el.innerHTML = `<div class="stack">
-    ${panel('1', 'Screen', `${presetBar(spec.preset)}<div class="sc-pad">${bad ? `<p class="notice">${esc(bad)}</p>` : ''}${formHtml(spec, empty || !!bad || !narrow)}</div>`, { meta: 'FILTER EVERY US-LISTED STOCK', bodyCls: 'flush' })}
+    ${panel('1', 'Screen', `${presetBar(spec.preset)}<div class="sc-pad">${bad ? `<p class="notice">${esc(bad)}</p>` : ''}${formHtml(spec, empty || !!bad || !narrow)}</div>`, { meta: 'NO P/E OR YIELD: LEFT OUT OF THAT FILTER · LOSS: NO P/E', bodyCls: 'flush' })}
     ${empty ? '' : panel('2', 'Results', LOADING, { metaId: 'sc-meta', bodyCls: 'flush' })}
-  </div>
-  <p class="footnote">${esc(FOOT)}</p>`;
+  </div>`;
 
   const form = el.querySelector('.sc-form');
   const err = el.querySelector('.sc-err');
@@ -251,7 +248,7 @@ export function render(el, cmd, ctx) {
   });
 
   if (bad) { ctx.status('SCREEN: CHECK THE FILTERS', 'warn'); return; }
-  if (empty) { ctx.status('SCREEN: PICK FILTERS, OR TYPE THEM: SCREEN SECTOR TECHNOLOGY MCAP>10B'); return; }
+  if (empty) { ctx.status(''); return; }
 
   const body = el.querySelectorAll('.panel-body')[1];
   const meta = el.querySelector('#sc-meta');

@@ -32,8 +32,7 @@ export function render(el, cmd, ctx) {
     return;
   }
   const { ticker } = cmd.args;
-  el.innerHTML = panel('1', `${ticker} profile`, LOADING, { cls: 'panel-solo' })
-    + '<p class="footnote">Company description, sector and website from Nasdaq. Headquarters and fiscal year from US SEC EDGAR filings.</p>';
+  el.innerHTML = panel('1', `${ticker} profile`, LOADING, { cls: 'panel-solo' });
   const body = el.querySelector('.panel-body');
 
   ctx.fetchJSON(`/api/profile?s=${encodeURIComponent(ticker)}`, { signal: ctx.signal }).then((d) => {

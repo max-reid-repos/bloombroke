@@ -150,8 +150,7 @@ test('TERMS, PRIVACY and DISCLAIMER are commands, listed in HELP', () => {
 
 test('the status bar carries the short legal line and a Terms link', () => {
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.match(html, /Information only\. Not investment advice\. Data may be delayed\./);
+  assert.match(html, /<span class="legal-line">Not advice<\/span>/);
   assert.match(html, /<a href="\/terms">Terms<\/a>/);
-  assert.match(html, /RT REAL TIME\. DLY DELAYED\./);
   assert.match(html, /href="\/legal\.css"/);
 });

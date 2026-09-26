@@ -98,8 +98,7 @@ export function render(el, cmd, ctx) {
   const week = cmd.args.week;
   const pills = dayPills(day, week);
   const bar = `<div class="er-bar scroll-x">${toolbar({ left: segmented(pills.items, pills.active, { label: 'Day' }), label: 'Day' })}</div>`;
-  el.innerHTML = `${bar}<div id="er-host">${panel('1', week ? `Earnings week of ${day}` : `Earnings ${fmtDayLong(day)}`, LOADING, { cls: 'panel-solo' })}</div>
-    <p class="footnote">Earnings calendar and EPS estimates from Nasdaq. EPS = earnings per share, in USD. Times are what the company announced. Not financial advice.</p>`;
+  el.innerHTML = `${bar}<div id="er-host">${panel('1', week ? `Earnings week of ${day}` : `Earnings ${fmtDayLong(day)}`, LOADING, { cls: 'panel-solo' })}</div>`;
   const hostEl = el.querySelector('#er-host');
   ctx.onCleanup(edgeFade(el.querySelector('.er-bar')));
 

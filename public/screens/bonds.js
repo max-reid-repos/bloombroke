@@ -119,7 +119,7 @@ export function render(el, cmd, ctx) {
   const tab = cmd.args?.tab || 'YIELDS';
   const views = segmented(BOND_TABS.map((t) => ({ label: t, cmd: t === 'YIELDS' ? 'BONDS' : `BONDS ${t}` })), tab, { label: 'View' });
   el.innerHTML = panel('1', 'Government bonds', `${toolbar({ left: views, label: 'View' })}<div class="bg-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'bd-meta', meta: 'YIELD, PERCENT A YEAR', bodyCls: 'flush' })
-    + `<p class="footnote">${esc(NOTES[tab])} Government bond yields from CNBC, may be delayed (DLY). Not financial advice.</p>`;
+    + `<p class="footnote">${esc(NOTES[tab])}</p>`;
   if (cmd.args?.error) ctx.status('BONDS TAKES YIELDS, SPREADS OR CURVE', 'warn');
   const body = el.querySelector('.bg-body');
 

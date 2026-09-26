@@ -67,7 +67,7 @@ export function render(el, cmd, ctx) {
   }
   const scope = cmd.args.scope;
   el.innerHTML = panel('1', CAL_TITLE, `${scopeFilter(scope)}<div class="cal-body">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'cal-meta', bodyCls: 'flush' })
-    + `<p class="footnote">${esc(SCOPES[scope])}. Times in New York (ET). From the Forex Factory weekly feed, which lists forecast and previous values only: actual results are not in it, so none are shown. The release itself (for US data: BLS, BEA, the Census Bureau) has the actual figure.</p>`;
+    + '<p class="footnote">Times in New York (ET). Forecast and previous values only: actual results are not shown.</p>';
   const body = el.querySelector('.cal-body');
 
   async function load() {
