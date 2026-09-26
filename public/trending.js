@@ -4,6 +4,13 @@
 // One beacon per symbol per hour per page load; the server dedupes again.
 
 const KEY = 'bb.sid';
+
+// Does opening this command count? Only a ticker screen (QUOTE: stocks, ETFs, indexes,
+// FX, crypto, commodities, yields), never inside a DESK panel (embed=1) and never while
+// the first-visit notice is still waiting for ACCEPT.
+export function countsAsOpen(cmd, { embed = false, consentPending = true } = {}) {
+  return Boolean(cmd && cmd.name === 'QUOTE' && !cmd.error && cmd.args?.ticker && !embed && !consentPending);
+}
 const HOUR = 3_600_000;
 const sent = new Map(); // symbol -> time sent
 let memoryId = null;

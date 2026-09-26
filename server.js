@@ -290,7 +290,7 @@ mountCommandRoutes(app);
 
 // --- TRENDING (data/trending.js): anonymous counts of opened tickers, in memory only ---
 import { mountTrending } from './data/trending.js';
-mountTrending(app, { getQuote, getQuoteList });
+mountTrending(app, { getQuoteList });
 // --- end TRENDING ---
 
 startPro(app, { dir });

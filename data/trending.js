@@ -3,18 +3,22 @@
 // Privacy: nothing here is written to disk or logged. The browser sends a random id made
 // for its session (POST /api/seen { s, v }); the server keeps a short keyed hash of it
 // (the key is random per process and never stored), so the id cannot be matched to
-// anything after a restart. No IP address or cookie is kept: the rate limit keys on a
-// keyed hash of the address bucket, held in memory for one minute.
+// anything after a restart. No IP address or cookie is kept in plain form: the rate limit
+// and the per-address cap key on a keyed hash of the address bucket, held in memory for
+// one minute (rate limit) and one hour (cap, with the symbols opened). legal/privacy.md
+// describes exactly this; keep the two in step.
 //
 // Counting: each session id counts once per symbol per hour, in one-minute buckets over a
-// sliding 60 minutes, plus hourly buckets for a 24 hour rollup. Memory is capped: at most
-// MAX_SYMBOLS symbols and MAX_IDS session hashes per symbol.
+// sliding 60 minutes, plus hourly buckets for a 24 hour rollup (so the 24 hour number is
+// opens, not people). One address adds at most 3 new session ids per symbol per hour.
+// Memory is capped: symbols, session hashes per symbol and address keys.
 
 import express from 'express';
 import { createHmac, randomBytes } from 'node:crypto';
 import { resolveInstrument } from '../public/instruments.js';
 import { LISTED_TICKERS, nameForTicker } from '../public/known-tickers.js';
 import { createLimiter, clientIp } from '../pro/ratelimit.js';
+import { fetchCnbcRows, parseQuoteRow } from './quotes.js';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -25,6 +29,8 @@ export const TRENDING_LIMITS = {
   maxSymbols: 500, // symbols tracked at once
   maxIds: 1000, // session hashes kept per symbol (the last hour's)
   maxSessions: 20_000, // session hashes kept for the "sessions in the last hour" total
+  perClientPerSymbol: 3, // new session ids one address may add per symbol per hour
+  maxClientKeys: 50_000, // address-and-symbol keys held for that cap
   top: 10,
   minHourSessions: 3, // fewer distinct sessions than this in the last hour: show 24 hours
   perMinute: 30, // /api/seen calls per client per minute
@@ -54,6 +60,7 @@ export function createTracker({ now = () => Date.now(), secret = randomBytes(32)
   const L = { ...TRENDING_LIMITS, ...limits };
   const symbols = new Map(); // symbol -> { seen: Map<hash, t>, mins: Map<minute, n>, hours: Map<hour, n> }
   const sessions = new Map(); // hash -> last time it counted anything
+  const perClient = new Map(); // "<address hash>|<symbol>" -> { n, reset }
   let lastSweep = -Infinity;
 
   const hash = (v) => createHmac('sha256', secret).update(v).digest('hex').slice(0, 12);
@@ -73,6 +80,23 @@ export function createTracker({ now = () => Date.now(), secret = randomBytes(32)
       if (!e.hours.size) symbols.delete(s);
     }
     for (const [h, at] of sessions) { if (t - at >= HOUR) sessions.delete(h); else break; }
+    for (const [k, c] of perClient) if (c.reset <= t) perClient.delete(k);
+  }
+
+  // May this address add one more session id for this symbol? Fails closed when full.
+  function clientRoom(k, t) {
+    const c = perClient.get(k);
+    if (c && c.reset > t) return c.n < L.perClientPerSymbol;
+    if (!c && perClient.size >= L.maxClientKeys) {
+      sweep(t);
+      if (perClient.size >= L.maxClientKeys) return false;
+    }
+    return true;
+  }
+  function clientCount(k, t) {
+    const c = perClient.get(k);
+    if (c && c.reset > t) c.n += 1;
+    else perClient.set(k, { n: 1, reset: t + HOUR });
   }
 
   function dayTotal(e, t) { return sumSince(e.hours, Math.floor(t / HOUR) - 23); }
@@ -92,16 +116,23 @@ export function createTracker({ now = () => Date.now(), secret = randomBytes(32)
   }
 
   return {
-    // One view of a (valid) symbol by a session id. True when it counted.
-    hit(symbol, sessionId) {
+    // One view of a (valid) symbol by a session id, from a client (a keyed hash of its
+    // address bucket; null in tests that do not care). True when it counted.
+    hit(symbol, sessionId, client = null) {
       if (!validSessionId(sessionId)) return false;
       const t = now();
       if (t - lastSweep >= MIN) sweep(t);
       const h = hash(sessionId);
+      const ck = client ? `${client}|${symbol}` : null;
       let e = symbols.get(symbol);
       if (e) {
         const at = e.seen.get(h);
         if (at !== undefined && t - at < HOUR) return false; // once per symbol per hour
+      }
+      if (ck && !clientRoom(ck, t)) return false; // one address cannot fake a crowd
+      e = symbols.get(symbol); // clientRoom may have swept
+      if (e) {
+        const at = e.seen.get(h);
         if (at === undefined && e.seen.size >= L.maxIds) {
           prune(e, t);
           if (e.seen.size >= L.maxIds) return false; // full: stop counting, never double count
@@ -111,6 +142,7 @@ export function createTracker({ now = () => Date.now(), secret = randomBytes(32)
         e = { seen: new Map(), mins: new Map(), hours: new Map() };
         symbols.set(symbol, e);
       }
+      if (ck) clientCount(ck, t);
       e.seen.delete(h);
       e.seen.set(h, t); // oldest first, so prune can stop early
       const m = Math.floor(t / MIN);
@@ -146,16 +178,22 @@ export function createTracker({ now = () => Date.now(), secret = randomBytes(32)
     size() {
       let ids = 0;
       for (const e of symbols.values()) ids += e.seen.size;
-      return { symbols: symbols.size, ids, sessions: sessions.size };
+      return { symbols: symbols.size, ids, sessions: sessions.size, clients: perClient.size };
     },
   };
 }
 
 // A symbol from the browser -> the id to count, or null. Registry instruments (indexes,
 // FX, crypto, commodities, yields) and the listed tickers pass at once; any other
-// ticker-shaped word must have a quote (the shared 15 s quote cache). Answers are kept,
-// bounded, and new lookups are capped per minute so junk words cannot drive upstream calls.
-export function createValidator({ getQuote, now = () => Date.now(), maxEntries = 5000, lookupsPerMinute = 30 } = {}) {
+// ticker-shaped word must have a quote. The check is its own upstream call, never the
+// shared quote cache, so junk words never land there. Answers are kept here, bounded, and
+// new lookups are capped at a few a minute so junk words cannot drive upstream calls.
+export async function uncachedQuote(ticker, fetchImpl = globalThis.fetch) {
+  const rows = await fetchCnbcRows(fetchImpl, [ticker]);
+  return parseQuoteRow(rows[0], ticker);
+}
+
+export function createValidator({ lookup = uncachedQuote, now = () => Date.now(), maxEntries = 5000, lookupsPerMinute = 5 } = {}) {
   const known = new Map(); // ticker -> { ok, until }
   const pending = new Map();
   let windowStart = 0;
@@ -182,7 +220,7 @@ export function createValidator({ getQuote, now = () => Date.now(), maxEntries =
     lookups += 1;
     const p = (async () => {
       try {
-        const q = await getQuote(t);
+        const q = await lookup(t);
         remember(t, Boolean(q));
         return q ? t : null;
       } catch {
@@ -201,8 +239,24 @@ function nameFor(s, q) {
   return q?.label || resolveInstrument(s)?.name || nameForTicker(s) || q?.name || s;
 }
 
+// Only this site's own pages may count: a browser that says the call is cross-site, or an
+// Origin or Referer for another host, is refused. The site's own names are accepted too,
+// in case a proxy in front rewrites the Host header.
+const SITE_HOSTS = ['bloombroke.com', 'www.bloombroke.com'];
+export function sameSite(req) {
+  const site = req.get('sec-fetch-site');
+  if (site && site !== 'same-origin') return false;
+  const hosts = [req.get('host'), ...SITE_HOSTS];
+  for (const name of ['origin', 'referer']) {
+    const v = req.get(name);
+    if (!v) continue;
+    try { if (!hosts.includes(new URL(v).host)) return false; } catch { return false; }
+  }
+  return true;
+}
+
 // POST /api/seen and GET /api/trending.
-export function mountTrending(app, { getQuote, getQuoteList, tracker = createTracker(), validate = createValidator({ getQuote }), limiter, now = () => Date.now() } = {}) {
+export function mountTrending(app, { getQuoteList, lookup, tracker = createTracker(), validate = createValidator(lookup ? { lookup } : {}), limiter, now = () => Date.now() } = {}) {
   const lim = limiter || createLimiter({ max: TRENDING_LIMITS.perMinute, windowMs: MIN, now, maxKeys: 20_000 });
   const key = randomBytes(32);
   const clientKey = (req) => createHmac('sha256', key).update(clientIp(req)).digest('hex').slice(0, 16);
@@ -210,6 +264,7 @@ export function mountTrending(app, { getQuote, getQuoteList, tracker = createTra
   app.post('/api/seen',
     (req, res, next) => {
       if (isBot(req.get('user-agent'))) return res.status(204).end();
+      if (!sameSite(req)) return res.status(403).end();
       if (!lim.hit(clientKey(req)).ok) return res.status(429).end();
       next();
     },
@@ -219,7 +274,7 @@ export function mountTrending(app, { getQuote, getQuoteList, tracker = createTra
       try { body = JSON.parse(typeof req.body === 'string' ? req.body : ''); } catch { /* ignored */ }
       if (body && typeof body === 'object' && validSessionId(body.v)) {
         const s = await validate(body.s);
-        if (s) tracker.hit(s, body.v);
+        if (s) tracker.hit(s, body.v, clientKey(req));
       }
       res.status(204).end();
     },

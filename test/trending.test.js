@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { createTracker, createValidator, isBot, validSessionId, mountTrending, TRENDING_LIMITS } from '../data/trending.js';
+import { createTracker, createValidator, isBot, validSessionId, mountTrending, sameSite, TRENDING_LIMITS } from '../data/trending.js';
+import { SP100_NAMES } from '../public/known-tickers.js';
 import { createLimiter } from '../pro/ratelimit.js';
 import { parseCommand } from '../public/app.js';
 import { findCommand, FUNCTION_BAR } from '../public/registry.js';
-import { trendingTable, peopleText, fmtLast, windowLabel, QUIET } from '../public/screens/trending.js';
-import { shouldSend, randomId, sessionId } from '../public/trending.js';
+import { trendingTable, opensText, fmtLast, windowLabel, metaText, QUIET } from '../public/screens/trending.js';
+import { shouldSend, randomId, sessionId, countsAsOpen } from '../public/trending.js';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -115,7 +116,7 @@ test('trending: only real instruments and tickers count', async () => {
   const asked = [];
   const getQuote = async (t) => { asked.push(t); return t === 'ROKU' ? { ticker: 'ROKU' } : null; };
   const c = clock();
-  const validate = createValidator({ getQuote, now: c.now, lookupsPerMinute: 3 });
+  const validate = createValidator({ lookup: getQuote, now: c.now, lookupsPerMinute: 3 });
   assert.equal(await validate('aapl'), 'AAPL', 'a listed ticker, no lookup');
   assert.equal(await validate('gold'), 'GOLD', 'a registry instrument');
   assert.equal(await validate('EUR/USD'), 'EURUSD');
@@ -137,8 +138,13 @@ test('trending: only real instruments and tickers count', async () => {
   await validate('WWWW');
   assert.deepEqual(asked.at(-1), 'WWWW');
   // A data break is not remembered as "not a ticker".
-  const flaky = createValidator({ getQuote: async () => { throw new Error('down'); }, now: c.now });
+  const flaky = createValidator({ lookup: async () => { throw new Error('down'); }, now: c.now });
   assert.equal(await flaky('ABCD'), null);
+  // The default: about 5 new lookups a minute, across everyone.
+  let calls = 0;
+  const slow = createValidator({ lookup: async () => { calls += 1; return null; }, now: c.now });
+  for (const t of ['AAAA', 'BBBB', 'CCCC', 'DDDD', 'EEEE', 'FFFF', 'GGGG', 'HHHH']) await slow(t);
+  assert.equal(calls, 5);
 });
 
 async function serve(opts = {}) {
@@ -148,14 +154,14 @@ async function serve(opts = {}) {
   const quotes = { AAPL: { ticker: 'AAPL', name: 'Apple Inc', last: 250.1, changePct: 1.2, decimals: null, kind: 'stock' } };
   mountTrending(app, {
     tracker,
-    getQuote: async (t) => quotes[t] || null,
+    lookup: async (t) => quotes[t] || null,
     getQuoteList: async (list) => ({ quotes: list.map((t) => quotes[t]).filter(Boolean) }),
     now: c.now,
     ...opts,
   });
   const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
-  const seen = (body, ua = BROWSER) => fetch(`${base}/api/seen`, { method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body), headers: { 'User-Agent': ua, 'Content-Type': 'text/plain' } });
+  const seen = (body, ua = BROWSER, headers = {}) => fetch(`${base}/api/seen`, { method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body), headers: { 'User-Agent': ua, 'Content-Type': 'text/plain', ...headers } });
   return { server, base, tracker, seen, clock: c };
 }
 
@@ -188,10 +194,11 @@ test('trending routes: /api/seen is rate limited per client', async () => {
   const { server, tracker, seen } = await serve();
   try {
     const codes = [];
-    for (let i = 1; i <= TRENDING_LIMITS.perMinute + 3; i += 1) codes.push((await seen({ s: 'AAPL', v: sid(i) })).status);
+    const syms = SP100_NAMES.map(([t]) => t);
+    for (let i = 1; i <= TRENDING_LIMITS.perMinute + 3; i += 1) codes.push((await seen({ s: syms[i], v: sid(i) })).status);
     assert.equal(codes.filter((x) => x === 204).length, TRENDING_LIMITS.perMinute);
     assert.deepEqual(codes.slice(-3), [429, 429, 429]);
-    assert.equal(tracker.top().rows[0].n, TRENDING_LIMITS.perMinute, 'limited calls are not counted');
+    assert.equal(tracker.size().ids, TRENDING_LIMITS.perMinute, 'limited calls are not counted');
   } finally {
     server.close();
   }
@@ -220,10 +227,15 @@ test('TRENDING: a command in HELP, not on the function bar, not a ticker', () =>
 });
 
 test('TRENDING screen: rows, labels, escaping, the quiet line', () => {
-  assert.equal(peopleText(1), '1 person');
-  assert.equal(peopleText(12), '12 people');
+  assert.equal(opensText(1), '1 open');
+  assert.equal(opensText(12), '12 opens');
+  assert.equal(opensText(1200), '1,200 opens');
   assert.equal(windowLabel('hour'), 'Last hour');
   assert.equal(windowLabel('day'), 'Last 24 hours');
+  const row = [{ s: 'AAPL', n: 2 }];
+  assert.equal(metaText({ window: 'hour', rows: row }), 'Last hour · opens on Bloombroke');
+  assert.equal(metaText({ window: 'day', rows: row }), 'Last 24 hours · opens on Bloombroke', 'the fallback is labelled');
+  assert.equal(metaText({ window: 'day', rows: [] }), '', 'quiet: no label');
   assert.equal(fmtLast(250.1, null), '250.10');
   assert.equal(fmtLast(4.1234, 3), '4.123');
   assert.equal(fmtLast(0.01234, null), '0.01234');
@@ -231,7 +243,9 @@ test('TRENDING screen: rows, labels, escaping, the quiet line', () => {
   assert.match(trendingTable({ rows: [] }), new RegExp(QUIET.replace('.', '\\.')));
   assert.match(trendingTable(null), /Quiet right now\./);
   const html = trendingTable({ rows: [{ s: 'AAPL', n: 12, name: '<img src=x onerror=alert(1)>', last: 1, changePct: -0.5 }] });
-  assert.match(html, /12 people/);
+  assert.match(html, /12 opens/);
+  assert.match(html, />Opens</);
+  assert.doesNotMatch(html, /people|person/);
   assert.match(html, /data-cmd="AAPL"/);
   assert.doesNotMatch(html, /<img/);
   assert.match(html, /&lt;img/);
@@ -254,4 +268,61 @@ test('TRENDING client: random session id, one beacon per symbol per hour', () =>
   assert.equal(shouldSend('AAPL', T0 + MIN, log), false);
   assert.equal(shouldSend('MSFT', T0 + MIN, log), true);
   assert.equal(shouldSend('AAPL', T0 + HOUR, log), true);
+});
+
+test('trending: one address adds at most 3 new session ids per symbol per hour', () => {
+  const c = clock();
+  const tr = createTracker({ now: c.now, limits: { maxClientKeys: 3 } });
+  for (let i = 1; i <= 3; i += 1) assert.equal(tr.hit('AAPL', sid(i), 'ip-a'), true);
+  assert.equal(tr.hit('AAPL', sid(4), 'ip-a'), false, 'a 4th new id from the same address');
+  assert.equal(tr.hit('AAPL', sid(1), 'ip-a'), false, 'a repeat is still a repeat');
+  assert.equal(tr.hit('MSFT', sid(4), 'ip-a'), true, 'the cap is per symbol');
+  assert.equal(tr.hit('AAPL', sid(5), 'ip-b'), true, 'and per address');
+  assert.equal(tr.top().rows.find((r) => r.s === 'AAPL').n, 4);
+  // The key map is bounded: a new key when full is refused (fail closed).
+  assert.equal(tr.hit('TSLA', sid(6), 'ip-c'), false);
+  assert.equal(tr.size().clients, 3);
+  // An hour later the keys expire and the address may count again.
+  c.add(HOUR);
+  assert.equal(tr.hit('AAPL', sid(4), 'ip-a'), true);
+  assert.ok(tr.size().clients <= 3);
+});
+
+test('trending routes: cross-site calls and the per-address cap', async () => {
+  const { server, base, tracker, seen } = await serve();
+  try {
+    const host = new URL(base).host;
+    assert.equal((await seen({ s: 'AAPL', v: sid(1) }, BROWSER, { 'Sec-Fetch-Site': 'cross-site' })).status, 403);
+    assert.equal((await seen({ s: 'AAPL', v: sid(2) }, BROWSER, { 'Sec-Fetch-Site': 'same-site' })).status, 403);
+    assert.equal((await seen({ s: 'AAPL', v: sid(3) }, BROWSER, { Origin: 'https://evil.example' })).status, 403);
+    assert.equal((await seen({ s: 'AAPL', v: sid(4) }, BROWSER, { Referer: 'https://evil.example/page' })).status, 403);
+    assert.equal((await seen({ s: 'AAPL', v: sid(5) }, BROWSER, { Origin: 'null' })).status, 403);
+    assert.equal(tracker.size().ids, 0, 'none of those counted');
+    const own = { 'Sec-Fetch-Site': 'same-origin', Origin: `http://${host}`, Referer: `http://${host}/?c=AAPL` };
+    for (let i = 10; i < 15; i += 1) assert.equal((await seen({ s: 'AAPL', v: sid(i) }, BROWSER, own)).status, 204);
+    assert.equal(tracker.top().rows[0].n, 3, 'five tabs from one address count as three');
+  } finally {
+    server.close();
+  }
+  // The same check, straight.
+  const req = (h) => ({ get: (k) => h[k.toLowerCase()] });
+  assert.equal(sameSite(req({ host: 'bloombroke.com' })), true, 'no headers: allowed (old browsers, fetch keepalive)');
+  assert.equal(sameSite(req({ host: 'bloombroke.com', origin: 'https://bloombroke.com' })), true);
+  assert.equal(sameSite(req({ host: 'bloombroke.com', origin: 'https://bloombroke.com.evil.example' })), false);
+  assert.equal(sameSite(req({ host: 'bloombroke.com', referer: 'not a url' })), false);
+  assert.equal(sameSite(req({ host: '127.0.0.1:3020', origin: 'https://bloombroke.com' })), true, 'a proxy that rewrites Host');
+  assert.equal(sameSite(req({ host: '127.0.0.1:3020', origin: 'https://evil.example' })), false);
+});
+
+test('TRENDING client: counts ticker screens only, never in DESK panels or before ACCEPT', () => {
+  const quote = parseCommand('AAPL');
+  const ok = { embed: false, consentPending: false };
+  assert.equal(countsAsOpen(quote, ok), true);
+  for (const s of ['GOLD', 'EURUSD', 'BTC', 'SPX', 'US10Y', 'SPY']) assert.equal(countsAsOpen(parseCommand(s), ok), true, s);
+  assert.equal(countsAsOpen(quote, { embed: true, consentPending: false }), false, 'a DESK iframe (embed=1)');
+  assert.equal(countsAsOpen(quote, { embed: false, consentPending: true }), false, 'the first-visit notice is showing');
+  assert.equal(countsAsOpen(quote), false, 'defaults to not counting');
+  for (const s of ['WEIRD', 'PIZZA', 'HOME', 'TRENDING', 'AAPL NEWS', 'MOVERS']) assert.equal(countsAsOpen(parseCommand(s), ok), false, s);
+  assert.equal(countsAsOpen(parseCommand('AAPL 2020-13-45 2024-01-01'), ok), false, 'a screen with an error');
+  assert.equal(countsAsOpen(null, ok), false);
 });

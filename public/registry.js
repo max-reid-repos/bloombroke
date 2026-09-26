@@ -81,9 +81,9 @@ export const REGISTRY = [
   },
   // --- TRENDING: most opened tickers here (data/trending.js) ---
   {
-    name: 'TRENDING', category: 'Markets', summary: 'Most opened tickers on Bloombroke',
+    name: 'TRENDING', category: 'Markets', summary: 'Most opened tickers here',
     syntax: 'TRENDING', examples: ['TRENDING'], keywords: ['popular', 'most viewed', 'most opened', 'people', 'crowd', 'trending'],
-    source: 'Anonymous counts of ticker screens opened on Bloombroke; prices from CNBC', delay: 'The last hour, refreshed every minute',
+    source: 'Anonymous counts of ticker screens opened on Bloombroke; prices from CNBC', delay: 'The last hour, or the last 24 hours when it is quiet; refreshed every minute',
   },
   // --- end TRENDING ---
   {
