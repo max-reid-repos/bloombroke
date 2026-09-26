@@ -41,6 +41,7 @@ import { compactEmbed } from './embed.js';
 import { parseAffordArgs } from './afford.js';
 import { resolveInput } from './resolve.js';
 import { tickerForName, LISTED_TICKERS } from './known-tickers.js';
+import { sendSeen, countsAsOpen } from './trending.js'; // TRENDING
 
 export { FUNCTION_BAR, TICKER_FUNCTIONS };
 
@@ -954,6 +955,9 @@ function boot() {
       setStatus('LOADING...');
       const fn = mod.render(view, cmd, ctx);
       if (typeof fn === 'function') cleanups.push(fn);
+      // --- TRENDING: count this ticker screen (public/trending.js); not in DESK panels, not before the notice ---
+      if (countsAsOpen(cmd, { embed, consentPending: consentNeeded() })) sendSeen(cmd.args.ticker);
+      // --- end TRENDING ---
     } else if (cmd.name === 'RENAMED') {
       const to = cmd.args.to;
       if (fromUrl) {
