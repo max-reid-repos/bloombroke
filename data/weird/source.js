@@ -12,20 +12,58 @@ export class NoData extends Error {
   }
 }
 
-// fetchImpl -> { text(url, opts), json(url, opts) }. opts: { timeout, headers }.
+// Largest body we read from any source. Past it the request is aborted.
+export const MAX_BYTES = 5 * 1024 * 1024;
+
+// A response body as text, read in chunks and cut off past `cap` bytes. A declared
+// content-length over the cap is refused before reading.
+export async function readCapped(res, cap = MAX_BYTES, abort = null) {
+  const host = (() => { try { return new URL(res.url).host; } catch { return 'source'; } })();
+  const declared = Number(res.headers?.get?.('content-length'));
+  const tooBig = () => {
+    abort?.abort();
+    return new Error(`${host}: response over ${Math.round(cap / 1024 / 1024)} MB`);
+  };
+  if (Number.isFinite(declared) && declared > cap) {
+    try { await res.body?.cancel(); } catch { /* ignore */ }
+    throw tooBig();
+  }
+  if (!res.body?.getReader) {
+    const t = await res.text();
+    if (Buffer.byteLength(t) > cap) throw tooBig();
+    return t;
+  }
+  const reader = res.body.getReader();
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > cap) {
+      try { await reader.cancel(); } catch { /* ignore */ }
+      throw tooBig();
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks.map((c) => Buffer.from(c.buffer, c.byteOffset, c.byteLength))).toString('utf8');
+}
+
+// fetchImpl -> { text(url, opts), json(url, opts) }. opts: { timeout, headers, accept, maxBytes }.
 export function sourceClient(fetchImpl = globalThis.fetch) {
-  async function get(url, { timeout = TIMEOUT, headers = {}, accept = '*/*' } = {}) {
+  async function get(url, { timeout = TIMEOUT, headers = {}, accept = '*/*', maxBytes = MAX_BYTES } = {}) {
+    const abort = new AbortController();
     const res = await fetchImpl(url, {
       headers: { 'User-Agent': UA, Accept: accept, ...headers },
-      signal: AbortSignal.timeout(timeout),
+      signal: AbortSignal.any([AbortSignal.timeout(timeout), abort.signal]),
       redirect: 'follow',
     });
     if (!res.ok) throw new Error(`${new URL(url).host} HTTP ${res.status}`);
-    return res;
+    return readCapped(res, maxBytes, abort);
   }
   return {
-    text: async (url, opts) => (await get(url, opts)).text(),
-    json: async (url, opts) => (await get(url, { accept: 'application/json', ...opts })).json(),
+    text: (url, opts) => get(url, opts),
+    json: async (url, opts) => JSON.parse(await get(url, { accept: 'application/json', ...opts })),
   };
 }
 

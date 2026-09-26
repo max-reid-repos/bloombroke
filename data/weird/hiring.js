@@ -1,7 +1,9 @@
 // HIRING: Hacker News posts two threads on the first weekday of each month, "Who is
 // hiring?" (companies post jobs) and "Who wants to be hired?" (people post themselves).
 // The gauge is seekers per job post: comments on the second over comments on the first.
-// Source: HN Algolia search, stories by the whoishiring account.
+// Source: HN Algolia search, stories by the whoishiring account. The headline uses the
+// newest month whose threads are at least 7 days old, so a fresh thread is not half
+// counted.
 
 import { NoData } from './source.js';
 
@@ -29,8 +31,10 @@ export function parse(body) {
   for (const h of hits) {
     const c = classify(h.title);
     if (!c || !Number.isFinite(h.num_comments)) continue;
-    const row = by.get(c.month) || { month: c.month, hiring: null, seeking: null };
+    const row = by.get(c.month) || { month: c.month, hiring: null, seeking: null, posted: null };
     if (row[c.kind] === null) row[c.kind] = h.num_comments;
+    const t = Date.parse(h.created_at);
+    if (Number.isFinite(t) && (row.posted === null || t > Date.parse(row.posted))) row.posted = new Date(t).toISOString();
     by.set(c.month, row);
   }
   return [...by.values()]
@@ -40,13 +44,16 @@ export function parse(body) {
     .slice(0, 24);
 }
 
-export function build(months) {
-  if (!months.length) throw new NoData('HN Algolia: no monthly threads');
-  const last = months[0];
+export const SETTLE_DAYS = 7;
+
+export function build(months, now = Date.now()) {
+  const settled = months.filter((m) => !m.posted || now - Date.parse(m.posted) >= SETTLE_DAYS * 86400_000);
+  if (!settled.length) throw new NoData('HN Algolia: no monthly threads');
+  const last = settled[0];
   return {
     headline: `${last.ratio.toFixed(2)} PER JOB`,
     line: 'HN job seekers per job post',
-    spark: months.slice().reverse().map((m) => m.ratio),
+    spark: settled.slice().reverse().map((m) => m.ratio),
     asOf: `${last.month}-01`,
     source,
     month: last.month,
@@ -57,6 +64,6 @@ export function build(months) {
   };
 }
 
-export async function load(get) {
-  return build(parse(await get.json(URL_HN)));
+export async function load(get, { now = Date.now } = {}) {
+  return build(parse(await get.json(URL_HN)), now());
 }

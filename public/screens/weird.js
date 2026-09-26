@@ -23,7 +23,9 @@ export function tileBody(g, d) {
   if (!d) return `<p class="loading">LOADING...</p><p class="wd-src">${esc(g.command)}</p>`;
   const bad = d.ok === false;
   const big = bad ? (d.pending ? 'LOADING' : 'NO DATA') : d.headline;
-  return `<p class="wd-big${bad ? ' is-none' : ''}">${esc(big)}</p>
+  // A stale value is a real past reading: shown dimmed, with its time in the source line.
+  const cls = bad ? ' is-none' : d.stale ? ' is-stale' : '';
+  return `<p class="wd-big${cls}">${esc(big)}</p>
     <p class="wd-line">${esc(bad ? '' : d.line || '')}</p>
     <div class="wd-spark">${!bad && Array.isArray(d.spark) && d.spark.length > 1 ? sparkSvg(d.spark, 120, 18) : ''}</div>
     <p class="wd-src">${esc(sourceLine(d, g.period))}</p>`;
@@ -82,7 +84,7 @@ function detail(el, g, ctx) {
       return;
     }
     const part = g.detail(d);
-    body.innerHTML = `<div class="wd-head"><p class="wd-big">${esc(d.headline)}</p><p class="wd-line">${esc(d.line || '')}</p></div>
+    body.innerHTML = `<div class="wd-head"><p class="wd-big${d.stale ? ' is-stale' : ''}">${esc(d.headline)}</p><p class="wd-line">${esc(d.line || '')}</p>${d.stale ? `<p class="wd-src">${esc(sourceLine(d, g.period))}</p>` : ''}</div>
       <div class="wd-body">${part.html}</div>
       ${how}
       <p class="wd-src">${esc(sourceLine(d, g.period))}</p>`;

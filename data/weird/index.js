@@ -10,7 +10,15 @@
 //
 // To add a gauge: write the module, add it to GAUGES below, add its command to
 // public/registry.js and its screen entry to public/screens/weird-gauges.js.
+//
+// Last good value: each successful result is also written to data/.cache/weird/<id>.json
+// (gitignored). When a source fails or is empty and memory has nothing (after a restart,
+// say), that file is served with stale: true and its own as-of date. NO DATA only when
+// there has never been a good value.
 
+import { mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createCache } from '../cache.js';
 import { sourceClient } from './source.js';
 import * as canal from './canal.js';
@@ -41,6 +49,33 @@ export function noData(g, extra = {}) {
   return { id: g.id, ok: false, headline: 'NO DATA', source: g.source, ...extra };
 }
 
+export const LAST_GOOD_DIR = fileURLToPath(new URL('../.cache/weird/', import.meta.url));
+
+// dir -> { read(id), write(id, value, fetchedAt) }. No dir: a store that keeps nothing.
+export function lastGoodStore(dir) {
+  if (!dir) return { read: () => null, write: () => {} };
+  const file = (id) => path.join(dir, `${id}.json`);
+  return {
+    read(id) {
+      try {
+        const j = JSON.parse(readFileSync(file(id), 'utf8'));
+        return j?.value?.headline && Number.isFinite(j.fetchedAt) ? j : null;
+      } catch {
+        return null;
+      }
+    },
+    write(id, value, fetchedAt) {
+      try {
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(`${file(id)}.tmp`, JSON.stringify({ fetchedAt, value }));
+        renameSync(`${file(id)}.tmp`, file(id));
+      } catch (err) {
+        console.error(`[weird:${id}] last good not saved:`, err.message);
+      }
+    },
+  };
+}
+
 export function summarize(detail) {
   if (!detail.ok) return detail;
   const out = { id: detail.id, ok: true, stale: detail.stale, updated: detail.updated };
@@ -48,21 +83,31 @@ export function summarize(detail) {
   return out;
 }
 
-export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges = GAUGES } = {}) {
+export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges = GAUGES, lastGoodDir = LAST_GOOD_DIR } = {}) {
   const get = sourceClient(fetchImpl);
+  const store = lastGoodStore(lastGoodDir);
+  const saved = new Map();
   const caches = new Map(gauges.map((g) => [g.id, createCache({ retryMs: g.retryMs || 5 * 60_000, now })]));
 
-  // Never throws: a failed or empty source gives the NO DATA shape.
+  const shape = (g, value, stale, fetchedAt) => ({ id: g.id, ok: true, ...value, stale, updated: new Date(fetchedAt).toISOString() });
+
+  // Never throws: a failed or empty source gives the last good value (stale), or the
+  // NO DATA shape when there is none.
   async function getGauge(name) {
     const g = gauges.find((x) => x.id === String(name ?? '').toLowerCase());
     if (!g) return null;
     try {
       const { value, stale, fetchedAt } = await caches.get(g.id).cached(g.id, g.ttl, () => g.load(get, { now }));
-      if (!value || !value.headline) return noData(g);
-      return { id: g.id, ok: true, ...value, stale, updated: new Date(fetchedAt).toISOString() };
+      if (!value || !value.headline) throw Object.assign(new Error('empty'), { code: 'no_data' });
+      if (!stale && saved.get(g.id) !== fetchedAt) {
+        saved.set(g.id, fetchedAt);
+        store.write(g.id, value, fetchedAt);
+      }
+      return shape(g, value, stale, fetchedAt);
     } catch (err) {
       if (err?.code !== 'no_data') console.error(`[weird:${g.id}]`, err?.message || err);
-      return noData(g);
+      const last = store.read(g.id);
+      return last ? shape(g, last.value, true, last.fetchedAt) : noData(g);
     }
   }
 

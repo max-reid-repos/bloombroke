@@ -2,11 +2,14 @@
 // wind field right now.
 // Storms: National Hurricane Center CurrentStorms.json. Wind field: the tropical-storm-
 // force (34 knot) wind radii in each storm's latest forecast advisory, one radius per
-// quadrant (NE, SE, SW, NW). No radii published (a depression, or the advisory would
-// not load): a fixed FALLBACK_MILES circle, and the screen says so.
+// quadrant (NE, SE, SW, NW). An advisory with no 34 kt radii (a depression) counts 0.
+// An advisory that will not load leaves that storm unknown: no guessed radius. If no
+// storm near a store could be counted, the gauge is NO DATA; if some could, it is
+// marked partial.
 // Stores: a one-time OpenStreetMap snapshot in waffle-houses.json (ODbL).
 
 import { readFileSync } from 'node:fs';
+import { NoData } from './source.js';
 
 export const id = 'waffle';
 export const source = 'NHC';
@@ -17,7 +20,8 @@ const SNAPSHOT = JSON.parse(readFileSync(new URL('./waffle-houses.json', import.
 export const STORES = SNAPSHOT.stores;
 export const STORES_META = { count: SNAPSHOT.count, fetched: SNAPSHOT.fetched, credit: SNAPSHOT.credit };
 
-export const FALLBACK_MILES = 50;
+// Advisories are only fetched from the NHC site itself.
+export const ADVISORY_HOST = 'www.nhc.noaa.gov';
 // A storm further than this from every store cannot reach one (the widest 34 kt radii
 // are about 600 miles), so its advisory is not fetched.
 export const FAR_MILES = 800;
@@ -97,37 +101,52 @@ export function nearestStore(storm, stores = STORES) {
   return best;
 }
 
-// One storm -> its row. fetchAdvisory(url) gives the advisory text (or throws).
-export async function stormRow(storm, fetchAdvisory, stores = STORES) {
-  const nearest = nearestStore(storm, stores);
-  if (nearest > FAR_MILES) return { ...storm, nearest: Math.round(nearest), radius: null, radiusFrom: 'far', stores: 0 };
-  let radii = null;
-  let from = 'fixed';
-  if (storm.advisoryUrl) {
-    try {
-      radii = parseRadii(await fetchAdvisory(storm.advisoryUrl));
-      if (radii) from = 'nhc';
-    } catch { /* fall back to the fixed circle */ }
+export function advisoryAllowed(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && u.host === ADVISORY_HOST;
+  } catch {
+    return false;
   }
-  const use = radii || FALLBACK_MILES;
-  const radius = typeof use === 'number' ? use : Math.max(use.NE, use.SE, use.SW, use.NW);
-  return { ...storm, nearest: Math.round(nearest), radius, radii, radiusFrom: from, stores: storesInside(storm, use, stores) };
+}
+
+// One storm -> its row. fetchAdvisory(url) gives the advisory text (or throws).
+// radiusFrom: 'far' (no store in reach), 'nhc' (34 kt radii), 'none' (no 34 kt winds),
+// 'error' (the advisory would not load: stores is null, never a guess).
+export async function stormRow(storm, fetchAdvisory, stores = STORES) {
+  const nearest = Math.round(nearestStore(storm, stores));
+  if (nearest > FAR_MILES) return { ...storm, nearest, radius: null, radiusFrom: 'far', stores: 0 };
+  let text;
+  try {
+    if (!advisoryAllowed(storm.advisoryUrl)) throw new Error('no NHC advisory link');
+    text = await fetchAdvisory(storm.advisoryUrl);
+  } catch {
+    return { ...storm, nearest, radius: null, radiusFrom: 'error', stores: null };
+  }
+  const radii = parseRadii(text);
+  if (!radii) return { ...storm, nearest, radius: 0, radiusFrom: 'none', stores: 0 };
+  const radius = Math.max(radii.NE, radii.SE, radii.SW, radii.NW);
+  return { ...storm, nearest, radius, radii, radiusFrom: 'nhc', stores: storesInside(storm, radii, stores) };
 }
 
 export function build(rows, fetchedAt) {
-  const total = rows.reduce((a, r) => a + r.stores, 0);
+  const failed = rows.filter((r) => r.radiusFrom === 'error');
+  const counted = rows.filter((r) => r.radiusFrom !== 'error' && r.radiusFrom !== 'far');
+  if (failed.length && !counted.length) throw new NoData('NHC: advisory for a nearby storm would not load');
+  const total = rows.reduce((a, r) => a + (r.stores || 0), 0);
   const updated = rows.map((r) => r.updated).filter(Boolean).sort().pop() || fetchedAt;
+  const partial = failed.length > 0;
   return {
-    headline: `${total} ${total === 1 ? 'STORE' : 'STORES'} IN STORMS`,
-    line: 'Waffle Houses inside storm winds',
+    headline: `${total} ${total === 1 ? 'STORE' : 'STORES'} IN STORMS${partial ? ' (PARTIAL)' : ''}`,
+    line: partial ? 'Partial: an NHC advisory did not load' : 'Waffle Houses inside storm winds',
     spark: null,
     asOf: updated,
     source,
     credit: STORES_META.credit,
     total,
+    partial,
     storms: rows,
     snapshot: STORES_META,
-    fallbackMiles: FALLBACK_MILES,
   };
 }
 

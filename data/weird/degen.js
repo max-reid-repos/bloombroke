@@ -22,7 +22,7 @@ export function parse(body) {
   const apps = APPS.map((a) => {
     let i = results.findIndex((r) => String(r.id) === a.appId);
     if (i < 0) i = results.findIndex((r) => a.re.test(String(r.name || '')));
-    return { name: a.name, rank: i >= 0 ? i + 1 : null, title: i >= 0 ? String(results[i].name).slice(0, 80) : null };
+    return { name: a.name, rank: i >= 0 ? i + 1 : null };
   });
   const updated = Date.parse(body.feed.updated);
   return { apps, size: results.length, asOf: Number.isFinite(updated) ? new Date(updated).toISOString() : null };

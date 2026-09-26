@@ -23,6 +23,7 @@ export function parse(csv) {
   const all = [];
   for (const line of lines) {
     const f = line.split(',');
+    if (f.length !== head.length) continue;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(f[iD] || '')) continue;
     const dollarPrice = Number(f[iUsd]);
     const raw = f[iRaw] === '' ? NaN : Number(f[iRaw]);
@@ -42,7 +43,7 @@ export function build(p) {
   const us = p.rows.find((r) => r.iso3 === 'USA');
   return {
     headline: `${top.name.toUpperCase()} ${signedPct(top.usdRaw, 0)}`,
-    line: 'Most overvalued vs USD, by Big Mac',
+    line: 'Priciest Big Mac vs USD',
     spark: p.usPrices.map((x) => x.price),
     asOf: p.latest,
     source,

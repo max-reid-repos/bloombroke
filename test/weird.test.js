@@ -3,7 +3,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 import * as canal from '../data/weird/canal.js';
 import * as pizza from '../data/weird/pizza.js';
@@ -18,7 +20,9 @@ import * as bigmac from '../data/weird/bigmac.js';
 import { truePhase, lunation, moonPhase } from '../data/weird/moon.js';
 import { makeWeird, GAUGES, gaugeById, summarize } from '../data/weird/index.js';
 import { parseFredCsv } from '../data/economy.js';
-import { UA, signedPct } from '../data/weird/source.js';
+import { UA, signedPct, sourceClient, MAX_BYTES } from '../data/weird/source.js';
+import { tileBody } from '../public/screens/weird.js';
+import { CPI_RETRY_MS } from '../data/cpi.js';
 import { WEIRD_GAUGES } from '../public/screens/weird-gauges.js';
 import { findCommand } from '../public/registry.js';
 import { parseCommand } from '../public/app.js';
@@ -26,19 +30,24 @@ import { parseCommand } from '../public/app.js';
 const fx = (f) => readFileSync(new URL(`./fixtures/weird/${f}`, import.meta.url), 'utf8');
 const fxj = (f) => JSON.parse(fx(f));
 
-test('canal: latest day, per-chokepoint rows against the 1-year average', () => {
+test('canal: Hormuz 7-day average against the 1-year average, plus the latest day', () => {
   const asOf = canal.latestDate(fxj('canal-top.json'));
   assert.equal(asOf, '2026-09-20');
   const daily = canal.parseDaily(fxj('canal-daily.json'));
   const avgs = canal.parseAverages(fxj('canal-avg.json'));
   assert.equal(Object.keys(avgs).length, 6);
   const g = canal.build(daily, avgs, asOf);
-  assert.equal(g.headline, 'HORMUZ 1 SHIP');
+  // Sep 14 to 20: 2, 2, 1, 3, 7, 6, 1 ships -> 22 / 7 = 3.14.
+  assert.ok(Math.abs(g.rows[0].week - 22 / 7) < 1e-9);
+  assert.equal(g.headline, 'HORMUZ 3 SHIPS/DAY');
+  assert.match(g.line, /^7-day average; 1-year average \d+$/);
   assert.equal(g.rows[0].name, 'Hormuz');
   assert.equal(g.rows[0].total, 1);
   assert.equal(g.rows[0].tanker, 0);
   assert.ok(g.rows[0].avgTotal > 20 && g.rows[0].avgTotal < 60, String(g.rows[0].avgTotal));
-  assert.ok(g.rows[0].vsAvg < -90);
+  assert.ok(Math.abs(g.rows[0].vsAvg - ((22 / 7) / g.rows[0].avgTotal - 1) * 100) < 1e-9);
+  assert.equal(canal.week7([{ date: '2026-09-20', total: 5 }], '2026-09-20'), null, 'fewer than 7 days: no average');
+  assert.throws(() => canal.build({}, avgs, asOf), (e) => e.code === 'no_data');
   assert.equal(g.rows.find((r) => r.name === 'Suez').total, 42);
   assert.ok(g.spark.length >= 2);
   assert.throws(() => canal.parseDaily({ error: { message: 'Invalid query' } }), /Invalid query/);
@@ -95,7 +104,7 @@ test('waffle: haversine, bearings and quadrant radii', () => {
   assert.equal(waffle.storesInside(storm, 10, stores), 0);
 });
 
-test('waffle: far storms count zero without an advisory fetch; a failed advisory uses the fixed radius', async () => {
+test('waffle: far storms count zero; no radius counts zero; a failed advisory is unknown, never guessed', async () => {
   const storms = waffle.parseStorms(fxj('nhc-storms.json'));
   assert.equal(storms.length, 5);
   let fetched = 0;
@@ -103,15 +112,38 @@ test('waffle: far storms count zero without an advisory fetch; a failed advisory
   assert.equal(fetched, 0, 'every storm on Sep 26 was far from any store');
   const g = waffle.build(rows, '2026-09-26T04:00:00Z');
   assert.equal(g.headline, '0 STORES IN STORMS');
-  assert.equal(g.credit, '© OpenStreetMap contributors');
+  assert.equal(g.credit, '© OpenStreetMap contributors, ODbL');
+  assert.equal(g.partial, false);
   assert.ok(waffle.STORES.length > 1500);
+  assert.ok(waffle.STORES.every(([lat, lon]) => lat >= 24.3 && lat <= 49.5 && lon >= -125 && lon <= -66.9), 'contiguous US only');
 
-  const near = { id: 'x', name: 'Test', lat: 33.75, lon: -84.39, advisoryUrl: 'https://example.test/adv' };
-  const row = await waffle.stormRow(near, async () => { throw new Error('down'); });
-  assert.equal(row.radiusFrom, 'fixed');
-  assert.equal(row.radius, waffle.FALLBACK_MILES);
-  assert.ok(row.stores > 0, 'Atlanta has Waffle Houses within 50 miles');
-  assert.equal(waffle.build([row], 'x').headline, `${row.stores} STORES IN STORMS`);
+  const url = 'https://www.nhc.noaa.gov/text/MIATCMAT1.shtml';
+  const atl = { id: 'x', name: 'Test', lat: 33.75, lon: -84.39, advisoryUrl: url };
+  // The advisory would not load: stores unknown (null), no guessed circle.
+  const down = await waffle.stormRow(atl, async () => { throw new Error('down'); });
+  assert.equal(down.radiusFrom, 'error');
+  assert.equal(down.stores, null);
+  assert.throws(() => waffle.build([down], 'x'), (e) => e.code === 'no_data', 'only unknown near storms: NO DATA');
+  // A depression: the advisory has no 34 kt line, so zero.
+  const td = await waffle.stormRow(atl, async () => 'MAX SUSTAINED WINDS  30 KT WITH GUSTS TO  40 KT.\nREPEAT...CENTER');
+  assert.equal(td.radiusFrom, 'none');
+  assert.equal(td.stores, 0);
+  // Radii from a real advisory text, centred on Atlanta.
+  const ts = await waffle.stormRow(atl, async () => fx('nhc-advisory-fay.txt'));
+  assert.equal(ts.radiusFrom, 'nhc');
+  assert.equal(ts.radius, 69);
+  assert.ok(ts.stores > 0);
+  // One counted, one unknown: a partial count, clearly marked.
+  const mixed = waffle.build([ts, { ...down, id: 'y' }], 'x');
+  assert.equal(mixed.partial, true);
+  assert.match(mixed.headline, /IN STORMS \(PARTIAL\)$/);
+  // Only NHC advisory links are fetched.
+  let asked = 0;
+  const odd = await waffle.stormRow({ ...atl, advisoryUrl: 'https://evil.test/x' }, async () => { asked += 1; return ''; });
+  assert.equal(asked, 0);
+  assert.equal(odd.radiusFrom, 'error');
+  assert.equal(waffle.advisoryAllowed(url), true);
+  assert.equal(waffle.advisoryAllowed('http://www.nhc.noaa.gov/x'), false);
 });
 
 test('panic: latest day against the 30 days before, per article and in total', () => {
@@ -138,8 +170,13 @@ test('hiring: seekers per job post by month', () => {
   assert.equal(months[0].month, '2026-09');
   assert.equal(months[0].hiring, 397);
   assert.equal(months[0].seeking, 575);
-  const g = hiring.build(months);
+  const g = hiring.build(months, Date.parse('2026-09-26T00:00:00Z'));
   assert.equal(g.headline, '1.45 PER JOB');
+  assert.equal(g.month, '2026-09');
+  // Three days after the September threads: too fresh, so August is the headline.
+  const early = hiring.build(months, Date.parse('2026-09-04T00:00:00Z'));
+  assert.equal(early.month, '2026-08');
+  assert.equal(early.headline, `${(564 / 379).toFixed(2)} PER JOB`);
   assert.throws(() => hiring.build([]), (e) => e.code === 'no_data');
 });
 
@@ -213,7 +250,7 @@ test('bigmac: latest date, most over and under valued against the dollar', () =>
 });
 
 test('a failed or empty source gives NO DATA with the source name, never a guess', async () => {
-  const w = makeWeird({ fetchImpl: async () => { throw new Error('offline'); } });
+  const w = makeWeird({ fetchImpl: async () => { throw new Error('offline'); }, lastGoodDir: null });
   const one = await w.getGauge('canal');
   assert.deepEqual(one, { id: 'canal', ok: false, headline: 'NO DATA', source: 'IMF PortWatch' });
   assert.equal(await w.getGauge('nope'), null);
@@ -229,7 +266,7 @@ test('a failed or empty source gives NO DATA with the source name, never a guess
   // Waffle needs NHC: its failure is NO DATA too.
   assert.equal(all.gauges.find((g) => g.id === 'waffle').ok, false);
 
-  const empty = makeWeird({ fetchImpl: async () => new Response(fx('pizza-empty.json'), { status: 200 }) });
+  const empty = makeWeird({ fetchImpl: async () => new Response(fx('pizza-empty.json'), { status: 200 }), lastGoodDir: null });
   assert.equal((await empty.getGauge('pizza')).headline, 'NO DATA');
 });
 
@@ -237,7 +274,7 @@ test('summary: slow gauges come back pending, fast ones in full; requests carry 
   const seen = [];
   const slow = { id: 'slow', source: 'Slow', ttl: 1000, load: () => new Promise((r) => setTimeout(r, 200, { headline: 'LATE' })) };
   const fast = { id: 'fast', source: 'Fast', ttl: 1000, load: async (get) => { await get.json('https://fast.test/x'); return { headline: 'OK', line: 'x', spark: [1, 2], asOf: '2026-09-25', source: 'Fast', extra: [1, 2, 3] }; } };
-  const w = makeWeird({ gauges: [slow, fast], fetchImpl: async (url, opts) => { seen.push(opts.headers['User-Agent']); return new Response('{}'); } });
+  const w = makeWeird({ gauges: [slow, fast], lastGoodDir: null, fetchImpl: async (url, opts) => { seen.push(opts.headers['User-Agent']); return new Response('{}'); } });
   const s = await w.getWeird({ wait: 50 });
   assert.equal(s.gauges[0].pending, true);
   assert.equal(s.gauges[1].headline, 'OK');
@@ -270,5 +307,61 @@ test('weird copy rules: no banned brand word, no em dashes', () => {
     const s = readFileSync(f, 'utf8');
     assert.doesNotMatch(s, new RegExp(['bloom', 'berg'].join(''), 'i'), f);
     assert.doesNotMatch(s, /—/, `${f}: em dash`);
+  }
+});
+
+test('sources: bodies over 5 MB are refused, by header or while streaming', async () => {
+  const big = 'x'.repeat(MAX_BYTES + 10);
+  const declared = sourceClient(async () => new Response('{}', { headers: { 'content-length': String(MAX_BYTES + 1) } }));
+  await assert.rejects(declared.text('https://a.test/x'), /over 5 MB/);
+  const streamed = sourceClient(async () => new Response(new ReadableStream({
+    start(c) { for (let i = 0; i < 6; i += 1) c.enqueue(new TextEncoder().encode('x'.repeat(1024 * 1024))); c.close(); },
+  })));
+  await assert.rejects(streamed.json('https://a.test/x'), /over 5 MB/);
+  const small = sourceClient(async () => new Response('{"a":1}'));
+  assert.deepEqual(await small.json('https://a.test/x'), { a: 1 });
+  assert.equal(await sourceClient(async () => new Response(big.slice(0, 1000))).text('https://a.test/x'), 'x'.repeat(1000));
+  assert.equal(CPI_RETRY_MS, 6 * 60 * 60_000, 'CPI waits 6 hours after a BLS failure');
+});
+
+test('last good value: served stale with its own date after a failure or a restart; NO DATA only with none', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'weird-'));
+  try {
+    let up = true;
+    const g = { id: 'pz', source: 'pizzint.watch', ttl: 1, retryMs: 1, load: async () => {
+      if (!up) throw Object.assign(new Error('empty'), { code: 'no_data' });
+      return { headline: 'DEFCON 4', line: 'x', asOf: '2026-09-25T22:00:00.000Z', source: 'pizzint.watch' };
+    } };
+    const first = makeWeird({ gauges: [g], lastGoodDir: dir });
+    const good = await first.getGauge('pz');
+    assert.equal(good.stale, false);
+    // A restart (new instance, empty memory) while the source is empty.
+    up = false;
+    const again = makeWeird({ gauges: [g], lastGoodDir: dir });
+    const last = await again.getGauge('pz');
+    assert.equal(last.ok, true);
+    assert.equal(last.stale, true);
+    assert.equal(last.headline, 'DEFCON 4');
+    assert.equal(last.asOf, '2026-09-25T22:00:00.000Z');
+    assert.equal(last.updated, good.updated);
+    const none = makeWeird({ gauges: [{ ...g, id: 'other' }], lastGoodDir: dir });
+    assert.equal((await none.getGauge('other')).headline, 'NO DATA');
+    // The tile dims it and says when it is from.
+    const gauge = WEIRD_GAUGES.find((x) => x.id === 'pizza');
+    const html = tileBody(gauge, { ...last, id: 'pizza' });
+    assert.match(html, /wd-big is-stale/);
+    assert.match(html, /last reading 18:00 ET SEP 25/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('degen: the tile and the detail carry no links and no images', () => {
+  const d = { id: 'degen', ok: true, stale: false, ...degen.build(degen.parse(fxj('degen.json'))) };
+  assert.ok(!('title' in d.apps[0]), 'app titles are not sent');
+  const gauge = WEIRD_GAUGES.find((x) => x.id === 'degen');
+  for (const html of [tileBody(gauge, d), gauge.detail(d).html]) {
+    assert.doesNotMatch(html, /href/i);
+    assert.doesNotMatch(html, /<img/i);
   }
 });

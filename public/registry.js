@@ -404,8 +404,8 @@ export const REGISTRY = [
     source: 'pizzint.watch (unofficial)', delay: 'Minutes; often empty overnight',
   },
   {
-    name: 'DEGEN', category: 'Weird data', summary: 'App Store rank of betting and trading apps, like Kalshi',
-    syntax: 'DEGEN', examples: ['DEGEN'], keywords: ['app store', 'kalshi', 'polymarket', 'prediction markets', 'betting', 'trading apps', 'apps'],
+    name: 'DEGEN', category: 'Weird data', summary: 'App Store rank of Kalshi, Polymarket, Robinhood, Coinbase',
+    syntax: 'DEGEN', examples: ['DEGEN'], keywords: ['app store', 'kalshi', 'polymarket', 'robinhood', 'coinbase', 'prediction markets', 'betting', 'trading apps'],
     source: 'Apple App Store top free chart, US', delay: 'About daily',
   },
   {
@@ -439,7 +439,7 @@ export const REGISTRY = [
     source: 'BLS CPI CUUR0000SEAA02', delay: 'Monthly',
   },
   {
-    name: 'BIGMAC', aliases: ['BURGER'], category: 'Weird data', summary: 'Big Mac index: currencies over or under the dollar',
+    name: 'BIGMAC', aliases: ['BURGER'], category: 'Weird data', summary: 'Big Mac index: where a Big Mac costs more or less than in the US',
     syntax: 'BIGMAC', examples: ['BIGMAC'], keywords: ['big mac index', 'burger', 'currency', 'valuation', 'economist', 'ppp'],
     source: 'The Economist, CC BY 4.0', delay: 'Twice a year',
   },

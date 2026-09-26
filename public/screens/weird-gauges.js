@@ -11,7 +11,7 @@
 //
 // To add a gauge: add an entry here, a data module on the server, a registry entry.
 
-import { esc, fmtNum } from './markets.js';
+import { esc, fmtNum, nyTime } from './markets.js';
 import { sparkSvg } from './economy.js';
 import { legend } from './lines.js';
 import { fmtDate } from '../kit.js';
@@ -42,9 +42,14 @@ export function asOfLabel(asOf, period = 'day') {
 
 // The tiny grey source line: "IMF PortWatch · SEP 20". A credit that already names the
 // source replaces it ("The Economist, CC BY 4.0").
+// A stale value (the source is not answering, so this is the last good reading) says
+// so, with its real time: "pizzint.watch · last reading 18:00 ET SEP 25".
 export function sourceLine(d, period) {
   const src = d.credit && d.credit.includes(d.source) ? d.credit : [d.source, d.credit].filter(Boolean).join(', ');
-  return d.ok === false ? src : `${src} · ${asOfLabel(d.asOf, period)}`;
+  if (d.ok === false) return src;
+  if (!d.stale) return `${src} · ${asOfLabel(d.asOf, period)}`;
+  const timed = period === 'time' && d.asOf && !/^\d{4}-\d{2}-\d{2}$/.test(d.asOf);
+  return `${src} · last reading ${timed ? `${nyTime(d.asOf)} ET ${asOfLabel(d.asOf)}` : asOfLabel(d.asOf, period)}`;
 }
 
 const stats = (rows) => `<dl class="stats wd-stats">${rows.map(([k, v]) => `<div class="stat"><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
@@ -55,14 +60,16 @@ const dayMs = (s) => Date.parse(`${s}T00:00:00Z`);
 
 // ---- CANAL -------------------------------------------------------------------------
 function canalDetail(d) {
+  const num = (v, dp = 0) => (Number.isFinite(v) ? fmtNum(v, dp) : '--');
   const rows = d.rows.map((r) => `<tr><th scope="row" class="name">${esc(r.name)}</th>
-    <td class="num last">${Number.isFinite(r.total) ? n0(r.total) : '--'}</td>
-    <td class="num dim">${Number.isFinite(r.avgTotal) ? fmtNum(r.avgTotal, 0) : '--'}</td>
+    <td class="num">${num(r.total)}</td>
+    <td class="num last">${num(r.week)}</td>
+    <td class="num dim wd-hide-sm">${num(r.avgTotal)}</td>
     <td class="num ${dirCls(r.vsAvg)}">${signed(r.vsAvg, 0)}</td>
-    <td class="num">${Number.isFinite(r.tanker) ? n0(r.tanker) : '--'}</td>
-    <td class="num dim wd-hide-sm">${Number.isFinite(r.avgTanker) ? fmtNum(r.avgTanker, 0) : '--'}</td>
+    <td class="num wd-hide-sm">${num(r.tanker)}</td>
+    <td class="num dim wd-hide-sm">${num(r.avgTanker)}</td>
     <td class="wd-spark-cell wd-hide-sm">${sparkSvg(r.spark)}</td></tr>`);
-  return { html: table([['Chokepoint'], ['Ships', 'num'], ['1Y avg', 'num'], ['vs avg', 'num'], ['Tankers', 'num'], ['1Y avg', 'num wd-hide-sm'], ['90 days', 'wd-hide-sm']], rows) };
+  return { html: table([['Chokepoint'], [asOfLabel(d.asOf), 'num'], ['7-day avg', 'num'], ['1Y avg', 'num wd-hide-sm'], ['vs avg', 'num'], ['Tankers', 'num wd-hide-sm'], ['1Y avg', 'num wd-hide-sm'], ['90 days', 'wd-hide-sm']], rows) };
 }
 
 // ---- PIZZA -------------------------------------------------------------------------
@@ -89,14 +96,17 @@ function degenDetail(d) {
 
 // ---- WAFFLE ------------------------------------------------------------------------
 function waffleDetail(d) {
-  const radius = (s) => (s.radiusFrom === 'far' ? '<span class="dim">too far</span>'
-    : `${n0(s.radius)} mi <span class="dim">${s.radiusFrom === 'nhc' ? 'NHC' : 'FIXED'}</span>`);
+  const radius = (s) => ({
+    far: '<span class="dim">too far</span>',
+    none: '<span class="dim">no 34 kt</span>',
+    error: '--',
+  }[s.radiusFrom] || `${n0(s.radius)} mi`);
   const rows = d.storms.map((s) => `<tr><th scope="row" class="name">${esc(s.name)}</th>
     <td class="dim wd-hide-sm">${esc(s.kind)}</td>
     <td class="num wd-hide-sm">${Number.isFinite(s.windKt) ? `${n0(s.windKt)} kt` : '--'}</td>
     <td class="num">${n0(s.nearest)} mi</td>
     <td class="num">${radius(s)}</td>
-    <td class="num last">${n0(s.stores)}</td></tr>`);
+    <td class="num last">${Number.isFinite(s.stores) ? n0(s.stores) : '--'}</td></tr>`);
   return {
     html: d.storms.length
       ? table([['Storm'], ['Type', 'wd-hide-sm'], ['Wind', 'num wd-hide-sm'], ['Nearest store', 'num'], ['Radius', 'num'], ['Inside', 'num']], rows)
@@ -183,8 +193,8 @@ function undiesDetail(d) {
 
 // ---- BIGMAC ------------------------------------------------------------------------
 // Economist country names that differ from the browser's region names.
-const BIGMAC_NAMES = { GB: 'Britain', AE: 'UAE', US: 'United States' };
-const EURO = ['AT', 'BE', 'HR', 'CY', 'EE', 'FI', 'FR', 'DE', 'GR', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PT', 'SK', 'SI', 'ES'];
+const BIGMAC_NAMES = { GB: 'Britain', CZ: 'Czech Republic', HK: 'Hong Kong', TR: 'Turkey', AE: 'United Arab Emirates', US: 'United States' };
+const EURO = ['AT', 'BE', 'BG', 'HR', 'CY', 'EE', 'FI', 'FR', 'DE', 'GR', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PT', 'SK', 'SI', 'ES'];
 
 // The viewer's country from the browser language (en-TH -> Thailand), or null.
 export function localBigMac(rows, lang = globalThis.navigator?.language) {
@@ -207,8 +217,8 @@ function bigmacDetail(d) {
       ['US price', `$${fmtNum(d.usPrice, 2)}`],
       ...(mine ? [[`You: ${mine.name}`, `$${fmtNum(mine.dollarPrice, 2)} <span class="${dirCls(mine.usdRaw)}">${signed(mine.usdRaw, 0)}</span>`]] : []),
     ]) + `<div class="wd-two">
-      <div><p class="wd-sub">Most overvalued</p>${table(head, d.over.map(row))}</div>
-      <div><p class="wd-sub">Most undervalued</p>${table(head, d.under.map(row))}</div>
+      <div><p class="wd-sub">Priciest vs USD</p>${table(head, d.over.map(row))}</div>
+      <div><p class="wd-sub">Cheapest vs USD</p>${table(head, d.under.map(row))}</div>
     </div>`,
   };
 }
@@ -218,7 +228,7 @@ export const WEIRD_GAUGES = [
     id: 'canal', command: 'CANAL', title: 'Canal', detail: canalDetail,
     method: [
       'Ships that crossed each chokepoint in one day, from IMF PortWatch, which counts them from ship position (AIS) signals. Tankers are one ship type inside the total.',
-      'The 1-year average is the mean daily count over the 365 days to the latest day. PortWatch runs about 6 days behind.',
+      'The headline is the mean daily count for Hormuz over the last 7 days on file. The 1-year average is the mean over the 365 days to the latest day, and "vs avg" compares the two. PortWatch runs about 6 days behind.',
     ],
   },
   {
@@ -240,8 +250,8 @@ export const WEIRD_GAUGES = [
     id: 'waffle', command: 'WAFFLE', title: 'Waffle', period: 'time', detail: waffleDetail,
     method: [
       'Active storms come from the National Hurricane Center. For each storm, a store counts when it is inside the tropical-storm-force wind radius (34 knots) in the latest forecast advisory. The advisory gives one radius per quadrant: NE, SE, SW, NW.',
-      'A storm with no published radius (a depression, or an advisory that would not load) gets a fixed 50-mile circle. A storm more than 800 miles from every store counts zero.',
-      'Store locations: a one-time OpenStreetMap snapshot of Waffle House locations (brand Q1701206), © OpenStreetMap contributors, ODbL.',
+      'A storm whose advisory has no 34-knot radius (a depression) counts zero. A storm more than 800 miles from every store counts zero. If a nearby storm\'s advisory will not load, its row shows -- and the count is marked partial; if no nearby storm could be counted, the gauge shows its last reading or NO DATA.',
+      'Store locations: a one-time OpenStreetMap snapshot of Waffle House locations in the contiguous US (brand Q1701206), © OpenStreetMap contributors, ODbL.',
       'A former FEMA head, Craig Fugate, used whether Waffle Houses stayed open as a quick read on storm damage. People call it the Waffle House Index.',
     ],
   },
@@ -256,7 +266,7 @@ export const WEIRD_GAUGES = [
     id: 'hiring', command: 'HIRING', title: 'Hiring', period: 'month', detail: hiringDetail,
     method: [
       'Each month Hacker News posts two threads: "Who is hiring?" (one comment per job ad) and "Who wants to be hired?" (one per person). This divides the comments on the second by the comments on the first.',
-      'Counts include replies, so they are rough. The current month keeps growing for a few weeks. Source: the HN Algolia search API.',
+      'Counts include replies, so they are rough. Threads keep growing for a few weeks, so the headline uses the newest month whose threads are at least 7 days old. Source: the HN Algolia search API.',
     ],
   },
   {

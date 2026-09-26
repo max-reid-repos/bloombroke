@@ -1,7 +1,8 @@
 // CANAL: ships through the world's chokepoints, one day at a time.
 // Source: IMF PortWatch daily chokepoint transits (ArcGIS feature service, no key).
-// The data runs about 6 days behind. Three queries: the latest day on file, the last
-// 90 days for six chokepoints, and each one's average over the year to that day.
+// The data runs about 6 days behind. Three queries: the latest Hormuz day on file, the
+// last 90 days for six chokepoints, and each one's average over the year to that day.
+// The headline is Hormuz's 7-day average; "vs avg" compares 7-day and 1-year averages.
 
 import { NoData } from './source.js';
 
@@ -62,29 +63,32 @@ export function latestDate(body) {
 
 const shipWord = (n) => (n === 1 ? 'SHIP' : 'SHIPS');
 
+// Mean daily ships over the 7 days ending `asOf`; null unless all 7 days are there.
+export function week7(series, asOf) {
+  const end = Date.parse(`${asOf}T00:00:00Z`);
+  const from = new Date(end - 6 * 86400_000).toISOString().slice(0, 10);
+  const days = series.filter((p) => p.date >= from && p.date <= asOf);
+  return days.length === 7 ? days.reduce((a, p) => a + p.total, 0) / 7 : null;
+}
+
 // The parsed parts -> what the tile and the screen show.
 export function build(daily, avgs, asOf) {
   const rows = CHOKEPOINTS.map((c) => {
     const series = daily[c.portid] || [];
     const last = series[series.length - 1];
     const avg = avgs[c.portid];
-    if (!last || last.date !== asOf) return { ...c, date: last?.date || null, total: null, tanker: null, avgTotal: avg?.total ?? null, avgTanker: avg?.tanker ?? null, vsAvg: null, spark: series.map((p) => p.total) };
-    return {
-      ...c,
-      date: last.date,
-      total: last.total,
-      tanker: last.tanker,
-      avgTotal: avg?.total ?? null,
-      avgTanker: avg?.tanker ?? null,
-      vsAvg: avg?.total ? (last.total / avg.total - 1) * 100 : null,
-      spark: series.map((p) => p.total),
-    };
+    const week = week7(series, asOf);
+    const base = { ...c, avgTotal: avg?.total ?? null, avgTanker: avg?.tanker ?? null, week, spark: series.map((p) => p.total) };
+    const vsAvg = Number.isFinite(week) && avg?.total ? (week / avg.total - 1) * 100 : null;
+    if (!last || last.date !== asOf) return { ...base, date: last?.date || null, total: null, tanker: null, vsAvg };
+    return { ...base, date: last.date, total: last.total, tanker: last.tanker, vsAvg };
   });
   const lead = rows[0];
-  if (!Number.isFinite(lead.total)) throw new NoData('PortWatch: no Hormuz value for the latest day');
+  if (!Number.isFinite(lead.week)) throw new NoData('PortWatch: no Hormuz values for the last 7 days');
+  const perDay = Math.round(lead.week);
   return {
-    headline: `${lead.name.toUpperCase()} ${lead.total} ${shipWord(lead.total)}`,
-    line: 'Ships through Hormuz in one day',
+    headline: `${lead.name.toUpperCase()} ${perDay} ${shipWord(perDay)}/DAY`,
+    line: Number.isFinite(lead.avgTotal) ? `7-day average; 1-year average ${Math.round(lead.avgTotal)}` : '7-day average',
     spark: lead.spark,
     asOf,
     source,
@@ -93,7 +97,7 @@ export function build(daily, avgs, asOf) {
 }
 
 export async function load(get) {
-  const top = await get.json(query({ where: '1=1', outFields: 'date', orderByFields: 'date DESC', resultRecordCount: '1' }));
+  const top = await get.json(query({ where: `portid = '${CHOKEPOINTS[0].portid}'`, outFields: 'date', orderByFields: 'date DESC', resultRecordCount: '1' }));
   const asOf = latestDate(top);
   const t = Date.parse(`${asOf}T00:00:00Z`);
   const from90 = new Date(t - 89 * 86400_000).toISOString().slice(0, 10);

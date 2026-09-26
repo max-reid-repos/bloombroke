@@ -52,6 +52,6 @@ test('no affiliate, broker or exchange referral links anywhere in public/', () =
     .flatMap((e) => (e.isDirectory() ? walk(`${d}${e.name}/`) : /\.(js|html|css)$/.test(e.name) ? [`${d}${e.name}`] : []));
   for (const f of walk('')) {
     const s = src(f);
-    assert.doesNotMatch(s, /[?&](ref|aff|affiliate|referral|partner)=|utm_source=|robinhood|coinbase\.com|binance|etoro|webull|interactivebrokers|tastytrade/i, f);
+    assert.doesNotMatch(s, /[?&](ref|aff|affiliate|referral|partner)=|utm_source=|robinhood\.com|coinbase\.com|webull\.com|kalshi\.com|polymarket\.com|binance|etoro|interactivebrokers|tastytrade/i, f);
   }
 });
