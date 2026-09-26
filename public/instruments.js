@@ -47,6 +47,9 @@ export const INSTRUMENTS = [
   I('NDX', 'Nasdaq 100', 'Americas', 'index', '.NDX', 2, { us: true, tape: true, aliases: ['NASDAQ', 'NASDAQ100'] }),
   I('DJI', 'Dow', 'Americas', 'index', '.DJI', 2, { us: true, tape: true, aliases: ['DOW', 'DOWJONES'] }),
   I('RUT', 'Russell 2000', 'Americas', 'index', '.RUT', 2, { us: true, tape: true, aliases: ['RUSSELL', 'RUSSELL2000'] }),
+  I('SPXEW', 'S&P 500 Equal Weight', 'Americas', 'index', '.SPXEW', 2, { us: true, aliases: ['EQUALWEIGHT', 'S&P500EQUALWEIGHT'] }),
+  I('SOX', 'Semiconductors (SOX)', 'Americas', 'index', '.SOX', 2, { us: true, aliases: ['SEMIS', 'SEMICONDUCTORS', 'PHLXSEMI'] }),
+  I('DJTRANS', 'Dow Transports', 'Americas', 'index', '.DJT', 2, { us: true, aliases: ['DOWTRANSPORTS', 'TRANSPORTS'] }),
   I('VIX', 'VIX', 'Americas', 'index', '.VIX', 2, { us: true, tape: true, aliases: ['VOLATILITY'] }),
   I('VXN', 'Nasdaq volatility (VXN)', 'Americas', 'index', '.VXN', 2, { us: true, aliases: ['NASDAQVIX', 'NASDAQVOLATILITY'] }),
 
@@ -63,6 +66,7 @@ export const INSTRUMENTS = [
   I('HSI', 'Hang Seng', 'Asia Pacific', 'index', '.HSI', 2, { tape: true, aliases: ['HANGSENG'] }),
   I('SHANGHAI', 'Shanghai Composite', 'Asia Pacific', 'index', '.SSEC', 2, { aliases: ['SSEC', 'SHCOMP'] }),
   I('KOSPI', 'KOSPI', 'Asia Pacific', 'index', '.KS11', 2, { aliases: ['KS11'] }),
+  I('NIFTY50', 'Nifty 50', 'Asia Pacific', 'index', '.NSEI', 2, { aliases: ['NIFTY', 'NSEI'] }),
   I('ASX200', 'ASX 200', 'Asia Pacific', 'index', '.AXJO', 2, { aliases: ['ASX', 'AXJO'] }),
   I('SET', 'SET Thailand', 'Asia Pacific', 'index', '.SETI', 2, { aliases: ['SETI', 'THAILAND'] }),
 
@@ -71,8 +75,10 @@ export const INSTRUMENTS = [
   I('GOLD', 'Spot gold (XAU)', 'Commodities', 'spot', 'XAU=', 2, { tape: true, base: 'XAU', quote: 'USD', aliases: ['XAU', 'XAUUSD', 'SPOTGOLD', 'SPOTXAU', 'GOLDSPOT'] }),
   I('SILVER', 'Spot silver (XAG)', 'Commodities', 'spot', 'XAG=', 3, { tape: true, base: 'XAG', quote: 'USD', aliases: ['XAG', 'XAGUSD', 'SPOTSILVER', 'SPOTXAG', 'SILVERSPOT'] }),
   I('WTI', 'Oil (WTI)', 'Commodities', 'future', '@CL.1', 2, { tape: true, aliases: ['OIL', 'CRUDE', 'CRUDEOIL'] }),
+  I('BRENT', 'Oil (Brent)', 'Commodities', 'future', '@LCO.1', 2, { aliases: ['BRENTOIL', 'BRENTCRUDE'] }),
   I('NATGAS', 'Natural Gas', 'Commodities', 'future', '@NG.1', 3, { aliases: ['NATURALGAS', 'GAS'] }),
   I('COPPER', 'Copper', 'Commodities', 'future', '@HG.1', 4),
+  I('WHEAT', 'Wheat', 'Commodities', 'future', '@W.1', 2),
   I('GOLDFUT', 'Gold futures (COMEX)', 'Commodities', 'future', '@GC.1', 2, { aliases: ['GOLDFUTURES', 'GOLDFUTURE', 'COMEXGOLD'] }),
   I('SILVERFUT', 'Silver futures (COMEX)', 'Commodities', 'future', '@SI.1', 3, { aliases: ['SILVERFUTURES', 'SILVERFUTURE', 'COMEXSILVER'] }),
   I('BALTICDRY', 'Baltic Dry Index', 'Commodities', 'index', '.BADI', 0, { aliases: ['BDI', 'BADI', 'BALTIC', 'BALTICDRYINDEX'] }),
@@ -85,26 +91,26 @@ export const INSTRUMENTS = [
   I('GBPUSD', 'GBP/USD', 'Currencies', 'fx', 'GBP=', 4, { tape: true, base: 'GBP', quote: 'USD', aliases: ['GBP/USD', 'POUND', 'CABLE'] }),
   I('USDJPY', 'USD/JPY', 'Currencies', 'fx', 'JPY=', 2, { tape: true, base: 'USD', quote: 'JPY', aliases: ['USD/JPY', 'YEN'] }),
   I('USDCNY', 'USD/CNY', 'Currencies', 'fx', 'CNY=', 4, { base: 'USD', quote: 'CNY', aliases: ['USD/CNY', 'YUAN', 'RENMINBI'] }),
+  I('USDCNH', 'USD/CNH', 'Currencies', 'fx', 'CNH=', 4, { base: 'USD', quote: 'CNH', aliases: ['USD/CNH', 'OFFSHOREYUAN'] }),
   I('DXY', 'US Dollar Index', 'Currencies', 'index', '.DXY', 3, { us: true, allDay: true, tape: true, aliases: ['DOLLAR', 'USDX', 'DOLLARINDEX'] }),
 
+  I('US3M', 'US 3M yield', 'Rates', 'yield', 'US3M', 3, { longName: 'US 3-month Treasury', term: '3M' }),
+  I('US2Y', 'US 2Y yield', 'Rates', 'yield', 'US2Y', 3, { longName: 'US 2-year Treasury', term: '2Y' }),
   I('US10Y', 'US 10Y yield', 'Rates', 'yield', 'US10Y', 3, { tape: true, aliases: ['TNX', 'TENYEAR'], longName: 'US 10-year Treasury', term: '10Y' }),
+  I('US30Y', 'US 30Y yield', 'Rates', 'yield', 'US30Y', 3, { longName: 'US 30-year Treasury', term: '30Y' }),
   I('MOVEINDEX', 'MOVE bond volatility', 'Rates', 'index', '.MOVE', 2, { us: true, allDay: true, aliases: ['BONDVOLATILITY', 'MOVEVOLATILITY'] }),
 
   // Not on MARKETS, but every one opens its own screen from HOME and RATES.
   I('USDCHF', 'USD/CHF', 'Currencies', 'fx', 'CHF=', 4, { markets: false, base: 'USD', quote: 'CHF', aliases: ['USD/CHF', 'FRANC'] }),
   I('USDTHB', 'USD/THB', 'Currencies', 'fx', 'THB=', 2, { markets: false, base: 'USD', quote: 'THB', aliases: ['USD/THB', 'BAHT'] }),
-  I('US2Y', 'US 2Y yield', 'Rates', 'yield', 'US2Y', 3, { markets: false, longName: 'US 2-year Treasury', term: '2Y' }),
-  I('US30Y', 'US 30Y yield', 'Rates', 'yield', 'US30Y', 3, { markets: false, longName: 'US 30-year Treasury', term: '30Y' }),
   // The rest of the Treasury curve (CURVE). In the one shared quote batch, so CURVE and
   // RATES show the same yields with the same time and the same RT or DLY tag.
-  ...[['1M', '1-month'], ['3M', '3-month'], ['6M', '6-month'], ['1Y', '1-year'], ['3Y', '3-year'], ['7Y', '7-year'], ['20Y', '20-year']].map(([t, words]) => I(`US${t}`, `US ${t} yield`, 'Rates', 'yield', `US${t}`, 3, {
+  ...[['1M', '1-month'], ['6M', '6-month'], ['1Y', '1-year'], ['3Y', '3-year'], ['7Y', '7-year'], ['20Y', '20-year']].map(([t, words]) => I(`US${t}`, `US ${t} yield`, 'Rates', 'yield', `US${t}`, 3, {
     markets: false, longName: `US ${words} Treasury`, term: t,
   })),
 
   // Rows on COMMODITIES, BONDS and CRYPTO. Each opens its own screen.
-  I('BRENT', 'Oil (Brent)', 'Commodities', 'future', '@LCO.1', 2, { markets: false, aliases: ['BRENTOIL', 'BRENTCRUDE'] }),
   I('PLATINUM', 'Platinum', 'Commodities', 'future', '@PL.1', 2, { markets: false, aliases: ['XPT', 'XPTUSD'] }),
-  I('WHEAT', 'Wheat', 'Commodities', 'future', '@W.1', 2, { markets: false }),
   I('CORN', 'Corn', 'Commodities', 'future', '@C.1', 2, { markets: false }),
   I('SOYBEANS', 'Soybeans', 'Commodities', 'future', '@S.1', 2, { markets: false, aliases: ['SOYBEAN', 'SOY'] }),
   I('COFFEE', 'Coffee', 'Commodities', 'future', '@KC.1', 2, { markets: false }),
@@ -114,9 +120,6 @@ export const INSTRUMENTS = [
   I('LIVECATTLE', 'Live cattle', 'Commodities', 'future', '@LC.1', 3, { markets: false, aliases: ['CATTLE'] }),
 
   // More indexes, shown on WORLD. Each opens its own screen.
-  I('SOX', 'Semiconductors (SOX)', 'Americas', 'index', '.SOX', 2, { markets: false, us: true, aliases: ['SEMIS', 'SEMICONDUCTORS', 'PHLXSEMI'] }),
-  I('DJTRANS', 'Dow Transports', 'Americas', 'index', '.DJT', 2, { markets: false, us: true, aliases: ['DOWTRANSPORTS', 'TRANSPORTS'] }),
-  I('SPXEW', 'S&P 500 Equal Weight', 'Americas', 'index', '.SPXEW', 2, { markets: false, us: true, aliases: ['EQUALWEIGHT', 'S&P500EQUALWEIGHT'] }),
   I('NYA', 'NYSE Composite', 'Americas', 'index', '.NYA', 2, { markets: false, us: true, aliases: ['NYSECOMPOSITE'] }),
   I('MERVAL', 'Merval', 'Americas', 'index', '.MERV', 2, { markets: false, aliases: ['MERV', 'ARGENTINA'] }),
   I('STOXX600', 'STOXX Europe 600', 'Europe', 'index', '.STOXX', 2, { markets: false, aliases: ['STOXX', 'SXXP', 'EUROPE600'] }),

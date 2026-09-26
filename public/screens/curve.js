@@ -1,7 +1,7 @@
 // CURVE: the US Treasury yield curve, 1 month to 30 years. Today vs 1 month and 1 year ago.
 
 import { esc, fmtNum, dirOf, fmtAsOf, panel, LOADING } from './markets.js';
-import { fmtBp } from './rates.js';
+import { fmtBp } from './markets.js';
 import { mountLines, legend } from './lines.js';
 import { freshTag } from '../freshness.js';
 
@@ -27,7 +27,7 @@ export function curveTicks(count, width) {
 
 const bpCell = (a, b) => {
   const d = Number.isFinite(a) && Number.isFinite(b) ? a - b : NaN;
-  return `<td class="num bp ${Number.isFinite(d) ? dirOf(Math.round(d * 1000)) : 'flat'}">${esc(Number.isFinite(d) ? fmtBp(d) : '--')}</td>`;
+  return `<td class="num bp ${Number.isFinite(d) ? dirOf(Math.round(d * 1000)) : 'flat'}">${esc(Number.isFinite(d) ? fmtBp(d * 100) : '--')}</td>`;
 };
 
 export function render(el, cmd, ctx) {
@@ -67,7 +67,7 @@ export function render(el, cmd, ctx) {
       const s10 = d.tenors.find((t) => t.id === '10Y');
       const s2 = d.tenors.find((t) => t.id === '2Y');
       const spread = s10 && s2 && Number.isFinite(s10.now) && Number.isFinite(s2.now) ? s10.now - s2.now : NaN;
-      const base = Number.isFinite(spread) ? `<span class="dim"><span class="m-hide">10Y MINUS 2Y</span><span class="m-only">10Y−2Y</span></span> <span class="num ${dirOf(Math.round(spread * 1000))}">${esc(fmtBp(spread).replace(/^\+/, ''))}</span>` : '';
+      const base = Number.isFinite(spread) ? `<span class="dim"><span class="m-hide">10Y MINUS 2Y</span><span class="m-only">10Y−2Y</span></span> <span class="num ${dirOf(Math.round(spread * 1000))}">${esc(fmtBp(spread * 100, { level: true }))}</span>` : '';
       // Redraw the chart only when a number moved (the table refreshes every 15 s).
       const key = JSON.stringify(series.map((x) => [x.label, x.points]));
       if (key !== drawn) drawChart(key, ids, series, base);
@@ -77,7 +77,7 @@ export function render(el, cmd, ctx) {
           <th scope="row" class="name">${esc(t.id)}</th>
           <td class="tag">${freshTag(t)}</td>
           <td class="num last">${Number.isFinite(t.now) ? `${fmtNum(t.now, 3)}%` : '--'}</td>
-          <td class="num chg ${Number.isFinite(t.change) ? dirOf(Math.round(t.change * 1000)) : 'flat'}">${esc(Number.isFinite(t.change) ? fmtBp(t.change) : '--')}</td>
+          <td class="num chg ${Number.isFinite(t.change) ? dirOf(Math.round(t.change * 1000)) : 'flat'}">${esc(Number.isFinite(t.change) ? fmtBp(t.change * 100) : '--')}</td>
           <td class="num">${Number.isFinite(t.m1) ? `${fmtNum(t.m1, 2)}%` : '--'}</td>
           ${bpCell(t.now, t.m1)}
           <td class="num time">${Number.isFinite(t.y1) ? `${fmtNum(t.y1, 2)}%` : '--'}</td>
