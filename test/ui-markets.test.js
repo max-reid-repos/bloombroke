@@ -3,6 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { marketsColumns } from '../public/screens/markets.js';
 import { moversTable, moversCompact } from '../public/screens/movers.js';
+import { HOME_MARKETS, homeMarkets } from '../public/screens/home.js';
+import { INSTRUMENTS } from '../public/instruments.js';
 
 const inst = (id, group, extra = {}) => ({ id, name: id, group, last: 1, change: 0.1, changePct: 0.1, decimals: 2, realTime: true, asOf: '2026-09-24T16:00:00Z', ...extra });
 
@@ -31,7 +33,7 @@ test('MOVERS: most active leads with volume; every row opens its ticker', () => 
   assert.doesNotMatch(moversTable(rows), /Volume/);
 });
 
-test('HOME movers panel: five gainers then five losers', () => {
+test('movers compact list: five gainers then five losers', () => {
   const mk = (t, p) => ({ ticker: t, name: t, last: 1, changePct: p });
   const d = { gainers: Array.from({ length: 10 }, (_, i) => mk(`G${i}`, 10 - i)), losers: [mk('L0', -3)] };
   const html = moversCompact(d);
@@ -219,4 +221,25 @@ test('SECTORS: the bar sits in the TODAY cell; leaders by period', async () => {
   const lead = sectorLeaders(rows);
   assert.equal(lead[0].best.id, 'XLK');
   assert.equal(lead[2].best.id, 'XLE');
+});
+
+test('HOME markets: a short list in four groups, % change only', () => {
+  assert.deepEqual(HOME_MARKETS.map((g) => g.name), ['US', 'World', 'Commodities + crypto', 'FX + rates']);
+  const ids = HOME_MARKETS.flatMap((g) => g.ids);
+  assert.deepEqual(ids, ['SPX', 'NDX', 'DJI', 'RUT', 'VIX', 'FTSE', 'DAX', 'N225', 'HSI', 'SHANGHAI',
+    'GOLD', 'WTI', 'COPPER', 'BALTICDRY', 'BTC', 'ETH', 'EURUSD', 'USDJPY', 'GBPUSD', 'DXY', 'US10Y']);
+  // Every one is an instrument the MARKETS screen already shows: no new data source.
+  const onMarkets = new Set(INSTRUMENTS.filter((m) => m.markets !== false).map((m) => m.id));
+  for (const id of ids) assert.ok(onMarkets.has(id), id);
+  // Regrouped in HOME's order, whatever order /api/markets sends; missing ids drop out.
+  const api = [inst('ETH', 'Crypto'), inst('SPX', 'Americas'), inst('CAC40', 'Europe'), inst('US10Y', 'Rates'), inst('NDX', 'Americas')];
+  const rows = homeMarkets(api);
+  assert.deepEqual(rows.map((r) => `${r.group}:${r.id}`), ['US:SPX', 'US:NDX', 'Commodities + crypto:ETH', 'FX + rates:US10Y']);
+  const html = marketsColumns(rows, { chg: false, cls: 'mk-cols h-mk' });
+  assert.equal(html.match(/<table/g).length, 3);
+  assert.doesNotMatch(html, /c-chg|class="num chg/);
+  assert.match(html, /class="num pct/);
+  assert.match(html, /colspan="4"/);
+  assert.match(html, /class="mk-cols h-mk"/);
+  assert.match(html, /title="/, 'RT/DLY tags keep their hover titles');
 });

@@ -16,6 +16,7 @@ import {
   barInfo, alignAsOf, rebase, commonStart, placeEvents, headerStats, fmtVol, whenText, fmtDateBox, parseDateBox,
   timeAt, unitAt, windowDays,
 } from './chart-math.js';
+import { sizeGuard } from './size-guard.js';
 
 // ---- Line chart --------------------------------------------------------------
 
@@ -229,14 +230,25 @@ function intradayLayers(points, g, { refs = {}, multiDay = false, bar = '5M', sh
   return { xlabs, under, over };
 }
 
+// One size guard per chart box, kept across redraws of new data (see size-guard.js).
+const guards = new WeakMap();
+const now = () => (typeof performance === 'object' ? performance.now() : Date.now());
+
 // Draw a chart that fills `host`, redraw on resize, report the hovered point.
 export function mountChart(host, points, opts = {}) {
-  let lastKey = '';
-  function draw() {
-    const w = Math.floor(host.clientWidth);
-    const h = Math.floor(host.clientHeight) || opts.height || 240;
-    if (!w || `${w}x${h}` === lastKey) return;
-    lastKey = `${w}x${h}`;
+  if (!guards.has(host)) guards.set(host, sizeGuard());
+  const guard = guards.get(host);
+  const boxSize = () => ({ w: Math.floor(host.clientWidth), h: Math.floor(host.clientHeight) || opts.height || 240 });
+  function draw(resized = false) {
+    let { w, h } = boxSize();
+    if (!w) return;
+    if (resized) {
+      const s = guard.next(w, h, now());
+      if (!s) return;
+      ({ w, h } = s);
+    } else {
+      guard.drawn(w, h, now());
+    }
     host.innerHTML = chartSvg(points, { ...opts, width: w, height: h });
     const svg = host.querySelector('svg');
     if (!svg) return;
@@ -288,7 +300,7 @@ export function mountChart(host, points, opts = {}) {
   // The chart follows its box (a panel that stretches to the window): redraw once the
   // size settles, not on every frame of a resize.
   let timer = 0;
-  const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { clearTimeout(timer); timer = setTimeout(draw, 80); }) : null;
+  const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { clearTimeout(timer); timer = setTimeout(() => draw(true), 80); }) : null;
   ro?.observe(host);
   return () => { clearTimeout(timer); ro?.disconnect(); };
 }
@@ -982,14 +994,18 @@ export function rangeChart(root, ctx, opts) {
 
   // A panel too short for the full controls drops them (and the volume) before the plot.
   let tightTimer = 0;
+  let chromeFull = 150;
   const ro = typeof ResizeObserver === 'function' && !compactOpt ? new ResizeObserver(() => {
     clearTimeout(tightTimer);
     tightTimer = setTimeout(() => {
-      // Hysteresis (tight under 290px, roomy again over 320px), so the switch cannot flip
-      // back and forth on its own change.
+      // By the plot the full controls would leave: tight under 180px of plot, roomy again
+      // over 220px (hysteresis, so the switch cannot flip on its own change). The full
+      // controls' height is measured while they are shown (they wrap on narrow boxes).
       const h = root.clientHeight;
       const was = root.classList.contains('is-tight');
-      const tight = h > 0 && (was ? h < 320 : h < 290);
+      if (!was && host.clientHeight > 0) chromeFull = Math.max(0, h - host.clientHeight);
+      const plot = h - chromeFull;
+      const tight = h > 0 && (was ? plot < 220 : plot < 180);
       if (tight === was) return;
       root.classList.toggle('is-tight', tight);
       repaintBar();

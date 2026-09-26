@@ -94,14 +94,14 @@ export function nameCell(name, cmd, extra = '') {
     : `<th scope="row" class="name">${esc(name)}${extra}</th>`;
 }
 
-function marketRow(m, compact) {
+function marketRow(m, compact, chg = true) {
   const d = dirOf(m.change);
   const cmd = cmdForInstrument(m.id);
   return `<tr${rowAttrs(cmd)}>
       ${nameCell(m.name, cmd)}
       <td class="tag">${freshTag(m)}</td>
       <td class="num last${tick(`mk:${m.id}:last`, m.last)}">${fmtNum(m.last, m.decimals)}</td>
-      <td class="num chg ${d}">${fmtSigned(m.change, m.decimals)}</td>
+      ${chg ? `<td class="num chg ${d}">${fmtSigned(m.change, m.decimals)}</td>` : ''}
       <td class="num pct ${d}">${fmtPct(m.changePct)}</td>
       ${compact ? '' : `<td class="num time dim">${esc(fmtAsOf(m.asOf))}</td>`}
     </tr>`;
@@ -126,16 +126,18 @@ export function marketsTable(instruments, { compact = false } = {}) {
 
 // HOME and MARKETS: one small table per group, flowing into columns on wide screens.
 // Every group table uses the same fixed column widths, so the RT/DLY tags and the
-// numbers line up from one group to the next. time adds the last-trade time column.
-export function marketsColumns(instruments, { time = false } = {}) {
+// numbers line up from one group to the next. time adds the last-trade time column;
+// chg: false leaves out the change column (HOME shows % only), cls names the wrapper.
+export function marketsColumns(instruments, { time = false, chg = true, cls = '' } = {}) {
   const groups = [];
   for (const m of instruments) {
     const g = groups[groups.length - 1];
     if (g && g.name === m.group) g.rows.push(m); else groups.push({ name: m.group, rows: [m] });
   }
-  const cols = `<colgroup><col><col class="c-tag"><col class="c-last"><col class="c-chg"><col class="c-pct">${time ? '<col class="c-time">' : ''}</colgroup>`;
-  return `<div class="mk-cols${time ? ' mk-cols-time' : ''}">${groups.map((g) => `<table class="grid-table mk-group">
-    ${cols}<tbody><tr class="group-row"><th colspan="${time ? 6 : 5}" scope="rowgroup">${esc(g.name)}</th></tr>${g.rows.map((m) => marketRow(m, !time)).join('')}</tbody>
+  const cols = `<colgroup><col><col class="c-tag"><col class="c-last">${chg ? '<col class="c-chg">' : ''}<col class="c-pct">${time ? '<col class="c-time">' : ''}</colgroup>`;
+  const span = 4 + (chg ? 1 : 0) + (time ? 1 : 0);
+  return `<div class="${cls || `mk-cols${time ? ' mk-cols-time' : ''}`}">${groups.map((g) => `<table class="grid-table mk-group">
+    ${cols}<tbody><tr class="group-row"><th colspan="${span}" scope="rowgroup">${esc(g.name)}</th></tr>${g.rows.map((m) => marketRow(m, !time, chg)).join('')}</tbody>
   </table>`).join('')}</div>`;
 }
 

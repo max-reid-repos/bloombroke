@@ -53,6 +53,10 @@ test('canal: Hormuz 7-day average against the 1-year average, plus the latest da
   assert.throws(() => canal.parseDaily({ error: { message: 'Invalid query' } }), /Invalid query/);
 });
 
+test('pizza: the data URL carries the same 30-second cache-buster as the site', () => {
+  assert.equal(pizza.dataUrl(Date.parse('2026-09-26T05:51:31.535Z')), 'https://www.pizzint.watch/api/dashboard-data?_t=1790401890000');
+});
+
 test('pizza: an empty feed is NO DATA, a full one parses', () => {
   assert.throws(() => pizza.parse(fxj('pizza-empty.json')), (e) => e.code === 'no_data');
   const p = pizza.parse({

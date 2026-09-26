@@ -86,7 +86,7 @@ export function newsList(items) {
     return `<li class="news-row${filing && !n.ticker ? ' is-dim' : ''}">
       ${newsTimeHtml(n.time)}
       <span class="news-src" title="${esc(n.source || '')}">${esc(src)}</span>
-      ${filing ? filingCell(n, href) : `<a class="news-title" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(n.title)}</a>`}
+      ${filing ? filingCell(n, href) : `<a class="news-title" href="${esc(href)}" target="_blank" rel="noopener noreferrer" title="${esc(n.title)}">${esc(n.title)}</a>`}
     </li>`;
   }).join('');
   return `<ol class="news">${rows}</ol>`;

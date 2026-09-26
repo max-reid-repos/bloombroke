@@ -239,10 +239,10 @@ test('SHARE is in the key bar, right side, before MENU', () => {
 
 test('panel numbers: the panel labelled "n)" is found, other screens have none', () => {
   const fakePanel = (text) => ({ querySelector: (sel) => (sel === '.panel-head > .panel-label' ? { textContent: text } : null) });
-  const panels = ['1) MARKETS', '2) S&P 500', '3) MOVERS', '4) NEWS'].map(fakePanel);
+  const panels = ['1) MARKETS', '2) S&P 500', '3) NEWS'].map(fakePanel);
   const root = { querySelectorAll: (sel) => (sel === '.panel' ? panels : []) };
-  for (const n of [1, 2, 3, 4]) assert.equal(panelByNumber(root, String(n)), panels[n - 1]);
-  assert.equal(panelByNumber(root, '5'), null);
+  for (const n of [1, 2, 3]) assert.equal(panelByNumber(root, String(n)), panels[n - 1]);
+  assert.equal(panelByNumber(root, '4'), null);
   assert.equal(panelByNumber({ querySelectorAll: () => [fakePanel('10) X')] }, '1'), null, '10) is not 1)');
 });
 
@@ -250,10 +250,11 @@ test('panel numbers: a number and Enter opens a panel; digits typed as a command
   assert.equal(panelNumberInput('3'), 3, '3 Enter on HOME');
   assert.equal(panelNumberInput('12'), 12, '12 Enter (a screen with 12 panels)');
   for (const c of ['3988.HK', '1810.HK', 'CPI 100 2000', '0', '123', '3 5', 'AAPL', '']) assert.equal(panelNumberInput(c), null, c);
-  // 3 Enter on HOME finds MOVERS.
+  // 3 Enter on HOME finds NEWS; 2 Enter the S&P 500 chart.
   const fakePanel = (text) => ({ querySelector: () => ({ textContent: text }) });
-  const home = ['1) MARKETS', '2) S&P 500', '3) MOVERS', '4) NEWS'].map(fakePanel);
+  const home = ['1) MARKETS', '2) S&P 500', '3) NEWS'].map(fakePanel);
   assert.equal(panelByNumber({ querySelectorAll: () => home }, String(panelNumberInput('3'))), home[2]);
+  assert.equal(panelByNumber({ querySelectorAll: () => home }, String(panelNumberInput('2'))), home[1]);
   // 3988.HK typed on HOME or MARKETS: no digit is taken on keydown off a stock screen, and
   // Enter runs it as a command (the resolver), not as panel 3.
   const src = readFileSync('public/app.js', 'utf8');

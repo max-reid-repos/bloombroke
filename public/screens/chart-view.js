@@ -15,6 +15,7 @@ import { esc } from './markets.js';
 import { niceTicks, nearestIndex } from './chart.js';
 import { lineIndexes, candleBuckets, zoomWindow, axisLabels, measure as measureMath, rebase, commonStart } from './chart-math.js';
 import { labelWidth } from './intraday.js';
+import { sizeGuard } from './size-guard.js';
 
 const PAD_R = 64;
 const PAD_T = 8;
@@ -39,7 +40,6 @@ export function createChartView(host, cb = {}) {
   let settleTimer = 0;
   let frame = 0;
   let pressTimer = 0;
-  let lastSize = '';
   let lastClick = null;
 
   host.tabIndex = 0;
@@ -58,7 +58,7 @@ export function createChartView(host, cb = {}) {
       meas = { ia: at(m.measureTimes[0]), ib: at(m.measureTimes[1]) };
     }
     hoverI = null;
-    draw(true);
+    draw();
   }
 
   function windowNow() { return win ? [...win] : null; }
@@ -69,14 +69,17 @@ export function createChartView(host, cb = {}) {
 
   // ---- Drawing ----------------------------------------------------------------------
 
-  function draw(force = false) {
-    if (!model) return;
+  // Draw at the box's size now (new data, zoom, style), telling the guard.
+  function draw() {
     const w = Math.round(host.clientWidth);
     const h = Math.round(host.clientHeight);
     if (!w || !h) return;
-    const key = `${w}x${h}`;
-    if (!force && key === lastSize) return;
-    lastSize = key;
+    guard.drawn(w, h, tnow());
+    drawAt(w, h);
+  }
+
+  function drawAt(w, h) {
+    if (!model) return;
     const out = svgFor(model, win, w, h);
     geo = out.geo;
     host.innerHTML = out.svg;
@@ -85,7 +88,7 @@ export function createChartView(host, cb = {}) {
 
   function requestDraw() {
     if (frame) return;
-    frame = requestAnimationFrame(() => { frame = 0; draw(true); });
+    frame = requestAnimationFrame(() => { frame = 0; draw(); });
   }
 
   // The overlay (crosshair and measure) on the drawn chart, without a redraw.
@@ -356,20 +359,16 @@ export function createChartView(host, cb = {}) {
   host.addEventListener('pointerout', onFlagOut);
 
   // Redraw once the box has settled after a resize, not on every frame of it. The box
-  // gets its size from the layout only (the SVG is absolutely placed inside it), so a
-  // redraw never resizes it. Still, a size that flips back and forth (A, B, A, B: a
-  // scrollbar that comes and goes) is not followed: the second flip is ignored.
+  // gets its size from the layout only (the SVG covers it, see style.css), and resizes go
+  // through the shared size guard (rounded sizes, no redraw at a drawn size, an A-B-A
+  // flip settles on the larger size), so a scrollbar that comes and goes cannot loop.
   let roTimer = 0;
-  const seen = [];
+  const guard = sizeGuard();
+  const tnow = () => (typeof performance === 'object' ? performance.now() : Date.now());
   const onResize = () => {
-    const key = `${Math.round(host.clientWidth)}x${Math.round(host.clientHeight)}`;
-    if (key === lastSize) return;
-    const now = Date.now();
-    const [prev, prev2] = [seen[seen.length - 1], seen[seen.length - 2]];
-    seen.push({ key, t: now });
-    if (seen.length > 4) seen.shift();
-    if (prev2 && prev2.key === key && prev && prev.key === lastSize && now - prev2.t < 2000) return;
-    draw(false);
+    const s = guard.next(host.clientWidth, host.clientHeight, tnow());
+    if (!s) return;
+    drawAt(s.w, s.h);
   };
   const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { clearTimeout(roTimer); roTimer = setTimeout(onResize, 80); }) : null;
   ro?.observe(host);
@@ -378,9 +377,9 @@ export function createChartView(host, cb = {}) {
     set,
     window: windowNow,
     measureTimes,
-    setWindow(w) { win = [...w]; draw(true); },
+    setWindow(w) { win = [...w]; draw(); },
     clearMeasure,
-    redraw: () => draw(true),
+    redraw: () => draw(),
     destroy() {
       clearTimeout(settleTimer);
       clearTimeout(roTimer);

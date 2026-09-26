@@ -5,7 +5,7 @@ A market terminal for normal people. Type a plain English command, press Enter, 
 ## Commands
 
 ```
-> HOME                         markets, S&P 500, currencies and news on one screen
+> HOME                         markets, S&P 500 and news on one screen
 > MARKETS                      world markets at a glance
 > RATES                        Fed rate, Treasury yields, mortgage rates
 > NEWS                         headlines that move markets

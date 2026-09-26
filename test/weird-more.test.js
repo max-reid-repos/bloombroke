@@ -237,6 +237,58 @@ test('buzz: quarters, hit totals and the headline quarter', () => {
   assert.throws(() => buzz.build([{ ...qs[0], ai: null }], NOW), noData);
 });
 
+test('buzz: the search URL uses %20, never an end date past today', () => {
+  const today = Date.parse('2026-09-26T04:30:00Z');
+  assert.equal(buzz.url('artificial intelligence', '2026-07-01', '2026-09-30', today),
+    'https://efts.sec.gov/LATEST/search-index?q=%22artificial%20intelligence%22&forms=10-Q&dateRange=custom&startdt=2026-07-01&enddt=2026-09-26');
+  // A past quarter keeps its own end date.
+  const past = new URL(buzz.url('tariff', '2026-04-01', '2026-06-30', today));
+  assert.equal(past.searchParams.get('enddt'), '2026-06-30');
+  assert.equal(past.searchParams.get('q'), '"tariff"');
+  // On the last day of a quarter the end date is that day.
+  assert.match(buzz.url('recession', '2026-07-01', '2026-09-30', Date.parse('2026-09-30T23:00:00Z')), /enddt=2026-09-30$/);
+  assert.doesNotMatch(buzz.url('artificial intelligence', '2026-07-01', '2026-09-30', today), /\+/);
+});
+
+test('buzz: a search that fails twice shows as --, the rest still load', async () => {
+  const calls = new Map();
+  const get = {
+    json: async (u) => {
+      calls.set(u, (calls.get(u) || 0) + 1);
+      const q = new URL(u).searchParams;
+      if (q.get('startdt') === '2026-01-01' && q.get('q') === '"recession"') throw new Error('efts.sec.gov HTTP 500');
+      if (q.get('startdt') === '2025-07-01' && q.get('q') === '"tariff"' && calls.get(u) === 1) throw new Error('efts.sec.gov HTTP 500');
+      return { hits: { total: { value: q.get('q') === '"artificial intelligence"' ? 1743 : 900, relation: 'eq' } } };
+    },
+  };
+  const errs = [];
+  const orig = console.error;
+  console.error = (...a) => errs.push(a.join(' '));
+  let g;
+  try {
+    g = await buzz.load(get, { now: () => NOW, retryWait: 0 });
+  } finally {
+    console.error = orig;
+  }
+  assert.equal(g.headline, '1,743 AI FILINGS');
+  const q1 = g.rows.find((r) => r.key === '2026-Q1');
+  assert.equal(q1.recession, null, 'the failed search is null (-- on screen)');
+  assert.equal(q1.ai, 1743);
+  assert.equal(g.rows.find((r) => r.key === '2025-Q3').tariff, 900, 'a 500 is retried once');
+  assert.equal(g.rows.length, 8);
+  assert.match(errs.join('\n'), /1 of 24 searches failed/);
+  // Every search failing is an error, so the last good value is served.
+  await assert.rejects(buzz.load({ json: async () => { throw new Error('efts.sec.gov HTTP 500'); } }, { now: () => NOW, retryWait: 0 }), /every search failed/);
+  // No AI count for the headline quarter: the newest earlier one with a count.
+  const qs = buzz.quarters(NOW);
+  const rows = qs.map((q) => ({ ...q, ai: { count: 5 }, tariff: { count: 1 }, recession: null }));
+  rows[7].ai = null;
+  rows[6].ai = null;
+  const hg = buzz.build(rows, NOW);
+  assert.equal(hg.quarter, 'Q1 2026');
+  assert.deepEqual(hg.spark.slice(-3), [5, null, null]);
+});
+
 test('beige: the edition list, article text only, and whole-word counts', () => {
   const eds = beige.parseEditions(fx('beige-index.html'), NOW);
   assert.deepEqual(eds.slice(0, 8).map((e) => e.edition), ['202608', '202607', '202605', '202604', '202602', '202601', '202511', '202510']);
