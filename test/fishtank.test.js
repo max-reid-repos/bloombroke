@@ -2,8 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  pctToDepth, depthRange, capToSize, fishColor, pickExtremes, tankHeader, sizeLimits, seeded,
+  pctToDepth, depthRange, capToSize, fishColor, pickExtremes, tankHeader, sizeLimits, seeded, makeRunner, render,
 } from '../public/screens/fishtank.js';
+import { heatmapStocks, fishtankStocks } from '../data/sp100.js';
 import { parseCommand, FKEYS } from '../public/app.js';
 import { findCommand, byCategory } from '../public/registry.js';
 import { WEIRD_SCREENS } from '../public/commands-weird.js';
@@ -108,5 +109,124 @@ test('fishtank: copy rules, no banned brand word, no em dashes', () => {
     const s = readFileSync(f, 'utf8');
     assert.doesNotMatch(s, new RegExp(['bloom', 'berg'].join(''), 'i'), f);
     assert.doesNotMatch(s, /\u2014/, `${f}: em dash`);
+  }
+});
+
+test('fishtank data: every member stays, a missing cap is null; HEATMAP still drops it', () => {
+  const rows = [
+    { ticker: 'AAPL', name: 'Apple', sector: 'TECH', last: 200, changePct: 1.2, marketCap: 3e12, volume: 1 },
+    { ticker: 'XYZ', name: 'No Cap', sector: 'FIN', last: 10, changePct: -0.5, marketCap: null, volume: 1 },
+    { ticker: 'ZER', name: 'Zero Cap', sector: 'FIN', last: 10, changePct: 0, marketCap: 0, volume: 1 },
+  ];
+  assert.deepEqual(fishtankStocks(rows), [
+    { ticker: 'AAPL', name: 'Apple', changePct: 1.2, marketCap: 3e12 },
+    { ticker: 'XYZ', name: 'No Cap', changePct: -0.5, marketCap: null },
+    { ticker: 'ZER', name: 'Zero Cap', changePct: 0, marketCap: null },
+  ]);
+  assert.deepEqual(heatmapStocks(rows), [{ ticker: 'AAPL', name: 'Apple', sector: 'TECH', last: 200, changePct: 1.2, marketCap: 3e12 }]);
+  const lim = { max: 80, min: 10, fallback: 30 };
+  assert.equal(capToSize(fishtankStocks(rows)[1].marketCap, 3e12, lim), 30, 'the no-cap fish gets the plain size');
+});
+
+// A fake requestAnimationFrame: callbacks wait in a queue until flush(ts).
+function fakeRaf() {
+  const q = new Map();
+  let n = 0;
+  return {
+    q,
+    raf: (cb) => { n += 1; q.set(n, cb); return n; },
+    caf: (id) => { q.delete(id); },
+    flush(ts) { const cbs = [...q.values()]; q.clear(); for (const cb of cbs) cb(ts); },
+  };
+}
+
+test('fishtank runner: holds stop the loop, releases restart it, at most about 60fps', () => {
+  const r = fakeRaf();
+  const drawn = [];
+  const run = makeRunner((t) => drawn.push(t), { raf: r.raf, caf: r.caf, frameMs: 15 });
+  run.hold('data');
+  assert.equal(r.q.size, 0, 'held: nothing scheduled');
+  run.hold('data', false);
+  assert.equal(run.running, true);
+  for (let i = 0; i <= 12; i += 1) r.flush(i * 8.33); // a 120 Hz display, 100 ms
+  assert.ok(drawn.length >= 6 && drawn.length <= 7, `about 60fps: ${drawn.length} frames in 100 ms`);
+  run.hold('offscreen');
+  assert.equal(run.running, false);
+  assert.equal(r.q.size, 0, 'the pending frame is cancelled');
+  run.hold('hidden');
+  run.hold('offscreen', false);
+  assert.equal(r.q.size, 0, 'still hidden');
+  run.hold('hidden', false);
+  assert.equal(r.q.size, 1, 'running again');
+  run.destroy();
+  assert.equal(r.q.size, 0);
+  run.hold('hidden', false);
+  run.hold('offscreen', false);
+  assert.equal(r.q.size, 0, 'after leaving, nothing restarts it');
+});
+
+test('fishtank: leaving the screen cancels the frame loop, observers and listeners', async () => {
+  const saved = {};
+  for (const k of ['window', 'document', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'ResizeObserver', 'IntersectionObserver', 'setTimeout', 'setInterval']) saved[k] = globalThis[k];
+  const r = fakeRaf();
+  const listeners = new Set(); // live listeners on document and media queries
+  const on = () => ({ addEventListener: (t, f) => listeners.add(f), removeEventListener: (t, f) => listeners.delete(f) });
+  const g2d = new Proxy({}, {
+    get: (o, k) => (k in o ? o[k] : k === 'createLinearGradient' ? () => ({ addColorStop() {} }) : k === 'measureText' ? () => ({ width: 20 }) : () => {}),
+    set: (o, k, v) => { o[k] = v; return true; },
+  });
+  const el = (extra = {}) => ({
+    innerHTML: '', style: {}, hidden: false, clientWidth: 800, clientHeight: 500, offsetWidth: 90, offsetHeight: 20,
+    setAttribute() {}, addEventListener() {}, removeEventListener() {}, getContext: () => g2d, ...extra,
+  });
+  const canvas = el(); const tip = el(); const sr = el();
+  const host = el({ querySelector: (sel) => ({ canvas, '.ft-tip': tip, '.ft-sr': sr }[sel]) });
+  const meta = el();
+  const root = el({ querySelector: (sel) => ({ '#ft-host': host, '#ft-meta': meta }[sel]) });
+  const observers = [];
+  class Obs { constructor(cb) { this.cb = cb; this.on = false; observers.push(this); } observe() { this.on = true; } disconnect() { this.on = false; } }
+  let timers = 0;
+  globalThis.setTimeout = (...a) => { timers += 1; return saved.setTimeout(...a); };
+  globalThis.setInterval = (...a) => { timers += 1; return saved.setInterval(...a); };
+  globalThis.window = { devicePixelRatio: 1, matchMedia: () => ({ matches: false, ...on() }) };
+  globalThis.document = { hidden: false, createElement: () => el(), ...on() };
+  globalThis.getComputedStyle = () => ({ fontFamily: 'monospace' });
+  globalThis.requestAnimationFrame = r.raf;
+  globalThis.cancelAnimationFrame = r.caf;
+  globalThis.ResizeObserver = Obs;
+  globalThis.IntersectionObserver = Obs;
+  try {
+    const cleanups = [];
+    const live = [];
+    const data = { stocks: [{ ticker: 'AAPL', name: 'Apple', changePct: 1, marketCap: 3e12 }, { ticker: 'PFE', name: 'Pfizer', changePct: -1, marketCap: null }], updated: '2026-09-25T18:32:00Z', stale: false };
+    const ctx = {
+      fetchJSON: async () => data, signal: null, run() {}, updated() {}, status() {},
+      onCleanup: (f) => cleanups.push(f), live: (f, ms) => live.push([f, ms]),
+    };
+    render(root, { name: 'FISHTANK' }, ctx);
+    await new Promise((res) => { setImmediate(res); });
+    assert.deepEqual(live.map(([, ms]) => ms), [60_000], 'the refresh goes through ctx.live (the app stops it on leave)');
+    assert.equal(timers, 0, 'no timers of its own');
+    assert.equal(r.q.size, 0, 'off screen until the observer says otherwise');
+    const io = observers[1]; // [0] is the ResizeObserver, [1] the IntersectionObserver
+    io.cb([{ isIntersecting: true }]);
+    assert.equal(r.q.size, 1, 'on screen: the loop runs');
+    r.flush(1000); r.flush(1017);
+    assert.equal(r.q.size, 1);
+    io.cb([{ isIntersecting: false }]);
+    assert.equal(r.q.size, 0, 'scrolled away: no frames');
+    io.cb([{ isIntersecting: true }]);
+    assert.equal(r.q.size, 1);
+    assert.ok(listeners.size >= 3, 'listening while on screen: visibility, motion, pixel ratio');
+    for (const f of cleanups) f();
+    assert.equal(r.q.size, 0, 'the pending frame is cancelled');
+    assert.ok(observers.every((o) => !o.on), 'observers disconnected');
+    assert.equal(listeners.size, 0, 'document and media listeners removed');
+    io.cb([{ isIntersecting: true }]);
+    await live[0][0]();
+    assert.equal(r.q.size, 0, 'a late callback or refresh never restarts it');
+    assert.equal(timers, 0);
+  } finally {
+    for (const [k, v] of Object.entries(saved)) globalThis[k] = v;
   }
 });

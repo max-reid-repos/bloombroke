@@ -1445,10 +1445,22 @@ a.ch-flag { cursor: pointer; }
 }
 .ft-tip b { color: var(--text); font-weight: 600; }
 .ft-sr { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; overflow: hidden; clip: rect(0 0 0 0); }
+.ft-sr:focus-within {
+  width: auto; height: auto; max-height: calc(100% - 32px); max-width: calc(100% - 16px); left: 8px; top: 24px; z-index: 2;
+  overflow: auto; clip: auto; list-style: none; padding: 4px 0;
+  background: var(--panel-2); border: 1px solid var(--rule-strong);
+}
+.ft-sr:focus-within a { display: block; padding: 0 8px; line-height: 20px; white-space: nowrap; color: var(--text-2); }
+.ft-sr:focus-within a:focus { color: var(--ink); background: var(--accent); outline: none; }
 @media (min-width: 1100px) {
   html:not(.is-embed) .view > .panel .panel-body:has(> .ft-host) { display: flex; flex-direction: column; overflow: hidden; scrollbar-gutter: auto; }
   html:not(.is-embed) .view > .panel .panel-body > .ft-host { flex: 1 1 0; height: auto; min-height: 200px; }
 }
 .is-embed .ft-host { height: calc(100vh - 28px); min-height: 160px; }
-@media (max-width: 639px) { .ft-idx { display: none; } }
+.ft-short { display: none; }
+@media (max-width: 639px) {
+  .ft-idx, .ft-upd, .ft-sep, .ft-long { display: none; }
+  .ft-key { display: block; }
+  .ft-short { display: inline; }
+}
 /* --- end FISHTANK -------------------------------------------------------------- */

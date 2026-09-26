@@ -1,7 +1,7 @@
 // FISHTANK: the S&P 100 as fish in a tank, drawn on one canvas. One fish per stock:
 // size from market cap, colour and depth from today's % change (winners swim near the
 // surface, losers near the floor). Hover a fish for its name, click it to open it.
-// Data: the same S&P 100 batch as HEATMAP (/api/heatmap), refreshed every 60s.
+// Data: the same S&P 100 batch as HEATMAP, every member (/api/fishtank), every 60s.
 
 import { esc, q, fmtPct, nyTime, panel, LOADING } from './markets.js';
 import { sizeGuard } from './size-guard.js';
@@ -89,6 +89,35 @@ export function sizeLimits(w, h) {
   return { max, min: Math.max(9, max * 0.16), fallback: max * 0.4 };
 }
 
+// The animation loop. It draws at most about 60 times a second, and only while nothing
+// holds it: 'data' (no batch yet), 'hidden' (the tab), 'offscreen' (a DESK panel scrolled
+// away), 'reduced' (prefers-reduced-motion). destroy() holds it for good.
+export function makeRunner(frame, {
+  raf = (cb) => requestAnimationFrame(cb), caf = (id) => cancelAnimationFrame(id), frameMs = FRAME_MS, onStart,
+} = {}) {
+  const holds = new Set();
+  let id = 0; let on = false; let lastDraw = -Infinity;
+  function loop(now) {
+    id = raf(loop);
+    if (now - lastDraw < frameMs) return;
+    lastDraw = now;
+    frame(now);
+  }
+  function sync() {
+    const go = holds.size === 0;
+    if (go && !on) { on = true; lastDraw = -Infinity; onStart?.(); id = raf(loop); } else if (!go && on) { on = false; caf(id); id = 0; }
+  }
+  return {
+    hold(reason, yes = true) {
+      if (holds.has('left')) return;
+      if (yes) holds.add(reason); else holds.delete(reason);
+      sync();
+    },
+    get running() { return on; },
+    destroy() { holds.add('left'); sync(); },
+  };
+}
+
 function makeTank(host, canvas, tip, { onOpen, reduced }) {
   const g = canvas.getContext('2d');
   const font = (getComputedStyle(host).fontFamily || 'monospace');
@@ -100,10 +129,11 @@ function makeTank(host, canvas, tip, { onOpen, reduced }) {
   let weeds = [];
   let labels = { winner: null, loser: null };
   let range = 0; // the % change at the surface (and, negative, at the floor)
-  let raf = 0; let last = 0; let lastDraw = 0; let clock = 0;
+  let last = 0; let clock = 0;
   let pointer = null; // { x, y } over the canvas
   let hover = null;
-  let running = false;
+  const runner = makeRunner((now) => frame(now), { onStart: () => { last = 0; } });
+  runner.hold('data'); // nothing to draw until the first batch
 
   const floorY = () => H - FLOOR;
   const band = () => ({ top: SURFACE + 14, bot: floorY() - 12 });
@@ -236,7 +266,9 @@ function makeTank(host, canvas, tip, { onOpen, reduced }) {
     const ex = pickExtremes(stocks);
     labels = { winner: ex.winner?.ticker || null, loser: ex.loser?.ticker || null };
     applySize(lim, maxCap);
-    if (!running) frame(performance.now(), true);
+    if (hover && byTicker.get(hover.s.ticker) !== hover) setHover(null);
+    runner.hold('data', false);
+    if (!runner.running) frame(performance.now(), true);
   }
 
   function applySize(lim = sizeLimits(W, H), maxCap = fish.reduce((m, f) => Math.max(m, f.cap > 0 ? f.cap : 0), 0)) {
@@ -380,21 +412,22 @@ function makeTank(host, canvas, tip, { onOpen, reduced }) {
     return null;
   }
 
-  let tipFor = null; let tipW = 0; let tipH = 0;
+  // The readout: filled and measured here, on a pointer event, never in frame().
+  let tipW = 0; let tipH = 0;
+  function setHover(f) {
+    if (f === hover) return;
+    hover = f;
+    if (!f) { tip.hidden = true; canvas.style.cursor = ''; return; }
+    const s = f.s;
+    const dir = s.changePct > 0 ? 'up' : s.changePct < 0 ? 'down' : 'flat';
+    tip.innerHTML = `<b>${esc(s.ticker)}</b> ${esc(s.name)} <span class="${dir}">${esc(fmtPct(s.changePct))}</span>`;
+    tip.hidden = false;
+    tipW = tip.offsetWidth; tipH = tip.offsetHeight;
+    canvas.style.cursor = 'pointer';
+  }
+  // Keep the readout by its fish: writes only.
   function placeTip() {
-    if (!hover) {
-      if (tipFor) { tip.hidden = true; tipFor = null; canvas.style.cursor = ''; }
-      return;
-    }
-    if (tipFor !== hover) {
-      tipFor = hover;
-      const s = hover.s;
-      const dir = s.changePct > 0 ? 'up' : s.changePct < 0 ? 'down' : 'flat';
-      tip.innerHTML = `<b>${esc(s.ticker)}</b> ${esc(s.name)} <span class="${dir}">${esc(fmtPct(s.changePct))}</span>`;
-      tip.hidden = false;
-      tipW = tip.offsetWidth; tipH = tip.offsetHeight; // once per new fish, not per frame
-      canvas.style.cursor = 'pointer';
-    }
+    if (!hover) return;
     const x = clamp(hover.x - tipW / 2, 4, Math.max(4, W - tipW - 4));
     const upper = hover.bobY - hover.len * 0.3 - tipH - 8;
     const y = upper > 2 ? upper : hover.bobY + hover.len * 0.3 + 8;
@@ -414,7 +447,6 @@ function makeTank(host, canvas, tip, { onOpen, reduced }) {
       if (dt) step(f, dt);
       f.bobY = f.y + (reduced() ? 0 : Math.sin(t * 0.7 + f.ph) * 2.5);
     }
-    if (pointer) hover = hitTest(pointer.x, pointer.y);
     for (const f of fish) drawFish(f, t, f === hover);
     drawBubbles(t, dt);
     for (const kind of ['winner', 'loser']) {
@@ -424,53 +456,66 @@ function makeTank(host, canvas, tip, { onOpen, reduced }) {
     placeTip();
   }
 
-  function loop(now) {
-    raf = requestAnimationFrame(loop);
-    if (now - lastDraw < FRAME_MS) return;
-    lastDraw = now;
-    frame(now);
+  // A new screen resolution (the window moved to another display, or a zoom): redraw
+  // the canvas sharp at the new pixel ratio. The query is re-armed for the next change.
+  let dprQuery = null;
+  function watchDpr() {
+    dprQuery?.removeEventListener?.('change', onDpr);
+    dprQuery = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`) || null;
+    dprQuery?.addEventListener?.('change', onDpr);
   }
-
-  function start() {
-    if (running || reduced() || document.hidden) return;
-    running = true;
-    last = 0;
-    raf = requestAnimationFrame(loop);
+  function onDpr() {
+    watchDpr();
+    if (W && H) resize(W, H);
   }
-  function stop() {
-    running = false;
-    cancelAnimationFrame(raf);
-  }
+  watchDpr();
 
   canvas.addEventListener('pointermove', (e) => {
     pointer = { x: e.offsetX, y: e.offsetY };
-    if (!running) frame(performance.now(), true);
+    setHover(hitTest(pointer.x, pointer.y));
+    if (!runner.running) frame(performance.now(), true);
   });
   canvas.addEventListener('pointerleave', () => {
-    pointer = null; hover = null;
-    if (!running) frame(performance.now(), true);
+    pointer = null;
+    setHover(null);
+    if (!runner.running) frame(performance.now(), true);
   });
   canvas.addEventListener('click', (e) => {
     const f = hitTest(e.offsetX, e.offsetY);
     if (f) onOpen(f.s.ticker);
   });
 
-  return { setStocks, resize, start, stop, redraw: () => frame(performance.now(), true), get size() { return { W, H }; } };
+  return {
+    setStocks,
+    resize,
+    hold: (reason, on) => runner.hold(reason, on),
+    get running() { return runner.running; },
+    redraw: () => frame(performance.now(), true),
+    get size() { return { W, H }; },
+    destroy() {
+      runner.destroy();
+      dprQuery?.removeEventListener?.('change', onDpr);
+    },
+  };
 }
 
 export function render(el, cmd, ctx) {
-  el.innerHTML = panel('1', 'Fishtank', `<div class="ft-host" id="ft-host">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'ft-meta', bodyCls: 'flush' })
-    + '<p class="footnote ft-foot">One fish per S&amp;P 100 stock. Size: market cap. Depth and colour: today\'s % change. Not advice.</p>';
+  el.innerHTML = panel('1', 'Fishtank', `<div class="ft-host" id="ft-host">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'ft-meta', bodyCls: 'flush' });
   const host = el.querySelector('#ft-host');
   const meta = el.querySelector('#ft-meta');
   const motion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   const reduced = () => Boolean(motion?.matches);
   let tank = null;
   let stocks = null;
+  let left = false;
+  // What holds the animation, besides data: kept here so a tank made later starts right.
+  const holds = { hidden: document.hidden, offscreen: typeof IntersectionObserver === 'function', reduced: reduced() };
+  const applyHolds = () => { if (tank) for (const [k, v] of Object.entries(holds)) tank.hold(k, v); };
 
   function mount() {
-    host.innerHTML = '<canvas class="ft-canvas" role="img" aria-label="The S&amp;P 100 as fish"></canvas><div class="ft-tip" hidden></div><ul class="ft-sr"></ul>';
+    host.innerHTML = '<canvas class="ft-canvas" role="img" aria-label="The S&amp;P 100 as fish"></canvas><div class="ft-tip" hidden></div><ul class="ft-sr" aria-label="Every fish"></ul>';
     tank = makeTank(host, host.querySelector('canvas'), host.querySelector('.ft-tip'), { onOpen: (t) => ctx.run(t), reduced });
+    applyHolds();
   }
 
   // Size: the canvas sits absolutely inside the box, so it never changes the box; the
@@ -485,36 +530,43 @@ export function render(el, cmd, ctx) {
   }
   const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => fit()) : null;
   ro?.observe(host);
+  // Off screen (a DESK panel scrolled away): no frames.
+  const io = typeof IntersectionObserver === 'function'
+    ? new IntersectionObserver((entries) => { holds.offscreen = !entries[entries.length - 1].isIntersecting; applyHolds(); })
+    : null;
+  io?.observe(host);
 
-  const onVis = () => { if (!tank) return; if (document.hidden) tank.stop(); else tank.start(); };
+  const onVis = () => { holds.hidden = document.hidden; applyHolds(); };
   document.addEventListener('visibilitychange', onVis);
-  const onMotion = () => { if (!tank) return; if (reduced()) { tank.stop(); tank.redraw(); } else tank.start(); };
+  const onMotion = () => { holds.reduced = reduced(); applyHolds(); if (holds.reduced) tank?.redraw(); };
   motion?.addEventListener?.('change', onMotion);
   ctx.onCleanup(() => {
+    left = true;
     ro?.disconnect();
-    tank?.stop();
+    io?.disconnect();
+    tank?.destroy();
     document.removeEventListener('visibilitychange', onVis);
     motion?.removeEventListener?.('change', onMotion);
   });
 
   async function load() {
     try {
-      const d = await ctx.fetchJSON('/api/heatmap', { signal: ctx.signal });
+      const d = await ctx.fetchJSON('/api/fishtank', { signal: ctx.signal });
+      if (left) return;
       stocks = d.stocks;
       if (!tank) mount();
       const head = tankHeader(stocks, d.updated);
-      meta.innerHTML = `<span class="ft-idx">S&amp;P 100 · </span><span class="up">${head.up} up</span> · <span class="down">${head.down} down</span> · updated ${esc(nyTime(d.updated))}`;
+      meta.innerHTML = `<span class="ft-idx">S&amp;P 100 · </span><span class="up">${head.up} up</span> · <span class="down">${head.down} down</span>`
+        + `<span class="ft-upd"> · updated ${esc(nyTime(d.updated))}</span><span class="ft-key"><span class="ft-sep"> · </span><span class="ft-long">size = company size</span><span class="ft-short">size = cap</span> · depth = today's %</span>`;
       host.querySelector('canvas').setAttribute('aria-label', `The S&P 100 as fish: ${head.up} up, ${head.down} down`);
-      // The same fish as links, for keyboards and screen readers.
+      // The same fish as links, for keyboards and screen readers (shown on focus).
       host.querySelector('.ft-sr').innerHTML = [...stocks].sort((a, b) => b.changePct - a.changePct)
         .map((s) => `<li><a href="${esc(q(s.ticker))}" data-cmd="${esc(s.ticker)}">${esc(`${s.ticker} ${s.name} ${fmtPct(s.changePct)}`)}</a></li>`).join('');
-      const { W } = tank.size;
-      if (!W) fit();
+      if (!tank.size.W) fit();
       tank.setStocks(stocks);
-      tank.start();
       ctx.updated(d.updated, d.stale);
     } catch (err) {
-      if (err.name === 'AbortError') return;
+      if (err.name === 'AbortError' || left) return;
       if (!stocks) host.innerHTML = `<p class="panel-msg">${esc(err.message)}</p>`;
       ctx.status('COULD NOT REFRESH FISHTANK', 'warn');
     }
