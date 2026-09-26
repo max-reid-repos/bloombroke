@@ -30,10 +30,12 @@ import * as pro from './screens/pro.js';
 import * as tape from './screens/tape.js';
 import * as legal from './screens/legal.js';
 import * as alerts from './screens/alerts.js'; // ALERTS
+import * as trending from './screens/trending.js'; // TRENDING
 
 export const EXTRA = [
   { name: 'WORLD', screen: world },
   { name: 'MOVERS', screen: movers },
+  { name: 'TRENDING', screen: trending }, // TRENDING: most opened tickers here
   { name: 'HEATMAP', screen: heatmap },
   { name: 'SECTORS', screen: sectors },
   { name: 'COMPARE', screen: compare, takesArgs: true },

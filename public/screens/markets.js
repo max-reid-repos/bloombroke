@@ -94,15 +94,31 @@ export function nameCell(name, cmd, extra = '') {
     : `<th scope="row" class="name">${esc(name)}${extra}</th>`;
 }
 
+// Basis points (0.01 of a percentage point), the one format on every screen: a change
+// is signed (+3.8bp), a level such as the 2s10s spread is not (30.5bp). Takes bp.
+export function fmtBp(bp, { level = false } = {}) {
+  if (!Number.isFinite(bp)) return '--';
+  return `${level ? fmtNum(bp, 1) : fmtSigned(bp, 1)}bp`;
+}
+
+// A price that moved 2% or more either way: its change cell gets a thin box.
+export const BIG_MOVE_PCT = 2;
+
+// Yields and the 2s10s spread show their change in bp (changeBp, worked out on the
+// server) in the change cell; the Chg column, where there is one, stays empty for them.
+// A price shows its change in %, or -- when the source has no day's move for it.
 function marketRow(m, compact, chg = true) {
-  const d = dirOf(m.change);
-  const cmd = cmdForInstrument(m.id);
+  const bp = m.kind === 'yield';
+  const d = dirOf(bp ? m.changeBp : m.change);
+  const cmd = m.cmd || cmdForInstrument(m.id);
+  const last = m.unit === 'bp' ? fmtBp(m.lastBp, { level: true }) : fmtNum(m.last, m.decimals);
+  const big = !bp && Math.abs(m.changePct) >= BIG_MOVE_PCT ? ' is-big' : '';
   return `<tr${rowAttrs(cmd)}>
       ${nameCell(m.name, cmd)}
       <td class="tag">${freshTag(m)}</td>
-      <td class="num last${tick(`mk:${m.id}:last`, m.last)}">${fmtNum(m.last, m.decimals)}</td>
-      ${chg ? `<td class="num chg ${d}">${fmtSigned(m.change, m.decimals)}</td>` : ''}
-      <td class="num pct ${d}">${fmtPct(m.changePct)}</td>
+      <td class="num last${tick(`mk:${m.id}:last`, m.last)}">${last}</td>
+      ${chg ? `<td class="num chg ${d}">${bp ? '' : fmtSigned(m.change, m.decimals)}</td>` : ''}
+      <td class="num pct ${d}${big}">${bp ? fmtBp(m.changeBp) : fmtPct(m.changePct)}</td>
       ${compact ? '' : `<td class="num time dim">${esc(fmtAsOf(m.asOf))}</td>`}
     </tr>`;
 }
@@ -128,6 +144,8 @@ export function marketsTable(instruments, { compact = false } = {}) {
 // Every group table uses the same fixed column widths, so the RT/DLY tags and the
 // numbers line up from one group to the next. time adds the last-trade time column;
 // chg: false leaves out the change column (HOME shows % only), cls names the wrapper.
+// A row with a sub (HOME: Europe, Asia, Energy...) opens a thin sub-heading bar inside
+// its group when the sub changes.
 export function marketsColumns(instruments, { time = false, chg = true, cls = '' } = {}) {
   const groups = [];
   for (const m of instruments) {
@@ -137,7 +155,9 @@ export function marketsColumns(instruments, { time = false, chg = true, cls = ''
   const cols = `<colgroup><col><col class="c-tag"><col class="c-last">${chg ? '<col class="c-chg">' : ''}<col class="c-pct">${time ? '<col class="c-time">' : ''}</colgroup>`;
   const span = 4 + (chg ? 1 : 0) + (time ? 1 : 0);
   return `<div class="${cls || `mk-cols${time ? ' mk-cols-time' : ''}`}">${groups.map((g) => `<table class="grid-table mk-group">
-    ${cols}<tbody><tr class="group-row"><th colspan="${span}" scope="rowgroup">${esc(g.name)}</th></tr>${g.rows.map((m) => marketRow(m, !time, chg)).join('')}</tbody>
+    ${cols}<tbody><tr class="group-row"><th colspan="${span}" scope="rowgroup">${esc(g.name)}</th></tr>${g.rows.map((m, i) => (m.sub && m.sub !== g.rows[i - 1]?.sub
+    ? `<tr class="group-row sub-row"><th colspan="${span}" scope="rowgroup">${esc(m.sub)}</th></tr>`
+    : '') + marketRow(m, !time, chg)).join('')}</tbody>
   </table>`).join('')}</div>`;
 }
 

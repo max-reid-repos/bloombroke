@@ -309,9 +309,39 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 
 /* ---- HOME ------------------------------------------------------------- */
 .grid-home .panel-wide { grid-column: 1 / -1; }
-/* HOME's short MARKETS list: one group per column (two on tablets, one on phones). */
-.h-mk { columns: 2; }
-@media (max-width: 639px) { .h-mk { columns: 1; } }
+/* HOME's MARKETS list: one group per column on desktop (four), two columns on tablets
+   (two groups each, about even), one on phones. .mk-cols.h-mk: it must win over the
+   MARKETS screen's own .mk-cols column count further down. */
+.mk-cols.h-mk { columns: 2; }
+@media (max-width: 639px) { .mk-cols.h-mk { columns: 1; } }
+@media (min-width: 1100px) { .mk-cols.h-mk { columns: 4; } }
+/* Dense rows (20px, 12px type) with thin dim ice blue sub-heading bars. Colour only on
+   the change; a price that moved 2% or more gets a thin box around its change. */
+.panel-body:has(> .h-mk) { padding: 4px 10px; }
+.h-mk .mk-group .c-last { width: 10ch; }
+.h-mk .mk-group .c-pct { width: 9ch; }
+.h-mk .mk-group td.num { padding: 0 5px; }
+.h-mk .mk-group .sub-row th {
+  height: 15px; padding: 0 10px;
+  font-size: 10px; font-weight: 600; letter-spacing: .1em; line-height: 15px;
+  color: var(--text-2); background: var(--accent-tint); border-bottom: 0;
+}
+.h-mk .mk-group td.pct.is-big { outline: 1px solid currentColor; outline-offset: -3px; }
+@media (min-width: 640px) {
+  .h-mk .mk-group th, .h-mk .mk-group td { height: 20px; font-size: 12px; }
+  .h-mk .mk-group .group-row:not(.sub-row) th { height: 18px; font-size: 11px; }
+  .h-mk .mk-group .sub-row th { height: 15px; font-size: 10px; }
+}
+/* 1100 to 1279px: four columns are narrow, so smaller type and tighter cells keep the
+   longest names (Nasdaq 100 fut, Euro Stoxx 50) whole. */
+@media (min-width: 1100px) and (max-width: 1279px) {
+  .h-mk .mk-group th, .h-mk .mk-group td { font-size: 11px; }
+  .h-mk .mk-group .c-tag { width: 28px; }
+  .h-mk .mk-group .c-last { width: 68px; }
+  .h-mk .mk-group .c-pct { width: 58px; }
+  .h-mk .mk-group .name { padding: 0 2px 0 6px; }
+  .h-mk .mk-group td.num { padding: 0 4px; }
+}
 /* Phones and tablets: HOME's news stops at eight headlines (NEWS has them all). */
 @media (max-width: 1099px) { .h-news .news-row:nth-child(n+9) { display: none; } }
 .mk-cols { columns: 3 340px; column-gap: 0; column-rule: 1px solid var(--rule-strong); }
@@ -1303,16 +1333,17 @@ a.ch-flag { cursor: pointer; }
   html:not(.is-embed) .view > :is(.stack, .panel) .panel-body > .chart-host { flex: 1 1 0; height: auto; min-height: 160px; }
   html:not(.is-embed) .view > :is(.stack, .panel) .panel-body:has(> .chart-host) > :not(.chart-host) { flex: 0 0 auto; }
 
-  /* HOME: three boxes. MARKETS across the top at its own height (a short list in four
-     columns, never scrolled), then the S&P 500 chart (about 62%) and NEWS (38%, scrolls
-     inside) sharing the rest. */
+  /* HOME: three boxes. MARKETS across the top at its own height (four columns of ten),
+     then the S&P 500 chart (about 62%) and NEWS (38%, scrolls inside) sharing the rest.
+     On a short window MARKETS stops at 48% of the screen and scrolls inside; the gutter
+     for its scrollbar is kept either way, so a scrollbar coming never resizes anything. */
   html:not(.is-embed) .view > .grid-home {
     grid-template-columns: minmax(0, 62fr) minmax(0, 38fr);
-    grid-template-rows: max-content minmax(160px, 1fr);
+    grid-template-rows: fit-content(48%) minmax(140px, 1fr);
     min-height: 0;
   }
   html:not(.is-embed) .grid-home .h-mk { columns: 4; }
-  html:not(.is-embed) .grid-home > .panel-wide > .panel-body { overflow: hidden; scrollbar-gutter: auto; }
+  html:not(.is-embed) .grid-home > .panel-wide > .panel-body { overflow: auto; scrollbar-gutter: stable; }
   html:not(.is-embed) .grid-home .panel-body:has(> .rc-home) { min-height: 0; overflow: hidden; scrollbar-gutter: auto; }
 }
 

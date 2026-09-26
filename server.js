@@ -288,6 +288,12 @@ app.get('/api/weird/:name', async (req, res) => {
 });
 
 mountCommandRoutes(app);
+
+// --- TRENDING (data/trending.js): anonymous counts of opened tickers, in memory only ---
+import { mountTrending } from './data/trending.js';
+mountTrending(app, { getQuoteList });
+// --- end TRENDING ---
+
 startPro(app, { dir });
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));

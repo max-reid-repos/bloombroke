@@ -20,8 +20,8 @@ Our Data Protection Officer can be reached at {{CONTACT}}. Write to this address
 
 ### Using the free terminal
 
-- **Requests to our server.** When you open a screen, your browser asks our server for data, such as the symbols on your watchlist. Our server passes the symbols to the data source and sends back the result. We use these requests only to answer them. We do not keep a record of which symbols a person asked for.
-- **Your IP address.** Every connection reveals your IP address. Our network provider, Cloudflare, uses it to deliver the site and block attacks. Our application does not write IP addresses to its logs. It holds an IP address in memory for up to 15 minutes to limit how often the Pro routes can be called, to stop abuse and guessing of licence keys.
+- **Requests to our server.** When you open a screen, your browser asks our server for data, such as the symbols on your watchlist. Our server passes the symbols to the data source and sends back the result. We use these requests only to answer them. When you open a ticker screen, your browser sends its symbol and a random number made for that browser tab. To count each tab once and to stop abuse, our server keeps a coded copy of that number and of your IP address, with the tickers opened, in memory for one hour, then only the count per ticker for 24 hours. Nothing is written to disk. Apart from this count, we do not keep a record of which symbols a person asked for.
+- **Your IP address.** Every connection reveals your IP address. Our network provider, Cloudflare, uses it to deliver the site and block attacks. Our application does not write IP addresses to its logs. It holds an IP address in memory for up to 15 minutes to limit how often the Pro routes and the ticker counter can be called, to stop abuse and guessing of licence keys.
 - **Error logs.** When something breaks, our server writes an error message to its logs. These messages do not contain your IP address, and we aim to delete them within 14 days.
 - **Your browser storage.** The terminal saves some things in your browser's local storage so they are there next time: your watchlist, portfolio, saved wage, recent commands, screen layouts, your acceptance of these terms (with its version and time) and, for Pro, your licence key. This data stays on your device. We cannot see it unless you use Pro sync. You can delete it at any time by clearing this site's data in your browser.
 
@@ -79,6 +79,7 @@ Our server and several providers are outside Singapore, so your personal data is
 ## 8. How long we keep it
 
 - **IP addresses** in our rate limiter: up to 15 minutes.
+- **Ticker counter:** a coded copy of your browser tab's random number and of your IP address, with the tickers opened, for one hour; after that only the count per ticker, for 24 hours. All in memory, never on disk.
 - **Error logs** on our server: we aim to delete them within 14 days.
 - **Cloudflare and DataFast** keep their own records for the periods in their own policies.
 - **Pro licence record and synced data:** deleted within 30 days after your subscription ends, or sooner if you ask. Records of payments that tax and company law require us to keep, such as invoices, are kept for as long as that law requires, normally five years, and are held mainly in Stripe.

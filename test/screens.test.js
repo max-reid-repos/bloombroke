@@ -55,8 +55,9 @@ test('rates rows and formats', () => {
     mortgage: { date: '2026-09-24', rate30: 7.03, change30: 0.08, rate15: 6.42, change15: 0.16 },
   });
   assert.deepEqual(rows.map((r) => r.value), ['3.75-4.00%', '3.88%', '5.181%', '7.03%', '6.42%']);
-  assert.equal(fmtBp(0.019), '+1.9 bp');
-  assert.equal(fmtBp(-0.08), '−8.0 bp');
+  // One bp helper on every screen: it takes bp (RATES passes points x 100).
+  assert.equal(fmtBp(0.019 * 100), '+1.9bp');
+  assert.equal(fmtBp(-0.08 * 100), '−8.0bp');
   assert.equal(fmtUsd(141.3316), '$141.33');
   assert.equal(fmtNum(-0.001, 2), '0.00');
   assert.equal(fmtAsOf('2026-09-24'), '09/24');
