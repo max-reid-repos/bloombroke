@@ -9,8 +9,9 @@ export const WEIRD_COMMANDS = ['WEIRD', ...WEIRD_GAUGES.map((g) => g.command)];
 
 export const WEIRD_SCREENS = Object.fromEntries(WEIRD_COMMANDS.map((n) => [n, weird]));
 
-// head + rest -> { name, args, input } or null.
+// head + rest -> { name, args, input, url } or null. url: the address bar (and so the
+// SHARE key's link) shows the clean command, ?c=CANAL for SHIPS or CANAL FOO.
 export function matchWeird(head) {
   if (!WEIRD_COMMANDS.includes(head)) return null;
-  return { name: head, args: {}, input: head };
+  return { name: head, args: {}, input: head, url: head };
 }
