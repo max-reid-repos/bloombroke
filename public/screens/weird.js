@@ -10,6 +10,9 @@ import { WEIRD_GAUGES, gaugeByCommand, sourceHtml } from './weird-gauges.js';
 
 export { WEIRD_GAUGES };
 
+// How soon a screen asks again while a gauge is still pending (no value yet).
+export const PENDING_POLL_MS = 5000;
+
 // The command for a typed tile number ("3" -> DEGEN), or null.
 export function commandForNumber(text) {
   const m = /^\s*(\d{1,2})\s*$/.exec(String(text ?? ''));
@@ -56,14 +59,17 @@ function grid(el, ctx) {
     return true;
   });
 
+  // A gauge with no value yet came back pending: the whole summary is asked for again
+  // every PENDING_POLL_MS until none is, then at the normal pace.
+  let again = null;
+  ctx.onCleanup(() => clearTimeout(again));
   async function load() {
+    clearTimeout(again);
+    again = null;
     try {
       const d = await ctx.fetchJSON('/api/weird', { signal: ctx.signal });
       d.gauges.forEach(fill);
-      // A slow source came back pending: ask for it on its own.
-      for (const p of d.gauges.filter((x) => x.pending)) {
-        ctx.fetchJSON(`/api/weird/${encodeURIComponent(p.id)}`, { signal: ctx.signal }).then(fill).catch(() => {});
-      }
+      if (d.gauges.some((x) => x.pending) && !ctx.signal?.aborted) again = setTimeout(load, PENDING_POLL_MS);
       // The dot by the clock says when; the status line only carries a warning.
       ctx.updated(d.updated, d.stale);
       const bad = d.gauges.filter((x) => x.ok === false && !x.pending).length;
@@ -97,7 +103,15 @@ function detail(el, g, ctx) {
   ctx.onCleanup(() => cleanup?.());
   const how = `<details class="how wd-how"><summary>How is this measured?</summary><div class="how-list">${g.method.map((p) => `<p>${esc(p)}</p>`).join('')}</div></details>`;
 
-  ctx.fetchJSON(`/api/weird/${g.id}`, { signal: ctx.signal }).then((d) => {
+  let again = null;
+  ctx.onCleanup(() => clearTimeout(again));
+  const load = () => ctx.fetchJSON(`/api/weird/${g.id}`, { signal: ctx.signal }).then((d) => {
+    // No value yet: say so and ask again shortly.
+    if (d.pending) {
+      body.innerHTML = `${LOADING}${how}`;
+      if (!ctx.signal?.aborted) again = setTimeout(load, PENDING_POLL_MS);
+      return;
+    }
     if (d.ok === false) {
       body.innerHTML = `<p class="wd-big is-none">NO DATA</p><p class="wd-src">${esc(d.source)}</p>${how}`;
       ctx.status(`${g.command}: NO DATA · ${String(d.source).toUpperCase()}`, 'warn');
@@ -120,6 +134,7 @@ function detail(el, g, ctx) {
     body.innerHTML = `<p class="wd-big is-none">NO DATA</p><p class="panel-msg">${esc(err.message)}</p>${how}`;
     ctx.status(`${g.command}: NO DATA`, 'warn');
   });
+  load();
 }
 
 export function render(el, cmd, ctx) {

@@ -341,7 +341,8 @@ test('last good value: served stale with its own date after a failure or a resta
     assert.equal(good.stale, false);
     // A restart (new instance, empty memory) while the source is empty.
     up = false;
-    const again = makeWeird({ gauges: [g], lastGoodDir: dir });
+    await new Promise((r) => setTimeout(r, 5)); // past the 1 ms ttl: stale by age
+    const again =makeWeird({ gauges: [g], lastGoodDir: dir });
     const last = await again.getGauge('pz');
     assert.equal(last.ok, true);
     assert.equal(last.stale, true);

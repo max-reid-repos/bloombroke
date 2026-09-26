@@ -27,7 +27,7 @@ import { mountCommandRoutes } from './command-routes.js';
 import { mountLegal } from './lib/legal.js';
 import { securityHeaders, isEmbedQuery, embedHtml } from './lib/embed.js';
 import { startPro } from './pro/index.js';
-import { getWeird, getGauge } from './data/weird/index.js';
+import { getWeird, getGauge, startWeirdPrewarm, FAST_WAIT } from './data/weird/index.js';
 import { makeWeirdCards, weirdCommand } from './lib/og-weird.js'; // WEIRD share cards
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -272,18 +272,19 @@ app.get('/api/screen', async (req, res) => {
   }
 });
 
-// WEIRD: odd live gauges (data/weird/). The summary waits a few seconds per gauge; a
-// slow one comes back pending and the screen asks for it alone. A failed source is
-// { ok: false, headline: 'NO DATA', source }, never an error page.
+// WEIRD: odd live gauges (data/weird/). Both routes answer within FAST_WAIT: a gauge with
+// a value (fresh, or its last good one while a refresh runs) at once, one with none comes
+// back pending (not cached, so the screen can ask again in a few seconds). A failed
+// source is { ok: false, headline: 'NO DATA', source }, never an error page.
 app.get('/api/weird', async (req, res) => {
-  const data = await getWeird();
-  res.set('Cache-Control', 'public, max-age=60');
+  const data = await getWeird({ wait: FAST_WAIT });
+  res.set('Cache-Control', data.gauges.some((g) => g.pending) ? 'no-store' : 'public, max-age=60');
   res.json(data);
 });
 app.get('/api/weird/:name', async (req, res) => {
-  const data = await getGauge(str(req.params.name));
+  const data = await getGauge(str(req.params.name), { wait: FAST_WAIT });
   if (!data) return res.status(404).json({ error: 'not_found', message: 'No such WEIRD gauge. Type WEIRD for the list.' });
-  res.set('Cache-Control', `public, max-age=${data.ok ? 300 : 30}`);
+  res.set('Cache-Control', data.pending ? 'no-store' : `public, max-age=${data.ok && !data.stale ? 300 : 30}`);
   res.json(data);
 });
 
@@ -421,4 +422,5 @@ app.listen(PORT, HOST, () => {
   console.log(`bloombroke ${BUILD} listening on http://${HOST}:${PORT}`);
   // SCREEN's P/E and dividend numbers: loaded in the background, so no one waits on a cold cache.
   startScreenPrewarm();
+  startWeirdPrewarm(); // WEIRD: refresh gauges with no value or an old one, staggered
 });

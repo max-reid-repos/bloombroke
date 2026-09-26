@@ -12,14 +12,16 @@
 // public/registry.js and its screen entry to public/screens/weird-gauges.js.
 //
 // Last good value: each successful result is also written to data/.cache/weird/<id>.json
-// (gitignored). When a source fails or is empty and memory has nothing (after a restart,
-// say), that file is served with stale: true and its own as-of date. NO DATA only when
-// there has never been a good value.
+// (gitignored), and every file there is read into memory at boot. A request never waits
+// on a source when there is a value: a value younger than the gauge's ttl is served as
+// is, an older one is served at once with stale: true (its own as-of date) while one
+// background refresh per gauge fetches a new one. Only a gauge with no value anywhere
+// waits (briefly) and then says pending. NO DATA only when there has never been a good
+// value and the source failed.
 
 import { mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createCache } from '../cache.js';
 import { sourceClient } from './source.js';
 import * as canal from './canal.js';
 import * as pizza from './pizza.js';
@@ -51,8 +53,13 @@ export const GAUGES = [
   billions, wsb, odds, boxrate, eggs, rides, buzz, beige, trucks, boxes, lipstick, sick, macau,
 ];
 
-// How long the summary waits for one gauge before it says "pending".
-export const SUMMARY_WAIT = 9000;
+// How long /api/weird and /api/weird/<id> wait for a gauge that has no value at all
+// before it says "pending". A gauge with any value never waits.
+export const FAST_WAIT = 250;
+export const SUMMARY_WAIT = FAST_WAIT;
+// Boot pre-warm: one gauge started every PREWARM_GAP_MS, so the sources (SEC EDGAR
+// above all) are not hit at once after a restart.
+export const PREWARM_GAP_MS = 1500;
 
 const SUMMARY_KEYS = ['headline', 'line', 'spark', 'asOf', 'source', 'credit'];
 
@@ -113,46 +120,98 @@ export function summarize(detail) {
 export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges = GAUGES, lastGoodDir = LAST_GOOD_DIR } = {}) {
   const get = sourceClient(fetchImpl);
   const store = lastGoodStore(lastGoodDir);
-  const saved = new Map();
-  const caches = new Map(gauges.map((g) => [g.id, createCache({ retryMs: g.retryMs || 5 * 60_000, now })]));
+  // id -> { value, fetchedAt }: the newest good value, from disk at boot, then each refresh.
+  const latest = new Map();
+  for (const g of gauges) { const l = store.read(g.id); if (l) latest.set(g.id, l); }
+  const inflight = new Map(); // id -> the one refresh running for that gauge
+  const holdUntil = new Map(); // id -> no new refresh before this time (after a failure)
+  const queued = new Set(); // ids the boot pre-warm will refresh soon: a request leaves them to it
 
   const shape = (g, value, stale, fetchedAt) => ({ id: g.id, ok: true, ...value, stale, updated: new Date(fetchedAt).toISOString() });
+  const find = (name) => gauges.find((x) => x.id === String(name ?? '').toLowerCase()) || null;
+  const isFresh = (g, last) => now() - last.fetchedAt < g.ttl;
 
-  // Never throws: a failed or empty source gives the last good value (stale), or the
-  // NO DATA shape when there is none.
-  async function getGauge(name) {
-    const g = gauges.find((x) => x.id === String(name ?? '').toLowerCase());
-    if (!g) return null;
-    try {
-      const { value, stale, fetchedAt } = await caches.get(g.id).cached(g.id, g.ttl, () => g.load(get, { now }));
-      if (!value || !value.headline) throw Object.assign(new Error('empty'), { code: 'no_data' });
-      if (!stale && saved.get(g.id) !== fetchedAt) {
-        saved.set(g.id, fetchedAt);
-        store.write(g.id, value, fetchedAt);
+  // Fetch a gauge now and keep the value (memory and disk). One in flight per gauge: a
+  // second call gets the same promise. After a failure no new fetch starts for retryMs
+  // (an empty answer: for the ttl). Never rejects: it resolves { value, fetchedAt } when a
+  // new value came, else null.
+  function refresh(g) {
+    if (inflight.has(g.id)) return inflight.get(g.id);
+    if (now() < (holdUntil.get(g.id) || 0)) return Promise.resolve(null);
+    const p = (async () => {
+      try {
+        const value = await g.load(get, { now });
+        if (!value || !value.headline) throw Object.assign(new Error('empty'), { code: 'no_data' });
+        const got = { value, fetchedAt: now() };
+        latest.set(g.id, got);
+        store.write(g.id, value, got.fetchedAt);
+        holdUntil.delete(g.id);
+        return got;
+      } catch (err) {
+        if (err?.code !== 'no_data') console.error(`[weird:${g.id}]`, err?.message || err);
+        holdUntil.set(g.id, now() + (err?.code === 'no_data' ? g.ttl : g.retryMs || 5 * 60_000));
+        return null;
+      } finally {
+        inflight.delete(g.id);
       }
-      return shape(g, value, stale, fetchedAt);
-    } catch (err) {
-      if (err?.code !== 'no_data') console.error(`[weird:${g.id}]`, err?.message || err);
-      const last = store.read(g.id);
-      return last ? shape(g, last.value, true, last.fetchedAt) : noData(g);
-    }
+    })();
+    inflight.set(g.id, p);
+    return p;
   }
 
-  // Every gauge at once. One that takes longer than `wait` comes back pending (its
-  // fetch goes on, and the screen asks for it on its own).
+  // The gauge as the API shows it: the latest value, stale when older than its ttl.
+  function current(g) {
+    const last = latest.get(g.id);
+    return last ? shape(g, last.value, !isFresh(g, last), last.fetchedAt) : null;
+  }
+
+  // Never throws. With a value: answers at once (a value past its ttl starts a background
+  // refresh and is served stale meanwhile). With none: waits for the source up to `wait`
+  // ms, then says pending (the fetch goes on); a failed source gives NO DATA.
+  async function getGauge(name, { wait = Infinity } = {}) {
+    const g = find(name);
+    if (!g) return null;
+    const last = latest.get(g.id);
+    if (last) {
+      if (!isFresh(g, last) && !queued.has(g.id)) refresh(g);
+      return current(g);
+    }
+    // A value that just came is fresh, however short the ttl.
+    const done = refresh(g).then((got) => (got ? shape(g, got.value, false, got.fetchedAt) : current(g) || noData(g)));
+    if (!Number.isFinite(wait)) return done;
+    let timer;
+    const late = new Promise((resolve) => { timer = setTimeout(resolve, wait, noData(g, { headline: 'LOADING', pending: true })); timer.unref?.(); });
+    return Promise.race([done, late]).finally(() => clearTimeout(timer));
+  }
+
+  // Every gauge at once, each within `wait` ms (see getGauge).
   async function getWeird({ wait = SUMMARY_WAIT } = {}) {
-    const rows = await Promise.all(gauges.map((g) => {
-      let timer;
-      const late = new Promise((resolve) => { timer = setTimeout(resolve, wait, noData(g, { headline: 'LOADING', pending: true })); timer.unref?.(); });
-      return Promise.race([getGauge(g.id), late]).finally(() => clearTimeout(timer));
-    }));
+    const rows = await Promise.all(gauges.map((g) => getGauge(g.id, { wait })));
     // Stale when every gauge that has a value is showing a last good one.
     const good = rows.filter((r) => r.ok);
     // ttl: DESK cards fetch this summary again when their gauge is due.
     return { gauges: rows.map((r, i) => ({ ...summarize(r), ttl: gauges[i].ttl })), updated: new Date(now()).toISOString(), stale: good.length > 0 && good.every((r) => r.stale) };
   }
 
-  return { getGauge, getWeird };
+  // Boot pre-warm: refresh every gauge that has no value or an expired one, gauges with
+  // no value first, one started every gapMs. Until its turn, a request serves a queued
+  // gauge's last good value without starting a fetch of its own, so a burst of visitors
+  // right after a deploy does not hit every source at once. Returns a stop function.
+  function startPrewarm({ gapMs = PREWARM_GAP_MS } = {}) {
+    const due = gauges.filter((g) => { const l = latest.get(g.id); return !l || !isFresh(g, l); });
+    due.sort((a, b) => Number(latest.has(a.id)) - Number(latest.has(b.id)));
+    for (const g of due) queued.add(g.id);
+    const timers = due.map((g, i) => {
+      const t = setTimeout(() => { queued.delete(g.id); refresh(g); }, i * gapMs);
+      t.unref?.();
+      return t;
+    });
+    return () => { timers.forEach(clearTimeout); due.forEach((g) => queued.delete(g.id)); };
+  }
+
+  return { getGauge, getWeird, startPrewarm, refreshing: (id) => inflight.has(id) };
 }
 
-export const { getGauge, getWeird } = makeWeird();
+const weird = makeWeird();
+export const { getGauge, getWeird } = weird;
+export const startWeirdPrewarm = (opts) => weird.startPrewarm(opts);
