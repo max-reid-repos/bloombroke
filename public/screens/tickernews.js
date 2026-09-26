@@ -53,8 +53,7 @@ export function render(el, cmd, ctx) {
     return;
   }
   const { ticker } = cmd.args;
-  el.innerHTML = panel('1', `${ticker} news`, `<div class="news-bar"></div><div class="news-body">${LOADING}</div>`, { cls: 'panel-solo', bodyCls: 'flush' })
-    + '<p class="footnote">Headlines tagged with this ticker, from the Nasdaq news feed: the headline, the publisher and a link only. Each one opens on the original publisher\'s site, in a new tab.</p>';
+  el.innerHTML = panel('1', `${ticker} news`, `<div class="news-bar"></div><div class="news-body">${LOADING}</div>`, { cls: 'panel-solo', bodyCls: 'flush' });
   const bar = el.querySelector('.news-bar');
   const body = el.querySelector('.news-body');
   let items = [];

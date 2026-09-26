@@ -5,7 +5,6 @@
 
 import { esc, q, fmtNum, fmtSigned, fmtPct, dirOf, fmtAsOf, panel, LOADING } from './markets.js';
 import { instrumentById, resolveInstrument } from '../instruments.js';
-import { statusLine } from '../freshness.js';
 import { edgeFade } from '../kit.js';
 
 export const OPTION_TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
@@ -130,9 +129,9 @@ export function render(el, cmd, ctx) {
   }
   const { ticker } = args;
   el.innerHTML = `<div class="stack">
-    ${panel('1', `${ticker} options`, `<div class="oc-top" id="oc-top">${LOADING}</div><div id="oc-tabs"></div><div id="oc-chain"></div>`, { metaId: 'oc-meta', bodyCls: 'flush', meta: '<span class="fresh is-dly" title="Delayed">DLY</span> CBOE, 15 MIN' })}
+    ${panel('1', `${ticker} options`, `<div class="oc-top" id="oc-top">${LOADING}</div><div id="oc-tabs"></div><div id="oc-chain"></div>`, { metaId: 'oc-meta', bodyCls: 'flush', meta: '<span class="fresh is-dly" title="Delayed: about 15 min">DLY</span> CBOE, 15 MIN' })}
   </div>
-  <p class="footnote">Cboe delayed quotes, 15 minutes behind. Shaded cells are in the money. IV: implied volatility. Delta as published by Cboe. -- means the source has no value. Not financial advice.</p>`;
+  <p class="footnote">Shaded: in the money. IV: implied volatility.</p>`;
   const top = el.querySelector('#oc-top');
   const tabs = el.querySelector('#oc-tabs');
   const chain = el.querySelector('#oc-chain');
@@ -179,7 +178,7 @@ export function render(el, cmd, ctx) {
       const url = `/api/options?s=${encodeURIComponent(ticker)}${args.expiry ? `&e=${encodeURIComponent(args.expiry)}` : ''}`;
       data = await ctx.fetchJSON(url, { signal: ctx.signal });
       paint();
-      ctx.status(`${statusLine(data.asOf || data.updated, data.stale)} · OPTIONS DELAYED 15 MIN (CBOE)`, data.stale ? 'warn' : '');
+      ctx.updated(data.asOf || data.updated, data.stale);
     } catch (err) {
       if (err.name === 'AbortError') return;
       if (!data) {

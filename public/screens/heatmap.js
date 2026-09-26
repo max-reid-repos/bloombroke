@@ -166,7 +166,7 @@ function scaleHtml() {
 
 export function render(el, cmd, ctx) {
   el.innerHTML = panel('1', 'S&P 100 heatmap', `<div class="hm-host" id="hm-host">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'hm-meta', bodyCls: 'flush' })
-    + `<div class="hm-foot">${scaleHtml()}<p class="footnote">Box size = market cap. Colour = today's % change. Prices from CNBC, may be delayed. Tap a box for the chart.</p></div>`;
+    + `<div class="hm-foot">${scaleHtml()}<p class="footnote">Box size = market cap. Colour = today's % change.</p></div>`;
   const host = el.querySelector('#hm-host');
   const meta = el.querySelector('#hm-meta');
   let stocks = null;

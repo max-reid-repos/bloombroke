@@ -50,8 +50,7 @@ export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="stack">
     ${panel('1', `CPI ${year}`, `${toolbar({ left: cpiForm({ amount, year }), label: 'Amount and year' })}<div class="fx-out">${LOADING}</div>`, { metaId: 'cpi-meta', bodyCls: 'flush' })}
     ${panel('2', `Prices since ${year}`, `<div class="chart-host" id="cpi-chart">${LOADING}</div>`, { metaId: 'cpi-ch-meta', bodyCls: 'flush' })}
-  </div>
-  <p class="footnote">CPI-U, all items, US city average, from the US Bureau of Labor Statistics. Annual averages, plus the latest month (MONTHLY). Not financial advice.</p>`;
+  </div>`;
   const body = el.querySelector('.fx-out');
   el.querySelector('.cpi-form').addEventListener('submit', (e) => {
     e.preventDefault();

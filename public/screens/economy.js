@@ -5,7 +5,6 @@
 
 import { esc, q, fmtNum, fmtSigned, panel, LOADING, rowAttrs, nameCell } from './markets.js';
 import { mountLines } from './lines.js';
-import { statusLine } from '../freshness.js';
 import { fmtDate, rangePills } from '../kit.js';
 
 export const ECONOMY_RANGES = ['5Y', '10Y', 'MAX'];
@@ -60,11 +59,9 @@ export function sparkSvg(values, w = 96, h = 18) {
 }
 
 const FREQ = { Q: 'Quarterly', M: 'Monthly', W: 'Weekly', D: 'Daily' };
-const FOOT = 'Source: FRED, Federal Reserve Bank of St. Louis. Each series as published; YoY and MoM changes are worked out from the published levels. Refreshed every 12 hours. Not financial advice.';
 
 function dashboard(el, ctx) {
-  el.innerHTML = panel('1', 'US economy', LOADING, { cls: 'panel-solo', metaId: 'ec-meta', meta: 'FRED' })
-    + `<p class="footnote">${esc(FOOT)}</p>`;
+  el.innerHTML = panel('1', 'US economy', LOADING, { cls: 'panel-solo', metaId: 'ec-meta', meta: 'FRED' });
   const body = el.querySelector('.panel-body');
   ctx.fetchJSON('/api/economy', { signal: ctx.signal }).then((d) => {
     body.innerHTML = `<table class="grid-table ec-table">
@@ -81,7 +78,7 @@ function dashboard(el, ctx) {
         </tr>`;
       }).join('')}</tbody>
     </table>`;
-    ctx.status(`${statusLine(d.updated, d.stale)} · FRED`, d.stale ? 'warn' : '');
+    ctx.updated(d.updated, d.stale);
   }).catch((err) => {
     if (err.name === 'AbortError') return;
     body.innerHTML = `<p class="panel-msg">${esc(err.message)}</p>`;
@@ -97,8 +94,7 @@ function series(el, args, ctx) {
   el.innerHTML = `<div class="stack">
     ${panel('1', args.id, `<div class="ec-head" id="ec-head">${LOADING}</div><div class="ch-bar ec-bar">${tabs}<a class="ec-back code" href="${esc(q('ECONOMY'))}" data-cmd="ECONOMY">ALL INDICATORS</a></div><div class="chart-host" id="ec-chart"></div>`, { metaId: 'ec-meta', bodyCls: 'flush', meta: 'FRED' })}
     ${panel('2', 'Recent readings', LOADING, { metaId: 'ec-t-meta' })}
-  </div>
-  <p class="footnote">${esc(FOOT)}</p>`;
+  </div>`;
   const head = el.querySelector('#ec-head');
   const host = el.querySelector('#ec-chart');
   const meta = el.querySelector('#ec-meta');
@@ -132,7 +128,7 @@ function series(el, args, ctx) {
       <tbody>${recent.map((p) => `<tr><th scope="row" class="name">${esc(periodLabel(p.date, d.freq))}</th><td class="num last">${esc(fmtValue(p.value, d.unit))}</td></tr>`).join('')}</tbody>
     </table>`;
     el.querySelector('#ec-t-meta').textContent = `FIRST READING ${d.first ? periodLabel(d.first, d.freq) : '--'}`;
-    ctx.status(`${statusLine(d.updated, d.stale)} · FRED ${d.fred}`, d.stale ? 'warn' : '');
+    ctx.updated(d.updated, d.stale);
   }).catch((err) => {
     if (err.name === 'AbortError') return;
     head.innerHTML = `<p class="panel-msg">${esc(err.message)}</p><p class="muted examples">Try <a class="code" href="${esc(q('ECONOMY'))}" data-cmd="ECONOMY">ECONOMY</a></p>`;

@@ -249,8 +249,6 @@ function tabBar(args, withBasis = false) {
   return `<div class="ch-bar fin-bar"><nav class="tabs ch-tabs" aria-label="Statement">${st}</nav>${ba}<nav class="tabs ch-tabs fin-periods" aria-label="Period">${pe}</nav></div>`;
 }
 
-const FOOT = 'Source: US SEC EDGAR company filings (10-K, 10-Q), updated as companies file. Figures in USD as reported.';
-
 // The footnote words on the per-share basis.
 export function basisNote(d, basis = 'adjusted') {
   const list = d?.split?.splits || [];
@@ -276,7 +274,7 @@ export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="stack">
     ${panel('1', `${args.ticker} financials`, `${tabBar(args)}<div class="fin-body">${LOADING}</div>`, { metaId: 'fin-meta', bodyCls: 'flush' })}
   </div>
-  <p class="footnote">${esc(FOOT)}</p>`;
+  <p class="footnote"></p>`;
   const body = el.querySelector('.fin-body');
   const meta = el.querySelector('#fin-meta');
   const foot = el.querySelector('.footnote');
@@ -337,10 +335,8 @@ export function render(el, cmd, ctx) {
     if (typeof ResizeObserver === 'function') { ro = new ResizeObserver(draw); ro.observe(host); }
     const derived = mode === 'quarterly' || Object.values(m.values).some((arr) => arr.some((c) => c?.derived));
     foot.textContent = [
-      `${FOOT} Periods as the company labels them; column headers link to the filing. Hover a number for its source.`,
       args.statement === 'income' ? basisNote(d, basis) : '',
       derived ? 'Underlined dotted: a quarter the filing only gives as part of a year-to-date total, worked out as that total minus the earlier quarters (always the case for Q4).' : '',
-      'Not financial advice.',
     ].filter(Boolean).join(' ');
     const lastP = m.periods[m.periods.length - 1];
     ctx.status(`${d.stale ? 'LAST KNOWN DATA · ' : ''}SEC FILINGS · LATEST ${lastP.label} (${lastP.form} FILED ${lastP.filed})`, d.stale ? 'warn' : '');

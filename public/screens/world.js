@@ -36,8 +36,7 @@ export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="grid grid-3">
     ${REGIONS.map((r, i) => panel(String(i + 1), r, LOADING, { metaId: `wd-meta-${i}` })).join('')}
   </div>
-  <p class="footnote st-legend" aria-hidden="true"><span class="st-open"><span class="st-dot"></span>OPEN</span><span class="st-lunch"><span class="st-dot"></span>LUNCH</span><span class="st-closed"><span class="st-dot"></span>CLOSED</span></p>
-  <p class="footnote">Index levels from CNBC, may be delayed. Local time and status from each exchange's regular hours. Not financial advice.</p>`;
+  <p class="footnote st-legend" aria-hidden="true"><span class="st-open"><span class="st-dot"></span>OPEN</span><span class="st-lunch"><span class="st-dot"></span>LUNCH</span><span class="st-closed"><span class="st-dot"></span>CLOSED</span></p>`;
   const bodies = el.querySelectorAll('.panel-body');
   let data = null;
 

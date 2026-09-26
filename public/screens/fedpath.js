@@ -5,7 +5,7 @@
 import { esc, fmtNum, fmtSigned, fmtAsOf, panel, LOADING } from './markets.js';
 import { fmtBp } from './rates.js';
 import { mountLines, legend } from './lines.js';
-import { statusLine } from '../freshness.js';
+import { freshTag } from '../freshness.js';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
@@ -38,11 +38,10 @@ export function render(el, cmd, ctx) {
   // The "not a forecast" line is a quiet source line under the panels, not a box on top.
   el.innerHTML = `<div class="stack">
     ${panel('1', 'Fed funds path', `<div class="chart-host" id="fp-chart">${LOADING}</div><div id="fp-legend"></div>`, { metaId: 'fp-meta', bodyCls: 'flush' })}
-    ${panel('2', 'Fed funds futures', LOADING, { metaId: 'fp-t-meta', meta: '<span class="fresh is-dly" title="Delayed">DLY</span> CBOT' })}
+    ${panel('2', 'Fed funds futures', LOADING, { metaId: 'fp-t-meta', meta: `${freshTag({ realTime: false })} CBOT` })}
   </div>
   <p class="footnote fp-src">${esc(LABEL)}</p>
-  ${METHOD}
-  <p class="footnote">Futures: CBOT 30-day Fed funds, via CNBC, delayed about 10 minutes. Target range and effective rate: New York Fed. Not financial advice.</p>`;
+  ${METHOD}`;
   const host = el.querySelector('#fp-chart');
   const leg = el.querySelector('#fp-legend');
   const meta = el.querySelector('#fp-meta');
@@ -94,8 +93,8 @@ export function render(el, cmd, ctx) {
         }).join('')}</tbody>
       </table>`;
       const gaps = months.filter((m) => m.gap).length;
-      el.querySelector('#fp-t-meta').innerHTML = `<span class="fresh is-dly" title="Delayed">DLY</span> ${months.length - gaps} CONTRACTS${gaps ? ` · ${gaps} WITHOUT A PRICE` : ''}`;
-      ctx.status(`${statusLine(d.updated, d.stale, months.map(() => ({ kind: 'future', realTime: false })))}`, d.stale ? 'warn' : '');
+      el.querySelector('#fp-t-meta').innerHTML = `${freshTag({ realTime: false })} ${months.length - gaps} CONTRACTS${gaps ? ` · ${gaps} WITHOUT A PRICE` : ''}`;
+      ctx.updated(d.updated, d.stale);
     } catch (err) {
       if (err.name === 'AbortError') return;
       if (!host.querySelector('svg')) host.innerHTML = `<p class="panel-msg">${esc(err.message)}</p>`;

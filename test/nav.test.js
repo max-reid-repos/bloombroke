@@ -2,15 +2,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  parseCommand, suggest, COMMANDS, FKEYS, FUNCTION_BAR, TICKER_FUNCTIONS, fkeyFor, isMenuKey, escGoesBack, screenTitle, urlFor, shortStatus,
+  parseCommand, suggest, COMMANDS, FKEYS, FUNCTION_BAR, TICKER_FUNCTIONS, fkeyFor, isMenuKey, escGoesBack, screenTitle, urlFor, freshDot,
+  keybarHtml, panelByNumber, panelNumberInput, freshOverdue,
 } from '../public/app.js';
 import {
-  REGISTRY, LISTED, CATEGORIES, findCommand, byCategory, categoriesInUse, searchCommands, START_HERE, GRAMMAR_RULES,
+  REGISTRY, LISTED, CATEGORIES, findCommand, byCategory, categoriesInUse, searchCommands, START_HERE, START_KEYS,
 } from '../public/registry.js';
 import { EXTRA } from '../public/commands.js';
 import { COMPANY } from '../public/company.js';
 import { MARKETS_EXTRA } from '../public/commands-markets.js';
-import { resolveTopic } from '../public/screens/help.js';
+import { resolveTopic, startHere } from '../public/screens/help.js';
 import { parseTapeSwitch, tapeOn, setTapeOn, tapeItems, TAPE_ON_KEY } from '../public/tape.js';
 import { menuItems } from '../public/menu.js';
 
@@ -70,8 +71,10 @@ test('registry: every example parses and runs its own command', () => {
       assert.equal(p.error, undefined, `${ex} parses`);
     }
   }
-  for (const [c] of START_HERE) assert.equal(parseCommand(c).error, undefined, c);
-  for (const [, c] of GRAMMAR_RULES) assert.ok(!['UNKNOWN', 'SOON'].includes(parseCommand(c).name), c);
+  for (const [c] of START_HERE) {
+    assert.ok(!['UNKNOWN', 'SOON'].includes(parseCommand(c).name), c);
+    assert.equal(parseCommand(c).error, undefined, c);
+  }
   assert.equal(parseCommand('AAPL NEWS').name, 'TICKERNEWS');
 });
 
@@ -208,31 +211,90 @@ test('back: Esc goes back only when nothing else wants it', () => {
   assert.equal(escGoesBack(), false);
 });
 
-test('screen header: a title and one line on every screen', () => {
+test('screen name: a title for the command bar label on every screen', () => {
   assert.deepEqual(screenTitle(parseCommand('AAPL')), { title: 'AAPL', sub: '' });
   assert.equal(screenTitle(parseCommand('AAPL NEWS')).sub, findCommand('NEWS').summary);
   assert.equal(screenTitle(parseCommand('MARKETS')).title, 'MARKETS');
   assert.equal(screenTitle(parseCommand('PF')).sub, findCommand('PORTFOLIO').summary);
   assert.equal(screenTitle(parseCommand('420')).sub, '');
   assert.equal(screenTitle(parseCommand('NOPE NOPE')).title, 'Unknown command');
-  // One SHARE, in the header: none left in the command bar.
+  // No screen-head row: the name sits in the command bar, the star next to it.
   const html = readFileSync('public/index.html', 'utf8');
-  assert.equal(html.match(/id="share"/g).length, 1);
-  assert.ok(html.indexOf('id="share"') > html.indexOf('class="screenhead"'));
+  assert.doesNotMatch(html, /screenhead|screen-sub|screen-actions|id="back"/);
+  const bar = /<div class="commandbar">[\s\S]*?<\/form>/.exec(html)[0];
+  assert.ok(bar.indexOf('id="screen-title"') < bar.indexOf('class="prompt"'), 'the name is left of the prompt');
+  assert.match(bar, /id="head-star"/, 'the watch star is in the label');
   assert.match(html, /id="status-legal"/, 'a slot for the legal line');
 });
 
-test('status line: the as-of time left, the legal line right, the legend in a tooltip', () => {
-  const s = shortStatus('2026-09-25T16:00:00Z', false, [{ kind: 'fx', realTime: true }, { kind: 'future', realTime: false }]);
-  assert.equal(s.text, 'UPDATED 12:00:00 ET');
-  assert.match(s.title, /FX REAL TIME/);
-  assert.match(s.title, /RT REAL TIME\. DLY DELAYED\.$/);
-  assert.match(shortStatus(null, true, []).text, /^LAST KNOWN DATA/);
+test('SHARE is in the key bar, right side, before MENU', () => {
   const html = readFileSync('public/index.html', 'utf8');
+  assert.doesNotMatch(html, /id="share"/, 'not in the page frame any more');
+  const keys = keybarHtml();
+  assert.equal(keys.match(/id="share"/g).length, 1);
+  assert.ok(keys.indexOf('id="share"') > keys.indexOf('class="fkeys"'));
+  assert.ok(keys.indexOf('id="share"') < keys.indexOf('id="menu-btn"'));
+  assert.match(keys, />SHARE</);
+});
+
+test('panel numbers: the panel labelled "n)" is found, other screens have none', () => {
+  const fakePanel = (text) => ({ querySelector: (sel) => (sel === '.panel-head > .panel-label' ? { textContent: text } : null) });
+  const panels = ['1) MARKETS', '2) S&P 500', '3) MOVERS', '4) NEWS'].map(fakePanel);
+  const root = { querySelectorAll: (sel) => (sel === '.panel' ? panels : []) };
+  for (const n of [1, 2, 3, 4]) assert.equal(panelByNumber(root, String(n)), panels[n - 1]);
+  assert.equal(panelByNumber(root, '5'), null);
+  assert.equal(panelByNumber({ querySelectorAll: () => [fakePanel('10) X')] }, '1'), null, '10) is not 1)');
+});
+
+test('panel numbers: a number and Enter opens a panel; digits typed as a command stay a command', () => {
+  assert.equal(panelNumberInput('3'), 3, '3 Enter on HOME');
+  assert.equal(panelNumberInput('12'), 12, '12 Enter (a screen with 12 panels)');
+  for (const c of ['3988.HK', '1810.HK', 'CPI 100 2000', '0', '123', '3 5', 'AAPL', '']) assert.equal(panelNumberInput(c), null, c);
+  // 3 Enter on HOME finds MOVERS.
+  const fakePanel = (text) => ({ querySelector: () => ({ textContent: text }) });
+  const home = ['1) MARKETS', '2) S&P 500', '3) MOVERS', '4) NEWS'].map(fakePanel);
+  assert.equal(panelByNumber({ querySelectorAll: () => home }, String(panelNumberInput('3'))), home[2]);
+  // 3988.HK typed on HOME or MARKETS: no digit is taken on keydown off a stock screen, and
+  // Enter runs it as a command (the resolver), not as panel 3.
+  const src = readFileSync('public/app.js', 'utf8');
+  assert.doesNotMatch(src, /maximize\(e\.key\)/, 'no panel on a bare digit keydown');
+  assert.match(src, /\(embed \|\| !tickerBar\.hidden\)/, 'instant 1-9 only with the stock function bar');
+  assert.match(src, /typed && !embed && tickerBar\.hidden \? panelNumberInput\(clean\)/);
+  assert.equal(parseCommand('3988.HK').input, '3988.HK');
+});
+
+test('freshness: the dot goes stale when updates stop', () => {
+  const at = Date.parse('2026-09-25T16:00:00Z');
+  assert.equal(freshOverdue({ at, every: 15_000 }, at + 30_000), false, 'within a minute');
+  assert.equal(freshOverdue({ at, every: 15_000 }, at + 61_000), true, 'a minute with no 15-second update');
+  assert.equal(freshOverdue({ at, every: 300_000 }, at + 500_000), false, 'news: 5 minutes apart');
+  assert.equal(freshOverdue({ at, every: 300_000 }, at + 601_000), true);
+  assert.equal(freshOverdue({ at, every: 0 }, at + 3_600_000), false, 'a screen that loads once');
+});
+
+test('freshness: a dot by the clock, the time in its tooltip; the status line keeps messages', () => {
+  assert.deepEqual(freshDot('2026-09-25T16:00:00Z', false), { state: 'fresh', title: 'Updated 12:00:00 ET' });
+  assert.deepEqual(freshDot('2026-09-25T16:00:00Z', true), { state: 'stale', title: 'Last known data 12:00:00 ET' });
+  const html = readFileSync('public/index.html', 'utf8');
+  const clock = /<div class="clock"[\s\S]*?<\/div>/.exec(html)[0];
+  assert.match(clock, /id="fresh-dot"/);
   const line = /<div class="statusline"[\s\S]*?<\/div>/.exec(html)[0];
-  assert.match(line, /id="status-msg"[^>]*title="RT REAL TIME\. DLY DELAYED\."/);
-  assert.match(line, /<span id="status-legal" class="status-legal">.*Information only\. Not investment advice\. Data may be delayed\..*<a href="\/terms">Terms<\/a><\/span>/);
-  assert.doesNotMatch(line, /status-legend|legal-legend/, 'no legend crowding the line');
+  assert.match(line, /<span id="status-legal" class="status-legal"><span class="legal-line">Not advice<\/span>.*<a href="\/terms">Terms<\/a>/);
+  assert.doesNotMatch(line, /UPDATED|Information only/);
+  assert.doesNotMatch(readFileSync('public/screens/help.js', 'utf8'), /PICK A CATEGORY/, 'no permanent hint in the status line');
+});
+
+test('HELP start here: one plain list, no cards, one line of keys', () => {
+  const html = startHere();
+  assert.doesNotMatch(html, /hs-card|hs-try|hs-rule|hs-n\b|How it works|Try these first|Help and navigation/);
+  assert.equal((html.match(/class="hs-row"/g) || []).length, START_HERE.length);
+  assert.ok(START_HERE.length >= 15 && START_HERE.length <= 20);
+  for (const [c] of START_HERE) assert.match(html, new RegExp(`data-cmd="${c}"`));
+  for (const c of ['AAPL', 'AAPL NEWS', 'MARKETS', 'NEWS', 'RATES', 'HEATMAP', 'SCREEN', 'WATCH', 'PORTFOLIO', 'DESK', 'WHATIF', 'MENU']) {
+    assert.ok(START_HERE.some(([x]) => x === c), c);
+  }
+  assert.equal((html.match(/class="hs-keys"/g) || []).length, 1);
+  assert.deepEqual(START_KEYS.map(([k]) => k), ['Enter', 'Tab', 'Esc', 'Ctrl K', '/', '1-9', 'number Enter', 'F1-F10']);
 });
 
 test('copy rules for the navigation files', () => {

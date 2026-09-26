@@ -52,6 +52,16 @@ Before you make any financial decision, think about whether it suits you and get
 
 You alone are responsible for your investment and financial decisions and for their results. To the fullest extent the law allows, we are not responsible for any loss or damage that comes from using, or relying on, anything on Bloombroke. Our [Terms of Use](/terms) explain the limits on our responsibility in full.
 
-## 9. Contact
+## 9. Where the data comes from
+
+- Prices and charts: CNBC. US stocks: Nasdaq Last Sale.
+- RT means real time. DLY means delayed: futures about 10 minutes, indexes about 15 minutes.
+- Company data, calendars and the stock screener: Nasdaq. Filings and financial statements: US SEC EDGAR.
+- Headlines: CNBC, MarketWatch, Yahoo Finance and the Nasdaq news feed. Each headline links to the original publisher.
+- Exchange rates: ECB reference rates via Frankfurter, once a working day. Pairs without the euro are calculated from the euro rates.
+- Rates: US Treasury, Federal Reserve Bank of New York and Freddie Mac. Economy: FRED, Federal Reserve Bank of St. Louis. Inflation: US Bureau of Labor Statistics.
+- Economic calendar: Forex Factory. Options: Cboe, delayed 15 minutes. Crypto: CoinGecko.
+
+## 10. Contact
 
 Questions about this disclaimer: {{CONTACT}}.

@@ -6,7 +6,7 @@ import { esc, q } from './markets.js';
 import { edgeFade } from '../kit.js';
 import {
   CATEGORIES, findCommand, byCategory, categoriesInUse, searchCommands,
-  START_HERE, GRAMMAR_RULES, FUNCTION_BAR,
+  START_HERE, START_KEYS, FUNCTION_BAR,
 } from '../registry.js';
 import { commandForWord } from '../resolve.js';
 import { LISTED_TICKERS } from '../known-tickers.js';
@@ -61,29 +61,12 @@ function rows(list, opts) {
   return `<ol class="hc-list">${list.map((c, i) => commandRow(c, i, opts)).join('')}</ol>`;
 }
 
-function keysList(fkeys) {
-  const keys = [
-    ['Enter', 'Run the command'], ['Tab', 'Complete the suggestion'], ['Up Down', 'Past commands'],
-    ['Esc', 'Clear the bar, then go back'], ['Ctrl K', 'Open the menu'], ['/', 'Search HELP'], ['1-9', 'Stock functions, on a stock screen'],
-  ];
-  const k = (s) => s.split(' ').map((p) => `<kbd>${esc(p)}</kbd>`).join(' ');
-  return `<dl class="keys">${keys.map(([a, b]) => `<div><dt>${k(a)}</dt><dd>${esc(b)}</dd></div>`).join('')}
-    ${fkeys.map((f) => `<div><dt><kbd>${esc(f.key)}</kbd></dt><dd>${esc(f.label)}</dd></div>`).join('')}</dl>`;
-}
-
-function startHere(fkeys) {
-  const rules = GRAMMAR_RULES.map(([rule, ex], i) => `<li class="hs-rule"><span class="hs-n">${i + 1}</span><span class="hs-text">${esc(rule)}</span>${code(ex)}</li>`).join('');
-  const tries = START_HERE.map(([c, what]) => `<li><a class="hs-try" href="${esc(q(c))}" data-cmd="${esc(c)}"><span class="hs-cmd">${esc(c)}</span><span class="hs-what">${esc(what)}</span></a></li>`).join('');
-  return `<section class="hs-card" aria-label="Start here">
-      <h3 class="hs-h">How it works</h3>
-      <ol class="hs-rules">${rules}</ol>
-      <h3 class="hs-h">Try these first</h3>
-      <ul class="hs-tries">${tries}</ul>
-    </section>
-    <h3 class="hs-h">Help and navigation</h3>
-    ${rows(byCategory('Start here'))}
-    <h3 class="hs-h">Keys</h3>
-    ${keysList(fkeys)}`;
+// Start here: one dense list of the commands to know, then one line of keys. Each row
+// runs its command.
+export function startHere() {
+  const items = START_HERE.map(([c, what]) => `<li class="hs-row"><a class="hs-cmd" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a><span class="hs-what">${esc(what)}</span></li>`).join('');
+  return `<ul class="hs-list">${items}</ul>
+    <p class="hs-keys">${START_KEYS.map(([k, what]) => `<kbd>${esc(k)}</kbd> ${esc(what)}`).join(' <span class="hs-sep" aria-hidden="true">&middot;</span> ')}</p>`;
 }
 
 function detail(entry, ticker) {
@@ -171,7 +154,7 @@ export function render(el, cmd, ctx) {
         ? `<h2 class="help-h">Commands for "${esc(query)}"</h2>${rows(found, { showCategory: true })}<p class="help-tip dim">Up and Down pick a row, Enter runs its example.</p>`
         : `<h2 class="help-h">Nothing for "${esc(query)}"</h2><p class="muted">Try a plainer word, like price, news, rate or dividend. Or type a ticker in the command bar: ${code('AAPL')}</p>`;
     } else if (cat === 'Start here') {
-      main.innerHTML = `<h2 class="help-h">Start here</h2>${startHere(ctx.fkeys)}`;
+      main.innerHTML = `<h2 class="help-h">Start here</h2>${startHere()}`;
     } else {
       main.innerHTML = `<h2 class="help-h">${esc(cat)}</h2>${rows(byCategory(cat))}`;
     }
@@ -240,6 +223,6 @@ export function render(el, cmd, ctx) {
   paint();
   const stopFade = edgeFade(el.querySelector('.help-cats'));
   if (query) input.focus();
-  ctx.status(topic.entry ? `HELP ${topic.ticker || topic.entry.name}${topic.from ? ` (FROM ${topic.from})` : ''}` : 'HELP: PICK A CATEGORY, OR PRESS / TO SEARCH');
+  ctx.status(topic.from ? `HELP ${topic.entry.name} (FROM ${topic.from})` : '');
   return () => { document.removeEventListener('keydown', onSlash, true); stopFade(); };
 }

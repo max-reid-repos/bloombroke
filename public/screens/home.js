@@ -8,8 +8,6 @@ import { loadWatchlist, isDefaultList } from '../watchlist.js';
 import { fetchQuotes, watchCompact } from './watch.js';
 import { moversCompact } from './movers.js';
 
-const HOME_FOOTNOTE = '<p class="footnote">Prices from CNBC. RT: real time. DLY: delayed, futures about 10 minutes, indexes about 15. Headlines link to the original publishers. The status line shows when data was last updated. Not financial advice.</p>';
-
 export function fxTable(pairs) {
   const rows = pairs.map((p) => {
     const d = dirOf(p.change);
@@ -42,9 +40,7 @@ export function render(el, cmd, ctx) {
     ? panel('3', 'Watchlist', LOADING, { cmd: 'WATCH', metaId: 'h-fx-meta', meta: `${watch.length} SYMBOLS` })
     : panel('3', 'Movers', LOADING, { cmd: 'MOVERS', metaId: 'h-fx-meta', meta: 'S&amp;P 100 TODAY', bodyCls: 'flush' })}
     ${panel('4', 'News', LOADING, { cmd: 'NEWS', metaId: 'h-news-meta', bodyCls: 'flush', cls: 'panel-wide' })}
-  </div>
-  <p class="footnote h-desk">Build your own screen: <a class="code" href="?c=DESK" data-cmd="DESK">DESK</a></p>
-  ${HOME_FOOTNOTE}`;
+  </div>`;
 
   const bodies = el.querySelectorAll('.panel-body');
   const [mkBody, , fxBody, newsBody] = bodies;

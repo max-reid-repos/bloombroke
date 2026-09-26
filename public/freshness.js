@@ -12,11 +12,21 @@ function nyTime(iso) {
   return d.toLocaleTimeString('en-US', { timeZone: NY, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
 }
 
+// What RT and DLY mean, in the tooltip of every tag.
+export const RT_TITLE = 'Real time';
+export const DLY_TITLE = 'Delayed: futures about 10 min, indexes about 15 min';
+
 export function freshTag(item) {
   if (!item || typeof item.realTime !== 'boolean') return '';
   return item.realTime
-    ? '<span class="fresh is-rt" title="Real time">RT</span>'
-    : '<span class="fresh is-dly" title="Delayed">DLY</span>';
+    ? `<span class="fresh is-rt" title="${RT_TITLE}">RT</span>`
+    : `<span class="fresh is-dly" title="${DLY_TITLE}">DLY</span>`;
+}
+
+// The tooltip of the freshness dot: "Updated 22:48:47 ET".
+export function updatedTitle(iso, stale) {
+  const t = iso ? nyTime(iso) : '--:--:--';
+  return `${stale ? 'Last known data' : 'Updated'} ${t} ET`;
 }
 
 // Which bucket an instrument falls in for the status line.

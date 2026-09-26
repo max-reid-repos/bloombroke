@@ -34,8 +34,7 @@ export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="stack">
     ${panel('1', 'US Treasury yield curve', `<div class="chart-host" id="cv-chart">${LOADING}</div><div id="cv-legend"></div>`, { metaId: 'cv-meta', bodyCls: 'flush' })}
     ${panel('2', 'Yields', LOADING, { metaId: 'cv-t-meta', meta: 'PERCENT A YEAR' })}
-  </div>
-  <p class="footnote">Today: CNBC, the same live quotes as RATES, real time (RT) or delayed (DLY) as tagged on each row. 1 month and 1 year ago: US Treasury daily par yield curve (DAILY). 1 bp = 0.01%. Not financial advice.</p>`;
+  </div>`;
   const host = el.querySelector('#cv-chart');
   const leg = el.querySelector('#cv-legend');
   const meta = el.querySelector('#cv-meta');

@@ -2,7 +2,6 @@
 // (Nasdaq screener), and the S&P 100 by sector right now (the HEATMAP list).
 
 import { esc, fmtNum, panel, LOADING, rerender } from './markets.js';
-import { statusLine } from '../freshness.js';
 
 // Both tables put the split bar right after a fixed-width name column, so the bars in
 // the two panels start at the same x.
@@ -69,8 +68,7 @@ export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="stack">
     ${panel('1', 'Breadth by exchange', LOADING, { metaId: 'bb-meta' })}
     ${panel('2', 'S&P 100 by sector', LOADING, { metaId: 'bb-s-meta', cmd: 'HEATMAP' })}
-  </div>
-  <p class="footnote">Exchanges: every listed stock in the Nasdaq stock screener, at the close of the last full session; up or down against the close before. Volume is shares traded in the rising and falling stocks. S&P 100: live prices, the same list as HEATMAP. The screener has no 52-week highs or lows. Not financial advice.</p>`;
+  </div>`;
   const [xBody, sBody] = el.querySelectorAll('.panel-body');
 
   async function load() {
@@ -80,7 +78,7 @@ export function render(el, cmd, ctx) {
       el.querySelector('#bb-meta').innerHTML = `SESSION ${esc(d.sessionDate || '--')}<span class="m-hide"> · NASDAQ SCREENER</span>`;
       rerender(sBody, d.sectors.length ? sectorTable(d.sectors, d.sp100) : '<p class="panel-msg">S&P 100 prices are taking a break.</p>');
       el.querySelector('#bb-s-meta').textContent = d.sp100 ? `${d.sp100.up} OF ${d.sp100.total} UP` : '--';
-      ctx.status(`${statusLine(d.updated, d.stale)} · EXCHANGES: SESSION ${d.sessionDate || '--'}`, d.stale ? 'warn' : '');
+      ctx.updated(d.updated, d.stale);
     } catch (err) {
       if (err.name === 'AbortError') return;
       for (const b of [xBody, sBody]) if (!b.querySelector('table')) b.innerHTML = `<p class="panel-msg">${esc(err.message)}</p>`;
