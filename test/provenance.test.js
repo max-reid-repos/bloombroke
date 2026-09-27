@@ -106,7 +106,7 @@ const SAMPLES = {
 // Vendor names never leave the server in DATA, STATUS, the dot or the envelope.
 const VENDORS = /CNBC|Nasdaq|NASDAQ|Yahoo|Cboe|CBOE|CoinGecko|Frankfurter|Forex ?Factory|Seeking Alpha|Queue-Times|ApeWisdom|pizzint|Polymarket|Drewry|Forbes|DICJ|IMF|PortWatch|FRED|Freddie|New York Fed|NY Fed|MarketWatch|Dow Jones|Business ?Wire|PR ?Newswire|GlobeNewswire|Reddit|Algolia|Hacker News|App Store|Wikimedia|iShares|EDGAR Online/;
 // Links allowed: US government, the ECB (its terms require it be cited), credits a licence requires.
-const GOV_URL = /^https:\/\/([a-z0-9-]+\.)*(sec\.gov|bls\.gov|treasury\.gov|federalreserve\.gov|noaa\.gov|cdc\.gov|ecb\.europa\.eu|naturalearthdata\.com|github\.com\/TheEconomist)\b/;
+const GOV_URL = /^https:\/\/([a-z0-9-]+\.)*(sec\.gov|bls\.gov|treasury\.gov|federalreserve\.gov|noaa\.gov|cdc\.gov|ecb\.europa\.eu|naturalearthdata\.com|github\.com\/TheEconomist|newyorkfed\.org)\b/;
 
 test('every data route has a sample here, and every sample gets a complete envelope', () => {
   assert.deepEqual(Object.keys(SAMPLES).sort(), Object.keys(ROUTES).sort(), 'a new route needs a sample and an envelope');

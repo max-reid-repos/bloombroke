@@ -32,10 +32,10 @@ Our Data Protection Officer can be reached at {{CONTACT}}. Write to this address
 We use DataFast (datafa.st) to understand how many people visit and which screens they use. The DataFast script sets two first-party cookies: datafast_visitor_id, which lasts about one year, and datafast_session_id, which lasts about 30 minutes. It sends DataFast the page address, the referring page, your browser, operating system, device type, screen size, language and time zone, and it records clicks on links that lead to other sites. DataFast uses your IP address to work out your approximate location, such as your country and city. We use this only as totals and trends, and we do not use it to identify you.
 
 - **Global Privacy Control.** If your browser sends a Global Privacy Control (GPC) signal, we do not load DataFast on any page of bloombroke.com.
-- **Feature events.** When you use certain features, such as a WHATIF result or a GUESS game, we send DataFast an event with the feature's name and, for some features, a short fixed label, such as how a result was shared. These events contain no personal data.
+- **Feature events.** When you use certain features, such as a WHATIF result or a GUESS game, we send DataFast an event with the feature's name and, for some features, a short fixed label, such as how a result was shared. The event itself carries no personal data, but DataFast links it to the same visitor and session cookies as your visits.
 - **Cloudflare Web Analytics.** Cloudflare, our network provider, adds its own count of page views and page load times. Cloudflare states that it does not use cookies for this and does not identify visitors. It is not affected by GPC.
 - **Our own counters.** Our server keeps daily totals of some actions, such as WHATIF results, GUESS games, feedback notes, MCP tool calls, and how many times sponsor-strip lines were shown and clicked. These are totals only, with no IP address and nothing about who did what, so we keep them even when your browser sends GPC.
-- **What we publish.** We publish aggregate visitor numbers on our BBRK screen, including visitor counts by country, from DataFast totals; a country with fewer than three visitors is not shown on its own, and we never publish cities or anything about a single visitor.
+- **What we publish.** We publish aggregate visitor numbers on our BBRK screen, including visitor counts by country, from DataFast totals; a country or referring site with fewer than three visitors is not shown on its own, and we never publish cities or anything that identifies a visitor.
 
 ### Pro subscribers
 
@@ -87,7 +87,7 @@ We share personal data only with these service providers, which help us run Bloo
 |---|---|---|
 | Stripe | Pro payments and billing | United States and Ireland, among other places |
 | Cloudflare | Network, security and delivery for every visit, DNS, page-view counts (Cloudflare Web Analytics), and routing of email sent to {{CONTACT}} | A global network, based in the United States |
-| DataFast | Visit analytics, as described in section 3 (not loaded when your browser sends GPC) | United States |
+| DataFast | Visit analytics, as described in section 3 (not loaded when your browser sends GPC) | Mostly outside the EU, including the United States, as its data processing terms state |
 | Hetzner | Hosting: the server that runs Bloombroke and stores Pro data | Ashburn, Virginia, United States |
 | Google (Gmail) | The mailbox that receives email sent to {{CONTACT}} | United States, among other places |
 

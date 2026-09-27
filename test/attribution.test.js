@@ -46,7 +46,7 @@ test('news: headline, publisher and link only, credited to the publisher', () =>
   assert.equal(TICKER_SOURCES, 'NEWS PUBLISHERS · SEC');
   for (const f of ['screens/news.js', 'screens/tickernews.js']) assert.doesNotMatch(src(f), /class="footnote"/, f);
   assert.match(disclaimer, /Each headline links to the original publisher/);
-  assert.match(disclaimer, /Headlines: news publishers, the Board of Governors of the Federal Reserve System, the US Bureau of Labor Statistics and SEC EDGAR\./);
+  assert.match(disclaimer, /Headlines: news publishers and online forums, the Board of Governors of the Federal Reserve System, the US Bureau of Labor Statistics and SEC EDGAR\./);
 });
 
 test('the Disclaimer gives every source by class, names US government sources and required credits, and no vendors', () => {

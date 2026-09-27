@@ -2,6 +2,7 @@
 // against today's target range. 100 minus the futures price is the average rate the
 // market is paying for that month. No meeting probabilities: this is the prices only.
 
+import { NYFED_NOTICE } from './rates.js';
 import { esc, fmtNum, fmtBp, fmtAsOf, panel, metaNote, LOADING } from './markets.js';
 import { mountLines, legend } from './lines.js';
 import { freshTag } from '../freshness.js';
@@ -92,7 +93,7 @@ export function render(el, cmd, ctx) {
             <td class="num time dim">${esc(fmtAsOf(m.asOf))}</td>
           </tr>`;
         }).join('')}</tbody>
-      </table>`;
+      </table>${fed && Number.isFinite(fed.effective) ? NYFED_NOTICE : ''}`;
       const gaps = months.filter((m) => m.gap).length;
       el.querySelector('#fp-t-meta').innerHTML = `${FP_NOTE} · ${freshTag({ realTime: false })} ${months.length - gaps} CONTRACTS${gaps ? ` · ${gaps} WITHOUT A PRICE` : ''}`;
       ctx.updated(d.updated, d.stale);

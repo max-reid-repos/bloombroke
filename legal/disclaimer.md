@@ -56,12 +56,12 @@ You alone are responsible for your investment and financial decisions and for th
 
 ## 9. Where the data comes from
 
-We describe our sources by class and name US government sources and the credits a licence requires. The DATA command lists each dataset with its source class and delay.
+We describe our sources by class and name US government sources, a few public-domain sources, and credits a licence requires. The DATA command lists each dataset with its source class and delay.
 
 - Prices, charts, company data, options and the stock screener: market data providers. Calendars: market data providers and published calendars.
 - RT means real time. DLY means delayed: futures about 10 minutes, indexes about 15 minutes.
 - Filings and financial statements: US Securities and Exchange Commission (EDGAR).
-- Headlines: news publishers, the Board of Governors of the Federal Reserve System, the US Bureau of Labor Statistics and SEC EDGAR. Each headline links to the original publisher.
+- Headlines: news publishers and online forums, the Board of Governors of the Federal Reserve System, the US Bureau of Labor Statistics and SEC EDGAR. Each headline links to the original publisher.
 - Exchange rates: ECB reference rates, once a working day. Pairs without the euro are calculated from the euro rates.
 - Rates: the US Treasury, the Federal Reserve Bank of New York (see its notice below), market data providers and public web data. Inflation: the US Bureau of Labor Statistics. Economy: public web data.
 - Crypto: market data providers. Powered by CoinGecko.
@@ -69,7 +69,9 @@ We describe our sources by class and name US government sources and the credits 
 - Maps: Natural Earth.
 - TRENDING and BBRK: our own counters.
 
-**Federal Reserve Bank of New York.** The effective federal funds rate (EFFR) shown on RATES and FEDPATH is subject to the Terms of Use posted at newyorkfed.org. The New York Fed is not responsible for publication of the EFFR by Bloombroke, does not sanction or endorse any particular republication, and has no liability for your use. Bloombroke is not affiliated with the New York Fed. The New York Fed does not sanction, endorse, or recommend any products or services offered by Bloombroke.
+### Federal Reserve Bank of New York
+
+The effective federal funds rate (EFFR) shown on RATES and FEDPATH is subject to the Terms of Use posted at newyorkfed.org. The New York Fed is not responsible for publication of the EFFR by Bloombroke, does not sanction or endorse any particular republication, and has no liability for your use. Bloombroke is not affiliated with the New York Fed. The New York Fed does not sanction, endorse, or recommend any products or services offered by Bloombroke.
 
 ## 10. Contact
 
