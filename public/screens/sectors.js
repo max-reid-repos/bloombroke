@@ -268,7 +268,9 @@ export function nextBox(items, cur, key) {
 const f1 = (n) => n.toFixed(1);
 
 // The map as SVG. cur: the sector id (overview) or ticker (zoomed) under the cursor.
-export function mapSvg(model, lay, { w, h, period = '1D', zoom = null, cur = null } = {}) {
+// select: the map beside the table, where a tile picks its sector (data-sec) instead of
+// linking to its stock.
+export function mapSvg(model, lay, { w, h, period = '1D', zoom = null, cur = null, select = false } = {}) {
   const parts = [];
   const byId = new Map(model.map((s) => [s.id, s]));
   for (const s of lay.secs) {
@@ -292,14 +294,23 @@ export function mapSvg(model, lay, { w, h, period = '1D', zoom = null, cur = nul
         + (ps ? `<text class="hm-p" x="${f1(cx)}" y="${f1(ty + ps * 0.35 + ps * 0.72)}" font-size="${ps}" text-anchor="middle">${esc(pctText)}</text>` : '')
       : '';
     const tip = `${c.name} (${c.ticker}) ${pctText}, ${fmtPt(c.pt)}`;
-    parts.push(`<a class="hm-a" href="${esc(q(c.ticker))}" data-cmd="${esc(c.ticker)}" data-t="${esc(c.ticker)}" tabindex="-1" aria-label="${esc(tip)}">`
+    const open = select
+      ? `<g class="hm-a" data-sec="${esc(c.sector)}" data-t="${esc(c.ticker)}">`
+      : `<a class="hm-a" href="${esc(q(c.ticker))}" data-cmd="${esc(c.ticker)}" data-t="${esc(c.ticker)}" tabindex="-1" aria-label="${esc(tip)}">`;
+    parts.push(open
       + `<rect class="hm-cell" x="${f1(c.x + 0.5)}" y="${f1(c.y + 0.5)}" width="${f1(Math.max(0, c.w - 1))}" height="${f1(Math.max(0, c.h - 1))}" fill="${mapFill(c.move, period)}"/>`
-      + `${text}<title>${esc(tip)}</title></a>`);
+      + `${text}<title>${esc(tip)}</title>${select ? '</g>' : '</a>'}`);
   }
   const box = zoom ? lay.cells.find((c) => c.ticker === cur) : lay.secs.find((s) => s.id === cur);
   if (box) parts.push(`<rect class="sc-mcur" x="${f1(box.x + 1)}" y="${f1(box.y + 1)}" width="${f1(Math.max(0, box.w - 2))}" height="${f1(Math.max(0, box.h - 2))}"/>`);
   return `<svg class="heatmap sc-map-svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">${parts.join('')}</svg>`;
 }
+
+// The sector id of a table row key: s:XLK, w:XLK and m:XLK:NVDA are all XLK.
+export const secOfKey = (k) => (k ? String(k).split(':')[1] || null : null);
+
+// TABLE shows the map beside it from this width (desktop, not in a DESK panel).
+export const SPLIT_MIN_W = 1280;
 
 // Map height: the room left in a stretched panel (desktop), a DESK panel's height, or
 // taller than wide on a phone.
@@ -340,12 +351,35 @@ export function render(el, cmd, ctx) {
     if (!tr) return;
     state.cur = tr.dataset.k;
     focusTreeRow(host, tr, { focus });
+    drawSide();
+  }
+
+  // Wide TABLE: the map beside the table, the cursor row's sector outlined in it.
+  const splitMq = !ctx.embed && typeof window === 'object' ? window.matchMedia?.(`(min-width: ${SPLIT_MIN_W}px)`) : null;
+  const split = () => view === 'TABLE' && Boolean(splitMq?.matches);
+  let sideKey = '';
+  function drawSide(force = false) {
+    const side = host.querySelector('.sc-side');
+    if (!side || !model) return;
+    const w = Math.floor(side.clientWidth);
+    const h = Math.floor(side.clientHeight);
+    if (!w || !h) return;
+    const sec = secOfKey(state.cur);
+    const key = `${w}x${h}:${sec}`;
+    if (!force && key === sideKey) return;
+    sideKey = key;
+    side.innerHTML = mapSvg(model, mapLayout(model, w, h), { w, h, period, cur: sec, select: true });
   }
   const rowFor = (k) => (k ? host.querySelector(`tr[data-k="${CSS.escape(k)}"]`) : null);
   function drawTable() {
     const had = host.contains(document.activeElement) || state.refocus;
     state.refocus = false;
-    host.innerHTML = `<div class="sc-scroll">${tableHtml(model, state)}</div>`;
+    const wide = split();
+    host.classList.toggle('is-split', wide);
+    host.innerHTML = wide
+      ? `<div class="sc-split"><div class="sc-scroll">${tableHtml(model, state)}</div><div class="sc-side" aria-hidden="true"></div></div>`
+      : `<div class="sc-scroll">${tableHtml(model, state)}</div>`;
+    sideKey = '';
     const tr = rowFor(state.cur) || rowFor(state.cur?.startsWith('s:') ? null : `s:${state.cur?.split(':')[1]}`) || host.querySelector('tr.sc-row');
     focusRow(tr, { focus: had });
   }
@@ -439,6 +473,19 @@ export function render(el, cmd, ctx) {
       if (state.zoom) zoomOut(); else zoomTo(g.dataset.sec);
       return;
     }
+    // A tile of the map beside the table: open its sector and put the cursor on the
+    // stock (or the sector), without leaving the screen.
+    const tile = e.target.closest?.('.sc-side [data-sec]');
+    if (tile) {
+      e.preventDefault();
+      e.stopPropagation();
+      const sec = tile.dataset.sec;
+      state.open.add(sec);
+      state.cur = tile.dataset.t ? `m:${sec}:${tile.dataset.t}` : `s:${sec}`;
+      state.refocus = true;
+      drawTable();
+      return;
+    }
     const tr = e.target.closest?.('tr.sc-row');
     if (!tr || e.target.closest('a[data-cmd]')) return;
     state.cur = tr.dataset.k;
@@ -459,11 +506,19 @@ export function render(el, cmd, ctx) {
   };
   document.addEventListener('keydown', onDocKey);
 
-  const ro = view === 'MAP' && typeof ResizeObserver === 'function'
-    ? new ResizeObserver(() => { const s = guard.next(host.clientWidth, host.clientHeight, performance.now()); if (s && model) drawMap(); })
+  const ro = typeof ResizeObserver === 'function'
+    ? new ResizeObserver(() => {
+      if (!model) return;
+      if (view === 'TABLE') { drawSide(); return; }
+      const s = guard.next(host.clientWidth, host.clientHeight, performance.now());
+      if (s) drawMap();
+    })
     : null;
   ro?.observe(host);
-  ctx.onCleanup(() => { ro?.disconnect(); document.removeEventListener('keydown', onDocKey); });
+  // Crossing the split width: the table alone, or the table and the map.
+  const onSplit = () => { if (model && view === 'TABLE') drawTable(); };
+  splitMq?.addEventListener?.('change', onSplit);
+  ctx.onCleanup(() => { ro?.disconnect(); splitMq?.removeEventListener?.('change', onSplit); document.removeEventListener('keydown', onDocKey); });
 
   function draw() {
     if (view === 'MAP') drawMap(); else drawTable();

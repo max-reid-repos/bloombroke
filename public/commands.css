@@ -74,10 +74,18 @@
 .sc-msec { cursor: pointer; }
 .sc-mcur { fill: none; stroke: var(--text-2); stroke-width: 1.5; stroke-dasharray: 3 3; pointer-events: none; }
 .sc-map:focus .sc-mcur { stroke: var(--accent); stroke-width: 2; stroke-dasharray: none; }
+.sc-host.is-split { display: flex; flex-direction: column; overflow: hidden; }
+.sc-split { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 45fr) minmax(0, 55fr); }
+.sc-split > .sc-scroll { min-height: 0; overflow: auto; border-right: 1px solid var(--rule-strong); }
+.sc-split .sc-table { width: 100%; min-width: 0; }
+.sc-split .sc-table .sc-name { width: auto; max-width: 0; }
+.sc-side { position: relative; min-width: 0; min-height: 0; overflow: hidden; cursor: pointer; }
+.sc-side .sc-mcur { stroke: var(--accent); stroke-width: 2; stroke-dasharray: none; }
+@media (max-width: 1279px) { .sc-split { display: block; } .sc-side { display: none; } }
 @media (min-width: 1100px) {
   html:not(.is-embed) .view > .panel > .panel-body.sc-body { overflow: hidden; scrollbar-gutter: auto; }
   html:not(.is-embed) .sc-host { flex: 1 1 0; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
-  html:not(.is-embed) .sc-host.is-map { overflow: hidden; scrollbar-gutter: auto; }
+  html:not(.is-embed) .sc-host.is-map, html:not(.is-embed) .sc-host.is-split { overflow: hidden; scrollbar-gutter: auto; }
 }
 @media (max-width: 639px) {
   .sc-table { min-width: 0; width: 100%; }

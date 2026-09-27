@@ -8,7 +8,7 @@ import {
 import { SP100, SECTORS } from '../data/sp100.js';
 import {
   parse, sectorsCmd, swimCmd, memberCaps, contributions, listedMove, breadth, fmtBreadth, topContributors, fmtPt, whoLine,
-  sectorModel, tableHtml, treeKey, mapLayout, nextBox, mapSvg, mapFill, mapHeight, PERIODS, MAP_SCALE,
+  sectorModel, tableHtml, treeKey, mapLayout, nextBox, mapSvg, mapFill, mapHeight, PERIODS, MAP_SCALE, secOfKey, SPLIT_MIN_W,
 } from '../public/screens/sectors.js';
 import { parse as fishParse, SPECIES } from '../public/screens/fishtank.js';
 import { matchWeird } from '../public/commands-weird.js';
@@ -394,6 +394,22 @@ test('sectors map: arrows move to the nearest box that way, green and red only',
   assert.match(svg, /class="sc-mcur"/);
   assert.match(svg, /data-cmd="NVDA"/);
   assert.match(mapSvg(MODEL, mapLayout(MODEL, 800, 400, 'XLY'), { w: 800, h: 400, zoom: 'XLY', cur: 'AMZN' }), /3\/4 up/);
+});
+
+test('sectors split: the map beside the table picks sectors, it never links away', () => {
+  assert.equal(SPLIT_MIN_W, 1280);
+  assert.equal(secOfKey('s:XLK'), 'XLK');
+  assert.equal(secOfKey('w:XLY'), 'XLY');
+  assert.equal(secOfKey('m:XLY:AMZN'), 'XLY');
+  assert.equal(secOfKey(null), null);
+  const lay = mapLayout(MODEL, 600, 400);
+  const side = mapSvg(MODEL, lay, { w: 600, h: 400, cur: 'XLY', select: true });
+  assert.doesNotMatch(side, /data-cmd=|href=/, 'no links: a tile selects its sector');
+  assert.match(side, /<g class="hm-a" data-sec="XLY" data-t="AMZN">/);
+  assert.match(side, /class="sc-mcur"/, 'the cursor row\'s sector is outlined');
+  const y = lay.secs.find((x) => x.id === 'XLY');
+  assert.match(side, new RegExp(`sc-mcur" x="${(y.x + 1).toFixed(1)}" y="${(y.y + 1).toFixed(1)}"`));
+  assert.match(mapSvg(MODEL, lay, { w: 600, h: 400 }), /data-cmd="AMZN"/, 'the full map still links');
 });
 
 // ---- SWIM and BREADTH ------------------------------------------------------------------------
