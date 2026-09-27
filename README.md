@@ -59,9 +59,9 @@ The bar period grid sets the period and the range in one click:
 
 ![The WEIRD screen: 23 gauges, each with its source and date](docs/img/weird.webp)
 
-`WEIRD` shows 23 live gauges from public sources, each with its source and its own date: ships through Hormuz, the Pentagon Pizza Index, the App Store rank of trading apps, Waffle Houses inside storms, Wikipedia views of "Recession", Costco's hot dog in today's money, the Big Mac index, Disney ride waits, AI mentions in 10-Q filings, words in the Fed Beige Book, cardboard box output and more. Each gauge is also its own command (`CANAL`, `PIZZA`, `BIGMAC`, `RIDES`), and each can be an alert (`ALERTS CANAL < 5`). A source with nothing to report shows NO DATA, never a guess.
+`WEIRD` shows 23 live gauges from public sources, each with its source and its own date: ships through Hormuz, the Pentagon Pizza Index, the app-store rank of trading apps, Waffle Houses inside storms, encyclopedia page views of "Recession", Costco's hot dog in today's money, the Big Mac index, Disney ride waits, AI mentions in 10-Q filings, words in the Fed Beige Book, cardboard box output and more. Each gauge is also its own command (`CANAL`, `PIZZA`, `BIGMAC`, `RIDES`), and each can be an alert (`ALERTS CANAL < 5`). A source with nothing to report shows NO DATA, never a guess.
 
-Gauge sources: IMF PortWatch; pizzint.watch (unofficial); Apple App Store; National Hurricane Center with stores © OpenStreetMap contributors, ODbL; Wikimedia pageviews; HN Algolia; FRED; BLS; NWS; NOAA SWPC; The Economist, CC BY 4.0; Forbes; ApeWisdom; Polymarket; Drewry WCI; Powered by Queue-Times.com; SEC EDGAR; Federal Reserve Beige Book; CDC NWSS; DICJ Macau.
+Gauge sources: US government data (National Hurricane Center, NWS, NOAA SWPC, BLS, SEC EDGAR, Federal Reserve Beige Book, CDC NWSS) and public web data. Credits: stores © OpenStreetMap contributors, ODbL; Big Mac data: The Economist, CC BY 4.0; ride waits: Powered by Queue-Times.com.
 
 ## FISHTANK
 
@@ -87,7 +87,7 @@ Build your own screen: any commands side by side, on four desks. Drag a header t
 
 In hindsight: what the money would be worth if you had bought the maker's stock instead of the product. A $599 GTX 1080 in May 2016 is a certificate for 522 shares of Nvidia. Habits work too: `WHATIF LATTE:3Y`. It shows the worst drop along the way, and every certificate has a share link and a downloadable image.
 
-`data/whatif-products.json` lists each product's US launch date, US launch price and a source link. Past closes are CNBC daily bars, each cross-checked against Yahoo Finance, and the build stops if they differ by more than 1%. Today's price is live. Price return only: dividends and spin-offs are left out.
+`data/whatif-products.json` lists each product's US launch date, US launch price and a source link. Past closes are daily closes from a market data provider, cross-checked against a second provider; the build stops if they differ by more than 1%. Today's price is live. Price return only: dividends and spin-offs are left out.
 
 ## News
 
@@ -102,7 +102,7 @@ In hindsight: what the money would be worth if you had bought the maker's stock 
 - Stale values are marked with their real date.
 - Prices can be delayed. Nothing here is investment advice.
 
-Sources and credits: CNBC, Nasdaq, SEC EDGAR, Federal Reserve, New York Fed, BLS, FRED (St. Louis Fed), US Treasury, Freddie Mac, Cboe, CoinGecko, Frankfurter API (ECB reference rates), MarketWatch, Yahoo Finance, PR Newswire, GlobeNewswire, Business Wire, Reddit, Forex Factory, IMF PortWatch, NOAA National Hurricane Center, NOAA SWPC, NWS, CDC NWSS, Wikimedia pageviews, HN Algolia, Apple App Store, Polymarket, ApeWisdom, Forbes, Drewry WCI, DICJ Macau, pizzint.watch (unofficial). Map: Natural Earth. Waffle House stores © OpenStreetMap contributors, ODbL. Big Mac data: The Economist, CC BY 4.0. Ride waits: Powered by Queue-Times.com.
+Sources and credits: SEC EDGAR, BLS, US Treasury, Federal Reserve Board, NOAA National Hurricane Center, NOAA SWPC, NWS and CDC NWSS; market data providers, news publishers and public web data; credits where a licence requires them: exchange rates are ECB reference rates; map: Natural Earth; Waffle House stores © OpenStreetMap contributors, ODbL; Big Mac data: The Economist, CC BY 4.0; ride waits: Powered by Queue-Times.com; crypto: Powered by CoinGecko.
 
 ## Pro
 
