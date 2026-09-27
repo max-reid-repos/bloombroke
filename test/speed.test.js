@@ -12,7 +12,7 @@ import { MARKETS_EXTRA } from '../public/commands-markets.js';
 import { WEIRD_SCREENS } from '../public/commands-weird.js';
 import { WEIRD_GAUGE_COMMANDS } from '../public/command-args.js';
 import { WEIRD_GAUGES } from '../public/screens/weird-gauges.js';
-import { REGISTRY, LISTED } from '../public/registry.js';
+import { REGISTRY, LISTED } from '../lib/registry.js';
 import { DETAIL } from '../public/registry-detail.js';
 import { assetUrl, loadModule, lazyScreen, screenNow, loadScreen } from '../public/lazy.js';
 
@@ -86,10 +86,10 @@ test('assets: the page gets one stylesheet, the manifest as data, and preload hi
 });
 
 test('assets: today\'s hash is immutable, an old hash is a 404 that is never cached', () => {
-  const a = buildAssets(tree({ 'app.js': 'export {};\n' }));
-  const mw = serveAssets(a);
+  const a = buildAssets(tree({ 'app.js': 'export {};\n', 'screens/x.js': 'export {};\n' }));
+  const mw = serveAssets(a, { shell: ['app.js'] });
   const call = (p) => {
-    const res = { headers: {}, code: 200, body: null, set(k, v) { if (typeof k === 'object') Object.assign(this.headers, k); else this.headers[k] = v; return this; }, status(c) { this.code = c; return this; }, type(t) { this.headers.type = t; return this; }, send(b) { this.body = b; return this; } };
+    const res = { headers: {}, code: 200, body: null, end() { return this; }, set(k, v) { if (typeof k === 'object') Object.assign(this.headers, k); else this.headers[k] = v; return this; }, status(c) { this.code = c; return this; }, type(t) { this.headers.type = t; return this; }, send(b) { this.body = b; return this; } };
     let next = false;
     mw({ method: 'GET', path: p }, res, () => { next = true; });
     return { res, next };
@@ -97,9 +97,13 @@ test('assets: today\'s hash is immutable, an old hash is a 404 that is never cac
   const ok = call(a.url('app.js')).res;
   assert.equal(ok.code, 200);
   assert.equal(ok.headers['Cache-Control'], 'public, max-age=31536000, immutable');
-  const old = call('/app.0123456789.js').res;
+  const old = call('/screens/x.0123456789.js').res;
   assert.equal(old.code, 404);
   assert.equal(old.headers['Cache-Control'], 'no-store');
+  const page = call('/app.0123456789.js').res;
+  assert.equal(page.code, 302, 'an old page\'s own app.js: back to /, never a blank page');
+  assert.equal(page.headers.Location, '/');
+  assert.equal(page.headers['Cache-Control'], 'no-store');
   assert.equal(call('/app.js').next, true, 'plain paths go on to the static files');
   assert.equal(call('/nope.0123456789.js').next, true);
 });
@@ -169,6 +173,7 @@ test('registry: HELP\'s long text is its own file, whole again in Node', () => {
     for (const [k, v] of Object.entries(d)) assert.deepEqual(entry[k], v, `${name}.${k}`);
   }
   assert.ok(LISTED.filter((c) => !c.pattern && !c.soon).every((c) => c.source), 'every listed command has its source (in Node)');
+  assert.doesNotMatch(src, /^\s*(if \([^)]*\)\s*)?[^/\n]*\bawait\b/m, 'no top-level await in the page\'s copy');
 });
 
 test('did you mean: the help line is the same as the NO SUCH screen\'s', async () => {

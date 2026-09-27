@@ -14,13 +14,11 @@
 //   bar         its place on a stock screen's function bar (1 = first)
 //   options     [[word, meaning]] for HELP <name>      } in registry-detail.js: HELP's
 //   source      where the data comes from             } long text, loaded with HELP
-//   delay       how fresh it is                       } (mergeDetail below)
+//   delay       how fresh it is                       } (mergeDetail below; lib/registry.js in Node)
 //   pattern     not a word you type (<TICKER>): HELP only, never suggested
 //   soon        on the way: listed, not runnable
 //   hidden      runs, but never listed (420)
 // PHRASES (below) lists the plain words that surely mean one command.
-
-import { loadModule } from './lazy.js';
 
 export const CATEGORIES = [
   'Start here',
@@ -499,12 +497,11 @@ export const REGISTRY = [
 
 // HELP's long text (options, source, delay: registry-detail.js) joins each entry here.
 // The page loads it only with HELP (screens/help.js imports it and calls this); in Node
-// (the server, tests) it is merged in at load, so every entry is whole there.
+// (the server, tests) lib/registry.js merges it in, so every entry is whole there.
 export function mergeDetail(detail) {
   for (const c of REGISTRY) if (detail[c.name]) Object.assign(c, detail[c.name]);
   return REGISTRY;
 }
-if (typeof window === 'undefined') mergeDetail((await loadModule('registry-detail.js')).DETAIL);
 
 const norm = (s) => String(s ?? '').trim().toUpperCase();
 

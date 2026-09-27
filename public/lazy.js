@@ -125,12 +125,13 @@ export function cssReady(rel) {
 
 const hinted = new Set();
 // Fetch ahead without running: modulepreload for a module and the modules it imports
-// (the manifest lists them), preload for a stylesheet.
+// (the manifest lists them), prefetch for a stylesheet.
 export function prefetch(rel) {
   if (typeof document === 'undefined' || hinted.has(rel) || ready.has(rel) || sheets.has(rel)) return;
   hinted.add(rel);
   const link = document.createElement('link');
-  if (rel.endsWith('.css')) { link.rel = 'preload'; link.as = 'style'; } else link.rel = 'modulepreload';
+  // A stylesheet: prefetch (idle, low priority, no "preloaded but not used" warning).
+  link.rel = rel.endsWith('.css') ? 'prefetch' : 'modulepreload';
   link.href = assetUrl(rel);
   document.head.append(link);
   for (const d of deps[rel] || []) prefetch(d);
@@ -140,6 +141,9 @@ export function prefetch(rel) {
 
 const RELOAD_KEY = 'bb.reloadedAt';
 let reloading = false;
+let beforeReload = null;
+// fn runs just before that reload (app.js keeps the command that was cut off).
+export function onReload(fn) { beforeReload = fn; }
 // Once per minute at most: reload the page so it gets today's file names. The address
 // bar already holds the command, so the fresh page opens the same screen.
 function recover(err) {
@@ -150,6 +154,7 @@ function recover(err) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return; // offline: reloading will not help
   try { sessionStorage.setItem(RELOAD_KEY, String(Date.now())); } catch { return; }
   reloading = true;
+  try { beforeReload?.(); } catch { /* the reload still helps */ }
   console.warn('[bb] reloading for a newer build:', err?.message || err);
   window.location.reload();
 }

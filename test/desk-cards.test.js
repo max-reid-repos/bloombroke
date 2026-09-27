@@ -10,7 +10,7 @@ import {
 } from '../public/screens/desk-cards.js';
 import { tileBody } from '../public/screens/weird.js';
 import { WEIRD_GAUGES } from '../public/screens/weird-gauges.js';
-import { findCommand } from '../public/registry.js';
+import { findCommand } from '../lib/registry.js'; // whole entries: HELP's options too
 import { parseCommand } from '../public/app.js';
 import { makeWeird } from '../data/weird/index.js';
 

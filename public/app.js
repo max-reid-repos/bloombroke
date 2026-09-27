@@ -6,7 +6,7 @@
 // (lazy.js), and the key bar's screens are fetched ahead once the page is idle.
 import * as homeScreen from './screens/home.js';
 import * as marketsScreen from './screens/markets.js';
-import { lazyScreen as lazy, screenNow, loadScreen, loadModule, cssReady, prefetch, setStyleOrder, stylesOf } from './lazy.js';
+import { lazyScreen as lazy, screenNow, loadScreen, loadModule, cssReady, prefetch, setStyleOrder, stylesOf, onReload } from './lazy.js';
 import { parseHelp, parseFinancialsCommand, parseFinancialsArgs, parseRedeem } from './command-args.js';
 import { parseScreenCommand, parseScreenArgs } from './screener.js';
 import { parseWatchArgs, watchInput, WATCH_SUBCOMMANDS, loadWatchlist, saveWatchlist, toggleId } from './watchlist.js';
@@ -1225,7 +1225,7 @@ function boot() {
           clearTimeout(waiting);
           if (signal.aborted) return;
           view.classList.remove('is-loading');
-          view.innerHTML = panel('1', screenTitle(cmd).title, '<p class="notice">This screen did not load. Check your connection and try again.</p>', { cls: 'panel-solo' });
+          view.innerHTML = panel('1', screenTitle(cmd).title, '<p class="notice">This screen did not load. Reload the page to get the latest version.</p>', { cls: 'panel-solo' });
           setStatus('THE SCREEN DID NOT LOAD. TRY AGAIN', 'warn');
         });
       }
@@ -1326,6 +1326,13 @@ function boot() {
     const typed = tokenize(raw).join(' ');
     neutralHead(typed);
     setStatus(ticker ? 'LOADING...' : 'LOOKING IT UP...');
+    // While the words are looked up (and the NO SUCH screen loads), the panel frame says
+    // LOADING after a moment, so the screen is never blank for long.
+    setTimeout(() => {
+      if (signal.aborted || !view.isConnected || view.childElementCount) return;
+      view.classList.add('is-loading');
+      view.innerHTML = panel('1', typed, LOADING_LINE, { cls: 'panel-solo' });
+    }, 80);
     try {
       // A ticker with a quote shows as it is (APPLE is Apple's name, not a ticker to ask about).
       if (ticker && !tickerForName(ticker)) {
@@ -1370,6 +1377,7 @@ function boot() {
     const rows = dymRows(found, typed, ticker).length;
     const title = info.grave ? ns.TITLE_GONE : ticker ? (ns?.TITLE_YET || 'No such ticker') : 'Unknown command';
     const extra = embed || !ns ? '' : ns.noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : yard });
+    view.classList.remove('is-loading');
     view.innerHTML = panel('1', title, didYouMeanHtml(typed, found, ticker, { extra }), { cls: 'panel-solo', bodyCls: 'ns-page' });
     if (!embed && ns) cleanups.push(ns.wireNoSuch(view, word, info, { status: setStatus }));
     if (info.grave) setStatus(`${info.grave.ticker}: ${info.grave.what.toUpperCase()}`, 'warn');
@@ -1692,6 +1700,15 @@ function boot() {
   }
   // --- end ALERTS ------------------------------------------------------------
 
+  // One line over the screen, no buttons (it goes with the next screen).
+  function showLine(text) {
+    const bar = document.createElement('div');
+    bar.className = 'desk-confirm link-confirm';
+    bar.setAttribute('role', 'status');
+    bar.innerHTML = `<span class="desk-confirm-text">${escapeHtml(text)}</span>`;
+    screen.prepend(bar);
+  }
+
   // --- a link that would change something: one line over the screen, Enter or Esc ---
   function closeLinkAsk() {
     linkAsk?.bar.remove();
@@ -1780,6 +1797,20 @@ function boot() {
   if (!coarse) input.focus();
   placeCursor();
 
+  // --- after a reload for a newer build (lazy.js): the command that was cut off --------
+  // Replayed once. A secret one (a key or a gift code) is never stored: a line asks for it
+  // to be typed again.
+  onReload(() => {
+    try {
+      const p = currentCmd ? parseCommand(currentCmd) : null;
+      const secret = Boolean(p && (p.secret || p.name === 'LOGIN' || isSecret(currentCmd)));
+      if (p) sessionStorage.setItem(REPLAY_KEY, JSON.stringify(secret ? { secret: true, at: Date.now() } : { cmd: currentCmd, at: Date.now() }));
+    } catch { /* no storage: nothing to replay */ }
+  });
+  const replay = takeReplay();
+  if (replay?.secret) showLine('Please type your command again');
+  else if (replay?.cmd && replay.cmd !== plan.show && !holdLink) run(replay.cmd, { push: false });
+
   // --- lazy screens: fetch ahead, never run -------------------------------------------
   // Once the page is idle, the key bar's screens; on hover or focus of a key, its screen.
   const prefetchScreen = (name) => {
@@ -1789,10 +1820,31 @@ function boot() {
     stylesFor(entry).forEach(prefetch);
   };
   const whenIdle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500));
-  if (!embed) whenIdle(() => FKEYS.forEach((k) => prefetchScreen(parseCommand(k.cmd).name)), { timeout: 5000 });
+  // The not-found screen too: a typo is the most common next screen after the keys.
+  if (!embed) {
+    whenIdle(() => {
+      FKEYS.forEach((k) => prefetchScreen(parseCommand(k.cmd).name));
+      prefetch(NOSUCH);
+      stylesOf(NOSUCH).forEach(prefetch);
+    }, { timeout: 5000 });
+  }
   const keyAhead = (e) => { const k = e.target.closest?.('.fkey[data-name]'); if (k) prefetchScreen(k.dataset.name); };
   keybar.addEventListener('pointerover', keyAhead);
   keybar.addEventListener('focusin', keyAhead);
+}
+
+// The command a reload for a newer build cut off (see boot), taken once: { cmd } or
+// { secret: true }, or null. Only from the last minute.
+const REPLAY_KEY = 'bb.replay';
+function takeReplay() {
+  try {
+    const raw = sessionStorage.getItem(REPLAY_KEY);
+    sessionStorage.removeItem(REPLAY_KEY);
+    const r = raw ? JSON.parse(raw) : null;
+    return r && Date.now() - Number(r.at) < 60_000 ? r : null;
+  } catch {
+    return null;
+  }
 }
 
 // First visit only: a short, fast boot log. Any key or tap skips it.

@@ -1,4 +1,5 @@
 import express from 'express';
+import './lib/registry.js'; // every registry entry whole (HELP's long text merged in) before anything reads one
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getQuotes, getFxMajors, getQuote, getQuoteList, normalizeTicker, MAX_LIST } from './data/quotes.js';
@@ -530,8 +531,9 @@ app.get(['/', '/index.html'], async (req, res) => {
 });
 
 // Hashed URLs (/screens/whatif.3f2a1b9c0d.js): immutable for today's hash, a 404 (the
-// page reloads once) for an old one (lib/assets.js).
-app.use(serveAssets(ASSETS));
+// page reloads once) for an old one, and for the page's own entry files a redirect to /
+// (lib/assets.js).
+app.use(serveAssets(ASSETS, { shell: ['app.js', 'lazy.js', 'base.css'] }));
 
 // /v/<build>/...: this build's files are immutable. An older build id (a page loaded
 // before a deploy) gets today's files, uncached, so it never pins a mismatched copy.
