@@ -18,6 +18,26 @@ import { fmtDate } from '../kit.js';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
+// ---- Periods (the row of 3M 1Y 5Y 10Y MAX on every WEIRD screen) ---------------------
+// Shared by the browser (the row, the command words) and the server (data/weird/history.js
+// slices each gauge's history to one of these). AUTO is the grid's own start: each tile
+// as the gauge draws it by default.
+export const WEIRD_PERIODS = ['3M', '1Y', '5Y', '10Y', 'MAX'];
+export const PERIOD_DAYS = { '3M': 91, '1Y': 365, '5Y': 1826, '10Y': 3652, MAX: Infinity };
+export const AUTO = 'AUTO';
+
+// One typed word -> '5Y' (any case), or null when it is not a period.
+export function periodWord(tok) {
+  const t = String(tok ?? '').trim().toUpperCase();
+  return WEIRD_PERIODS.includes(t) ? t : null;
+}
+
+// '2026-09-27' -> '27 SEP 2026'.
+export function dayLabel(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || ''));
+  return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]} ${m[1]}` : '--';
+}
+
 // +12% / −12%, a true minus sign; '--' for no number.
 export function signed(v, decimals = 1, unit = '%') {
   if (!Number.isFinite(v)) return '--';
