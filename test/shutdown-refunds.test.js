@@ -112,3 +112,25 @@ test('shutdown: yearly subscriptions are refunded too (monthly and yearly price 
   // A year paid, a quarter used: three quarters back.
   assert.equal(unusedRefund({ amountPaid: 4200, periodStart: 0, periodEnd: 400, now: 100 }), 3150);
 });
+
+test('shutdown: subscribers on an older price of ours (kept after a price change) are found too', async () => {
+  const meta = { site: 'bloombroke', product: 'pro' };
+  const ids = ['price_42_month', 'price_420_year'];
+  const grandfathered = { metadata: meta, items: { data: [{ price: { id: 'price_old_420', metadata: meta } }] } };
+  assert.equal(isProSubscription(grandfathered, ids), true, 'our metadata on the price counts');
+  const foreignPrice = { metadata: meta, items: { data: [{ price: { id: 'price_x', metadata: { site: 'trackmyage' } } }] } };
+  assert.equal(isProSubscription(foreignPrice, ids), false);
+  assert.equal(isProSubscription({ metadata: {}, items: { data: [{ price: { id: 'price_old_420', metadata: meta } }] } }, ids), false, 'the subscription must be ours too');
+
+  // run() with the new price ids still reaches an old-price subscriber.
+  const now = START + 15 * DAY;
+  const stripe = fakeStripe(now);
+  const s = await run({ stripe, now, priceId: ['price_new_m', 'price_new_y'], log: () => {} });
+  assert.equal(s.subscriptions, 0, 'unmarked old price ids are not guessed');
+  const stripe2 = fakeStripe(now);
+  for (const list of [await stripe2.subscriptions.list({ status: 'active' }), await stripe2.subscriptions.list({ status: 'past_due' })]) {
+    for (const sub of list) sub.items.data[0].price.metadata = sub.metadata;
+  }
+  const s2 = await run({ stripe: stripe2, now, priceId: ['price_new_m', 'price_new_y'], log: () => {} });
+  assert.equal(s2.subscriptions, 3, 'the other product is still left alone');
+});

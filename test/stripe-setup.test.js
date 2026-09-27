@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { setup, upsertEnv, PRODUCT, PRICE, PRICE_YEARLY } from '../scripts/stripe-setup.js';
+import { setup, upsertEnv, describePrice, PRODUCT, PRICE, PRICE_YEARLY } from '../scripts/stripe-setup.js';
 import { WEBHOOK_EVENTS } from '../pro/billing.js';
 
 // An in-memory Stripe with just the calls the setup script makes.
 function fakeStripe() {
-  const db = { products: [], prices: [], portals: [], endpoints: [] };
+  const db = { products: [], prices: [], portals: [], endpoints: [], subscriptions: [] };
   const created = [];
   let n = 0;
   const id = (p) => `${p}_${++n}`;
@@ -19,6 +19,13 @@ function fakeStripe() {
     prices: {
       list: ({ product }) => db.prices.filter((p) => p.product === product && p.active),
       async create(p) { const o = { id: id('price'), active: true, ...p }; db.prices.push(o); created.push('price'); return o; },
+      async update(pid, p) { const o = db.prices.find((x) => x.id === pid); Object.assign(o, p); created.push(`price.update:${pid}`); return o; },
+    },
+    subscriptions: {
+      list: ({ price, status }) => {
+        assert.equal(status, 'all');
+        return db.subscriptions.filter((s) => s.items.data.some((it) => it.price.id === price));
+      },
     },
     billingPortal: {
       configurations: {
@@ -34,7 +41,7 @@ function fakeStripe() {
   };
 }
 
-test('stripe setup: creates product, $4.20 monthly and $42 yearly prices, portal and webhook once', async () => {
+test('stripe setup: creates product, $42 monthly and $420 yearly prices, portal and webhook once', async () => {
   const stripe = fakeStripe();
   const first = await setup({ stripe });
   assert.deepEqual(stripe.created, ['product', 'price', 'price', 'portal', 'endpoint']);
@@ -43,15 +50,15 @@ test('stripe setup: creates product, $4.20 monthly and $42 yearly prices, portal
   assert.equal(product.description, 'Bloombroke Pro, monthly or yearly subscription: sync across devices, your own ticker tape and a seat number.');
   assert.doesNotMatch(product.description, /alert/i, 'no promise of price alerts');
   const [price, yearly] = stripe.db.prices;
-  assert.equal(price.unit_amount, 420);
+  assert.equal(price.unit_amount, 4200);
   assert.equal(price.currency, 'usd');
   assert.deepEqual(price.recurring, { interval: 'month', interval_count: 1 });
-  assert.deepEqual(PRICE, { unit_amount: 420, currency: 'usd', interval: 'month' });
-  assert.equal(yearly.unit_amount, 4200);
+  assert.deepEqual(PRICE, { unit_amount: 4200, currency: 'usd', interval: 'month' });
+  assert.equal(yearly.unit_amount, 42000);
   assert.equal(yearly.currency, 'usd');
   assert.deepEqual(yearly.recurring, { interval: 'year', interval_count: 1 });
   assert.deepEqual(yearly.metadata, { site: 'bloombroke', product: 'pro' });
-  assert.deepEqual(PRICE_YEARLY, { unit_amount: 4200, currency: 'usd', interval: 'year' });
+  assert.deepEqual(PRICE_YEARLY, { unit_amount: 42000, currency: 'usd', interval: 'year' });
   const [ep] = stripe.db.endpoints;
   assert.equal(ep.url, 'https://bloombroke.com/api/stripe/webhook');
   assert.deepEqual(ep.enabled_events, WEBHOOK_EVENTS);
@@ -107,9 +114,9 @@ test('stripe setup: an account with only the monthly price gets the yearly one, 
   const stripe = fakeStripe();
   const meta = { site: 'bloombroke', product: 'pro' };
   stripe.db.products.push({ id: 'prod_1', active: true, name: PRODUCT.name, description: PRODUCT.description, metadata: meta });
-  stripe.db.prices.push({ id: 'price_month', product: 'prod_1', active: true, unit_amount: 420, currency: 'usd', recurring: { interval: 'month', interval_count: 1 }, metadata: meta });
-  // Someone else's $42 yearly price on the same product is not ours.
-  stripe.db.prices.push({ id: 'price_other', product: 'prod_1', active: true, unit_amount: 4200, currency: 'usd', recurring: { interval: 'year', interval_count: 1 }, metadata: {} });
+  stripe.db.prices.push({ id: 'price_month', product: 'prod_1', active: true, unit_amount: 4200, currency: 'usd', recurring: { interval: 'month', interval_count: 1 }, metadata: meta });
+  // Someone else's $420 yearly price on the same product is not ours.
+  stripe.db.prices.push({ id: 'price_other', product: 'prod_1', active: true, unit_amount: 42000, currency: 'usd', recurring: { interval: 'year', interval_count: 1 }, metadata: {} });
   const env = { STRIPE_WEBHOOK_SECRET: 'whsec_x', PRO_SECRET: 'x'.repeat(40) };
   const first = await setup({ stripe, env });
   assert.equal(first.values.STRIPE_PRICE_ID, 'price_month');
@@ -126,4 +133,54 @@ test('stripe setup: test mode writes the _TEST name for the yearly price', async
   assert.equal(stripeEnv({}).names.priceIdYearly, 'STRIPE_PRICE_ID_YEARLY');
   assert.equal(stripeEnv({ STRIPE_MODE: 'test', STRIPE_PRICE_ID_YEARLY_TEST: ' price_y ' }).priceIdYearly, 'price_y');
   assert.equal(stripeEnv({ STRIPE_MODE: 'test', STRIPE_PRICE_ID_YEARLY: 'price_live_y' }).priceIdYearly, null, 'the live name is not read in test mode');
+});
+
+test('stripe setup: a price change makes new prices, archives old ones nobody is on, keeps the rest', async () => {
+  const stripe = fakeStripe();
+  const meta = { site: 'bloombroke', product: 'pro' };
+  const env = { STRIPE_WEBHOOK_SECRET: 'whsec_x', PRO_SECRET: 'x'.repeat(40) };
+  stripe.db.products.push({ id: 'prod_1', active: true, name: PRODUCT.name, description: PRODUCT.description, metadata: meta });
+  const recurring = (interval) => ({ interval, interval_count: 1 });
+  // The old $4.20 a month (one live subscriber, one cancelled) and $42 a year (only a cancelled one).
+  stripe.db.prices.push({ id: 'price_old_m', product: 'prod_1', active: true, unit_amount: 420, currency: 'usd', recurring: recurring('month'), metadata: meta });
+  stripe.db.prices.push({ id: 'price_old_y', product: 'prod_1', active: true, unit_amount: 4200, currency: 'usd', recurring: recurring('year'), metadata: meta });
+  // Someone else's price on the same account is never touched.
+  stripe.db.prices.push({ id: 'price_other', product: 'prod_1', active: true, unit_amount: 999, currency: 'usd', recurring: recurring('month'), metadata: {} });
+  const onPrice = (id, status) => ({ id: `sub_${id}_${status}`, status, items: { data: [{ price: { id } }] } });
+  stripe.db.subscriptions.push(onPrice('price_old_m', 'active'), onPrice('price_old_m', 'canceled'), onPrice('price_old_y', 'canceled'));
+
+  const first = await setup({ stripe, env });
+  const [month, year] = stripe.db.prices.slice(3);
+  assert.equal(month.unit_amount, 4200);
+  assert.equal(month.recurring.interval, 'month');
+  assert.equal(year.unit_amount, 42000);
+  assert.equal(year.recurring.interval, 'year');
+  assert.equal(first.values.STRIPE_PRICE_ID, month.id, 'the $42 monthly price, not the $42 yearly one');
+  assert.equal(first.values.STRIPE_PRICE_ID_YEARLY, year.id);
+  assert.ok(first.report.includes('price: created'));
+  assert.ok(first.report.includes('yearly price: created'));
+  assert.ok(first.report.includes('old price $4.20 a month: kept, 1 subscription still on it'));
+  assert.ok(first.report.includes('old price $42 a year: archived'));
+  assert.equal(stripe.db.prices.find((p) => p.id === 'price_old_m').active, true, 'grandfathered subscribers keep billing');
+  assert.equal(stripe.db.prices.find((p) => p.id === 'price_old_y').active, false);
+  assert.equal(stripe.db.prices.find((p) => p.id === 'price_other').active, true);
+  assert.deepEqual(stripe.created.filter((c) => c.startsWith('price.update')), ['price.update:price_old_y']);
+  assert.ok(!first.report.join('\n').includes('price_'), 'the report shows amounts, never ids');
+
+  // Run again: nothing new is made; the old monthly price is still kept while its subscriber is on it.
+  const second = await setup({ stripe, env });
+  assert.equal(second.values.STRIPE_PRICE_ID, month.id);
+  assert.equal(second.values.STRIPE_PRICE_ID_YEARLY, year.id);
+  assert.equal(stripe.created.filter((c) => c === 'price').length, 2);
+  assert.ok(second.report.includes('old price $4.20 a month: kept, 1 subscription still on it'));
+  // Once the last subscriber has gone, the next run archives it.
+  stripe.db.subscriptions[0].status = 'canceled';
+  const third = await setup({ stripe, env });
+  assert.ok(third.report.includes('old price $4.20 a month: archived'));
+  assert.equal(stripe.db.prices.find((p) => p.id === 'price_old_m').active, false);
+});
+
+test('stripe setup: price report text', () => {
+  assert.equal(describePrice({ unit_amount: 420, currency: 'usd', recurring: { interval: 'month' } }), '$4.20 a month');
+  assert.equal(describePrice({ unit_amount: 42000, currency: 'usd', recurring: { interval: 'year' } }), '$420 a year');
 });

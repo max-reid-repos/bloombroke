@@ -7,7 +7,10 @@
 // Uses the key set STRIPE_MODE picks (live: STRIPE_SECRET_KEY, test: STRIPE_SECRET_KEY_TEST)
 // and writes the matching names (with _TEST in test mode). Makes, or finds:
 //   - the product "Bloombroke Pro"
-//   - its prices: $4.20 USD a month, and $42 USD a year
+//   - its prices: $42 USD a month, and $420 USD a year. Stripe prices cannot change, so
+//     a new amount is a new price. Our older prices are archived (active=false) when no
+//     live subscription uses them; otherwise they stay and keep billing their
+//     subscribers at the old amount.
 //   - a Billing Portal configuration (card, invoices, cancel; no plan switching)
 //   - the webhook endpoint <PUBLIC_URL>/api/stripe/webhook with the four Pro events
 // and writes STRIPE_PRICE_ID, STRIPE_PRICE_ID_YEARLY, STRIPE_PORTAL_CONFIG_ID, STRIPE_WEBHOOK_SECRET (only when the
@@ -25,10 +28,21 @@ export const PRODUCT = {
   name: 'Bloombroke Pro',
   description: 'Bloombroke Pro, monthly or yearly subscription: sync across devices, your own ticker tape and a seat number.',
 };
-export const PRICE = { unit_amount: 420, currency: 'usd', interval: 'month' };
-export const PRICE_YEARLY = { unit_amount: 4200, currency: 'usd', interval: 'year' };
+export const PRICE = { unit_amount: 4200, currency: 'usd', interval: 'month' };
+export const PRICE_YEARLY = { unit_amount: 42000, currency: 'usd', interval: 'year' };
 
 const isOurs = (o) => o?.metadata?.site === PRO_METADATA.site && o?.metadata?.product === PRO_METADATA.product;
+
+// Subscriptions in these states no longer bill, so they do not keep a price in use.
+const ENDED = new Set(['canceled', 'incomplete_expired']);
+
+// "$4.20 a month": for the report (amounts only, never ids).
+export function describePrice(p) {
+  const cents = Number(p?.unit_amount) || 0;
+  const amount = cents % 100 ? (cents / 100).toFixed(2) : String(cents / 100);
+  const every = p?.recurring?.interval || 'one-off';
+  return `$${amount} a ${every}${p?.currency && p.currency !== 'usd' ? ` ${p.currency.toUpperCase()}` : ''}`;
+}
 
 async function all(listPromise) {
   const out = [];
@@ -74,6 +88,20 @@ export async function setup({ stripe, env = {}, publicUrl = 'https://bloombroke.
   };
   values.STRIPE_PRICE_ID = (await ensurePrice(PRICE, 'price')).id;
   values.STRIPE_PRICE_ID_YEARLY = (await ensurePrice(PRICE_YEARLY, 'yearly price')).id;
+
+  // Older prices of ours: archive each one no live subscription is on. One that still has
+  // subscribers stays active, so their renewals keep working at the old amount.
+  const current = new Set([values.STRIPE_PRICE_ID, values.STRIPE_PRICE_ID_YEARLY]);
+  for (const old of prices.filter((p) => isOurs(p) && p.active !== false && !current.has(p.id))) {
+    const label = `old price ${describePrice(old)}`;
+    const subs = await all(stripe.subscriptions.list({ price: old.id, status: 'all', limit: 100 }));
+    const live = subs.filter((s) => !ENDED.has(s.status)).length;
+    if (live) report.push(`${label}: kept, ${live} subscription${live === 1 ? '' : 's'} still on it`);
+    else {
+      await stripe.prices.update(old.id, { active: false });
+      report.push(`${label}: archived`);
+    }
+  }
 
   // Billing Portal configuration: its own, so a Pro customer cannot switch to another
   // product sold from the same Stripe account.

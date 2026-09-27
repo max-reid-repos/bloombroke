@@ -257,7 +257,7 @@ test('checkout: subscription mode, server price, no promo codes, no tax, fixed U
   assert.deepEqual(p.metadata, { site: 'bloombroke', product: 'pro' });
   assert.deepEqual(p.consent_collection, { terms_of_service: 'required' });
   assert.equal(p.custom_text.terms_of_service_acceptance.message, 'I agree to the [Terms](https://bloombroke.com/terms) and understand Bloombroke gives information only, not investment advice.');
-  assert.equal(p.custom_text.submit.message, 'Auto-renews monthly at $4.20 USD. Cancel any time in MANAGE; access continues to the end of the paid month.');
+  assert.equal(p.custom_text.submit.message, 'Auto-renews monthly at $42 USD. Cancel any time in MANAGE; access continues to the end of the paid month.');
 
   const s = await setup();
   try {
@@ -671,7 +671,7 @@ test('terms version is stored with the acceptance; config tells the page the mod
     s.stripe.subs.sub_13 = { id: 'sub_13', status: 'active' };
     await s.sendEvent(evt('evt_13', 'checkout.session.completed', paidSession(13, { consent: null })));
     assert.equal(s.store.findBySubscription('sub_13').terms_version, null, 'no consent, no version');
-    assert.deepEqual((await s.req('GET', '/api/pro/config')).body, { mode: 'live', open: true, price: 420, currency: 'usd', yearly: false, yearPrice: 4200 });
+    assert.deepEqual((await s.req('GET', '/api/pro/config')).body, { mode: 'live', open: true, price: 4200, currency: 'usd', yearly: false, yearPrice: 42000 });
   } finally { await s.close(); }
 });
 
@@ -879,5 +879,29 @@ test('renewal: cancel_at_period_end and the period end follow Stripe into /statu
     assert.equal(back.cancelAt, undefined);
     // Older payload shape: the period end on the subscription itself.
     assert.deepEqual(billingOf({ cancel_at_period_end: true, current_period_end: END }), { cancelAtPeriodEnd: true, currentPeriodEnd: END * 1000, cancelAt: null, interval: null });
+  } finally { await s.close(); }
+});
+
+test('grandfathered: a subscription on an older price of ours still gets and keeps its licence', async () => {
+  const s = await setup();
+  try {
+    const END = Math.floor(Date.UTC(2026, 9, 26, 12) / 1000);
+    // Configured price is price_test_pro; this subscriber is on the old $4.20 price.
+    const oldPrice = { id: 'price_old_420', unit_amount: 420, currency: 'usd', recurring: { interval: 'month', interval_count: 1 }, metadata: { site: 'bloombroke', product: 'pro' } };
+    s.stripe.subs.sub_40 = { id: 'sub_40', status: 'active', customer: 'cus_40', cancel_at_period_end: false, cancel_at: null, items: { data: [{ price: oldPrice, current_period_end: END }] } };
+    const sess = paidSession(40);
+    s.stripe.sessions[sess.id] = sess;
+    assert.equal((await s.sendEvent(evt('evt_40', 'checkout.session.completed', sess))).status, 200);
+    const lic = s.store.findBySubscription('sub_40');
+    assert.ok(lic, 'the licence is made from our metadata, not the price id');
+    assert.equal(lic.status, 'active');
+    // Renewal events on the old price keep it active.
+    s.stripe.subs.sub_40.status = 'past_due';
+    await s.sendEvent(evt('evt_41', 'customer.subscription.updated', { id: 'sub_40' }));
+    assert.equal(s.store.findBySubscription('sub_40').status, 'past_due');
+    s.stripe.subs.sub_40.status = 'active';
+    await s.sendEvent(evt('evt_42', 'customer.subscription.updated', { id: 'sub_40' }));
+    assert.equal(s.store.findBySubscription('sub_40').status, 'active');
+    assert.equal(billingOf(s.stripe.subs.sub_40).interval, 'month');
   } finally { await s.close(); }
 });

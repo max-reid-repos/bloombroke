@@ -6,8 +6,9 @@
 //   node scripts/shutdown-refunds.js <path/to/.env> --execute [--live]   really do it
 //
 // Only subscriptions carrying the Pro metadata (site=bloombroke, product=pro) are touched,
-// and only on STRIPE_PRICE_ID or STRIPE_PRICE_ID_YEARLY when those are set, because the
-// Stripe account is shared. Monthly and yearly subscriptions are both refunded.
+// and only on one of our prices: STRIPE_PRICE_ID, STRIPE_PRICE_ID_YEARLY, or any price
+// carrying the same metadata (an older, grandfathered price), because the Stripe account
+// is shared. Monthly and yearly subscriptions are both refunded.
 // The dry run prints counts and amounts only: no keys, ids, names or emails.
 // Refunds use idempotency keys and skip anything already refunded by this script, so a
 // run that stops half way can be run again.
@@ -43,12 +44,16 @@ export function periodOf(sub) {
   return Number.isFinite(start) && Number.isFinite(end) ? { start, end } : null;
 }
 
-// priceId: one price id or a list of them (monthly and yearly); empty means any.
+const hasProMetadata = (o) => o?.metadata?.site === PRO_METADATA.site && o?.metadata?.product === PRO_METADATA.product;
+
+// priceId: one price id or a list of them (monthly and yearly); empty means any. A price
+// that carries the Pro metadata also counts, so subscribers on an older price (kept when
+// the price changed) are still found.
 export function isProSubscription(sub, priceId) {
-  if (sub?.metadata?.site !== PRO_METADATA.site || sub?.metadata?.product !== PRO_METADATA.product) return false;
+  if (!hasProMetadata(sub)) return false;
   const ids = (Array.isArray(priceId) ? priceId : [priceId]).filter(Boolean);
   if (!ids.length) return true;
-  return (sub.items?.data || []).some((it) => ids.includes(idOf(it.price)));
+  return (sub.items?.data || []).some((it) => ids.includes(idOf(it.price)) || hasProMetadata(it.price));
 }
 
 export const fmtMoney = (cents, currency = 'usd') => `${(cents / 100).toFixed(2)} ${String(currency).toUpperCase()}`;
