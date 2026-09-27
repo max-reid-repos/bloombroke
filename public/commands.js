@@ -32,6 +32,7 @@ import * as tape from './screens/tape.js';
 import * as legal from './screens/legal.js';
 import * as alerts from './screens/alerts.js'; // ALERTS
 import * as trending from './screens/trending.js'; // TRENDING
+import * as guess from './screens/guess.js'; // GUESS
 
 export const EXTRA = [
   { name: 'WORLD', screen: world },
@@ -64,6 +65,7 @@ export const EXTRA = [
   { name: 'DISCLAIMER', screen: legal },
   // ALERTS: changes the saved alerts, so a link only ever opens the list.
   { name: 'ALERTS', screen: alerts, takesArgs: true, url: 'ALERTS' },
+  { name: 'GUESS', screen: guess }, // GUESS: one mystery stock a day
 ];
 
 // Screen modules by internal name.
