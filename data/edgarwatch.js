@@ -110,7 +110,8 @@ export function makeEdgarWatch({
   const states = forms.map((form) => ({ form, etag: null, lastModified: null, gap: every, fails: 0, baselined: false, timer: null, okAt: 0, failAt: 0 }));
   const seen = new Set();
   const samples = [];
-  const s = { okAt: 0, failAt: 0, ms: null, polls: 0, filings: 0, overflow: 0 };
+  // newestAt: the newest acceptance time seen in any feed (how old the newest filing is).
+  const s = { okAt: 0, failAt: 0, ms: null, polls: 0, filings: 0, overflow: 0, newestAt: 0 };
   let running = false;
 
   function remember(acc) {
@@ -127,6 +128,7 @@ export function makeEdgarWatch({
         st.etag = r.etag || null;
         st.lastModified = r.lastModified || null;
         const rows = parseCurrentFeed(r.text, st.form);
+        for (const x of rows) { const a = Date.parse(x.accepted || ''); if (a > s.newestAt) s.newestAt = a; }
         const fresh = rows.filter((x) => !seen.has(`${x.accession}|${x.cik}`));
         if (st.baselined && rows.length >= 50 && fresh.length === rows.length) s.overflow += 1; // more than one page came in
         const seenAt = now();

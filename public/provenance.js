@@ -97,10 +97,32 @@ export function worstOf(list, now = Date.now()) {
 
 // "CNBC quote service · as of 16:00:00 ET · 12s old · real-time" (and "· last known
 // data" when the screen could not refresh).
+// Two ages, never mixed up: "checked 6s ago" is when this server last asked the source
+// (the fetch); the data itself can be much older (Friday's close on a Sunday). Data over
+// DATA_OLD_MS old says "last update Sep 25 16:00 ET" instead of "as of".
+export const DATA_OLD_MS = 15 * 60_000;
+export function dataAge(env, now = Date.now()) {
+  const t = Date.parse(env?.as_of || '');
+  return Number.isFinite(t) ? Math.max(0, (now - t) / 1000) : NaN;
+}
+// "Sep 25 16:00 ET", "16:00 ET" today, "Sep 25" for a date with no time.
+export function lastUpdateWords(asOf, now = Date.now()) {
+  const t = Date.parse(asOf || '');
+  if (!Number.isFinite(t)) return '--';
+  if (/T00:00:00(\.000)?Z$/.test(asOf)) return monDay(asOf);
+  const hm = `${nyClock(t).slice(0, 5)} ET`;
+  return nyDay(t) === nyDay(now) ? hm : `${monDay(nyDay(t))} ${hm}`;
+}
+// The data part: "as of 15:59:50 ET" while fresh, "last update Sep 25 16:00 ET" once old.
+export function dataWords(env, now = Date.now()) {
+  return dataAge(env, now) * 1000 > DATA_OLD_MS ? `last update ${lastUpdateWords(env.as_of, now)}` : `as of ${asOfWords(env.as_of, now)}`;
+}
+export const checkedWords = (env, now = Date.now()) => `checked ${ageWords(ageNow(env, now))} ago`;
+
 export function dotTitle(list, { stale = false, now = Date.now() } = {}) {
   const w = worstOf(list, now);
   if (!w) return '';
-  return [w.source, `as of ${asOfWords(w.as_of, now)}`, `${ageWords(ageNow(w, now))} old`, delayWord(w.delay), stale ? 'last known data' : '']
+  return [w.source, dataWords(w, now), checkedWords(w, now), delayWord(w.delay), stale ? 'last known data' : '']
     .filter(Boolean).join(' · ');
 }
 
@@ -110,7 +132,8 @@ export function popoverHtml(list, { now = Date.now(), max = 8, toQuery = (c) => 
   const flat = flatten(list, now).sort((a, b) => rank(a.delay) - rank(b.delay) || String(a.source).localeCompare(String(b.source)));
   const line = (p) => {
     const cmd = p.dataset ? `DATA ${String(p.dataset).toUpperCase()}` : 'DATA';
-    const bits = `${delayWord(p.delay)} · ${ageWords(ageNow(p, now))} old`;
+    const old = dataAge(p, now) * 1000 > DATA_OLD_MS;
+    const bits = [delayWord(p.delay), checkedWords(p, now), old ? `last update ${lastUpdateWords(p.as_of, now)}` : ''].filter(Boolean).join(' · ');
     return `<li><a href="${esc(toQuery(cmd))}" data-cmd="${esc(cmd)}"><span class="pv-src">${esc(p.source)}</span> <span class="pv-dim">${esc(bits)}</span></a></li>`;
   };
   const shown = flat.slice(0, max).map(line).join('');

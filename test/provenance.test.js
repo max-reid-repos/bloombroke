@@ -5,16 +5,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  envelope, isoOf, combine, provenanceFor, provenanceJson, ROUTES, DATASETS, DELAYS, LICENCES, dataRows,
+  SEEN_AS_OF, envelope, isoOf, combine, provenanceFor, provenanceJson, ROUTES, DATASETS, DELAYS, LICENCES, dataRows,
   weirdDataset, statusRows, upstreamState, UPSTREAMS, gaugeEnvelope, weirdEnvelope, liveDelay,
 } from '../lib/provenance.js';
-import { dotTitle, popoverHtml, worstOf, ageWords, asOfWords, delayWord, flatten, MAX_PARTS } from '../public/provenance.js';
+import { dotTitle, popoverHtml, worstOf, ageWords, asOfWords, delayWord, flatten, MAX_PARTS, lastUpdateWords } from '../public/provenance.js';
 import { createCache, cacheStats, callerName } from '../data/cache.js';
 import { GAUGES } from '../data/weird/index.js';
 import { makeCpi, CPI_GAPS } from '../data/cpi.js';
 import { cpiLoader, cpiGapNote } from '../data/whatif.js';
 import { bls } from '../data/whatif-service.js';
-import { dataTable, secLine, parse as parseData } from '../public/screens/data.js';
+import { dataTable, secLine, parse as parseData, ageTitle } from '../public/screens/data.js';
 import { statusTable } from '../public/screens/status.js';
 import { changesTable } from '../public/screens/changes.js';
 import { parseCommand, FKEYS } from '../public/app.js';
@@ -159,18 +159,26 @@ test('the middleware: 2xx objects get provenance; errors and routes without one 
   assert.equal(run('/api/quote', 200, SAMPLES['/api/quote']).last, undefined, 'the answer is otherwise as it was');
   assert.equal(run('/api/quote', 503, { error: 'unavailable' }).provenance, undefined);
   assert.equal(run('/api/sponsors', 200, { items: [] }).provenance, undefined);
+  assert.equal(SEEN_AS_OF.get('quotes').as_of, '2026-09-25T20:00:00.000Z', 'DATA learns the data age from the answers given');
 });
 
 // ---- the dot -----------------------------------------------------------------------------
 
 const env = (over) => ({ ...envelope({ source: 'CNBC quote service', source_url: 'u', as_of: '2026-09-25T19:59:50.000Z', fetched_at: UPD, delay: 'real-time', now: NOW }), receivedAt: NOW, ...over });
 
-test('dot tooltip: "SOURCE · as of HH:MM:SS ET · Ns old · class", the worst live part', () => {
-  assert.equal(dotTitle([env({})], { now: NOW }), 'CNBC quote service · as of 15:59:50 ET · 30s old · real-time');
+test('dot tooltip: "SOURCE · as of HH:MM:SS ET · checked Ns ago · class", the worst live part', () => {
+  assert.equal(dotTitle([env({})], { now: NOW }), 'CNBC quote service · as of 15:59:50 ET · checked 30s ago · real-time');
+  // Market closed: checked seconds ago, but the data is Friday's close. Two ages, never mixed.
+  const sunday = Date.parse('2026-09-27T07:00:00.000Z');
+  const closed = env({ as_of: '2026-09-25T20:00:00.000Z', receivedAt: sunday, age_seconds: 6 });
+  assert.equal(dotTitle([closed], { now: sunday }), 'CNBC quote service · last update Sep 25 16:00 ET · checked 6s ago · real-time');
+  assert.match(popoverHtml([closed], { now: sunday }), /real-time · checked 6s ago · last update Sep 25 16:00 ET/);
+  assert.doesNotMatch(popoverHtml([env({})], { now: NOW }), /last update/, 'fresh data: no second age');
+  assert.equal(lastUpdateWords('2026-09-25T00:00:00.000Z', sunday), 'Sep 25', 'a day with no time');
   const mixed = [env({}), env({ source: 'CNBC bars service', delay: 'end-of-day' }), env({ source: 'Futures', delay: 'delayed-10m' })];
   assert.match(dotTitle(mixed, { now: NOW }), /^Futures .* delayed 10m$/, 'live prices: the slowest live class, not the daily bars');
-  assert.match(dotTitle([env({ delay: 'quarterly', source: 'SEC EDGAR', as_of: '2026-07-31T00:00:00.000Z' })], { now: NOW }), /^SEC EDGAR · as of Jul 31 · 30s old · quarterly$/);
-  assert.match(dotTitle([env({})], { now: NOW + 90_000 }), /120s old|2m old/, 'the age keeps counting after the answer arrived');
+  assert.match(dotTitle([env({ delay: 'quarterly', source: 'SEC EDGAR', as_of: '2026-07-31T00:00:00.000Z' })], { now: NOW }), /^SEC EDGAR · last update Jul 31 · checked 30s ago · quarterly$/);
+  assert.match(dotTitle([env({})], { now: NOW + 90_000 }), /checked (120s|2m) ago/, 'the age keeps counting after the answer arrived');
   assert.match(dotTitle([env({})], { now: NOW, stale: true }), /last known data$/);
   assert.equal(dotTitle([], { now: NOW }), '');
   assert.equal(worstOf([]), null);
@@ -201,27 +209,39 @@ test('DATA rows: every field filled, a known licence and class, every WEIRD gaug
   assert.equal(rows.length, DATASETS.length + GAUGES.length);
   for (const r of rows) {
     for (const k of ['id', 'group', 'name', 'source', 'url', 'licence', 'coverage', 'history', 'cadence', 'delay', 'gaps']) assert.ok(r[k], `${r.id}: ${k}`);
-    assert.ok(LICENCES.includes(r.licence), `${r.id}: licence ${r.licence}`);
+    assert.ok(LICENCES.includes(r.licence) || (r.licence === '--' && ['trending', 'bbrk'].includes(r.id)), `${r.id}: licence ${r.licence}`);
     assert.ok(DELAYS.includes(r.delay), `${r.id}: delay`);
     assert.match(r.url, /^https:\/\//);
-    assert.equal(r.age_seconds, null, 'nothing loaded: no age, never a made-up one');
   }
+  const fresh = dataRows({ stats: [], gauges, weird: [], edgar: null, seen: new Map(), now: NOW });
+  assert.ok(fresh.every((r) => r.age_seconds === null && r.checked_seconds === null), 'nothing loaded: no age, never a made-up one');
+  assert.deepEqual(LICENCES, ['public domain', 'credit required', 'share-alike', 'third-party terms']);
+  assert.doesNotMatch(JSON.stringify(rows), /display only|open with credit|restricted/, 'no right we have not checked');
+  const lic = (id) => rows.find((r) => r.id === id).licence;
+  assert.deepEqual(['sec-facts', 'cpi', 'treasury', 'nyfed', 'fx', 'crypto', 'economy', 'mortgage', 'quotes', 'geo', 'weird-waffle', 'weird-bigmac', 'weird-panic', 'weird-canal'].map(lic),
+    ['public domain', 'public domain', 'public domain', 'public domain', 'credit required', 'third-party terms', 'third-party terms', 'third-party terms', 'third-party terms', 'public domain', 'share-alike', 'credit required', 'public domain', 'third-party terms']);
   assert.equal(new Set(rows.map((r) => r.id)).size, rows.length, 'ids are unique');
   assert.match(rows.find((r) => r.id === 'cpi').gaps, /Oct 2025 not published/);
   assert.match(rows.find((r) => r.id === 'whatif').gaps, /carry Sep 2025 forward/);
   assert.equal(weirdDataset({ id: 'odds', source: 'Polymarket' }).name.split(':')[0], 'CHANCES');
 });
 
-test('DATA rows: the measured age comes from the caches, the WEIRD values and the EDGAR watcher', () => {
+test('DATA rows: data age from the last answer, checked age from the caches, WEIRD and EDGAR', () => {
   const stats = [{ name: 'quotes', okAt: NOW - 12_000, failAt: 0, ms: 300 }];
-  const rows = dataRows({ stats, gauges: [{ id: 'canal', source: 'IMF PortWatch' }], weird: [{ id: 'canal', updated: new Date(NOW - 60_000).toISOString() }], edgar: { okAt: NOW - 3000 }, now: NOW });
-  assert.equal(rows.find((r) => r.id === 'quotes').age_seconds, 12);
-  assert.equal(rows.find((r) => r.id === 'weird-canal').age_seconds, 60);
-  assert.equal(rows.find((r) => r.id === 'sec-feed').age_seconds, 3);
+  const seen = new Map([['quotes', { as_of: new Date(NOW - 7200_000).toISOString(), at: NOW }]]);
+  const rows = dataRows({ stats, seen, gauges: [{ id: 'canal', source: 'IMF PortWatch' }], weird: [{ id: 'canal', asOf: '2026-09-20', updated: new Date(NOW - 60_000).toISOString() }], edgar: { okAt: NOW - 3000, newestAt: NOW - 40_000 }, now: NOW });
+  const q = rows.find((r) => r.id === 'quotes');
+  assert.deepEqual([q.age_seconds, q.checked_seconds], [7200, 12], 'the data is 2 h old, the source was asked 12 s ago');
+  const c = rows.find((r) => r.id === 'weird-canal');
+  assert.equal(c.checked_seconds, 60);
+  assert.equal(c.as_of, '2026-09-20T00:00:00.000Z');
+  const f = rows.find((r) => r.id === 'sec-feed');
+  assert.deepEqual([f.age_seconds, f.checked_seconds], [40, 3]);
   const html = dataTable(rows, { lit: 'quotes' });
   assert.match(html, /<tr id="data-quotes" class="is-lit">/);
-  assert.match(html, />12s</);
-  assert.match(html, /restricted: display only/);
+  assert.match(html, /title="Checked 12s ago · last update [^"]+">2h</);
+  assert.match(html, /third-party terms/);
+  assert.equal(ageTitle({ checked_seconds: null, as_of: null }), 'Not checked since the server started');
   assert.equal(secLine({ seen_within_seconds: 42 }), 'SEC filings: seen within ~42s of acceptance');
   assert.equal(secLine(null), 'SEC filings: seen within -- of acceptance');
   assert.deepEqual(parseData(['CPI']), { id: 'cpi' });

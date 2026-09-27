@@ -137,7 +137,7 @@ kbd {
 .pv-dim { color: var(--dim); }
 .pv-all { color: var(--accent); }
 /* Tiny tags: PRE, MKT, AH, WKD (EDGAR acceptance time), 8-K or 10-Q (earnings). */
-.tod { margin-left: 1px; font-size: 9px; letter-spacing: .04em; color: var(--dim); vertical-align: 1px; }
+.tod { margin-left: 1px; font-size: 9px; letter-spacing: 0; font-weight: 400; color: var(--faint); vertical-align: 1px; }
 .fin-v, .fin-nv { position: relative; color: inherit; text-decoration: none; }
 .fin-v:hover, .fin-v:focus-visible { color: var(--accent); }
 /* The derived marker hangs past the number, so the digits stay aligned with the column. */

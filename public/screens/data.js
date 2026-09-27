@@ -5,7 +5,15 @@
 
 import { esc, panel, LOADING, metaNote } from './markets.js';
 import { dash } from './company-kit.js';
-import { ageWords, delayWord } from '../provenance.js';
+import { ageWords, delayWord, lastUpdateWords } from '../provenance.js';
+
+// The age cell's tooltip: when the source was last asked, and the data's own time.
+export function ageTitle(r) {
+  return [
+    Number.isFinite(r.checked_seconds) ? `Checked ${ageWords(r.checked_seconds)} ago` : 'Not checked since the server started',
+    r.as_of ? `last update ${lastUpdateWords(r.as_of)}` : '',
+  ].filter(Boolean).join(' · ');
+}
 
 export function parse(args) {
   if (args.length > 1) return { error: 'usage' };
@@ -20,7 +28,7 @@ export function secLine(sec) {
 
 const COLS = [
   ['Dataset', 'dt-name'], ['Source', 'dt-src'], ['Licence', 'dt-lic'], ['Coverage', 'dt-cov hide-m'], ['History', 'dt-hist hide-m'],
-  ['Updates', 'dt-upd hide-m'], ['Age now', 'num dt-age'], ['Delay', 'dt-delay'], ['Known gaps', 'dt-gaps hide-m'],
+  ['Updates', 'dt-upd hide-m'], ['Data age', 'num dt-age'], ['Delay', 'dt-delay'], ['Known gaps', 'dt-gaps hide-m'],
 ];
 
 export function dataTable(rows, { lit = '' } = {}) {
@@ -39,7 +47,7 @@ export function dataTable(rows, { lit = '' } = {}) {
       <td class="dt-cov hide-m dim">${esc(r.coverage || dash)}</td>
       <td class="dt-hist hide-m dim">${esc(r.history || dash)}</td>
       <td class="dt-upd hide-m dim">${esc(r.cadence || dash)}</td>
-      <td class="num dt-age">${esc(Number.isFinite(r.age_seconds) ? ageWords(r.age_seconds) : dash)}</td>
+      <td class="num dt-age" title="${esc(ageTitle(r))}">${esc(Number.isFinite(r.age_seconds) ? ageWords(r.age_seconds) : dash)}</td>
       <td class="dt-delay">${esc(delayWord(r.delay))}</td>
       <td class="dt-gaps hide-m dim">${esc(r.gaps || dash)}</td>
     </tr>`;
