@@ -19,7 +19,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStripe, stripeEnv, PRO_METADATA, idOf } from '../pro/billing.js';
 
-export const STATUSES = ['active', 'trialing', 'past_due'];
+// Every status that can still bill or come back to life, so the shutdown cancels them all.
+export const STATUSES = ['active', 'trialing', 'past_due', 'unpaid', 'paused', 'incomplete'];
 const SHUTDOWN_TAG = 'bloombroke_shutdown';
 
 // The refund, in the smallest currency unit, for the unused part of a paid period.

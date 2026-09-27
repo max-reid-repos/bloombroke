@@ -903,5 +903,9 @@ test('grandfathered: a subscription on an older price of ours still gets and kee
     await s.sendEvent(evt('evt_42', 'customer.subscription.updated', { id: 'sub_40' }));
     assert.equal(s.store.findBySubscription('sub_40').status, 'active');
     assert.equal(billingOf(s.stripe.subs.sub_40).interval, 'month');
+    // Cancelled on the old price: the deleted event ends the licence like any other.
+    s.stripe.subs.sub_40.status = 'canceled';
+    assert.equal((await s.sendEvent(evt('evt_43', 'customer.subscription.deleted', { id: 'sub_40', status: 'canceled', items: { data: [{ price: oldPrice }] } }))).status, 200);
+    assert.equal(s.store.findBySubscription('sub_40').status, 'canceled');
   } finally { await s.close(); }
 });

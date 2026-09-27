@@ -457,7 +457,7 @@ test('legal: terms s9, disclaimer and privacy say what the code does', () => {
   const read = (f) => readFileSync(`legal/${f}.md`, 'utf8');
   const terms = read('terms');
   const s9 = terms.slice(terms.indexOf('## 9. Pro subscription'), terms.indexOf('## 10.'));
-  for (const must of ['USD 42 a month, or USD 420 a year', 'If you subscribed before 27 September 2026 you keep your price while your subscription stays active.', 'a yearly subscription renews automatically every year', 'up to 3 gift codes', 'Pro for 30 days, free, with no card', 'works only once', 'within 90 days after it was made',
+  for (const must of ['USD 42 a month, or USD 420 a year', 'If you subscribed at an earlier price, you keep that price while your subscription stays active.', 'a yearly subscription renews automatically every year', 'up to 3 gift codes', 'Pro for 30 days, free, with no card', 'works only once', 'within 90 days after it was made',
     'A gift month does not renew', 'A licence from a gift code cannot make gift codes', 'A seat number is for display only', 'cannot be chosen, changed or transferred', 'never reused']) {
     assert.ok(s9.includes(must), `terms s9: ${must}`);
   }

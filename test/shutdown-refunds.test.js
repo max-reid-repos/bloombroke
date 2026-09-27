@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { unusedRefund, periodOf, isProSubscription, run, fmtMoney } from '../scripts/shutdown-refunds.js';
+import { unusedRefund, periodOf, isProSubscription, run, fmtMoney, STATUSES } from '../scripts/shutdown-refunds.js';
 
 const DAY = 86400;
 const START = 1_790_000_000;
@@ -60,7 +60,7 @@ function fakeStripe(now) {
   return {
     calls,
     subscriptions: {
-      list: ({ status }) => subs[status],
+      list: ({ status }) => subs[status] || [],
       async cancel(id, params, opts) { calls.push(['cancel', id, params, opts]); return {}; },
     },
     invoices: { async retrieve(id) { return invoices[id]; } },
@@ -133,4 +133,38 @@ test('shutdown: subscribers on an older price of ours (kept after a price change
   }
   const s2 = await run({ stripe: stripe2, now, priceId: ['price_new_m', 'price_new_y'], log: () => {} });
   assert.equal(s2.subscriptions, 3, 'the other product is still left alone');
+});
+
+test('shutdown: every status that can still bill is cancelled, and lists longer than one page are read to the end', async () => {
+  assert.deepEqual([...STATUSES].sort(), ['active', 'incomplete', 'past_due', 'paused', 'trialing', 'unpaid']);
+  const meta = { site: 'bloombroke', product: 'pro' };
+  const now = START + 15 * DAY;
+  const mk = (id, status) => ({ id, status, metadata: meta, latest_invoice: null, items: { data: [{ price: { id: 'price_pro', metadata: meta } }] } });
+  // 150 active (two pages of 100 and 50) plus one of each other status.
+  const byStatus = { active: Array.from({ length: 150 }, (_, i) => mk(`a${i}`, 'active')) };
+  for (const st of ['trialing', 'past_due', 'unpaid', 'paused', 'incomplete']) byStatus[st] = [mk(`${st}1`, st)];
+  byStatus.canceled = [mk('c1', 'canceled')];
+  const listed = [];
+  const cancels = [];
+  const stripe = {
+    subscriptions: {
+      // Like the Stripe SDK: an async iterable that fetches page after page.
+      list({ status, limit }) {
+        listed.push(status);
+        const rows = byStatus[status] || [];
+        return (async function* () {
+          for (let at = 0; at < rows.length; at += limit) yield* rows.slice(at, at + limit);
+        })();
+      },
+      async cancel(id) { cancels.push(id); return {}; },
+    },
+  };
+  const s = await run({ stripe, now, execute: true, priceId: ['price_new_m', 'price_new_y'], log: () => {} });
+  assert.ok(!listed.includes('canceled'), 'ended subscriptions are not listed');
+  assert.equal(s.subscriptions, 155);
+  assert.deepEqual(s.byStatus, { active: 150, trialing: 1, past_due: 1, unpaid: 1, paused: 1, incomplete: 1 });
+  assert.equal(s.canceled, 155);
+  assert.equal(new Set(cancels).size, 155);
+  assert.ok(cancels.includes('a149') && cancels.includes('unpaid1') && cancels.includes('paused1') && cancels.includes('incomplete1'));
+  assert.equal(s.refunds, 0, 'no paid invoice, no refund');
 });

@@ -184,3 +184,58 @@ test('stripe setup: price report text', () => {
   assert.equal(describePrice({ unit_amount: 420, currency: 'usd', recurring: { interval: 'month' } }), '$4.20 a month');
   assert.equal(describePrice({ unit_amount: 42000, currency: 'usd', recurring: { interval: 'year' } }), '$420 a year');
 });
+
+test('stripe setup: two of our prices with the same amount and interval: one is used, the spare is archived only if nobody is on it', async () => {
+  const meta = { site: 'bloombroke', product: 'pro' };
+  const env = { STRIPE_WEBHOOK_SECRET: 'whsec_x', PRO_SECRET: 'x'.repeat(40) };
+  const recurring = (interval) => ({ interval, interval_count: 1 });
+  const build = () => {
+    const stripe = fakeStripe();
+    stripe.db.products.push({ id: 'prod_1', active: true, name: PRODUCT.name, description: PRODUCT.description, metadata: meta });
+    stripe.db.prices.push({ id: 'price_m1', product: 'prod_1', active: true, unit_amount: 4200, currency: 'usd', recurring: recurring('month'), metadata: meta });
+    stripe.db.prices.push({ id: 'price_m2', product: 'prod_1', active: true, unit_amount: 4200, currency: 'usd', recurring: recurring('month'), metadata: meta });
+    stripe.db.prices.push({ id: 'price_y1', product: 'prod_1', active: true, unit_amount: 42000, currency: 'usd', recurring: recurring('year'), metadata: meta });
+    return stripe;
+  };
+  // Nobody on the spare: it is archived, nothing is created.
+  const a = build();
+  const ra = await setup({ stripe: a, env });
+  assert.equal(ra.values.STRIPE_PRICE_ID, 'price_m1');
+  assert.equal(ra.values.STRIPE_PRICE_ID_YEARLY, 'price_y1');
+  assert.equal(a.created.filter((c) => c === 'price').length, 0);
+  assert.ok(ra.report.includes('old price $42 a month: archived'));
+  assert.equal(a.db.prices.find((p) => p.id === 'price_m2').active, false);
+  assert.equal(a.db.prices.find((p) => p.id === 'price_m1').active, true);
+  // Someone on the spare: it stays, and so does the one in use.
+  const b = build();
+  b.db.subscriptions.push({ id: 'sub_1', status: 'active', items: { data: [{ price: { id: 'price_m2' } }] } });
+  const rb = await setup({ stripe: b, env });
+  assert.equal(rb.values.STRIPE_PRICE_ID, 'price_m1');
+  assert.ok(rb.report.includes('old price $42 a month: kept, 1 subscription still on it'));
+  assert.ok(b.db.prices.every((p) => p.active));
+});
+
+test('stripe setup: more than 100 subscribers on an old price are all counted (paged list)', async () => {
+  const meta = { site: 'bloombroke', product: 'pro' };
+  const env = { STRIPE_WEBHOOK_SECRET: 'whsec_x', PRO_SECRET: 'x'.repeat(40) };
+  const stripe = fakeStripe();
+  stripe.db.products.push({ id: 'prod_1', active: true, name: PRODUCT.name, description: PRODUCT.description, metadata: meta });
+  stripe.db.prices.push({ id: 'price_old_m', product: 'prod_1', active: true, unit_amount: 420, currency: 'usd', recurring: { interval: 'month', interval_count: 1 }, metadata: meta });
+  // 130 cancelled first, then 120 live: a check of only the first page of 100 would archive it.
+  const rows = [
+    ...Array.from({ length: 130 }, (_, i) => ({ id: `sub_c${i}`, status: 'canceled', items: { data: [{ price: { id: 'price_old_m' } }] } })),
+    ...Array.from({ length: 120 }, (_, i) => ({ id: `sub_l${i}`, status: i % 2 ? 'past_due' : 'active', items: { data: [{ price: { id: 'price_old_m' } }] } })),
+  ];
+  const pages = [];
+  stripe.subscriptions.list = ({ price, status, limit }) => {
+    assert.equal(price, 'price_old_m');
+    assert.equal(status, 'all');
+    return (async function* () {
+      for (let at = 0; at < rows.length; at += limit) { pages.push(at); yield* rows.slice(at, at + limit); }
+    })();
+  };
+  const r = await setup({ stripe, env });
+  assert.deepEqual(pages, [0, 100, 200]);
+  assert.ok(r.report.includes('old price $4.20 a month: kept, 120 subscriptions still on it'));
+  assert.equal(stripe.db.prices.find((p) => p.id === 'price_old_m').active, true);
+});
