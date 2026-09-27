@@ -41,6 +41,13 @@ const RANGES = [['1D 5D 1M 3M 6M YTD', 'A preset range'], ['1Y 2Y 5Y 10Y MAX', '
 
 export const REGISTRY = [
   // --- Start here -----------------------------------------------------------------
+  // --- MCP (screens/mcp.js, server lib/mcp/) ---
+  {
+    name: 'MCP', category: 'Start here', summary: 'Use Bloombroke from Claude, ChatGPT, Grok or Cursor: the MCP link',
+    syntax: 'MCP', examples: ['MCP'], keywords: ['mcp', 'ai', 'claude', 'chatgpt', 'grok', 'cursor', 'connector', 'llm', 'agent'],
+    source: 'Public data only: SEC EDGAR, BLS, Federal Reserve, NWS, NOAA, CDC, Wikimedia', delay: 'None',
+  },
+  // --- end MCP ---
   {
     name: 'HELP', aliases: ['?', 'H'], category: 'Start here', summary: 'Every command, with a search box and examples',
     syntax: 'HELP [<command>]', examples: ['HELP', 'HELP FX', 'HELP AAPL'], keywords: ['commands', 'how', 'guide', 'manual', 'list'],
@@ -382,9 +389,9 @@ export const REGISTRY = [
 
   // --- Pro ------------------------------------------------------------------------------
   {
-    name: 'PRO', category: 'Pro', summary: 'What is free and what is Pro: sync, DESK, tape, seat. $4.20 a month or $42 a year',
+    name: 'PRO', category: 'Pro', summary: 'What is free and what is Pro: sync, DESK, tape, seat. $42 a month or $420 a year',
     syntax: 'PRO [YEARLY]', examples: ['PRO', 'PRO YEARLY'], keywords: ['subscribe', 'upgrade', 'paid', 'account', 'sync', 'yearly', 'annual', 'seat'],
-    options: [['YEARLY', 'Lead with the $42 a year plan']],
+    options: [['YEARLY', 'Lead with the $420 a year plan']],
     source: 'Built in', delay: 'None',
   },
   // --- Pro structure: GIFT, REDEEM, CHAT, SPONSOR ---

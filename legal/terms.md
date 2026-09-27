@@ -30,7 +30,7 @@ Bloombroke is an experimental project and may be changed or discontinued at shor
 
 ## 5. What you may do
 
-We give you a personal, limited, non-exclusive, non-transferable, revocable permission to use the service in a normal web browser for your own personal, non-commercial purposes, in line with these terms. You may share links to screens and the share images the service makes for you.
+We give you a personal, limited, non-exclusive, non-transferable, revocable permission to use the service in a normal web browser, or through our MCP endpoint as section 6 allows, for your own personal, non-commercial purposes, in line with these terms. You may share links to screens and the share images the service makes for you.
 
 ## 6. What you must not do
 
@@ -47,6 +47,8 @@ You must not, and must not help anyone else to:
 - upload or send anything unlawful, harmful or malicious, or use the service for any unlawful, fraudulent or misleading purpose;
 - pretend to be us or suggest that we endorse you.
 
+**The MCP endpoint.** As a narrow exception to the first two points above, you may connect an AI app or other MCP client to our MCP endpoint at https://bloombroke.com/mcp and use it within its published limits (listed at https://bloombroke.com/llms.txt). Data you get from it is for your own personal information only, and the same rules apply to it as to the site, including the rules above on redistribution and advice. The exception covers only the MCP endpoint, not our other routes. We may change the limits of the MCP endpoint, or turn it off, at any time and without notice.
+
 ## 7. Third-party data and links
 
 The data on Bloombroke comes from third parties. Current sources include CNBC, Nasdaq, the US Securities and Exchange Commission (EDGAR), the US Department of the Treasury, the Federal Reserve Bank of New York, the Federal Reserve Bank of St. Louis (FRED), Freddie Mac, the US Bureau of Labor Statistics, the European Central Bank via the Frankfurter API, CoinGecko, Cboe, Forex Factory, Yahoo Finance, and news publishers such as CNBC, MarketWatch and Yahoo Finance, whose headlines link to the publisher's own site. Sources may change without notice.
@@ -61,7 +63,7 @@ The service, its software, design, text, the Bloombroke name and logo, and the s
 
 ## 9. Pro subscription
 
-- **Price.** Pro costs USD 4.20 a month, or USD 42 a year, plus any tax that applies. You choose monthly or yearly at checkout. The price shown at checkout is the price you pay.
+- **Price.** Pro costs USD 42 a month, or USD 420 a year, plus any tax that applies. You choose monthly or yearly at checkout. The price shown at checkout is the price you pay. If you subscribed at an earlier price, you keep that price while your subscription stays active.
 - **Renewal.** A monthly subscription renews automatically every month, and a yearly subscription renews automatically every year. We charge your payment method at the start of each period until you cancel.
 - **Cancelling.** You can cancel at any time: type PRO and press MANAGE, which opens the Stripe billing portal. Cancelling stops future renewals. Pro keeps working until the end of the period you have already paid for.
 - **Refunds.** Payments are not refundable, and we do not refund part-used periods, except where this section or the law says otherwise. If we discontinue the service, we will cancel all subscriptions and refund the unused part of the current period. If two subscriptions start on the same licence key at the same time, for example from two open checkout pages, we keep the one that started last, cancel the other one and refund its latest payment in full.

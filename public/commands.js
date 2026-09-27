@@ -33,6 +33,7 @@ import * as legal from './screens/legal.js';
 import * as alerts from './screens/alerts.js'; // ALERTS
 import * as trending from './screens/trending.js'; // TRENDING
 import * as guess from './screens/guess.js'; // GUESS
+import * as mcp from './screens/mcp.js'; // MCP
 
 export const EXTRA = [
   { name: 'WORLD', screen: world },
@@ -66,6 +67,7 @@ export const EXTRA = [
   // ALERTS: changes the saved alerts, so a link only ever opens the list.
   { name: 'ALERTS', screen: alerts, takesArgs: true, url: 'ALERTS' },
   { name: 'GUESS', screen: guess }, // GUESS: one mystery stock a day
+  { name: 'MCP', screen: mcp }, // MCP: hook an AI app up to Bloombroke (lib/mcp/)
 ];
 
 // Screen modules by internal name.
