@@ -12,9 +12,9 @@ import { noSuchExtra, graveyardTable, tombstoneHtml, ipoHtml, ipoPreviewHtml, ya
 import { setPrefill, takePrefill } from '../public/screens/feedback.js';
 import { GOALS, GOAL_PROPS, cleanProps } from '../public/goal.js';
 import {
-  loadGraveyard, parseBlocklist, loadBlocklist, ipoAllowed, flagged, makeNoSuchCards, mountNoSuch, nosuchMeta, tombstoneTree, ipoTree, IPO_MAX_AGE, TOMB_MAX_AGE,
+  loadGraveyard, parseBlocklist, loadBlocklist, ipoAllowed, flagged, byteLru, IPO_MEMORY, IPO_RATE, IPO_GLOBAL, BUSY_MAX_AGE, REFUSED_MAX_AGE, makeNoSuchCards, mountNoSuch, nosuchMeta, tombstoneTree, ipoTree, IPO_MAX_AGE, TOMB_MAX_AGE,
 } from '../lib/og-nosuch.js';
-import { W, H } from '../lib/og.js';
+import { W, H, makeRateLimit } from '../lib/og.js';
 
 const BANNED = new RegExp(['bloom', 'berg'].join(''), 'i');
 const RAW = JSON.parse(readFileSync(new URL('../data/graveyard.json', import.meta.url), 'utf8'));
@@ -272,4 +272,84 @@ test('the unknown-word page: certificate preview and THE GRAVEYARD row', () => {
   assert.doesNotMatch(noSuchExtra('MAXX', { grave: null, ipo: false }, { ticker: 'MAXX', yard: four }), /ns-mini"/, 'no IPO, no preview');
   assert.equal(yardHtml([]), '');
   assert.match(ipoPreviewHtml('MAXX'), /certificate\.webp/);
+});
+
+test('IPO cards: memory only, bounded by entries and bytes', () => {
+  assert.ok(IPO_MEMORY.entries <= 500 && IPO_MEMORY.bytes <= 64 * 1024 * 1024);
+  const c = byteLru({ entries: 3, bytes: 10 });
+  c.set('A', Buffer.alloc(4));
+  c.set('B', Buffer.alloc(4));
+  assert.equal(c.size, 2);
+  c.set('C', Buffer.alloc(4)); // 12 bytes: A goes
+  assert.equal(c.get('A'), undefined);
+  assert.equal(c.bytes, 8);
+  c.get('B');
+  c.set('D', Buffer.alloc(1));
+  c.set('E', Buffer.alloc(1)); // 4 entries: C (least recent) goes
+  assert.equal(c.get('C'), undefined);
+  assert.ok(c.get('B'));
+  c.set('F', Buffer.alloc(11)); // bigger than the whole cache: never kept
+  assert.equal(c.get('F'), undefined);
+  const src = readFileSync(new URL('../lib/og-nosuch.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /writeFile|mkdir|rename|CACHE_DIR|writeAtomic/, 'no disk cache');
+});
+
+test('IPO cards: per-address, all-address and waiting limits give the site card, kept short', async () => {
+  let renders = 0;
+  const site = Buffer.from('site');
+  const cards = makeNoSuchCards({
+    graveyard: GRAVE, block: BLOCK, fallback: async () => site,
+    render: async () => { renders += 1; return Buffer.from(`card${renders}`); },
+    allow: makeRateLimit({ renders: 2, windowMs: 60_000, addresses: 10 }),
+    allowAll: makeRateLimit({ renders: 3, windowMs: 60_000, addresses: 1 }),
+  });
+  const words = ['AAAA', 'BBBB', 'CCCC', 'DDDD', 'EEEE'].map((w) => w.replace(/./g, (ch, i) => (i === 3 ? 'Q' : ch)));
+  const a1 = await cards.ipo(words[0], '1.1.1.1');
+  const a2 = await cards.ipo(words[1], '1.1.1.1');
+  assert.equal(a1.drawn && a2.drawn, true);
+  assert.equal(a1.maxAge, 604800);
+  const a3 = await cards.ipo(words[2], '1.1.1.1');
+  assert.deepEqual([a3.png, a3.maxAge, a3.drawn], [site, BUSY_MAX_AGE, false], 'per address');
+  assert.deepEqual((await cards.ipo(words[0], '1.1.1.1')).png, a1.png, 'a kept card costs nothing');
+  assert.equal((await cards.ipo(words[2], '2.2.2.2')).drawn, true);
+  const b = await cards.ipo(words[3], '3.3.3.3');
+  assert.deepEqual([b.png, b.maxAge], [site, BUSY_MAX_AGE], 'across all addresses');
+  assert.equal(renders, 3);
+  const r = await cards.ipo('ZZTOP', '4.4.4.4');
+  assert.deepEqual([r.png, r.maxAge, r.drawn], [site, REFUSED_MAX_AGE, false], 'refused word');
+  assert.equal(renders, 3);
+  assert.ok(IPO_RATE.renders <= 30 && IPO_GLOBAL.renders <= 600);
+});
+
+test('IPO cards: a flood of new words waits in a short line, the rest get the site card', async () => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  let renders = 0;
+  const site = Buffer.from('site');
+  const cards = makeNoSuchCards({
+    graveyard: GRAVE, block: BLOCK, fallback: async () => site, pendingMax: 2,
+    render: async () => { renders += 1; await gate; return Buffer.from('card'); },
+  });
+  const ask = ['MAXA', 'MAXB', 'MAXC', 'MAXD'].map((w, i) => cards.ipo(w, `9.9.9.${i}`));
+  const late = await ask[2];
+  assert.deepEqual([late.png, late.maxAge], [site, BUSY_MAX_AGE]);
+  assert.equal(cards.pending(), 2);
+  release();
+  const done = await Promise.all(ask);
+  assert.deepEqual(done.map((d) => d.drawn), [true, true, false, false]);
+  assert.equal(cards.pending(), 0);
+  // A failed render: the site card, kept short, nothing kept.
+  const bad = makeNoSuchCards({ graveyard: GRAVE, block: BLOCK, fallback: async () => site, render: async () => { throw new Error('boom'); } });
+  const f = await bad.ipo('MAXE', '8.8.8.8');
+  assert.deepEqual([f.png, f.maxAge, f.drawn], [site, BUSY_MAX_AGE, false]);
+  assert.equal(bad.cache.size, 0);
+});
+
+test('the share page never draws a card: meta only', () => {
+  let renders = 0;
+  const app = express();
+  const ns = mountNoSuch(app, { graveyard: GRAVE, block: BLOCK, render: async () => { renders += 1; return Buffer.from('x'); }, fallback: async () => Buffer.from('y') });
+  for (let i = 0; i < 50; i += 1) ns.meta(`IPO IT MX${String.fromCharCode(65 + (i % 26))}${String.fromCharCode(65 + Math.floor(i / 26))}`);
+  assert.equal(renders, 0);
+  assert.equal(ns.cache.size, 0);
 });
