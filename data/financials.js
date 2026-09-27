@@ -146,7 +146,9 @@ export function fiscalPeriods(gaap) {
 
 // ---- values for one concept ---------------------------------------------------
 
-const cell = (f, extra) => ({ v: f.val, tag: f.tag, form: f.form, filed: f.filed, ...extra });
+// accn: the filing the value came from (the latest filing wins, so a restated figure names
+// the restating filing); the screen links each number to it.
+const cell = (f, extra) => ({ v: f.val, tag: f.tag, form: f.form, filed: f.filed, accn: f.accn, ...extra });
 
 // Annual value: a full-year fact from a 10-K ending on the fiscal year end.
 function annualValue(facts, end, kind) {
@@ -242,7 +244,7 @@ function buildMode(gaap, periods, mode, count) {
   values.freeCashFlow = periods.map((_, i) => {
     const o = values.operatingCashFlow[i];
     const c = values.capex[i];
-    return o && c ? { v: o.v - c.v, derived: !!(o.derived || c.derived), calc: 'OCF - capex' } : null;
+    return o && c ? { v: o.v - c.v, derived: !!(o.derived || c.derived), calc: 'OCF - capex', form: o.form, filed: o.filed, accn: o.accn } : null;
   });
   const ratios = {
     grossMargin: periods.map((_, i) => pct(values.grossProfit[i]?.v, values.revenue[i]?.v)),
@@ -376,7 +378,9 @@ export function makeFinancials({ fetchImpl = globalThis.fetch, cache = createCac
     };
   }
 
-  return { getFinancials };
+  // A new 10-Q or 10-K for this company (data/edgarwatch.js): the next view refetches.
+  const forget = (cik) => cache.forget(`sec:facts:${Number(cik)}`);
+  return { getFinancials, forget };
 }
 
-export const { getFinancials } = makeFinancials();
+export const { getFinancials, forget: forgetFinancials } = makeFinancials();

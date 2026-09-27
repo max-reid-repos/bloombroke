@@ -34,9 +34,10 @@ import { getWeird, getGauge, startWeirdPrewarm, FAST_WAIT } from './data/weird/i
 import { makeWeirdCards, weirdCommand } from './lib/og-weird.js'; // WEIRD share cards
 import { mountWhyCards } from './lib/og-why.js'; // WHY share cards
 import { getWhy } from './data/why.js'; // WHY share cards
-// --- Provenance: the envelope on every /api answer, DATA, STATUS, CHANGES ---
+// --- Provenance: the envelope on every /api answer, DATA, STATUS, CHANGES, the EDGAR watcher ---
 import { provenanceJson, mountProvenanceRoutes } from './lib/provenance.js';
 import { GAUGES } from './data/weird/index.js';
+import { startEdgarWatch } from './data/edgarwatch.js';
 // --- end Provenance ---
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -324,7 +325,7 @@ mountGuess(app, { getChart, getCaps: getFishtank });
 startPro(app, { dir });
 
 // Provenance: /api/data (DATA), /api/status (STATUS), /api/changes (CHANGES).
-const edgarWatch = null;
+let edgarWatch = null;
 mountProvenanceRoutes(app, {
   gauges: GAUGES.map((g) => ({ id: g.id, source: g.source })),
   weird: async () => (await getWeird({ wait: 0 })).gauges,
@@ -485,4 +486,6 @@ app.listen(PORT, HOST, () => {
   // SCREEN's P/E and dividend numbers: loaded in the background, so no one waits on a cold cache.
   startScreenPrewarm();
   startWeirdPrewarm(); // WEIRD: refresh gauges with no value or an old one, staggered
+  // New SEC filings drop that company's cached SEC data (EDGAR_WATCH=0 turns it off).
+  if (process.env.EDGAR_WATCH !== '0') edgarWatch = startEdgarWatch();
 });

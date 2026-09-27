@@ -313,7 +313,7 @@ test('WHATIF: the missing month is carried forward, and said so once in Details 
 // ---- house rules ------------------------------------------------------------------------------
 
 test('provenance files: no banned brand word, no em dash, no emoji, no amber', () => {
-  const files = ['../lib/provenance.js', '../public/provenance.js', '../public/screens/data.js', '../public/screens/status.js', '../public/screens/changes.js', '../data/changes.json'];
+  const files = ['../lib/provenance.js', '../public/provenance.js', '../public/screens/data.js', '../public/screens/status.js', '../public/screens/changes.js', '../data/changes.json', '../data/edgarwatch.js'];
   for (const f of files) {
     const s = readFileSync(new URL(f, import.meta.url), 'utf8');
     assert.doesNotMatch(s, new RegExp(['Bloom', 'berg'].join(''), 'i'), f);

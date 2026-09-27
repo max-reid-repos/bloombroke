@@ -6,6 +6,7 @@
 import { createCache } from './cache.js';
 import { SEC_UA, parseTickerMap, secTicker } from './financials.js';
 import { CompanyDataError, DAY_MS, cachedOrThrow, tickerOrThrow } from './company-kit.js';
+import { sessionOf } from '../lib/provenance.js';
 
 export { CompanyDataError as FilingsError };
 
@@ -92,6 +93,8 @@ export function parseSubmissions(body) {
       items: String(r.items?.[i] || '').split(',').map((x) => x.trim()).filter((x) => /^\d+\.\d+$/.test(x)),
       // When EDGAR accepted it (true UTC), for WHY's "after the prior close" window.
       accepted: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(r.acceptanceDateTime?.[i] || '')) ? String(r.acceptanceDateTime[i]) : null,
+      // PRE, MKT, AH or WKD from that time (New York), '' without one.
+      session: sessionOf(r.acceptanceDateTime?.[i]),
       url: filingUrl(cik, r.accessionNumber?.[i], r.primaryDocument?.[i]),
     });
   }
@@ -171,10 +174,12 @@ export function makeFilings({ fetchImpl = globalThis.fetch, cache = createCache(
       stale: got.stale, updated: got.updated, source: FILINGS_SOURCE,
     };
   }
-  return { getFilings, queued };
+  // A new filing for this company (data/edgarwatch.js): the next view refetches.
+  const forget = (cik) => cache.forget(`filings:${Number(cik)}`);
+  return { getFilings, queued, forget };
 }
 
 const shared = makeFilings();
-export const { getFilings } = shared;
+export const { getFilings, forget: forgetFilings } = shared;
 // The shared SEC queue, for other SEC requests (the news hub's current 8-K feed).
 export const secQueued = shared.queued;
