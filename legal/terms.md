@@ -30,7 +30,7 @@ Bloombroke is an experimental project and may be changed or discontinued at shor
 
 ## 5. What you may do
 
-We give you a personal, limited, non-exclusive, non-transferable, revocable permission to use the service in a normal web browser for your own personal, non-commercial purposes, in line with these terms. You may share links to screens and the share images the service makes for you.
+We give you a personal, limited, non-exclusive, non-transferable, revocable permission to use the service in a normal web browser, or through our MCP endpoint as section 6 allows, for your own personal, non-commercial purposes, in line with these terms. You may share links to screens and the share images the service makes for you.
 
 ## 6. What you must not do
 
@@ -46,6 +46,8 @@ You must not, and must not help anyone else to:
 - probe, scan or test the security of the service, or interfere with or disrupt it, its servers or its data sources;
 - upload or send anything unlawful, harmful or malicious, or use the service for any unlawful, fraudulent or misleading purpose;
 - pretend to be us or suggest that we endorse you.
+
+**The MCP endpoint.** As a narrow exception to the first two points above, you may connect an AI app or other MCP client to our MCP endpoint at https://bloombroke.com/mcp and use it within its published limits (listed at https://bloombroke.com/llms.txt). Data you get from it is for your own personal information only, and the same rules apply to it as to the site, including the rules above on redistribution and advice. The exception covers only the MCP endpoint, not our other routes. We may change the limits of the MCP endpoint, or turn it off, at any time and without notice.
 
 ## 7. Third-party data and links
 
