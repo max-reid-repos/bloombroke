@@ -13,6 +13,12 @@ export const CONTACT = 'hello@bloombroke.com';
 
 export const counterText = (n) => `${n} / ${MAX_FEEDBACK}`;
 
+// A note to start the form with, used once by the next FEEDBACK screen (NO SUCH TICKER's
+// "Tell us." sets "Please add: WORD").
+let prefill = '';
+export function setPrefill(text) { prefill = String(text ?? '').slice(0, 200); }
+export function takePrefill() { const t = prefill; prefill = ''; return t; }
+
 // What the form sends. screen: the address bar form of the command you came from.
 export function feedbackPayload({ message, email, screen, website }) {
   const out = { message: String(message ?? '').trim(), screen: screen || null };
@@ -63,6 +69,8 @@ export function render(el, cmd, ctx) {
   const btn = el.querySelector('#fb-send');
   ctx.status('FEEDBACK: WRITE A NOTE, CTRL+ENTER SENDS');
   msg.addEventListener('input', () => { count.textContent = counterText(msg.value.length); });
+  const start = takePrefill();
+  if (start) { msg.value = start; count.textContent = counterText(start.length); }
   let busy = false;
   const submit = async () => {
     if (busy) return;
@@ -100,5 +108,5 @@ export function render(el, cmd, ctx) {
   });
   // Keyboard first: the note takes the focus, after the command bar lets go.
   const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-  if (!coarse) setTimeout(() => { if (el.isConnected) msg.focus(); }, 0);
+  if (!coarse) setTimeout(() => { if (el.isConnected) { msg.focus(); msg.setSelectionRange(msg.value.length, msg.value.length); } }, 0);
 }
