@@ -298,6 +298,12 @@ import { mountTrending } from './data/trending.js';
 mountTrending(app, { getQuoteList });
 // --- end TRENDING ---
 
+// --- GUESS (data/guess.js): one mystery stock a day ---
+import { mountGuess } from './data/guess.js';
+import { getFishtank } from './data/sp100.js';
+mountGuess(app, { getChart, getCaps: getFishtank });
+// --- end GUESS ---
+
 startPro(app, { dir });
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));

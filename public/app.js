@@ -64,15 +64,16 @@ export const SOON = LISTED.filter((c) => c.soon).map((c) => ({ name: c.name, hin
 export const RENAMED_NOTE = 'Renamed to AFFORD. It is about things you buy, not investments.';
 
 // The key bar: real function keys (never F5, F11 or F12, which stay with the browser).
-// mobile: one of the five kept on a phone, next to MENU.
+// mobile: one of the five kept on a phone, next to MENU. short: its label on a phone, so
+// the five and SHARE and MENU fit whole (no word cut off at the edge).
 export const FKEYS = [
   { key: 'F1', label: 'HELP', cmd: 'HELP' },
   { key: 'F2', label: 'HOME', cmd: 'HOME', mobile: true },
   { key: 'F3', label: 'DESK', cmd: 'DESK' },
-  { key: 'F4', label: 'MARKETS', cmd: 'MARKETS', mobile: true },
+  { key: 'F4', label: 'MARKETS', short: 'MKTS', cmd: 'MARKETS', mobile: true },
   { key: 'F6', label: 'NEWS', cmd: 'NEWS', mobile: true },
   { key: 'F7', label: 'WATCH', cmd: 'WATCH', mobile: true },
-  { key: 'F8', label: 'PORTFOLIO', cmd: 'PF', mobile: true },
+  { key: 'F8', label: 'PORTFOLIO', short: 'PF', cmd: 'PF', mobile: true },
   { key: 'F9', label: 'SCREEN', cmd: 'SCREEN' },
   { key: 'F10', label: 'WHATIF', cmd: 'WHATIF' },
 ];
@@ -518,7 +519,7 @@ export function tickerStripHtml(ticker, current) {
 
 // The key bar: the function keys, then SHARE and MENU on the right.
 export function keybarHtml() {
-  return `<div class="fkeys">${FKEYS.map((k) => `<a class="fkey${k.mobile ? ' is-mobile' : ''}" href="${toQuery(k.cmd)}" data-cmd="${escapeHtml(k.cmd)}" data-name="${parseCommand(k.cmd).name}"><span class="fkey-n">${k.key}</span><span class="fkey-l">${k.label}</span></a>`).join('')}</div>
+  return `<div class="fkeys">${FKEYS.map((k) => `<a class="fkey${k.mobile ? ' is-mobile' : ''}" href="${toQuery(k.cmd)}" data-cmd="${escapeHtml(k.cmd)}" data-name="${parseCommand(k.cmd).name}"${k.short ? ` aria-label="${k.label}"` : ''}><span class="fkey-n">${k.key}</span><span class="fkey-l">${k.label}</span>${k.short ? `<span class="fkey-short">${k.short}</span>` : ''}</a>`).join('')}</div>
     <button type="button" class="fkey fkey-share" id="share" aria-label="Copy a link to this screen"><span class="fkey-l">SHARE</span></button>
     <button type="button" class="fkey fkey-menu" id="menu-btn" aria-haspopup="dialog"><span class="fkey-l">MENU</span><span class="fkey-n">Ctrl K</span></button>`;
 }
