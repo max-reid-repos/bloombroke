@@ -389,7 +389,7 @@ test('legal: version bumped, so everyone who accepted 1.0 is asked again', async
   const { LEGAL_UPDATED } = await import('../public/legal-version.js');
   const { needsConsent, acceptRecord } = await import('../public/consent.js');
   const { DEFAULT_TERMS_VERSION } = await import('../pro/billing.js');
-  assert.equal(TERMS_VERSION, '1.2', 'MCP endpoint exception (terms s6) and its limiter (privacy)');
+  assert.equal(TERMS_VERSION, '1.3', 'sources by class, sub-processors, retention table, GPC, counters');
   assert.equal(LEGAL_UPDATED, '27 September 2026');
   assert.equal(needsConsent(acceptRecord('1.0')), true);
   assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
@@ -412,10 +412,10 @@ test('legal: terms s9, disclaimer and privacy say what the code does', () => {
   const privacy = read('privacy');
   assert.ok(privacy.includes('We do not share it with advertisers or data brokers.'), 'privacy s6 stays');
   for (const must of ['We add no tracking code to the link', 'one-way hash of the code and its last four characters', 'your seat number', 'We keep feedback for up to 12 months', 'We do not store your IP address with it', 'your email address only to reply to you',
-    'the Pro routes and gift codes (a 10 or 15 minute window), the ticker counter, the site counters and the GUESS game (a one minute window), the feedback form (a one hour window) and the MCP endpoint (a one minute, a 10 minute and a 24 hour window)', 'forgets it within one minute after the window ends', 'one minute for the ticker counter, the site counters and GUESS, 10 or 15 minutes for the Pro routes and gift codes, one hour for feedback, one minute, 10 minutes and 24 hours for the MCP endpoint', 'DESK layouts',
+    'the Pro routes and gift codes (a 10 or 15 minute window), the ticker counter, the site counters and the GUESS game (a one minute window), the feedback form (a one hour window) and the MCP endpoint (a one minute, a 10 minute and a 24 hour window)', 'forgets it within one minute after the window ends', 'one minute for the ticker counter, the site counters and GUESS; 10 or 15 minutes for the Pro routes and gift codes; one hour for feedback; one minute, 10 minutes and 24 hours for the MCP endpoint', 'DESK layouts',
     'sponsors get no data from us', 'DataFast, counts link clicks, including clicks on sponsor links',
-    'kept while your licence exists and for 5 years after your subscription is cancelled', 'unpaid or overdue is kept until the subscription is cancelled', 'keeps only a count of the redeemed codes', 'Gift code records:** deleted 12 months after the code was used or expired',
-    'the licence record is kept for 5 years after the gift month ends']) {
+    'kept while your licence exists and for 5 years after your subscription is cancelled', 'unpaid or overdue is kept until the subscription is cancelled', 'keeps only a count of the redeemed codes', '| Gift code records | Deleted 12 months after the code was used or expired.',
+    'The licence record is kept for 5 years after the gift month ends']) {
     assert.ok(privacy.includes(must), `privacy: ${must}`);
   }
   for (const f of ['terms', 'privacy', 'disclaimer']) assert.doesNotMatch(read(f), /\u2014/, `${f}: no em dash`);

@@ -106,3 +106,12 @@
 @media (max-width: 639px) {
   .status-note.status-legal { display: flex; flex: 0 0 auto; gap: 8px; }
 }
+
+/* ---- Tables (privacy: who receives data, how long we keep it) ---------------- */
+.legal-table { margin: 0 0 16px; overflow-x: auto; }
+.legal-table table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.5; }
+.legal-table th, .legal-table td { padding: 6px 10px 6px 0; border-bottom: 1px solid var(--rule, #1b2531); text-align: left; vertical-align: top; }
+.legal-table thead th { color: var(--dim, #7f93a8); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.legal-table tbody th { color: var(--text, #CFEAFF); font-weight: 600; white-space: nowrap; }
+.legal-table td { color: var(--text-2, #b6d3ea); }
+@media (max-width: 639px) { .legal-table tbody th { white-space: normal; } }

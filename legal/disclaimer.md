@@ -56,14 +56,20 @@ You alone are responsible for your investment and financial decisions and for th
 
 ## 9. Where the data comes from
 
-- Prices and charts: CNBC. US stocks: Nasdaq Last Sale.
+We describe our sources by class and name US government sources and the credits a licence requires. The DATA command lists each dataset with its source class and delay.
+
+- Prices, charts, company data, options and the stock screener: market data providers. Calendars: market data providers and published calendars.
 - RT means real time. DLY means delayed: futures about 10 minutes, indexes about 15 minutes.
-- Company data, calendars and the stock screener: Nasdaq. Filings and financial statements: US SEC EDGAR.
-- Headlines: CNBC, MarketWatch, Yahoo Finance, Nasdaq, Seeking Alpha, the Federal Reserve, BLS, SEC EDGAR, GlobeNewswire, PR Newswire, Business Wire and Reddit (r/wallstreetbets). Each headline links to the original publisher.
-- Exchange rates: ECB reference rates via Frankfurter, once a working day. Pairs without the euro are calculated from the euro rates.
-- Rates: US Treasury, Federal Reserve Bank of New York and Freddie Mac. Economy: FRED, Federal Reserve Bank of St. Louis. Inflation: US Bureau of Labor Statistics.
-- Economic calendar: Forex Factory. Options: Cboe, delayed 15 minutes. Crypto: CoinGecko.
-- WEIRD gauges: IMF PortWatch, pizzint.watch, Apple App Store, NHC, OpenStreetMap (ODbL), Wikimedia, Hacker News (Algolia), FRED, NWS, NOAA SWPC, BLS, The Economist (CC BY 4.0), Forbes, ApeWisdom, Polymarket, Drewry, Queue-Times.com, SEC EDGAR, the Federal Reserve, CDC and DICJ Macau.
+- Filings and financial statements: US Securities and Exchange Commission (EDGAR).
+- Headlines: news publishers, the Board of Governors of the Federal Reserve System, the US Bureau of Labor Statistics and SEC EDGAR. Each headline links to the original publisher.
+- Exchange rates: ECB reference rates, once a working day. Pairs without the euro are calculated from the euro rates.
+- Rates: the US Treasury, the Federal Reserve Bank of New York (see its notice below), market data providers and public web data. Inflation: the US Bureau of Labor Statistics. Economy: public web data.
+- Crypto: market data providers. Powered by CoinGecko.
+- WEIRD gauges: public web data and US government sources, including the National Hurricane Center, the National Weather Service, NOAA, the CDC, the US Bureau of Labor Statistics and SEC EDGAR. Credits: Big Mac index data by The Economist (CC BY 4.0); store locations © OpenStreetMap contributors (ODbL); ride wait times powered by Queue-Times.com.
+- Maps: Natural Earth.
+- TRENDING and BBRK: our own counters.
+
+**Federal Reserve Bank of New York.** The effective federal funds rate (EFFR) shown on RATES and FEDPATH is subject to the Terms of Use posted at newyorkfed.org. The New York Fed is not responsible for publication of the EFFR by Bloombroke, does not sanction or endorse any particular republication, and has no liability for your use. Bloombroke is not affiliated with the New York Fed. The New York Fed does not sanction, endorse, or recommend any products or services offered by Bloombroke.
 
 ## 10. Contact
 
