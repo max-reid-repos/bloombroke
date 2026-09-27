@@ -234,7 +234,7 @@ test('free for everyone: no Pro gate, the FREE list says so', async () => {
   const src = readFileSync('public/screens/whatif.js', 'utf8');
   assert.doesNotMatch(src, /isPro|Pro feature/);
   // The YOUR OWN card and its form show for a free user.
-  assert.match(ownCardHtml(), /YOUR OWN[\s\S]*Any stock, any date/);
+  assert.match(ownCardHtml(), /YOUR OWN[\s\S]*Any stock</);
   assert.match(ownFormHtml(), /data-f="amount"[\s\S]*data-f="ticker"[\s\S]*data-f="how"[\s\S]*data-f="date"/);
   // The server never gates: a free visitor (no key) gets the result.
   const d = await getWhatif(['MY', '649', 'AAPL', '2014-09-19'], { quoteImpl: quote(341.07), dailyImpl: bakedAapl, now: NOW });

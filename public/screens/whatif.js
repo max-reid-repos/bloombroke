@@ -232,7 +232,7 @@ export function cardHtml(p, picks) {
 // The YOUR OWN card (first on every shelf) and a card per purchase of your own.
 export function ownCardHtml() {
   return `<li class="wi-card wi-own" role="option" aria-selected="false" tabindex="-1" data-own title="Your own purchase: any stock or ETF, any date">
-    <img class="wi-doodle" src="${esc(art(`doodle-${MINE_DOODLE}.webp`))}" width="384" height="384" alt="" loading="lazy" decoding="async"><span class="wi-box" aria-hidden="true">[+]</span><span class="wi-cname">YOUR OWN</span><span class="wi-cmeta">Any stock, any date</span>
+    <img class="wi-doodle" src="${esc(art(`doodle-${MINE_DOODLE}.webp`))}" width="384" height="384" alt="" loading="lazy" decoding="async"><span class="wi-box" aria-hidden="true">[+]</span><span class="wi-cname">YOUR OWN</span><span class="wi-cmeta">Any stock</span>
   </li>`;
 }
 export function mineCardHtml(m) {
