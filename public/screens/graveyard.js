@@ -89,8 +89,13 @@ export function stoneHtml(e, { n = 0, small = false } = {}) {
     </figure>`;
 }
 
+// Every source on the page (the event, the cause, the date, the facts, the comeback), one
+// link per host.
 export function sourcesHtml(e) {
-  const links = e.src.map((u) => ext(u, srcHost(u))).join(', ');
+  const seen = new Set();
+  const all = [...e.src, ...(e.causeSrc || []), ...(e.anniversarySrc || []), ...(e.back?.src || []), ...(e.keyFactsSrc || [])];
+  const links = all.filter((u) => { const h = srcHost(u); if (!h || seen.has(h)) return false; seen.add(h); return true; })
+    .map((u) => ext(u, srcHost(u))).join(', ');
   return `<p class="muted ns-src">${e.wayback ? `${ext(e.wayback, 'LAST WEBSITE', 'gv-last')} · ` : ''}Source: ${links}. ${code('GRAVEYARD', 'See the graveyard')}.</p>`;
 }
 
