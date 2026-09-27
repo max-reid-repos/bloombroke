@@ -120,6 +120,7 @@ async function serve(getCert, fn, opts = {}) {
 }
 
 const certFor = async (c) => {
+  if (/\bMY\b/i.test(c)) throw new Error('MY must never reach getCert from an embed');
   const hit = seoItem(c, catalog);
   if (/SLOW/.test(c)) return new Promise(() => {});
   return hit ? model(hit.command) : null;
@@ -152,6 +153,8 @@ test('embed /whatif: the card, the footer, framable; no analytics, no third-part
     assert.match(html, /An iPhone 6 cost \$649 in Sep 2014\./);
     assert.match(html, /href="https:\/\/bloombroke\.com\/\?c=WHATIF\+IPHONE6" target="_blank"/);
     assert.match(html, /<meta name="robots" content="noindex">/);
+    assert.match(html, /<html lang="en" class="is-embed">/, 'goal.js never loads analytics here');
+    assert.equal(res.headers.get('cache-control'), 'private, max-age=600', 'a nonce page is never in a shared cache');
     assert.doesNotMatch(html, /<script|datafa\.st|fonts\.googleapis|localStorage|\u2014/);
     assert.doesNotMatch(html, OTHER);
     // The inline style runs only with this response's nonce.
@@ -185,7 +188,16 @@ test('embed /whatif: a bad list is a 404 and a slow answer a 503, both with the 
     assertFooter(await slow.text(), 'slow');
     const none = await fetch(`${base}/embed/nothing`);
     assert.equal(none.status, 404);
+    assert.equal(none.headers.get('cache-control'), 'private, max-age=600');
     assertFooter(await none.text(), 'none');
+    // Your own purchase (MY), alone or in a list: no embed, and getCert is never asked.
+    for (const c of ['WHATIF MY 5 A DAY AAPL SINCE 2018', 'WHATIF IPHONE6 MY NVDA 500 2020-01-15', 'whatif my 500 nvda on 2020-01-15']) {
+      const mine = await fetch(`${base}/embed/whatif?${new URLSearchParams({ c })}`);
+      assert.equal(mine.status, 404, c);
+      const html = await mine.text();
+      assert.match(html, /There is no embed here\./, c);
+      assertFooter(html, c);
+    }
   }, { waitMs: 50 });
 });
 
@@ -193,6 +205,7 @@ test('embed /guess: the frame, our own script only, footer linking to GUESS', as
   await serve(certFor, async (base) => {
     const res = await fetch(`${base}/embed/guess`);
     assert.equal(res.status, 200);
+    assert.equal(res.headers.get('cache-control'), 'private, max-age=600');
     assertFramable(res, 'guess');
     const html = await res.text();
     assertFooter(html, 'guess');
@@ -230,7 +243,9 @@ test('embed guess script: its own storage key, no analytics, no other storage', 
 
 test('embed sentence: a catalogue item says what it cost; a list says what was spent', () => {
   assert.equal(embedSentence(model('WHATIF IPHONE6'), catalog), 'An iPhone 6 cost $649 in Sep 2014.');
-  assert.equal(embedSentence(model('WHATIF IPHONE6 LATTE', { ribbon: '2 things you bought', spent: 'You spent $2,000' }), catalog), '2 things you bought: $2,000 spent, put into stock instead.');
+  assert.equal(embedSentence(model('WHATIF IPHONE6 LATTE', { ribbon: '2 things you bought', spent: 'You spent $2,000' }), catalog), '2 things you bought cost $2,000.');
+  assert.equal(embedSentence(model('WHATIF IPHONE6 IPHONE7 IPHONE8', { ribbon: '3 iPhones', spent: 'You spent $1,997.00' }), catalog), '3 iPhones cost $1,997.00.');
+  assert.equal(embedSentence(model('WHATIF LATTE:3Y', { ribbon: '3 years of lattes', spent: 'You spent $5,900' }), catalog), '3 years of lattes cost $5,900.');
 });
 
 // ---- EMBED buttons ------------------------------------------------------------------
@@ -243,6 +258,8 @@ test('EMBED copies the right one-line snippet', () => {
   const whatif = readFileSync(new URL('../public/screens/whatif.js', import.meta.url), 'utf8');
   assert.match(whatif, /data-embed="\$\{esc\(d\.cert\.command\)\}"[^>]*>EMBED<\/button>/);
   assert.match(whatif, /copyText\(whatifEmbedSnippet\(b\.dataset\.embed\)\)/);
+  assert.match(whatif, /\$\{d\.cert && !d\.mine \? `<button type="button" class="code wi-embed"/, 'no EMBED on MY results');
+  assert.match(whatif, /if \(ok\) goal\('whatif_embed', \{ kind: 'whatif' \}, \{ once: b\.dataset\.embed \}\);/);
   const guess = readFileSync(new URL('../public/screens/guess.js', import.meta.url), 'utf8');
   assert.match(guess, /class="chip gs-embed"[^>]*>EMBED<\/button>/);
   assert.match(guess, /ctx\.copy\(guessEmbedSnippet\(\)\)/);
@@ -295,4 +312,30 @@ test('GUESS card renders a 1200x630 PNG, and ?c=GUESS points og:image at it', as
   const meta = commandMeta('GUESS', parseCommand);
   assert.equal(meta.image, 'https://bloombroke.com/og/guess.png');
   assert.match(meta.alt, /Can you name this stock\?/);
+});
+
+// ---- WHATIF card cache --------------------------------------------------------------
+
+test('WHATIF card: only the real card on live prices is "real" (kept a week); stale and site cards are not', async (t) => {
+  const { whatifCard } = await import('../lib/og.js');
+  const { mkdtempSync, rmSync, readdirSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const dir = mkdtempSync(path.join(tmpdir(), 'bb-card-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const row = { id: 'iphone6', kind: 'once', name: 'iPhone 6', company: 'Apple', ticker: 'AAPL', bought: '2014-09-19', close: 25, buys: 1, paid: 649, shares: 25.96, price: 250, value: 6490, multiple: 10 };
+  const result = (stale) => ({ rows: [row], total: { paid: 649, value: 6490, gain: 5841, multiple: 10, pct: 900 }, stale });
+  const deps = (stale) => ({ catalog, getWhatif: async () => result(stale), cacheDir: dir });
+  const bad = await whatifCard('WHATIF NOPE', deps(false));
+  assert.equal(bad.real, false);
+  const stale = await whatifCard('WHATIF IPHONE6', deps(true));
+  assert.equal(stale.real, false, 'last-known prices');
+  assert.ok(stale.png.length > 1000);
+  assert.deepEqual(readdirSync(dir), [], 'a stale card and model never go to disk');
+  const live = await whatifCard('WHATIF IPHONE6', deps(false));
+  assert.equal(live.real, true);
+  const refused = await whatifCard('WHATIF MY 5 A DAY AAPL SINCE 2018', { catalog, getWhatif: async () => ({ ...result(false), rows: [{ ...row, id: 'mine1', mine: { short: '$5 a day', plural: '$5 a day', family: 'MY-AAPL', doodle: 'box' } }] }) }, { allow: () => false });
+  assert.equal(refused.real, false, 'over the MY limit: the site card');
+  const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+  assert.match(server, /sendPng\(res, card\.png, card\.real \? 604800 : 300\)/);
 });

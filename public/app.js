@@ -48,6 +48,7 @@ import { parseAffordArgs } from './afford.js';
 import { resolveInput } from './resolve.js';
 import { tickerForName, LISTED_TICKERS } from './known-tickers.js';
 import { sendSeen, countsAsOpen } from './trending.js'; // TRENDING
+import './goal.js'; // GOALS: loads DataFast unless Global Privacy Control is on
 
 export { FUNCTION_BAR, TICKER_FUNCTIONS };
 

@@ -469,7 +469,7 @@ test('legal: terms s9, disclaimer and privacy say what the code does', () => {
   const privacy = read('privacy');
   assert.ok(privacy.includes('We do not share it with advertisers or data brokers.'), 'privacy s6 stays');
   for (const must of ['We add no tracking code to the link', 'one-way hash of the code and its last four characters', 'your seat number', 'We keep feedback for up to 12 months', 'We do not store your IP address with it', 'your email address only to reply to you',
-    'the Pro routes and gift codes (a 10 or 15 minute window), the ticker counter and the GUESS game (a one minute window), the feedback form (a one hour window) and the MCP endpoint (a one minute, a 10 minute and a 24 hour window)', 'forgets it within one minute after the window ends', 'one minute for the ticker counter and GUESS, 10 or 15 minutes for the Pro routes and gift codes, one hour for feedback, one minute, 10 minutes and 24 hours for the MCP endpoint', 'DESK layouts',
+    'the Pro routes and gift codes (a 10 or 15 minute window), the ticker counter, the site counters and the GUESS game (a one minute window), the feedback form (a one hour window) and the MCP endpoint (a one minute, a 10 minute and a 24 hour window)', 'forgets it within one minute after the window ends', 'one minute for the ticker counter, the site counters and GUESS, 10 or 15 minutes for the Pro routes and gift codes, one hour for feedback, one minute, 10 minutes and 24 hours for the MCP endpoint', 'DESK layouts',
     'sponsors get no data from us', 'DataFast, counts link clicks, including clicks on sponsor links',
     'kept while your licence exists and for 5 years after your subscription is cancelled', 'unpaid or overdue is kept until the subscription is cancelled', 'keeps only a count of the redeemed codes', 'Gift code records:** deleted 12 months after the code was used or expired',
     'the licence record is kept for 5 years after the gift month ends']) {
@@ -528,12 +528,13 @@ test('privacy names every IP-keyed limiter in the code, with its window', () => 
     'data/guess.js': [/windowMs: 60_000/],
     'data/trending.js': [/windowMs: MIN/],
     'lib/mcp/limits.js': [/shortWindowMs: 10 \* 60_000/, /dayWindowMs: 24 \* 60 \* 60_000/, /requestWindowMs: 60_000/],
+    'lib/counters.js': [/windowMs: 60_000/], // BBRK site counters
   };
   for (const [f, res] of Object.entries(windows)) for (const re of res) assert.match(readFileSync(f, 'utf8'), re, `${f} window changed: update the Privacy Policy`);
-  for (const name of ['Pro routes', 'gift codes', 'ticker counter', 'GUESS game', 'feedback form', 'MCP endpoint']) assert.ok(privacy.includes(name), name);
+  for (const name of ['Pro routes', 'gift codes', 'ticker counter', 'site counters', 'GUESS game', 'feedback form', 'MCP endpoint']) assert.ok(privacy.includes(name), name);
   // No other file keys a limiter on the IP.
   const users = [];
   const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = `${d}/${e.name}`; if (e.isDirectory()) walk(p); else if (p.endsWith('.js') && readFileSync(p, 'utf8').includes('clientIp(')) users.push(p); } };
   for (const d of ['data', 'lib', 'pro', 'public']) walk(d);
-  assert.deepEqual(users.sort(), ['data/guess.js', 'data/trending.js', 'lib/mcp/server.js', 'pro/feedback.js', 'pro/ratelimit.js', 'pro/routes.js']);
+  assert.deepEqual(users.sort(), ['data/guess.js', 'data/trending.js', 'lib/counters.js', 'lib/mcp/server.js', 'pro/feedback.js', 'pro/ratelimit.js', 'pro/routes.js']);
 });

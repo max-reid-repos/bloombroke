@@ -5,6 +5,7 @@
 
 import { esc, q, panel, metaNote, LOADING } from './markets.js';
 import { guessEmbedSnippet } from '../embed-snippet.js'; // EMBED: the iframe line
+import { goal } from '../goal.js'; // GOALS
 
 export const STORE_KEY = 'bb.guess';
 export const TRIES = 6;
@@ -333,6 +334,7 @@ export function render(el, cmd, ctx) {
   async function finish() {
     state = recordResult(state, game.n, game.rows.length, solved());
     save();
+    goal('guess_played', { result: solved() ? 'solved' : 'missed' }, { once: game.n });
     paint();
     await reveal();
     if (!ctx.signal.aborted) paint();
@@ -389,9 +391,11 @@ export function render(el, cmd, ctx) {
   playBody.addEventListener('click', async (e) => {
     const opt = e.target.closest('[data-pick]');
     if (opt) { submit(opt.dataset.pick); return; }
+    if (e.target.closest('.gs-x')) goal('guess_shared', { via: 'x' }, { once: game.n });
     if (e.target.closest('.gs-copy')) {
       const ok = await ctx.copy(shareText(game.n, game.rows, solved()));
       ctx.status(ok ? 'RESULT COPIED' : 'COULD NOT COPY', ok ? '' : 'warn');
+      if (ok) goal('guess_shared', { via: 'copy' }, { once: game.n });
     }
     // EMBED: copies the iframe line (public/embed-snippet.js), says so on the button.
     const embedBtn = e.target.closest('.gs-embed');
