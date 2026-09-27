@@ -181,6 +181,12 @@ export const REGISTRY = [
     syntax: 'SHORTS <ticker>', examples: ['SHORTS AAPL', 'SHORTS TSLA'], keywords: ['short interest', 'short sellers', 'squeeze', 'days to cover'],
     source: 'Nasdaq', delay: 'Twice a month',
   },
+  // WHY
+  {
+    name: 'WHY', category: 'Stocks and companies', summary: 'The 10 biggest daily moves of the last year, and what came out each day', takesTicker: true, bar: 14,
+    syntax: 'WHY <ticker>', examples: ['WHY AAPL', 'AAPL WHY', 'WHY TSLA'], keywords: ['moves', 'biggest moves', 'jump', 'drop', 'crash', 'spike', 'what happened', 'filings'],
+    source: 'CNBC daily closes; SEC EDGAR 8-K filings; earnings dates; headlines Bloombroke has logged', delay: 'Daily closes; filings within 12 hours',
+  },
   {
     name: 'OPTIONS', category: 'Stocks and companies', summary: 'Option chain: calls and puts by strike', takesTicker: true, bar: 7,
     syntax: 'OPTIONS <ticker> [<expiry>]', examples: ['OPTIONS AAPL', 'AAPL OPTIONS', 'OPTIONS SPY'], keywords: ['calls', 'puts', 'chain', 'strike', 'derivatives', 'implied volatility'],
@@ -658,6 +664,7 @@ export const PHRASES = {
   FILINGS: ['filings', 'sec filings', 'sec', '10-k', '10k', '10-q', 'annual report'],
   SHORTS: ['short interest', 'short', 'shorts', 'short sellers', 'days to cover', 'short squeeze'],
   OPTIONS: ['options', 'option', 'options chain', 'option chain', 'calls', 'puts'],
+  WHY: ['biggest moves', 'biggest daily moves', 'big moves'],
   CHART: ['chart', 'graph'],
   HISTORY: ['history', 'historical prices', 'price history', 'historical'],
   COMPARE: ['compare', 'vs', 'versus', 'against'],

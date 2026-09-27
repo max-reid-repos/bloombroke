@@ -10,7 +10,8 @@ export const FEEDS = [
   { id: 'yahoo', name: 'Yahoo Finance', url: 'https://finance.yahoo.com/news/rssindex' },
 ];
 
-const NEWS_TTL = 10 * 60_000;
+// MARKETS headlines: one fetch per feed every 3 minutes, however many people are reading.
+export const NEWS_TTL = 3 * 60_000;
 const MAX_BYTES = 2_000_000;
 const MAX_ITEMS = 50;
 

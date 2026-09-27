@@ -15,7 +15,7 @@ export const LINKS = [null, 'blue', 'green'];
 // The screens that show one ticker, so a linked panel can switch to another one.
 export const TICKER_SCREENS = [
   'QUOTE', 'TICKERNEWS', 'PROFILE', 'VALUE', 'FINANCIALS', 'DIVIDENDS', 'BEATS', 'INSIDERS',
-  'OWNERS', 'FILINGS', 'SHORTS', 'OPTIONS', 'HISTORY',
+  'OWNERS', 'FILINGS', 'SHORTS', 'OPTIONS', 'HISTORY', 'WHY',
 ];
 // Screens with a chart: a new panel for one is at least this many rows tall, so the
 // chart keeps its x-axis.

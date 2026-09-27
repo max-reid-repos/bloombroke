@@ -179,9 +179,23 @@ export function chartSvg(series, w, h) {
 
 const HEADS = ['SECTOR', '1Y MOVE', 'SIZE', 'LETTER'];
 
+// Rows saved before the hints said "answer ..." (games still open on the day it changed).
+const OLD_DIRS = { OTHER: 'DIFFERENT', HIGHER: 'ANSWER HIGHER', LOWER: 'ANSWER LOWER', BIGGER: 'ANSWER BIGGER', SMALLER: 'ANSWER SMALLER', LATER: 'ANSWER AFTER', EARLIER: 'ANSWER BEFORE' };
+export const dirText = (d) => OLD_DIRS[d] || d;
+
+// How to read the rows: under the table, never in it.
+export const LEGEND = [
+  'Each row is your guess against the answer.',
+  'Green: same as the answer, or close.',
+  'Answer smaller: the mystery stock is smaller than your guess.',
+];
+export function legendHtml() {
+  return `<div class="gs-legend"><p class="gs-lh">HOW TO READ</p>${LEGEND.map((l) => `<p>${esc(l)}</p>`).join('')}</div>`;
+}
+
 // The guess rows, then the tries still open as blank rows.
 export function rowsHtml(rows, tries = TRIES) {
-  const cell = (c) => `<td class="gs-cell g-${esc(c.grade)}"><span class="gs-v">${esc(c.value)}</span><span class="gs-d">${esc(c.dir)}</span></td>`;
+  const cell = (c) => `<td class="gs-cell g-${esc(c.grade)}"><span class="gs-v">${esc(c.value)}</span><span class="gs-d">${esc(dirText(c.dir))}</span></td>`;
   const done = rows.map((r, i) => `<tr class="gs-row${r.solved ? ' is-solved' : ''}">
       <td class="num gs-i">${i + 1}</td>
       <th scope="row" class="gs-g"><span class="gs-tk">${esc(r.ticker)}</span><span class="gs-nm">${esc(r.name)}</span></th>
@@ -261,7 +275,7 @@ export function render(el, cmd, ctx) {
   function paint() {
     const done = isDone();
     left.textContent = done ? (solved() ? 'SOLVED' : 'OUT OF TRIES') : `${TRIES - game.rows.length} OF ${TRIES} TRIES LEFT`;
-    playBody.innerHTML = `${done ? '' : formHtml()}${rowsHtml(game.rows)}${done ? endHtml() : ''}`;
+    playBody.innerHTML = `${done ? '' : formHtml()}${rowsHtml(game.rows)}${done ? endHtml() : ''}${legendHtml()}`;
     if (!done && !coarse) playBody.querySelector('.gs-in')?.focus();
   }
 

@@ -14,7 +14,7 @@ import {
 import { createChartView, COMPARE_CLASSES } from './chart-view.js';
 import {
   barInfo, alignAsOf, rebase, commonStart, placeEvents, headerStats, fmtVol, whenText, fmtDateBox, parseDateBox,
-  timeAt, unitAt, windowDays,
+  timeAt, unitAt, windowDays, placeNewsFlags, mergeFlags,
 } from './chart-math.js';
 import { sizeGuard } from './size-guard.js';
 
@@ -458,6 +458,32 @@ const STYLE_KEY = 'bb.chart.style';
 const MINOR_RANGES = ['2Y', '10Y'];
 
 // LINE or CANDLES: one button showing the chart type; a click switches it.
+// ---- N flags ----------------------------------------------------------------------------
+
+const httpsOnly = (u) => (typeof u === 'string' && /^https?:\/\//i.test(u) ? u : null);
+
+// Intraday bars: an N flag on the bar of each headline's time ([{ time, source, title,
+// url }] from /api/chart-news), one per bar, the newest story's link on top.
+export function newsFlags(headlines, times, bar) {
+  const items = (headlines || []).map((h) => ({ t: Date.parse(h.time), kind: 'N', url: httpsOnly(h.url), source: h.source, text: h.title }))
+    .filter((x) => Number.isFinite(x.t) && x.text).sort((a, b) => b.t - a.t);
+  const spanMs = times.length ? times[times.length - 1] - times[0] : 0;
+  const placed = placeNewsFlags(items, times, 0, times.length - 1, BAR_MS[bar]).map((f) => ({
+    ...f, hint: f.url ? 'CLICK N TO OPEN THE STORY' : '', line: `${whenText(f.t, { intraday: true, spanMs })} ET · ${f.source || 'NEWS'} · ${f.text}`,
+  }));
+  return mergeFlags(placed, 'HEADLINES');
+}
+
+// Daily bars and longer: an N flag on the day of each 8-K that is not earnings (E covers
+// those), from /api/chart-events filings [{ date, url, text }].
+export function filingFlags(filings, days, bar) {
+  const list = (filings || []).filter((f) => f?.date).map((f) => ({ date: f.date, kind: 'N', url: httpsOnly(f.url), text: f.text || '8-K filing' }));
+  const placed = placeEvents(list, days, 0, days.length - 1, { bar }).map((f) => ({
+    ...f, hint: f.url ? 'CLICK N FOR THE SEC FILING' : '', line: `${f.text} ${isoToWhen(f.date)}`,
+  }));
+  return mergeFlags(placed.reverse(), 'FILINGS');
+}
+
 export const nextChartStyle = (style) => (style === 'candle' ? 'line' : 'candle');
 export function chartStyleToggle(style) {
   const cur = style === 'candle' ? 'candle' : 'line';
@@ -487,6 +513,7 @@ export function rangeChart(root, ctx, opts) {
   let quote = null;
   let live = null;
   let events = null;
+  let headlines = null; // N flags on 1D and 5D: the company's latest headlines
   let seq = 0;
   let ctrl = null;
   let hoverI = null;
@@ -660,7 +687,7 @@ export function rangeChart(root, ctx, opts) {
       const c = cmpData.get(s);
       return c?.points ? { sym: s, cls: COMPARE_CLASSES[k], vals: alignAsOf(times, c.points) } : null;
     }).filter(Boolean);
-    const flags = events && !compact() ? eventFlags(events, info, bar) : [];
+    const flags = events && !compact() ? eventFlags(events, info, bar, times) : [];
     const periodBar = bar === '1W' || bar === '1MO';
     // Merged bars (a long daily range over the size cap) say the span they cover.
     const span2 = (p, o) => (p.te ? `${whenText(p.t, o)} - ${whenText(p.te, o)}` : null);
@@ -690,7 +717,7 @@ export function rangeChart(root, ctx, opts) {
     };
   }
 
-  function eventFlags(ev, info, bar) {
+  function eventFlags(ev, info, bar, times) {
     const days = info.map((x) => x.day);
     const n = days.length - 1;
     const list = [
@@ -698,7 +725,10 @@ export function rangeChart(root, ctx, opts) {
       ...(ev.next ? [{ date: ev.next.date, kind: 'E', url: null, text: ev.next.est ? 'EARNINGS (EST)' : 'EARNINGS' }] : []),
       ...ev.dividends.map((d) => ({ date: d.date, kind: 'D', url: null, text: Number.isFinite(d.amount) ? `EX-DIV $${fmtDiv(d.amount)}` : 'EX-DIV' })),
     ].sort((a, b) => (a.date < b.date ? -1 : 1));
-    return placeEvents(list, days, 0, n, { bar }).map((f) => ({ ...f, title: `${f.text} ${isoToWhen(f.date)}` }));
+    const ed = placeEvents(list, days, 0, n, { bar }).map((f) => ({ ...f, title: `${f.text} ${isoToWhen(f.date)}`, hint: f.url ? 'CLICK E FOR THE SEC FILING' : '' }));
+    // N: headlines on intraday bars, other 8-K filings on daily bars and longer.
+    const nf = isIntradayBar(bar) ? newsFlags(headlines, times, bar) : filingFlags(ev.filings, days, bar);
+    return [...ed, ...nf].sort((a, b) => a.i - b.i);
   }
 
   function draw({ keepWindow = true } = {}) {
@@ -772,7 +802,7 @@ export function rangeChart(root, ctx, opts) {
     if (tight) { l2.innerHTML = ''; return; }
     const sep = '<span class="ch-sep" aria-hidden="true">·</span>';
     if (flagHover) {
-      l2.innerHTML = `<span class="ch-k">${esc(flagHover.title)}</span>${flagHover.url ? ` ${sep} <span class="dim">CLICK E FOR THE SEC FILING</span>` : ''}`;
+      l2.innerHTML = `<span class="ch-k">${esc(flagHover.title)}</span>${flagHover.url && flagHover.hint ? ` ${sep} <span class="dim">${esc(flagHover.hint)}</span>` : ''}`;
       return;
     }
     if (hi !== null) {
@@ -880,6 +910,7 @@ export function rangeChart(root, ctx, opts) {
       draw();
       if (isIntradayBar(d.bar) && range.range === '1D' && opts.quote !== 'external') loadQuote();
       if (isStock && !events && !compact()) loadEvents();
+      if (isStock && !headlines && isIntradayBar(d.bar) && !compact()) loadHeadlines();
       opts.onLoad?.(d);
     } catch (err) {
       if (err.name === 'AbortError' || my !== seq) return;
@@ -905,12 +936,28 @@ export function rangeChart(root, ctx, opts) {
   }
 
   async function loadEvents() {
-    events = { earnings: [], next: null, dividends: [] };
+    events = { earnings: [], next: null, dividends: [], filings: [] };
     try {
       const d = await ctx.fetchJSON(`/api/chart-events?s=${encodeURIComponent(symbol)}`, { signal: ctx.signal });
-      events = { earnings: d.earnings || [], next: d.next || null, dividends: d.dividends || [] };
+      events = { earnings: d.earnings || [], next: d.next || null, dividends: d.dividends || [], filings: d.filings || [] };
       if (data) draw();
     } catch { /* no flags */ }
+  }
+
+  // The first load, and again every minute on 1D and 5D (the ctx.live below): a redraw
+  // only when the headlines changed. A failed refresh keeps the flags already shown.
+  let headKey = '';
+  async function loadHeadlines() {
+    if (!headlines) headlines = [];
+    try {
+      const d = await ctx.fetchJSON(`/api/chart-news?s=${encodeURIComponent(symbol)}`, { signal: ctx.signal });
+      const items = d.items || [];
+      const key = JSON.stringify(items.map((h) => [h.time, h.url, h.title]));
+      if (key === headKey) return;
+      headKey = key;
+      headlines = items;
+      if (data && events) draw();
+    } catch { /* no N flags, or the ones already shown */ }
   }
 
   // ---- Zoom --------------------------------------------------------------------------
@@ -1152,6 +1199,8 @@ export function rangeChart(root, ctx, opts) {
     load({ silent: true });
   };
   ctx.live(() => { if (intradayNow()) refresh(); }, 60_000);
+  // N flags on 1D and 5D: new headlines every minute while the chart is on show.
+  ctx.live(() => { if (isStock && headlines && intradayNow() && !compact()) loadHeadlines(); }, 60_000);
   ctx.live(() => { if (data && !intradayNow() && !(fetchWin?.to || range.to)) refresh(); }, 15 * 60_000);
 
   return {

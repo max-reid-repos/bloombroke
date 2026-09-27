@@ -8,7 +8,9 @@ import {
   parseFeed, parseSec8k, parseWsb, parseSeekingAlpha, itemWords, filingTitle, companyName, maskProfanity,
   isWsbNoise, stripEmoji, cleanLink, parseSecTickers, withTickers, fetchCapped, makeNewsFeeds, TAB_FEEDS, NEWS_TABS as SERVER_TABS, FEED_UA, notLawFirm, mergeItems, dedupeKey,
 } from '../data/newsfeeds.js';
-import { makeTickerNews, parseSec8kSubmissions, filingTime, nyNoon } from '../data/tickernews.js';
+import { makeTickerNews, parseSec8kSubmissions, sec8kFromFilings, filingTime, nyNoon } from '../data/tickernews.js';
+import { parseSubmissions, filterFilings } from '../data/filings.js';
+import { SEC_UA } from '../data/financials.js';
 import { retarget } from '../public/desk-layout.js';
 import { fmtNewsTime } from '../public/screens/news.js';
 import { createCache } from '../data/cache.js';
@@ -18,7 +20,7 @@ import { parseCommand } from '../public/app.js';
 
 const fx = (f, enc = 'utf8') => readFileSync(new URL(`./fixtures/news/${f}`, import.meta.url), enc);
 const fxJson = (f) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'));
-const textRes = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, headers: { get: () => null }, text: async () => body });
+const textRes = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, headers: { get: () => null }, text: async () => body, json: async () => JSON.parse(body) });
 
 // ---- 8-K item codes ------------------------------------------------------------------
 
@@ -97,6 +99,10 @@ test('ticker 8-Ks from the submissions JSON: newest year only, always about the 
   assert.equal(rows[1].time, '2026-07-30T20:30:28.000Z');
   assert.equal(parseSec8kSubmissions(fxJson('sec-submissions-aapl.json'), { now: Date.parse('2028-01-01') }).length, 0, 'old filings drop out');
   assert.deepEqual(parseSec8kSubmissions(null), []);
+  // The same headlines from FILINGS rows (the SEC queue's answer).
+  const sub = parseSubmissions(fxJson('sec-submissions-aapl.json'));
+  const viaFilings = sec8kFromFilings(filterFilings(sub.rows, '8-K').rows, sub.name, { now });
+  assert.deepEqual(viaFilings, rows);
 });
 
 // ---- WSB --------------------------------------------------------------------------
@@ -234,15 +240,23 @@ test('NEWS <ticker>: Nasdaq, Seeking Alpha and SEC merged; one source down is fi
   const sub = fxJson('sec-submissions-aapl.json');
   // Move the fixture's 8-Ks into the last year so they count.
   sub.filings.recent.acceptanceDateTime = sub.filings.recent.acceptanceDateTime.map((_, i) => new Date(now - (i + 1) * 86400_000).toISOString());
-  const fetchImpl = async (url) => {
+  const fetchImpl = async (url, opts) => {
     if (url.includes('nasdaq.com')) return textRes('', 503);
     if (url.includes('seekingalpha.com')) return textRes(fx('sa-aapl.xml'));
     if (url.endsWith('company_tickers.json')) return textRes(JSON.stringify({ 0: { cik_str: 320193, ticker: 'AAPL', title: 'Apple Inc.' } }));
-    if (url.includes('/submissions/CIK0000320193.json')) return textRes(JSON.stringify(sub));
+    if (url.includes('/submissions/CIK0000320193.json')) {
+      secCalls.push(opts?.headers?.['User-Agent']);
+      return textRes(JSON.stringify(sub));
+    }
     return textRes('', 404);
   };
-  const d = await makeTickerNews({ fetchImpl, cache: createCache() }).getTickerNews('aapl');
+  const secCalls = [];
+  const tn = makeTickerNews({ fetchImpl, cache: createCache() });
+  const d = await tn.getTickerNews('aapl');
   assert.equal(d.ticker, 'AAPL');
+  await tn.getTickerNews('AAPL');
+  assert.equal(secCalls.length, 1, 'one SEC submissions fetch per ticker, cached');
+  assert.equal(secCalls[0], SEC_UA, 'through FILINGS: the SEC User-Agent');
   const srcs = new Set(d.items.map((n) => n.source));
   assert.ok(srcs.has('SA') && srcs.has('SEC'), [...srcs].join(','));
   assert.ok(d.items.every((n, i) => i === 0 || d.items[i - 1].time >= n.time), 'newest first');

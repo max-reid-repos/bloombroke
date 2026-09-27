@@ -210,6 +210,61 @@ export function placeEvents(events, days, i0, i1, { bar = '1D' } = {}) {
   return out;
 }
 
+// News flags (N) on intraday bars: each headline goes on the bar that holds its time
+// (bars start at times[i] and last barMs). A headline in a gap between bars (overnight,
+// a weekend) goes on the next bar, where trading takes it in. Before the first bar or
+// after the last one ends: left off. items: [{ t, ... }]. Returns them with their bar i.
+export function placeNewsFlags(items, times, i0, i1, barMs) {
+  const out = [];
+  if (!times.length || i1 < i0 || !(barMs > 0)) return out;
+  const start = times[i0];
+  const end = times[i1] + barMs;
+  for (const it of items) {
+    const t = it.t;
+    if (!Number.isFinite(t) || t < start || t >= end) continue;
+    // Last bar in i0..i1 that starts at or before t.
+    let lo = i0;
+    let hi = i1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (times[mid] <= t) lo = mid; else hi = mid - 1;
+    }
+    const i = t < times[lo] + barMs ? lo : lo + 1;
+    if (i > i1) continue;
+    out.push({ ...it, i });
+  }
+  return out;
+}
+
+// Flags on the same bar become one: its link is the first one's (put the newest first),
+// its title says how many, its tooltip lists every line. flags: [{ i, kind, url, line }].
+// noun: what they are ('HEADLINES', 'FILINGS'). Returns them in bar order.
+export function mergeFlags(flags, noun = 'ITEMS') {
+  const byBar = new Map();
+  for (const f of flags) {
+    if (!byBar.has(f.i)) byBar.set(f.i, []);
+    byBar.get(f.i).push(f);
+  }
+  return [...byBar.entries()].sort((a, b) => a[0] - b[0]).map(([i, list]) => ({
+    i,
+    kind: list[0].kind,
+    url: list.find((f) => f.url)?.url || null,
+    hint: list[0].hint || '',
+    count: list.length,
+    title: list.length > 1 ? `${list.length} ${noun} · ${list[0].line}` : list[0].line,
+    tip: list.map((f) => f.line).join('\n'),
+  }));
+}
+
+// At most max flags of one kind: the latest ones (by bar). Other kinds all stay.
+export const MAX_N_FLAGS = 12;
+export function capFlags(flags, kind = 'N', max = MAX_N_FLAGS) {
+  const mine = flags.filter((f) => f.kind === kind);
+  if (mine.length <= max) return flags;
+  const keep = new Set(mine.sort((a, b) => a.i - b.i).slice(-max));
+  return flags.filter((f) => f.kind !== kind || keep.has(f));
+}
+
 // ---- Axis labels ---------------------------------------------------------------------
 
 // Where the time axis gets a label: the first bar of each year, quarter, month, week, day
