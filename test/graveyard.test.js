@@ -11,7 +11,7 @@ import { nosuchMeta, stoneDescription, tombstoneTree, makeNoSuchCards, parseBloc
 import { securityHeaders } from '../lib/embed.js';
 import { sitemapUrls, graveyardSitemapUrls } from '../lib/seo.js';
 import { parseCommand } from '../public/app.js';
-import { stoneYears, flowersFor, respectsText, onThisDayLine, ytThumb, ytEmbed, MAX_FLOWERS, GRAVEYARD_VIEWS } from '../public/nosuch.js';
+import { stoneYears, flowersFor, respectsText, onThisDayLine, ytThumb, ytEmbed, periodText, MAX_FLOWERS, GRAVEYARD_VIEWS } from '../public/nosuch.js';
 import {
   stoneHtml, stonePageHtml, peakLineHtml, videoHtml, flowersHtml, layout, stepStone, zombiesHtml, graveyardTable, onThisDayHtml, sourcesHtml,
 } from '../public/screens/graveyard.js';
@@ -43,6 +43,35 @@ test('data: stones and zombies, bad entries out, unsourced or misshapen facts dr
   assert.doesNotMatch(text, /—/);
 });
 
+test('dates: quarters, months, spans and days read as words', () => {
+  assert.equal(periodText('2003-Q4'), 'Q4 2003');
+  assert.equal(periodText('1995-12'), 'Dec 1995');
+  assert.equal(periodText('2007-02-02'), '2 Feb 2007');
+  assert.equal(periodText('1999'), '1999');
+  assert.equal(periodText('2000-03/2000-05'), 'Mar to May 2000');
+  assert.equal(periodText('1998-05/1998-07'), 'May to Jul 1998');
+  assert.equal(periodText('junk'), '');
+  const wm = loadGraveyardData().stones.find((e) => e.ticker === 'WM');
+  assert.equal(periodText(wm.peak.date), 'Q4 2003');
+  assert.match(stoneDescription(wm), /Peak price \$[\d.,]+ a share \(Q4 2003\)\./, 'an intraday high is a price, not a close');
+});
+
+test('real data: research merged, every fact with its sources, zombies came back', () => {
+  const real = loadGraveyardData();
+  assert.equal(real.stones.length, 34);
+  assert.equal(real.zombies.length, 10);
+  for (const e of [...real.stones, ...real.zombies]) {
+    if (e.peakLine) assert.ok(e.peakSrc.length && e.peak && e.final, `${e.ticker} peakLine has its prices and sources`);
+    if (e.cause) assert.ok(e.causeSrc?.length, `${e.ticker} cause src`);
+    if (e.anniversary) assert.ok(e.anniversarySrc?.length, `${e.ticker} anniversary src`);
+    if (e.keyFacts) assert.ok(e.keyFactsSrc?.length, `${e.ticker} facts src`);
+    if (e.zombie) assert.ok(e.back.src?.length && e.back.date > e.date, `${e.ticker} came back later, sourced`);
+  }
+  assert.equal(real.zombies.find((z) => z.ticker === 'AMR').peakLine, undefined, 'a null peakLine stays hidden');
+  assert.equal(real.stones.find((e) => e.ticker === 'WBVN').video, undefined);
+  assert.ok(real.stones.filter((e) => e.video).length >= 33);
+});
+
 test('stone: years, flowers, the words on its face; zombies say RETURNED', () => {
   assert.equal(stoneYears(LEH), '1994 - 2008');
   assert.equal(stoneYears(BBI), '2010');
@@ -62,7 +91,8 @@ test('stone: years, flowers, the words on its face; zombies say RETURNED', () =>
 });
 
 test('RIP WHATIF: the sourced peak line, hidden when null', () => {
-  assert.match(peakLineHtml(LEH), /\$1,000 at the peak \(Feb 2007\) was worth \$2 by Sep 2008 <a class="dim" href="https:\/\/example\.test\/leh-peak" target="_blank" rel="noopener noreferrer">/);
+  assert.match(peakLineHtml(LEH), /\$1,000 at the peak \(Feb 2007\) was worth \$2 by Sep 2008 <span class="gv-srcs"><a class="dim" href="https:\/\/example\.test\/leh-peak" target="_blank" rel="noopener noreferrer">example\.test<\/a><\/span>/, 'one link per host');
+  assert.equal(peakLineHtml({ ...LEH, peakSrc: [] }), '', 'no source, no line');
   assert.equal(peakLineHtml(BBI), '');
   assert.doesNotMatch(stonePageHtml(BBI, 0), /gv-whatif/);
   assert.match(stonePageHtml(LEH, 0), /gv-whatif/);
@@ -222,7 +252,8 @@ test('stone pages: seoTitle, a description from the facts, canonical, LAST WEBSI
   assert.match(m.description, /^LEH\. Lehman Brothers\. Listed 1994\. Filed for bankruptcy 15 Sep 2008\. Chapter 11 after subprime losses\./);
   assert.equal(stoneDescription(LEH), m.description);
   assert.match(nosuchMeta('GRAVEYARD BBI', deps).title, /^BBI\. Blockbuster\. Filed for bankruptcy 23 Sep 2010\. \| GRAVEYARD/);
-  assert.match(nosuchMeta('GRAVEYARD GMZ', deps).description, /Listed again 18 Nov 2010\./);
+  assert.match(nosuchMeta('GRAVEYARD GMZ', deps).description, /Came back 18 Nov 2010\./);
+  assert.match(m.description, /Peak close \$85\.80 a share \(2 Feb 2007\)\./);
   assert.match(nosuchMeta('GRAVEYARD TODAY', deps).image, /\/og\/onthisday\.png$/);
   assert.equal(nosuchMeta('GRAVEYARD TODAY', { ...deps, today: () => '2026-01-02' }), null);
   assert.match(sourcesHtml(LEH), /<a class="gv-last" href="https:\/\/web\.archive\.org\/web\/20080915000000\/http:\/\/www\.lehman\.com\/" target="_blank" rel="noopener noreferrer">LAST WEBSITE<\/a>/);

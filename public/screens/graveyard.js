@@ -118,9 +118,14 @@ export function wireShare(el, copy) {
 }
 
 // RIP WHATIF: the sourced peak line, or nothing.
+// Every source behind the line, by host (the same host once).
 export function peakLineHtml(e) {
-  if (!e.peakLine || !e.peakSrc) return '';
-  return `<p class="gv-whatif">${esc(e.peakLine)} ${ext(e.peakSrc, srcHost(e.peakSrc), 'dim')}</p>`;
+  const list = Array.isArray(e.peakSrc) ? e.peakSrc : e.peakSrc ? [e.peakSrc] : [];
+  if (!e.peakLine || !list.length) return '';
+  const seen = new Set();
+  const links = list.filter((u) => { const h = srcHost(u); if (seen.has(h)) return false; seen.add(h); return true; })
+    .map((u) => ext(u, srcHost(u), 'dim')).join(', ');
+  return `<p class="gv-whatif">${esc(e.peakLine)} <span class="gv-srcs">${links}</span></p>`;
 }
 
 // The video: a still and a play mark. Nothing from YouTube but the still loads until the
@@ -128,7 +133,8 @@ export function peakLineHtml(e) {
 export function videoHtml(e) {
   const thumb = ytThumb(e.video?.id);
   if (!thumb) return '';
-  return `<button type="button" class="gv-video" data-yt="${esc(e.video.id)}" aria-label="${esc(`Play: ${e.video.title}`)}">
+  const label = `Play: ${e.video.title}${e.video.channel ? ` (${e.video.channel})` : ''}`;
+  return `<button type="button" class="gv-video" data-yt="${esc(e.video.id)}" aria-label="${esc(label)}" title="${esc(label)}">
       <img src="${esc(thumb)}" width="480" height="360" alt="" loading="lazy" referrerpolicy="no-referrer"><span class="gv-play" aria-hidden="true"></span>
     </button>`;
 }
@@ -156,7 +162,7 @@ export function respectsHtml(e, n) {
 
 // The stone page's words and links beside the stone.
 export function factsHtml(e, n) {
-  const back = e.zombie ? `<p class="gv-fact">${esc(e.back.what)} ${esc(dayText(e.back.date))}.</p>` : '';
+  const back = e.zombie ? `<p class="gv-fact gv-what">Came back ${esc(dayText(e.back.date))}.</p><p class="gv-cause">${esc(e.back.what)}.</p>` : '';
   return `<div class="gv-facts">
       <p class="gv-fact gv-what">${esc(e.what)} ${esc(dayText(e.date))}.</p>${back}
       ${e.cause ? `<p class="gv-cause">${esc(e.cause)}</p>` : ''}

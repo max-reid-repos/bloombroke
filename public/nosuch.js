@@ -60,6 +60,18 @@ export function findGrave(list, word) {
   return list.find((e) => e.ticker === w) || list.find((e) => (e.also || []).includes(w)) || null;
 }
 
+// A research date as words: '2007-02-02' -> '2 Feb 2007', '1995-12' -> 'Dec 1995',
+// '2003-Q4' -> 'Q4 2003', '1999' -> '1999', '2000-03/2000-05' -> 'Mar to May 2000'.
+export function periodText(p) {
+  const s = String(p || '');
+  let m = /^(\d{4})-(\d{2})\/(\d{4})-(\d{2})$/.exec(s);
+  if (m) return m[1] === m[3] ? `${MON[Number(m[2]) - 1]} to ${MON[Number(m[4]) - 1]} ${m[1]}` : `${MON[Number(m[2]) - 1]} ${m[1]} to ${MON[Number(m[4]) - 1]} ${m[3]}`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return dayText(s);
+  if ((m = /^(\d{4})-Q([1-4])$/.exec(s))) return `Q${m[2]} ${m[1]}`;
+  if ((m = /^(\d{4})-(\d{2})$/.exec(s))) return `${MON[Number(m[2]) - 1]} ${m[1]}`;
+  return /^\d{4}$/.test(s) ? s : '';
+}
+
 // The years on a stone: '1994 - 2008', or '2008' when the listing year is not sourced; a
 // zombie: the year it died and the year it came back.
 export function stoneYears(e) {

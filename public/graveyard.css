@@ -55,6 +55,7 @@
 .gv-fact { color: var(--text); }
 .gv-cause { color: var(--text-2); max-width: 60ch; }
 .gv-whatif { color: var(--text-2); max-width: 60ch; border-left: 2px solid var(--accent); padding-left: 10px; }
+.gv-srcs a { color: var(--dim); }
 .gv-respects { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .gv-f kbd { margin-right: 6px; background: var(--ink); color: var(--accent); border-color: var(--ink); }
 .gv-count { color: var(--text-2); }
