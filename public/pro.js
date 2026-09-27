@@ -1,13 +1,16 @@
 // Pro in the browser: the licence key, status, checkout, the key reveal, sync across
-// devices and your own ticker tape. Pure helpers are exported for node:test; the parts
+// devices, your own ticker tape, the seat number, gift codes and REDEEM. Pure helpers are exported for node:test; the parts
 // that touch the network or storage only run in a browser.
 
 import { INSTRUMENTS, resolveInstrument } from './instruments.js';
 import { WATCH_KEY } from './watchlist.js';
 import { PF_KEY } from './portfolio.js';
+import { DESK_KEY } from './desk-layout.js';
 
 export const PRICE = '$4.20';
 export const PRICE_LINE = '$4.20 a month';
+export const PRICE_YEAR = '$42';
+export const PRICE_BOTH = '$4.20 a month or $42 a year';
 export const PRO_ONLY = `Your own ticker tape is a Pro feature, ${PRICE_LINE}.`;
 export const KEY_RE = /^BB-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/;
 export const HEADER = 'X-Pro-Key';
@@ -15,8 +18,8 @@ export const LS = { key: 'bb.pro.key', status: 'bb.pro.status', meta: 'bb.sync.m
 export const PENDING_KEY = 'bb.pro.session';
 
 // Synced documents: server name -> localStorage key. watch and pf are the WATCH and PF
-// lists; tape is your own ticker tape.
-export const SYNC_DOCS = { watch: WATCH_KEY, pf: PF_KEY, tape: 'bb.tape' };
+// lists; tape is your own ticker tape; desk is your saved DESK layouts.
+export const SYNC_DOCS = { watch: WATCH_KEY, pf: PF_KEY, tape: 'bb.tape', desk: DESK_KEY };
 
 export const MAX_TAPE = 40;
 export const DEFAULT_TAPE = INSTRUMENTS.filter((i) => i.tape).map((i) => i.id);
@@ -44,6 +47,33 @@ export function bareKey(toks) {
   return normalizeKey(groups.join(''));
 }
 
+// ---- gift codes -------------------------------------------------------------------------
+
+// Mirrors the server: GIFT-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX, 28 characters after GIFT.
+// Case, spaces and dashes do not matter, and GIFT in front is optional.
+export function normalizeGiftCode(input) {
+  if (typeof input !== 'string' || input.length > 80) return null;
+  let s = input.toUpperCase().replace(/[\s-]/g, '');
+  if (s.length === 32 && s.startsWith('GIFT')) s = s.slice(4);
+  if (!/^[A-HJ-NP-Z2-9]{28}$/.test(s)) return null;
+  return `GIFT-${s.match(/.{4}/g).join('-')}`;
+}
+
+// A pasted gift code on its own, in one piece or in groups: the code or null. It must
+// start with GIFT (a pasted code does), so plain words never turn into one.
+export function bareGift(toks) {
+  if (!Array.isArray(toks) || !toks.length || toks.length > 8) return null;
+  if (!/^GIFT/.test(toks[0])) return null;
+  return normalizeGiftCode(toks.join(''));
+}
+
+export const maskGift = (last4) => `GIFT-XXXX-...-${String(last4 || '????').slice(-4)}`;
+
+// SEAT 00042. null for no seat.
+export function seatLabel(seat) {
+  return Number.isInteger(seat) && seat > 0 ? `SEAT ${String(seat).padStart(5, '0')}` : null;
+}
+
 // Words that could be the start of a key being typed: never sent to symbol search.
 export function looksLikeKey(text) {
   const t = String(text || '').toUpperCase();
@@ -53,6 +83,7 @@ export function looksLikeKey(text) {
 // A cached status is Pro while active, trialing, or past_due inside its grace period.
 export function statusActive(st, now = Date.now()) {
   if (!st) return false;
+  if (st.status === 'gift') return Boolean(st.giftUntil) && now < Date.parse(st.giftUntil);
   if (st.status === 'active' || st.status === 'trialing') return true;
   if (st.status === 'past_due' && st.graceUntil) return now < Date.parse(st.graceUntil);
   return false;
@@ -176,6 +207,9 @@ const storage = {
 export const getKey = () => normalizeKey(storage.get(LS.key, null) || '');
 export const getStatus = () => storage.get(LS.status, null);
 export const isPro = () => Boolean(getKey()) && statusActive(getStatus());
+// The seat to show in the top bar: Pro only.
+export const getSeat = () => (isPro() ? seatLabel(getStatus()?.seat) : null);
+const proChanged = () => { if (hasWindow) window.dispatchEvent(new Event('bb:pro')); };
 export function saveKey(key) { return storage.set(LS.key, key); }
 
 // Your tape, or null for the default tape. Only Pro gets its own tape.
@@ -250,9 +284,9 @@ export function getConfig() {
 }
 
 // SUBSCRIBE, or REACTIVATE when this browser holds a key (the key goes along, so the new
-// subscription joins the same licence).
-export async function startCheckout() {
-  const { url } = await call('/api/pro/checkout', { method: 'POST' });
+// subscription joins the same licence). plan: 'month' or 'year'; the server has the prices.
+export async function startCheckout(plan = 'month') {
+  const { url } = await call('/api/pro/checkout', { method: 'POST', body: { plan: plan === 'year' ? 'year' : 'month' } });
   if (!/^https:\/\/checkout\.stripe\.com\//.test(url)) throw new Error('Checkout did not open. Try again in a minute.');
   location.assign(url);
 }
@@ -267,9 +301,11 @@ function saveStatus(d) {
   const st = {
     active: Boolean(d.active), status: d.status, last4: d.last4, graceUntil: d.graceUntil || null,
     cancelAtPeriodEnd: Boolean(d.cancelAtPeriodEnd), currentPeriodEnd: d.currentPeriodEnd || null, cancelAt: d.cancelAt || null,
+    seat: Number.isInteger(d.seat) ? d.seat : null, interval: d.interval || null, giftUntil: d.giftUntil || null, canGift: Boolean(d.canGift),
     checked: Date.now(),
   };
   storage.set(LS.status, st);
+  proChanged();
   return st;
 }
 
@@ -309,6 +345,30 @@ export function logout() {
   storage.del(LS.status);
   storage.del(LS.meta);
   if (hasWindow) window.dispatchEvent(new Event('bb:tape'));
+  proChanged();
+}
+
+// ---- gifts and REDEEM ----------------------------------------------------------------
+
+// GIFT: { gifts: [{ last4, createdAt, expiresAt, redeemedAt, state }], left, canGift }
+export const listGifts = () => call('/api/pro/gifts');
+// A new code, in full, this one time: { code, gift }. It is never stored in this browser.
+export const createGift = () => call('/api/pro/gifts', { method: 'POST' });
+
+// REDEEM <code>: a new 30 day licence on this browser. A browser that already holds a
+// key is refused here, so a paid key is never replaced by accident.
+export async function redeem(rawCode) {
+  const code = normalizeGiftCode(rawCode);
+  if (!code) throw Object.assign(new Error('That does not look like a gift code. It looks like GIFT-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX.'), { code: 'format' });
+  if (getKey()) throw Object.assign(new Error('This browser is logged in with a key already. Type LOGOUT first, then REDEEM the code.'), { code: 'has_key' });
+  const d = await call('/api/pro/redeem', { method: 'POST', body: { code }, auth: false });
+  const saved = saveKey(d.key) && getKey() === d.key;
+  storage.del(LS.meta);
+  saveStatus(d);
+  syncNow().catch(() => {});
+  startSync();
+  if (hasWindow) window.dispatchEvent(new Event('bb:tape'));
+  return { ...d, saved };
 }
 
 // Ask the server again. A key the server no longer knows is removed.

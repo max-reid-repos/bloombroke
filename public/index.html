@@ -31,7 +31,7 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="wordmark" href="/?c=HOME" data-cmd="HOME" aria-label="Bloombroke home">BLOOMBROKE</a>
+    <span class="brand"><a class="wordmark" href="/?c=HOME" data-cmd="HOME" aria-label="Bloombroke home">BLOOMBROKE</a><a id="seat" class="seat num" href="/?c=PRO" data-cmd="PRO" hidden></a></span>
     <div class="clock" aria-live="off">
       <span class="label">NEW YORK</span>
       <time id="clock" class="clock-time">--:--:--</time>
@@ -64,7 +64,8 @@
     <div id="tape-bar" class="tape" aria-label="Market ticker" hidden><div class="tape-track"></div></div>
     <div class="statusline" role="status" aria-live="polite">
       <span id="status-msg" class="status-msg">READY</span>
-      <span id="status-legal" class="status-legal"><span class="legal-line">Not financial advice</span><span class="legal-sep" aria-hidden="true">&middot;</span><a href="/terms">Terms</a></span>
+      <span id="status-sponsor" class="status-sponsor" hidden></span>
+      <span id="status-legal" class="status-legal"><span class="legal-line">Not financial advice</span><span class="legal-sep" aria-hidden="true">&middot;</span><a href="/terms">Terms</a><span class="legal-sep" aria-hidden="true">&middot;</span><a href="/?c=FEEDBACK" data-cmd="FEEDBACK">Feedback</a></span>
     </div>
     <nav id="keybar" class="keybar" aria-label="Function keys"></nav>
   </div>

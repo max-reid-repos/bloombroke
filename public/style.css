@@ -1657,3 +1657,56 @@ a.ch-flag { cursor: pointer; }
   .al-table .wl-btn { height: 22px; }
 }
 /* --- end ALERTS ----------------------------------------------------------------- */
+
+/* ---- Pro structure: seat, sponsor line, PRO breakdown, GIFT, FEEDBACK ------------ */
+.brand { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.seat { font-size: 11px; font-weight: 600; letter-spacing: .12em; color: var(--accent); white-space: nowrap; }
+.seat:hover { text-decoration: none; color: var(--text); }
+.seat[hidden] { display: none; }
+/* The sponsor line gives way first (ellipsis); the legal line and its links never do. */
+.status-sponsor { flex: 0 1 auto; min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
+.status-sponsor[hidden] { display: none; }
+.status-sponsor .sponsor-k { margin-right: 2ch; color: var(--faint); letter-spacing: .12em; }
+.status-sponsor a { color: var(--text-2); }
+.status-sponsor a:hover { color: var(--text); text-decoration: none; }
+.pro-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; margin: 8px 0 12px; }
+.pro-col-h { margin: 0 0 4px; font-size: 11px; font-weight: 600; letter-spacing: .14em; color: var(--dim); }
+.pro-cols .pro-list, .pro-gifts .pro-list { margin: 0 0 8px; }
+.pro-cols .pro-row, #gift-body .pro-row { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+.pro-tag { font-size: 11px; letter-spacing: .08em; color: var(--dim); text-align: right; white-space: nowrap; }
+.pro-tag.is-live { color: var(--accent); }
+.pro-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 24px; }
+.pro-head .fx-from { margin: 0; }
+.pro-price { margin: 0; font-size: 28px; }
+.pro-price .hero-unit { font-size: 14px; }
+.pro-price .pro-or { color: var(--dim); }
+.pro-cols .pro-row { min-height: 22px; }
+#pro-year-note[hidden] { display: none; }
+.stats.pro-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.fb { display: grid; gap: 6px; max-width: 80ch; }
+.fb-l { font-size: 11px; letter-spacing: .08em; color: var(--dim); }
+.fb-msg, .fb-email {
+  width: 100%; padding: 6px 8px; border: 1px solid var(--rule-strong); border-radius: 0;
+  background: var(--bg); color: var(--text); font: inherit;
+}
+.fb-msg { min-height: 96px; max-height: 32vh; resize: vertical; line-height: 1.5; }
+.fb-msg:focus, .fb-email:focus { outline: 1px solid var(--accent); outline-offset: 0; }
+.fb-count { margin: 0; font-size: 11px; color: var(--dim); text-align: right; }
+.fb-hp { position: absolute; left: -10000px; width: 1px; height: 1px; opacity: 0; }
+.fb .pro-actions { margin: 4px 0 0; }
+.fb-keys { font-size: 11px; }
+.fb-mail { margin-top: 8px; }
+@media (max-width: 639px) {
+  .pro-cols { grid-template-columns: minmax(0, 1fr); }
+  .pro-cols .pro-row, #gift-body .pro-row { padding: 0; }
+  .stats.pro-stats { grid-template-columns: minmax(0, 1fr); }
+  /* A seat by the name: the name and the seat tighten so the clock keeps its room. */
+  .brand { gap: 6px; }
+  .brand:has(.seat:not([hidden])) .wordmark { letter-spacing: .04em; }
+  .seat { font-size: 10px; letter-spacing: .04em; }
+  .status-legal { gap: 6px; }
+  .fb-keys { display: none; }
+}
+@media (max-width: 379px) {
+  .seat { display: none; }
+}

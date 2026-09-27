@@ -7,6 +7,7 @@ import { esc, panel, LOADING } from './markets.js';
 import { sparkSvg } from './economy.js';
 import { mountLines } from './lines.js';
 import { WEIRD_GAUGES, gaugeByCommand, sourceHtml } from './weird-gauges.js';
+import { markGaugeSponsor } from './sponsor.js'; // Sponsor hook
 
 export { WEIRD_GAUGES };
 
@@ -98,6 +99,7 @@ const shareRow = (links) => `<div class="wi-share"><a class="wi-btn" href="${esc
 function detail(el, g, ctx) {
   const n = WEIRD_GAUGES.indexOf(g) + 1;
   el.innerHTML = `<div class="stack">${panel(String(n), g.title, LOADING, { metaId: 'wd-meta' })}</div>`;
+  markGaugeSponsor(el.querySelector('#wd-meta'), g.id); // Sponsor hook: SPONSORED BY in the title strip
   const body = el.querySelector('.panel-body');
   let cleanup = null;
   ctx.onCleanup(() => cleanup?.());
