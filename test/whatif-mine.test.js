@@ -8,11 +8,13 @@ import path from 'node:path';
 import {
   parseMine, formWords, mineLabel, mineShort, parseAmount, dateLabel, parseDateWord, MineError, MINE_EXAMPLES,
 } from '../public/whatif-mine.js';
-import { onOrAfter, firstOfMonths, loadMine } from '../data/whatif-mine.js';
+import { onOrAfter, onOrBefore, firstOfMonths, loadMine, compact, compactBytes, dropLeadingEmpty, makeDaily } from '../data/whatif-mine.js';
 import { resolveTokens, whatifCommand } from '../data/whatif.js';
 import { getWhatif, catalog } from '../data/whatif-service.js';
 import { normalizeWhatif, certModel, whatifTokens } from '../data/whatif-cert.js';
-import { getCert, whatifPng } from '../lib/og.js';
+import { readdirSync } from 'node:fs';
+import { getCert, whatifPng, makeRateLimit, mineModels, minePngs, MINE_MEMORY } from '../lib/og.js';
+import { createCache } from '../data/cache.js';
 import { planWhatif, commandFor, shareLinks, ownCardHtml, ownFormHtml } from '../public/screens/whatif.js';
 import * as screenMod from '../public/screens/whatif.js';
 import { PRO_ROWS, FREE_ROWS, LIVE } from '../public/screens/pro.js';
@@ -45,8 +47,8 @@ test('parser: one-off and habit forms, canonical words and generated labels', ()
   assert.deepEqual(a.words, ['MY', '1200', 'AAPL', '2015']);
   assert.equal(mineLabel(a), '$1,200 in AAPL, 2015');
   assert.equal(mineLabel(one('MY 1200 AAPL 2015-03')), '$1,200 in AAPL, MAR 2015');
-  assert.equal(mineLabel(one('MY $1,200.50 AAPL 2015-03-02')), '$1,200.50 in AAPL, 2 MAR 2015');
-  assert.deepEqual(one('MY $1,200.50 AAPL 2015-03-02').words, ['MY', '1200.5', 'AAPL', '2015-03-02']);
+  assert.equal(mineLabel(one('MY $1,200 AAPL 2015-03-02')), '$1,200 in AAPL, 2 MAR 2015');
+  assert.deepEqual(one('MY $1,200 AAPL 2015-03-02').words, ['MY', '1200', 'AAPL', '2015-03-02']);
   const h = one('MY 5 A DAY SBUX SINCE 2018');
   assert.deepEqual([h.kind, h.per, h.start, h.end], ['monthly', 'day', '2018-01', '2026-09']);
   assert.equal(mineLabel(h), '$5 a day in SBUX since 2018');
@@ -74,6 +76,13 @@ test('parser: bad input gets a plain message', () => {
   assert.match(msg('MY 0 AAPL 2015'), /from \$1 to \$10,000,000/);
   assert.match(msg('MY 10000001 AAPL 2015'), /from \$1 to \$10,000,000/);
   assert.match(msg('MY abc AAPL 2015'), /not an amount/);
+  assert.match(msg('MY 1200.50 AAPL 2015'), /whole dollars/, 'whole dollars only: the ribbon and the spent line agree');
+  assert.match(msg('MY 5 A DAY SBUX SINCE 2018 TO 2099'), /TO 2099 is in the future/);
+  assert.equal(parseMine('MY 5 A DAY SBUX SINCE 2018 TO 2026'.split(' '), NOW).mine[0].end, '2026-09', 'this year runs to this month');
+  assert.match(msg('MY 100 AAPL 2026-09-27'), /is today/);
+  assert.match(msg('MY 1 A 2015 MY 1 B 2015 MY 1 C 2015 MY 1 D 2015'), /Up to 3 stocks of your own/);
+  // Today is the New York date: at 02:00 UTC on 1 Oct it is still 30 Sep in New York.
+  assert.match((() => { try { parseMine('MY 100 AAPL 2026-10-01'.split(' '), new Date('2026-10-01T02:00:00Z')); } catch (e) { return e.message; } return ''; })(), /in the future/);
   assert.match(msg('MY 100 TOOLONGX 2015'), /does not look like a ticker/);
   assert.match(msg('MY 100 AAPL 2015-13'), /not a date/);
   assert.match(msg('MY 100 AAPL 2015-02-30'), /not a date/);
@@ -110,6 +119,18 @@ test('trading-day rule: a date means its first trading day on or after it', () =
   assert.deepEqual(onOrAfter(closes, '2015-03-01'), { date: '2015-03-02', close: 12 }, '2015-03: the first trading day of the month');
   assert.deepEqual(onOrAfter(closes, '2015-03-03'), { date: '2015-03-03', close: 13 });
   assert.equal(onOrAfter(closes, '2015-04-01'), null);
+  // An exact day: its close, or the last trading day before (as in the catalogue).
+  const sep = [['2026-09-24', 1], ['2026-09-25', 2], ['2026-09-28', 3]];
+  assert.deepEqual(onOrBefore(sep, '2026-09-26'), { date: '2026-09-25', close: 2 }, 'Saturday: Friday\'s close');
+  assert.deepEqual(onOrBefore(sep, '2026-09-25'), { date: '2026-09-25', close: 2 });
+  assert.equal(onOrBefore(sep, '2026-09-23'), null);
+  // Placeholder bars with no trades before real trading are not a first date.
+  assert.deepEqual(dropLeadingEmpty([{ v: 1 }, { v: 1, x: 0 }, { v: 2, x: 10 }, { v: 3 }]), [{ v: 2, x: 10 }, { v: 3 }]);
+  assert.deepEqual(dropLeadingEmpty([{ v: 1 }, { v: 2 }]), [{ v: 1 }, { v: 2 }], 'no volume at all: all kept');
+  // Kept compactly: 4 bytes a day and 8 a close.
+  const c = compact(sep);
+  assert.ok(c.days instanceof Int32Array && c.closes instanceof Float64Array);
+  assert.equal(compactBytes(c), 3 * 12);
   assert.deepEqual(firstOfMonths(closes, '2015-01'), { '2015-01': { date: '2015-01-02', close: 10 }, '2015-03': { date: '2015-03-02', close: 12 } });
 });
 
@@ -174,10 +195,13 @@ test('split-adjusted: NVDA across its 10:1 split (10 Jun 2024), recomputed by ha
   assert.ok(Math.abs(r.shares - 1000 / 115) < 1e-12);
   assert.equal(Math.round(r.value * 100) / 100, 1952.87);
   assert.equal(r.bought, '2024-06-03');
-  // A Saturday buys at the Monday close after the split.
+  // A Saturday buys at Friday's close (the last trading day before).
   const sat = await getWhatif(['MY', '1000', 'NVDA', '2024-06-08'], { quoteImpl: quote(224.58), dailyImpl, now: NOW });
-  assert.equal(sat.rows[0].bought, '2024-06-10');
-  assert.ok(Math.abs(sat.rows[0].shares - 1000 / 121.79) < 1e-12);
+  assert.equal(sat.rows[0].bought, '2024-06-07');
+  assert.ok(Math.abs(sat.rows[0].shares - 1000 / 130) < 1e-12);
+  // A month buys on its first trading day: June 2024 is Monday 3 June.
+  const june = await getWhatif(['MY', '1000', 'NVDA', '2024-06'], { quoteImpl: quote(224.58), dailyImpl, now: NOW });
+  assert.equal(june.rows[0].bought, '2024-06-03');
 });
 
 test('independent recompute: MY 1200 AAPL 2015 and $5 a day since 2018, from the closes alone', async () => {
@@ -195,7 +219,8 @@ test('independent recompute: MY 1200 AAPL 2015 and $5 a day since 2018, from the
     for (let m = 1; m <= 12; m += 1) {
       const key = `${y}-${String(m).padStart(2, '0')}`;
       if (key > '2026-09') break;
-      const spend = 5 * new Date(Date.UTC(y, m, 0)).getUTCDate();
+      // September 2026 is still running on 27 Sep: 27 days so far.
+      const spend = 5 * (key === '2026-09' ? 27 : new Date(Date.UTC(y, m, 0)).getUTCDate());
       const c = closes.find(([day]) => day.slice(0, 7) === key)?.[1] ?? 341.07;
       paid += spend;
       shares += spend / c;
@@ -286,10 +311,54 @@ test('/og/whatif.png renders for your own purchase', async () => {
     const deps = { catalog, getWhatif: (t) => getWhatif(t, { quoteImpl: quote(341.07), dailyImpl: bakedAapl, now: NOW }), cacheDir: dir };
     const m = await getCert('WHATIF MY 5 A DAY AAPL SINCE 2018', deps);
     assert.match(m.ribbon, /of \$5 a day in AAPL$/);
-    const png = await whatifPng('WHATIF MY 5 A DAY AAPL SINCE 2018', deps);
+    const png = await whatifPng('WHATIF MY 5 A DAY AAPL SINCE 2018', deps, { ip: '203.0.113.9' });
     assert.deepEqual([...png.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47]);
     assert.ok(png.length > 20000);
+    // Nothing of your own goes to disk: the cards live in a bounded memory LRU.
+    assert.deepEqual(readdirSync(dir), []);
+    assert.ok(minePngs.size >= 1 && minePngs.size <= MINE_MEMORY.pngs);
+    assert.ok(mineModels.size >= 1 && mineModels.size <= MINE_MEMORY.models);
+    // Over the per-address limit, a new card of your own is the site card instead.
+    const refuse = () => false;
+    const other = await whatifPng('WHATIF MY 7 A DAY AAPL SINCE 2019', deps, { ip: '203.0.113.9', allow: refuse });
+    assert.notDeepEqual(other, png);
+    // An already rendered card is served from memory, limit or not.
+    assert.equal(await whatifPng('WHATIF MY 5 A DAY AAPL SINCE 2018', deps, { ip: '203.0.113.9', allow: refuse }), png);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('limits: renders per address, and the daily closes cache bounded by bytes', async () => {
+  let t = 0;
+  const allow = makeRateLimit({ renders: 2, windowMs: 1000, addresses: 2 }, () => t);
+  assert.equal(allow('a'), true);
+  assert.equal(allow('a'), true);
+  assert.equal(allow('a'), false, 'the third in the window');
+  assert.equal(allow('b'), true, 'another address');
+  t = 1500;
+  assert.equal(allow('a'), true, 'a new window');
+
+  // Each ticker's closes cost 12 bytes a day; the cache drops the oldest over its budget.
+  const bars = (n) => ({ barData: { priceBars: Array.from({ length: n }, (_, i) => {
+    const d = new Date(Date.UTC(2020, 0, 6) + i * 86_400_000);
+    const s = d.toISOString().slice(0, 10).replace(/-/g, '');
+    return { tradeTimeinMills: d.getTime(), tradeTime: `${s}000000`, close: 10 + i, open: 10 + i, high: 10 + i, low: 10 + i, volume: i === 0 ? 0 : 100 };
+  }) } });
+  const fetchImpl = async () => ({ ok: true, headers: new Map(), text: async () => JSON.stringify(bars(50)), json: async () => bars(50), body: null });
+  const cache = createCache({ lru: true, weigh: compactBytes, maxWeight: 1000 });
+  const daily = makeDaily({ fetchImpl, cache, now: () => NOW });
+  const a = await daily('AAA');
+  assert.ok(a.days instanceof Int32Array);
+  assert.ok(a.days.length > 20 && a.days.length < 50, 'weekend placeholders and the leading no-trade bar dropped');
+  assert.ok(compactBytes(a) < 1000);
+  await daily('BBB');
+  await daily('CCC');
+  // 3 x ~430 bytes > 1000: only the newest stay.
+  let calls = 0;
+  const counting = makeDaily({ fetchImpl: async (...x) => { calls += 1; return fetchImpl(...x); }, cache, now: () => NOW });
+  await counting('CCC');
+  assert.equal(calls, 0, 'the newest is still cached');
+  await counting('AAA');
+  assert.equal(calls, 1, 'the oldest was dropped');
 });

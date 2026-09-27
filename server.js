@@ -328,7 +328,7 @@ function sendPng(res, png, maxAge) {
 }
 app.get('/og/whatif.png', async (req, res) => {
   try {
-    sendPng(res, await whatifPng(str(req.query.c) || '', ogDeps), 86400);
+    sendPng(res, await whatifPng(str(req.query.c) || '', ogDeps, { ip: req.ip }), 86400);
   } catch (err) {
     console.error('[og]', err.message);
     try { sendPng(res, await defaultPng(), 300); } catch { res.status(503).end(); }

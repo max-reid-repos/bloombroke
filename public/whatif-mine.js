@@ -2,21 +2,25 @@
 //
 //   MY 1200 AAPL 2015                      $1,200 of AAPL on the first trading day of 2015
 //   MY 1200 AAPL 2015-03                   ... of March 2015
-//   MY 1200 AAPL 2015-03-02                ... on that day (or the next trading day)
+//   MY 1200 AAPL 2015-03-02                ... at that day's close (or the last trading day before)
 //   MY 5 A DAY SBUX SINCE 2018             $5 a day, bought once a month like the habits
 //   MY 20 A WEEK KO SINCE 2016-06 TO 2022  A WEEK / A MONTH, optionally TO a year or month
 //
 // No free text: every word is a number, a ticker, a date or one of these keywords, and
 // the label on the result, the certificate and the share image is made from them.
+// Amounts are whole dollars. Dates are New York dates; nothing may be in the future.
 
 export const MIN_AMOUNT = 1;
 export const MAX_AMOUNT = 10_000_000;
 export const MAX_YEARS = 50;
+export const MAX_TICKERS = 3; // different stocks of your own in one run
 export const PERS = { DAY: 'day', WEEK: 'week', MONTH: 'month' };
 export const MINE_EXAMPLES = ['WHATIF MY 1200 AAPL 2015', 'WHATIF MY 5 A DAY SBUX SINCE 2018'];
 export const MINE_DOODLE = 'box';
 
 const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
+// Today in New York (the market's date), as YYYY-MM-DD.
+export const nyDate = (now = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
 export class MineError extends Error {
@@ -28,20 +32,17 @@ export class MineError extends Error {
 
 const USAGE = 'Your own purchase looks like WHATIF MY 1200 AAPL 2015, or WHATIF MY 5 A DAY SBUX SINCE 2018.';
 
-// "1200", "$1,200", "5.50" -> a number of dollars, or NaN.
+// "1200", "$1,200" -> whole dollars, or NaN (cents are not taken).
 export function parseAmount(tok) {
   const s = String(tok || '').replace(/^\$/, '').replace(/,/g, '');
-  return /^\d+(\.\d{1,2})?$/.test(s) ? Number(s) : NaN;
+  return /^\d{1,9}$/.test(s) ? Number(s) : NaN;
 }
 
-// "1200" -> "1200", 5.5 -> "5.5": the amount as the command writes it.
-export const amountWord = (n) => String(Math.round(n * 100) / 100);
+// 1200 -> "1200": the amount as the command writes it.
+export const amountWord = (n) => String(n);
 
-// "$1,200" or "$5.50".
-export function fmtAmount(n) {
-  const whole = Number.isInteger(n);
-  return `$${n.toLocaleString('en-US', { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 })}`;
-}
+// "$1,200".
+export const fmtAmount = (n) => `$${n.toLocaleString('en-US')}`;
 
 const isDay = (y, m, d) => {
   const t = new Date(Date.UTC(y, m - 1, d));
@@ -72,12 +73,12 @@ const monthIndex = (key) => { const [y, m] = key.split('-').map(Number); return 
 
 // Reads one item starting at tokens[i] (the word MY). Returns { item, next }.
 function readItem(tokens, i, now) {
-  const today = now.toISOString().slice(0, 10);
+  const today = nyDate(now);
   const current = today.slice(0, 7);
   const t = tokens.slice(i + 1, i + 9);
   if (t.length < 3) throw new MineError(USAGE);
   const amount = parseAmount(t[0]);
-  if (!Number.isFinite(amount)) throw new MineError(`${t[0]} is not an amount. ${USAGE}`);
+  if (!Number.isFinite(amount)) throw new MineError(/^\$?[\d,]+\.\d*$/.test(t[0]) ? 'Use whole dollars, like 1200.' : `${t[0]} is not an amount. ${USAGE}`);
   if (amount < MIN_AMOUNT || amount > MAX_AMOUNT) throw new MineError('Pick an amount from $1 to $10,000,000.');
   const recurring = t[1] === 'A' && PERS[t[2]];
   if (!recurring) {
@@ -86,6 +87,7 @@ function readItem(tokens, i, now) {
     const date = parseDateWord(t[2]);
     if (!date) throw new MineError(`${t[2]} is not a date. Dates look like 2015, 2015-03 or 2015-03-02.`);
     if (date.day > today) throw new MineError(`${t[2]} is in the future.`);
+    if (date.level === 'day' && date.day === today) throw new MineError(`${t[2]} is today: pick a day with a close.`);
     const words = ['MY', amountWord(amount), ticker, date.word];
     return {
       next: i + 4,
@@ -104,6 +106,7 @@ function readItem(tokens, i, now) {
   if (t[6] === 'TO') {
     to = parseDateWord(t[7], { days: false });
     if (!to) throw new MineError(`${t[7] || 'TO'} needs a year or a month, like 2022 or 2022-12.`);
+    if (to.month > current) throw new MineError(`TO ${t[7]} is in the future.`);
     next = i + 9;
   }
   const start = since.month;
@@ -129,6 +132,7 @@ export function parseMine(tokens, now = new Date()) {
     if (!mine.some((m) => m.id === item.id)) mine.push(item);
     i = next;
   }
+  checkTickers(mine);
   return { mine, rest };
 }
 
@@ -152,4 +156,10 @@ export function formWords({ amount, ticker, date, how = 'ONCE', to = '' }, now =
   const words = how === 'ONCE' ? ['MY', a, t, d] : ['MY', a, 'A', how, t, 'SINCE', d, ...(String(to || '').trim() ? ['TO', String(to).trim()] : [])];
   const { mine } = parseMine(words, now);
   return mine[0].words;
+}
+
+// At most MAX_TICKERS different stocks of your own in one run.
+export function checkTickers(items) {
+  const n = new Set(items.map((i) => i.ticker)).size;
+  if (n > MAX_TICKERS) throw new MineError(`Up to ${MAX_TICKERS} stocks of your own in one WHATIF.`);
 }
