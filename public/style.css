@@ -1689,6 +1689,14 @@ a.ch-flag { cursor: pointer; }
 }
 /* --- end GUESS ------------------------------------------------------------------ */
 
+/* --- Phone key bar: short labels, so every key shows its whole word -------------- */
+.fkey-short { display: none; }
+@media (max-width: 639px) {
+  .fkeys .fkey-l:has(+ .fkey-short) { display: none; }
+  .fkeys .fkey-short { display: inline; }
+}
+/* --- end phone key bar ----------------------------------------------------------- */
+
 /* --- ALERTS (price and gauge alerts) -------------------------------------------- */
 .status-alerts {
   margin-left: auto; height: 16px; padding: 0 6px;
