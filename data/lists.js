@@ -1,5 +1,6 @@
 // Shared helpers for the extra commands: fixed CNBC quote lists and Nasdaq JSON.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { fetchCnbcRows, parseListRows, UA } from './quotes.js';
 import { instrumentBySrc } from '../public/instruments.js';
@@ -11,7 +12,7 @@ export const withCmd = (item) => ({ ...item, cmd: item.cmd || instrumentBySrc(it
 
 // A fixed list of CNBC symbols ({ id, src, ... }) behind a stale-if-error cache.
 // Resolves to { rows, stale, updated }. `extra(rawRow)` adds fields from the raw CNBC row.
-export function makeCnbcList({ key, items, minRows = Math.ceil(items.length / 2), ttl = 5 * 60_000, extra = null, fetchImpl = globalThis.fetch, cache = createCache() }) {
+export function makeCnbcList({ key, items, minRows = Math.ceil(items.length / 2), ttl = 5 * 60_000, extra = null, fetchImpl = cappedFetch, cache = createCache() }) {
   return async function get() {
     const { value, stale, fetchedAt } = await cache.cached(key, ttl, async () => {
       const rows = await fetchCnbcRows(fetchImpl, items.map((i) => i.src));

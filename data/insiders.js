@@ -1,6 +1,7 @@
 // INSIDERS <ticker>: recent insider transactions and the 3 and 12 month totals, from the
 // Nasdaq insider activity API (no key; it wants browser headers). Cached a day.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { money, usDay } from './lists.js';
 import { CompanyDataError, DAY_MS, nasdaqData, tickerOrThrow, cachedOrThrow, text } from './company-kit.js';
@@ -65,7 +66,7 @@ export function parseInsiders(d) {
   return { rows, totals, totalRecords: money(d.transactionTable?.totalRecords) };
 }
 
-export function makeInsiders({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 500, retryMs: 60_000 }) } = {}) {
+export function makeInsiders({ fetchImpl = cappedFetch, cache = createCache({ maxEntries: 500, retryMs: 60_000 }) } = {}) {
   async function getInsiders(raw) {
     const ticker = tickerOrThrow(raw);
     const path = `company/${encodeURIComponent(ticker)}/insider-trades?limit=${LIMIT}&type=ALL&sortColumn=lastDate&sortOrder=DESC`;

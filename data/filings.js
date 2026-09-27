@@ -3,6 +3,7 @@
 // SEC asks for a descriptive User-Agent and under 10 requests a second: calls here go one
 // at a time, 350 ms apart. Cached a day.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { SEC_UA, parseTickerMap, secTicker } from './financials.js';
 import { CompanyDataError, DAY_MS, cachedOrThrow, tickerOrThrow } from './company-kit.js';
@@ -129,7 +130,7 @@ export class SecBusyError extends Error {
   }
 }
 
-export function makeFilings({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 300, retryMs: 60_000 }), gapMs = 350, now = () => Date.now(), lowMaxWaiting = SEC_LOW_MAX_WAITING } = {}) {
+export function makeFilings({ fetchImpl = cappedFetch, cache = createCache({ maxEntries: 300, retryMs: 60_000 }), gapMs = 350, now = () => Date.now(), lowMaxWaiting = SEC_LOW_MAX_WAITING } = {}) {
   let lastAt = 0;
   let running = false;
   const high = [];

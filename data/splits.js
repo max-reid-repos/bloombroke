@@ -5,6 +5,7 @@
 // true (paid before the record date, or a record date before it was announced) is
 // left out and counted, since we cannot tell which of its dates is wrong.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { money, usDay, nyDay, addDays, isIsoDay } from './lists.js';
 import { CompanyDataError, HOUR_MS, nasdaqData, cachedOrThrow, text, symbolOf } from './company-kit.js';
@@ -82,7 +83,7 @@ export function nextWeekdays(from, n = 5) {
   return out;
 }
 
-export function makeSplits({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: 60_000, maxEntries: 200 }), now = () => Date.now() } = {}) {
+export function makeSplits({ fetchImpl = cappedFetch, cache = createCache({ retryMs: 60_000, maxEntries: 200 }), now = () => Date.now() } = {}) {
   async function getSplits() {
     const got = await cachedOrThrow(cache, 'splits', HOUR_MS, async () => parseSplits(await nasdaqData(fetchImpl, 'calendar/splits')), {
       what: 'Split data', missing: 'No stock splits listed right now.',

@@ -2,7 +2,9 @@
 // ETFs from the public CNBC symbol lookup service (no key). If the lookup is down,
 // the named instruments still match.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
+import { makeGate } from './gate.js';
 import { UA, TICKER_RE } from './quotes.js';
 import { searchInstruments, resolveInstrument } from '../public/instruments.js';
 
@@ -35,7 +37,9 @@ export function parseLookup(body) {
   return out;
 }
 
-export function makeSearch({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 5000 }) } = {}) {
+// Every prefix typed is its own key: a few lookups upstream at once, a short queue.
+export const SEARCH_GATE = { concurrency: 4, maxQueue: 24 };
+export function makeSearch({ fetchImpl = cappedFetch, cache = createCache({ maxEntries: 5000, lru: true, staleMs: 6 * 3600_000 }), gate = makeGate(SEARCH_GATE) } = {}) {
   async function lookup(q) {
     const qs = new URLSearchParams({ prefix: q, partnerid: '20064', pgok: '1', pgsize: '12' });
     const res = await fetchImpl(`${LOOKUP_URL}?${qs}`, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(5000) });
@@ -50,7 +54,7 @@ export function makeSearch({ fetchImpl = globalThis.fetch, cache = createCache({
     let stocks = [];
     let degraded = false;
     try {
-      stocks = (await cache.cached(`sym:${q}`, SEARCH_TTL, () => lookup(q))).value;
+      stocks = (await cache.cached(`sym:${q}`, SEARCH_TTL, () => gate(() => lookup(q)))).value;
     } catch {
       degraded = true;
     }

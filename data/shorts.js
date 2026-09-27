@@ -1,6 +1,7 @@
 // SHORTS <ticker>: short interest by settlement date, from the Nasdaq short interest API
 // (no key). It is listed here for Nasdaq-listed stocks only. Cached a day.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { money, usDay } from './lists.js';
 import { CompanyDataError, DAY_MS, nasdaqData, tickerOrThrow, cachedOrThrow } from './company-kit.js';
@@ -29,7 +30,7 @@ export function parseShorts(d) {
   return rows.length ? { rows } : null;
 }
 
-export function makeShorts({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 500, retryMs: 60_000 }) } = {}) {
+export function makeShorts({ fetchImpl = cappedFetch, cache = createCache({ maxEntries: 500, retryMs: 60_000 }) } = {}) {
   async function getShorts(raw) {
     const ticker = tickerOrThrow(raw);
     const path = `quote/${encodeURIComponent(ticker)}/short-interest?assetClass=stocks`;

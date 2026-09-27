@@ -1,6 +1,7 @@
 // Market quotes. Every source lives behind a small function so it can be swapped later.
 // Current source: the public CNBC quote service (no key). Keep it server side only.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { INSTRUMENTS as ALL, FX_MAJOR_IDS, YIELD_IDS, instrumentById, resolveInstrument } from '../public/instruments.js';
 
@@ -383,7 +384,7 @@ export async function fetchDailyMove(fetchImpl, src, nowMs = Date.now()) {
   return dailyMove(body?.barData?.priceBars, { allWeek: allWeekSrc(src) });
 }
 
-export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache(), now = () => Date.now(), fillWaitMs = FILL_WAIT_MS } = {}) {
+export function makeQuotes({ fetchImpl = cappedFetch, cache = createCache(), now = () => Date.now(), fillWaitMs = FILL_WAIT_MS } = {}) {
   // src -> { at, value } (value null: no history), and the fills queued or running.
   const fills = new Map();
   const pending = new Map();

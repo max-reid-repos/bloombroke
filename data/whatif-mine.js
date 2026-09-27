@@ -8,6 +8,7 @@
 //   a year or a month (2015)    the first trading day of that year or month
 //   a habit                     once a month, on the first trading day, like the catalogue
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { shapeBars, readJson } from './charts.js';
 import { getQuote, tickerSource, UA, weekendPlaceholder } from './quotes.js';
@@ -49,7 +50,7 @@ export function dropLeadingEmpty(points) {
 // Every daily close of a ticker, compact, weekend placeholders out. One fetch per
 // ticker per New York day, the cache bounded by bytes.
 export function makeDaily({
-  fetchImpl = globalThis.fetch,
+  fetchImpl = cappedFetch,
   cache = createCache({ lru: true, weigh: compactBytes, maxWeight: DAILY_CACHE_BYTES, maxEntries: 400 }),
   now = () => new Date(),
 } = {}) {

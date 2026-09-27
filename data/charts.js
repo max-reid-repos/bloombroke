@@ -7,7 +7,9 @@
 // month) is marked `p` (partial): its close is the latest price, not a period close.
 // Without the daily call the bars carry no `e`, and the screen says "week of".
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
+import { makeGate } from './gate.js';
 import { normalizeTicker, tickerSource, UA, dayOfWeek, weekendPlaceholder } from './quotes.js';
 import { instrumentById } from '../public/instruments.js';
 import { PRESETS, parseDate, isoDay, nyToday } from '../public/ranges.js';
@@ -389,8 +391,10 @@ export function clipBars(points, [fromMs, toMs], bar) {
 
 // Charts are the biggest cache values (up to MAX_POINTS bars each): at most 200 of them
 // and 250,000 bars in all (tens of MB), least recently used dropped first.
-export const CHART_CACHE = { maxEntries: 200, maxWeight: 250_000 };
-export function makeCharts({ fetchImpl = globalThis.fetch, cache = createCache({ ...CHART_CACHE, lru: true, weigh: (v) => v?.points?.length || 0 }), now = () => new Date() } = {}) {
+export const CHART_CACHE = { maxEntries: 200, maxWeight: 250_000, staleMs: 6 * 3600_000 };
+// Custom FROM/TO ranges make many keys: at most a few chart loads upstream at once.
+export const CHART_GATE = { concurrency: 6, maxQueue: 48 };
+export function makeCharts({ fetchImpl = cappedFetch, cache = createCache({ ...CHART_CACHE, lru: true, weigh: (v) => v?.points?.length || 0 }), gate = makeGate(CHART_GATE), now = () => new Date() } = {}) {
   async function bars(src, bar, win) {
     const url = `${BARS_URL}/${encodeURIComponent(src)}/${bar}/${stamp(win.start)}000000/${stamp(win.end)}000000/adjusted/EST5EDT.json`;
     // 1-minute bars are the biggest answers: a little longer to arrive.
@@ -468,7 +472,7 @@ export function makeCharts({ fetchImpl = globalThis.fetch, cache = createCache({
     const win = chartWindow(spec, now());
     let got;
     try {
-      got = await cache.cached(`chart:${ticker}:${win.key}`, win.ttl, () => load(ticker, win));
+      got = await cache.cached(`chart:${ticker}:${win.key}`, win.ttl, () => gate(() => load(ticker, win)));
     } catch {
       throw new ChartError('unavailable', 'Chart data is taking a break. Try again in a minute.');
     }

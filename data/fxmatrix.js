@@ -3,6 +3,7 @@
 // - Live: the CNBC quote service (no key, real time), for HEAT mode's change today.
 //   When CNBC fails, HEAT falls back to the daily change and says so.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { iso } from './lists.js';
 import { isoDaysAgo } from './fx.js';
@@ -80,7 +81,7 @@ export function liveRates(rows, codes = MATRIX_CODES, fillFor = () => null) {
   return { rates: now, prevRates: prev, asOf: oldest, realTime };
 }
 
-export function makeFxMatrix({ fetchImpl = globalThis.fetch, cache = createCache(), now = () => new Date() } = {}) {
+export function makeFxMatrix({ fetchImpl = cappedFetch, cache = createCache(), now = () => new Date() } = {}) {
   async function getLive() {
     try {
       const { value, stale, fetchedAt } = await cache.cached('fxmatrix:live', LIVE_TTL, async () => {

@@ -6,6 +6,7 @@
 // with its trade time; the valuation numbers are the fund snapshot (15 min cache)
 // with its own time. Both times are sent, so a gap between screens is explained.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { fetchCnbcRows, fetchStockRows, tickerSource, getQuote } from './quotes.js';
 import { money, capNum } from './lists.js';
@@ -67,7 +68,7 @@ export function parseFundMap(rows) {
   return out;
 }
 
-export function makeValue({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 500 }), quote = fetchImpl === globalThis.fetch ? getQuote : null } = {}) {
+export function makeValue({ fetchImpl = cappedFetch, cache = createCache({ maxEntries: 500 }), quote = fetchImpl === cappedFetch ? getQuote : null } = {}) {
   async function getValue(raw) {
     const ticker = tickerOrThrow(raw);
     const got = await cachedOrThrow(cache, `value:${ticker}`, TTL, async () => {

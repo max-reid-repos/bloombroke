@@ -2,6 +2,7 @@
 // Members and GICS sectors: the S&P 100 list as of 21 Sep 2026 (iShares OEF holdings,
 // via Wikipedia). Update the list when the index changes.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { fetchCnbcRows, parseNum, parseChange } from './quotes.js';
 import { capNum, iso } from './lists.js';
@@ -113,7 +114,7 @@ export function fishtankStocks(stocks) {
   }));
 }
 
-export function makeSp100({ fetchImpl = globalThis.fetch, cache = createCache() } = {}) {
+export function makeSp100({ fetchImpl = cappedFetch, cache = createCache() } = {}) {
   async function load() {
     const { value, stale, fetchedAt } = await cache.cached('sp100', TTL, async () => {
       const rows = await fetchCnbcRows(fetchImpl, SP100.map((m) => m.ticker));

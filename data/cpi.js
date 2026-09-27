@@ -3,6 +3,7 @@
 // The latest monthly value comes from the public BLS API v1 (no key), with the
 // static table as the fallback.
 
+import { cappedFetch } from './http.js';
 import { readFileSync } from 'node:fs';
 import { createCache } from './cache.js';
 import { parseAmount, amountMessage } from './fx.js';
@@ -64,7 +65,7 @@ export function inflate(amount, year, latest) {
 // A failed BLS call is not retried for 6 hours: keyless BLS allows 25 queries a day.
 export const CPI_RETRY_MS = 6 * 60 * 60_000;
 
-export function makeCpi({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: CPI_RETRY_MS }) } = {}) {
+export function makeCpi({ fetchImpl = cappedFetch, cache = createCache({ retryMs: CPI_RETRY_MS }) } = {}) {
   async function latest() {
     try {
       const { value, stale, fetchedAt } = await cache.cached('cpi:latest', CPI_TTL, async () => {

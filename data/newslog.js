@@ -127,7 +127,9 @@ export function makeNewsLog({ dir = LOG_DIR, cap = LOG_CAP, maxOpen = 300, maxFi
       const old = await load(ticker);
       const { rows, added } = mergeLog(old, items, cap);
       if (!added) return 0;
+      open.delete(ticker);
       open.set(ticker, Promise.resolve(rows));
+      while (open.size > maxOpen) open.delete(open.keys().next().value);
       await mkdir(dir, { recursive: true });
       const tmp = `${file(ticker)}.${process.pid}.${Date.now()}.tmp`;
       await writeFile(tmp, JSON.stringify({ ticker, rows }));

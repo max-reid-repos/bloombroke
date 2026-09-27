@@ -2,6 +2,7 @@
 // quotes (no key, delayed 15 minutes). One download per symbol holds every expiry; it is
 // parsed once into a compact shape and shared for a few minutes.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { UA } from './quotes.js';
 
@@ -105,7 +106,7 @@ export function pickExpiry(expiries, wanted, today) {
 
 const nyToday = (ms) => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 
-export function makeOptions({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 40 }), now = () => Date.now() } = {}) {
+export function makeOptions({ fetchImpl = cappedFetch, cache = createCache({ maxEntries: 40 }), now = () => Date.now() } = {}) {
   async function load(symbol) {
     const src = INDEX_ROOTS[symbol] || symbol;
     return cache.cached(`options:${symbol}`, INDEX_ROOTS[symbol] ? INDEX_TTL : TTL, async () => {

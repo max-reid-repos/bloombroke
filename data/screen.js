@@ -8,6 +8,7 @@
 // hour, loaded in the background at server start and refreshed before it expires). A stock CNBC has no number for is left out
 // of that filter, and the answer says where the numbers came from.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { UA } from './quotes.js';
 import { parseScreenArgs, applyScreen, screenWords, sortOf, needsCnbc, SCREEN_ERRORS } from '../public/screener.js';
@@ -92,7 +93,7 @@ export function withFund(rows, fund) {
   });
 }
 
-export function makeScreen({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: 60_000 }), getFundMap = makeValue({ fetchImpl }).getFundMap, now = () => Date.now() } = {}) {
+export function makeScreen({ fetchImpl = cappedFetch, cache = createCache({ retryMs: 60_000 }), getFundMap = makeValue({ fetchImpl }).getFundMap, now = () => Date.now() } = {}) {
   async function get(url) {
     const res = await fetchImpl(url, { headers: HEADERS, signal: AbortSignal.timeout(20_000) });
     if (!res.ok) throw new Error(`screener HTTP ${res.status}`);

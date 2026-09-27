@@ -3,6 +3,7 @@
 // yield never shows two times or two tags); one month and one year ago from the US
 // Treasury daily par yield curve CSV (both no key).
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { nyDay, iso } from './lists.js';
 import { UA, makeQuotes, sharedQuotes } from './quotes.js';
@@ -65,7 +66,7 @@ export function yearBefore(day) {
   return `${y - 1}-${String(m).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
 }
 
-export function makeCurve({ fetchImpl = globalThis.fetch, cache = createCache(), now = () => Date.now(), quotes = fetchImpl === globalThis.fetch ? sharedQuotes : makeQuotes({ fetchImpl, cache: createCache() }) } = {}) {
+export function makeCurve({ fetchImpl = cappedFetch, cache = createCache(), now = () => Date.now(), quotes = fetchImpl === cappedFetch ? sharedQuotes : makeQuotes({ fetchImpl, cache: createCache() }) } = {}) {
   const today = async () => {
     const { yields, stale, updated } = await quotes.getYields(TENORS.map((t) => t.src));
     const byId = new Map(yields.map((y) => [y.id, y]));
