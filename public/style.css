@@ -1670,9 +1670,9 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 /* --- end ALERTS ----------------------------------------------------------------- */
 
 /* ---- WHY: biggest daily moves and what came out that day ------------------------ */
-.why-dt { width: 100%; max-width: none; }
-.why-dt td { vertical-align: top; padding-top: 4px; padding-bottom: 4px; height: auto; }
-.why-dt td.why-what { width: 100%; max-width: 0; white-space: normal; }
+.dt.why-dt { width: 100%; max-width: none; }
+.dt.why-dt td { vertical-align: top; padding-top: 4px; padding-bottom: 4px; height: auto; }
+.dt.why-dt td.why-what { width: 100%; max-width: 0; white-space: normal; }
 .why-dt .why-date { white-space: nowrap; }
 .why-it { display: flex; gap: 8px; min-width: 0; line-height: 16px; }
 .why-tag { flex: 0 0 5ch; color: var(--accent); font-size: 11px; letter-spacing: .04em; }

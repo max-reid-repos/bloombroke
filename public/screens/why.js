@@ -83,6 +83,7 @@ export function render(el, cmd, ctx) {
     if (!d.company) {
       body.innerHTML = `<div class="co-pad">${notCompanyHtml(ticker)}</div>`;
       meta.innerHTML = '';
+      ctx.status('WHY: COMPANY STOCKS ONLY');
       return;
     }
     body.innerHTML = d.rows.length ? whyTable(d.rows) : `<p class="panel-msg">No daily moves for ${esc(ticker)} yet.</p>`;
