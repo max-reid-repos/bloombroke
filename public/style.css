@@ -1937,3 +1937,7 @@ a.why-link:hover { color: var(--accent); text-decoration: none; }
   .why-link { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .why-tag { flex-basis: 4ch; }
 }
+
+/* ---- NEWS push: the LIVE marker in the title strip (filled: streaming, hollow: polling) */
+.news-live { display: inline-block; margin-right: 8px; padding: 0 4px; border: 1px solid var(--accent); color: var(--accent); font-weight: 700; letter-spacing: .08em; line-height: 13px; }
+.news-live.is-on { background: var(--accent); color: var(--ink); }

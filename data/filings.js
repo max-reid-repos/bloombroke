@@ -118,18 +118,25 @@ export const NEWS_MAX_AGE_MS = 15 * 60_000;
 export function makeFilings({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 300, retryMs: 60_000 }), gapMs = 350, now = () => Date.now() } = {}) {
   let chain = Promise.resolve();
   let lastAt = 0;
-  function secGet(url) {
+  // Run task() in the SEC queue: one at a time, gapMs apart. Every SEC request here (and
+  // the news hub's SEC feed, through secQueued) goes through it.
+  function queued(task) {
     const run = chain.then(async () => {
       const wait = lastAt + gapMs - Date.now();
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       lastAt = Date.now();
+      return task();
+    });
+    chain = run.catch(() => {});
+    return run;
+  }
+  function secGet(url) {
+    return queued(async () => {
       const res = await fetchImpl(url, { headers: { 'User-Agent': SEC_UA, Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error(`sec HTTP ${res.status}`);
       return res.json();
     });
-    chain = run.catch(() => {});
-    return run;
   }
 
   // getFilings(ticker, form, { maxAgeMs }): maxAgeMs asks for a submissions list no
@@ -164,7 +171,10 @@ export function makeFilings({ fetchImpl = globalThis.fetch, cache = createCache(
       stale: got.stale, updated: got.updated, source: FILINGS_SOURCE,
     };
   }
-  return { getFilings };
+  return { getFilings, queued };
 }
 
-export const { getFilings } = makeFilings();
+const shared = makeFilings();
+export const { getFilings } = shared;
+// The shared SEC queue, for other SEC requests (the news hub's current 8-K feed).
+export const secQueued = shared.queued;

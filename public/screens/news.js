@@ -1,4 +1,5 @@
-// NEWS: finance headlines from a few public feeds, newest first, refreshed every minute.
+// NEWS: finance headlines from a few public feeds, newest first. New stories are pushed
+// as they come (the news hub); while the stream is down the list is polled every minute.
 
 import { esc, panel, LOADING } from './markets.js';
 import { toolbar, segmented } from '../kit.js';
@@ -95,20 +96,26 @@ export function newsKey(n) {
   return link ? `l:${link}` : `t:${titleWords(n)}`;
 }
 
-// One copy of each story, first one kept (the list comes newest first): a repeat link,
-// or the same words under another link (one story on two feeds), is dropped, and so is
-// a story with no words.
+// A filing (SEC tab rows carry a ticker field): the same words every quarter
+// ("Apple Inc.: Results"), so filings are told apart by link only.
+const isFilingRow = (n) => 'ticker' in (n || {}) || n?.source === 'SEC' || n?.source === 'SEC EDGAR';
+
+// A story the list already has: the same link, or (headlines only) the same words under
+// another link, one story on two feeds. seen: { links, words } Sets, updated.
+export function seenStory(n, seen) {
+  const k = newsKey(n);
+  const w = titleWords(n);
+  if (!w || seen.links.has(k) || (!isFilingRow(n) && seen.words.has(w))) return true;
+  seen.links.add(k);
+  if (!isFilingRow(n)) seen.words.add(w);
+  return false;
+}
+
+// One copy of each story, first one kept (the list comes newest first). A story with
+// no words is dropped too. The server's news hub uses the same rule (seenStory).
 export function dedupeNews(items) {
-  const links = new Set();
-  const words = new Set();
-  return (items || []).filter((n) => {
-    const k = newsKey(n);
-    const w = titleWords(n);
-    if (!w || links.has(k) || words.has(w)) return false;
-    links.add(k);
-    words.add(w);
-    return true;
-  });
+  const seen = { links: new Set(), words: new Set() };
+  return (items || []).filter((n) => !seenStory(n, seen));
 }
 
 // Which stories are new since the last look. The first look has none (everything on
@@ -172,14 +179,15 @@ function restoreAnchor(el, a) {
 
 // One live news list: body gets the rows, meta (the title strip) the "N NEW" badge in
 // front of metaHtml(). show(items, html) paints; items are the rows html shows.
-export function liveNews({ body, meta = null, metaHtml = () => '', ctx }) {
+export function liveNews({ body, meta = null, metaHtml = () => '', ctx, marker = false }) {
   const tracker = newsTracker();
   const counter = newCounter();
   const glow = new Set();
   let timer = null;
+  let streaming = false;
   const EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
   let listening = false;
-  const paintMeta = () => { if (meta) meta.innerHTML = `${newBadge(counter.count)}${metaHtml()}`; };
+  const paintMeta = () => { if (meta) meta.innerHTML = `${newBadge(counter.count)}${marker ? liveMarker(streaming) : ''}${metaHtml()}`; };
   function clear() {
     if (!counter.count) return;
     counter.clear();
@@ -218,7 +226,93 @@ export function liveNews({ body, meta = null, metaHtml = () => '', ctx }) {
     restoreAnchor(body, anchor);
     paintMeta();
   }
-  return { show, paintMeta, clear };
+  // The stream came up (true) or is down and the list is polled (false).
+  function setLive(on) {
+    if (streaming === Boolean(on)) return;
+    streaming = Boolean(on);
+    paintMeta();
+  }
+  return { show, paintMeta, clear, setLive };
+}
+
+// ---- Push: new stories as they come (the news hub, /api/news/stream) ---------------------
+
+// The title strip marker: LIVE filled while the stream is up, hollow while the list is
+// polled every minute instead.
+export function liveMarker(on) {
+  return on
+    ? '<span class="news-live is-on" title="Live: new stories appear as they come in">LIVE</span>'
+    : '<span class="news-live" title="Checking for new stories every minute">LIVE</span>';
+}
+
+export const streamUrl = (tabs, last = null) => `/api/news/stream?tabs=${encodeURIComponent(tabs.join(','))}${last ? `&last=${encodeURIComponent(last)}` : ''}`;
+export const LIST_MAX = 100;
+
+// Pushed stories into a list: one copy each, newest first, at most max.
+export function mergePushed(items, pushed, max = LIST_MAX) {
+  const all = dedupeNews([...(pushed || []), ...(items || [])]);
+  return all.sort((a, b) => String(b.time || '').localeCompare(String(a.time || ''))).slice(0, max);
+}
+
+// One EventSource for these tabs. onItems(tab, items) for news and sync events,
+// onState(live). It closes while the page is hidden and opens again (with the last event
+// id, so nothing is missed) when it is shown. A dropped connection the browser retries by
+// itself (the server spreads its retry delay). A stream the browser gave up on (the
+// server restarting, or refusing: 429, 503) is tried again after a random, growing wait
+// (about 30 s, 60 s, 120 s); after maxFails in a row it rests for restMs, and the page
+// polls meanwhile. Showing the page again always starts over. Returns { live, gaveUp }.
+export function newsStream({ tabs, onItems, onState = () => {}, ctx = {}, ES = globalThis.EventSource, doc = globalThis.document, retryMs = 30_000, maxFails = 3, restMs = 5 * 60_000, rand = Math.random }) {
+  let es = null;
+  let live = false;
+  let lastId = null;
+  let fails = 0;
+  let gaveUp = !ES;
+  let retry = null;
+  let stopped = false;
+  const set = (v) => { if (live !== v) { live = v; onState(v); } };
+  const onMsg = (e) => {
+    if (e.lastEventId) lastId = e.lastEventId;
+    let d = null;
+    try { d = JSON.parse(e.data); } catch { return; }
+    if (d && typeof d.tab === 'string' && Array.isArray(d.items)) onItems(d.tab, d.items, e.type);
+  };
+  const later = (fn, ms) => { clearTimeout(retry); retry = setTimeout(fn, ms); };
+  function open() {
+    if (!ES || es || gaveUp || stopped || doc?.hidden) return;
+    const s = new ES(streamUrl(tabs, lastId));
+    es = s;
+    s.addEventListener('open', () => { fails = 0; set(true); });
+    s.addEventListener('news', onMsg);
+    s.addEventListener('sync', onMsg);
+    s.addEventListener('error', () => {
+      set(false);
+      // CONNECTING: the browser reconnects by itself, with Last-Event-ID.
+      if (s.readyState !== 2) return;
+      s.close();
+      if (es === s) es = null;
+      fails += 1;
+      if (fails >= maxFails) {
+        gaveUp = true;
+        later(() => { gaveUp = false; fails = 0; open(); }, restMs);
+        return;
+      }
+      later(open, Math.round(retryMs * 2 ** (fails - 1) * (0.5 + rand())));
+    });
+  }
+  function close() {
+    clearTimeout(retry);
+    if (es) { es.close(); es = null; }
+    set(false);
+  }
+  const onVis = () => {
+    if (doc.hidden) { close(); return; }
+    if (ES) { gaveUp = false; fails = 0; }
+    open();
+  };
+  doc?.addEventListener?.('visibilitychange', onVis);
+  ctx.onCleanup?.(() => { stopped = true; close(); doc?.removeEventListener?.('visibilitychange', onVis); });
+  open();
+  return { get live() { return live; }, get gaveUp() { return gaveUp; } };
 }
 
 export function newsList(items) {
@@ -241,8 +335,9 @@ export function render(el, cmd, ctx) {
   el.innerHTML = panel('1', 'News', `<div class="news-bar">${LOADING}</div><div class="news-body"></div>`, { cls: 'panel-solo', metaId: 'news-meta', bodyCls: 'flush', meta: esc(TAB_SOURCES[tab]) });
   const bar = el.querySelector('.news-bar');
   const body = el.querySelector('.news-body');
-  const live = liveNews({ body, meta: el.querySelector('#news-meta'), metaHtml: () => esc(TAB_SOURCES[tab]), ctx });
+  const live = liveNews({ body, meta: el.querySelector('#news-meta'), metaHtml: () => esc(TAB_SOURCES[tab]), ctx, marker: true });
   let data = null;
+  let pending = []; // pushed before the first list came
   let src = 'ALL';
   const tabs = segmented(NEWS_TABS.map((t) => ({ label: t, cmd: tabCommand(t) })), tab, { label: 'News tab' });
 
@@ -266,6 +361,7 @@ export function render(el, cmd, ctx) {
   async function load() {
     try {
       data = await ctx.fetchJSON(newsApi(tab), { signal: ctx.signal });
+      if (pending.length) { data = { ...data, items: mergePushed(data.items, pending) }; pending = []; }
       paint();
       if (data.updated) ctx.updated(data.updated, data.stale);
     } catch (err) {
@@ -275,6 +371,20 @@ export function render(el, cmd, ctx) {
     }
   }
 
+  // New stories are pushed as they come; the minute poll runs only while the stream is down.
+  const stream = newsStream({
+    tabs: [tab], ctx,
+    onState: (on) => live.setLive(on),
+    onItems: (t, items) => {
+      if (t !== tab) return;
+      if (!data) { pending = mergePushed(pending, items); return; }
+      const names = new Set(data.sources || []);
+      for (const n of items) if (n.source) names.add(n.source);
+      data = { ...data, items: mergePushed(data.items, items), sources: [...names] };
+      paint();
+    },
+  });
+
   load();
-  ctx.live(load, NEWS_POLL_MS);
+  ctx.live(() => { if (!stream.live) load(); }, NEWS_POLL_MS);
 }
