@@ -23,7 +23,8 @@ export function whatifTokens(c) {
   if (s.length > 600) return null;
   const tokens = s.toUpperCase().split(/[\s,]+/).filter(Boolean);
   if (tokens[0] === 'WHATIF') tokens.shift();
-  if (tokens.length > 40 || tokens.some((t) => !/^[A-Z0-9.:-]{1,24}$/.test(t))) return null;
+  // $GOLD (the stock GOLD) may stand where a ticker does.
+  if (tokens.length > 40 || tokens.some((t) => !/^([A-Z0-9.:-]{1,24}|\$[A-Z]{1,5}(\.[A-Z]{1,2})?)$/.test(t))) return null;
   return tokens;
 }
 

@@ -18,7 +18,8 @@ export const PERS = { DAY: 'day', WEEK: 'week', MONTH: 'month' };
 export const MINE_EXAMPLES = ['WHATIF MY 1200 AAPL 2015', 'WHATIF MY 5 A DAY SBUX SINCE 2018'];
 export const MINE_DOODLE = 'box';
 
-const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
+import { stockIdOf } from './known-tickers.js';
+const TICKER_RE = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/; // $GOLD: the stock
 // Today in New York (the market's date), as YYYY-MM-DD.
 export const nyDate = (now = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -152,7 +153,8 @@ export function mineShort(item) {
 // An empty or odd field gets a plain line about that field, not the command syntax.
 export function formWords({ amount, ticker, date, how = 'ONCE', to = '' }, now = new Date()) {
   const a = String(amount || '').trim();
-  const t = String(ticker || '').trim().toUpperCase();
+  const typed = String(ticker || '').trim().toUpperCase();
+  const t = stockIdOf(typed) || typed; // $GOLD: the stock
   const d = String(date || '').trim();
   if (!a) throw new MineError('Type an amount, like 15.');
   if (!Number.isFinite(parseAmount(a))) throw new MineError('Type the amount in whole dollars, like 15.');

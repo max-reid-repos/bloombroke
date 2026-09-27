@@ -8,7 +8,7 @@
 
 import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
-import { fetchCnbcRows, fetchStockRows, tickerSource, getQuote } from './quotes.js';
+import { fetchCnbcRows, fetchStockRows, tickerSource, normalizeTicker, getQuote } from './quotes.js';
 import { money, capNum } from './lists.js';
 import { CompanyDataError, cachedOrThrow, tickerOrThrow, text } from './company-kit.js';
 
@@ -71,14 +71,16 @@ export function parseFundMap(rows) {
 export function makeValue({ fetchImpl = cappedFetch, cache = createCache({ maxEntries: 500 }), quote = fetchImpl === cappedFetch ? getQuote : null } = {}) {
   async function getValue(raw) {
     const ticker = tickerOrThrow(raw);
-    const got = await cachedOrThrow(cache, `value:${ticker}`, TTL, async () => {
-      const rows = await fetchStockRows(fetchImpl, [tickerSource(ticker)]);
+    // "$GOLD" is the stock GOLD: its own row and cache entry, never spot gold's.
+    const id = normalizeTicker(raw);
+    const got = await cachedOrThrow(cache, `value:${id}`, TTL, async () => {
+      const rows = await fetchStockRows(fetchImpl, [tickerSource(id)]);
       return parseValue(rows[0]);
     }, { what: 'Quote data', missing: `No ticker called ${ticker}.` });
     // The live last price and its trade time; the snapshot's own when the quote fails.
     let live = null;
     if (quote) {
-      try { live = await quote(ticker); } catch { live = null; }
+      try { live = await quote(id); } catch { live = null; }
     }
     const lastLive = live && Number.isFinite(live.last) && live.asOf;
     return {

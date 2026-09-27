@@ -6,7 +6,7 @@
 
 import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
-import { normalizeTicker, UA } from './quotes.js';
+import { normalizeTicker, stockSymbol, UA } from './quotes.js';
 import { parseRss, cleanText } from './news.js';
 import { iso } from './lists.js';
 import { fetchCapped, parseSeekingAlpha, filingTitle, companyName, mergeItems, secTickersFor, FEED_TTL, FEED_TIMEOUT_MS } from './newsfeeds.js';
@@ -153,7 +153,7 @@ export function makeTickerNews({
   // symbols (registry instruments), for anything the SEC map does not list, and while
   // the map is down.
   const filerOf = (ticker) => (instrumentById(ticker) ? Promise.resolve(null)
-    : secTickers().then((m) => m.value.byTicker.get(secTicker(ticker)) || null, () => null));
+    : secTickers().then((m) => m.value.byTicker.get(secTicker(stockSymbol(ticker))) || null, () => null));
   const nameOf = (ticker) => filerOf(ticker).then((hit) => hit?.title || null);
 
   // Headlines about the company go in the news log (WHY reads it), for company stocks
@@ -168,7 +168,8 @@ export function makeTickerNews({
   async function getTickerNews(raw) {
     const ticker = normalizeTicker(raw);
     if (!ticker) throw new TickerNewsError('bad_symbol', 'That does not look like a ticker.');
-    const results = await Promise.allSettled([nasdaq(ticker), seekingAlpha(ticker), sec(ticker)]);
+    const sym = stockSymbol(ticker); // "$DOW" (the stock) asks the sources for DOW
+    const results = await Promise.allSettled([nasdaq(sym), seekingAlpha(sym), sec(sym)]);
     const ok = results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
     if (!ok.length) throw new TickerNewsError('unavailable', 'News is taking a break. Try again in a minute.');
     // Headlines fill the first 40; the company's own filings always stay in, in time order.

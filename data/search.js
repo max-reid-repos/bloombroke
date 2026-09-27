@@ -26,13 +26,14 @@ export function parseLookup(body) {
   const seen = new Set();
   for (const r of rows) {
     const id = String(r?.symbolName || '').toUpperCase();
-    // A stock whose symbol is one of our names (GOLD, BTC) would open the wrong screen.
-    if (!TICKER_RE.test(id) || seen.has(id) || resolveInstrument(id)) continue;
+    if (!TICKER_RE.test(id) || seen.has(id)) continue;
     // Exchange-traded notes (VXX) and closed-end funds (PDI) trade like ETFs and stocks,
     // and the quote source has them.
     if (r.countryCode !== 'US' || !LISTED_TYPES.has(r.issueType)) continue;
     seen.add(id);
-    out.push({ id, name: String(r.companyName || id).slice(0, 80), kind: r.issueType === 'ETF' || r.issueType === 'ETN' ? 'etf' : 'stock' });
+    // A stock whose symbol is one of our names (GOLD, BTC, DOW) is the $ stock: plain GOLD
+    // opens spot gold, $GOLD opens Gold.com.
+    out.push({ id: resolveInstrument(id) ? `$${id}` : id, name: String(r.companyName || id).slice(0, 80), kind: r.issueType === 'ETF' || r.issueType === 'ETN' ? 'etf' : 'stock' });
   }
   return out;
 }

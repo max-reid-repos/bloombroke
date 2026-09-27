@@ -7,7 +7,7 @@ import { esc, q, fmtNum, fmtSigned, fmtPct, dirOf, fmtAsOf, panel, metaNote, LOA
 import { instrumentById, resolveInstrument } from '../instruments.js';
 import { edgeFade } from '../kit.js';
 
-export const OPTION_TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
+export const OPTION_TICKER_RE = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 // Named instruments with listed options at Cboe.
 export const OPTION_INDEXES = ['SPX', 'NDX', 'RUT', 'VIX'];
 const EXPIRY_RE = /^\d{4}-\d{2}-\d{2}(-[A-Z]{1,6})?$/;

@@ -3,7 +3,9 @@
 
 import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
-import { INSTRUMENTS as ALL, FX_MAJOR_IDS, YIELD_IDS, instrumentById, resolveInstrument } from '../public/instruments.js';
+import { INSTRUMENTS as ALL, FX_MAJOR_IDS, YIELD_IDS, instrumentById, resolveInstrument, STOCK_RE, stockSymbol } from '../public/instruments.js';
+
+export { stockSymbol };
 
 // The MARKETS list (with CNBC symbols), the FX majors and the Treasury yields all come
 // from the shared registry in public/instruments.js.
@@ -51,16 +53,27 @@ function positiveOrNull(s) {
 }
 
 // "aapl" -> "AAPL"; "gold" -> "GOLD" (a registry id); anything else -> null.
+// "$GOLD" -> "$GOLD": the stock GOLD, an id no instrument has (the browser sends a $ only
+// when the plain word means something else: $M, $GOLD).
 export function normalizeTicker(raw) {
+  const t0 = String(raw ?? '').trim().toUpperCase();
+  if (STOCK_RE.test(t0)) return t0;
   const inst = resolveInstrument(raw);
   if (inst) return inst.id;
   const t = String(raw ?? '').trim().toUpperCase();
   return TICKER_RE.test(t) ? t : null;
 }
 
-// Our id -> the CNBC symbol. Plain stock tickers are the same in both.
+// Our id -> the CNBC symbol. Plain stock tickers are the same in both; "$GOLD" is GOLD.
 export function tickerSource(ticker) {
-  return instrumentById(ticker)?.src || ticker;
+  return instrumentById(ticker)?.src || stockSymbol(ticker);
+}
+
+// The exchange symbol for company data (Nasdaq, SEC): "$DOW" -> "DOW". Plain words stay
+// as today ("DOW" is still the Dow index id DJI).
+export function companyTicker(raw) {
+  const t = normalizeTicker(raw);
+  return t ? stockSymbol(t) : null;
 }
 
 // CNBC says realTime for US stocks (Nasdaq Last Sale), US indexes, FX, crypto and
@@ -471,7 +484,7 @@ export function makeQuotes({ fetchImpl = cappedFetch, cache = createCache(), now
         return quote ? { ...quote, stale, updated: new Date(fetchedAt).toISOString() } : null;
       }
       const { value, stale, fetchedAt } = await cache.cached(`quote:${ticker}`, QUOTES_TTL, async () => {
-        const rows = await fetchStockRows(fetchImpl, [ticker]);
+        const rows = await fetchStockRows(fetchImpl, [stockSymbol(ticker)]);
         return { quote: stockQuoteOrGap(rows[0], ticker) };
       });
       if (!value.quote) return null;
@@ -486,11 +499,11 @@ export function makeQuotes({ fetchImpl = cappedFetch, cache = createCache(), now
       let shared = null;
       let failed = null;
       const fetchStocks = () => {
-        shared ||= fetchStockRows(fetchImpl, stocks).then((rows) => {
+        shared ||= fetchStockRows(fetchImpl, stocks.map(stockSymbol)).then((rows) => {
           const bySym = new Map(rows.map((r) => [String(r.symbol || '').toUpperCase(), r]));
           // One symbol asked, one row back: the same rule as getQuote. Otherwise match by
           // symbol only, so a row can never land on the wrong ticker.
-          return (t) => bySym.get(t) || (stocks.length === 1 && rows.length === 1 ? rows[0] : undefined);
+          return (t) => bySym.get(stockSymbol(t)) || (stocks.length === 1 && rows.length === 1 ? rows[0] : undefined);
         });
         return shared;
       };
