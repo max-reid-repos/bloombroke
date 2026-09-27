@@ -2,7 +2,7 @@
 // HOME keeps a snapshot in this browser (bb.since): the S&P 500, your watchlist's prices
 // and a few WEIRD gauge numbers. It is saved once the data is in, every few minutes and
 // when the page is hidden. A later visit (an hour or more after it) compares today's
-// numbers with it: "SINCE TUE 21:40: S&P 500 +1.2% · NVDA +4.1% · CANAL −12%". An item
+// numbers with it: "SINCE TUE 21:40: S&P 500 +1.2% · NVDA +4.1% · RIDES −40%". An item
 // with a missing number is left out; with nothing to compare, the line is not shown.
 
 import { esc } from './screens/markets.js';
@@ -11,8 +11,9 @@ import { loadWatchlist } from './watchlist.js';
 export const SINCE_KEY = 'bb.since';
 export const MIN_AGE = 60 * 60_000;
 export const SAVE_EVERY = 5 * 60_000;
-// WEIRD gauges with a plain level (not a % already): [id, the word shown].
-export const SINCE_WEIRD = [['canal', 'CANAL'], ['boxrate', 'BOXRATE'], ['rides', 'RIDES']];
+// WEIRD gauges with a plain level (not a % already): [id, the word shown]. Not CANAL: a
+// few ships a day makes silly percentages (3 to 2 is -33%).
+export const SINCE_WEIRD = [['boxrate', 'BOXRATE'], ['rides', 'RIDES']];
 export const WATCH_ITEMS = 3;
 const MAX_QUOTES = 30;
 
@@ -29,7 +30,7 @@ export function makeSnapshot({ t, spx, quotes, gauges }) {
   const weird = {};
   for (const [id] of SINCE_WEIRD) {
     const g = (gauges || []).find((x) => x?.id === id);
-    if (g?.ok && num(g.value) !== null) weird[id] = g.value;
+    if (g?.ok && num(g.value) !== null) weird[id] = { v: g.value, a: typeof g.asOf === 'string' ? g.asOf : null };
   }
   const spxLast = num(spx);
   return { v: 1, t, spx: spxLast > 0 ? spxLast : null, watch, weird };
@@ -43,7 +44,28 @@ export function hasData(s) {
 export function readSnapshot(raw) {
   if (!raw || typeof raw !== 'object' || raw.v !== 1 || !Number.isFinite(raw.t)) return null;
   const obj = (o) => (o && typeof o === 'object' && !Array.isArray(o) ? o : {});
-  return { v: 1, t: raw.t, spx: num(raw.spx), watch: obj(raw.watch), weird: obj(raw.weird) };
+  const weird = {};
+  for (const [id, w] of Object.entries(obj(raw.weird))) {
+    if (num(w) !== null) weird[id] = { v: w, a: null };
+    else if (num(w?.v) !== null) weird[id] = { v: w.v, a: typeof w.a === 'string' ? w.a : null };
+  }
+  return { v: 1, t: raw.t, spx: num(raw.spx), watch: obj(raw.watch), weird };
+}
+
+// A new snapshot with gaps (a source that failed this time) keeps the stored numbers for
+// them, so one failed fetch never wipes good values. ids: the watchlist now.
+export function fillSnapshot(fresh, stored, ids = []) {
+  if (!stored) return fresh;
+  const watch = {};
+  for (const id of ids) if (num(stored.watch?.[id]) !== null) watch[id] = stored.watch[id];
+  const weird = {};
+  for (const [id] of SINCE_WEIRD) if (stored.weird?.[id]) weird[id] = stored.weird[id];
+  return {
+    ...fresh,
+    spx: fresh.spx ?? stored.spx ?? null,
+    watch: { ...watch, ...fresh.watch },
+    weird: { ...weird, ...fresh.weird },
+  };
 }
 
 const change = (a, b) => (num(a) > 0 && num(b) !== null ? (b / a - 1) * 100 : null);
@@ -61,8 +83,12 @@ export function sinceItems(then, now) {
     .sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct) || (a.label < b.label ? -1 : 1))
     .slice(0, WATCH_ITEMS);
   out.push(...watch);
+  // A gauge that has not updated (same as-of date) or not moved is left out.
   for (const [id, word] of SINCE_WEIRD) {
-    const p = change(then.weird?.[id], now.weird?.[id]);
+    const a = then.weird?.[id];
+    const b = now.weird?.[id];
+    if (!a || !b || a.v === b.v || (a.a && a.a === b.a)) continue;
+    const p = change(a.v, b.v);
     if (p !== null) out.push({ label: word, pct: p });
   }
   return out;
@@ -116,8 +142,9 @@ export function startSince(meta, ctx) {
     if (!meta) return;
     meta.innerHTML = sinceHtml(baseline, sinceItems(baseline, snap()), Date.now());
   }
+  const ids = loadWatchlist(ctx.store).slice(0, MAX_QUOTES);
   function save() {
-    const s = snap();
+    const s = fillSnapshot(snap(), readSnapshot(ctx.store.get(SINCE_KEY, null)), ids);
     if (hasData(s)) ctx.store.set(SINCE_KEY, s);
   }
   // The first save waits for all three sources (or their failure), so it is a full one.
@@ -128,7 +155,6 @@ export function startSince(meta, ctx) {
     if (pending <= 0 && !saved) { saved = true; save(); }
   };
 
-  const ids = loadWatchlist(ctx.store).slice(0, MAX_QUOTES);
   if (ids.length) {
     ctx.fetchJSON(`/api/quotes?${new URLSearchParams({ s: ids.join(',') })}`, { signal: ctx.signal })
       .then((d) => { cur.quotes = d?.quotes || []; }, () => {})
