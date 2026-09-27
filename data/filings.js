@@ -71,7 +71,7 @@ export function filingUrl(cik, accession, doc) {
   return doc && /^[\w./-]+$/.test(doc) && !doc.includes('..') ? base + doc : base;
 }
 
-// submissions JSON -> { name, cik, rows: [{ form, family, filed, period, description, items, url }] }.
+// submissions JSON -> { name, cik, rows: [{ form, family, filed, period, description, items, accepted, url }] }.
 export function parseSubmissions(body) {
   const r = body?.filings?.recent;
   if (!r || !Array.isArray(r.form)) return null;
@@ -90,6 +90,8 @@ export function parseSubmissions(body) {
       description: describeFiling(form, r.items?.[i], r.primaryDocDescription?.[i]),
       // 8-K item numbers ("2.02" = results of operations), for the chart's earnings flags.
       items: String(r.items?.[i] || '').split(',').map((x) => x.trim()).filter((x) => /^\d+\.\d+$/.test(x)),
+      // When EDGAR accepted it (true UTC), for WHY's "after the prior close" window.
+      accepted: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(r.acceptanceDateTime?.[i] || '')) ? String(r.acceptanceDateTime[i]) : null,
       url: filingUrl(cik, r.accessionNumber?.[i], r.primaryDocument?.[i]),
     });
   }

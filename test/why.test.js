@@ -1,8 +1,9 @@
 // WHY <ticker>: the biggest daily moves and what came out in each one's window.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { itemWords, filingText, closeAt, nyAt, biggestMoves, eightKs, whatCameOut, makeWhy, WHY_MOVES, SEC_TTL } from '../data/why.js';
-import { createCache } from '../data/cache.js';
+import { itemWords, filingText, closeAt, nyAt, biggestMoves, eightKs, whatCameOut, makeWhy, WHY_MOVES } from '../data/why.js';
+import { makeFilings, parseSubmissions } from '../data/filings.js';
+import { SEC_UA } from '../data/financials.js';
 
 // A daily bar stamped at midnight New York time, like the chart source's.
 const bar = (day, v) => ({ t: nyAt(day, 0, 0), v });
@@ -46,19 +47,22 @@ test('WHY: today before the close is not a close yet', () => {
   assert.equal(biggestMoves(pts, { now: Date.parse('2026-09-25T20:30:00Z') }).length, 1, '16:30 ET');
 });
 
-test('WHY: EDGAR submissions -> 8-Ks with their acceptance time and words', () => {
-  const body = {
-    cik: '320193', name: 'Apple Inc.',
-    filings: { recent: {
-      form: ['8-K', '4', '8-K/A', '10-Q'],
-      filingDate: ['2026-07-30', '2026-07-29', '2026-05-02', '2026-05-01'],
-      acceptanceDateTime: ['2026-07-30T20:30:28.000Z', '', '', ''],
-      items: ['2.02,9.01', '', '5.02', ''],
-      accessionNumber: ['0000320193-26-000070', 'x', '0000320193-26-000050', 'y'],
-      primaryDocument: ['aapl-20260730.htm', '', 'a.htm', ''],
-    } },
-  };
-  const k = eightKs(body);
+const AAPL_SUB = {
+  cik: '320193', name: 'Apple Inc.',
+  filings: { recent: {
+    form: ['8-K', '4', '8-K/A', '10-Q'],
+    filingDate: ['2026-07-30', '2026-07-29', '2026-05-02', '2026-05-01'],
+    acceptanceDateTime: ['2026-07-30T20:30:28.000Z', '', '', ''],
+    items: ['2.02,9.01', '', '5.02', ''],
+    accessionNumber: ['0000320193-26-000070', 'x', '0000320193-26-000050', 'y'],
+    primaryDocument: ['aapl-20260730.htm', '', 'a.htm', ''],
+  } },
+};
+
+test('WHY: FILINGS rows -> 8-Ks with their acceptance time and words', () => {
+  const rows = parseSubmissions(AAPL_SUB).rows;
+  assert.equal(rows.find((r) => r.form === '8-K').accepted, '2026-07-30T20:30:28.000Z', 'FILINGS rows carry the acceptance time');
+  const k = eightKs(rows);
   assert.equal(k.length, 2);
   assert.equal(k[0].text, '8-K: earnings');
   assert.equal(new Date(k[0].time).toISOString(), '2026-07-30T20:30:28.000Z');
@@ -101,27 +105,31 @@ test('WHY: the earnings date shows when no results 8-K is there; nothing is an e
   assert.deepEqual(whatCameOut(move, { earnings: [{ date: '2026-10-28' }] }), [], 'the prior day, no time: not in the window');
 });
 
-function fixtures({ calls = { sec: 0 } } = {}) {
+// WHY through the real FILINGS service: its gated fetch, SEC's User-Agent, its cache.
+function fixtures({ calls = { sec: 0, tickers: 0 }, secStatus = 200, gapMs = 0 } = {}) {
   const days = ['2026-07-28', '2026-07-29', '2026-07-30', '2026-07-31', '2026-08-03'];
   const closes = [200, 201, 202, 222, 221];
   const getChart = async (t, r) => { assert.equal(r, '1Y'); return { points: days.map((d, i) => bar(d, closes[i])), stale: false }; };
+  // The E flag source: the results 8-K's filing day and the next CNBC date.
   const getChartEvents = async () => ({ earnings: [{ date: '2026-07-30', url: 'https://www.sec.gov/a' }], next: { date: '2026-10-29', est: true }, dividends: [] });
-  const secTickers = async () => ({ value: { byTicker: new Map([['AAPL', { cik: 320193, title: 'Apple Inc.' }], ['SPY', { cik: 884394, title: 'SPDR S&P 500 ETF Trust' }]]) } });
-  const body = { cik: '320193', filings: { recent: { form: ['8-K'], filingDate: ['2026-07-30'], acceptanceDateTime: ['2026-07-30T20:30:28.000Z'], items: ['2.02,9.01'], accessionNumber: ['0000320193-26-000070'], primaryDocument: ['a.htm'] } } };
   const fetchImpl = async (url, opts) => {
+    assert.equal(opts.headers['User-Agent'], SEC_UA, 'the SEC User-Agent, with its contact');
+    if (url.endsWith('company_tickers.json')) {
+      calls.tickers += 1;
+      return new Response(JSON.stringify({ 0: { cik_str: 320193, ticker: 'AAPL', title: 'Apple Inc.' } }));
+    }
     calls.sec += 1;
     assert.match(url, /^https:\/\/data\.sec\.gov\/submissions\/CIK0000320193\.json$/);
-    assert.match(opts.headers['User-Agent'], /@/, 'SEC fair access: a contact in the User-Agent');
-    return new Response(JSON.stringify(body));
+    return secStatus === 200 ? new Response(JSON.stringify(AAPL_SUB)) : new Response('no', { status: secStatus });
   };
+  const { getFilings } = makeFilings({ fetchImpl, gapMs });
   const log = { read: async () => [{ time: '2026-07-31T13:00:00Z', source: 'Nasdaq', title: 'Apple jumps', url: 'https://n.test/1' }] };
-  return { getChart, getChartEvents, secTickers, fetchImpl, log, calls };
+  return { getChart, getChartEvents, getFilings, log, calls };
 }
 
-test('WHY: the service ranks the moves and fills each row; SEC is asked once per 12 h', async () => {
-  let now = Date.parse('2026-09-27T00:00:00Z');
+test('WHY: the service ranks the moves and fills each row; SEC goes through FILINGS, once', async () => {
   const f = fixtures();
-  const why = makeWhy({ ...f, cache: createCache({ now: () => now }), now: () => now });
+  const why = makeWhy({ ...f, now: () => Date.parse('2026-09-27T00:00:00Z') });
   const d = await why.getWhy('aapl');
   assert.equal(d.ticker, 'AAPL');
   assert.equal(d.company, true);
@@ -133,11 +141,33 @@ test('WHY: the service ranks the moves and fills each row; SEC is asked once per
   assert.equal(d.secOk, true);
   assert.equal(d.logSince, '2026-07-31T13:00:00Z');
   await why.getWhy('AAPL');
-  assert.equal(f.calls.sec, 1);
-  assert.equal(SEC_TTL, 12 * 3600_000);
-  now += SEC_TTL + 1000;
-  await why.getWhy('AAPL');
-  assert.equal(f.calls.sec, 2);
+  await Promise.all([why.getWhy('AAPL'), why.getWhy('AAPL')]);
+  assert.equal(f.calls.sec, 1, 'the submissions JSON is fetched once and cached');
+  assert.equal(f.calls.tickers, 1);
+});
+
+test('WHY: AAPL reported after the close on Jul 30: it shows on the Jul 31 move, not Jul 30', async () => {
+  const f = fixtures();
+  const d = await makeWhy({ ...f, now: () => Date.parse('2026-09-27T00:00:00Z') }).getWhy('AAPL');
+  const on = (day) => d.rows.find((r) => r.date === day);
+  assert.deepEqual(on('2026-07-30').items, [], 'accepted 16:30 ET: after the Jul 30 close');
+  assert.deepEqual(on('2026-07-31').items.filter((x) => x.kind !== 'NEWS').map((x) => [x.kind, x.text]), [['FILING', '8-K: earnings']]);
+  assert.ok(!d.rows.some((r) => r.items.some((x) => x.kind === 'EARNINGS')), 'the E flag filing day is not added again');
+});
+
+test('WHY: SEC requests go one at a time, gapped', async () => {
+  const starts = [];
+  const fetchImpl = async (url) => {
+    starts.push(Date.now());
+    if (url.endsWith('company_tickers.json')) return new Response(JSON.stringify({ 0: { cik_str: 320193, ticker: 'AAPL', title: 'Apple Inc.' }, 1: { cik_str: 789019, ticker: 'MSFT', title: 'Microsoft' } }));
+    return new Response(JSON.stringify({ ...AAPL_SUB, cik: url.includes('789019') ? '789019' : '320193' }));
+  };
+  const { getFilings } = makeFilings({ fetchImpl, gapMs: 40 });
+  const base = fixtures();
+  const why = makeWhy({ ...base, getFilings });
+  await Promise.all([why.getWhy('AAPL'), why.getWhy('MSFT')]);
+  assert.equal(starts.length, 3);
+  for (let i = 1; i < starts.length; i += 1) assert.ok(starts[i] - starts[i - 1] >= 35, `gap ${starts[i] - starts[i - 1]} ms`);
 });
 
 test('WHY: only company stocks; indexes, FX, crypto and non-filers get company: false', async () => {
@@ -152,13 +182,12 @@ test('WHY: only company stocks; indexes, FX, crypto and non-filers get company: 
 });
 
 test('WHY: SEC down still shows the moves, and says the filings did not load', async () => {
-  const f = fixtures();
-  const why = makeWhy({ ...f, fetchImpl: async () => new Response('no', { status: 503 }) });
-  const d = await why.getWhy('AAPL');
+  const f = fixtures({ secStatus: 503 });
+  const d = await makeWhy(f).getWhy('AAPL');
+  assert.equal(d.company, true);
   assert.equal(d.secOk, false);
   assert.equal(d.rows.length, 4);
-  // The E flag source still gives the earnings day, and the log its headline.
-  assert.deepEqual(d.rows[0].items.map((x) => x.kind), ['NEWS']);
+  assert.deepEqual(d.rows[0].items.map((x) => x.kind), ['NEWS'], 'the log still gives its headline');
 });
 
 // ---- The WHY screen -------------------------------------------------------------------

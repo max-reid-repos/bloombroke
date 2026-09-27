@@ -1,31 +1,28 @@
 // WHY <ticker>: the 10 biggest daily moves of the last year, by the absolute close to
 // close change, from the same daily bars the charts draw (data/charts.js, 1Y). Beside
 // each move: what came out in its window, from the prior close to that day's close:
-//   - the company's 8-K filings, from the EDGAR submissions JSON (cached 12 h), with the
-//     item codes in plain words ("8-K: earnings");
-//   - the earnings date, from the chart's E flag source (data/chart-events.js), when no
-//     results 8-K already covers it;
+//   - the company's 8-K filings, from FILINGS' own EDGAR fetch (data/filings.js: one SEC
+//     request at a time, SEC's User-Agent, cached a day), matched by EDGAR's acceptance
+//     time, with the item codes in plain words ("8-K: earnings");
+//   - the CNBC earnings date (the chart's E flag source, data/chart-events.js), when no
+//     results 8-K already covers it. Past earnings come from the 8-Ks themselves, which
+//     carry the time: a report after the close counts on the next session;
 //   - headlines from the per-ticker news log (data/newslog.js), which grows over time.
 // Nothing found is an empty list (the screen shows --). It never says what caused a move.
 //
 // Only company stocks: indexes, FX, crypto and futures (registry instruments) and symbols
 // with no SEC filer come back with company: false and no rows.
 
-import { createCache } from './cache.js';
 import { normalizeTicker } from './quotes.js';
 import { getChart as defaultGetChart } from './charts.js';
 import { getChartEvents as defaultGetChartEvents } from './chart-events.js';
-import { fetchCapped, secTickersFor } from './newsfeeds.js';
-import { secTicker } from './financials.js';
-import { filingUrl } from './filings.js';
+import { getFilings as defaultGetFilings } from './filings.js';
 import { newsLog } from './newslog.js';
 import { nyDay } from './lists.js';
 import { instrumentById } from '../public/instruments.js';
 import { WHY_ITEMS, itemWords, filingText } from '../public/eightk.js';
 
 export const WHY_MOVES = 10;
-export const SEC_TTL = 12 * 60 * 60_000;
-const SUBMISSIONS_URL = (cik) => `https://data.sec.gov/submissions/CIK${String(cik).padStart(10, '0')}.json`;
 const MAX_NEWS = 5; // headlines per move
 
 export class WhyError extends Error {
@@ -77,22 +74,17 @@ export function biggestMoves(points, { n = WHY_MOVES, now = Date.now() } = {}) {
 
 // ---- EDGAR ---------------------------------------------------------------------------
 
-// submissions JSON -> the 8-Ks: [{ form, date, time, items, text, url }], newest first.
-// time: EDGAR's acceptanceDateTime (true UTC), NaN when missing.
-export function eightKs(body) {
-  const r = body?.filings?.recent;
-  if (!r || !Array.isArray(r.form)) return [];
-  const cik = Number(body.cik);
+// FILINGS rows (data/filings.js, 8-K family) -> the 8-Ks: [{ form, date, time, items,
+// text, url }], newest first. time: EDGAR's acceptance time (true UTC), NaN when missing.
+export function eightKs(rows) {
   const out = [];
-  for (let i = 0; i < r.form.length; i += 1) {
-    const form = String(r.form[i] || '').trim().toUpperCase();
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const form = String(r?.form || '').trim().toUpperCase();
     if (form !== '8-K' && form !== '8-K/A') continue;
-    const date = String(r.filingDate?.[i] || '');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-    const acc = String(r.acceptanceDateTime?.[i] || '');
-    const time = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(acc) ? Date.parse(acc) : NaN;
-    const items = String(r.items?.[i] || '').split(',').map((x) => x.trim()).filter((x) => /^\d+\.\d+$/.test(x));
-    out.push({ form, date, time, items, text: filingText(items, form), url: filingUrl(cik, r.accessionNumber?.[i], r.primaryDocument?.[i]) });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.filed || '')) continue;
+    const time = r.accepted ? Date.parse(r.accepted) : NaN;
+    const items = Array.isArray(r.items) ? r.items : [];
+    out.push({ form, date: r.filed, time, items, text: filingText(items, form), url: r.url || null });
   }
   return out.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 }
@@ -126,26 +118,20 @@ export function whatCameOut(move, { filings = [], earnings = [], headlines = [] 
 
 // ---- The service ---------------------------------------------------------------------
 
+// getFilings: data/filings.js (the gated SEC fetch, shared with FILINGS and the E flags).
 export function makeWhy({
-  fetchImpl = globalThis.fetch, getChart = defaultGetChart, getChartEvents = defaultGetChartEvents,
-  log = null, secTickers = secTickersFor(fetchImpl), cache = createCache({ maxEntries: 400, retryMs: 60_000 }), now = () => Date.now(),
+  getFilings = defaultGetFilings, getChart = defaultGetChart, getChartEvents = defaultGetChartEvents,
+  log = null, now = () => Date.now(),
 } = {}) {
-  function filingsFor(cik) {
-    return cache.cached(`why-sec:${cik}`, SEC_TTL, async () => eightKs(JSON.parse(
-      await fetchCapped(fetchImpl, SUBMISSIONS_URL(cik), { accept: 'application/json' }),
-    )));
-  }
-
   async function getWhy(raw) {
     const ticker = normalizeTicker(raw);
     if (!ticker) throw new WhyError('bad_symbol', 'That does not look like a ticker.');
     const base = { ticker, range: '1Y', moves: WHY_MOVES };
     if (instrumentById(ticker)) return { ...base, company: false, name: null, rows: [] };
 
-    let map = null;
-    try { map = (await secTickers()).value.byTicker; } catch { map = null; }
-    const hit = map ? map.get(secTicker(ticker)) : null;
-    if (map && !hit) return { ...base, company: false, name: null, rows: [] };
+    // FILINGS says whether it is an SEC filer: not_found is not a company stock.
+    const fil = await getFilings(ticker, '8-K').then((v) => ({ ok: true, v }), (err) => ({ ok: false, err }));
+    if (!fil.ok && fil.err?.code === 'not_found') return { ...base, company: false, name: null, rows: [] };
 
     let chart;
     try {
@@ -154,14 +140,15 @@ export function makeWhy({
       const code = err?.code === 'not_found' || err?.code === 'no_data' ? 'not_found' : 'unavailable';
       throw new WhyError(code, code === 'not_found' ? `No daily prices for ${ticker}.` : 'Price data is taking a break. Try again in a minute.');
     }
-    const [fil, ev, logged] = await Promise.allSettled([
-      hit ? filingsFor(hit.cik) : Promise.reject(new Error('no SEC map')),
+    const [ev, logged] = await Promise.allSettled([
       getChartEvents(ticker),
       log ? log.read(ticker) : Promise.resolve([]),
     ]);
-    const filings = fil.status === 'fulfilled' ? fil.value.value : [];
+    const filings = fil.ok ? eightKs(fil.v.rows) : [];
     const events = ev.status === 'fulfilled' ? ev.value : null;
-    const earnings = events ? [...(events.earnings || []), ...(events.next ? [{ date: events.next.date, est: events.next.est, url: null }] : [])] : [];
+    // The E flags' past dates are the results 8-Ks' filing days, which do not say before
+    // or after the close: the 8-Ks above carry that. Only the CNBC date is added here.
+    const earnings = events?.next ? [{ date: events.next.date, est: events.next.est, url: null }] : [];
     const headlines = logged.status === 'fulfilled' ? logged.value : [];
     const t = now();
     const rows = biggestMoves(chart.points, { now: t }).map((m, i) => ({
@@ -171,13 +158,13 @@ export function makeWhy({
     return {
       ...base,
       company: true,
-      name: hit?.title || null,
+      name: fil.ok ? fil.v.name || null : null,
       rows,
-      secOk: fil.status === 'fulfilled',
+      secOk: fil.ok,
       earningsOk: Boolean(events),
       logSince: oldest,
       sources: ['CNBC daily bars', 'SEC EDGAR', ...(headlines.length ? ['Bloombroke news log'] : [])],
-      stale: Boolean(chart.stale || (fil.status === 'fulfilled' && fil.value.stale)),
+      stale: Boolean(chart.stale || (fil.ok && fil.v.stale)),
       updated: new Date(t).toISOString(),
     };
   }
