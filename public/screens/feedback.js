@@ -3,6 +3,7 @@
 // The note goes to POST /api/feedback with the screen you came from, for context.
 
 import { esc, panel, metaNote } from './markets.js';
+import { goal } from '../goal.js'; // GOALS
 
 export const MAX_FEEDBACK = 1000;
 export const PROMPT = 'What should we fix or build?';
@@ -76,6 +77,7 @@ export function render(el, cmd, ctx) {
       if (!el.isConnected) return;
       el.querySelector('#fb-body').innerHTML = `<p class="notice">${esc(THANKS)}</p>`;
       ctx.status('FEEDBACK SENT');
+      goal('feedback_sent');
     } catch (e) {
       if (!el.isConnected) return;
       err.textContent = e.message;

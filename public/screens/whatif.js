@@ -13,6 +13,7 @@ import { toolbar, segmented } from '../kit.js';
 import { createReplay, fmtCounter, isBehind } from '../whatif-replay.js';
 import { videoSupport, makeVideo, downloadBlob, VIDEO_NEEDS } from '../whatif-video.js';
 import { parseMine, formWords, mineLabel, fmtAmount, MINE_DOODLE, MINE_EXAMPLES } from '../whatif-mine.js';
+import { goal } from '../goal.js'; // GOALS
 
 let catalogCache = null;
 async function loadCatalog(ctx) {
@@ -796,6 +797,7 @@ function setupReplay(el, d, ctx) {
       // Left the screen while it was being made: nothing is saved.
       if (ctx.signal?.aborted || !box.isConnected) return;
       downloadBlob(blob, filename);
+      goal('whatif_video');
       msg.textContent = `SAVED ${filename}`;
       ctx.status('VIDEO SAVED');
     } catch (err) {
@@ -836,6 +838,8 @@ export function render(el, cmd, ctx) {
         ctx.status(ok ? 'LINK COPIED' : 'COPY THE LINK FROM THE ADDRESS BAR', ok ? '' : 'warn');
       });
       ctx.status(`WHATIF: ${fmtX(d.total.multiple)}${d.stale ? ' (LAST KNOWN PRICES)' : ''}`, d.stale ? 'warn' : '');
+      goal('whatif_run');
+      el.querySelector('.wi-share')?.addEventListener('click', (e) => { const b = e.target.closest('a, [data-copy]'); if (b) goal('whatif_share', { via: b.dataset.copy ? 'link' : b.hasAttribute('download') ? 'image' : 'x' }); });
     });
   }).catch((err) => {
     if (err.name === 'AbortError') return;

@@ -8,6 +8,7 @@ import { esc, fmtNum, fmtPct, dirOf, panel, LOADING, metaNote, nyTime } from './
 import { errorHtml, tickerUsage, fmtDay, dash } from './company-kit.js';
 import { dataTable } from '../kit.js';
 import { safeHref, shortSource } from './news.js';
+import { goal } from '../goal.js'; // GOALS
 
 export { parseTicker as parse } from './company-kit.js';
 
@@ -75,6 +76,7 @@ export function render(el, cmd, ctx) {
     return;
   }
   const { ticker } = cmd.args;
+  goal('news_why_opened');
   el.innerHTML = panel('1', `${ticker} biggest daily moves`, LOADING, { cls: 'panel-solo', metaId: 'why-meta', bodyCls: 'flush' });
   const body = el.querySelector('.panel-body');
   const meta = el.querySelector('#why-meta');

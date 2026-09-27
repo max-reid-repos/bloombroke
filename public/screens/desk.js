@@ -10,6 +10,7 @@
 // The layout maths and the saved state live in ../desk-layout.js.
 
 import { esc, q, panel, nyTime } from './markets.js';
+import { goal } from '../goal.js'; // GOALS
 import * as L from '../desk-layout.js';
 import { cardGauge, cardHtml, cardBody, weirdPickItems, mergeCardRows, nextCardFetch, confirmKey, CARD_RETRY_MS } from './desk-cards.js';
 
@@ -36,6 +37,7 @@ export function render(el, cmd, ctx) {
   }
 
   const { state, writable } = L.loadDesks(ctx.store);
+  goal('desk_opened');
   const n = cmd.args.n || state.active;
   if (cmd.args.reset) state.desks[n - 1] = { panels: n === 1 ? L.defaultDesks().desks[0].panels : [] };
   state.active = n;
