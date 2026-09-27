@@ -175,7 +175,10 @@ async function resolveSymbol(words, text, { search, checkTicker }) {
   let results = [];
   try { results = search ? (await search(text)) || [] : []; } catch { results = []; }
   const hit = strongMatch(text, results);
-  if (hit) return { id: hit.id, name: hit.name, sure: true, candidates: results };
+  // byLookup: the symbol list has the very ticker typed, so it is real even when the
+  // quote check said no (a gap in the quote source, not a bad ticker).
+  const byLookup = upper.length === 1 && hit?.id === upper[0];
+  if (hit) return { id: hit.id, name: hit.name, sure: true, byLookup, candidates: results };
   return { candidates: results.filter(MAJOR).slice(0, 5) };
 }
 
@@ -232,7 +235,7 @@ export async function resolveInput(raw, deps = {}) {
   const picked = phrases.map(pickFn).filter(Boolean);
   const distinct = [...new Map(picked.map((f) => [f.name, f])).values()];
 
-  const suggestions = () => didYouMean({ parts, phrases, symbols, unsure, fnNames });
+  const suggestions = () => didYouMean({ from, parts, phrases, symbols, unsure, fnNames });
 
   if (unsure.length || distinct.length > 1 || (!symbols.length && !distinct.length)) return { confident: false, from, ...suggestions() };
 
@@ -250,17 +253,21 @@ export async function resolveInput(raw, deps = {}) {
     command = tickers.length > 1 ? `COMPARE ${tickers.join(' ')}${tail}` : `${tickers[0]}${tail}`;
   }
   if (!command) return { confident: false, from, ...suggestions() };
-  // Nothing changed: the words were already this command (a bad ticker, say).
-  if (command === from.toUpperCase()) return { confident: false, from, ...suggestions() };
+  // Nothing changed: the words were already this command (a bad ticker, say). Unless the
+  // symbol list has each typed ticker: then it runs, and the screen asks for the quote again.
+  if (command === from.toUpperCase() && !(symbols.length && symbols.every((s) => s.byLookup))) return { confident: false, from, ...suggestions() };
   return { confident: true, from, command };
 }
 
-// The "Did you mean" rows: commands, then symbols, five of each at most.
-function didYouMean({ parts, phrases, symbols, unsure, fnNames }) {
+// The "Did you mean" rows: commands, then symbols, five of each at most. Never the words
+// typed: "No such ticker XLY. Did you mean XLY?" helps nobody.
+function didYouMean({ from = '', parts, phrases, symbols, unsure, fnNames }) {
+  const typed = String(from).trim().replace(/\s+/g, ' ').toUpperCase();
   const seen = new Set();
   const commands = [];
   const addCmd = (c, cmd) => {
     if (!c || c.hidden || c.pattern || c.soon || seen.has(c.name) || commands.length >= 5) return;
+    if (String(cmd || c.examples?.[0] || c.name).toUpperCase() === typed) return;
     seen.add(c.name);
     commands.push(cmdEntry(c, cmd));
   };
@@ -280,7 +287,8 @@ function didYouMean({ parts, phrases, symbols, unsure, fnNames }) {
   const addSym = (s) => {
     if (!s?.id || seenSym.has(s.id) || symRows.length >= 5) return;
     seenSym.add(s.id);
-    symRows.push({ id: s.id, name: s.name || '', cmd: fn ? `${s.id} ${fn.name}` : s.id });
+    const cmd = fn ? `${s.id} ${fn.name}` : s.id;
+    if (cmd.toUpperCase() !== typed) symRows.push({ id: s.id, name: s.name || '', cmd });
   };
   symbols.forEach(addSym);
   unsure.forEach((u) => u.candidates.forEach(addSym));

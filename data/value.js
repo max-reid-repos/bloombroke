@@ -7,7 +7,7 @@
 // with its own time. Both times are sent, so a gap between screens is explained.
 
 import { createCache } from './cache.js';
-import { fetchCnbcRows, tickerSource, getQuote } from './quotes.js';
+import { fetchCnbcRows, fetchStockRows, tickerSource, getQuote } from './quotes.js';
 import { money, capNum } from './lists.js';
 import { CompanyDataError, cachedOrThrow, tickerOrThrow, text } from './company-kit.js';
 
@@ -71,7 +71,7 @@ export function makeValue({ fetchImpl = globalThis.fetch, cache = createCache({ 
   async function getValue(raw) {
     const ticker = tickerOrThrow(raw);
     const got = await cachedOrThrow(cache, `value:${ticker}`, TTL, async () => {
-      const rows = await fetchCnbcRows(fetchImpl, [tickerSource(ticker)]);
+      const rows = await fetchStockRows(fetchImpl, [tickerSource(ticker)]);
       return parseValue(rows[0]);
     }, { what: 'Quote data', missing: `No ticker called ${ticker}.` });
     // The live last price and its trade time; the snapshot's own when the quote fails.
