@@ -12,11 +12,11 @@ import { createCache } from './cache.js';
 import { normalizeTicker, fetchCnbcRows, tickerSource } from './quotes.js';
 import { usDay, money } from './lists.js';
 import { instrumentById } from '../public/instruments.js';
-import { getFilings as defaultGetFilings } from './filings.js';
+import { getFilings as defaultGetFilings, NEWS_MAX_AGE_MS } from './filings.js';
 import { getDividends as defaultGetDividends } from './dividends.js';
 import { filingText } from '../public/eightk.js';
 
-const TTL = 60 * 60_000;
+const TTL = 15 * 60_000; // the 8-K list behind E and N flags is at most 15 minutes old
 const MAX_FLAGS = 400;
 
 export class ChartEventsError extends Error {
@@ -96,7 +96,7 @@ export function makeChartEvents({
     if (!ticker) throw new ChartEventsError('bad_symbol', 'That does not look like a ticker.');
     if (instrumentById(ticker)) return { ticker, earnings: [], next: null, dividends: [], filings: [] };
     const got = await cache.cached(`chart-events:${ticker}`, TTL, async () => {
-      const [fil, div, cn] = await Promise.allSettled([getFilings(ticker, '8-K'), getDividends(ticker), cnbcEvents(ticker)]);
+      const [fil, div, cn] = await Promise.allSettled([getFilings(ticker, '8-K', { maxAgeMs: NEWS_MAX_AGE_MS }), getDividends(ticker), cnbcEvents(ticker)]);
       const earnings = fil.status === 'fulfilled' ? earningsFrom8K(fil.value.rows) : [];
       const filings = fil.status === 'fulfilled' ? other8K(fil.value.rows) : [];
       let dividends = div.status === 'fulfilled' ? exDivFromRows(div.value.rows) : [];

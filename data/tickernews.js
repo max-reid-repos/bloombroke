@@ -10,7 +10,7 @@ import { parseRss, cleanText } from './news.js';
 import { iso } from './lists.js';
 import { fetchCapped, parseSeekingAlpha, filingTitle, companyName, mergeItems, secTickersFor, FEED_TTL, FEED_TIMEOUT_MS } from './newsfeeds.js';
 import { secTicker } from './financials.js';
-import { filingUrl, getFilings as defaultGetFilings, makeFilings } from './filings.js';
+import { filingUrl, getFilings as defaultGetFilings, makeFilings, NEWS_MAX_AGE_MS } from './filings.js';
 import { newsLog } from './newslog.js';
 import { instrumentById } from '../public/instruments.js';
 import { aboutTicker } from '../public/screens/tickernews.js';
@@ -138,7 +138,7 @@ export function makeTickerNews({
   // one has them. Not an SEC filer: no filings, not an error.
   async function secFilings(ticker) {
     try {
-      const f = await getFilings(ticker, '8-K');
+      const f = await getFilings(ticker, '8-K', { maxAgeMs: NEWS_MAX_AGE_MS });
       return { value: sec8kFromFilings(f.rows, f.name, { now: now() }), stale: f.stale, fetchedAt: Date.parse(f.updated) || now() };
     } catch (err) {
       if (err?.code === 'not_found') return { value: [], stale: false, fetchedAt: now() };

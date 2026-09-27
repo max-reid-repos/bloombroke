@@ -111,7 +111,11 @@ export function filterFilings(rows, form = 'ALL', max = MAX_ROWS) {
   return { rows: picked.slice(0, max), counts, matched: picked.length };
 }
 
-export function makeFilings({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 300, retryMs: 60_000 }), gapMs = 350 } = {}) {
+// The submissions list news uses (NEWS <ticker>, WHY, chart flags) is at most this old:
+// they pass it as maxAgeMs so a new 8-K shows within minutes. FILINGS keeps the day.
+export const NEWS_MAX_AGE_MS = 15 * 60_000;
+
+export function makeFilings({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 300, retryMs: 60_000 }), gapMs = 350, now = () => Date.now() } = {}) {
   let chain = Promise.resolve();
   let lastAt = 0;
   function secGet(url) {
@@ -128,7 +132,10 @@ export function makeFilings({ fetchImpl = globalThis.fetch, cache = createCache(
     return run;
   }
 
-  async function getFilings(raw, rawForm = 'ALL') {
+  // getFilings(ticker, form, { maxAgeMs }): maxAgeMs asks for a submissions list no
+  // older than that. An older cached one is fetched again through the same queue (one
+  // fetch however many callers ask at once); if that fails, the old one is served stale.
+  async function getFilings(raw, rawForm = 'ALL', { maxAgeMs = DAY_MS } = {}) {
     const ticker = tickerOrThrow(raw);
     const form = FILING_FORMS.includes(String(rawForm || 'ALL').toUpperCase()) ? String(rawForm || 'ALL').toUpperCase() : 'ALL';
     const map = await cachedOrThrow(cache, 'filings:tickers', DAY_MS, async () => {
@@ -138,9 +145,19 @@ export function makeFilings({ fetchImpl = globalThis.fetch, cache = createCache(
     }, { what: 'SEC data', missing: 'SEC data is taking a break. Try again in a minute.' });
     const hit = map.value.get(secTicker(ticker));
     if (!hit) throw new CompanyDataError('not_found', `No SEC filings for ${ticker}. Only companies that file with the SEC are listed.`);
-    const got = await cachedOrThrow(cache, `filings:${hit.cik}`, DAY_MS, async () => parseSubmissions(await secGet(SUBMISSIONS_URL(hit.cik))), {
+    const key = `filings:${hit.cik}`;
+    const loadSubs = async () => parseSubmissions(await secGet(SUBMISSIONS_URL(hit.cik)));
+    let got = await cachedOrThrow(cache, key, DAY_MS, loadSubs, {
       what: 'SEC data', missing: `No SEC filings for ${ticker}.`,
     });
+    if (now() - Date.parse(got.updated) > maxAgeMs) {
+      try {
+        const r = await cache.refresh(key, DAY_MS, loadSubs);
+        if (r.value) got = { value: r.value, stale: false, updated: new Date(r.fetchedAt).toISOString() };
+      } catch {
+        got = { ...got, stale: true };
+      }
+    }
     const f = filterFilings(got.value.rows, form);
     return {
       ticker, form, name: got.value.name || hit.title, cik: hit.cik, ...f,

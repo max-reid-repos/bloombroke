@@ -16,7 +16,7 @@
 import { normalizeTicker } from './quotes.js';
 import { getChart as defaultGetChart } from './charts.js';
 import { getChartEvents as defaultGetChartEvents } from './chart-events.js';
-import { getFilings as defaultGetFilings } from './filings.js';
+import { getFilings as defaultGetFilings, NEWS_MAX_AGE_MS } from './filings.js';
 import { newsLog } from './newslog.js';
 import { nyDay } from './lists.js';
 import { instrumentById } from '../public/instruments.js';
@@ -130,7 +130,7 @@ export function makeWhy({
     if (instrumentById(ticker)) return { ...base, company: false, name: null, rows: [] };
 
     // FILINGS says whether it is an SEC filer: not_found is not a company stock.
-    const fil = await getFilings(ticker, '8-K').then((v) => ({ ok: true, v }), (err) => ({ ok: false, err }));
+    const fil = await getFilings(ticker, '8-K', { maxAgeMs: NEWS_MAX_AGE_MS }).then((v) => ({ ok: true, v }), (err) => ({ ok: false, err }));
     if (!fil.ok && fil.err?.code === 'not_found') return { ...base, company: false, name: null, rows: [] };
 
     let chart;

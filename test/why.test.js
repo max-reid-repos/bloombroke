@@ -248,3 +248,47 @@ test('WHY screen: no amber, no em dashes, no advice words in its copy', () => {
   assert.doesNotMatch(copy, /\b(buy|sell|rating|target|signal)\b/i);
   assert.match(notCompanyHtml('SPX'), /WHY works for company stocks/);
 });
+
+// ---- FILINGS max-age: the 8-K list for news, WHY and flags is at most 15 minutes old -------
+
+import { NEWS_MAX_AGE_MS } from '../data/filings.js';
+import { createCache } from '../data/cache.js';
+
+test('FILINGS max-age: news callers refetch after 15 minutes, FILINGS keeps its day', async () => {
+  let t = Date.parse('2026-09-27T12:00:00Z');
+  const clock = () => t;
+  let subs = 0;
+  let tickers = 0;
+  let fail = false;
+  const fetchImpl = async (url, opts) => {
+    assert.equal(opts.headers['User-Agent'], SEC_UA);
+    if (url.endsWith('company_tickers.json')) { tickers += 1; return new Response(JSON.stringify({ 0: { cik_str: 320193, ticker: 'AAPL', title: 'Apple Inc.' } })); }
+    subs += 1;
+    if (fail) return new Response('no', { status: 503 });
+    return new Response(JSON.stringify(AAPL_SUB));
+  };
+  const { getFilings } = makeFilings({ fetchImpl, gapMs: 0, cache: createCache({ now: clock }), now: clock });
+  const news = { maxAgeMs: NEWS_MAX_AGE_MS };
+  assert.equal(NEWS_MAX_AGE_MS, 15 * 60_000);
+  await getFilings('AAPL', '8-K', news);
+  assert.equal(subs, 1);
+  t += 14 * 60_000;
+  await getFilings('AAPL', '8-K', news);
+  assert.equal(subs, 1, 'under 15 minutes: the cached list');
+  t += 2 * 60_000;
+  await getFilings('AAPL', 'ALL');
+  assert.equal(subs, 1, 'FILINGS itself keeps the day-long cache');
+  const [a, b] = await Promise.all([getFilings('AAPL', '8-K', news), getFilings('AAPL', '8-K', news)]);
+  assert.equal(subs, 2, 'over 15 minutes: one new fetch, however many ask at once');
+  assert.equal(a.updated, new Date(t).toISOString());
+  assert.equal(b.stale, false);
+  await getFilings('AAPL', 'ALL');
+  assert.equal(subs, 2, 'the refetched list serves FILINGS too');
+  t += 16 * 60_000;
+  fail = true;
+  const old = await getFilings('AAPL', '8-K', news);
+  assert.equal(subs, 3);
+  assert.equal(old.stale, true, 'a failed refetch serves the old list, marked stale');
+  assert.ok(old.rows.length > 0);
+  assert.equal(tickers, 1, 'the ticker map keeps its day');
+});
