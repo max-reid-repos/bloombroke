@@ -222,7 +222,7 @@ test('yearly: checkout params use the yearly price and say yearly', () => {
   const y = checkoutParams({ priceId: 'price_y', publicUrl: 'https://bloombroke.com', interval: 'year' });
   assert.deepEqual(y.line_items, [{ price: 'price_y', quantity: 1 }]);
   assert.equal(y.custom_text.submit.message, SUBMIT_MESSAGE_YEARLY);
-  assert.match(SUBMIT_MESSAGE_YEARLY, /yearly at \$42 USD/);
+  assert.match(SUBMIT_MESSAGE_YEARLY, /yearly at \$420 USD/);
   assert.equal(y.mode, 'subscription');
   assert.deepEqual(y.payment_method_types, ['card']);
   assert.equal(y.allow_promotion_codes, false);

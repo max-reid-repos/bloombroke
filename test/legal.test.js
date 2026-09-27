@@ -104,7 +104,7 @@ test('legal pages: 200, operator named, version and date shown', async () => {
       assert.doesNotMatch(html, FORBIDDEN);
     }
     const terms = await (await fetch(`${base}/terms`)).text();
-    for (const must of ['Monetary Authority of Singapore', 'Contracts (Rights of Third Parties) Act 2001', 'USD 50', '18 years', 'experimental', 'USD 4.20', 'laws of Singapore']) {
+    for (const must of ['Monetary Authority of Singapore', 'Contracts (Rights of Third Parties) Act 2001', 'USD 50', '18 years', 'experimental', 'USD 42 a month', 'laws of Singapore']) {
       assert.ok(terms.includes(must), `terms mention ${must}`);
     }
     const privacy = await (await fetch(`${base}/privacy`)).text();

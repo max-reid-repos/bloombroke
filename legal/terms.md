@@ -63,7 +63,7 @@ The service, its software, design, text, the Bloombroke name and logo, and the s
 
 ## 9. Pro subscription
 
-- **Price.** Pro costs USD 4.20 a month, or USD 42 a year, plus any tax that applies. You choose monthly or yearly at checkout. The price shown at checkout is the price you pay.
+- **Price.** Pro costs USD 42 a month, or USD 420 a year, plus any tax that applies. You choose monthly or yearly at checkout. The price shown at checkout is the price you pay. If you subscribed at an earlier price, you keep that price while your subscription stays active.
 - **Renewal.** A monthly subscription renews automatically every month, and a yearly subscription renews automatically every year. We charge your payment method at the start of each period until you cancel.
 - **Cancelling.** You can cancel at any time: type PRO and press MANAGE, which opens the Stripe billing portal. Cancelling stops future renewals. Pro keeps working until the end of the period you have already paid for.
 - **Refunds.** Payments are not refundable, and we do not refund part-used periods, except where this section or the law says otherwise. If we discontinue the service, we will cancel all subscriptions and refund the unused part of the current period. If two subscriptions start on the same licence key at the same time, for example from two open checkout pages, we keep the one that started last, cancel the other one and refund its latest payment in full.
