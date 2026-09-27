@@ -26,16 +26,38 @@ export class ChartEventsError extends Error {
   }
 }
 
-// FILINGS rows -> [{ date, url }]: 8-Ks (not amendments) with item 2.02, oldest first.
-export function earningsFrom8K(rows) {
+const DAY = 86_400_000;
+const isDay = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
+const daysApart = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / DAY);
+
+// The 10-Q or 10-K that made an earnings 8-K final: the first one filed on or after it,
+// within 100 days, for a period that ended by then. null when the list does not reach
+// back that far (unknown), '8-K' when it does and there is none yet (preliminary).
+export function finalReport(filed, reports) {
+  const finals = (reports || []).filter((r) => /^10-[QK]$/.test(String(r?.form || '').toUpperCase()) && isDay(r.filed))
+    .sort((a, b) => (a.filed < b.filed ? -1 : a.filed > b.filed ? 1 : 0));
+  const hit = finals.find((r) => r.filed >= filed && daysApart(filed, r.filed) <= 100 && (!isDay(r.period) || r.period <= filed));
+  if (hit) return String(hit.form).toUpperCase();
+  return finals.length && finals[0].filed <= filed ? '8-K' : null;
+}
+
+// FILINGS rows -> [{ date, url, form?, session? }]: 8-Ks (not amendments) with item 2.02,
+// oldest first. form: '8-K' while the results are preliminary, '10-Q' or '10-K' once that
+// report is filed (reports: the 10-Q and 10-K rows), left out when unknown. session: PRE,
+// MKT, AH or WKD from EDGAR's acceptance time.
+export function earningsFrom8K(rows, reports = rows) {
   const out = [];
   const seen = new Set();
   for (const r of Array.isArray(rows) ? rows : []) {
     if (String(r?.form || '').toUpperCase() !== '8-K') continue;
     if (!Array.isArray(r.items) || !r.items.includes('2.02')) continue;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.filed || '') || seen.has(r.filed)) continue;
+    if (!isDay(r.filed) || seen.has(r.filed)) continue;
     seen.add(r.filed);
-    out.push({ date: r.filed, url: typeof r.url === 'string' && r.url.startsWith('https://www.sec.gov/') ? r.url : null });
+    const e = { date: r.filed, url: typeof r.url === 'string' && r.url.startsWith('https://www.sec.gov/') ? r.url : null };
+    const form = finalReport(r.filed, reports);
+    if (form) e.form = form;
+    if (r.session) e.session = r.session;
+    out.push(e);
   }
   return out.sort((a, b) => (a.date < b.date ? -1 : 1)).slice(-MAX_FLAGS);
 }
@@ -96,8 +118,13 @@ export function makeChartEvents({
     if (!ticker) throw new ChartEventsError('bad_symbol', 'That does not look like a ticker.');
     if (instrumentById(ticker)) return { ticker, earnings: [], next: null, dividends: [], filings: [] };
     const got = await cache.cached(`chart-events:${ticker}`, TTL, async () => {
-      const [fil, div, cn] = await Promise.allSettled([getFilings(ticker, '8-K', { maxAgeMs: NEWS_MAX_AGE_MS }), getDividends(ticker), cnbcEvents(ticker)]);
-      const earnings = fil.status === 'fulfilled' ? earningsFrom8K(fil.value.rows) : [];
+      const [fil, div, cn, tenQ, tenK] = await Promise.allSettled([
+        getFilings(ticker, '8-K', { maxAgeMs: NEWS_MAX_AGE_MS }), getDividends(ticker), cnbcEvents(ticker),
+        // The same cached list, read for the 10-Qs and 10-Ks that make results final.
+        getFilings(ticker, '10-Q', { maxAgeMs: NEWS_MAX_AGE_MS }), getFilings(ticker, '10-K', { maxAgeMs: NEWS_MAX_AGE_MS }),
+      ]);
+      const reports = [tenQ, tenK].flatMap((x) => (x.status === 'fulfilled' ? x.value.rows || [] : []));
+      const earnings = fil.status === 'fulfilled' ? earningsFrom8K(fil.value.rows, reports) : [];
       const filings = fil.status === 'fulfilled' ? other8K(fil.value.rows) : [];
       let dividends = div.status === 'fulfilled' ? exDivFromRows(div.value.rows) : [];
       const ev = cn.status === 'fulfilled' ? cn.value : { next: null, exDiv: null };
@@ -106,7 +133,9 @@ export function makeChartEvents({
     });
     return { ticker, ...got.value, updated: new Date(got.fetchedAt).toISOString() };
   }
-  return { getChartEvents };
+  // A new filing for this company (data/edgarwatch.js): the next view rebuilds the flags.
+  const forget = (ticker) => cache.forget(`chart-events:${ticker}`);
+  return { getChartEvents, forget };
 }
 
-export const { getChartEvents } = makeChartEvents();
+export const { getChartEvents, forget: forgetChartEvents } = makeChartEvents();

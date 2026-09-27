@@ -721,11 +721,12 @@ export function rangeChart(root, ctx, opts) {
     const days = info.map((x) => x.day);
     const n = days.length - 1;
     const list = [
-      ...ev.earnings.map((e) => ({ date: e.date, kind: 'E', url: e.url, text: 'EARNINGS' })),
+      // tags: '8-K' (preliminary) or '10-Q'/'10-K' (final), and PRE/MKT/AH/WKD.
+      ...ev.earnings.map((e) => ({ date: e.date, kind: 'E', url: e.url, text: 'EARNINGS', tags: [e.form, e.session].filter(Boolean) })),
       ...(ev.next ? [{ date: ev.next.date, kind: 'E', url: null, text: ev.next.est ? 'EARNINGS (EST)' : 'EARNINGS' }] : []),
       ...ev.dividends.map((d) => ({ date: d.date, kind: 'D', url: null, text: Number.isFinite(d.amount) ? `EX-DIV $${fmtDiv(d.amount)}` : 'EX-DIV' })),
     ].sort((a, b) => (a.date < b.date ? -1 : 1));
-    const ed = placeEvents(list, days, 0, n, { bar }).map((f) => ({ ...f, title: `${f.text} ${isoToWhen(f.date)}`, hint: f.url ? 'CLICK E FOR THE SEC FILING' : '' }));
+    const ed = placeEvents(list, days, 0, n, { bar }).map((f) => ({ ...f, title: `${f.text} ${isoToWhen(f.date)}${f.tags?.length ? ` · ${f.tags.join(' · ')}` : ''}`, hint: f.url ? 'CLICK E FOR THE SEC FILING' : '' }));
     // N: headlines on intraday bars, other 8-K filings on daily bars and longer.
     const nf = isIntradayBar(bar) ? newsFlags(headlines, times, bar) : filingFlags(ev.filings, days, bar);
     return [...ed, ...nf].sort((a, b) => a.i - b.i);

@@ -36,6 +36,11 @@ import { getWeird, getGauge, startWeirdPrewarm, FAST_WAIT } from './data/weird/i
 import { makeWeirdCards, weirdCommand } from './lib/og-weird.js'; // WEIRD share cards
 import { mountWhyCards } from './lib/og-why.js'; // WHY share cards
 import { getWhy } from './data/why.js'; // WHY share cards
+// --- Provenance: the envelope on every /api answer, DATA, STATUS, CHANGES, the EDGAR watcher ---
+import { provenanceJson, mountProvenanceRoutes } from './lib/provenance.js';
+import { GAUGES } from './data/weird/index.js';
+import { startEdgarWatch } from './data/edgarwatch.js';
+// --- end Provenance ---
 import { siteCounters, mountCounters, makeCountGate } from './lib/counters.js'; // BBRK site numbers
 const countGate = makeCountGate(); // BBRK: a few counts per IP a minute, no repeats
 
@@ -54,6 +59,7 @@ app.use((req, res, next) => {
   res.set(HEADERS);
   next();
 });
+app.use('/api', provenanceJson()); // Provenance: { source, as_of, age_seconds, delay, ... } on every JSON answer
 
 app.get('/api/markets', async (req, res) => {
   try {
@@ -336,6 +342,14 @@ mountMcp(app, { count: (n) => siteCounters.bump(n) });
 mountLlmsTxt(app);
 // --- end MCP ---
 
+// Provenance: /api/data (DATA), /api/status (STATUS), /api/changes (CHANGES).
+let edgarWatch = null;
+mountProvenanceRoutes(app, {
+  gauges: GAUGES.map((g) => ({ id: g.id, source: g.source })),
+  weird: async () => (await getWeird({ wait: 0 })).gauges,
+  edgar: () => edgarWatch?.stats() || null,
+});
+
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));
 
 // Share images. A bad or unknown command gets the site card, never an error.
@@ -499,4 +513,6 @@ app.listen(PORT, HOST, () => {
   // SCREEN's P/E and dividend numbers: loaded in the background, so no one waits on a cold cache.
   startScreenPrewarm();
   startWeirdPrewarm(); // WEIRD: refresh gauges with no value or an old one, staggered
+  // New SEC filings drop that company's cached SEC data (EDGAR_WATCH=0 turns it off).
+  if (process.env.EDGAR_WATCH !== '0') edgarWatch = startEdgarWatch();
 });

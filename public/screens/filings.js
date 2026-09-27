@@ -5,6 +5,13 @@
 import { esc, q, panel, LOADING } from './markets.js';
 import { metaNote, errorHtml, fmtInt, fmtDay, dash } from './company-kit.js';
 import { toolbar, panelTools, dataTable, sortRows, nextSort, edgeFade } from '../kit.js';
+import { sessionHtml } from '../provenance.js';
+
+// EDGAR's acceptance time in New York, for the PRE/MKT/AH/WKD tag's tooltip.
+export function acceptedEt(iso) {
+  const t = Date.parse(iso || '');
+  return Number.isFinite(t) ? `${new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })} ET` : '';
+}
 
 const TICKER = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 // KEY (the default) leaves out ownership paperwork: insider Forms 3, 4, 5 and 144 and 5%
@@ -36,7 +43,7 @@ export function chips(ticker, current, counts = null) {
 }
 
 const COLUMNS = [
-  { key: 'filed', label: 'Filed', cls: 'date', fmt: (v) => esc(fmtDay(v)) },
+  { key: 'filed', label: 'Filed', cls: 'date', fmt: (v, r) => `${esc(fmtDay(v))}${sessionHtml(r.session, acceptedEt(r.accepted))}` },
   { key: 'form', label: 'Form', cls: 'co-form' },
   {
     key: 'description', label: 'Description', name: true, cls: 'wide-name',

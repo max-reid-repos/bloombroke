@@ -56,7 +56,7 @@ test('Apple Q4 FY2025 = FY2025 minus Q1 to Q3, marked as worked out', () => {
   const q1 = r.quarterly.values.revenue[r.quarterly.periods.findIndex((p) => p.label === 'Q1 FY2025')];
   assert.equal(q1.v, 124_300 * M);
   assert.equal(q1.derived, undefined);
-  assert.match(cellTitle(c), /Year-to-date total minus earlier quarters/);
+  assert.match(cellTitle(c), /Worked out: the full year minus Q1 to Q3. From 10-K filed /);
 });
 
 // ---- synthetic filings ----------------------------------------------------------

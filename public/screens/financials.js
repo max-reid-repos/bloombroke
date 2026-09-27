@@ -96,13 +96,42 @@ const ROWS = {
 };
 export const STATEMENT_ROWS = ROWS;
 
-// Where a number came from, for the cell's tooltip.
+// The filing a number came from: "From 10-Q filed 2026-07-31 (accession ...)". The
+// latest filing wins, so a restated figure names the filing that restated it.
+export function filedFrom(c) {
+  if (!c?.form || !c.filed) return '';
+  return `From ${c.form} filed ${c.filed}${c.accn ? ` (accession ${c.accn})` : ''}`;
+}
+
+// Where a number came from, for the cell's tooltip; worked-out numbers say how.
 export function cellTitle(c) {
   if (!c) return 'Not in the filings';
-  if (c.calc) return `${c.calc}${c.derived ? ', from year-to-date totals' : ''}`;
-  const src = `us-gaap:${c.tag}, ${c.form} filed ${c.filed}`;
-  if (c.splitFactor) return `Split-adjusted: filed as ${fmtNum(c.asReported, c.asReported < 1000 ? 2 : 0)} before later splits (x${fmtNum(c.splitFactor, c.splitFactor % 1 ? 2 : 0)} shares). ${src}`;
-  return c.derived ? `Year-to-date total minus earlier quarters. ${src}` : src;
+  const from = filedFrom(c);
+  const tag = c.tag ? `, us-gaap:${c.tag}` : '';
+  const lower = (t) => `${t.charAt(0).toLowerCase()}${t.slice(1)}`;
+  if (c.calc) {
+    const capex = c.capex ? filedFrom(c.capex) : '';
+    return `Worked out: operating cash flow minus capex${c.derived ? ' (quarters from year-to-date totals)' : ''}.${from ? ` Operating cash flow: ${lower(from)}.` : ''}${capex ? ` Capex: ${lower(capex)}.` : ''}`;
+  }
+  const how = c.derived
+    ? (/^10-K/.test(c.form || '') ? 'Worked out: the full year minus Q1 to Q3. ' : 'Worked out: the year-to-date total minus the earlier quarters. ')
+    : '';
+  const split = c.splitFactor ? `Split-adjusted: filed as ${fmtNum(c.asReported, c.asReported < 1000 ? 2 : 0)} before later splits (x${fmtNum(c.splitFactor, c.splitFactor % 1 ? 2 : 0)} shares). ` : '';
+  return `${split}${how}${from}${tag}`;
+}
+
+// A value on sec.gov: the filing's index page, or null.
+export function cellUrl(cik, c) {
+  return filingUrl(cik, c?.accn);
+}
+
+// One value cell's content: the number as it looks, a link to its filing (hover or focus
+// for where it came from), and a one-character mark on numbers that were worked out.
+export function valueHtml(cik, c, text) {
+  const mark = c && (c.derived || c.calc) ? '<sup class="fin-d" data-prov aria-hidden="true">*</sup>' : '';
+  const url = cellUrl(cik, c);
+  if (!url) return mark ? `<span class="fin-nv">${esc(text)}${mark}</span>` : esc(text);
+  return `<a class="fin-v" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(text)}${mark}</a>`;
 }
 
 // The rows of one mode for a basis: split-adjusted EPS and share counts replace the
@@ -146,7 +175,7 @@ export function statementTable(d, mode, statement, basis = 'adjusted') {
     const vals = values[r.id] || [];
     return `<tr><th scope="row" class="name">${esc(r.label)}</th>${cols.map((_, i) => {
       const c = vals[i];
-      return `<td class="num${c?.derived ? ' is-derived' : ''}" title="${esc(cellTitle(c))}">${esc(fmtCell(r, c))}</td>`;
+      return `<td class="num${c?.derived ? ' is-derived' : ''}" title="${esc(cellTitle(c))}">${valueHtml(d.cik, c, fmtCell(r, c))}</td>`;
     }).join('')}</tr>`;
   }).join('');
   return `<div class="fin-scroll"><table class="grid-table fin-table">
@@ -331,18 +360,19 @@ export function render(el, cmd, ctx) {
     draw();
     scroller.addEventListener('scroll', draw, { passive: true });
     if (typeof ResizeObserver === 'function') { ro = new ResizeObserver(draw); ro.observe(host); }
-    const derived = mode === 'quarterly' || Object.values(m.values).some((arr) => arr.some((c) => c?.derived));
+    const derived = mode === 'quarterly' || Object.values(m.values).some((arr) => arr.some((c) => c?.derived))
+      || (args.statement === 'cashflow' && m.values.freeCashFlow?.some(Boolean));
     // How to read the per-share rows and the dotted cells: short in the title strip,
     // the long form as its tooltip.
     const income = args.statement === 'income';
     const short = [
       income && hasSplits ? (basis === 'reported' ? 'EPS AS REPORTED' : 'EPS SPLIT-ADJUSTED') : '',
       income && !d.split ? 'EPS AS FILED, SPLITS UNKNOWN' : '',
-      derived ? 'DOTTED = WORKED OUT FROM YEAR TO DATE' : '',
+      derived ? '* = WORKED OUT' : '',
     ].filter(Boolean).join(' · ');
     const long = [
       income ? basisNote(d, basis) : '',
-      derived ? 'Underlined dotted: a quarter the filing only gives as part of a year-to-date total, worked out as that total minus the earlier quarters (always the case for Q4).' : '',
+      derived ? 'A * marks a number worked out from filed ones: a quarter the filing only gives inside a year-to-date total (that total minus the earlier quarters; always the case for Q4), and free cash flow (operating cash flow minus capex). Hover a number for the filing it came from; click it to open that filing on sec.gov.' : '',
     ].filter(Boolean).join(' ');
     if (short) meta.insertAdjacentHTML('beforeend', ` · ${metaNote(short, long)}`);
     const lastP = m.periods[m.periods.length - 1];
