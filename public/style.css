@@ -774,7 +774,7 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .wc-seal { position: absolute; inset: 0; pointer-events: none; transform-origin: 82.5% 68.4%; }
 /* While racing, the number rolls in ink (red while behind) and the seal is empty; it
    stamps in with the multiple when the race ends. */
-.wi-cert.is-racing .wc-seal { visibility: hidden; }
+.wi-cert.is-racing .wc-seal, .wi-cert.is-racing .wc-today { visibility: hidden; }
 .wi-cert.is-racing .wc-big { color: var(--paper-ink); }
 .wi-cert.is-racing.is-behind .wc-big { color: var(--paper-red); }
 .wi-cert.is-stamped .wc-seal { --stamp-rot: 0deg; animation: stamp-in 260ms cubic-bezier(.2, .8, .2, 1) both; }
