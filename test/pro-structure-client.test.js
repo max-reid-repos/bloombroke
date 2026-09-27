@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import express from 'express';
@@ -466,7 +466,7 @@ test('legal: terms s9, disclaimer and privacy say what the code does', () => {
   const privacy = read('privacy');
   assert.ok(privacy.includes('We do not share it with advertisers or data brokers.'), 'privacy s6 stays');
   for (const must of ['We add no tracking code to the link', 'one-way hash of the code and its last four characters', 'your seat number', 'We keep feedback for up to 12 months', 'We do not store your IP address with it', 'your email address only to reply to you',
-    'at most 15 minutes, or one hour for feedback, and forgets it within one minute after the window ends', 'DESK layouts',
+    'the Pro routes and gift codes (a 10 or 15 minute window), the ticker counter and the GUESS game (a one minute window) and the feedback form (a one hour window)', 'forgets it within one minute after the window ends', 'one minute for the ticker counter and GUESS, 10 or 15 minutes for the Pro routes and gift codes, one hour for feedback', 'DESK layouts',
     'sponsors get no data from us', 'DataFast, counts link clicks, including clicks on sponsor links',
     'kept while your licence exists and for 5 years after your subscription is cancelled', 'unpaid or overdue is kept until the subscription is cancelled', 'keeps only a count of the redeemed codes', 'Gift code records:** deleted 12 months after the code was used or expired',
     'the licence record is kept for 5 years after the gift month ends']) {
@@ -515,4 +515,21 @@ test('feedback: terminal escapes and bidi overrides never reach the store or the
     assert.equal((await s.post({ message: osc })).status, 200);
     assert.equal(s.db.prepare('SELECT message FROM feedback').get().message, 'copy me ]52;c;ZXZpbA== done');
   } finally { await s.close(); }
+});
+
+test('privacy names every IP-keyed limiter in the code, with its window', () => {
+  const privacy = readFileSync('legal/privacy.md', 'utf8');
+  const windows = {
+    'pro/routes.js': [/windowMs: 10 \* MIN/, /windowMs: 15 \* MIN/],
+    'pro/feedback.js': [/windowMs: HOUR/],
+    'data/guess.js': [/windowMs: 60_000/],
+    'data/trending.js': [/windowMs: MIN/],
+  };
+  for (const [f, res] of Object.entries(windows)) for (const re of res) assert.match(readFileSync(f, 'utf8'), re, `${f} window changed: update the Privacy Policy`);
+  for (const name of ['Pro routes', 'gift codes', 'ticker counter', 'GUESS game', 'feedback form']) assert.ok(privacy.includes(name), name);
+  // No other file keys a limiter on the IP.
+  const users = [];
+  const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = `${d}/${e.name}`; if (e.isDirectory()) walk(p); else if (p.endsWith('.js') && readFileSync(p, 'utf8').includes('clientIp(')) users.push(p); } };
+  for (const d of ['data', 'lib', 'pro', 'public']) walk(d);
+  assert.deepEqual(users.sort(), ['data/guess.js', 'data/trending.js', 'pro/feedback.js', 'pro/ratelimit.js', 'pro/routes.js']);
 });
