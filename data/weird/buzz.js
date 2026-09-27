@@ -11,7 +11,9 @@
 // History: the same counts for every quarter back to 2001 (where full-text search
 // starts). Past quarters do not change, so each is asked for once and kept; a run asks
 // for at most HISTORY_BATCH searches, newest missing first, at the same gentle pace, so
-// the first fill takes a few runs 6 hours apart and after that none at all.
+// the first fill takes a few runs 6 hours apart and after that none at all. A search that
+// fails on MAX_CELL_FAILS runs is left alone until the weekly run after the fill is done,
+// which tries it again.
 
 import { NoData, pool, isoDay } from './source.js';
 import { histFrom } from './history.js';
@@ -21,10 +23,11 @@ export const source = 'SEC EDGAR';
 export const ttl = 24 * 60 * 60_000;
 export const retryMs = 60 * 60_000;
 export const defaultPeriod = '5Y';
-export const historyTtl = 30 * 24 * 60 * 60_000;
+export const historyTtl = 7 * 24 * 60 * 60_000;
 export const historyRetryMs = 6 * 60 * 60_000;
 export const HISTORY_START = 2001;
 export const HISTORY_BATCH = 90;
+export const MAX_CELL_FAILS = 3;
 
 export const PHRASES = [
   { key: 'ai', q: 'artificial intelligence', label: 'AI' },
@@ -129,8 +132,16 @@ export async function history(get, { now = Date.now, prev = null, retryWait = RE
     for (const s of prev.series) if (Number.isFinite(s.v[i])) row[s.key] = s.v[i];
     have.set(d, row);
   });
+  // prev.fails: { 'YYYY-MM-DD ai': failed runs }. After a complete run (every cell in or
+  // given up) the count starts again, so a given-up search is tried once a week.
+  const fails = prev?.complete ? {} : { ...(prev?.fails || {}) };
+  const cell = (q, p) => `${q.start} ${p.key}`;
   const missing = [];
-  for (const q of all.slice().reverse()) for (const p of PHRASES) if (!Number.isFinite(have.get(q.start)?.[p.key])) missing.push({ q, p });
+  for (const q of all.slice().reverse()) {
+    for (const p of PHRASES) {
+      if (!Number.isFinite(have.get(q.start)?.[p.key]) && (fails[cell(q, p)] || 0) < MAX_CELL_FAILS) missing.push({ q, p });
+    }
+  }
   const jobs = missing.slice(0, HISTORY_BATCH);
   let ok = 0;
   const got = await pool(jobs, 2, async ({ q, p }) => {
@@ -148,14 +159,15 @@ export async function history(get, { now = Date.now, prev = null, retryWait = RE
   }, gapMs);
   if (jobs.length && !ok && !have.size) throw new Error('EDGAR: every history search failed');
   jobs.forEach(({ q, p }, i) => {
-    if (got[i] === null) return;
+    if (got[i] === null) { fails[cell(q, p)] = (fails[cell(q, p)] || 0) + 1; return; }
+    delete fails[cell(q, p)];
     const row = have.get(q.start) || {};
     row[p.key] = got[i];
     have.set(q.start, row);
   });
   const rows = all.filter((q) => have.has(q.start)).map((q) => ({ start: q.start, ...have.get(q.start) }));
-  const complete = all.every((q) => PHRASES.every((p) => Number.isFinite(have.get(q.start)?.[p.key])));
-  return { ...toHist(rows), complete };
+  const complete = all.every((q) => PHRASES.every((p) => Number.isFinite(have.get(q.start)?.[p.key]) || (fails[cell(q, p)] || 0) >= MAX_CELL_FAILS));
+  return { ...toHist(rows), fails, complete };
 }
 
 // get: sourceClient(). retryWait: ms before the second try (tests pass 0).

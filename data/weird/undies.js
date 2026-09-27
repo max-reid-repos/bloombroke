@@ -8,7 +8,7 @@
 // in it is never asked for again; a piece that failed is asked for again after a day.
 
 import { NoData, signedPct, headlineNumber } from './source.js';
-import { histFrom } from './history.js';
+import { histFrom, points } from './history.js';
 
 export const id = 'undies';
 export const source = 'BLS';
@@ -48,14 +48,16 @@ export function changeOn(rows, n) {
 }
 
 // Monthly index rows -> a hist of the change on a year before (the headline's measure).
+// The index itself rides along, hidden: the next history run needs the levels to work out
+// the change for a piece it fetches later.
 export function toHist(rows) {
   const by = new Map(rows.map((r) => [r.month, r.value]));
   const out = [];
   for (const r of rows) {
     const before = by.get(monthBack(r.month, 12));
-    if (before) out.push({ d: `${r.month}-01`, yoy: (r.value / before - 1) * 100 });
+    out.push({ d: `${r.month}-01`, index: r.value, ...(before ? { yoy: (r.value / before - 1) * 100 } : {}) });
   }
-  return histFrom(out, [{ key: 'yoy', label: "Men's underwear prices vs a year before" }], { step: 'month' });
+  return histFrom(out, [{ key: 'yoy', label: "Men's underwear prices vs a year before" }, { key: 'index', label: 'Index', hidden: true }], { step: 'month' });
 }
 
 // Ten-year pieces from HISTORY_START to `year`: [[1978, 1987], ...].
@@ -65,12 +67,15 @@ export function pieces(year) {
   return out;
 }
 
+// Only the pieces the last run did not get are asked for (prev.pieces: the ones done).
 export async function history(get, { now = Date.now, prev = null } = {}) {
   if (prev?.complete) return prev;
   const year = new Date(now()).getUTCFullYear();
-  const rows = [];
+  const rows = points(prev, 'index').map((p) => ({ month: p.d.slice(0, 7), value: p.v }));
+  const done = new Set(prev?.pieces || []);
   let failed = 0;
   for (const [a, b] of pieces(year)) {
+    if (done.has(`${a}-${b}`)) continue;
     try {
       const body = await get.json(URL_POST, {
         method: 'POST', timeout: 20_000,
@@ -78,15 +83,16 @@ export async function history(get, { now = Date.now, prev = null } = {}) {
         body: JSON.stringify({ seriesid: [SERIES], startyear: String(a), endyear: String(b) }),
       });
       rows.push(...parse(body));
+      done.add(`${a}-${b}`);
     } catch (err) {
       failed += 1;
       console.error(`[weird:undies] history ${a}-${b}:`, err?.message || err);
     }
   }
   if (!rows.length) throw new NoData('BLS: no history');
-  rows.sort((x, y) => (x.month < y.month ? -1 : 1));
-  const hist = toHist(rows);
-  return failed ? { ...hist, complete: false } : { ...hist, complete: true };
+  const byMonth = new Map(rows.map((r) => [r.month, r]));
+  const hist = toHist([...byMonth.values()].sort((x, y) => (x.month < y.month ? -1 : 1)));
+  return { ...hist, pieces: [...done], complete: !failed };
 }
 
 export function build(rows) {

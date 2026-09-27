@@ -141,13 +141,14 @@ export function build(daily, avgs, asOf) {
 export async function history(get) {
   const rows = [];
   for (let page = 0; page < 3; page += 1) {
+    // The next page starts after the rows already in hand (PortWatch may cut a page short).
     const body = await get.json(query({
       where: `portid IN (${IDS}) AND date >= DATE '${HISTORY_FROM}'`,
       outFields: 'date,portid,n_total',
       orderByFields: 'date ASC,portid ASC',
       resultType: 'standard',
       resultRecordCount: '20000',
-      resultOffset: String(page * 20000),
+      resultOffset: String(rows.length),
     }), { timeout: 60_000 });
     const got = features(body);
     rows.push(...got);

@@ -121,26 +121,35 @@ export function build(reports) {
   };
 }
 
+// A year whose report failed on this many runs (a day apart) is not asked for again.
+export const MAX_YEAR_FAILS = 3;
+
 // The deep past: one report per year from HISTORY_START to two years ago, only the
-// years the last run did not get, one after another.
+// years the last run did not get, one after another. prev.fails: { year: failed runs }.
 export async function history(get, { now = Date.now, prev = null } = {}) {
   const year = new Date(now()).getUTCFullYear();
   const have = new Set((prev?.d || []).map((d) => d.slice(0, 4)));
   const series = new Map(histPoints(prev, 'revenue').map((p) => [p.d.slice(0, 7), p.v]));
+  const fails = { ...(prev?.fails || {}) };
   let failed = 0;
   for (let y = HISTORY_START; y <= year - 2; y += 1) {
     if (have.has(String(y)) && have.has(String(y - 1))) continue;
+    if ((fails[y] || 0) >= MAX_YEAR_FAILS) continue;
     try {
       const got = monthsOf([parse(await get.text(url(y), { timeout: 20_000 }))]);
       for (const [m, v] of got) series.set(m, v);
+      delete fails[y];
     } catch (err) {
       failed += 1;
+      fails[y] = (fails[y] || 0) + 1;
       console.error(`[weird:macau] history ${y}:`, err?.message || err);
     }
   }
   if (!series.size) throw new NoData('DICJ: no history');
   const hist = toHist([...series.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([month, value]) => ({ month, value })));
-  return { ...hist, complete: !failed };
+  // Complete once every year is in or given up on.
+  const open = Object.values(fails).some((n) => n < MAX_YEAR_FAILS);
+  return { ...hist, fails, complete: !(failed && open) };
 }
 
 export async function load(get, { now = Date.now } = {}) {
