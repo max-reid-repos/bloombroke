@@ -73,7 +73,8 @@ export function fmtMoney(n) {
 const INK = '#2A1A10';
 const INK_SOFT = '#5A4330';
 const RED = '#C23B2A';
-const PENCIL = { stock: '#3E6B47', jar: '#A97B22', spent: '#B5412E' };
+// Slate for the jar: the same grey-blue family as its line on screen (--cmp-3).
+const PENCIL = { stock: '#3E6B47', jar: '#56687A', spent: '#B5412E' };
 const BG = '#05080C';
 const ACCENT = '#6CCBFF';
 const TEXT = '#CFEAFF';
@@ -81,11 +82,11 @@ const DIM = '#7C93A8';
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 const HAND = "'Caveat', cursive";
 
-// The art is 1536x1024. The square certificate keeps its top and bottom and repeats a
-// plain band of paper in between (mirrored, so the grain has no seams).
+// The art is 1536x1024. The square certificate keeps its top and bottom and stretches a
+// plain band of paper in between (one crop, so nothing repeats).
 const ART_W = 1536;
 const ART_H = 1024;
-const BAND = [0.42, 0.56]; // of the art height: below the clipped receipt, above the seal
+const BAND = [0.42, 0.475]; // of the art height: plain paper between the clipped receipt and the fold
 const CERT = { x: 24, y: 24, w: SIZE - 48, h: SIZE - 24 - 104 };
 
 function certGeometry() {
@@ -109,21 +110,9 @@ function drawPaper(ctx, paper, g) {
   const b0 = BAND[0] * ART_H;
   const b1 = BAND[1] * ART_H;
   ctx.drawImage(paper, 0, 0, ART_W, b0, CERT.x, CERT.y, CERT.w, topH);
-  const bandH = (b1 - b0) * s;
+  // One plain crop of paper, stretched to the height: no repeats, no mirrored motifs.
   const y0 = CERT.y + topH;
-  for (let k = 0, y = y0; y < y0 + midH; k += 1, y += bandH) {
-    const h = Math.min(bandH, y0 + midH - y);
-    const srcH = h / s;
-    ctx.save();
-    if (k % 2) {
-      ctx.translate(0, 2 * y + h);
-      ctx.scale(1, -1);
-      ctx.drawImage(paper, 0, b1 - srcH, ART_W, srcH, CERT.x, y, CERT.w, h);
-    } else {
-      ctx.drawImage(paper, 0, b0, ART_W, srcH, CERT.x, y, CERT.w, h);
-    }
-    ctx.restore();
-  }
+  ctx.drawImage(paper, 0, b0, ART_W, b1 - b0, CERT.x, y0, CERT.w, midH);
   ctx.drawImage(paper, 0, b1, ART_W, ART_H - b1, CERT.x, y0 + midH, CERT.w, botH);
 }
 
@@ -219,7 +208,8 @@ export function drawFrame(ctx, { m, replay, command, assets }, i) {
   text(ctx, f.done ? 'worth today' : `in the stock, ${fmtCounter(f.t)}`, SIZE / 2, g.y(33.5) + 128, { font: `700 36px ${HAND}`, color: INK_SOFT });
 
   // The race: pencil lines, spent below zero.
-  const box = { x0: 120, x1: 730, y0: g.y(33.5) + 170, y1: g.y(57) };
+  // The chart ends left of the seal, so the labels at its right never touch the seal.
+  const box = { x0: 120, x1: 650, y0: g.y(33.5) + 170, y1: g.y(56) };
   const t0 = timeOf(pts[0]);
   const t1 = timeOf(pts[pts.length - 1]);
   const { top, bottom } = scaleOf(pts);
@@ -236,13 +226,12 @@ export function drawFrame(ctx, { m, replay, command, assets }, i) {
     const [hx, hy] = line[line.length - 1];
     heads.push({ key, label, x: hx, y: hy });
   }
-  // Labels by each line's head, pushed apart so they never sit on each other.
-  // They stay above the seal.
+  // Each label sits at its own line's end. When two ends are close, the upper label
+  // moves up (never down, never past the other), so labels keep the lines' order.
   heads.sort((a, b) => a.y - b.y);
-  for (let k = 1; k < heads.length; k += 1) if (heads[k].y - heads[k - 1].y < 34) heads[k].y = heads[k - 1].y + 34;
-  const limit = g.y(68.4) - 0.1 * CERT.w - 24;
-  for (let k = heads.length - 1; k >= 0; k -= 1) heads[k].y = Math.min(heads[k].y, limit - (heads.length - 1 - k) * 34);
-  for (const h of heads) text(ctx, h.label, h.x + 16, h.y, { font: `700 32px ${HAND}`, color: PENCIL[h.key], align: 'left' });
+  for (const h of heads) h.ly = h.y;
+  for (let k = heads.length - 2; k >= 0; k -= 1) heads[k].ly = Math.min(heads[k].ly, heads[k + 1].ly - 30);
+  for (const h of heads) text(ctx, h.label, h.x + 14, h.ly, { font: `700 28px ${HAND}`, color: PENCIL[h.key], align: 'left' });
   // The two ruled lines.
   text(ctx, `You spent ${fmtMoney(f.spent)}`, g.x(49.9), g.y(71.3) - 14, { font: `800 30px ${MONO}`, maxW: 0.36 * CERT.w });
   text(ctx, m.holding, g.x(49.9), g.y(76.9) - 14, { font: `600 26px ${MONO}`, color: INK_SOFT, maxW: 0.36 * CERT.w });
@@ -309,36 +298,61 @@ export async function loadAssets(m) {
   return { paper, doodle };
 }
 
-async function withEncoder(data, config, onProgress) {
+// Stops the work when the viewer leaves the screen (the screen's AbortSignal).
+export function abortError() {
+  const e = new Error('The video was stopped.');
+  e.name = 'AbortError';
+  return e;
+}
+const checkAbort = (signal) => { if (signal?.aborted) throw abortError(); };
+
+// The encode loop, with the browser parts passed in (tested with fakes): draws every
+// frame, encodes it, flushes, and always closes the encoder, also on an error or when
+// the signal aborts.
+export async function encodeFrames({ Encoder, Frame, canvas, draw, config, onChunk, total, signal, onProgress, pause = () => new Promise((r) => setTimeout(r, 0)) }) {
+  let failed = null;
+  const encoder = new Encoder({ output: onChunk, error: (e) => { failed = e; } });
+  try {
+    encoder.configure(config);
+    for (let i = 0; i <= total; i += 1) {
+      checkAbort(signal);
+      if (failed) throw failed;
+      draw(i);
+      const frame = new Frame(canvas, { timestamp: Math.round((i * 1e6) / FPS), duration: Math.round(1e6 / FPS) });
+      try { encoder.encode(frame, { keyFrame: i % (FPS * 2) === 0 }); } finally { frame.close(); }
+      onProgress?.(i / total);
+      while (encoder.encodeQueueSize > 8) { checkAbort(signal); await pause(5); }
+      if (i % 15 === 0) await pause(0); // keep the page responsive
+    }
+    await encoder.flush();
+    checkAbort(signal);
+    if (failed) throw failed;
+  } finally {
+    if (encoder.state !== 'closed') encoder.close();
+  }
+}
+
+async function withEncoder(data, config, { onProgress, signal }) {
   const { Muxer, ArrayBufferTarget } = await import('./vendor/mp4-muxer.js');
+  checkAbort(signal);
   const canvas = document.createElement('canvas');
   canvas.width = SIZE;
   canvas.height = SIZE;
   const ctx = canvas.getContext('2d');
   const target = new ArrayBufferTarget();
   const muxer = new Muxer({ target, video: { codec: 'avc', width: SIZE, height: SIZE, frameRate: FPS }, fastStart: 'in-memory' });
-  let failed = null;
-  const encoder = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, meta), error: (e) => { failed = e; } });
-  encoder.configure(config);
-  const total = RACE_FRAMES + HOLD_FRAMES;
-  for (let i = 0; i <= total; i += 1) {
-    if (failed) throw failed;
-    drawFrame(ctx, data, i);
-    const frame = new VideoFrame(canvas, { timestamp: Math.round((i * 1e6) / FPS), duration: Math.round(1e6 / FPS) });
-    encoder.encode(frame, { keyFrame: i % (FPS * 2) === 0 });
-    frame.close();
-    onProgress?.(i / total);
-    while (encoder.encodeQueueSize > 8) await new Promise((r) => setTimeout(r, 5));
-    if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); // keep the page responsive
-  }
-  await encoder.flush();
-  encoder.close();
-  if (failed) throw failed;
+  await encodeFrames({
+    Encoder: VideoEncoder, Frame: VideoFrame, canvas, config, signal, onProgress,
+    draw: (i) => drawFrame(ctx, data, i),
+    onChunk: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    total: RACE_FRAMES + HOLD_FRAMES,
+    pause: (ms) => new Promise((r) => setTimeout(r, ms)),
+  });
   muxer.finalize();
   return new Blob([target.buffer], { type: 'video/mp4' });
 }
 
-async function withRecorder(data, mimeType, onProgress) {
+async function withRecorder(data, mimeType, { onProgress, signal }) {
   const canvas = document.createElement('canvas');
   canvas.width = SIZE;
   canvas.height = SIZE;
@@ -352,34 +366,42 @@ async function withRecorder(data, mimeType, onProgress) {
   rec.start(250);
   const total = RACE_FRAMES + HOLD_FRAMES;
   const start = performance.now();
-  await new Promise((resolve) => {
-    const step = () => {
-      const i = Math.min(total, Math.floor(((performance.now() - start) / 1000) * FPS));
-      drawFrame(ctx, data, i);
-      onProgress?.(i / total);
-      if (i >= total) resolve(); else requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  });
-  rec.stop();
-  await stopped;
-  stream.getTracks().forEach((t) => t.stop());
-  return new Blob(parts, { type: 'video/mp4' });
+  try {
+    await new Promise((resolve, reject) => {
+      const step = () => {
+        if (signal?.aborted) { reject(abortError()); return; }
+        const i = Math.min(total, Math.floor(((performance.now() - start) / 1000) * FPS));
+        drawFrame(ctx, data, i);
+        onProgress?.(i / total);
+        if (i >= total) resolve(); else requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  } finally {
+    if (rec.state !== 'inactive') rec.stop();
+    await stopped;
+    stream.getTracks().forEach((t) => t.stop());
+  }
+  checkAbort(signal);
+  return new Blob(parts, { type: mimeType.split(';')[0] });
 }
 
 // Makes the MP4 and returns { blob, filename, how } (how: 'webcodecs' or 'recorder').
-// Throws Error(VIDEO_NEEDS) when this browser can do neither.
-export async function makeVideo({ m, replay, command }, { onProgress, g = globalThis } = {}) {
+// Throws Error(VIDEO_NEEDS) when this browser can do neither, and an AbortError when
+// signal aborts (the viewer left the screen): then nothing is saved.
+export async function makeVideo({ m, replay, command }, { onProgress, signal, g = globalThis } = {}) {
+  checkAbort(signal);
   const how = videoSupport(g);
   if (!how) throw new Error(VIDEO_NEEDS);
   const assets = await loadAssets(m);
+  checkAbort(signal);
   const data = { m, replay, command, assets };
   const config = how === 'webcodecs' ? await encoderConfig(g) : null;
   const filename = videoFilename(command);
-  if (config) return { blob: await withEncoder(data, config, onProgress), filename, how: 'webcodecs' };
+  if (config) return { blob: await withEncoder(data, config, { onProgress, signal }), filename, how: 'webcodecs' };
   const type = recorderType(g);
   if (!type) throw new Error(VIDEO_NEEDS);
-  return { blob: await withRecorder(data, type, onProgress), filename, how: 'recorder' };
+  return { blob: await withRecorder(data, type, { onProgress, signal }), filename, how: 'recorder' };
 }
 
 export function downloadBlob(blob, filename) {

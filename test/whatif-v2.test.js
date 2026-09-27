@@ -18,6 +18,7 @@ import {
 import { frameAt, durationMs, scaleOf, isBehind, fmtCounter } from '../public/whatif-replay.js';
 import {
   videoSupport, recorderType, encoderConfig, videoFilename, timeline, fmtMoney, RACE_FRAMES, HOLD_FRAMES, FPS, VIDEO_NEEDS, CODECS,
+  encodeFrames, makeVideo,
 } from '../public/whatif-video.js';
 
 const json = (f) => JSON.parse(readFileSync(new URL(`../data/${f}`, import.meta.url), 'utf8'));
@@ -322,6 +323,67 @@ test('video and replay files: plain copy, self-hosted muxer', () => {
   assert.match(video, /import\('\.\/vendor\/mp4-muxer\.js'\)/, 'the muxer is loaded from this site');
   assert.doesNotMatch(video, /https?:\/\/(?!github)/, 'no outside hosts');
   assert.match(readFileSync('public/vendor/mp4-muxer.js', 'utf8'), /MIT License[\s\S]*Copyright \(c\) 2023 Vanilagy/);
+});
+
+// A fake VideoEncoder: counts frames, can fail on a given frame, records close().
+function fakeEncoder({ failAt = -1 } = {}) {
+  const log = { encoded: 0, closed: 0, flushed: 0, frames: 0, framesClosed: 0 };
+  class Encoder {
+    constructor({ error }) { this.error = error; this.state = 'unconfigured'; this.encodeQueueSize = 0; }
+    configure() { this.state = 'configured'; }
+    encode() { if (log.encoded === failAt) throw new Error('encoder broke'); log.encoded += 1; }
+    async flush() { log.flushed += 1; }
+    close() { this.state = 'closed'; log.closed += 1; }
+  }
+  class Frame { constructor() { log.frames += 1; } close() { log.framesClosed += 1; } }
+  return { Encoder, Frame, log };
+}
+const pause = () => Promise.resolve();
+
+test('video: the encoder always closes, and leaving mid-encode stops without a file', async () => {
+  // A full run: every frame encoded and closed, flushed once, encoder closed once.
+  const ok = fakeEncoder();
+  await encodeFrames({ Encoder: ok.Encoder, Frame: ok.Frame, canvas: {}, draw: () => {}, config: {}, onChunk: () => {}, total: 20, pause });
+  assert.deepEqual(ok.log, { encoded: 21, closed: 1, flushed: 1, frames: 21, framesClosed: 21 });
+
+  // The viewer leaves at frame 5: an AbortError, no flush, the encoder closed.
+  const ac = new AbortController();
+  const gone = fakeEncoder();
+  await assert.rejects(encodeFrames({
+    Encoder: gone.Encoder, Frame: gone.Frame, canvas: {}, config: {}, onChunk: () => {}, total: 300, pause, signal: ac.signal,
+    draw: (i) => { if (i === 5) ac.abort(); },
+  }), { name: 'AbortError' });
+  assert.equal(gone.log.flushed, 0);
+  assert.equal(gone.log.closed, 1);
+  assert.ok(gone.log.encoded <= 6);
+  assert.equal(gone.log.frames, gone.log.framesClosed, 'every frame released');
+
+  // An encode that throws still closes the encoder and the frame.
+  const bad = fakeEncoder({ failAt: 3 });
+  await assert.rejects(encodeFrames({ Encoder: bad.Encoder, Frame: bad.Frame, canvas: {}, draw: () => {}, config: {}, onChunk: () => {}, total: 20, pause }), /encoder broke/);
+  assert.equal(bad.log.closed, 1);
+  assert.equal(bad.log.frames, bad.log.framesClosed);
+
+  // An error reported by the encoder's error callback stops the loop too.
+  const cb = fakeEncoder();
+  class Late extends cb.Encoder { encode(f, o) { super.encode(f, o); if (cb.log.encoded === 2) this.error(new Error('async fail')); } }
+  await assert.rejects(encodeFrames({ Encoder: Late, Frame: cb.Frame, canvas: {}, draw: () => {}, config: {}, onChunk: () => {}, total: 20, pause }), /async fail/);
+  assert.equal(cb.log.closed, 1);
+
+  // Already left: makeVideo stops before any work.
+  const left = new AbortController();
+  left.abort();
+  await assert.rejects(makeVideo({ m: {}, replay: { points: [] }, command: 'WHATIF X' }, { signal: left.signal, g: {} }), { name: 'AbortError' });
+});
+
+test('screen: a video made after leaving is never downloaded; the jar is slate, not amber', () => {
+  const screenSrc = readFileSync('public/screens/whatif.js', 'utf8');
+  assert.match(screenSrc, /signal: ctx\.signal/);
+  assert.match(screenSrc, /if \(ctx\.signal\?\.aborted \|\| !box\.isConnected\) return;\s*\n\s*downloadBlob/);
+  const video = readFileSync('public/whatif-video.js', 'utf8');
+  const jar = /jar: '#([0-9A-Fa-f]{6})'/.exec(video)[1];
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(jar.slice(i, i + 2), 16));
+  assert.ok(b > r && b >= g, `jar pencil #${jar} is blue-grey`);
 });
 
 // ---- Picker: shelves ----------------------------------------------------------------
