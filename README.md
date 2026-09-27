@@ -115,6 +115,8 @@ Pro environment (see `.env.example`; `scripts/stripe-setup.js` writes the Stripe
 - `STRIPE_PRICE_ID_YEARLY` (`STRIPE_PRICE_ID_YEARLY_TEST` in test mode): the $420 a year price. Without it, yearly says it is not available yet.
 - Optional: `STRIPE_PORTAL_CONFIG_ID`, `PRO_DB_PATH` (default `var/pro.db`), `PUBLIC_URL`, `TERMS_VERSION`.
 
+Ops notes: `.env` holds every secret, so keep it `chmod 600` and owned by the user the server runs as (the server does not change it). The server itself sets the Pro database folder to 0700 and `pro.db`, `pro.db-wal` and `pro.db-shm` to 0600 on every start, and keeps `data/.cache/guess-secret` at 0600.
+
 ## Built with
 
 - Node and Express 5. One server, `server.js`, serves `public/` and the JSON routes.

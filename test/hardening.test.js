@@ -297,3 +297,57 @@ test('every data source defaults to the capped fetch', async () => {
   assert.deepEqual(bare, [], 'these call fetch without the cap');
   assert.equal(typeof cappedFetch, 'function');
 });
+
+// ---- file permissions -------------------------------------------------------------
+
+test('pro db: folder 0700, database, WAL and SHM 0600, also when they were readable', async () => {
+  const { openDb } = await import('../pro/db.js');
+  const { mkdirSync, writeFileSync, chmodSync, statSync, mkdtempSync, rmSync } = await import('node:fs');
+  const mode = (f) => statSync(f).mode & 0o777;
+  const dir = mkdtempSync(path.join(tmpdir(), 'bb-perm-'));
+  try {
+    // A new database.
+    const file = path.join(dir, 'var', 'pro.db');
+    const db = openDb(file);
+    db.prepare('CREATE TABLE IF NOT EXISTS t (x)').run();
+    assert.equal(mode(path.dirname(file)), 0o700);
+    for (const f of [file, `${file}-wal`, `${file}-shm`]) assert.equal(mode(f), 0o600, f);
+    db.close();
+    // A restored copy left world-readable is locked down on the next start.
+    chmodSync(path.dirname(file), 0o755);
+    chmodSync(file, 0o644);
+    const again = openDb(file);
+    assert.equal(mode(path.dirname(file)), 0o700);
+    assert.equal(mode(file), 0o600);
+    again.close();
+    // A folder shared with other things keeps its mode; the files are still locked down.
+    const shared = path.join(dir, 'shared');
+    mkdirSync(shared, { mode: 0o755 });
+    chmodSync(shared, 0o755);
+    writeFileSync(path.join(shared, 'other.txt'), 'x');
+    const { lockDown } = await import('../pro/db.js');
+    lockDown(path.join(shared, 'pro.db'), { root: shared });
+    assert.equal(mode(shared), 0o755);
+    assert.equal(mode(path.join(shared, 'pro.db')), 0o600);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('guess secret: a readable secret file is put back to 0600', async () => {
+  const { loadSecret } = await import('../data/guess.js');
+  const { writeFileSync, chmodSync, statSync, mkdtempSync, rmSync } = await import('node:fs');
+  const dir = mkdtempSync(path.join(tmpdir(), 'bb-secret-'));
+  try {
+    const file = path.join(dir, '.cache', 'guess-secret');
+    const s = loadSecret({ env: {}, file, log: { error() {} } });
+    assert.equal(statSync(file).mode & 0o777, 0o600);
+    assert.equal(statSync(path.dirname(file)).mode & 0o777, 0o700);
+    chmodSync(file, 0o644);
+    writeFileSync(file, `${s}\n`);
+    assert.equal(loadSecret({ env: {}, file, log: { error() {} } }), s);
+    assert.equal(statSync(file).mode & 0o777, 0o600);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
