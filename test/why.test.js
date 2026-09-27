@@ -215,7 +215,7 @@ test('WHY screen: the table has date, % move in colour, close and what came out'
 
 test('WHY screen: no amber, no em dashes, no advice words in its copy', () => {
   const copy = [WHY_NOTE, notCompanyHtml('SPX'), JSON.stringify(findCommand('WHY'))].join(' ');
-  assert.doesNotMatch(copy, /—/);
+  assert.doesNotMatch(copy, /\u2014/);
   assert.doesNotMatch(copy, /\b(buy|sell|rating|target|signal)\b/i);
   assert.match(notCompanyHtml('SPX'), /WHY works for company stocks/);
 });

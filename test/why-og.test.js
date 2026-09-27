@@ -45,7 +45,7 @@ test('WHY card: renders a 1200x630 PNG', async () => {
   const tree = JSON.stringify(whyTree(whyCardModel(WHY)));
   assert.match(tree, /BIGGEST DAILY MOVES, 1Y/);
   assert.match(tree, /Not a cause/);
-  assert.doesNotMatch(tree, /—/);
+  assert.doesNotMatch(tree, /\u2014/);
 });
 
 test('WHY card: the OG route serves the card, and the site card for anything else', async () => {
@@ -80,7 +80,7 @@ test('WHY page meta: an SEO title and description from lib/seo.js, with the card
   assert.match(m.description, /not a cause/);
   assert.equal(m.image, 'https://bloombroke.com/og/why.png?c=WHY+AAPL');
   assert.equal(m.url, 'https://bloombroke.com/?c=WHY+AAPL');
-  for (const v of Object.values(m)) assert.doesNotMatch(v, /—|\b(buy|sell|signal|target)\b/i);
+  for (const v of Object.values(m)) assert.doesNotMatch(v, /\u2014|\b(buy|sell|signal|target)\b/i);
   // Through the share path: the card's meta ends up in the page.
   const cards = makeWhyCards({ getWhy: async () => WHY, parse: parseCommand });
   const meta = await cards.meta('AAPL WHY');
