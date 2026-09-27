@@ -18,11 +18,28 @@
 // background refresh per gauge fetches a new one. Only a gauge with no value anywhere
 // waits (briefly) and then says pending. NO DATA only when there has never been a good
 // value and the source failed.
+//
+// History (data/weird/history.js): a gauge's past readings, for the period row, the big
+// chart, the grid sparks and the record line. Optional parts of a gauge module:
+//   value.hist        built by load() from what it fetched anyway (recent or full)
+//   history(get, { now, prev })  the deep past, fetched rarely: historyTtl (default 7
+//             days; historyRetryMs after a failure or while `complete: false`), kept in
+//             data/.cache/weird/<id>.history.json with its own hold file
+//   snapshot(value) -> { key: number }  for a source that keeps no past: one reading per
+//             UTC day is recorded (snapshotSeries names the keys, the first is the lead)
+//   recordPoints(hist) -> [{ d, v }]  what the record line reads (default: the lead)
+//   record = false    no record line (the headline is not a number that has one)
+//   defaultPeriod     the period a gauge screen opens on (default 1Y)
 
 import { mkdirSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sourceClient } from './source.js';
+import { sourceClient, isoDay } from './source.js';
+import {
+  historyStore, snapshotStore, snapshotHist, mergeHist, periodInfo, pickPeriod, sliceHist, sparkFor,
+  recordLine, leadPoints, hasHist, RECORDING_UNTIL,
+} from './history.js';
+import { WEIRD_PERIODS, periodWord } from '../../public/screens/weird-gauges.js';
 import * as canal from './canal.js';
 import * as pizza from './pizza.js';
 import * as degen from './degen.js';
@@ -60,6 +77,11 @@ export const SUMMARY_WAIT = FAST_WAIT;
 // Boot pre-warm: one gauge started every PREWARM_GAP_MS, so the sources (SEC EDGAR
 // above all) are not hit at once after a restart.
 export const PREWARM_GAP_MS = 1500;
+// Upkeep after boot: every TICK_MS one step of history and daily-reading work (at most one
+// history fetch and one snapshot-gauge fetch at a time), so no source is hit in a burst.
+export const TICK_MS = 60_000;
+export const HISTORY_TTL = 7 * 24 * 60 * 60_000;
+export const HISTORY_RETRY = 6 * 60 * 60_000;
 
 const SUMMARY_KEYS = ['headline', 'line', 'spark', 'asOf', 'source', 'credit'];
 
@@ -134,6 +156,7 @@ export function summarize(detail) {
   if (!detail.ok) return detail;
   const out = { id: detail.id, ok: true, stale: detail.stale, updated: detail.updated };
   for (const k of SUMMARY_KEYS) if (detail[k] !== undefined) out[k] = detail[k];
+  if (detail.record) out.record = detail.record;
   // ALERTS: a gauge's headline number, only where the gauge gives it a unit.
   if (Number.isFinite(detail.value) && detail.unit) { out.value = detail.value; out.unit = detail.unit; }
   return out;
@@ -142,6 +165,8 @@ export function summarize(detail) {
 export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges = GAUGES, lastGoodDir = LAST_GOOD_DIR } = {}) {
   const get = sourceClient(fetchImpl);
   const store = lastGoodStore(lastGoodDir);
+  const hstore = historyStore(lastGoodDir);
+  const days = snapshotStore(lastGoodDir ? path.join(lastGoodDir, 'days') : null);
   // id -> { value, fetchedAt }: the newest good value, from disk at boot, then each refresh.
   const latest = new Map();
   for (const g of gauges) { const l = store.read(g.id); if (l) latest.set(g.id, l); }
@@ -151,6 +176,119 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
   for (const g of gauges) { const h = store.readHold(g.id); if (h > now()) holdUntil.set(g.id, h); }
   const held = (g) => now() < (holdUntil.get(g.id) || 0);
   const queued = new Set(); // ids the boot pre-warm will refresh soon: a request leaves them to it
+
+  // ---- History and daily readings (see data/weird/history.js) ----
+  // id -> { hist, fetchedAt }: the deep past from g.history(), from disk at boot.
+  const deep = new Map();
+  for (const g of gauges) { if (!g.history) continue; const h = hstore.read(g.id); if (h) deep.set(g.id, h); }
+  const histKey = (g) => `${g.id}.history`;
+  const histHold = new Map();
+  for (const g of gauges) { if (!g.history) continue; const h = store.readHold(histKey(g)); if (h > now()) histHold.set(g.id, h); }
+  const histInflight = new Map();
+  let daysVersion = 0;
+
+  // Keep the first reading of the value's own UTC day (a snapshot gauge only).
+  function snap(g, got) {
+    if (!g.snapshot || !got?.value) return;
+    let reading = null;
+    try { reading = g.snapshot(got.value); } catch { reading = null; }
+    if (days.record(g.id, isoDay(got.fetchedAt), reading)) daysVersion += 1;
+  }
+  for (const g of gauges) { const l = latest.get(g.id); if (l) snap(g, l); }
+
+  const historyDue = (g) => {
+    const h = deep.get(g.id);
+    if (!h) return true;
+    const ttl = h.hist.complete === false ? (g.historyRetryMs || HISTORY_RETRY) : (g.historyTtl || HISTORY_TTL);
+    return now() - h.fetchedAt >= ttl;
+  };
+  const historyHeld = (g) => now() < (histHold.get(g.id) || 0);
+
+  // Fetch a gauge's deep past, one at a time per gauge. A failure holds it for
+  // historyRetryMs (on disk too, so repeated deploys do not spend a quota). Never rejects.
+  function refreshHistory(g) {
+    if (!g.history) return Promise.resolve(null);
+    if (histInflight.has(g.id)) return histInflight.get(g.id);
+    if (historyHeld(g)) return Promise.resolve(null);
+    const p = (async () => {
+      try {
+        const hist = await g.history(get, { now, prev: deep.get(g.id)?.hist || null });
+        if (!hasHist(hist)) throw Object.assign(new Error('empty history'), { code: 'no_data' });
+        const got = { hist, fetchedAt: now() };
+        deep.set(g.id, got);
+        hstore.write(g.id, hist, got.fetchedAt);
+        if (histHold.delete(g.id)) store.writeHold(histKey(g), 0);
+        return got;
+      } catch (err) {
+        console.error(`[weird:${g.id}] history:`, err?.message || err);
+        const until = now() + (g.historyRetryMs || HISTORY_RETRY);
+        histHold.set(g.id, until);
+        store.writeHold(histKey(g), until);
+        return null;
+      } finally {
+        histInflight.delete(g.id);
+      }
+    })();
+    histInflight.set(g.id, p);
+    return p;
+  }
+
+  // The whole history of a gauge (deep past under the latest value's own, or the daily
+  // readings), worked out once per change and kept.
+  const memo = new Map();
+  function fullHist(g) {
+    const l = latest.get(g.id);
+    const dp = deep.get(g.id);
+    const key = `${l?.fetchedAt}|${dp?.fetchedAt}|${g.snapshot ? daysVersion : ''}`;
+    const hit = memo.get(g.id);
+    if (hit && hit.key === key) return hit;
+    let hist = null;
+    if (g.snapshot) hist = snapshotHist(days.read(g.id), g.snapshotSeries);
+    else hist = mergeHist(dp?.hist, l?.value?.hist);
+    const first = g.snapshot ? days.read(g.id)[0]?.[0] || null : null;
+    const periods = periodInfo(hist, { recordingSince: first });
+    let record = null;
+    if (g.record !== false && hist) {
+      try { record = recordLine(g.recordPoints ? g.recordPoints(hist) : leadPoints(hist)); } catch { record = null; }
+    }
+    const out = {
+      key, hist, periods, record,
+      recording: first && !periods[RECORDING_UNTIL].ok ? { since: first } : null,
+    };
+    memo.set(g.id, out);
+    return out;
+  }
+
+  // A gauge answer plus its history view: the readings for one period (hist), which
+  // periods are on (periods), the one shown (period), the record line and, for a
+  // snapshot gauge still filling up, when recording started.
+  function withHistory(g, detail, asked) {
+    if (!detail?.ok) return detail;
+    const f = fullHist(g);
+    const period = pickPeriod(f.periods, asked, g.defaultPeriod || '1Y');
+    const { hist: _full, ...rest } = detail;
+    return {
+      ...rest,
+      hist: sliceHist(f.hist, period),
+      period,
+      periods: f.periods,
+      record: f.record,
+      ...(f.recording ? { recording: f.recording } : {}),
+    };
+  }
+
+  // One step of upkeep: record today's reading where one is in memory, fetch one snapshot
+  // gauge that has none for today, and start one deep-history fetch that is due.
+  function tick() {
+    const today = isoDay(now());
+    for (const g of gauges) { const l = latest.get(g.id); if (l) snap(g, l); }
+    const need = gauges.find((g) => g.snapshot && !days.has(g.id, today) && !queued.has(g.id) && !held(g) && !inflight.has(g.id));
+    if (need) refresh(need);
+    if (!histInflight.size) {
+      const due = gauges.find((g) => g.history && !historyHeld(g) && historyDue(g));
+      if (due) refreshHistory(due);
+    }
+  }
 
   const shape = (g, value, stale, fetchedAt) => ({ id: g.id, ok: true, ...value, stale, updated: new Date(fetchedAt).toISOString() });
   const find = (name) => gauges.find((x) => x.id === String(name ?? '').toLowerCase()) || null;
@@ -170,6 +308,7 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
         const got = { value, fetchedAt: now() };
         latest.set(g.id, got);
         store.write(g.id, value, got.fetchedAt);
+        snap(g, got);
         if (holdUntil.delete(g.id)) store.writeHold(g.id, 0);
         return got;
       } catch (err) {
@@ -195,9 +334,15 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
   // Never throws. With a value: answers at once (a value past its ttl starts a background
   // refresh and is served stale meanwhile). With none: waits for the source up to `wait`
   // ms, then says pending (the fetch goes on); a failed source gives NO DATA.
-  async function getGauge(name, { wait = Infinity } = {}) {
+  // period: '3M' .. 'MAX' for the history view (an unknown or missing one gives the
+  // gauge's default); the answer never carries the whole history.
+  async function getGauge(name, { wait = Infinity, period = null } = {}) {
     const g = find(name);
     if (!g) return null;
+    return withHistory(g, await rawGauge(g, wait), periodWord(period));
+  }
+
+  async function rawGauge(g, wait) {
     const last = latest.get(g.id);
     if (last) {
       if (!isFresh(g, last) && !queued.has(g.id)) refresh(g);
@@ -214,13 +359,27 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
     return Promise.race([done, late]).finally(() => clearTimeout(timer));
   }
 
-  // Every gauge at once, each within `wait` ms (see getGauge).
-  async function getWeird({ wait = SUMMARY_WAIT } = {}) {
-    const rows = await Promise.all(gauges.map((g) => getGauge(g.id, { wait })));
+  // Every gauge at once, each within `wait` ms (see getGauge). period: '3M' .. 'MAX' puts
+  // each tile's spark on that period (from its history; [] when it has none there);
+  // none (AUTO) keeps each gauge's own spark. periods: which periods any gauge covers.
+  async function getWeird({ wait = SUMMARY_WAIT, period = null } = {}) {
+    const p = periodWord(period);
+    const rows = await Promise.all(gauges.map((g) => rawGauge(g, wait)));
     // Stale when every gauge that has a value is showing a last good one.
     const good = rows.filter((r) => r.ok);
+    const periods = Object.fromEntries(WEIRD_PERIODS.map((x) => [x, { ok: false, title: 'No gauge covers this yet' }]));
+    const out = rows.map((r, i) => {
+      const g = gauges[i];
+      const row = { ...summarize(r), ttl: g.ttl };
+      if (!r.ok) return row;
+      const f = fullHist(g);
+      for (const x of WEIRD_PERIODS) if (f.periods[x].ok) periods[x] = { ok: true, title: '' };
+      if (f.record) row.record = f.record;
+      if (p) row.spark = f.periods[p].ok || p === 'MAX' ? sparkFor(f.hist, p) : [];
+      return row;
+    });
     // ttl: DESK cards fetch this summary again when their gauge is due.
-    return { gauges: rows.map((r, i) => ({ ...summarize(r), ttl: gauges[i].ttl })), updated: new Date(now()).toISOString(), stale: good.length > 0 && good.every((r) => r.stale) };
+    return { gauges: out, period: p || 'AUTO', periods, updated: new Date(now()).toISOString(), stale: good.length > 0 && good.every((r) => r.stale) };
   }
 
   // Boot pre-warm: refresh every gauge that has no value or an expired one, gauges with
@@ -228,7 +387,7 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
   // gauge's last good value (or pending) without starting a fetch of its own, so a burst
   // of visitors right after a deploy does not hit every source at once. A gauge still on
   // hold after a failure is left out. Returns a stop function.
-  function startPrewarm({ gapMs = PREWARM_GAP_MS } = {}) {
+  function startPrewarm({ gapMs = PREWARM_GAP_MS, tickMs = TICK_MS } = {}) {
     const due = gauges.filter((g) => { const l = latest.get(g.id); return !held(g) && (!l || !isFresh(g, l)); });
     due.sort((a, b) => Number(latest.has(a.id)) - Number(latest.has(b.id)));
     for (const g of due) queued.add(g.id);
@@ -237,10 +396,18 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
       t.unref?.();
       return t;
     });
-    return () => { timers.forEach(clearTimeout); due.forEach((g) => queued.delete(g.id)); };
+    // Upkeep starts once the pre-warm is through, then runs every tickMs.
+    let upkeep = null;
+    const start = setTimeout(() => { tick(); upkeep = setInterval(tick, tickMs); upkeep.unref?.(); }, due.length * gapMs + tickMs);
+    start.unref?.();
+    return () => { timers.forEach(clearTimeout); clearTimeout(start); clearInterval(upkeep); due.forEach((g) => queued.delete(g.id)); };
   }
 
-  return { getGauge, getWeird, startPrewarm, refreshing: (id) => inflight.has(id) };
+  return {
+    getGauge, getWeird, startPrewarm, tick, refreshHistory,
+    refreshing: (id) => inflight.has(id),
+    historyOf: (id) => { const g = find(id); return g ? fullHist(g) : null; },
+  };
 }
 
 const weird = makeWeird();

@@ -3,13 +3,14 @@
 // the highest monthly price on record and how far today's price is from it.
 
 import { NoData, signedPct, headlineNumber } from './source.js';
-import { FRED_TTL, FRED_RETRY, fredMonthly, latestYoy, recentRows } from './fred.js';
+import { FRED_TTL, FRED_RETRY, fredMonthly, latestYoy, recentRows, monthlyHist } from './fred.js';
 
 export const id = 'eggs';
 export const source = 'FRED';
 export const ttl = FRED_TTL;
 export const retryMs = FRED_RETRY;
 export const SERIES = 'APU0000708111';
+export const defaultPeriod = '10Y';
 
 export function build(rows) {
   if (!rows.length) throw new NoData('FRED: no egg prices');
@@ -31,6 +32,8 @@ export function build(rows) {
     fromPeak,
     points: rows.filter((r) => r.month >= '2015-01').map((r) => ({ month: r.month, price: r.value })),
     rows: recentRows(rows, 13),
+    // History: every month since 1980, from the same CSV.
+    hist: monthlyHist([{ key: 'price', label: 'Price of a dozen eggs', rows }]),
   };
 }
 

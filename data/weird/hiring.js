@@ -5,13 +5,20 @@
 // newest month whose threads are at least 7 days old, so a fresh thread is not half
 // counted.
 
+// History: every thread since the account started (2011), about 500 stories, in one
+// request a week.
+
 import { NoData, headlineNumber } from './source.js';
+import { histFrom } from './history.js';
 
 export const id = 'hiring';
 export const source = 'HN Algolia';
 export const ttl = 3 * 60 * 60_000;
+export const defaultPeriod = '5Y';
+export const historyTtl = 7 * 24 * 60 * 60_000;
 
 const URL_HN = 'https://hn.algolia.com/api/v1/search_by_date?tags=story,author_whoishiring&hitsPerPage=100';
+const URL_ALL = 'https://hn.algolia.com/api/v1/search_by_date?tags=story,author_whoishiring&hitsPerPage=1000';
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 
 // A thread title -> { kind: 'hiring' | 'seeking', month: 'YYYY-MM' } or null.
@@ -23,8 +30,9 @@ export function classify(title) {
   return { kind: /hiring$/i.test(m[1]) ? 'hiring' : 'seeking', month: `${m[3]}-${String(mi + 1).padStart(2, '0')}` };
 }
 
-// Algolia body -> [{ month, hiring, seeking, ratio }] newest first, months with both threads.
-export function parse(body) {
+// Algolia body -> [{ month, hiring, seeking, ratio }] newest first, months with both
+// threads, at most `limit` of them.
+export function parse(body, limit = 24) {
   const hits = body?.hits;
   if (!Array.isArray(hits)) throw new Error('HN Algolia: unexpected shape');
   const by = new Map();
@@ -41,7 +49,12 @@ export function parse(body) {
     .filter((r) => r.hiring > 0 && r.seeking !== null)
     .map((r) => ({ ...r, ratio: r.seeking / r.hiring }))
     .sort((a, b) => (a.month < b.month ? 1 : -1))
-    .slice(0, 24);
+    .slice(0, limit);
+}
+
+// Months (newest first) -> a hist of seekers per job post. recordAt: the headline's month.
+export function toHist(months, recordAt = null) {
+  return histFrom(months.map((m) => ({ d: `${m.month}-01`, ratio: m.ratio })), [{ key: 'ratio', label: 'Seekers per job post' }], { step: 'month', recordAt });
 }
 
 export const SETTLE_DAYS = 7;
@@ -63,9 +76,18 @@ export function build(months, now = Date.now()) {
     seeking: last.seeking,
     ratio: last.ratio,
     months,
+    hist: toHist(months, `${last.month}-01`),
   };
 }
 
 export async function load(get, { now = Date.now } = {}) {
   return build(parse(await get.json(URL_HN)), now());
+}
+
+// The deep past: every month since the threads began. The newest months come with the
+// gauge's own fetch, which also says which month is settled.
+export async function history(get) {
+  const months = parse(await get.json(URL_ALL, { timeout: 20_000 }), Infinity);
+  if (months.length < 24) throw new NoData('HN Algolia: no history');
+  return toHist(months);
 }

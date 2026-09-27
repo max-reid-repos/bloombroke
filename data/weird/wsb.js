@@ -8,6 +8,11 @@ export const id = 'wsb';
 export const source = 'ApeWisdom';
 export const ttl = 15 * 60_000;
 
+// No past at the source: one reading per UTC day is recorded (data/weird/history.js).
+export const defaultPeriod = 'MAX';
+export const snapshotSeries = [{ key: 'top', label: 'Mentions of the top ticker, 24h' }];
+export const snapshot = (v) => ({ top: v.rows?.[0]?.mentions ?? null });
+
 const URL_WSB = 'https://apewisdom.io/api/v1.0/filter/wallstreetbets/page/1';
 const TICKER = /^[A-Z][A-Z0-9.-]{0,9}$/;
 

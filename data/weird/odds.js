@@ -9,6 +9,11 @@ export const id = 'odds';
 export const source = 'Polymarket';
 export const ttl = 15 * 60_000;
 
+// No past at the source: one reading per UTC day is recorded (data/weird/history.js).
+export const defaultPeriod = 'MAX';
+export const snapshotSeries = [{ key: 'recession', label: 'US recession chance, %' }, { key: 'fed', label: 'Top Fed outcome, %', hidden: true }];
+export const snapshot = (v) => ({ recession: v.recession?.pct ?? null, fed: v.fed?.outcomes?.[0]?.pct ?? null });
+
 const search = (q) => `https://gamma-api.polymarket.com/public-search?q=${encodeURIComponent(q)}&events_status=active&limit_per_type=20`;
 
 // A market's "Yes" price as a % (0 to 100), or null.

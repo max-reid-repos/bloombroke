@@ -3,12 +3,19 @@
 // The data runs about 6 days behind. Three queries: the latest Hormuz day on file, the
 // last 90 days for six chokepoints, and each one's average over the year to that day.
 // The headline is Hormuz's 7-day average; "vs avg" compares 7-day and 1-year averages.
+// History: every chokepoint's daily count since PortWatch starts (2019-01-01), in one
+// query a week; the record line reads Hormuz's 7-day average.
 
 import { NoData } from './source.js';
+import { histFrom, points } from './history.js';
 
 export const id = 'canal';
 export const source = 'IMF PortWatch';
 export const ttl = 6 * 60 * 60_000;
+export const defaultPeriod = '3M';
+export const historyTtl = 7 * 24 * 60 * 60_000;
+export const historyRetryMs = 6 * 60 * 60_000;
+export const HISTORY_FROM = '2019-01-01';
 
 const URL_BASE = 'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Chokepoints_Data/FeatureServer/0/query';
 
@@ -22,6 +29,34 @@ export const CHOKEPOINTS = [
   { portid: 'chokepoint3', name: 'Bosporus', full: 'Bosporus Strait' },
 ];
 const IDS = CHOKEPOINTS.map((c) => `'${c.portid}'`).join(',');
+// A series key per chokepoint: 'hormuz', 'suez', ... ('bab-el-mandeb').
+export const keyOf = (c) => c.name.toLowerCase().replace(/[^a-z]+/g, '-');
+const HIST_KEYS = CHOKEPOINTS.map((c) => ({ key: keyOf(c), label: c.name }));
+
+// { portid: [{ date, total }] } -> a hist of daily counts, one series per chokepoint.
+export function toHist(daily) {
+  const rows = new Map();
+  for (const c of CHOKEPOINTS) {
+    for (const p of daily[c.portid] || []) {
+      const r = rows.get(p.date) || { d: p.date };
+      r[keyOf(c)] = p.total;
+      rows.set(p.date, r);
+    }
+  }
+  return histFrom([...rows.values()], HIST_KEYS, { step: 'day', lead: 'hormuz' });
+}
+
+// The record line reads the headline: Hormuz's mean over each full run of 7 days.
+export function recordPoints(hist) {
+  const pts = points(hist, 'hormuz');
+  const out = [];
+  for (let i = 6; i < pts.length; i += 1) {
+    const run = pts.slice(i - 6, i + 1);
+    const span = (Date.parse(`${run[6].d}T00:00:00Z`) - Date.parse(`${run[0].d}T00:00:00Z`)) / 86400_000;
+    if (span === 6) out.push({ d: pts[i].d, v: run.reduce((a, p) => a + p.v, 0) / 7 });
+  }
+  return out;
+}
 
 function query(params) {
   return `${URL_BASE}?${new URLSearchParams({ ...params, f: 'json' })}`;
@@ -97,7 +132,30 @@ export function build(daily, avgs, asOf) {
     asOf,
     source,
     rows,
+    hist: toHist(daily),
   };
+}
+
+// The deep past: all six chokepoints since HISTORY_FROM in one standard query (about
+// 17,000 rows, 1.2 MB); a second page only if PortWatch says the answer was cut.
+export async function history(get) {
+  const rows = [];
+  for (let page = 0; page < 3; page += 1) {
+    const body = await get.json(query({
+      where: `portid IN (${IDS}) AND date >= DATE '${HISTORY_FROM}'`,
+      outFields: 'date,portid,n_total',
+      orderByFields: 'date ASC,portid ASC',
+      resultType: 'standard',
+      resultRecordCount: '20000',
+      resultOffset: String(page * 20000),
+    }), { timeout: 60_000 });
+    const got = features(body);
+    rows.push(...got);
+    if (!body.exceededTransferLimit || !got.length) break;
+  }
+  const hist = toHist(parseDaily({ features: rows.map((attributes) => ({ attributes })) }));
+  if (hist.d.length < 30) throw new NoData('PortWatch: no history');
+  return hist;
 }
 
 export async function load(get) {

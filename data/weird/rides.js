@@ -10,6 +10,11 @@ export const source = 'Queue-Times.com';
 export const credit = 'Powered by Queue-Times.com';
 export const ttl = 10 * 60_000;
 
+// No past at the source: one reading per UTC day is recorded (data/weird/history.js).
+export const defaultPeriod = 'MAX';
+export const snapshotSeries = [{ key: 'avg', label: 'Average posted wait, min' }];
+export const snapshot = (v) => ({ avg: v.avg });
+
 export const PARKS = [
   { id: 6, name: 'Magic Kingdom', resort: 'Walt Disney World' },
   { id: 5, name: 'Epcot', resort: 'Walt Disney World' },

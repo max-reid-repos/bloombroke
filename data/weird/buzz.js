@@ -8,12 +8,23 @@
 // error", at random): each request is tried twice, a second apart, and a cell that
 // still fails shows as -- instead of blanking the whole gauge.
 
+// History: the same counts for every quarter back to 2001 (where full-text search
+// starts). Past quarters do not change, so each is asked for once and kept; a run asks
+// for at most HISTORY_BATCH searches, newest missing first, at the same gentle pace, so
+// the first fill takes a few runs 6 hours apart and after that none at all.
+
 import { NoData, pool, isoDay } from './source.js';
+import { histFrom } from './history.js';
 
 export const id = 'buzz';
 export const source = 'SEC EDGAR';
 export const ttl = 24 * 60 * 60_000;
 export const retryMs = 60 * 60_000;
+export const defaultPeriod = '5Y';
+export const historyTtl = 30 * 24 * 60 * 60_000;
+export const historyRetryMs = 6 * 60 * 60_000;
+export const HISTORY_START = 2001;
+export const HISTORY_BATCH = 90;
 
 export const PHRASES = [
   { key: 'ai', q: 'artificial intelligence', label: 'AI' },
@@ -33,6 +44,13 @@ export function url(phrase, start, end, now = Date.now()) {
   const q = [['q', `"${phrase}"`], ['forms', '10-Q'], ['dateRange', 'custom'], ['startdt', start], ['enddt', enddt]]
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
   return `https://efts.sec.gov/LATEST/search-index?${q}`;
+}
+
+// Quarter rows ({ start, ai, tariff, recession } as counts or null) -> a hist.
+// recordAt: the headline quarter's start.
+export function toHist(rows, recordAt = null) {
+  return histFrom(rows.map((r) => ({ d: r.start, ...Object.fromEntries(PHRASES.map((p) => [p.key, r[p.key]])) })),
+    PHRASES.map((p) => ({ key: p.key, label: p.label })), { step: 'quarter', lead: 'ai', recordAt });
 }
 
 // The last `n` calendar quarters up to the one holding `now`, oldest first.
@@ -82,6 +100,7 @@ export function build(rows, now) {
   if (i < 0) throw new NoData('EDGAR: no AI counts');
   const h = rows[i];
   const n = h.ai.count.toLocaleString('en-US');
+  const counts = rows.map((r) => ({ start: r.start, ...Object.fromEntries(PHRASES.map((p) => [p.key, r[p.key] ? r[p.key].count : null])) }));
   return {
     headline: `${h.ai.capped ? `${n}+` : n} AI FILINGS`,
     line: `10-Qs naming AI, ${h.label}${h.partial ? ' so far' : ''}`,
@@ -94,7 +113,49 @@ export function build(rows, now) {
       ...Object.fromEntries(PHRASES.map((p) => [p.key, r[p.key] ? r[p.key].count : null])),
       capped: PHRASES.filter((p) => r[p.key]?.capped).map((p) => p.key),
     })),
+    hist: toHist(counts, h.start),
   };
+}
+
+// The deep past: the quarters before the gauge's own 8, back to HISTORY_START. prev: the
+// last run's hist; its counts are kept and only the missing ones are asked for.
+export async function history(get, { now = Date.now, prev = null, retryWait = RETRY_WAIT, gapMs = 250 } = {}) {
+  const t = now();
+  const count = (new Date(t).getUTCFullYear() - HISTORY_START + 1) * 4;
+  const all = quarters(t, count).filter((q) => Number(q.start.slice(0, 4)) >= HISTORY_START).slice(0, -QUARTERS);
+  const have = new Map();
+  if (prev?.d) prev.d.forEach((d, i) => {
+    const row = {};
+    for (const s of prev.series) if (Number.isFinite(s.v[i])) row[s.key] = s.v[i];
+    have.set(d, row);
+  });
+  const missing = [];
+  for (const q of all.slice().reverse()) for (const p of PHRASES) if (!Number.isFinite(have.get(q.start)?.[p.key])) missing.push({ q, p });
+  const jobs = missing.slice(0, HISTORY_BATCH);
+  let ok = 0;
+  const got = await pool(jobs, 2, async ({ q, p }) => {
+    const u = url(p.q, q.start, q.end, t);
+    for (let k = 0; k < 2; k += 1) {
+      try {
+        const r = parseTotal(await get.json(u, { timeout: 25_000 }));
+        ok += 1;
+        return r.count;
+      } catch {
+        if (k === 0) await new Promise((r) => { setTimeout(r, retryWait); });
+      }
+    }
+    return null;
+  }, gapMs);
+  if (jobs.length && !ok && !have.size) throw new Error('EDGAR: every history search failed');
+  jobs.forEach(({ q, p }, i) => {
+    if (got[i] === null) return;
+    const row = have.get(q.start) || {};
+    row[p.key] = got[i];
+    have.set(q.start, row);
+  });
+  const rows = all.filter((q) => have.has(q.start)).map((q) => ({ start: q.start, ...have.get(q.start) }));
+  const complete = all.every((q) => PHRASES.every((p) => Number.isFinite(have.get(q.start)?.[p.key])));
+  return { ...toHist(rows), complete };
 }
 
 // get: sourceClient(). retryWait: ms before the second try (tests pass 0).

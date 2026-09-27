@@ -15,6 +15,11 @@ export const id = 'waffle';
 export const source = 'NHC';
 export const ttl = 30 * 60_000;
 
+// No past at the source: one reading per UTC day is recorded (data/weird/history.js).
+export const defaultPeriod = 'MAX';
+export const snapshotSeries = [{ key: 'stores', label: 'Stores inside storm winds' }];
+export const snapshot = (v) => ({ stores: v.partial ? null : v.value });
+
 const STORMS_URL = 'https://www.nhc.noaa.gov/CurrentStorms.json';
 const SNAPSHOT = JSON.parse(readFileSync(new URL('./waffle-houses.json', import.meta.url), 'utf8'));
 export const STORES = SNAPSHOT.stores;

@@ -5,11 +5,13 @@
 
 import { parseFredCsv } from '../economy.js';
 import { NoData, mean, headlineNumber } from './source.js';
+import { histFrom } from './history.js';
 
 export const id = 'hotdog';
 export const source = 'FRED';
 export const ttl = 24 * 60 * 60_000;
 export const retryMs = 30 * 60_000;
+export const defaultPeriod = 'MAX';
 
 // The one fixed number on the WEIRD screen: Costco's price, unchanged since 1985.
 export const PRICE_1985 = 1.5;
@@ -54,6 +56,10 @@ export function build(obs) {
     cpiNow: last.value,
     cpiDate: last.date,
     series,
+    // History: the adjusted price for every month since January 1985 (the CSV is the
+    // whole series, so this costs no extra request).
+    hist: histFrom(obs.filter((o) => o.date >= '1985-01-01').map((o) => ({ d: `${o.date.slice(0, 7)}-01`, price: adjusted(o.value, base) })),
+      [{ key: 'price', label: 'Adjusted price' }], { step: 'month' }),
   };
 }
 

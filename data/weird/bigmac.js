@@ -4,10 +4,12 @@
 // CC BY 4.0. Updated twice a year.
 
 import { NoData, signedPct } from './source.js';
+import { histFrom } from './history.js';
 
 export const id = 'bigmac';
 export const source = 'The Economist';
 export const ttl = 24 * 60 * 60_000;
+export const defaultPeriod = 'MAX';
 
 const URL_CSV = 'https://raw.githubusercontent.com/TheEconomist/big-mac-data/master/output-data/big-mac-full-index.csv';
 
@@ -33,7 +35,21 @@ export function parse(csv) {
   const latest = all.reduce((m, r) => (r.date > m ? r.date : m), '');
   const rows = all.filter((r) => r.date === latest && Number.isFinite(r.dollarPrice)).map(({ date, ...r }) => r);
   const usPrices = all.filter((r) => r.iso3 === 'USA' && Number.isFinite(r.dollarPrice)).map((r) => ({ date: r.date, price: r.dollarPrice }));
-  return { latest, rows, usPrices };
+  // Every country's valuation at every date, for the history (since 2000).
+  const past = all.filter((r) => Number.isFinite(r.usdRaw)).map((r) => ({ date: r.date, iso3: r.iso3, usdRaw: r.usdRaw }));
+  return { latest, rows, usPrices, past };
+}
+
+// The valuation against the dollar over time, one series per country in `rows` (the
+// headline country leads). The file is the whole series, so this costs no request.
+export function toHist(past, rows, lead) {
+  const by = new Map();
+  for (const r of past || []) {
+    const row = by.get(r.date) || { d: r.date };
+    row[r.iso3] = r.usdRaw;
+    by.set(r.date, row);
+  }
+  return histFrom([...by.values()], rows.map((r) => ({ key: r.iso3, label: r.name })), { step: 'half', lead });
 }
 
 export function build(p) {
@@ -53,6 +69,7 @@ export function build(p) {
     under: ranked.slice(-5).reverse(),
     rows: ranked,
     usPrices: p.usPrices,
+    hist: toHist(p.past, ranked, top.iso3),
   };
 }
 

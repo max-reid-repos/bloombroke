@@ -6,12 +6,18 @@
 // engine. It is our summary, not a CDC national number. The newest weeks are thin (sites
 // report late), so the gauge uses the newest week with at least 90% of a full week's sites.
 
+// History: every week in the dataset (it starts in January 2022), one query a week.
+
 import { NoData, headlineNumber } from './source.js';
+import { histFrom } from './history.js';
 
 export const id = 'sick';
 export const source = 'CDC NWSS';
 export const ttl = 6 * 60 * 60_000;
 export const retryMs = 30 * 60_000;
+export const defaultPeriod = '1Y';
+export const historyTtl = 7 * 24 * 60 * 60_000;
+export const HISTORY_FROM = '2022-01-01';
 
 export const PATHOGENS = [
   { key: 'SARS-CoV-2', label: 'COVID' },
@@ -20,14 +26,14 @@ export const PATHOGENS = [
 ];
 const WEEKS = 26;
 
-export function url(now) {
-  const from = new Date(now - (WEEKS + 2) * 7 * 86400_000).toISOString().slice(0, 10);
+export function url(now, since = null) {
+  const from = since || new Date(now - (WEEKS + 2) * 7 * 86400_000).toISOString().slice(0, 10);
   const q = new URLSearchParams({
     $select: 'week_end,pathogen_target,median(site_wval) as median_wval,count(site_wval) as sites',
     $where: `week_end >= '${from}' AND site_wval IS NOT NULL`,
     $group: 'week_end,pathogen_target',
     $order: 'week_end',
-    $limit: '1000',
+    $limit: since ? '5000' : '1000',
   });
   return `https://data.cdc.gov/resource/atcp-73re.json?${q}`;
 }
@@ -61,6 +67,29 @@ export function settledIndex(s) {
   return s.length - 1;
 }
 
+// A series key per virus: 'covid', 'flu-a', 'rsv'.
+const keyOf = (p) => p.label.toLowerCase().replace(/[^a-z]+/g, '-');
+
+// { [pathogen]: [{ week, level }] } -> a hist, one series per virus, the settled weeks only.
+export function toHist(series) {
+  const rows = new Map();
+  for (const p of PATHOGENS) {
+    const all = series[p.key] || [];
+    for (const x of all.slice(0, settledIndex(all) + 1)) {
+      const r = rows.get(x.week) || { d: x.week };
+      r[keyOf(p)] = x.level;
+      rows.set(x.week, r);
+    }
+  }
+  return histFrom([...rows.values()], PATHOGENS.map((p) => ({ key: keyOf(p), label: p.label })), { step: 'week', lead: 'covid' });
+}
+
+export async function history(get, { now = Date.now } = {}) {
+  const hist = toHist(parse(await get.json(url(now(), HISTORY_FROM), { timeout: 60_000 })));
+  if (hist.d.length < 30) throw new NoData('CDC: no history');
+  return hist;
+}
+
 export function build(series) {
   const rows = PATHOGENS.map((p) => {
     const all = series[p.key] || [];
@@ -90,6 +119,7 @@ export function build(series) {
     asOf: covid.week,
     source,
     rows,
+    hist: toHist(series),
   };
 }
 
