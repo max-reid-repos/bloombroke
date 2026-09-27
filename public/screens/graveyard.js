@@ -247,7 +247,7 @@ export function stepStone(spots, i, key) {
 function cemeteryHtml(spots, art) {
   const stones = spots.map((s, i) => `<a class="gv-plot" href="${esc(q(`GRAVEYARD ${s.e.ticker}`))}" data-cmd="${esc(`GRAVEYARD ${s.e.ticker}`)}" data-i="${i}" aria-label="${esc(tombstoneLine(s.e))}">${stoneHtml({ ...s.e, art: { stone: art.stone } }, { small: true })}</a>`).join('');
   return `<div class="gv-yard${art.cemetery ? ' has-art' : ''}">
-      ${art.cemetery ? `<img class="gv-bg" src="${esc(art.cemetery)}" width="1280" height="853" alt="">` : ''}
+      ${art.cemetery ? `<img class="gv-bg" src="${esc(art.cemetery)}" width="1536" height="1024" alt="">` : ''}
       <div class="gv-ground">${stones}</div>
       <p class="gv-caption" aria-live="polite"></p>
       <p class="gv-corner">${code('GRAVEYARD ZOMBIES', 'ZOMBIES')}</p>
