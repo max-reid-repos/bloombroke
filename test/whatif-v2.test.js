@@ -481,3 +481,20 @@ test('/og/whatif.png still renders, for a vice too', async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('the month still running counts only the days so far (day and week habits)', async () => {
+  const latte = catalog.recurring.find((r) => r.id === 'latte');
+  const netflix = catalog.recurring.find((r) => r.id === 'netflix');
+  const full = monthlyCost(latte, '2026-09', catalog, bls);
+  assert.ok(Math.abs(monthlyCost(latte, '2026-09', catalog, bls, '2026-09-27') - full * 27 / 30) < 1e-9);
+  assert.equal(monthlyCost(latte, '2026-08', catalog, bls, '2026-09-27'), monthlyCost(latte, '2026-08', catalog, bls), 'a past month in full');
+  assert.ok(Math.abs(monthlyCost(item('beer'), '2026-09', catalog, bls, '2026-09-27') - monthlyCost(item('beer'), '2026-09', catalog, bls) * 27 / 30) < 1e-9);
+  assert.equal(monthlyCost(netflix, '2026-09', catalog, bls, '2026-09-27'), monthlyCost(netflix, '2026-09', catalog, bls), 'a monthly bill is paid in full');
+  // Through the service: the New York date of `now`.
+  const d = await screen(['LATTE:5Y']);
+  let paid = 0;
+  for (let k = '2021-10'; k <= '2026-09'; k = k.slice(5) === '12' ? `${Number(k.slice(0, 4)) + 1}-01` : `${k.slice(0, 5)}${String(Number(k.slice(5)) + 1).padStart(2, '0')}`) {
+    paid += monthlyCost(latte, k, catalog, bls, '2026-09-27');
+  }
+  assert.ok(Math.abs(d.rows[0].paid - paid) < 1e-9);
+});

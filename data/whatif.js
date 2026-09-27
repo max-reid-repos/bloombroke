@@ -20,6 +20,7 @@ export class WhatifError extends Error {
 }
 
 import { parseMine, mineLabel, mineShort, MineError, MINE_DOODLE } from '../public/whatif-mine.js';
+import { nyToday } from '../public/ranges.js';
 
 // ---- Months ----------------------------------------------------------------------
 
@@ -102,7 +103,10 @@ export function cpiLoader(bls) {
 
 // What one month of this habit costs. bls: data/bls-monthly.json, for items priced by a
 // BLS average price series ({ series: { id, units } }: units of that series each time).
-export function monthlyCost(item, key, catalog, bls = null) {
+// today (New York YYYY-MM-DD): in the month still running, a daily or weekly habit counts
+// only the days so far, so nothing is spent on days that have not happened. Monthly and
+// yearly bills are paid at the start of the month, so they count in full.
+export function monthlyCost(item, key, catalog, bls = null, today = null) {
   let unit;
   if (item.series) {
     unit = item.series.units * seriesAt(bls?.series?.[item.series.id], key);
@@ -113,7 +117,10 @@ export function monthlyCost(item, key, catalog, bls = null) {
   } else {
     unit = stepPrice(item.prices, key);
   }
-  if (item.per === 'day') return unit * daysInMonth(key);
+  const days = daysInMonth(key);
+  const sofar = today && key === today.slice(0, 7) ? Math.min(days, Number(today.slice(8, 10))) : days;
+  if (item.per === 'day') return unit * sofar;
+  if (item.per === 'week') return unit * PER_MONTH.week * (sofar / days);
   return unit * PER_MONTH[item.per];
 }
 
@@ -131,12 +138,12 @@ export function oneOffRow(product, buy, current) {
 
 // monthly: { 'YYYY-MM': { date, close } } for the first trading day of each month.
 // Months after the baked data use today's price.
-export function recurringRow(item, range, monthly, current, catalog, bls = null) {
+export function recurringRow(item, range, monthly, current, catalog, bls = null, today = null) {
   let paid = 0;
   let shares = 0;
   const months = monthsBetween(range.start, range.end);
   for (const key of months) {
-    const spend = monthlyCost(item, key, catalog, bls);
+    const spend = monthlyCost(item, key, catalog, bls, today);
     const close = monthly[key]?.close ?? current;
     paid += spend;
     shares += spend / close;
@@ -225,7 +232,7 @@ export function mineMeta(item) {
 }
 
 // mineData: what data/whatif-mine.js loadMine returns.
-export function mineRow(item, mineData, quotes, bls = null) {
+export function mineRow(item, mineData, quotes, bls = null, today = null) {
   const company = mineData.company[item.ticker] || item.ticker;
   const current = quotes[item.ticker];
   const src = `https://www.cnbc.com/quotes/${encodeURIComponent(item.ticker)}`;
@@ -235,7 +242,7 @@ export function mineRow(item, mineData, quotes, bls = null) {
     return { ...oneOffRow(product, mineData.buys[item.id], current), ...extra };
   }
   const habit = mineHabit(item, company);
-  const row = recurringRow(habit, { start: item.start, end: item.end, clamped: false }, mineData.monthly[`MY:${item.ticker}`] || {}, current, { recurring: [] }, bls);
+  const row = recurringRow(habit, { start: item.start, end: item.end, clamped: false }, mineData.monthly[`MY:${item.ticker}`] || {}, current, { recurring: [] }, bls, today);
   return { ...row, ...extra, habit };
 }
 
@@ -243,8 +250,9 @@ export function mineRow(item, mineData, quotes, bls = null) {
 export function computeWhatif(picks, { catalog, prices, quotes, now = new Date(), bls = null, mineData = null }) {
   if (!picks.length) throw new WhatifError('empty', 'Pick at least one thing you bought.');
   if (picks.length > 30) throw new WhatifError('too_many', 'Pick 30 things or fewer.');
+  const today = nyToday(now);
   const rows = picks.map(({ id, spec, mine }) => {
-    if (mine) return mineRow(mine, mineData, quotes, bls);
+    if (mine) return mineRow(mine, mineData, quotes, bls, today);
     const product = catalog.products.find((p) => p.id === id);
     if (product) {
       if (spec) throw new WhatifError('bad_spec', `${id.toUpperCase()} was a one-off buy, so it takes no dates.`);
@@ -252,7 +260,7 @@ export function computeWhatif(picks, { catalog, prices, quotes, now = new Date()
     }
     const item = catalog.recurring.find((r) => r.id === id);
     const range = parseSpec(spec, item, now);
-    return recurringRow(item, range, prices.monthly[item.ticker] || {}, quotes[item.ticker], catalog, bls);
+    return recurringRow(item, range, prices.monthly[item.ticker] || {}, quotes[item.ticker], catalog, bls, today);
   });
   return { rows, total: totals(rows) };
 }
@@ -319,7 +327,7 @@ export function replaySeries(result, { catalog, prices, bls, now = new Date(), a
     const item = r.habit || catalog.recurring.find((x) => x.id === r.id);
     const m = monthly(r.monthlyKey || r.ticker);
     const buys = monthsBetween(r.from, r.to).map((key) => {
-      const spend = monthlyCost(item, key, catalog, bls);
+      const spend = monthlyCost(item, key, catalog, bls, nyToday(now));
       const close = m[key]?.close ?? r.price;
       return { key, date: `${key}-01`, spend, shares: spend / close };
     });
