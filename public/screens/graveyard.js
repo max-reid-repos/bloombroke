@@ -193,34 +193,64 @@ export function stonePageHtml(e, n) {
   return `<div class="gv-page${video ? ' has-video' : ''}">${stoneHtml(e, { n })}${factsHtml(e, n)}${video ? `<div class="gv-vcol">${video}</div>` : ''}</div>`;
 }
 
-// F (or the button) pays respects to the stone on screen. F works from the empty command
-// bar or anywhere outside a field. Returns a cleanup.
+// A scene (a stone page, the cemetery, the table) takes its keys (F, T, arrows, Enter) only
+// while the command bar does NOT have the focus: typing F, FX, T or TSLA, and arrow-key
+// history, always go to the bar. Esc in an empty bar moves the focus to the scene (a second
+// Esc goes back a screen as usual), and so does a click or tap on the scene. onKey(ev)
+// returns true when it used the key. Returns a cleanup.
+export function sceneKeys(scene, onKey, { doc = globalThis.document } = {}) {
+  scene.tabIndex = -1;
+  scene.dataset.ownFocus = '';
+  scene.classList.add('gv-scene');
+  const handler = (ev) => {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    const t = ev.target;
+    const bar = doc.getElementById?.('cmd');
+    if (t === bar || t?.id === 'cmd') {
+      const listOpen = doc.getElementById?.('suggest') && !doc.getElementById('suggest').hidden;
+      if (ev.key === 'Escape' && !t.value && !listOpen && !ev.defaultPrevented && scene.isConnected !== false) {
+        ev.preventDefault();
+        scene.focus?.({ preventScroll: true });
+      }
+      return;
+    }
+    if (t?.closest?.('input, textarea, select, [contenteditable]')) return;
+    if (onKey(ev) === true) { ev.preventDefault(); ev.stopPropagation(); }
+  };
+  const focusIt = (ev) => { if (!ev.target?.closest?.('a, button, summary, input, iframe')) scene.focus?.({ preventScroll: true }); };
+  doc.addEventListener('keydown', handler, true);
+  scene.addEventListener?.('pointerdown', focusIt);
+  return () => { doc.removeEventListener('keydown', handler, true); scene.removeEventListener?.('pointerdown', focusIt); };
+}
+
+// The status line after a respect: paid, already paid today, or the check is full.
+export function respectStatus(ticker, d) {
+  if (!d) return ['RESPECTS NOT SAVED. TRY AGAIN', 'warn'];
+  if (d.busy) return ['RESPECTS ARE BUSY, TRY LATER', 'warn'];
+  return [d.counted ? `${ticker}: RESPECTS PAID` : `${ticker}: ALREADY PAID TODAY`, ''];
+}
+
+// F (with the focus on the page, see sceneKeys) or the button pays respects to the stone.
 export function wireRespects(el, ticker, { status = () => {} } = {}) {
   const pay = async () => {
     const d = await payRespect(ticker);
     if (!el.isConnected) return;
-    if (!d) { status('RESPECTS NOT SAVED. TRY AGAIN', 'warn'); return; }
+    status(...respectStatus(ticker, d));
+    if (!d || d.busy) return;
     const c = el.querySelector('[data-count]');
     if (c) c.textContent = respectsText(d.n);
     const f = el.querySelector('[data-flowers]');
     if (f) f.innerHTML = flowersHtml(d.n);
     el.querySelector('.gv-stone')?.classList.add('is-mourned');
-    status(d.counted ? `${ticker}: RESPECTS PAID` : `${ticker}: ALREADY PAID TODAY`);
   };
   const onClick = (ev) => { if (ev.target.closest?.('[data-respect]')) pay(); };
-  const onKey = (ev) => {
-    if (ev.key !== 'f' && ev.key !== 'F') return;
-    if (ev.metaKey || ev.ctrlKey || ev.altKey || ev.repeat) return;
-    const t = ev.target;
-    const bar = t?.id === 'cmd';
-    if (bar ? t.value !== '' : t?.closest?.('input, textarea, select, [contenteditable]')) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    pay();
-  };
   el.addEventListener('click', onClick);
-  document.addEventListener('keydown', onKey, true);
-  return () => { el.removeEventListener('click', onClick); document.removeEventListener('keydown', onKey, true); };
+  const stop = sceneKeys(el, (ev) => {
+    if ((ev.key !== 'f' && ev.key !== 'F') || ev.repeat) return false;
+    pay();
+    return true;
+  });
+  return () => { el.removeEventListener('click', onClick); stop(); };
 }
 
 // ---- The cemetery -----------------------------------------------------------------------------
@@ -277,7 +307,7 @@ function cemeteryHtml(spots, art) {
 
 function renderCemetery(el, data, ctx) {
   const spots = layout(data.entries);
-  el.innerHTML = panel('1', 'Graveyard', cemeteryHtml(spots, data.art), { cls: 'panel-solo gv-panel', meta: `${metaNote('ARROWS ENTER')} ${code('GRAVEYARD TABLE', 'T TABLE')}` });
+  el.innerHTML = panel('1', 'Graveyard', cemeteryHtml(spots, data.art), { cls: 'panel-solo gv-panel', meta: `${metaNote('ESC THEN ARROWS')} ${code('GRAVEYARD TABLE', 'TABLE')}` });
   const plots = [...el.querySelectorAll('.gv-plot')];
   plots.forEach((p, i) => {
     const s = spots[i];
@@ -298,21 +328,12 @@ function renderCemetery(el, data, ctx) {
   };
   pick(spots.length - 1);
   plots.forEach((p, i) => p.addEventListener('mouseenter', () => pick(i)));
-  const onKey = (ev) => {
-    const t = ev.target;
-    const bar = t?.id === 'cmd';
-    if (bar ? t.value !== '' : t?.closest?.('input, textarea, select')) return;
-    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
-    if (document.querySelector('#suggest:not([hidden])')) return;
-    let handled = true;
-    if (ev.key.startsWith('Arrow')) pick(stepStone(spots, on, ev.key));
-    else if (ev.key === 'Enter' && on >= 0) ctx.run(`GRAVEYARD ${spots[on].e.ticker}`);
-    else if (ev.key === 't' || ev.key === 'T') ctx.run('GRAVEYARD TABLE');
-    else handled = false;
-    if (handled) { ev.preventDefault(); ev.stopPropagation(); }
-  };
-  document.addEventListener('keydown', onKey, true);
-  ctx.onCleanup(() => document.removeEventListener('keydown', onKey, true));
+  ctx.onCleanup(sceneKeys(el, (ev) => {
+    if (ev.key.startsWith('Arrow')) { pick(stepStone(spots, on, ev.key)); return true; }
+    if (ev.key === 'Enter' && on >= 0 && !ev.target.closest?.('a, button')) { ctx.run(`GRAVEYARD ${spots[on].e.ticker}`); return true; }
+    if (ev.key === 't' || ev.key === 'T') { ctx.run('GRAVEYARD TABLE'); return true; }
+    return false;
+  }));
   ctx.status(`GRAVEYARD: ${data.entries.length} STONES`);
 }
 
@@ -342,17 +363,11 @@ function renderTable(el, data, ctx, { mourned = false, miss = '' } = {}) {
   };
   draw(counts || {});
   loadRespects(ctx.signal).then((n) => { if (el.isConnected) draw(n); });
-  const onKey = (ev) => {
-    const t = ev.target;
-    const bar = t?.id === 'cmd';
-    if (bar ? t.value !== '' : t?.closest?.('input, textarea, select')) return;
-    if (ev.metaKey || ev.ctrlKey || ev.altKey || (ev.key !== 't' && ev.key !== 'T')) return;
-    ev.preventDefault();
-    ev.stopPropagation();
+  ctx.onCleanup(sceneKeys(el, (ev) => {
+    if (ev.key !== 't' && ev.key !== 'T') return false;
     ctx.run('GRAVEYARD');
-  };
-  document.addEventListener('keydown', onKey, true);
-  ctx.onCleanup(() => document.removeEventListener('keydown', onKey, true));
+    return true;
+  }));
   ctx.status(`GRAVEYARD: ${data.entries.length} FAMOUS TICKERS THAT ARE GONE`);
 }
 
@@ -365,7 +380,7 @@ export function zombiesHtml(list) {
 
 function renderStone(el, e, ctx) {
   const draw = (n) => {
-    el.innerHTML = panel('1', `Graveyard: ${e.ticker}`, stonePageHtml(e, n), { cls: 'panel-solo', meta: metaNote('F PAY RESPECTS') });
+    el.innerHTML = panel('1', `Graveyard: ${e.ticker}`, stonePageHtml(e, n), { cls: 'panel-solo', meta: metaNote('ESC THEN F') });
     wireShare(el, ctx.copy);
     wireVideo(el);
   };
@@ -400,7 +415,12 @@ export function renderGraveyard(el, cmd, ctx) {
       let items = [];
       try { items = (await (await fetch('/api/onthisday', { signal: ctx.signal })).json()).items || []; } catch { items = []; }
       if (!el.isConnected) return;
-      if (items[0]) { renderStone(el, items[0], ctx); return; }
+      if (items.length === 1) { renderStone(el, items[0], ctx); return; }
+      if (items.length > 1) {
+        el.innerHTML = panel('1', 'Graveyard: on this day', zombiesHtml(items), { cls: 'panel-solo', meta: metaNote(`${items.length} ON THIS DAY`) });
+        ctx.status(`GRAVEYARD: ${items.length} ON THIS DAY`);
+        return;
+      }
       el.innerHTML = panel('1', 'Graveyard: on this day', `<p class="notice">No anniversary today.</p><p class="muted">${code('GRAVEYARD', 'See the graveyard')}.</p>`, { cls: 'panel-solo' });
       ctx.status('GRAVEYARD: NO ANNIVERSARY TODAY');
       return;
@@ -424,13 +444,23 @@ export function onThisDayHtml(e) {
   return `<a class="gv-otd" href="${esc(q(`GRAVEYARD ${e.ticker}`))}" data-cmd="${esc(`GRAVEYARD ${e.ticker}`)}" title="${esc(tombstoneLine(e))}">${esc(onThisDayLine(e))}</a>`;
 }
 
-export async function mountOnThisDay(head, { signal } = {}) {
+// Several on one day: the line shows each in turn, every ROTATE_MS.
+export const ROTATE_MS = 6000;
+export async function mountOnThisDay(head, { signal, every = (fn, ms) => setInterval(fn, ms) } = {}) {
   if (!head) return;
   try {
     const r = await fetch('/api/onthisday', { signal, headers: { Accept: 'application/json' } });
     const d = r.ok ? await r.json() : null;
-    const e = d?.items?.[0];
-    if (!e || !head.isConnected || head.querySelector('.gv-otd')) return;
-    head.querySelector('.panel-meta')?.insertAdjacentHTML('beforebegin', onThisDayHtml(e));
+    const items = d?.items || [];
+    if (!items.length || !head.isConnected || head.querySelector('.gv-otd')) return;
+    head.querySelector('.panel-meta')?.insertAdjacentHTML('beforebegin', onThisDayHtml(items[0]));
+    if (items.length < 2) return;
+    let i = 0;
+    const id = every(() => {
+      const a = head.querySelector('.gv-otd');
+      if (!a || !head.isConnected) { clearInterval(id); return; }
+      i = (i + 1) % items.length;
+      a.outerHTML = onThisDayHtml(items[i]);
+    }, ROTATE_MS);
   } catch { /* no line */ }
 }

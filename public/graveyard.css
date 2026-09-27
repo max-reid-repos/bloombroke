@@ -123,3 +123,4 @@
   .gv-page.has-video { grid-template-columns: minmax(0, 1fr); }
   .gv-page.has-video .gv-vcol { grid-column: auto; }
 }
+.gv-scene:focus { outline: 1px solid var(--rule-strong); outline-offset: -1px; }

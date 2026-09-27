@@ -95,12 +95,13 @@ export function respectsText(n) {
   return `${v.toLocaleString('en-US')} ${v === 1 ? 'respect' : 'respects'}`;
 }
 
-// ON THIS DAY on HOME: '15 Sep 2008: Lehman Brothers filed for bankruptcy. F to pay respects'.
-// When the anniversary is another day than the event on the stone, just the name.
+// ON THIS DAY on HOME: '15 Sep 2008: Lehman Brothers filed for bankruptcy.' (a link to the
+// stone, where F pays respects). When the anniversary is another day than the event on
+// the stone, just the name.
 export function onThisDayLine(e) {
   const day = e.anniversary || e.date;
   const what = day === e.date ? ` ${e.what.charAt(0).toLowerCase()}${e.what.slice(1)}` : '';
-  return `${dayText(day)}: ${e.name}${what}. F to pay respects`;
+  return `${dayText(day)}: ${e.name}${what}.`;
 }
 
 // A YouTube id, or null. The screen shows our own art, and loads the player from

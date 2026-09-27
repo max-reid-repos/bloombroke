@@ -14,6 +14,7 @@ import { parseCommand } from '../public/app.js';
 import { stoneYears, flowersFor, respectsText, onThisDayLine, ytEmbed, periodText, MAX_FLOWERS, GRAVEYARD_VIEWS } from '../public/nosuch.js';
 import {
   stoneHtml, stonePageHtml, peakLineHtml, videoHtml, flowersHtml, layout, stepStone, zombiesHtml, graveyardTable, onThisDayHtml, sourcesHtml, pageSources,
+  sceneKeys, respectStatus,
 } from '../public/screens/graveyard.js';
 
 const FIX = fileURLToPath(new URL('./fixtures/graveyard-v2.json', import.meta.url));
@@ -164,8 +165,11 @@ test('ON THIS DAY: the New York date, earlier years only; the line and the link'
   assert.deepEqual(onThisDay(DATA.stones, '2008-09-15'), [], 'not the day itself');
   assert.deepEqual(onThisDay(DATA.stones, '2026-09-16'), []);
   assert.deepEqual(onThisDay(DATA.stones, 'nope'), []);
-  assert.equal(onThisDayLine(LEH), '15 Sep 2008: Lehman Brothers filed for bankruptcy. F to pay respects');
-  assert.equal(onThisDayLine({ ...LEH, anniversary: '2008-09-16' }), '16 Sep 2008: Lehman Brothers. F to pay respects', 'another day: no event words');
+  assert.equal(onThisDayLine(LEH), '15 Sep 2008: Lehman Brothers filed for bankruptcy.', 'no F promise on HOME: F does nothing there');
+  assert.equal(onThisDayLine({ ...LEH, anniversary: '2008-09-16' }), '16 Sep 2008: Lehman Brothers.', 'another day: no event words');
+  const real = loadGraveyardData().stones;
+  assert.deepEqual(onThisDay(real, '2026-07-21').map((e) => e.ticker).sort(), ['TOY', 'WCOM'], 'two on one day: both');
+  assert.deepEqual(onThisDay(real, '2026-10-15').map((e) => e.ticker).sort(), ['RAD', 'SHLD']);
   assert.match(onThisDayHtml(LEH), /data-cmd="GRAVEYARD LEH"/);
 });
 
@@ -191,12 +195,18 @@ test('respects: one per stone per address a day, totals only, nothing about the 
   let t = Date.parse('2026-09-15T12:00:00-04:00');
   const salts = ['s1', 's2'];
   const gate = makeRespectGate({ now: () => t, salt: () => salts.shift() || 'sx' });
-  assert.equal(gate.allow('1.2.3.4', 'LEH'), true);
-  assert.equal(gate.allow('1.2.3.4', 'LEH'), false, 'once a day');
-  assert.equal(gate.allow('1.2.3.4', 'BBI'), true, 'another stone');
-  assert.equal(gate.allow('5.6.7.8', 'LEH'), true, 'another address');
+  assert.equal(gate.allow('1.2.3.4', 'LEH'), 'ok');
+  assert.equal(gate.allow('1.2.3.4', 'LEH'), 'seen', 'once a day');
+  assert.equal(gate.allow('1.2.3.4', 'BBI'), 'ok', 'another stone');
+  assert.equal(gate.allow('5.6.7.8', 'LEH'), 'ok', 'another address');
+  const small = makeRespectGate({ now: () => t, maxKeys: 1 });
+  assert.equal(small.allow('a', 'LEH'), 'ok');
+  assert.equal(small.allow('b', 'LEH'), 'full', 'a full table: try later, not "already paid"');
+  assert.deepEqual(respectStatus('LEH', { counted: false, busy: true }), ['RESPECTS ARE BUSY, TRY LATER', 'warn']);
+  assert.deepEqual(respectStatus('LEH', { counted: false }), ['LEH: ALREADY PAID TODAY', '']);
+  assert.deepEqual(respectStatus('LEH', { counted: true }), ['LEH: RESPECTS PAID', '']);
   t += 24 * 3600 * 1000;
-  assert.equal(gate.allow('1.2.3.4', 'LEH'), true, 'a new New York day');
+  assert.equal(gate.allow('1.2.3.4', 'LEH'), 'ok', 'a new New York day');
   assert.equal(gate.size(), 1, 'yesterday is forgotten');
   // The database: a ticker and a total, nothing else.
   const db = new Database(':memory:');
@@ -251,7 +261,7 @@ test('cemetery: rows back to front, size by peak value, arrows walk, Enter and T
   assert.equal(stepStone(spots, 0, 'ArrowUp'), 0, 'no row above: stays');
   assert.equal(stepStone([], 0, 'ArrowLeft'), -1);
   const src = readFileSync(new URL('../public/screens/graveyard.js', import.meta.url), 'utf8');
-  assert.match(src, /metaNote\('ARROWS ENTER'\)\} \$\{code\('GRAVEYARD TABLE', 'T TABLE'\)\}/, 'hints in the title strip, 4 words');
+  assert.match(src, /metaNote\('ESC THEN ARROWS'\)\} \$\{code\('GRAVEYARD TABLE', 'TABLE'\)\}/, 'hints in the title strip, 4 words');
   assert.match(src, /max-width: 639px/, 'a phone gets the table');
 });
 
@@ -281,7 +291,11 @@ test('stone pages: seoTitle, a description from the facts, canonical, LAST WEBSI
   assert.match(nosuchMeta('GRAVEYARD BBI', deps).title, /^BBI\. Blockbuster\. Filed for bankruptcy 23 Sep 2010\. \| GRAVEYARD/);
   assert.match(nosuchMeta('GRAVEYARD GMZ', deps).description, /Came back 18 Nov 2010\./);
   assert.match(m.description, /Peak close \$85\.80 a share \(2 Feb 2007\)\./);
-  assert.match(nosuchMeta('GRAVEYARD TODAY', deps).image, /\/og\/onthisday\.png$/);
+  assert.match(nosuchMeta('GRAVEYARD TODAY', deps).image, /\/og\/onthisday\.png\?d=2026-09-15$/, 'the share keeps its day');
+  const z = nosuchMeta('GRAVEYARD ZOMBIES', deps);
+  assert.equal(z.url, 'https://bloombroke.com/?c=GRAVEYARD+ZOMBIES', 'ZOMBIES has its own canonical');
+  assert.match(z.title, /^Zombies: 1 companies/);
+  assert.match(z.description, /Zombie Motors/);
   assert.equal(nosuchMeta('GRAVEYARD TODAY', { ...deps, today: () => '2026-01-02' }), null);
   assert.match(sourcesHtml(LEH), /<a class="gv-last" href="https:\/\/web\.archive\.org\/web\/20080915000000\/http:\/\/www\.lehman\.com\/" target="_blank" rel="noopener noreferrer">LAST WEBSITE<\/a>/);
   const src = sourcesHtml(LEH);
@@ -304,9 +318,25 @@ test('cards: tombstone v2, a zombie and ON THIS DAY render; the site card on oth
   const o = await cards.onthisday();
   assert.equal(o.maxAge, 3600);
   assert.match(renders[1], /ON THIS DAY, 18 YEARS AGO/);
+  assert.doesNotMatch(renders[1], /more on this day/);
+  await cards.onthisday('2026-09-15');
+  assert.equal(renders.length, 2, 'kept');
+  day = '2026-09-16';
+  const y = await cards.onthisday('2026-09-15');
+  assert.equal(y.maxAge, 3600, 'yesterday still draws: a share from yesterday');
+  const old = await cards.onthisday('2025-09-15');
+  assert.deepEqual([old.png, old.maxAge], [site, 300], 'no other day draws');
+  assert.ok(cards.otdCache.size <= 2, 'today and yesterday only');
   day = '2026-01-02';
   const none = await cards.onthisday();
   assert.deepEqual([none.png, none.maxAge], [site, 300]);
+  // Two on one day: the first, and "and 1 more".
+  const two = makeNoSuchCards({
+    graveyard: [LEH, { ...BBI, date: '2010-09-15', anniversary: '2010-09-15' }], zombies: [], art: artOnDisk('/nonexistent'), today: () => '2026-09-15', block: parseBlocklist(''),
+    fallback: async () => site, render: async (tree) => { renders.push(JSON.stringify(tree)); return Buffer.from('x'); },
+  });
+  await two.onthisday();
+  assert.match(renders[renders.length - 1], /and 1 more on this day/);
   const tree = JSON.stringify(await tombstoneTree(LEH));
   assert.match(tree, /Too big to fail/);
   assert.doesNotMatch(tree, BANNED);
@@ -319,4 +349,75 @@ test('house rules in the new files', () => {
   assert.doesNotMatch(src, /—/);
   assert.doesNotMatch(src, /amber|orange/i);
   assert.doesNotMatch(src, /\bbuy\b|\bsell\b|will (rise|fall|collapse)/i, 'history, not advice');
+});
+
+// A tiny stand-in for the page: the command bar, the suggestion list and one scene.
+function fakePage() {
+  const listeners = [];
+  const bar = { id: 'cmd', value: '', closest: () => null };
+  const suggest = { hidden: true };
+  let focused = null;
+  const scene = {
+    isConnected: true, dataset: {}, classList: { add() {} }, tabIndex: 0,
+    focus() { focused = scene; }, addEventListener() {}, removeEventListener() {}, closest: () => null,
+  };
+  const doc = {
+    getElementById: (id) => (id === 'cmd' ? bar : id === 'suggest' ? suggest : null),
+    addEventListener: (t, fn) => listeners.push(fn),
+    removeEventListener: (t, fn) => listeners.splice(listeners.indexOf(fn), 1),
+  };
+  const press = (key, target = bar) => {
+    const ev = { key, target, defaultPrevented: false, stopped: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; } };
+    for (const fn of [...listeners]) fn(ev);
+    return ev;
+  };
+  return { bar, scene, doc, press, focused: () => focused, listeners };
+}
+
+test('scene keys: never while the command bar has the focus (F, FX, T, TSLA, arrow history)', () => {
+  const p = fakePage();
+  const used = [];
+  const stop = sceneKeys(p.scene, (ev) => { used.push(ev.key); return ['f', 'F', 't', 'T', 'Enter', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(ev.key); }, { doc: p.doc });
+  // Typing in the bar: F (Ford), FX, T (AT&T), TSLA, FEEDBACK, and arrow-key history.
+  for (const word of ['F', 'FX', 'T', 'TSLA', 'FEEDBACK']) {
+    for (const ch of word) {
+      const ev = p.press(ch);
+      assert.equal(ev.defaultPrevented || ev.stopped, false, `${word}: ${ch} reaches the bar`);
+      p.bar.value += ch;
+    }
+    p.bar.value = '';
+  }
+  for (const k of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter']) {
+    const ev = p.press(k);
+    assert.equal(ev.defaultPrevented || ev.stopped, false, `${k} stays with the bar (history, run)`);
+  }
+  assert.deepEqual(used, [], 'the scene saw nothing');
+  // Esc in an empty bar moves the focus to the scene; then F, T and the arrows are the scene's.
+  p.bar.value = 'AB';
+  assert.equal(p.press('Escape').defaultPrevented, false, 'Esc with text: the bar clears it as usual');
+  assert.equal(p.focused(), null);
+  p.bar.value = '';
+  assert.equal(p.press('Escape').defaultPrevented, true);
+  assert.equal(p.focused(), p.scene);
+  for (const k of ['F', 'T', 'ArrowUp', 'Enter']) {
+    const ev = p.press(k, p.scene);
+    assert.equal(ev.defaultPrevented && ev.stopped, true, `${k} on the scene`);
+  }
+  assert.deepEqual(used, ['F', 'T', 'ArrowUp', 'Enter']);
+  const x = p.press('x', p.scene);
+  assert.equal(x.defaultPrevented, false, 'other keys still go to the bar');
+  const field = { closest: () => ({}) };
+  assert.equal(p.press('F', field).defaultPrevented, false, 'never in another field');
+  assert.equal(p.scene.tabIndex, -1);
+  assert.equal(p.scene.dataset.ownFocus, '', 'a click on the scene keeps the focus there');
+  stop();
+  assert.equal(p.listeners.length, 0);
+});
+
+test('scene keys: the stone, cemetery and table screens use them; hints in the title strip', () => {
+  const src = readFileSync(new URL('../public/screens/graveyard.js', import.meta.url), 'utf8');
+  assert.equal((src.match(/addEventListener\('keydown'/g) || []).length, 1, 'one key listener, in sceneKeys');
+  assert.equal((src.match(/sceneKeys\(el,/g) || []).length, 3, 'stone (with respects), cemetery, table');
+  assert.match(src, /metaNote\('ESC THEN F'\)/);
+  assert.match(src, /metaNote\('ESC THEN ARROWS'\)/);
 });
