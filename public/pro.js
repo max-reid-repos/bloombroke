@@ -3,6 +3,7 @@
 // that touch the network or storage only run in a browser.
 
 import { INSTRUMENTS, resolveInstrument } from './instruments.js';
+import { stockIdOf } from './known-tickers.js';
 import { WATCH_KEY } from './watchlist.js';
 import { PF_KEY } from './portfolio.js';
 import { DESK_KEY } from './desk-layout.js';
@@ -94,6 +95,8 @@ export function statusActive(st, now = Date.now()) {
 
 // A symbol for the tape: a named instrument (GOLD, EURUSD) or a ticker. null otherwise.
 export function tapeSymbol(tok) {
+  const stock = stockIdOf(tok); // $GOLD: the stock
+  if (stock) return stock;
   const inst = resolveInstrument(tok);
   if (inst) return inst.id;
   const t = String(tok ?? '').toUpperCase();

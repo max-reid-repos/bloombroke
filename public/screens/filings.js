@@ -13,7 +13,7 @@ export function acceptedEt(iso) {
   return Number.isFinite(t) ? `${new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })} ET` : '';
 }
 
-const TICKER = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
+const TICKER = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 // KEY (the default) leaves out ownership paperwork: insider Forms 3, 4, 5 and 144 and 5%
 // holder schedules, which are most of a big company's list.
 export const FORMS = ['KEY', '10-K', '10-Q', '8-K', '4', 'ALL'];

@@ -1,7 +1,8 @@
 // WATCH: the user's own list of symbols. Pure list maths plus load and save through
 // a store that never throws (see app.js). The list lives in this browser only.
 
-import { matchInstrument, instrumentById } from './instruments.js';
+import { matchInstrument, instrumentById, STOCK_RE } from './instruments.js';
+import { stockIdOf } from './known-tickers.js';
 
 export const WATCH_KEY = 'bb.watch';
 export const DEFAULT_WATCHLIST = ['SPX', 'NDX', 'AAPL', 'MSFT', 'NVDA', 'TSLA', 'BTC', 'GOLD', 'EURUSD'];
@@ -11,11 +12,14 @@ const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 // "AAPL", "S&P 500", "EUR/USD", "AAPL,MSFT" -> { ids: ['AAPL', 'SPX', ...], bad: [...] }.
 // Named instruments may take up to three words; commas also separate symbols.
 export function parseSymbols(tokens) {
-  const toks = tokens.flatMap((t) => String(t).toUpperCase().split(/[,;]+/)).map((t) => t.trim().replace(/^\$/, '')).filter(Boolean);
+  // $GOLD is the stock GOLD, never spot gold; any other leading $ is dropped as before.
+  const toks = tokens.flatMap((t) => String(t).toUpperCase().split(/[,;]+/)).map((t) => t.trim())
+    .map((t) => (STOCK_RE.test(t) ? t : t.replace(/^\$/, ''))).filter(Boolean);
   const ids = [];
   const bad = [];
   let i = 0;
   while (i < toks.length) {
+    if (STOCK_RE.test(toks[i])) { ids.push(stockIdOf(toks[i])); i += 1; continue; }
     const m = matchInstrument(toks.slice(i));
     if (m) { ids.push(m.inst.id); i += m.used; continue; }
     if (TICKER_RE.test(toks[i])) ids.push(toks[i]); else bad.push(toks[i]);

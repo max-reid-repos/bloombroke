@@ -121,7 +121,7 @@ export function makeOptions({ fetchImpl = globalThis.fetch, cache = createCache(
   }
 
   async function getOptions(rawSymbol, rawExpiry) {
-    const symbol = String(rawSymbol ?? '').trim().toUpperCase();
+    const symbol = String(rawSymbol ?? '').trim().toUpperCase().replace(/^\$/, ''); // $GOLD: the stock
     if (!OPTIONS_TICKER_RE.test(symbol)) throw new OptionsError('bad_symbol', 'That does not look like a ticker.');
     const { value, stale, fetchedAt } = await load(symbol);
     if (!value || !value.expiries.length) throw new OptionsError('not_found', `No listed options for ${symbol}.`);

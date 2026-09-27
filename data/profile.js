@@ -2,7 +2,7 @@
 // Nasdaq API; headquarters and fiscal year end from SEC EDGAR (both no key).
 
 import { createCache } from './cache.js';
-import { normalizeTicker } from './quotes.js';
+import { companyTicker } from './quotes.js';
 import { getNasdaq, money, iso } from './lists.js';
 
 const TTL = 24 * 60 * 60_000;
@@ -100,7 +100,7 @@ export function makeProfile({ fetchImpl = globalThis.fetch, cache = createCache(
   }
 
   async function getProfile(raw) {
-    const ticker = normalizeTicker(raw);
+    const ticker = companyTicker(raw);
     if (!ticker) throw new ProfileError('bad_symbol', 'That does not look like a ticker.');
     let got;
     try {

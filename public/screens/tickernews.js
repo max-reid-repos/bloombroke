@@ -5,7 +5,7 @@ import { safeHref, newsTimeHtml, NEWS_POLL_MS } from './news.js';
 import { toolbar, segmented } from '../kit.js';
 import { errorHtml } from './profile.js';
 
-const TICKER = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
+const TICKER = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 
 // The sources, in the panel's title strip.
 export const TICKER_SOURCES = 'NEWS PUBLISHERS · SEC';
