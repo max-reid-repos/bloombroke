@@ -944,13 +944,20 @@ export function rangeChart(root, ctx, opts) {
     } catch { /* no flags */ }
   }
 
+  // The first load, and again every minute on 1D and 5D (the ctx.live below): a redraw
+  // only when the headlines changed. A failed refresh keeps the flags already shown.
+  let headKey = '';
   async function loadHeadlines() {
-    headlines = [];
+    if (!headlines) headlines = [];
     try {
       const d = await ctx.fetchJSON(`/api/chart-news?s=${encodeURIComponent(symbol)}`, { signal: ctx.signal });
-      headlines = d.items || [];
+      const items = d.items || [];
+      const key = JSON.stringify(items.map((h) => [h.time, h.url, h.title]));
+      if (key === headKey) return;
+      headKey = key;
+      headlines = items;
       if (data && events) draw();
-    } catch { /* no N flags */ }
+    } catch { /* no N flags, or the ones already shown */ }
   }
 
   // ---- Zoom --------------------------------------------------------------------------
@@ -1192,6 +1199,8 @@ export function rangeChart(root, ctx, opts) {
     load({ silent: true });
   };
   ctx.live(() => { if (intradayNow()) refresh(); }, 60_000);
+  // N flags on 1D and 5D: new headlines every minute while the chart is on show.
+  ctx.live(() => { if (isStock && headlines && intradayNow() && !compact()) loadHeadlines(); }, 60_000);
   ctx.live(() => { if (data && !intradayNow() && !(fetchWin?.to || range.to)) refresh(); }, 15 * 60_000);
 
   return {

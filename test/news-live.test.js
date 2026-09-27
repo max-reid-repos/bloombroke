@@ -93,3 +93,18 @@ test('server TTLs: one upstream fetch per TTL, however many readers ask', async 
   assert.equal(d.items[0].title, 'Acme posts results');
   assert.ok(ua.every((u) => /@/.test(u)), 'the User-Agent names a contact (SEC fair access)');
 });
+
+// A screen's timers, with a stand-in page: which ones it asks for, and how often.
+import { render as renderTickerNews } from '../public/screens/tickernews.js';
+
+test('live news: NEWS <ticker> asks again every minute, visible only (ctx.live)', () => {
+  const node = () => ({ innerHTML: '', addEventListener() {}, querySelector: () => node() });
+  const el = node();
+  const timers = [];
+  const ctx = {
+    fetchJSON: () => new Promise(() => {}), signal: null, status() {}, updated() {},
+    live: (fn, ms) => timers.push(['live', ms]), every: (fn, ms) => timers.push(['every', ms]),
+  };
+  renderTickerNews(el, { args: { ticker: 'AAPL' } }, ctx);
+  assert.deepEqual(timers, [['live', 60_000]]);
+});
