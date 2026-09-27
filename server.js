@@ -31,6 +31,8 @@ import { securityHeaders, isEmbedQuery, embedHtml } from './lib/embed.js';
 import { startPro } from './pro/index.js';
 import { getWeird, getGauge, startWeirdPrewarm, FAST_WAIT } from './data/weird/index.js';
 import { makeWeirdCards, weirdCommand } from './lib/og-weird.js'; // WEIRD share cards
+import { mountWhyCards } from './lib/og-why.js'; // WHY share cards
+import { getWhy } from './data/why.js'; // WHY share cards
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
@@ -380,6 +382,10 @@ app.get('/og/weird.png', async (req, res) => {
 });
 // ---- end WEIRD share cards ------------------------------------------------------------------
 
+// ---- WHY share cards: /?c=WHY+AAPL gets its own title and /og/why.png (lib/og-why.js) ----
+const whyCards = mountWhyCards(app, { getWhy, parse: parseCommand });
+// ---- end WHY share cards ---------------------------------------------------------------------
+
 // A shared link gets its own title and image, so the card on X shows the result:
 // WHATIF (the certificate), AFFORD (cost per use and verdict) and a ticker (price and a
 // 1-month line). Anything else, or a slow answer, gets the site card.
@@ -392,6 +398,8 @@ async function shareIndex(c) {
   if (!whatif && !c.trim()) return HOME;
   const weirdPage = await weirdShareIndex(c).catch(() => null); // WEIRD share cards
   if (weirdPage) return weirdPage;
+  const whyPage = await whyCards.meta(c).catch(() => null); // WHY share cards
+  if (whyPage) return withMeta(PAGE, whyPage);
   // A bare command (/?c=MARKETS): its own title, description and canonical, no card.
   const plain = !whatif && commandMeta(c, parseCommand);
   if (plain) return withMeta(PAGE, plain);
