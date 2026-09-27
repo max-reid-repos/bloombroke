@@ -4,6 +4,7 @@
 // Pure parts (share text, stats, countdown, matching, the chart) are exported for tests.
 
 import { esc, q, panel, metaNote, LOADING } from './markets.js';
+import { guessEmbedSnippet } from '../embed-snippet.js'; // EMBED: the iframe line
 
 export const STORE_KEY = 'bb.guess';
 export const TRIES = 6;
@@ -284,6 +285,7 @@ export function render(el, cmd, ctx) {
       <div class="gs-share">
         <button type="button" class="pf-btn gs-copy">COPY RESULT</button>
         <a class="chip gs-x" href="${esc(shareOnX(shareText(game.n, game.rows, solved())))}" target="_blank" rel="noopener">SHARE ON X</a>
+        <button type="button" class="chip gs-embed" title="Copy one line of HTML that puts today's GUESS on your site">EMBED</button>
         <span class="gs-next">NEXT IN <span class="gs-cd">${fmtCountdown(msToNextPuzzle(Date.now()))}</span></span>
       </div>
     </div>`;
@@ -390,6 +392,13 @@ export function render(el, cmd, ctx) {
     if (e.target.closest('.gs-copy')) {
       const ok = await ctx.copy(shareText(game.n, game.rows, solved()));
       ctx.status(ok ? 'RESULT COPIED' : 'COULD NOT COPY', ok ? '' : 'warn');
+    }
+    // EMBED: copies the iframe line (public/embed-snippet.js), says so on the button.
+    const embedBtn = e.target.closest('.gs-embed');
+    if (embedBtn) {
+      const ok = await ctx.copy(guessEmbedSnippet());
+      if (ok) { embedBtn.textContent = 'COPIED'; setTimeout(() => { embedBtn.textContent = 'EMBED'; }, 2000); }
+      ctx.status(ok ? 'EMBED CODE COPIED' : 'COULD NOT COPY', ok ? '' : 'warn');
     }
   });
   playBody.addEventListener('focusout', (e) => {

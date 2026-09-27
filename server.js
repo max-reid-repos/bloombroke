@@ -20,6 +20,8 @@ import {
   withCanonical, quoteTicker, SITE,
 } from './lib/og.js';
 import { commandMeta, mountSiteFiles } from './lib/seo.js';
+import { whatifItemMeta } from './lib/whatif-seo.js'; // WHATIF item pages: plain title and description
+import { mountEmbeds } from './lib/embed-pages.js'; // /embed/whatif and /embed/guess
 import { parseCommand } from './public/app.js';
 import { getFinancials, FinancialsError } from './data/financials.js';
 import { getScreen, ScreenError, startScreenPrewarm } from './data/screen.js';
@@ -312,8 +314,11 @@ mountSponsors(app);
 
 // --- GUESS (data/guess.js): one mystery stock a day ---
 import { mountGuess } from './data/guess.js';
+import { mountGuessCard } from './lib/og-guess.js';
 import { getFishtank } from './data/sp100.js';
-mountGuess(app, { getChart, getCaps: getFishtank });
+const guessGame = mountGuess(app, { getChart, getCaps: getFishtank });
+// The GUESS share card, /og/guess.png: today's chart, never the answer (lib/og-guess.js).
+mountGuessCard(app, { todayPuzzle: () => guessGame.todayPuzzle() });
 // --- end GUESS ---
 
 startPro(app, { dir });
@@ -328,7 +333,8 @@ function sendPng(res, png, maxAge) {
 }
 app.get('/og/whatif.png', async (req, res) => {
   try {
-    sendPng(res, await whatifPng(str(req.query.c) || '', ogDeps, { ip: req.ip }), 86400);
+    // A week, as long as the card is kept on disk: stable enough for a newsletter image.
+    sendPng(res, await whatifPng(str(req.query.c) || '', ogDeps, { ip: req.ip }), 604800);
   } catch (err) {
     console.error('[og]', err.message);
     try { sendPng(res, await defaultPng(), 300); } catch { res.status(503).end(); }
@@ -371,6 +377,8 @@ const INDEX = withMeta(PAGE, DEFAULT_META);
 const HOME = withCanonical(INDEX, `${SITE}/`);
 // /terms, /privacy, /disclaimer: plain server-rendered pages, text in legal/*.md.
 mountLegal(app, { build: BUILD });
+// /embed/*: the only pages other sites may frame (lib/embed-pages.js).
+mountEmbeds(app, { build: BUILD, getCert: (c) => getCert(c, ogDeps), catalog });
 function sendIndex(res, status = 200, html = INDEX) {
   res.status(status).set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }).send(html);
 }
@@ -424,8 +432,12 @@ async function shareIndex(c) {
   const timeout = new Promise((resolve) => { setTimeout(resolve, 2500, LATE).unref(); });
   try {
     if (whatif) {
-      const model = await Promise.race([getCert(c, ogDeps), timeout]);
-      return model && model !== LATE ? withMeta(PAGE, certMeta(model)) : INDEX;
+      const got = await Promise.race([getCert(c, ogDeps).catch(() => null), timeout]);
+      const model = got && got !== LATE ? got : null;
+      // One catalogue item: a plain title and description, numbers when they are in.
+      const item = whatifItemMeta(c, model, { catalog });
+      if (item) return withMeta(PAGE, item);
+      return model ? withMeta(PAGE, certMeta(model)) : INDEX;
     }
     const model = await Promise.race([getQuoteCard(c, quoteDeps), timeout]);
     if (model === LATE) return tickerIndex(c);
