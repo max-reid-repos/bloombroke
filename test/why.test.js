@@ -160,3 +160,62 @@ test('WHY: SEC down still shows the moves, and says the filings did not load', a
   // The E flag source still gives the earnings day, and the log its headline.
   assert.deepEqual(d.rows[0].items.map((x) => x.kind), ['NEWS']);
 });
+
+// ---- The WHY screen -------------------------------------------------------------------
+
+import { whatCell, itemHtml, whyTable, whyMeta, notCompanyHtml, WHY_NOTE } from '../public/screens/why.js';
+import { parseCommand } from '../public/app.js';
+import { findCommand, TICKER_FUNCTIONS } from '../public/registry.js';
+
+test('WHY screen: AAPL WHY and WHY AAPL are one command; WHY alone shows its usage', () => {
+  assert.deepEqual(parseCommand('AAPL WHY'), { name: 'WHY', args: { ticker: 'AAPL' }, error: undefined, input: 'WHY AAPL' });
+  assert.deepEqual(parseCommand('why aapl'), { name: 'WHY', args: { ticker: 'AAPL' }, error: undefined, input: 'WHY AAPL' });
+  assert.equal(parseCommand('WHY').error, 'usage');
+  const e = findCommand('WHY');
+  assert.equal(e.name, 'WHY');
+  assert.ok(e.takesTicker && TICKER_FUNCTIONS.includes('WHY'));
+  assert.ok(e.examples.every((x) => parseCommand(x).name === 'WHY'));
+});
+
+test('WHY screen: nothing found is --, never a cause', () => {
+  assert.match(whatCell([]), />--</);
+  assert.match(whatCell(undefined), />--</);
+  assert.equal(WHY_NOTE, 'Biggest daily moves, 1Y. What came out that day, not a cause.');
+  assert.match(whyMeta({ secOk: true }), /not a cause/i);
+  assert.match(whyMeta({ secOk: false }), /SEC filings did not load/);
+  assert.match(whyMeta({ logSince: '2026-09-27T01:00:00Z' }), /Headlines since SEP 27, 2026/);
+});
+
+test('WHY screen: each line links out in a new tab, three lines then +N MORE', () => {
+  const it = (i, kind = 'NEWS') => ({ kind, time: '2026-07-31T13:00:00.000Z', date: '2026-07-31', text: `Story <${i}>`, url: `https://n.test/${i}`, source: 'Nasdaq' });
+  const one = itemHtml(it(1, 'FILING'));
+  assert.match(one, /target="_blank" rel="noopener noreferrer"/);
+  assert.match(one, />SEC</);
+  assert.match(one, /Story &lt;1&gt;/, 'feed text is escaped');
+  assert.match(one, /title="JUL 31, 2026 09:00 ET/);
+  assert.doesNotMatch(itemHtml({ ...it(2), url: 'javascript:alert(1)' }), /href=/);
+  const cell = whatCell([it(1), it(2), it(3), it(4), it(5)]);
+  assert.equal((cell.match(/class="why-it /g) || []).length, 3);
+  assert.match(cell, /\+2 MORE/);
+});
+
+test('WHY screen: the table has date, % move in colour, close and what came out', () => {
+  const html = whyTable([
+    { rank: 1, date: '2026-07-31', pct: -9.456, close: 188.4, items: [] },
+    { rank: 2, date: '2026-04-09', pct: 15.33, close: 198.85, items: [{ kind: 'EARNINGS', date: '2026-04-09', time: null, text: 'Earnings date', url: null, source: 'CNBC' }] },
+  ]);
+  assert.match(html, /class="dt why-dt"/);
+  assert.match(html, /What came out that day/);
+  assert.match(html, /JUL 31, 2026/);
+  assert.match(html, /class="down">−9\.46%/);
+  assert.match(html, /class="up">\+15\.33%/);
+  assert.match(html, /188\.40/);
+  assert.match(html, />EARN</);
+});
+
+test('WHY screen: no amber, no em dashes, no advice words in its copy', () => {
+  const copy = [WHY_NOTE, notCompanyHtml('SPX'), JSON.stringify(findCommand('WHY'))].join(' ');
+  assert.doesNotMatch(copy, /—/);
+  assert.doesNotMatch(copy, /\b(buy|sell|rating|target|signal)\b/i);
+  assert.match(notCompanyHtml('SPX'), /WHY works for company stocks/);
+});

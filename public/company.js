@@ -11,6 +11,7 @@ import * as value from './screens/value.js';
 import * as ipos from './screens/ipos.js';
 import * as splits from './screens/splits.js';
 import * as exdiv from './screens/exdiv.js';
+import * as why from './screens/why.js'; // WHY
 
 export const COMPANY = [
   { name: 'INSIDERS', screen: insiders, takesArgs: true, fn: true },
@@ -19,6 +20,7 @@ export const COMPANY = [
   { name: 'SHORTS', screen: shorts, takesArgs: true, fn: true },
   { name: 'BEATS', screen: beats, takesArgs: true, fn: true },
   { name: 'VALUE', screen: value, takesArgs: true, fn: true },
+  { name: 'WHY', screen: why, takesArgs: true, fn: true }, // WHY: biggest daily moves
   { name: 'IPOS', screen: ipos },
   { name: 'SPLITS', screen: splits },
   { name: 'EXDIV', screen: exdiv },

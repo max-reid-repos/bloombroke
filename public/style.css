@@ -1663,3 +1663,20 @@ a.ch-flag { cursor: pointer; }
   .al-table .wl-btn { height: 22px; }
 }
 /* --- end ALERTS ----------------------------------------------------------------- */
+
+/* ---- WHY: biggest daily moves and what came out that day ------------------------ */
+.why-dt { width: 100%; max-width: none; }
+.why-dt td { vertical-align: top; padding-top: 4px; padding-bottom: 4px; height: auto; }
+.why-dt td.why-what { width: 100%; max-width: 0; white-space: normal; }
+.why-dt .why-date { white-space: nowrap; }
+.why-it { display: flex; gap: 8px; min-width: 0; line-height: 16px; }
+.why-tag { flex: 0 0 5ch; color: var(--accent); font-size: 11px; letter-spacing: .04em; }
+.why-link { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+a.why-link:hover { color: var(--accent); text-decoration: none; }
+.why-filing .why-link { color: var(--text); }
+.why-news .why-link { color: var(--text-2); }
+.why-more { display: block; font-size: 11px; line-height: 16px; padding-left: calc(5ch + 8px); }
+@media (max-width: 639px) {
+  .why-link { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .why-tag { flex-basis: 4ch; }
+}
