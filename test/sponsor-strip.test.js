@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import express from 'express';
 import { cleanSponsors, cleanUrl, loadSponsors, mountSponsors, SPONSORS_FILE, MAX_LINES, MAX_HOUSE } from '../lib/sponsors.js';
-import { stripItems, itemHtml, mountStrip, ROTATE_MS, SLIDE_MS, MAX_SPONSOR_LINES } from '../public/sponsor-strip.js';
-import { sponsorHtml, FACTS, NOT_FOR, PROOF, proofLinks, numbersHtml, gaugePreviewHtml, PREVIEW_SPONSOR } from '../public/screens/sponsor.js';
+import { stripItems, itemHtml, mountStrip, createStripCounter, ROTATE_MS, SLIDE_MS, MAX_SPONSOR_LINES, FLUSH_MS, MAX_BATCH } from '../public/sponsor-strip.js';
+import { sponsorHtml, FACTS, NOT_FOR, PROOF, proofLinks, numbersHtml, gaugePreviewHtml, PREVIEW_SPONSOR, bottomMockHtml, fmtDur, topCountry, spotlightStrip, SPOT_MS } from '../public/screens/sponsor.js';
 import { findCommand } from '../public/registry.js';
 import { parseCommand } from '../public/app.js';
 
@@ -181,80 +181,143 @@ test('rotation: reduced motion swaps with no slide; one line never rotates', () 
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.spon-strip\.is-sliding \.spon-item \{ animation: none; \} \}/);
 });
 
-test('the strip is cut before the legal links are: it shrinks, they never do', () => {
+test('position: the strip fills the free space and sits centred in it, clear of the legal links; phones as before', () => {
   const css = readFileSync('public/style.css', 'utf8');
   const legal = readFileSync('public/legal.css', 'utf8');
-  assert.match(legal, /\.status-legal \{ display: flex; flex: 0 0 auto;/);
-  assert.match(css, /\.status-sponsor \{ flex: 0 1 auto; min-width: 0;[^}]*overflow: hidden; text-overflow: ellipsis; white-space: nowrap;/);
+  assert.match(legal, /\.status-legal \{ display: flex; flex: 0 0 auto;/, 'the legal block never shrinks');
+  assert.match(css, /\.status-sponsor \{ flex: 1 1 0; min-width: 0; display: flex; justify-content: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;/);
+  assert.doesNotMatch(css, /\.status-sponsor \{[^}]*margin-left: auto/, 'no longer pushed against the legal links');
+  assert.match(css, /\.status-sponsor > \.spon-item \{ max-width: 100%; min-width: 0; \}/);
+  assert.match(css, /@media \(max-width: 639px\) \{ \.status-sponsor \{ flex: 0 1 auto; justify-content: flex-start; \} \}/);
   assert.match(css, /\.spon-strip \.spon-item \{ display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;/);
   const html = readFileSync('public/index.html', 'utf8');
-  assert.match(html, /<span id="status-sponsor" class="status-sponsor spon-strip" aria-live="off" hidden><\/span>/, 'hidden until lines load; not read aloud on every turn');
-  assert.ok(html.indexOf('id="status-sponsor"') < html.indexOf('id="status-legal"'));
+  assert.match(html, /<span id="status-sponsor" class="status-sponsor spon-strip" aria-live="off" hidden><\/span>/);
+  assert.ok(html.indexOf('id="status-msg"') < html.indexOf('id="status-sponsor"') && html.indexOf('id="status-sponsor"') < html.indexOf('id="status-legal"'), 'between the status text and the legal block');
 });
 
-// ---- SPONSOR screen ---------------------------------------------------------------------------
-
-test('SPONSOR screen: preview, four facts, proof links only for commands that exist, email for rates', () => {
+test('SPONSOR screen: a mock of the bottom rows, facts, proof, email for rates; short', () => {
+  const mock = bottomMockHtml();
+  assert.match(mock, /BOTTOM ROW, EVERY SCREEN/);
+  assert.match(mock, /<div class="spon-mock-row"><span class="spon-mock-msg"><\/span><span class="spon-strip spon-mock-strip" id="spon-demo"><\/span><span class="spon-mock-legal"><span class="spon-mock-nfa">Not financial advice · <\/span>Terms · Feedback<\/span><\/div>/, 'the ad line in its real place, legal links on its right');
+  assert.match(mock, /<div class="spon-mock-keys"><span>F1 HELP<\/span>/, 'the key bar under it');
   const all = sponsorHtml({ has: () => true });
-  assert.match(all, /<div class="spon-preview"[^>]*><span class="spon-strip" id="spon-demo"><\/span><\/div>/);
+  assert.ok(all.includes(mock));
   for (const f of [...FACTS, NOT_FOR]) assert.ok(all.includes(f), f);
-  assert.deepEqual(FACTS, ['Every screen, every visitor who is not Pro.', 'Lines rotate every 7 s. Up to 8 sponsors.', 'No tracking, no pixels, no scripts.']);
-  for (const [c] of PROOF) assert.match(all, new RegExp(`data-cmd="${c}">${c}</a>`));
+  assert.deepEqual(FACTS, ['Not shown to Pro users.', 'Rotates every 7 s, up to 8 sponsors.', 'No tracking, no pixels, no scripts.']);
+  assert.match(all, /data-cmd="BBRK">BBRK<\/a>/);
+  for (const c of ['CHANGES', 'DATA', 'MCP', 'WEIRD']) assert.match(all, new RegExp(`data-cmd="${c}">${c}</a>`));
   assert.match(all, /Email for rates: <a href="mailto:hello@bloombroke\.com">/);
   assert.doesNotMatch(all, /\$\d/, 'no prices');
-  // Missing commands: their links are hidden; none left, no list at all.
   const some = sponsorHtml({ has: (c) => c === 'WEIRD' });
-  assert.match(some, /data-cmd="WEIRD">WEIRD<\/a> gauges/);
   for (const c of ['BBRK', 'CHANGES', 'DATA', 'MCP']) assert.doesNotMatch(some, new RegExp(`data-cmd="${c}"`));
   assert.doesNotMatch(sponsorHtml({ has: () => false }), /class="spon-proof"/);
-  // By default it asks the registry.
   assert.ok(proofLinks().some(([c]) => c === 'WEIRD'));
-  // Short: under 90 words on screen with every link, the numbers, the gauge and a house
-  // line in the strip preview. The gauge's long line is hidden in the preview (CSS).
-  const words = (h) => h.replace(/<p class="wd-line">[^<]*<\/p>/g, '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w)).length;
-  const full = sponsorHtml({ has: () => true, bbrk: { counts: { whatif_run: { today: 12, d7: 340 }, guess_played: { today: 5, d7: 61 }, mcp_call: { today: 1, d7: 9 } } },
-    gauge: { ok: true, headline: 'HORMUZ 3 SHIPS/DAY', line: '7-day average; 1-year average 35', source: 'IMF PortWatch' } });
-  assert.ok(words(full) + 10 <= 90, `${words(full)} words`);
-  assert.match(readFileSync('public/style.css', 'utf8'), /\.spon-tile \.wd-line \{ display: none; \}/);
+  // Under 90 words with real-looking numbers, the links on main, a gauge, and the longest
+  // house line in the mock. The gauge's line and source are hidden in the preview (CSS).
+  const words = (h) => h.replace(/<p class="wd-(line|src)">[\s\S]*?<\/p>/g, '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w)).length;
+  const page = sponsorHtml({ bbrk: { audience: { visitors: { d7: 1234 }, avgVisitSec: 102, countries: [{ name: 'United States', pct: 41 }] }, inventory: { stripShown: { d7: 5678 } } },
+    gauge: { ok: true, headline: 'HORMUZ 3 SHIPS/DAY', line: 'a b c', source: 'IMF PortWatch' } });
+  const longest = Math.max(...loadSponsors().house.map((h) => h.text.split(/\s+/).length)) + 1;
+  assert.ok(words(page) + longest <= 90, `${words(page) + longest} words`);
+  assert.match(readFileSync('public/style.css', 'utf8'), /\.spon-tile \.wd-line, \.spon-tile \.wd-src \{ display: none; \}/);
   assert.equal(parseCommand('SPONSOR').name, 'SPONSOR');
-  assert.doesNotMatch(all, /\u2014/);
+  assert.doesNotMatch(all, /—/);
 });
 
-test('SPONSOR proof: live site numbers from BBRK, and a real gauge tile with a preview sponsor', () => {
-  const html = numbersHtml({ counts: { whatif_run: { today: 1234, d7: 5678 }, guess_played: { today: 0, d7: 3 }, mcp_call: null } });
-  assert.match(html, /<th scope="row">WHATIF results<\/th><td class="num">1,234<\/td><td class="num">5,678<\/td>/);
-  assert.match(html, /<th scope="row">GUESS games<\/th><td class="num">0<\/td><td class="num">3<\/td>/);
-  assert.match(html, /<th scope="row">MCP calls<\/th><td class="num">--<\/td><td class="num">--<\/td>/, 'unknown is --');
-  assert.equal((numbersHtml(null).match(/>--</g) || []).length, 6, 'before it loads, all --');
-  const withBbrk = sponsorHtml({ has: () => true });
-  assert.match(withBbrk, /SITE NUMBERS <a class="code" href="\?c=BBRK" data-cmd="BBRK">BBRK<\/a>/);
-  assert.doesNotMatch(sponsorHtml({ has: (c) => c !== 'BBRK' }), /SITE NUMBERS/, 'no BBRK command, no numbers block');
+test('SPONSOR numbers: visitors, average visit, strip shown and top country; -- until data; no game counts', () => {
+  const b = { audience: { visitors: { today: 50, d7: 1234, d30: 4000 }, avgVisitSec: 102, returningPct: 30, desktopPct: 60, countries: [{ name: 'United States', pct: 41.4 }, { name: 'India', pct: 9 }], referrers: [], source: 'DataFast', as_of: '2026-09-27' },
+    inventory: { stripShown: { today: 100, d7: 5678 }, stripClicks: { today: 1, d7: 9 }, embedLoads: { today: 0, d7: 2 }, mcpCalls: { today: 0, d7: 3 } } };
+  const html = numbersHtml(b);
+  assert.deepEqual([...html.matchAll(/<th scope="row">([^<]+)<\/th><td class="num">([^<]+)<\/td>/g)].map((m) => [m[1], m[2]]),
+    [['Visitors (7d)', '1,234'], ['Avg visit', '1m 42s'], ['Strip shown (7d)', '5,678'], ['Top country', 'United States 41%']]);
+  assert.equal((numbersHtml(null).match(/>--</g) || []).length, 4);
+  assert.equal((numbersHtml({ audience: {}, inventory: {} }).match(/>--</g) || []).length, 4);
+  assert.doesNotMatch(html, /WHATIF|GUESS|MCP calls/);
+  assert.equal(fmtDur(40), '40s');
+  assert.equal(fmtDur(605), '10m 05s');
+  assert.equal(fmtDur(null), '--');
+  assert.equal(topCountry([]), '--');
+  assert.match(sponsorHtml({ has: () => true }), /SITE NUMBERS <a class="code" href="\?c=BBRK" data-cmd="BBRK">BBRK<\/a>/);
+  assert.doesNotMatch(sponsorHtml({ has: (c) => c !== 'BBRK' }), /SITE NUMBERS/);
   const tile = gaugePreviewHtml({ ok: true, headline: 'HORMUZ 3 SHIPS/DAY', line: 'x', source: 'IMF PortWatch' });
   assert.match(tile, /data-cmd="CANAL"/);
-  assert.match(tile, /HORMUZ 3 SHIPS\/DAY/);
   assert.match(tile, new RegExp(PREVIEW_SPONSOR));
-  assert.match(tile, /title="A preview: no gauge is sponsored yet"/);
-  assert.match(gaugePreviewHtml(null), /LOADING/);
-  // A preview only: the sponsor config is untouched.
-  assert.deepEqual(loadSponsors().gauges, {});
-  // The proof links resolve for commands on main now.
-  for (const c of ['BBRK', 'MCP', 'WEIRD']) assert.ok(findCommand(c), c);
-  assert.deepEqual(proofLinks().map(([c]) => c).filter((c) => ['BBRK', 'MCP', 'WEIRD'].includes(c)), ['BBRK', 'MCP', 'WEIRD']);
+  assert.deepEqual(loadSponsors().gauges, {}, 'a preview only');
+});
+
+test('SPONSOR opens: the real strip is outlined for 2 s; reduced motion keeps a still outline', () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const cls = new Set();
+    const real = { hidden: false, classList: { add: (c) => cls.add(c), remove: (c) => cls.delete(c) } };
+    const doc = { getElementById: (id) => (id === 'status-sponsor' ? real : null) };
+    spotlightStrip(doc);
+    assert.ok(cls.has('is-spot'));
+    mock.timers.tick(SPOT_MS - 1);
+    assert.ok(cls.has('is-spot'));
+    mock.timers.tick(1);
+    assert.ok(!cls.has('is-spot'));
+    real.hidden = true; // Pro: no strip, nothing to outline
+    assert.equal(spotlightStrip(doc), null);
+  } finally { mock.timers.reset(); }
+  assert.equal(SPOT_MS, 2000);
+  const css = readFileSync('public/style.css', 'utf8');
+  assert.match(css, /\.status-sponsor\.is-spot \{ outline: 1px solid var\(--accent\);/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.status-sponsor\.is-spot \{ animation: none; \} \}/);
+});
+
+test('counting: lines shown in a visible tab, sent in batches of 1 to 20 a minute; clicks at once', () => {
+  mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+  try {
+    const sent = [];
+    const counter = createStripCounter({ post: (b) => sent.push(b) });
+    let hidden = false;
+    const host = fakeHost();
+    const s = mountStrip(host, stripItems(cleanSponsors({ house: house(3) })), { isHidden: () => hidden, onShow: () => counter.shown(), onClick: () => counter.click(), onPaidClick: () => {} });
+    assert.equal(counter.pending, 1, 'the first line, shown');
+    mock.timers.tick(ROTATE_MS * 3);
+    assert.equal(counter.pending, 4);
+    hidden = true;
+    mock.timers.tick(ROTATE_MS * 3);
+    assert.equal(counter.pending, 4, 'a hidden tab shows nothing, counts nothing');
+    hidden = false;
+    mock.timers.tick(FLUSH_MS - ROTATE_MS * 6);
+    assert.deepEqual(sent.filter((b) => b.name === 'strip_shown'), [{ name: 'strip_shown', n: counter.pending === 0 ? sent[0].n : sent[0].n }]);
+    assert.ok(sent[0].n >= 1 && sent[0].n <= MAX_BATCH);
+    // A click on any line, paid or AD.
+    const click = (paid) => ({ target: { closest: (q) => (q === '.spon-item' || (paid && q.includes('sponsored')) ? {} : null) } });
+    for (const f of host.listeners.click) f(click(false));
+    assert.deepEqual(sent.at(-1), { name: 'strip_click' });
+    // Never more than 20 in one post; the rest waits for the next minute.
+    for (let i = 0; i < 25; i++) counter.shown();
+    const before = counter.pending;
+    counter.flush();
+    assert.equal(sent.at(-1).n, MAX_BATCH);
+    assert.equal(counter.pending, before - MAX_BATCH);
+    assert.equal(counter.flush() > 0, true);
+    assert.equal(counter.flush(), 0, 'nothing to send: no post');
+    s.stop();
+    counter.stop();
+  } finally { mock.timers.reset(); }
+  // Pro: no lines, so no strip and nothing counted (app.js creates the counter with the strip).
+  assert.deepEqual(stripItems(cleanSponsors({ house: house(3) }), { pro: true }), []);
+  const app = readFileSync('public/app.js', 'utf8');
+  assert.match(app, /onShow: \(\) => stripCount\?\.shown\(\), onClick: \(\) => stripCount\?\.click\(\)/);
 });
 
 test('sponsor_click: sent for a paid line, never for an AD line', () => {
   mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
   try {
     const clicks = [];
-    const click = (sel) => ({ target: { closest: (q) => (sel === 'paid' && q.includes('sponsored') ? {} : null) } });
+    const click = (paid) => ({ target: { closest: (q) => (q === '.spon-item' || (paid && q.includes('sponsored')) ? {} : null) } });
     const host = fakeHost();
     const s = mountStrip(host, stripItems(cleanSponsors({ lines: [{ name: 'A', text: 'B', url: 'https://a.example' }] })), { onPaidClick: () => clicks.push('paid') });
-    for (const f of host.listeners.click) f(click('paid'));
-    for (const f of host.listeners.click) f(click('house'));
+    for (const f of host.listeners.click) f(click(true));
+    for (const f of host.listeners.click) f(click(false));
     assert.deepEqual(clicks, ['paid']);
     s.stop();
   } finally { mock.timers.reset(); }
   const src = readFileSync('public/sponsor-strip.js', 'utf8');
   assert.match(src, /goal\('sponsor_click'\)/);
-  assert.match(src, /closest\?\.\('a\.spon-item\[rel~="sponsored"\]'\)/, 'only links marked sponsored count');
+  assert.match(src, /closest\('a\.spon-item\[rel~="sponsored"\]'\)/);
 });

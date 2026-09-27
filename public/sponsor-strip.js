@@ -39,14 +39,18 @@ export function itemHtml(item) {
 
 // Rotate items in host. Returns { stop, next, index, paused }. isHidden: whether the tab
 // is hidden (skips a turn). reduceMotion: swap without the slide. onPaidClick: a click on
-// a paid line (the sponsor_click goal; our own AD lines send nothing).
-export function mountStrip(host, items, { reduceMotion = false, isHidden = () => false, rotateMs = ROTATE_MS, onPaidClick = () => goal('sponsor_click') } = {}) {
+// a paid line (the sponsor_click goal; our own AD lines send nothing). onShow: a line was
+// shown in a visible tab. onClick: any line was clicked (paid or AD).
+export function mountStrip(host, items, {
+  reduceMotion = false, isHidden = () => false, rotateMs = ROTATE_MS, onPaidClick = () => goal('sponsor_click'), onShow = () => {}, onClick = () => {},
+} = {}) {
   let i = 0;
   let hover = false;
   let focus = false;
   let slide = null;
   const show = (animate) => {
     host.innerHTML = itemHtml(items[i]);
+    if (!isHidden()) onShow();
     if (!animate || reduceMotion) return;
     host.classList.remove('is-sliding');
     void host.offsetWidth; // restart the animation
@@ -75,10 +79,47 @@ export function mountStrip(host, items, { reduceMotion = false, isHidden = () =>
     ['mouseleave', () => { hover = false; }],
     ['focusin', () => { focus = true; }],
     ['focusout', () => { focus = false; }],
-    ['click', (e) => { if (e?.target?.closest?.('a.spon-item[rel~="sponsored"]')) onPaidClick(); }],
+    ['click', (e) => {
+      if (!e?.target?.closest?.('.spon-item')) return;
+      onClick();
+      if (e.target.closest('a.spon-item[rel~="sponsored"]')) onPaidClick();
+    }],
   ];
   for (const [t, f] of on) host.addEventListener(t, f);
   show(false);
   const timer = items.length > 1 ? setInterval(() => ctl.next(), rotateMs) : null;
   return ctl;
+}
+
+// ---- Counting for sponsors -----------------------------------------------------------
+// Totals only, no per-visitor data: how many strip lines were shown in a visible tab (sent
+// in one batch a minute, n from 1 to 20) and how many were clicked (sent at once). The
+// server keeps a number per day (POST /api/count).
+export const FLUSH_MS = 60_000;
+export const MAX_BATCH = 20;
+
+export function createStripCounter({ post = postCount, every = FLUSH_MS } = {}) {
+  let pending = 0;
+  const flush = () => {
+    if (!pending) return 0;
+    const n = Math.min(pending, MAX_BATCH);
+    pending -= n;
+    post({ name: 'strip_shown', n });
+    return n;
+  };
+  const timer = setInterval(flush, every);
+  timer.unref?.();
+  return {
+    shown() { pending += 1; },
+    click() { post({ name: 'strip_click' }); },
+    flush,
+    get pending() { return pending; },
+    stop() { clearInterval(timer); },
+  };
+}
+
+function postCount(body) {
+  try {
+    fetch('/api/count', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), keepalive: true, cache: 'no-store' }).catch(() => {});
+  } catch { /* offline or blocked: nothing */ }
 }
