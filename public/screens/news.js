@@ -256,9 +256,12 @@ export function mergePushed(items, pushed, max = LIST_MAX) {
 
 // One EventSource for these tabs. onItems(tab, items) for news and sync events,
 // onState(live). It closes while the page is hidden and opens again (with the last event
-// id, so nothing is missed) when it is shown. A refused stream (429, 503) or three
-// failures in a row stop trying: the page keeps its minute poll. Returns { live }.
-export function newsStream({ tabs, onItems, onState = () => {}, ctx = {}, ES = globalThis.EventSource, doc = globalThis.document, retryMs = 30_000, maxFails = 3 }) {
+// id, so nothing is missed) when it is shown. A dropped connection the browser retries by
+// itself (the server spreads its retry delay). A stream the browser gave up on (the
+// server restarting, or refusing: 429, 503) is tried again after a random, growing wait
+// (about 30 s, 60 s, 120 s); after maxFails in a row it rests for restMs, and the page
+// polls meanwhile. Showing the page again always starts over. Returns { live, gaveUp }.
+export function newsStream({ tabs, onItems, onState = () => {}, ctx = {}, ES = globalThis.EventSource, doc = globalThis.document, retryMs = 30_000, maxFails = 3, restMs = 5 * 60_000, rand = Math.random }) {
   let es = null;
   let live = false;
   let lastId = null;
@@ -273,8 +276,9 @@ export function newsStream({ tabs, onItems, onState = () => {}, ctx = {}, ES = g
     try { d = JSON.parse(e.data); } catch { return; }
     if (d && typeof d.tab === 'string' && Array.isArray(d.items)) onItems(d.tab, d.items, e.type);
   };
+  const later = (fn, ms) => { clearTimeout(retry); retry = setTimeout(fn, ms); };
   function open() {
-    if (es || gaveUp || stopped || doc?.hidden) return;
+    if (!ES || es || gaveUp || stopped || doc?.hidden) return;
     const s = new ES(streamUrl(tabs, lastId));
     es = s;
     s.addEventListener('open', () => { fails = 0; set(true); });
@@ -287,9 +291,12 @@ export function newsStream({ tabs, onItems, onState = () => {}, ctx = {}, ES = g
       s.close();
       if (es === s) es = null;
       fails += 1;
-      if (fails >= maxFails) { gaveUp = true; return; }
-      clearTimeout(retry);
-      retry = setTimeout(open, retryMs);
+      if (fails >= maxFails) {
+        gaveUp = true;
+        later(() => { gaveUp = false; fails = 0; open(); }, restMs);
+        return;
+      }
+      later(open, Math.round(retryMs * 2 ** (fails - 1) * (0.5 + rand())));
     });
   }
   function close() {
@@ -297,7 +304,11 @@ export function newsStream({ tabs, onItems, onState = () => {}, ctx = {}, ES = g
     if (es) { es.close(); es = null; }
     set(false);
   }
-  const onVis = () => { if (doc.hidden) close(); else open(); };
+  const onVis = () => {
+    if (doc.hidden) { close(); return; }
+    if (ES) { gaveUp = false; fails = 0; }
+    open();
+  };
   doc?.addEventListener?.('visibilitychange', onVis);
   ctx.onCleanup?.(() => { stopped = true; close(); doc?.removeEventListener?.('visibilitychange', onVis); });
   open();

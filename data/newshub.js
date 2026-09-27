@@ -1,11 +1,11 @@
 // The news hub: while at least one browser listens (lib/newsstream.js), the server polls
 // the shared NEWS feeds itself and pushes only the stories that are new.
 //
-// Each tab's feeds are polled on their own schedule (HUB_EVERY): SEC and WIRES every
-// 30 s, MARKETS every minute, MACRO and WSB every 5 minutes. Requests are conditional
+// Each tab's feeds are polled on their own schedule (HUB_EVERY): SEC, WIRES and MARKETS
+// every 30 s, MACRO and WSB every 5 minutes. Requests are conditional
 // (If-None-Match / If-Modified-Since): a 304 costs the source almost nothing. An error
-// or a 429 doubles that feed's gap, up to 10 minutes (or the source's Retry-After), and a
-// success resets it. The SEC feed goes through the one SEC queue (data/filings.js) with
+// or a 429 doubles that feed's gap, up to 10 minutes (a source's Retry-After is honoured
+// up to an hour), and a success resets it. The SEC feed goes through the one SEC queue (data/filings.js) with
 // the SEC User-Agent.
 //
 // A tab runs only while someone listens to it; when the last listener leaves it keeps
@@ -31,7 +31,12 @@ import { SEC_UA } from './financials.js';
 import { secQueued } from './filings.js';
 import { seenStory } from '../public/screens/news.js';
 
-export const HUB_EVERY = { SEC: 30_000, WIRES: 30_000, MARKETS: 60_000, MACRO: 300_000, WSB: 300_000 };
+export const HUB_EVERY = { SEC: 30_000, WIRES: 30_000, MARKETS: 30_000, MACRO: 300_000, WSB: 300_000 };
+// A source's Retry-After is honoured up to an hour.
+export const MAX_RETRY_AFTER_MS = 60 * 60_000;
+// While the hub runs a feed, its /api/news cache entry lives the hub's gap plus this, so
+// page views never fetch the source themselves.
+export const PRIME_MARGIN_MS = 60_000;
 export const MAX_BACKOFF_MS = 10 * 60_000;
 export const LINGER_MS = 60_000;
 export const REPLAY_MAX = 500;
@@ -124,7 +129,7 @@ const realTimers = { setTimeout: (fn, ms) => { const t = setTimeout(fn, ms); t.u
 export function makeNewsHub({
   feeds = hubFeeds(), every = HUB_EVERY, fetchImpl = globalThis.fetch, secQueue = secQueued,
   decorate = null, timers = realTimers, maxBackoff = MAX_BACKOFF_MS, linger = LINGER_MS,
-  replayMax = REPLAY_MAX, boot = randomBytes(4).toString('hex'), log = (m) => console.error(m),
+  replayMax = REPLAY_MAX, boot = randomBytes(4).toString('hex'), log = (m) => console.error(m), seenMax = SEEN_MAX,
 } = {}) {
   // SEC rows get the filer's ticker, as on the poll path.
   const secMap = secTickersFor(fetchImpl);
@@ -169,16 +174,17 @@ export function makeNewsHub({
         s.etag = r.etag || null;
         s.lastModified = r.lastModified || null;
         s.items = items;
-        s.f.prime?.(s.f.id, items);
         changed = true;
       }
       s.fails = 0;
       s.gap = every[t.name];
       ok = true;
+      // A 304 too: the rows are still current, so the cache entry is refreshed.
+      s.f.prime?.(s.f.id, s.items, every[t.name] + PRIME_MARGIN_MS);
     } catch (err) {
       s.fails += 1;
-      s.gap = Math.min(maxBackoff, Math.max(s.gap * 2, err.retryAfterMs || 0));
-      if (s.fails === 1 || s.gap === maxBackoff) log(`[newshub ${s.f.id}] ${err.message}; next try in ${Math.round(s.gap / 1000)} s`);
+      s.gap = Math.max(Math.min(maxBackoff, s.gap * 2), Math.min(err.retryAfterMs || 0, MAX_RETRY_AFTER_MS));
+      if (s.fails === 1 || s.gap >= maxBackoff) log(`[newshub ${s.f.id}] ${err.message}; next try in ${Math.round(s.gap / 1000)} s`);
     }
     if (t.gen !== gen || !gen) return;
     if (changed || (ok && !t.baselined.has(s.f.id))) await update(t, s);
@@ -187,17 +193,22 @@ export function makeNewsHub({
   }
 
   async function update(t, s) {
+    const my = (t.updates = (t.updates || 0) + 1);
     let merged = mergeItems(t.feeds.map((x) => x.items), LIST_MAX);
     if (deco[t.name]) merged = await deco[t.name](merged);
-    t.merged = merged;
     const baseline = !t.baselined.has(s.f.id);
     t.baselined.add(s.f.id);
-    if (t.seen.links.size > SEEN_MAX) {
+    // A newer update finished first (the SEC ticker lookup is async): it already has
+    // this feed's rows, so this older result is dropped, never written over it.
+    if (my !== t.updates) return;
+    t.merged = merged;
+    const fresh = merged.filter((n) => !seenStory(n, t.seen));
+    // The seen list is kept small: rebuilt from the list on show (after this poll's new
+    // stories are found, so they still go out).
+    if (t.seen.links.size > seenMax) {
       t.seen = newSeen();
       for (const n of merged) seenStory(n, t.seen);
-      return;
     }
-    const fresh = merged.filter((n) => !seenStory(n, t.seen));
     if (baseline) {
       // This feed's first answer: the list as it is, not news.
       if (fresh.length) for (const c of t.subs) c.send({ event: 'sync', data: { tab: t.name, items: merged } });

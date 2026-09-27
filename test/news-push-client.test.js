@@ -55,17 +55,43 @@ test('push client: live on open, stories to onItems, cleanup closes it', () => {
   assert.equal(doc.n, 0, 'the visibility listener is gone');
 });
 
-test('push client: a refused stream falls back to the minute poll and gives up after 3', async () => {
+test('push client: a closed stream is retried after a random, growing wait, rests, then starts over', async () => {
   const { ES, made } = fakeES();
-  const s = newsStream({ tabs: ['MARKETS'], ES, doc: fakeDoc(), onItems() {}, retryMs: 5 });
-  for (let i = 0; i < 3; i += 1) {
-    made.at(-1).readyState = 2; // a 429 or 503: the browser does not retry
-    made.at(-1).emit('error');
-    await new Promise((r) => setTimeout(r, 15));
+  const doc = fakeDoc();
+  const waits = [];
+  const realSet = globalThis.setTimeout;
+  globalThis.setTimeout = (fn, ms) => { waits.push(ms); return realSet(fn, 1); };
+  try {
+    const s = newsStream({ tabs: ['MARKETS'], ES, doc, onItems() {}, retryMs: 1000, restMs: 60_000, rand: () => 0.5 });
+    for (let i = 0; i < 3; i += 1) {
+      made.at(-1).readyState = 2; // a restart (502/503) or a refusal (429): the browser stops
+      made.at(-1).emit('error');
+      await new Promise((r) => realSet(r, 10));
+      if (i < 2) assert.equal(made.length, i + 2, 'tried again');
+    }
+    assert.deepEqual(waits.slice(0, 3), [1000, 2000, 60_000], 'growing waits, then a rest');
+    // After the rest it starts over by itself.
+    assert.equal(s.gaveUp, false);
+    assert.equal(made.length, 4);
+    // Given up again, showing the page starts over at once.
+    for (let i = 0; i < 3; i += 1) { made.at(-1).readyState = 2; made.at(-1).emit('error'); }
+    doc.hidden = true; doc.fire();
+    doc.hidden = false; doc.fire();
+    assert.equal(s.gaveUp, false);
+    assert.equal(made.at(-1).closed, false, 'a fresh stream is open');
+  } finally {
+    globalThis.setTimeout = realSet;
   }
-  assert.equal(made.length, 3);
-  assert.equal(s.gaveUp, true);
-  assert.equal(s.live, false);
+  // The spread: rand 0 to 1 gives 0.5x to 1.5x the wait.
+  const { ES: ES2, made: m2 } = fakeES();
+  const w2 = [];
+  const realSet2 = globalThis.setTimeout;
+  globalThis.setTimeout = (fn, ms) => { w2.push(ms); return 0; };
+  try {
+    newsStream({ tabs: ['MARKETS'], ES: ES2, doc: fakeDoc(), onItems() {}, retryMs: 30_000, rand: () => 0 });
+    m2[0].readyState = 2; m2[0].emit('error');
+  } finally { globalThis.setTimeout = realSet2; }
+  assert.deepEqual(w2, [15_000]);
   // No EventSource at all (an old browser): polling only.
   const none = newsStream({ tabs: ['MARKETS'], ES: undefined, doc: fakeDoc(), onItems() {} });
   assert.equal(none.live, false);

@@ -2,7 +2,7 @@
 // (the same rule as the browser), sync on connect and Last-Event-ID replay.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeNewsHub, hubFeeds, fetchFeed, retryAfterMs, HUB_EVERY, MAX_BACKOFF_MS, LINGER_MS } from '../data/newshub.js';
+import { makeNewsHub, hubFeeds, fetchFeed, retryAfterMs, HUB_EVERY, MAX_BACKOFF_MS, LINGER_MS, MAX_RETRY_AFTER_MS, PRIME_MARGIN_MS } from '../data/newshub.js';
 import { dedupeNews } from '../public/screens/news.js';
 import { SEC_UA } from '../data/financials.js';
 
@@ -36,7 +36,7 @@ function fakeTimers() {
 const rss = (titles) => `<rss><channel>${titles.map((t) => `<item><title>${t}</title><link>https://n.test/${encodeURIComponent(t)}</link><pubDate>Sat, 26 Sep 2026 12:00:00 GMT</pubDate></item>`).join('')}</channel></rss>`;
 
 // One tab (WIRES) with one feed whose answers the test sets.
-function setup({ answers, every = { ...HUB_EVERY }, feeds = null, secQueue } = {}) {
+function setup({ answers, every = { ...HUB_EVERY }, feeds = null, secQueue, decorate = {}, seenMax } = {}) {
   const timers = fakeTimers();
   const calls = [];
   const fetchImpl = async (url, opts) => {
@@ -47,16 +47,16 @@ function setup({ answers, every = { ...HUB_EVERY }, feeds = null, secQueue } = {
   };
   const primed = [];
   const f = feeds || {
-    WIRES: [{ id: 'w', name: 'Business Wire', url: 'https://w.test/rss', ua: 'UA', sec: false, parse: (xml) => hubFeeds().WIRES[0].parse.call(null, xml), prime: (id, items) => primed.push([id, items.length]) }],
+    WIRES: [{ id: 'w', name: 'Business Wire', url: 'https://w.test/rss', ua: 'UA', sec: false, parse: (xml) => hubFeeds().WIRES[0].parse.call(null, xml), prime: (id, items, ttl) => primed.push([id, items.length, ttl]) }],
   };
-  const hub = makeNewsHub({ feeds: f, every, fetchImpl, timers, decorate: {}, log: () => {}, boot: 'b00t', secQueue });
+  const hub = makeNewsHub({ feeds: f, every, fetchImpl, timers, decorate, log: () => {}, boot: 'b00t', secQueue, ...(seenMax ? { seenMax } : {}) });
   return { hub, timers, calls, primed };
 }
 const ok = (body, headers = {}) => new Response(body, { status: 200, headers });
 const client = () => { const got = []; return { got, send: (ev) => got.push(ev) }; };
 
 test('hub: the schedule per tab', () => {
-  assert.deepEqual(HUB_EVERY, { SEC: 30_000, WIRES: 30_000, MARKETS: 60_000, MACRO: 300_000, WSB: 300_000 });
+  assert.deepEqual(HUB_EVERY, { SEC: 30_000, WIRES: 30_000, MARKETS: 30_000, MACRO: 300_000, WSB: 300_000 });
   assert.equal(MAX_BACKOFF_MS, 600_000);
   const f = hubFeeds();
   assert.deepEqual(Object.keys(f).sort(), ['MACRO', 'MARKETS', 'SEC', 'WIRES', 'WSB']);
@@ -111,6 +111,22 @@ test('hub: conditional GET; a 304 changes nothing', async () => {
   hub.stopAll();
 });
 
+test('hub: every answer, 304 too, refreshes the /api/news cache for longer than the hub gap', async () => {
+  let n = 0;
+  const { hub, timers, primed } = setup({
+    answers: () => { n += 1; return n === 1 ? ok(rss(['A']), { etag: '"v1"' }) : new Response(null, { status: 304 }); },
+  });
+  hub.subscribe(['WIRES'], client());
+  await timers.advance(60_000);
+  assert.equal(primed.length, 3, 'the 200 and both 304s');
+  assert.ok(primed.every(([id, count, ttl]) => id === 'w' && count === 1 && ttl === HUB_EVERY.WIRES + PRIME_MARGIN_MS));
+  assert.ok(PRIME_MARGIN_MS >= 30_000);
+  // The real feeds: a MACRO or WSB entry (5 min hub gap) outlives its gap.
+  const real = hubFeeds();
+  assert.ok(real.MACRO.every((f) => typeof f.prime === 'function') && real.MARKETS.every((f) => typeof f.prime === 'function'));
+  hub.stopAll();
+});
+
 test('hub: errors and 429 double the gap up to 10 minutes; a success resets it', async () => {
   let fail = true;
   let n = 0;
@@ -131,6 +147,7 @@ test('hub: errors and 429 double the gap up to 10 minutes; a success resets it',
   fail = false;
   await timers.advance(600_000);
   assert.equal(hub.gapOf('WIRES', 'w'), 30_000, 'a success resets the gap');
+  assert.equal(MAX_RETRY_AFTER_MS, 3_600_000);
   assert.equal(retryAfterMs('120'), 120_000);
   assert.equal(retryAfterMs('Sat, 26 Sep 2026 12:01:00 GMT', Date.parse('Sat, 26 Sep 2026 12:00:00 GMT')), 60_000);
   hub.stopAll();
@@ -196,4 +213,45 @@ test('fetchFeed: size cap and errors', async () => {
   await assert.rejects(fetchFeed(async () => new Response('x'.repeat(100)), 'https://x.test', { maxBytes: 10 }), /too large/);
   await assert.rejects(fetchFeed(async () => new Response('no', { status: 503, headers: { 'retry-after': '9' } }), 'https://x.test'), (e) => e.status === 503 && e.retryAfterMs === 9000);
   assert.deepEqual(await fetchFeed(async () => new Response(null, { status: 304 }), 'https://x.test', { etag: '"a"' }), { notModified: true });
+});
+
+test('hub: a Retry-After past 10 minutes is honoured, up to an hour', async () => {
+  const waits = ['3000', '7200'];
+  const { hub, timers } = setup({ answers: () => new Response('no', { status: 429, headers: { 'retry-after': waits.shift() || '1' } }) });
+  hub.subscribe(['WIRES'], client());
+  await timers.advance(0);
+  assert.equal(hub.gapOf('WIRES', 'w'), 3_000_000, '50 minutes, as asked');
+  await timers.advance(3_000_000);
+  assert.equal(hub.gapOf('WIRES', 'w'), 3_600_000, '2 hours asked: an hour');
+  hub.stopAll();
+});
+
+test('hub: the poll that resets the seen list still pushes its new stories', async () => {
+  const lists = [['A', 'B', 'C'], ['D', 'A', 'B', 'C']];
+  const { hub, timers } = setup({ seenMax: 2, answers: () => ok(rss(lists.length > 1 ? lists.shift() : lists[0])) });
+  const c = client();
+  hub.subscribe(['WIRES'], c);
+  await timers.advance(30_000);
+  assert.deepEqual(c.got.filter((e) => e.event === 'news').map((e) => e.data.items.map((n) => n.title)), [['D']]);
+  await timers.advance(30_000);
+  assert.equal(c.got.filter((e) => e.event === 'news').length, 1, 'and nothing twice after the reset');
+  hub.stopAll();
+});
+
+test('hub: an older, slower result never overwrites a newer list', async () => {
+  const feeds = {
+    SEC: ['a', 'b'].map((id) => ({ id, name: 'SEC EDGAR', url: `https://www.sec.gov/${id}`, ua: SEC_UA, sec: false, parse: (xml) => JSON.parse(xml) })),
+  };
+  const bodies = { a: [{ title: 'Old A', link: 'https://www.sec.gov/oa', time: '2026-09-26T10:00:00Z', source: 'SEC EDGAR' }], b: [{ title: 'B', link: 'https://www.sec.gov/b', time: '2026-09-26T11:00:00Z', source: 'SEC EDGAR' }] };
+  let slow = true;
+  const decorate = { SEC: (items) => new Promise((r) => { const wait = slow && items.length === 1 && items[0].title === 'Old A' ? 50 : 0; setTimeout(() => r(items), wait); }) };
+  const { hub, timers } = setup({ feeds, decorate, answers: (url) => ok(JSON.stringify(bodies[url.endsWith('/a') ? 'a' : 'b'])) });
+  hub.subscribe(['SEC'], client());
+  await timers.advance(300); // a and b both answer; a's lookup is slow
+  await new Promise((r) => setTimeout(r, 80));
+  const late = client();
+  hub.subscribe(['SEC'], late);
+  assert.deepEqual(late.got.at(-1).data.items.map((n) => n.title).sort(), ['B', 'Old A'], 'the newer list, with both feeds');
+  slow = false;
+  hub.stopAll();
 });

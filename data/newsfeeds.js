@@ -351,10 +351,12 @@ export function makeNewsFeeds({ fetchImpl = globalThis.fetch, cache = createCach
 
   // The news hub (data/newshub.js) fetched a feed: keep its rows as this feed's fresh
   // cache entry, so /api/news serves them without fetching the same feed again.
-  function prime(id, items) {
+  // ttlMs: how long the entry stays fresh (the hub's gap plus a margin), never less
+  // than the feed's own TTL.
+  function prime(id, items, ttlMs = 0) {
     const f = Object.values(feeds).flat().find((x) => x.id === id);
     if (!f || !items?.length) return;
-    cache.refresh(`newsfeed:${id}`, f.ttl || FEED_TTL, async () => items).catch(() => {});
+    cache.refresh(`newsfeed:${id}`, Math.max(ttlMs, f.ttl || FEED_TTL), async () => items).catch(() => {});
   }
 
   return { getNewsTab, prime };

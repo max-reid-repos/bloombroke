@@ -109,9 +109,10 @@ export function makeNews({ fetchImpl = globalThis.fetch, cache = createCache() }
   }
 
   // The news hub fetched a MARKETS feed: keep its rows as the feed's fresh cache entry.
-  function prime(id, items) {
+  // ttlMs: the hub's gap plus a margin, never less than NEWS_TTL.
+  function prime(id, items, ttlMs = 0) {
     if (!FEEDS.some((f) => f.id === id) || !items?.length) return;
-    cache.refresh(`news:${id}`, NEWS_TTL, async () => items).catch(() => {});
+    cache.refresh(`news:${id}`, Math.max(ttlMs, NEWS_TTL), async () => items).catch(() => {});
   }
 
   return { getNews, prime };

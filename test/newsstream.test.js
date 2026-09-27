@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import express from 'express';
-import { mountNewsStream, sseFrame, parseTabs, MAX_CONN, MAX_PER_IP, HEARTBEAT_MS } from '../lib/newsstream.js';
+import { mountNewsStream, sseFrame, parseTabs, retryDelay, MAX_CONN, MAX_PER_IP, HEARTBEAT_MS, MAX_BUFFER } from '../lib/newsstream.js';
 
 // A hub that records who listens and lets the test push events.
 function fakeHub() {
@@ -72,7 +72,8 @@ test('stream: SSE headers, the sync, pushed news, heartbeat, cleanup on disconne
     assert.equal(s.res.headers['x-accel-buffering'], 'no');
     assert.equal(s.res.headers['content-encoding'], undefined, 'never compressed');
     await until(() => s.text().includes('event: sync'));
-    assert.ok(s.text().startsWith('retry: 5000\n\n'));
+    const retry = Number(/^retry: (\d+)\n\n/.exec(s.text())?.[1]);
+    assert.ok(retry >= 3000 && retry < 10_000, `a spread-out retry: ${retry}`);
     assert.deepEqual([...hub.subs][0].tabs, ['MARKETS']);
     assert.equal([...hub.subs][0].opts.lastEventId, 'abcd-7', 'Last-Event-ID reaches the hub');
     hub.push({ event: 'news', id: 'abcd-8', data: { tab: 'MARKETS', items: [{ title: 'New' }] } });
@@ -110,5 +111,42 @@ test('stream: at most 4 per address and a total cap; a slot frees on disconnect'
     assert.equal(again.res.statusCode, 200, 'a closed stream frees its slot');
     for (const s of [...mine.slice(1), ...others, again]) s.close();
     await until(() => stream.connections() === 0 && stream.addresses() === 0);
+  });
+});
+
+test('stream: the retry delay is spread between 3 and 10 s', () => {
+  assert.equal(retryDelay(() => 0), 3000);
+  assert.equal(retryDelay(() => 0.999999), 9999);
+  assert.equal(MAX_BUFFER, 256 * 1024);
+});
+
+test('stream: the per-address cap uses the visitor address (CF-Connecting-IP), IPv6 by /64', async () => {
+  await serve({ maxPerIp: 2 }, async ({ port, base, stream }) => {
+    // Through the tunnel the socket is loopback and the visitor is in CF-Connecting-IP.
+    const a = await openStream(port, '/api/news/stream?tabs=MARKETS', { 'CF-Connecting-IP': '2001:db8:1:2::10' });
+    const b = await openStream(port, '/api/news/stream?tabs=MARKETS', { 'CF-Connecting-IP': '2001:db8:1:2:ffff::99' });
+    assert.equal(a.res.statusCode, 200);
+    assert.equal(b.res.statusCode, 200);
+    const third = await fetch(`${base}/api/news/stream?tabs=MARKETS`, { headers: { 'CF-Connecting-IP': '2001:db8:1:2:aaaa::1' } });
+    assert.equal(third.status, 429, 'the same /64 is one address');
+    const other = await openStream(port, '/api/news/stream?tabs=MARKETS', { 'CF-Connecting-IP': '198.51.100.7' });
+    assert.equal(other.res.statusCode, 200, 'another visitor is not held back by the first');
+    for (const s of [a, b, other]) s.close();
+    await until(() => stream.connections() === 0 && stream.addresses() === 0);
+  });
+});
+
+test('stream: a client that stops reading is dropped, not buffered without end', async () => {
+  await serve({ maxBuffer: 1024 }, async ({ port, hub, stream }) => {
+    const s = await openStream(port, '/api/news/stream?tabs=MARKETS');
+    s.res.pause(); // stops reading
+    await until(() => hub.subs.size === 1);
+    const big = { event: 'news', id: 'x-1', data: { tab: 'MARKETS', items: [{ title: 'y'.repeat(200_000) }] } };
+    for (let i = 0; i < 40 && stream.connections(); i += 1) {
+      hub.push(big);
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    await until(() => stream.connections() === 0 && hub.subs.size === 0);
+    s.close();
   });
 });
