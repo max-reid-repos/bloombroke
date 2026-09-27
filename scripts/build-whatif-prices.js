@@ -133,6 +133,21 @@ for (const r of catalog.recurring) {
     if (key >= r.start && !(key in m)) m[key] = priced(r.ticker, p, `${r.id} ${key}`);
   }
 }
+// One-off items: the same first-of-month closes from the month of the earliest purchase,
+// for the REPLAY race (the value of the shares month by month). Checked the same way.
+// Bars before the first purchase are skipped (a pre-listing bar is not a real price).
+const firstBuy = {};
+for (const p of catalog.products) {
+  const hit = buys[p.id].date;
+  if (!firstBuy[p.ticker] || hit < firstBuy[p.ticker]) firstBuy[p.ticker] = hit;
+}
+for (const [t, start] of Object.entries(firstBuy)) {
+  const m = (monthly[t] ||= {});
+  for (const p of history[t]) {
+    const key = p.d.slice(0, 7);
+    if (p.d >= start && !(key in m)) m[key] = priced(t, p, `${t} ${key}`);
+  }
+}
 
 // 420: the close on the day, plus the last close of every week since, for the chart.
 const tsla = history.TSLA;
@@ -156,6 +171,7 @@ if (mismatches.length) {
 const out = {
   built: today.toISOString().slice(0, 10),
   source: 'CNBC daily bars, split-adjusted closes, price only (no dividends); each close cross-checked against Yahoo Finance (1% tolerance)',
+  // monthly: the first trading day of each month, per ticker, for recurring buys and REPLAY.
   buys,
   monthly,
   funding: { ...priced('TSLA', day, 'funding'), weekly },

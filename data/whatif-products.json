@@ -68,7 +68,7 @@
       ],
       "note": "US Individual plan. Starts April 2018, when Spotify shares began trading. The $12.99 price applies from February 2026.",
       "src": "https://www.musicbusinessworldwide.com/spotify-hikes-price-for-premium-subscribers-in-the-us-other-markets/" },
-    { "id": "bigmac", "name": "Big Mac, every week", "company": "McDonald's", "ticker": "MCD", "per": "week", "start": "2008-01", "defaultYears": 10, "category": "food", "family": "MCDONALDS", "short": "Big Mac", "plural": "Big Macs", "doodle": "burger",
+    { "id": "bigmac", "name": "Big Mac, every week", "company": "McDonald's", "ticker": "MCD", "per": "week", "start": "2008-01", "defaultYears": 10, "category": "food", "family": "MCDONALDS", "short": "Big Mac", "plural": "Big Macs", "doodle": "burger", "shelves": ["habits", "vices"],
       "prices": [
         { "from": "2007-06", "usd": 3.00 }, { "from": "2008-06", "usd": 3.21 }, { "from": "2009-07", "usd": 3.43 }, { "from": "2010-07", "usd": 3.53 },
         { "from": "2011-07", "usd": 3.64 }, { "from": "2012-01", "usd": 3.81 }, { "from": "2012-07", "usd": 3.96 }, { "from": "2013-01", "usd": 4.03 },
@@ -83,6 +83,25 @@
     { "id": "burrito", "name": "Chipotle burrito, every week (est. $9.80)", "company": "Chipotle", "ticker": "CMG", "per": "week", "start": "2008-01", "defaultYears": 5, "category": "food", "family": "CHIPOTLE", "short": "Burrito", "plural": "burritos", "doodle": "burrito",
       "today": 9.80, "scaleWith": "bigmac",
       "note": "Chicken burrito. Assumes $9.80 today, a typical US price. Earlier years are scaled back in line with the US Big Mac price.",
-      "src": "https://github.com/TheEconomist/big-mac-data" }
+      "src": "https://github.com/TheEconomist/big-mac-data" },
+    { "id": "beer", "name": "Six-pack of beer, every week", "company": "AB InBev", "ticker": "BUD", "per": "week", "start": "2009-10", "listed": "2009-09-16", "defaultYears": 10, "category": "beer", "family": "BEER", "short": "Six-pack", "plural": "six-packs", "doodle": "box", "shelves": ["vices"],
+      "series": { "id": "APU0000720111", "units": 4.5 },
+      "note": "Six 12 oz cans: 4.5 times the BLS US average price of beer per 16 oz in each month (series APU0000720111, checked against FRED). AB InBev brews Budweiser. Starts October 2009, after its shares began trading in New York on 16 Sep 2009.",
+      "startNote": "Starts October 2009, when AB InBev shares had begun trading in New York.",
+      "src": "https://data.bls.gov/timeseries/APU0000720111" },
+    { "id": "soda", "name": "Can of soda, every day", "company": "Coca-Cola", "ticker": "KO", "per": "day", "start": "2018-04", "defaultYears": 5, "category": "soda", "family": "SODA", "short": "Soda", "plural": "sodas", "doodle": "coffee", "shelves": ["vices"],
+      "series": { "id": "APU0000FN1102", "units": 1 },
+      "note": "One 12 oz can a day at the BLS US average price per can, bought in 12-packs, in each month (series APU0000FN1102, checked against FRED).",
+      "startNote": "Starts April 2018, when the BLS price series starts.",
+      "src": "https://data.bls.gov/timeseries/APU0000FN1102" },
+    { "id": "chips", "name": "Bag of chips (1 lb), every week", "company": "PepsiCo", "ticker": "PEP", "per": "week", "start": "2008-01", "defaultYears": 10, "category": "snack", "family": "CHIPS", "short": "Chips", "plural": "bags of chips", "doodle": "burrito", "shelves": ["vices"],
+      "series": { "id": "APU0000718311", "units": 1 },
+      "note": "A 16 oz bag at the BLS US average price of potato chips per 16 oz in each month (series APU0000718311, checked against FRED). PepsiCo makes Lay's.",
+      "src": "https://data.bls.gov/timeseries/APU0000718311" },
+    { "id": "betting", "name": "$20 a week on a betting app", "company": "DraftKings", "ticker": "DKNG", "per": "week", "start": "2020-05", "listed": "2020-04-24", "defaultYears": 5, "category": "betting", "family": "BETTING", "short": "Betting", "plural": "bets", "doodle": "phones", "shelves": ["vices"],
+      "prices": [{ "from": "2020-05", "usd": 20 }],
+      "note": "A set $20 a week, not a price. Starts May 2020: DraftKings shares began trading on 24 Apr 2020.",
+      "startNote": "Starts May 2020, when DraftKings shares had begun trading.",
+      "src": "https://www.draftkings.com/about/news/2020/04/draftkings-closes-business-combination-and-will-begin-trading-on-the-nasdaq-stock-exchange/" }
   ]
 }
