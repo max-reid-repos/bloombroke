@@ -6,6 +6,8 @@ import { esc, q, panel, LOADING, metaNote } from './markets.js';
 import * as pro from '../pro.js';
 import { reloadAfterKey, takeShowKeyOnce } from '../goal.js';
 import { findCommand } from '../registry.js';
+import { parsePro as parse, parseRedeem, parseLogin } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { parse, parseRedeem, parseLogin };
 
 // The rule, and the breakdown under it. A row is [what, status, command to open or ''].
 export const RULE = 'Free is everything you look at. Pro is your own stuff, plus things that work while you are away.';
@@ -54,32 +56,7 @@ export const GIFT_RULES = 'Each paid Pro licence can make up to 3 gift codes. A 
 export const GIFT_SHOWN_ONCE = 'Copy it now and send it to your friend. We keep only a hash, so it is not shown again.';
 export const REDEEM_HOW = 'Type REDEEM followed by the code, like REDEEM GIFT-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX. The code never goes in the address bar.';
 
-// PRO [YEARLY|MONTHLY]: which plan the buy buttons lead with.
-export function parse(args) {
-  const w = args[0];
-  if (w === 'YEARLY' || w === 'YEAR' || w === 'ANNUAL') return { plan: 'year' };
-  if (w === 'MONTHLY' || w === 'MONTH') return { plan: 'month' };
-  return {};
-}
-
-// REDEEM [code]
-export function parseRedeem(args) {
-  if (!args.length) return { show: true };
-  const code = pro.normalizeGiftCode(args.join(''));
-  return code ? { code } : { error: 'format' };
-}
-
 const link = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
-
-// LOGIN [key]. The key may be typed with or without dashes. A gift code pasted here
-// redeems it.
-export function parseLogin(args) {
-  if (!args.length) return { show: true };
-  const key = pro.normalizeKey(args.join(''));
-  if (key) return { key };
-  const gift = pro.normalizeGiftCode(args.join(''));
-  return gift ? { gift } : { error: 'format' };
-}
 
 export function maskKey(last4) {
   return `BB-XXXX-XXXX-XXXX-${String(last4 || '????').slice(-4)}`;

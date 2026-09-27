@@ -1,0 +1,203 @@
+/* whatif.js's own styles, loaded with it (public/lazy.js) the first time a screen that
+   uses it opens; the page's always-on styles are in the stylesheets public/index.html links. */
+
+/* ==== from style.css ==== */
+
+/* ---- WHATIF ----------------------------------------------------------- */
+.wi-intro { color: var(--text-2); margin-bottom: 10px; }
+.wi-tabs { margin-bottom: 8px; }
+/* The shelf: doodle cards in a grid. */
+.wi-shelf {
+  --wi-bar-h: 40px;
+  list-style: none; margin: 0; padding: 0; outline: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 6px;
+}
+.wi-card {
+  position: relative;
+  display: grid; grid-template-columns: 50px minmax(0, 1fr); grid-template-rows: 1fr auto; column-gap: 8px;
+  min-height: 64px; padding: 5px 8px 5px 4px;
+  border: 1px solid var(--rule); background: var(--bg);
+  cursor: pointer; user-select: none; color: var(--text-2);
+  scroll-margin-bottom: calc(var(--wi-bar-h) + 8px);
+}
+.wi-card:hover { background: var(--panel-2); }
+.wi-card:focus { outline: 0; border-color: var(--accent); background: var(--panel-3); }
+.wi-card.is-on { color: var(--text); background: var(--accent-tint); border-color: var(--rule-strong); }
+.wi-doodle { grid-row: 1 / span 2; align-self: center; width: 50px; height: 50px; object-fit: contain; }
+.wi-box { position: absolute; top: 3px; right: 6px; font-size: 11px; color: var(--faint); }
+.wi-card.is-on .wi-box { color: var(--accent); font-weight: 600; }
+.wi-cname {
+  align-self: end; padding-right: 24px; font-size: 12px; line-height: 15px;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.wi-cmeta { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 11px; white-space: nowrap; }
+.wi-years input {
+  width: 8ch; height: 20px; padding: 0 4px;
+  border: 1px solid var(--rule-strong); background: var(--panel);
+  color: var(--text); font-family: var(--font); font-size: 12px; text-transform: uppercase; text-align: right;
+}
+.wi-years input:focus { outline: 1px solid var(--accent); outline-offset: 0; }
+/* YOUR OWN: the first card on every shelf, and its inline form under the tabs. */
+.wi-own .wi-cname { color: var(--accent); font-weight: 600; letter-spacing: .06em; }
+/* The form reads as one sentence: [$ 15] [a week] in [AAPL] since [2015]  ADD. */
+.wi-ownform { margin-bottom: 8px; padding: 8px 10px; border: 1px solid var(--rule-strong); background: var(--panel); }
+.wi-ownform[hidden] { display: none; }
+.wo-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 14px; color: var(--text-2); }
+.wo-line input, .wo-line select {
+  height: 28px; padding: 0 6px;
+  border: 1px solid var(--rule-strong); background: var(--bg);
+  color: var(--text); font-family: var(--font); font-size: 14px;
+}
+.wo-line input::placeholder { color: var(--faint); }
+.wo-line input:focus, .wo-line select:focus { outline: 1px solid var(--accent); outline-offset: 0; }
+.wo-amt { position: relative; display: inline-flex; }
+.wo-cur { position: absolute; left: 7px; top: 50%; transform: translateY(-50%); color: var(--dim); pointer-events: none; }
+.wo-amt input { width: 9ch; padding-left: 18px; }
+.wo-tk { width: 7ch; text-transform: uppercase; }
+.wo-dt { width: 10ch; }
+.wi-ownform .wo-add { height: 28px; margin-left: 4px; }
+.wo-close { height: 28px; padding: 0 8px; border: 0; background: transparent; color: var(--dim); font-family: var(--font); font-size: 16px; cursor: pointer; }
+.wo-close:hover { color: var(--text); }
+.wo-msg { margin-top: 6px; font-size: 12px; color: var(--down); }
+.wo-msg:empty { display: none; }
+/* The RUN bar sticks right on the dock (no gap for cards to show through); a card moved
+   to by keys is never left under it (scroll-margin), and the card behind it fades. */
+@media (max-width: 639px) { .wi-shelf { --wi-bar-h: 40px; } }
+.wi-bar {
+  position: sticky; bottom: var(--dock-h);
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  margin-top: 10px; padding: 6px 8px;
+  background: var(--panel-2); border: 1px solid var(--rule-strong);
+  box-shadow: 0 -8px 10px -4px var(--bg);
+  font-size: 12px;
+}
+.wi-count { color: var(--text); font-weight: 600; letter-spacing: .06em; white-space: nowrap; }
+.wi-cmd { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wi-hero { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 16px; }
+.wi-x { font-size: 26px; font-weight: 700; }
+.wi-sentence { margin-top: 4px; font-size: 15px; color: var(--text); }
+.wi-quip { margin-top: 6px; color: var(--text-2); font-size: 13px; }
+.wi-receipt { margin: 16px -10px 0; border-top: 1px solid var(--rule-strong); overflow-x: auto; }
+.wi-table tfoot th, .wi-table tfoot td { height: 28px; font-weight: 600; border-top: 1px solid var(--rule-strong); padding: 0 10px; }
+.wi-table tfoot .name { color: var(--text); letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
+.wi-table .is-loss .name a { color: var(--down); }
+.wi-when { color: var(--text-2); }
+.wi-when-m { display: none; }
+.wi-actions { display: flex; gap: 16px; margin-top: 10px; font-size: 11px; letter-spacing: .06em; }
+.wi-actions .code { color: var(--dim); }
+.wi-actions .code:hover { color: var(--accent); }
+/* EMBED (public/embed-snippet.js): a button that looks like the links beside it. */
+.wi-actions button.code { padding: 0; border: 0; background: none; font: inherit; letter-spacing: inherit; cursor: pointer; }
+.wi-note-name { color: var(--text); }
+.how-h { margin-top: 12px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.wi-details { margin-top: 10px; }
+
+/* WHATIF certificate: text over the art, placed in % of the image (the same numbers as
+   POS in lib/og.js), sized in cqw so it scales with the paper. */
+.wi-layout { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "replay" "cert" "body"; gap: 14px 28px; }
+.wi-head { grid-area: head; min-width: 0; }
+.wi-certcol { grid-area: cert; min-width: 0; }
+.wi-body { grid-area: body; min-width: 0; }
+.wi-body > .wi-receipt:first-child { margin-top: 0; }
+@media (min-width: 1100px) {
+  .wi-layout:not(.no-cert) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "cert head" "cert replay" "cert body"; grid-template-rows: auto auto 1fr; align-items: start; }
+}
+/* REPLAY: the race in thin terminal lines, in the right column under the number (on
+   phones too), so it is in view while it plays however long the table is. The
+   certificate waits, then stamps in when the race ends. */
+.wi-replay { grid-area: replay; min-width: 0; border-top: 1px solid var(--rule-strong); padding-top: 8px; }
+.wr-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 16px; font-size: 11px; letter-spacing: .06em; }
+.wr-date { min-width: 11ch; color: var(--text); font-weight: 600; }
+.wr-key .num { margin-left: 4px; color: var(--text); font-weight: 600; letter-spacing: 0; }
+.wr-stock { color: var(--accent); }
+.wr-jar { color: var(--cmp-3); }
+.wr-spent { color: var(--down); }
+.wr-canvas { display: block; width: 100%; height: 130px; margin-top: 6px; }
+/* REPLAY: a small quiet control at the chart's top right. */
+.wr-play {
+  margin-left: auto; height: 20px; padding: 0 8px;
+  border: 1px solid var(--rule-strong); background: transparent; color: var(--text-2);
+  font-family: var(--font); font-size: 10px; letter-spacing: .1em; cursor: pointer;
+}
+.wr-play:hover { border-color: var(--text); color: var(--text); }
+.wi-vmsg { margin-top: 6px; font-size: 11px; color: var(--dim); letter-spacing: .04em; }
+.wi-vmsg:empty { display: none; }
+.wi-vneeds { align-self: center; font-size: 11px; color: var(--dim); }
+/* Title strip parts, split by a dot (on phones they wrap, one per line, no dots). */
+.wi-panel .panel-meta > * + *::before { content: '· '; }
+.wi-certcol { overflow: clip; }
+.wc-seal { position: absolute; inset: 0; pointer-events: none; transform-origin: 82.5% 68.4%; }
+/* While racing, the number rolls in ink (red while behind) and the seal is empty; it
+   stamps in with the multiple when the race ends. */
+.wi-cert.is-racing .wc-seal, .wi-cert.is-racing .wc-today { visibility: hidden; }
+.wi-cert.is-racing .wc-big { color: var(--paper-ink); }
+.wi-cert.is-racing.is-behind .wc-big { color: var(--paper-red); }
+.wi-cert.is-stamped .wc-seal { --stamp-rot: 0deg; animation: stamp-in 260ms cubic-bezier(.2, .8, .2, 1) both; }
+.wi-cert {
+  --paper-ink: #2A1A10; --paper-soft: #5A4330; --paper-red: #C23B2A;
+  position: relative; container-type: inline-size;
+  width: 97%; max-width: 860px; margin: 4px 0 0 3%;
+}
+.wc-paper { display: block; width: 100%; height: auto; }
+.wc {
+  position: absolute; transform: translate(-50%, -50%);
+  white-space: nowrap; text-align: center; line-height: 1; color: var(--paper-ink); pointer-events: none;
+}
+.wc-receipt {
+  left: 7.33%; top: 13.3%; transform: rotate(-15deg); transform-origin: top left;
+  display: flex; flex-direction: column; text-align: left;
+  font-size: .92cqw; line-height: 2.18cqw; font-weight: 800; color: var(--paper-soft);
+}
+.wc-ribbon { left: 49.6%; top: 20.2%; font-family: 'Caveat', cursive; font-weight: 700; font-size: 3.8cqw; }
+.wc-big { left: 49%; top: 43.5%; font-size: 11cqw; font-weight: 800; letter-spacing: -.04em; transform: translate(-50%, -50%) rotate(-1.5deg); }
+.wi-cert.is-loss .wc-big { color: var(--paper-red); }
+.wc-today { left: 49%; top: 56.5%; font-family: 'Caveat', cursive; font-weight: 700; font-size: 2.8cqw; color: var(--paper-soft); }
+.wc-l1, .wc-l2 { left: 49.9%; font-size: calc(var(--fs, 2.4) * var(--k, 1) * 1cqw); }
+.wc-l1 { top: calc(71.3% - .62em); font-weight: 800; }
+.wc-l2 { top: calc(76.9% - .62em); font-weight: 600; color: var(--paper-soft); }
+.wc-mult { left: 82.5%; top: 68.4%; font-size: 3cqw; font-weight: 800; }
+.wi-cert.is-loss .wc-mult { top: 66.2%; color: var(--paper-soft); }
+.wc-strike {
+  left: 82.5%; top: 66.2%; width: 9.2%; height: .45cqw; border-radius: .3cqw;
+  background: var(--paper-red); transform: translate(-50%, -50%) rotate(-14deg);
+}
+.wc-dodged { left: 82.5%; top: 72%; font-family: 'Caveat', cursive; font-weight: 700; font-size: 2.4cqw; color: var(--paper-red); }
+/* On a phone the small lines grow a little; they still stay on the paper. */
+@container (max-width: 520px) {
+  .wc-l1, .wc-l2 { --k: 1.15; }
+  .wc-today { font-size: 3.4cqw; }
+}
+.wc-sticker { position: absolute; left: -3%; bottom: -5%; width: 17%; height: auto; transform: rotate(-8deg); pointer-events: none; }
+
+@media (max-width: 639px) {
+  .wi-shelf { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wi-hint, .wi-cmd { display: none; }
+  .wi-bar { gap: 8px; flex-wrap: nowrap; }
+  .wr-canvas { height: 150px; }
+  .wi-panel .panel-head { flex-wrap: wrap; }
+  .wi-panel .panel-label { flex: 1 1 100%; max-width: none; }
+  .wi-panel .panel-meta { flex: 1 1 100%; justify-content: flex-start; text-align: left; padding-left: 8px; }
+  .wi-panel .panel-meta > * + *::before { content: none; }
+  .wi-panel .panel-meta:has(> .wi-hint:only-child) { display: none; }
+  .wi-sh, .wi-table .wi-sh, .wi-table .wi-when { display: none; }
+  .wi-table tbody .name { white-space: normal; padding-top: 4px; padding-bottom: 4px; }
+  .wi-when-m { display: block; font-size: 11px; }
+  .wi-sentence { font-size: 14px; }
+  .wi-x { font-size: 20px; }
+  .wo-line { gap: 6px; font-size: 13px; }
+  .wo-line input, .wo-line select { padding: 0 4px; font-size: 13px; }
+  .wo-amt input { width: 6ch; padding-left: 16px; }
+  .wo-cur { left: 5px; }
+  .wo-dt { width: 8ch; }
+  .wi-receipt { margin: 12px -10px 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wi-cert.is-stamped .wc-seal { animation: none; }
+}
+
+/* ==== from company-ui.css ==== */
+
+.wi-share .wi-actions { display: inline-flex; gap: 16px; margin: 0 0 0 auto; }
+.wi-body > .wi-actions { display: flex; }
+@media (max-width: 639px) { .wi-share .wi-actions { margin-left: 0; flex-basis: 100%; } }

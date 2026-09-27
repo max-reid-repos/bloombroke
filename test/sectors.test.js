@@ -545,10 +545,10 @@ test('BREADTH: its counts and its member rows come from the same list', () => {
 
 test('sectors copy: no banned brand word, no em dash, no emoji, no amber, no advice words', () => {
   const files = ['public/screens/sectors.js', 'data/sectors.js', 'public/screens/breadth.js'];
-  const css = readFileSync('public/commands.css', 'utf8');
-  const block = css.slice(css.indexOf('---- SECTORS'), css.indexOf('---- Multi-line charts'));
+  // SECTORS' own stylesheet, loaded with the screen (it was a block of commands.css).
+  const block = readFileSync('public/screens/sectors.css', 'utf8');
   assert.ok(block.length > 100);
-  for (const [f, s] of [...files.map((f) => [f, readFileSync(f, 'utf8')]), ['commands.css SECTORS', block]]) {
+  for (const [f, s] of [...files.map((f) => [f, readFileSync(f, 'utf8')]), ['screens/sectors.css', block]]) {
     assert.doesNotMatch(s, new RegExp(['bloom', 'berg'].join(''), 'i'), f);
     assert.doesNotMatch(s, /—/, `${f}: em dash`);
     assert.doesNotMatch(s, /\p{Extended_Pictographic}/u, `${f}: emoji`);

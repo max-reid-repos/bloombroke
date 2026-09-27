@@ -6,6 +6,8 @@ import { esc, q, panel, LOADING } from './markets.js';
 import { metaNote, errorHtml, fmtInt, fmtDay, dash } from './company-kit.js';
 import { toolbar, panelTools, dataTable, sortRows, nextSort, edgeFade } from '../kit.js';
 import { sessionHtml } from '../provenance.js';
+import { FORMS, parseFilings as parse, filingsInputOf as inputOf } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { FORMS, parse, inputOf };
 
 // EDGAR's acceptance time in New York, for the PRE/MKT/AH/WKD tag's tooltip.
 export function acceptedEt(iso) {
@@ -13,24 +15,7 @@ export function acceptedEt(iso) {
   return Number.isFinite(t) ? `${new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })} ET` : '';
 }
 
-const TICKER = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
-// KEY (the default) leaves out ownership paperwork: insider Forms 3, 4, 5 and 144 and 5%
-// holder schedules, which are most of a big company's list.
-export const FORMS = ['KEY', '10-K', '10-Q', '8-K', '4', 'ALL'];
-const FORM_ALIASES = { '10K': '10-K', '10Q': '10-Q', '8K': '8-K', FORM4: '4', ANNUAL: '10-K', QUARTERLY: '10-Q', INSIDER: '4', MAIN: 'KEY' };
 const FORM_LABEL = { KEY: 'KEY FILINGS', 4: 'FORM 4' };
-
-// FILINGS <ticker> [form]
-export function parse(args) {
-  if (!args.length || args.length > 2 || !TICKER.test(args[0])) return { error: 'usage' };
-  const form = args[1] ? (FORM_ALIASES[args[1]] || args[1]) : 'KEY';
-  if (!FORMS.includes(form)) return { error: 'usage' };
-  return { ticker: args[0], form };
-}
-
-export function inputOf(args) {
-  return ['FILINGS', args.ticker, ...(args.form && args.form !== 'KEY' ? [args.form] : [])].join(' ');
-}
 
 // The filter row: one segmented set, each with its count once the list is in.
 export function chips(ticker, current, counts = null) {

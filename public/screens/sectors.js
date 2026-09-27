@@ -14,26 +14,8 @@ import { esc, q, fmtPct, fmtSigned, dirOf, panel, metaNote, LOADING } from './ma
 import { toolbar, segmented, rangePills } from '../kit.js';
 import { squarify, heatFill, tileLabels, sectorLabel, fitHeight } from './heatmap.js';
 import { sizeGuard } from './size-guard.js';
-
-export const PERIODS = ['1D', '1W', '1M', 'YTD', '1Y'];
-export const VIEWS = ['TABLE', 'MAP'];
-
-// Words after SECTORS: a period and TABLE or MAP, in any order. Anything else is ignored.
-export function parse(words = []) {
-  let period = '1D';
-  let view = 'TABLE';
-  for (const w of words) {
-    const u = String(w).toUpperCase();
-    if (PERIODS.includes(u)) period = u;
-    else if (VIEWS.includes(u)) view = u;
-  }
-  return { period, view };
-}
-
-// The command (and so the URL) for a period and a view: plain SECTORS for 1D TABLE.
-export function sectorsCmd({ period = '1D', view = 'TABLE' } = {}) {
-  return ['SECTORS', period !== '1D' ? period : '', view === 'MAP' ? 'MAP' : ''].filter(Boolean).join(' ');
-}
+import { SECTOR_PERIODS as PERIODS, SECTOR_VIEWS as VIEWS, parseSectors as parse, sectorsCmd } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { PERIODS, VIEWS, parse, sectorsCmd };
 
 // The command bar and URL keep the clean form (unknown words dropped).
 export const toInput = (args) => sectorsCmd(args);

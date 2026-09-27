@@ -1,0 +1,35 @@
+/* options.js's own styles, loaded with it (public/lazy.js) the first time a screen that
+   uses it opens; the page's always-on styles are in the stylesheets public/index.html links. */
+
+/* ==== from commands-markets.css ==== */
+
+.oc-top > .panel-msg, .oc-top > .muted { flex-basis: 100%; }
+.oc-all { margin-left: auto; align-self: center; }
+/* ---- OPTIONS chain ----------------------------------------------------- */
+.oc-wrap { overflow-x: auto; }
+.oc th, .oc td { padding: 0 8px; }
+.oc .oc-strike {
+  width: 1%;
+  background: var(--panel-2);
+  border-left: 1px solid var(--rule-strong); border-right: 1px solid var(--rule-strong);
+  color: var(--text); font-weight: 600; text-align: center;
+}
+.oc thead .oc-strike { background: var(--panel); }
+.oc-sides th { height: 20px; font-size: 11px; font-weight: 600; letter-spacing: .1em; color: var(--accent); background: var(--panel); }
+.oc-sides td { background: var(--panel); }
+.oc-side { text-align: right; }
+.oc-side-put { text-align: left; }
+.oc-exp .tab { flex: 0 0 auto; white-space: nowrap; }
+.oc td.itm { background: var(--accent-tint); color: var(--text); }
+.oc .oc-price td {
+  height: 18px; padding: 0;
+  background: var(--bg);
+  border-top: 1px solid var(--accent); border-bottom: 1px solid var(--accent);
+  text-align: center; font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--accent);
+}
+.grid-table tbody tr.oc-price:hover { background: transparent; }
+
+@media (max-width: 639px) {
+  .oc th, .oc td { padding: 0 6px; }
+  .oc-all { margin-left: 0; }
+}

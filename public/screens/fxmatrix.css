@@ -1,0 +1,47 @@
+/* fxmatrix.js's own styles, loaded with it (public/lazy.js) the first time a screen that
+   uses it opens; the page's always-on styles are in the stylesheets public/index.html links. */
+
+/* ==== from commands.css ==== */
+
+/* ---- FXMATRIX --------------------------------------------------------- */
+.fxm-wrap { overflow-x: auto; }
+.fxm th, .fxm td { text-align: right; }
+.fxm .fxm-corner { text-align: left; }
+.fxm .fxm-row { color: var(--text); font-weight: 600; text-align: left; }
+.fxm td { border-left: 1px solid var(--rule); }
+.fxm-cell { color: var(--text); }
+.fxm-cell:hover { color: var(--accent); text-decoration: none; }
+.fxm-arr { display: inline-block; width: 10px; margin-left: 3px; font-size: 7px; vertical-align: 2px; text-align: right; }
+.fxm-arr.up { color: var(--up); }
+.fxm-arr.down { color: var(--down); }
+/* The currency column stays put while the rates scroll sideways. */
+.fxm .fxm-row, .fxm .fxm-corner { position: sticky; left: 0; z-index: 1; background: var(--bg); box-shadow: inset -1px 0 0 var(--rule-strong); }
+.fxm thead .fxm-corner { background: var(--bg); }
+.fxm-self { color: var(--faint); }
+.fxm td.fxm-self { padding-right: 23px; }
+
+@media (max-width: 639px) {
+  .fxm { font-size: 11px; }
+  .fxm th, .fxm td { padding: 0 6px; }
+}
+
+/* ==== from commands-markets.css ==== */
+
+/* ---- FXMATRIX heat ------------------------------------------------------ */
+.fxm-heat td.hx { padding: 0; }
+.fxm-heat td.hx .fxm-cell { display: block; padding: 0 10px; line-height: var(--row-h); color: var(--text); }
+.hx-d3 { background: hsl(0, 74%, 36%); }
+.hx-d2 { background: hsl(0, 56%, 28%); }
+.hx-d1 { background: hsl(0, 36%, 20%); }
+.hx-0 { background: hsl(212, 18%, 14%); }
+.hx-u1 { background: hsl(147, 32%, 17%); }
+.hx-u2 { background: hsl(147, 46%, 23%); }
+.hx-u3 { background: hsl(147, 62%, 30%); }
+.hx-na { background: transparent; }
+.hx-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 6px 10px 8px; border-top: 1px solid var(--rule); font-size: 11px; color: var(--dim); }
+.hx-legend li { display: flex; align-items: center; gap: 6px; }
+.hx-sw { display: inline-block; width: 18px; height: 10px; }
+
+@media (max-width: 639px) {
+  .hx-legend { gap: 4px 10px; }
+}

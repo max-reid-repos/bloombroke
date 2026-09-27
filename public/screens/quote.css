@@ -1,0 +1,38 @@
+/* quote.js's own styles, loaded with it (public/lazy.js) the first time a screen that
+   uses it opens; the page's always-on styles are in the stylesheets public/index.html links. */
+
+/* ==== from style.css ==== */
+
+.chart-host-lg { height: 400px; }
+.rangebar { width: 72px; height: 6px; margin-left: 8px; flex: 0 0 auto; }
+.rb-track { fill: var(--rule-strong); }
+.rb-mark { fill: var(--accent); }
+
+/* ---- QUOTE ------------------------------------------------------------ */
+.q-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 420px); gap: 24px; }
+.q-chg { margin-top: 2px; font-size: 16px; }
+.q-chg span { margin-left: 8px; }
+.q-ext { margin-top: 8px; font-size: 12px; }
+.q-asof { margin-top: 4px; font-size: 11px; letter-spacing: .06em; }
+
+@media (max-width: 639px) {
+  .q-top { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .chart-host-lg { height: 280px; }
+}
+
+/* An instrument in a panel: a one-line header strip, key numbers in a row, and the chart
+   takes the rest of the panel. Short panels drop the key numbers. */
+.is-embed .stack:has(#q-rc) { display: flex; flex-direction: column; height: 100vh; }
+.is-embed .stack > .panel:has(#q-rc) { flex: 1 1 auto; min-height: 0; }
+.is-embed .panel-body:has(> #q-rc) { display: flex; flex-direction: column; min-height: 0; }
+.is-embed #q-rc { flex: 1 1 auto; min-height: 0; }
+.is-embed #q-rc > .ch-bar, .is-embed #q-rc > .ch-head { flex: 0 0 auto; }
+.is-embed #q-rc .chart-host { flex: 1 1 auto; height: auto; min-height: 140px; }
+.is-embed .q-top { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.is-embed .q-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; }
+.is-embed .q-chg, .is-embed .q-ext, .is-embed .q-asof { margin: 0; }
+.is-embed .q-chg { font-size: 14px; }
+.is-embed .q-top .stats { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); column-gap: 16px; }
+@media (max-height: 560px) {
+  .is-embed .q-top .stats, .is-embed .q-ext { display: none; }
+}

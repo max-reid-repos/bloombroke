@@ -7,6 +7,8 @@
 
 import { esc, q, fmtPct, nyTime, panel, LOADING } from './markets.js';
 import { sizeGuard } from './size-guard.js';
+import { SPECIES, parseFishtank as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { SPECIES, parse };
 
 // ---- Pure mapping (tested in test/fishtank.test.js) ------------------------------
 
@@ -79,33 +81,6 @@ export function seeded(str, salt = 0) {
 }
 
 // ---- Species: one per GICS sector ---------------------------------------------------
-
-// Sector key (the same keys as HEATMAP, data/sp100.js) -> legend name and species. The
-// legend lists them in this order.
-export const SPECIES = {
-  TECH: { short: 'TECH', kind: 'swordfish' },
-  FIN: { short: 'FIN', kind: 'shark' },
-  UTIL: { short: 'UTIL', kind: 'eel' },
-  ENERGY: { short: 'ENERGY', kind: 'angler' },
-  COMM: { short: 'COMM', kind: 'dolphin' },
-  HEALTH: { short: 'HEALTH', kind: 'jelly' },
-  DISC: { short: 'DISC', kind: 'clown' },
-  STAPLES: { short: 'STAPLES', kind: 'goldfish' },
-  IND: { short: 'INDUS', kind: 'puffer' },
-  RE: { short: 'RE', kind: 'crab' },
-  MAT: { short: 'MAT', kind: 'lobster' },
-};
-
-// FISHTANK TECH (or FISHTANK INDUS, its legend name): that sector lit from the start.
-// SECTORS' SWIM links here. -> { args, input } or null (plain FISHTANK).
-export function parse(words = []) {
-  for (const w of words) {
-    const u = String(w).toUpperCase();
-    const key = SPECIES[u] ? u : Object.keys(SPECIES).find((k) => SPECIES[k].short === u);
-    if (key) return { args: { sector: key }, input: `FISHTANK ${key}` };
-  }
-  return null;
-}
 
 export const SPECIES_NAME = {
   swordfish: 'swordfish', shark: 'shark', eel: 'electric eel', angler: 'anglerfish', dolphin: 'dolphin',

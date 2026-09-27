@@ -60,13 +60,10 @@
 .add-in::placeholder { color: var(--faint); }
 .add-in:focus { outline: 1px solid var(--accent); outline-offset: 0; }
 .add-in[readonly] { color: var(--dim); border-style: dashed; }
-.add-sym { width: 240px; text-transform: uppercase; }
 .add-sym::placeholder, .add-tk::placeholder { text-transform: none; }
-.add-tk { width: 96px; text-transform: uppercase; }
 .add-num { width: 96px; text-align: right; font-variant-numeric: tabular-nums; }
 .add-btn { height: 24px; border-color: var(--accent); color: var(--accent); }
 .add-btn:hover { color: var(--ink); background: var(--accent); }
-.list-tools { display: inline-flex; align-items: center; gap: 4px; }
 .quiet {
   padding: 0 4px; border: 0; background: transparent;
   color: var(--dim); font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .08em;
@@ -74,21 +71,11 @@
 .quiet:hover { color: var(--text); text-decoration: underline; }
 .quiet.is-danger { color: var(--down); }
 .quiet[hidden] { display: none; }
-.clear-ask { margin-right: 4px; color: var(--text-2); font-size: 12px; }
-.row-acts { white-space: nowrap; }
-.wl-btn.is-text { width: auto; padding: 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .08em; }
-.wl-btn[data-act="edit"]:hover { color: var(--accent); }
 
-/* ---- SCREEN: presets row under the title, RUN at the left on every width --------- */
-.sc-pad { padding: 8px 10px; }
 .toolbar .tag + .seg { margin-left: 0; }
-.sc-actions .wi-run { margin-left: 0; }
 
 /* ---- WHATIF: the result's actions sit on the share row ---------------------------- */
 .wi-share { align-items: center; }
-.wi-share .wi-actions { display: inline-flex; gap: 16px; margin: 0 0 0 auto; }
-.wi-body > .wi-actions { display: flex; }
-@media (max-width: 639px) { .wi-share .wi-actions { margin-left: 0; flex-basis: 100%; } }
 
 /* ---- AFFORD: the verdict next to the answer, a wage field, a share row ---------- */
 @media (min-width: 640px) {
@@ -125,8 +112,6 @@
   .m-only { display: inline; }
   .m-only-block { display: block; }
   .co-wide .dt .cell-name { max-width: 12ch; }
-  .add-sym { flex: 1 1 160px; width: auto; }
-  .pf-form .add-in { flex: 1 1 72px; width: 72px; min-width: 0; }
   .dt tr.hide-m { display: none; }
   .d-only { display: none; }
   .co-wide .dt th { white-space: normal; line-height: 1.2; vertical-align: bottom; padding-bottom: 4px; }
@@ -142,5 +127,3 @@
 .is-embed .panel-head.is-lead { justify-content: flex-end; }
 .is-embed .panel-head.is-lead .panel-meta { flex: 1 1 auto; padding-left: 8px; }
 .is-embed .panel-head.is-lead:has(> .panel-meta:empty) { display: none; }
-.is-embed .hm-foot { display: none; }
-.is-embed .hm-host { min-height: 0; }

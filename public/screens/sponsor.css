@@ -1,0 +1,41 @@
+/* sponsor.js's own styles, loaded with it (public/lazy.js) the first time a screen that
+   uses it opens; the page's always-on styles are in the stylesheets public/index.html links. */
+
+/* ==== from style.css ==== */
+
+.wd-tile { display: flex; min-width: 0; background: var(--bg); cursor: pointer; outline: 0; box-shadow: 0 0 0 1px var(--rule-strong); }
+.wd-tile > .panel { flex: 1; }
+.wd-tile:hover .panel-body, .wd-tile:focus .panel-body { background: var(--panel-2); }
+.wd-tile:focus { box-shadow: 0 0 0 1px var(--rule-strong), inset 2px 0 0 var(--accent); }
+.wd-tile .panel-body { display: flex; flex-direction: column; gap: 2px; min-height: 112px; }
+
+@media (max-width: 639px) {
+  .wd-tile .panel-body { min-height: 0; padding: 6px 8px; }
+}
+
+.spon-facts { margin: 0 0 12px; border-top: 1px solid var(--rule); }
+.spon-facts li { min-height: var(--row-h); padding: 3px 0; border-bottom: 1px solid var(--rule); color: var(--text-2); }
+.spon-facts li.is-no { color: var(--dim); }
+.spon-proofs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; margin: 0 0 12px; max-width: 900px; }
+.spon-h { display: flex; gap: 12px; margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .14em; color: var(--dim); }
+.spon-nums { width: 100%; border-collapse: collapse; }
+.spon-nums th, .spon-nums td { height: var(--row-h); padding: 0 8px 0 0; border-bottom: 1px solid var(--rule); text-align: left; font-weight: 400; color: var(--text-2); white-space: nowrap; }
+.spon-nums thead th { font-size: 11px; letter-spacing: .08em; color: var(--dim); }
+.spon-nums .num { text-align: right; color: var(--text); }
+.spon-tile .wd-line, .spon-tile .wd-src { display: none; }
+/* The bottom-row mock on SPONSOR: the status row and the key bar, small. */
+.spon-mock { overflow: hidden; margin: 0 0 12px; border: 1px solid var(--rule-strong); background: var(--bg); font-size: 11px; letter-spacing: .06em; }
+.spon-mock-row { display: flex; align-items: center; gap: 12px; height: 22px; padding: 0 10px; background: var(--panel); white-space: nowrap; }
+.spon-mock-msg { flex: 0 0 8ch; height: 6px; background: var(--rule-strong); }
+.spon-mock-strip { flex: 1 1 0; min-width: 0; display: flex; justify-content: center; outline: 1px solid var(--accent); outline-offset: 2px; }
+.spon-mock-legal { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+.spon-mock-keys { display: flex; align-items: center; gap: 16px; height: 22px; padding: 0 10px; border-top: 1px solid var(--rule); color: var(--dim); }
+.spon-mock-key { width: 7ch; height: 6px; background: var(--rule-strong); }
+.spon-mock-more { flex: 1 1 auto; height: 6px; background: linear-gradient(90deg, var(--rule-strong) 0 30%, transparent 30%); }
+/* A phone has less room: the mock keeps the ad line readable and the links short. */
+@media (max-width: 639px) { .spon-mock-msg, .spon-mock-nfa { display: none; } .spon-mock-row { gap: 8px; } }
+.spon-tile .panel-body { min-height: 0; }
+@media (max-width: 639px) { .spon-proofs { grid-template-columns: minmax(0, 1fr); } }
+.spon-proof { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 12px; }
+.spon-proof li { white-space: nowrap; color: var(--dim); }
+.panel-head > .wd-sponsor { margin-left: auto; padding-right: 0; }

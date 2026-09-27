@@ -3,24 +3,12 @@
 import { esc, q, fmtPct, dirOf, panel, LOADING } from './markets.js';
 import { fmtXForSpan, fmtHoverForBar } from './chart.js';
 import { mountLines } from './lines.js';
-import { PRESETS } from '../ranges.js';
 import { toolbar, rangePills } from '../kit.js';
 import { stockIdOf } from '../known-tickers.js';
+import { COMPARE_RANGES as RANGES, MAX_TICKERS, parseCompare as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { RANGES, MAX_TICKERS, parse };
 
-// The standard daily range set (1M to MAX); intraday ranges are not compared.
-export const RANGES = PRESETS.filter((r) => r !== '1D' && r !== '5D');
 const TICKER = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
-export const MAX_TICKERS = 5;
-
-// COMPARE AAPL MSFT NVDA [1Y]
-export function parse(args) {
-  const toks = args.flatMap((t) => t.split(',')).filter((t) => t && t !== 'VS' && t !== 'AND');
-  let range = '1Y';
-  if (toks.length && RANGES.includes(toks[toks.length - 1])) range = toks.pop();
-  const tickers = [...new Set(toks)];
-  if (tickers.length < 2 || tickers.length > MAX_TICKERS || !tickers.every((t) => TICKER.test(t))) return { error: 'usage' };
-  return { tickers, range };
-}
 
 export const compareCmd = (tickers, range) => `COMPARE ${tickers.join(' ')} ${range}`;
 

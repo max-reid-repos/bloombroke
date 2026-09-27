@@ -9,36 +9,10 @@
   padding: 8px 10px;
   border-bottom: 1px solid var(--rule);
 }
-.oc-top > .panel-msg, .oc-top > .muted { flex-basis: 100%; }
 .oc-px { font-size: 22px; font-weight: 600; color: var(--text); }
 .oc-kv { font-size: 12px; white-space: nowrap; }
-.oc-all { margin-left: auto; align-self: center; }
 .bg-body > .loading, .bg-body > .panel-msg, .fxm-body > .loading, .fxm-body > .panel-msg, #oc-chain > .panel-msg { padding: 8px 10px; }
 .ec-back { display: flex; align-items: center; padding: 0 10px; font-size: 11px; letter-spacing: .06em; }
-
-/* ---- OPTIONS chain ----------------------------------------------------- */
-.oc-wrap { overflow-x: auto; }
-.oc th, .oc td { padding: 0 8px; }
-.oc .oc-strike {
-  width: 1%;
-  background: var(--panel-2);
-  border-left: 1px solid var(--rule-strong); border-right: 1px solid var(--rule-strong);
-  color: var(--text); font-weight: 600; text-align: center;
-}
-.oc thead .oc-strike { background: var(--panel); }
-.oc-sides th { height: 20px; font-size: 11px; font-weight: 600; letter-spacing: .1em; color: var(--accent); background: var(--panel); }
-.oc-sides td { background: var(--panel); }
-.oc-side { text-align: right; }
-.oc-side-put { text-align: left; }
-.oc-exp .tab { flex: 0 0 auto; white-space: nowrap; }
-.oc td.itm { background: var(--accent-tint); color: var(--text); }
-.oc .oc-price td {
-  height: 18px; padding: 0;
-  background: var(--bg);
-  border-top: 1px solid var(--accent); border-bottom: 1px solid var(--accent);
-  text-align: center; font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--accent);
-}
-.grid-table tbody tr.oc-price:hover { background: transparent; }
 
 /* ---- ECONOMY ------------------------------------------------------------ */
 .spark { display: block; }
@@ -83,28 +57,11 @@
 .bg-d { display: inline-block; min-width: 5ch; font-size: 11px; }
 .bg-unit { color: var(--faint); font-size: 10px; letter-spacing: 0; text-transform: none; }
 
-/* ---- FXMATRIX heat ------------------------------------------------------ */
-.fxm-heat td.hx { padding: 0; }
-.fxm-heat td.hx .fxm-cell { display: block; padding: 0 10px; line-height: var(--row-h); color: var(--text); }
-.hx-d3 { background: hsl(0, 74%, 36%); }
-.hx-d2 { background: hsl(0, 56%, 28%); }
-.hx-d1 { background: hsl(0, 36%, 20%); }
-.hx-0 { background: hsl(212, 18%, 14%); }
-.hx-u1 { background: hsl(147, 32%, 17%); }
-.hx-u2 { background: hsl(147, 46%, 23%); }
-.hx-u3 { background: hsl(147, 62%, 30%); }
-.hx-na { background: transparent; }
-.hx-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 6px 10px 8px; border-top: 1px solid var(--rule); font-size: 11px; color: var(--dim); }
-.hx-legend li { display: flex; align-items: center; gap: 6px; }
-.hx-sw { display: inline-block; width: 18px; height: 10px; }
-
 /* ---- Narrow screens: one line per row ----------------------------------- */
 @media (max-width: 639px) {
   .oc-x, .m-hide { display: none; }
   .m-only { display: inline; }
-  .oc th, .oc td { padding: 0 6px; }
   .oc-px { font-size: 18px; }
-  .oc-all { margin-left: 0; }
   .ec-prev, .ec-src, .ec-table .ec-spark { display: none; }
   .ec-per { font-size: 11px; }
   .bb-x { display: none; }
@@ -113,69 +70,6 @@
   .bg-d, .bg-unit { display: none; }
   .bg-table .bg-cell { padding: 0 6px; }
   .fp-method p { padding: 0 8px 8px; }
-  .hx-legend { gap: 4px 10px; }
 }
 
-/* ---- WORLDMAP (screens/worldmap.js) --------------------------------------- */
-.wm-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
-.wm-sub { margin: 0; color: var(--text-2); font-size: 12px; }
-.wm-togs { display: flex; gap: 4px; }
-.wm-tog {
-  height: 22px; padding: 0 8px; border: 1px solid var(--rule-strong); background: transparent; color: var(--dim);
-  font-family: var(--font); font-size: 11px; letter-spacing: .08em; cursor: pointer;
-}
-.wm-tog:hover { color: var(--text); background: var(--panel-3); }
-.wm-tog.is-on { color: var(--ink); background: var(--text-2); border-color: var(--text-2); }
-.wm-tog:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
-.wm-read { margin: 6px 0 4px; min-height: 1.5em; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
-.wm-read b { color: var(--text); font-weight: 600; margin-right: 4px; }
-.wm-read .num { font-variant-numeric: tabular-nums; }
-.wm-host { position: relative; min-height: 120px; }
-.wm-host > .loading, .wm-host > .panel-msg { padding: 8px 2px; }
-.wm-svg { display: block; margin: 0 auto; }
-.wm-c { stroke: var(--bg); stroke-width: .6px; vector-effect: non-scaling-stroke; }
-.wm-a { cursor: pointer; }
-.wm-a:hover .wm-c, .wm-a:focus .wm-c { stroke: var(--text); stroke-width: 1.2px; }
-.wm-a:focus, .wm-choke:focus, .wm-storm:focus { outline: 0; }
-.wm-off-idx .wm-c { fill: hsl(212, 16%, 13%); }
-.wm-off-idx .wm-cities { display: none; }
-.wm-city { stroke: var(--text-2); stroke-width: .8px; }
-.wm-dot { fill: var(--accent); fill-opacity: .85; stroke: var(--bg); stroke-width: .8px; vector-effect: non-scaling-stroke; }
-.wm-ring { fill: none; stroke: var(--accent); stroke-opacity: .7; stroke-width: 1px; stroke-dasharray: 2 2; vector-effect: non-scaling-stroke; }
-.wm-choke.is-low .wm-dot { fill: var(--down); }
-.wm-choke.is-low .wm-ring { stroke: var(--down); }
-.wm-choke.is-low .wm-lab { fill: var(--down); }
-.wm-hit { fill: transparent; stroke: none; }
-.wm-choke, .wm-storm { cursor: pointer; }
-.wm-choke:hover .wm-ring, .wm-choke:focus .wm-ring { stroke-dasharray: none; stroke-opacity: 1; }
-.wm-lab {
-  fill: var(--text); font-family: var(--font); font-weight: 600; pointer-events: none;
-  paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; vector-effect: non-scaling-stroke;
-}
-.wm-lab-n { fill: var(--text-2); font-weight: 400; }
-.wm-choke.is-low .wm-lab-n { fill: var(--down); }
-.wm-arm { fill: none; stroke: hsl(0, 0%, 96%); stroke-width: 1.6px; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.wm-eye { fill: var(--bg); stroke: hsl(0, 0%, 96%); stroke-width: 1.6px; vector-effect: non-scaling-stroke; }
-.wm-eye.is-hu { fill: hsl(0, 0%, 96%); }
-.wm-storm:hover .wm-arm, .wm-storm:hover .wm-eye { stroke: var(--accent); }
-.wm-foot { display: flex; align-items: center; justify-content: space-between; gap: 4px 16px; flex-wrap: wrap; margin-top: 6px; }
-.wm-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; min-width: 0; max-width: 100%; font-size: 11px; color: var(--dim); }
-.wm-leg { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
-.wm-leg-idx { flex-wrap: wrap; gap: 4px 10px; }
-.wm-step { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-.wm-sw { width: 16px; height: 10px; flex: none; }
-.wm-sw-dot { width: 14px; height: 14px; }
-.wm-src { margin: 0; font-size: 10px; color: var(--faint); letter-spacing: .02em; }
-.is-embed .wm-foot, .is-embed .wm-bar { display: none; }
-/* Wide screens: the panel fills the window, so the map sits in the middle of the room left. */
-@media (min-width: 1100px) {
-  html:not(.is-embed) .wm-panel > .panel-body { display: flex; flex-direction: column; }
-  html:not(.is-embed) .wm-panel .wm-host { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; }
-}
-@media (max-width: 639px) {
-  .wm-sub { font-size: 11px; }
-  .wm-read { white-space: normal; min-height: 3em; }
-  .wm-foot { flex-direction: column; align-items: flex-start; }
-  .wm-lab { display: none; } /* too small to label: tap a dot or a storm for its numbers */
-}
 /* ---- end WORLDMAP --------------------------------------------------------- */

@@ -7,14 +7,8 @@ import { esc, q, dirOf, fmtPct, panel, LOADING } from './markets.js';
 import { fmtRate } from './fx.js';
 import { freshTag } from '../freshness.js';
 import { toolbar, segmented } from '../kit.js';
-
-export const FXM_MODES = ['RATES', 'HEAT'];
-
-export function parse(args) {
-  if (!args.length) return { mode: 'RATES' };
-  if (args.length === 1 && FXM_MODES.includes(args[0])) return { mode: args[0] };
-  return { error: 'usage', mode: 'RATES' };
-}
+import { FXM_MODES, parseFxMatrix as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { FXM_MODES, parse };
 
 // Day-on-day % change of one cell, or null.
 export function cellChange(matrix, prev, a, b) {

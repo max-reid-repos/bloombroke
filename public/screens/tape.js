@@ -7,10 +7,8 @@ import { esc, q, panel } from './markets.js';
 import * as pro from '../pro.js';
 import { instrumentById } from '../instruments.js';
 import { mountTape, parseTapeSwitch } from '../tape.js';
-
-export function parse(args) {
-  return parseTapeSwitch(args) || pro.parseTape(args);
-}
+import { parseTapeArgs as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { parse };
 
 const link = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
 

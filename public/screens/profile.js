@@ -3,14 +3,8 @@
 
 import { esc, q, panel, LOADING } from './markets.js';
 import { fmtCompact } from './movers.js';
-
-const TICKER = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
-
-// <COMMAND> <ticker>
-export function parseTicker(args) {
-  return args.length === 1 && TICKER.test(args[0]) ? { ticker: args[0] } : { error: 'usage' };
-}
-export const parse = parseTicker;
+import { parseTicker, parseTicker as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { parseTicker, parse };
 
 export function tickerUsage(name, examples) {
   return `<p class="notice">${esc(name)} needs one ticker.</p>

@@ -123,6 +123,8 @@ Analytics and the Pro key: the key lives in the browser (localStorage), and any 
 
 - Node and Express 5. One server, `server.js`, serves `public/` and the JSON routes.
 - Vanilla JS: plain ES modules, no front-end framework, no build step. One file per screen in `public/screens/`.
+- Loading: the page brings only the shell, HOME and MARKETS. Every other screen is a module loaded on first use (`public/lazy.js`), with its own stylesheet beside it (`screens/whatif.css`); the key bar's screens are fetched ahead when the page is idle. The words each command takes are parsed at startup from `public/command-args.js`. HELP's long text (`public/registry-detail.js`) loads with HELP.
+- Caching: every JS, CSS and font file is served under a hash of its own bytes (`/screens/whatif.3f2a1b9c0d.js`, immutable for a year), and the stylesheets `index.html` links go out as one file (`lib/assets.js`). The HTML is never cached and carries the manifest the page loads by. After a deploy an old tab asking for a file it has not loaded yet gets a 404 and reloads once.
 - Hand-rolled SVG and canvas charts. No chart library.
 - `data/`: each source behind a small function, with a cache that serves the last good value when a source fails. `data/weird/` holds one module per gauge.
 - SQLite (better-sqlite3) for Pro licences and sync only.

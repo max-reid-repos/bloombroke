@@ -1,0 +1,29 @@
+/* heatmap.js's own styles, loaded with it (public/lazy.js) the first time a screen that
+   uses it opens; the page's always-on styles are in the stylesheets public/index.html links. */
+
+/* ==== from commands.css ==== */
+
+/* ---- HEATMAP ---------------------------------------------------------- */
+.hm-host { position: relative; min-height: 200px; }
+.hm-host > .loading, .hm-host > .panel-msg { padding: 8px 10px; }
+.hm-sec { fill: var(--panel); stroke: var(--bg); stroke-width: 2; }
+.hm-sec-t { fill: var(--text-2); font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .06em; }
+.hm-cell { stroke: var(--bg); stroke-width: 1; }
+.hm-a:hover .hm-cell, .hm-a:focus .hm-cell { stroke: var(--text); stroke-width: 1.5; }
+.hm-a:focus { outline: 0; }
+.hm-t { fill: var(--text); font-family: var(--font); font-weight: 600; pointer-events: none; }
+.hm-p { fill: var(--text); opacity: .85; font-family: var(--font); pointer-events: none; }
+.hm-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 6px; }
+.hm-foot .footnote { margin: 0; }
+.hm-scale { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--dim); }
+.hm-sw { width: 18px; height: 10px; }
+.hm-scale span { margin-right: 6px; }
+
+@media (max-width: 639px) {
+  .hm-foot { flex-direction: column; align-items: flex-start; gap: 4px; }
+}
+
+/* ==== from company-ui.css ==== */
+
+.is-embed .hm-foot { display: none; }
+.is-embed .hm-host { min-height: 0; }

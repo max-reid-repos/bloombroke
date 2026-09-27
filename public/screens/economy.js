@@ -6,20 +6,8 @@
 import { esc, q, fmtNum, fmtSigned, panel, LOADING, rowAttrs, nameCell } from './markets.js';
 import { mountLines } from './lines.js';
 import { fmtDate, rangePills } from '../kit.js';
-
-export const ECONOMY_RANGES = ['5Y', '10Y', 'MAX'];
-
-// [] -> the dashboard; [id] or [id, range] -> one series.
-export function parse(args) {
-  if (!args.length) return { id: null };
-  if (args.length > 2 || !/^[A-Z0-9]{2,20}$/.test(args[0])) return { error: 'usage' };
-  if (args[1] && !ECONOMY_RANGES.includes(args[1])) return { error: 'range', id: args[0] };
-  return { id: args[0], range: args[1] || null };
-}
-
-export function toInput(args) {
-  return args.error ? null : ['ECONOMY', args.id, args.range].filter(Boolean).join(' ');
-}
+import { ECONOMY_RANGES, parseEconomy as parse, economyToInput as toInput } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { ECONOMY_RANGES, parse, toInput };
 
 // The value in the series' own unit: 4.1%, +162K, 197K, 51.7, +31 bp.
 export function fmtValue(v, unit) {

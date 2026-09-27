@@ -9,64 +9,10 @@ import { mountLines } from './lines.js';
 import { fmtDay } from './company-kit.js';
 import { toolbar, rangePills, panelTools, moreButton, dataTable, sortRows, nextSort, fmtDate } from '../kit.js';
 import { nyToday, FIRST_DAY } from '../ranges.js';
+import { HISTORY_RANGES, presetFrom, parseHistory as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { HISTORY_RANGES, presetFrom, parse };
 
-const TICKER = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
-const RATE = /^(US(2|10|30)Y)$/;
-
-// Daily rows: no 1D (one row) and no MAX (the source keeps 10 years).
-export const HISTORY_RANGES = ['5D', '1M', '3M', '6M', 'YTD', '1Y', '2Y', '5Y', '10Y'];
 export const PAGE = 60;
-
-function isDay(s) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
-  const d = new Date(`${s}T12:00:00Z`);
-  return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(s);
-}
-
-// "2024" -> start or end of that year; "2024-03-01" as is.
-function dayTok(tok, end) {
-  if (/^\d{4}$/.test(tok)) return end ? `${tok}-12-31` : `${tok}-01-01`;
-  return isDay(tok) ? tok : null;
-}
-
-// The first day a preset range covers, counted back from today (New York).
-export function presetFrom(range, today = nyToday()) {
-  const [y, m, d] = today.split('-').map(Number);
-  const back = (years, months, days) => {
-    const t = new Date(Date.UTC(y - years, m - 1 - months, d - days));
-    // Feb 29 minus a year, or Mar 31 minus a month: step back to the month's last day.
-    if (!days && t.getUTCDate() !== d) t.setUTCDate(0);
-    return t.toISOString().slice(0, 10);
-  };
-  switch (range) {
-    case '5D': return back(0, 0, 7);
-    case '1M': return back(0, 1, 0);
-    case '3M': return back(0, 3, 0);
-    case '6M': return back(0, 6, 0);
-    case 'YTD': return `${y}-01-01`;
-    case '1Y': return back(1, 0, 0);
-    case '2Y': return back(2, 0, 0);
-    case '5Y': return back(5, 0, 0);
-    case '10Y': return back(10, 0, 0);
-    default: return null;
-  }
-}
-
-// HISTORY <ticker> [<range> | <from> [<to>]]
-export function parse(args, today = nyToday()) {
-  const toks = args.filter((t) => t !== 'FROM' && t !== 'TO');
-  if (!toks.length || toks.length > 3 || !(TICKER.test(toks[0]) || RATE.test(toks[0]))) return { error: 'usage' };
-  const out = { ticker: toks[0] };
-  if (toks.length === 2 && HISTORY_RANGES.includes(toks[1])) {
-    if (toks[1] === '1Y') return out;
-    return { ...out, range: toks[1], from: presetFrom(toks[1], today) };
-  }
-  if (toks[1]) { out.from = dayTok(toks[1], false); if (!out.from) return { error: 'usage' }; }
-  if (toks[2]) { out.to = dayTok(toks[2], true); if (!out.to) return { error: 'usage' }; }
-  if (out.from && !toks[2] && /^\d{4}$/.test(toks[1])) out.to = `${toks[1]}-12-31`;
-  if (out.from && out.to && out.from > out.to) return { error: 'usage' };
-  return out;
-}
 
 // The command for a range pill, or for two picked dates (TO today is left out).
 export function historyCmd(ticker, { range = null, from = null, to = null } = {}, today = nyToday()) {

@@ -99,7 +99,7 @@ test('fishtank: seeded numbers are stable and in [0, 1)', () => {
 
 test('fishtank: routed, listed under Weird data, off the F-key bar', () => {
   assert.equal(parseCommand('FISHTANK').name, 'FISHTANK');
-  assert.ok(WEIRD_SCREENS.FISHTANK?.render, 'has its own screen');
+  assert.equal(WEIRD_SCREENS.FISHTANK?.js, 'screens/fishtank.js', 'has its own screen (loaded on first use)');
   const c = findCommand('FISHTANK');
   assert.equal(c.category, 'Weird data');
   assert.ok(byCategory('Weird data').includes(c));

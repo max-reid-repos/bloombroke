@@ -1,0 +1,45 @@
+/* financials.js's own styles, loaded with it (public/lazy.js) the first time a screen that
+   uses it opens; the page's always-on styles are in the stylesheets public/index.html links. */
+
+/* ==== from style.css ==== */
+
+.fin-v, .fin-nv { position: relative; color: inherit; text-decoration: none; }
+.fin-v:hover, .fin-v:focus-visible { color: var(--accent); }
+.fin-d { position: absolute; left: 100%; top: -3px; padding-left: 1px; font-size: 8px; line-height: 1; color: var(--dim); }
+.fin-bar { justify-content: space-between; }
+.fin-periods { border-left: 1px solid var(--rule-strong); }
+.fin-basis { margin-left: auto; }
+.fin-chart-wrap { padding: 6px 0 0 10px; border-bottom: 1px solid var(--rule-strong); }
+.fin-chart-head { display: flex; align-items: center; gap: 16px; min-height: 18px; padding-right: 10px; font-size: 11px; color: var(--text-2); letter-spacing: .04em; }
+.fin-key { display: inline-flex; align-items: center; gap: 6px; }
+.fin-sw { display: inline-block; width: 10px; height: 10px; }
+.fin-sw-rev { background: var(--series-1); }
+.fin-sw-net { background: var(--series-2); }
+.fin-hover { margin-left: auto; color: var(--text); white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+.fin-chart-host { position: relative; height: 150px; margin-top: 4px; }
+.fin-bar-rev { fill: var(--series-1); }
+.fin-bar-net { fill: var(--series-2); }
+.fin-hit { fill: transparent; }
+.fin-col.is-on .fin-hit { fill: var(--panel-2); }
+.fin-scroll { overflow-x: auto; }
+.fin-table th:first-child { position: sticky; left: 0; z-index: 1; background: var(--bg); }
+.fin-table tbody tr:not(.group-row):hover th:first-child { background: var(--panel-2); }
+.fin-table .name { width: auto; max-width: none; min-width: 150px; }
+.fin-table thead th { height: auto; padding-top: 4px; padding-bottom: 4px; vertical-align: bottom; }
+.fin-table thead .fin-unit { text-align: left; }
+.fin-per, .fin-end { display: block; }
+.fin-per a { color: var(--text); }
+.fin-per a:hover { color: var(--accent); text-decoration: none; }
+.fin-end { color: var(--faint); font-size: 10px; letter-spacing: .04em; }
+.fin-table td.num { min-width: 84px; }
+.fin-table .group-row td, .fin-table .group-row th:first-child { background: var(--panel); border-bottom: 1px solid var(--rule); }
+.fin-table .fin-ratio .name, .fin-table .fin-ratio td:not(.up):not(.down) { color: var(--dim); }
+.fin-msg { padding: 8px 10px; }
+
+@media (max-width: 639px) {
+  .fin-table .name { min-width: 128px; white-space: normal; line-height: 1.2; }
+  .fin-table td.num { min-width: 72px; }
+  .fin-hover { flex-basis: 100%; margin-left: 0; }
+  .fin-chart-head { flex-wrap: wrap; gap: 4px 12px; }
+  .fin-chart-wrap { padding-left: 6px; }
+}

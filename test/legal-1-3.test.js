@@ -125,7 +125,8 @@ test('New York Fed: named in DATA, and its notice is linked with the EFFR on RAT
 });
 
 test('registry sources name government agencies, never FRED or private series owners', () => {
-  const reg = readFileSync('public/registry.js', 'utf8');
+  // Sources live in registry-detail.js (HELP's long text), the rest in registry.js.
+  const reg = readFileSync('public/registry.js', 'utf8') + readFileSync('public/registry-detail.js', 'utf8');
   assert.doesNotMatch(reg, /source: '[^']*\b(FRED|Cass|ATA)\b/);
   assert.match(reg, /source: 'US Bureau of Labor Statistics \(CPI-U\)'/);
   assert.match(reg, /source: 'Public web data: freight, truck tonnage and rail carload indexes'/);

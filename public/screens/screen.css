@@ -1,0 +1,60 @@
+/* screen.js's own styles, loaded with it (public/lazy.js) the first time a screen that
+   uses it opens; the page's always-on styles are in the stylesheets public/index.html links. */
+
+/* ==== from style.css ==== */
+
+.sc-filters > summary { display: none; }
+.sc-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 16px; }
+.sc-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sc-lab { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.sc-range { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 6px; }
+.sc-range .sc-lab { grid-column: 1 / -1; }
+.sc-form select, .sc-form input {
+  width: 100%; min-width: 0; height: 24px; padding: 0 6px;
+  border: 1px solid var(--rule-strong); background: var(--panel);
+  color: var(--text); font-family: var(--font); font-size: 12px;
+  color-scheme: dark;
+}
+.sc-form input { text-transform: uppercase; }
+.sc-form input::placeholder { color: var(--faint); text-transform: none; opacity: 1; }
+.sc-form select:focus, .sc-form input:focus { outline: 1px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
+.sc-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
+.sc-clear, .sc-more {
+  height: 24px; padding: 0 12px;
+  border: 1px solid var(--rule-strong); background: transparent; color: var(--text-2);
+  font-family: var(--font); font-size: 12px; font-weight: 600; letter-spacing: .1em; cursor: pointer;
+}
+.sc-clear:hover, .sc-more:hover { color: var(--ink); background: var(--accent); border-color: var(--accent); }
+.sc-err { color: var(--down); font-size: 12px; }
+.sc-presets { margin-top: 8px; font-size: 12px; line-height: 2; }
+.sc-presets .code { margin-right: 6px; }
+.sc-presets + .sc-presets { margin-top: 0; }
+.sc-table .sc-ind { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.sc-sort { color: var(--dim); }
+.sc-sort:hover { color: var(--text); text-decoration: none; }
+.sc-sort.is-on { color: var(--accent); }
+.sc-more-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; font-size: 12px; }
+.sc-none { padding: 8px 10px; }
+.sc-rule { padding: 4px 10px; border-bottom: 1px solid var(--rule-strong); background: var(--panel); color: var(--text-2); font-size: 12px; }
+.sc-rule-k { margin-right: 8px; color: var(--accent); font-weight: 600; letter-spacing: .08em; }
+
+@media (max-width: 1100px) {
+  .sc-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 639px) {
+  .sc-form { grid-template-columns: minmax(0, 1fr); margin-top: 8px; }
+  .sc-filters > summary { display: flex; gap: 8px; align-items: baseline; cursor: pointer; list-style: none; font-size: 12px; }
+  .sc-filters > summary::-webkit-details-marker { display: none; }
+  .sc-filters > summary::before { content: '+'; color: var(--accent); }
+  .sc-filters[open] > summary::before { content: '-'; }
+  .sc-sum-k { color: var(--accent); letter-spacing: .08em; text-transform: uppercase; }
+  .sc-sum-v { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sc-table .sc-vol, .sc-table .sc-sec, .sc-table .sc-ind, .sc-table .sc-cty { display: none; }
+}
+
+/* ==== from company-ui.css ==== */
+
+/* ---- SCREEN: presets row under the title, RUN at the left on every width --------- */
+.sc-pad { padding: 8px 10px; }
+.sc-actions .wi-run { margin-left: 0; }

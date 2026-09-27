@@ -3,47 +3,8 @@
 
 import { esc, q, fmtNum, panel, metaNote, LOADING } from './markets.js';
 import { mountLines, legend } from './lines.js';
-
-export const MAX_LOAN = 1e10;
-
-// "400000", "$400,000", "400K", "1.2M" -> number, or NaN.
-export function parseMoney(tok) {
-  const m = /^\$?([\d,]*\.?\d+)([KM])?$/.exec(String(tok));
-  if (!m) return NaN;
-  const n = Number(m[1].replace(/,/g, '')) * (m[2] === 'K' ? 1e3 : m[2] === 'M' ? 1e6 : 1);
-  return Number.isFinite(n) ? n : NaN;
-}
-
-// "30Y", "30YR", "30 YEARS" (two tokens) -> years.
-export function takeYears(toks, i) {
-  const m = /^(\d+(?:\.\d+)?)(Y|YR|YRS|YEAR|YEARS)$/.exec(toks[i] || '');
-  if (m) return { years: Number(m[1]), used: 1 };
-  if (/^\d+(\.\d+)?$/.test(toks[i] || '') && /^(Y|YR|YRS|YEARS?)$/.test(toks[i + 1] || '')) return { years: Number(toks[i]), used: 2 };
-  return null;
-}
-
-// LOAN <amount> [<years>Y] [<rate>%]
-export function parse(args) {
-  const toks = args.filter((t) => !['AT', 'FOR', 'OVER', 'RATE', 'APR'].includes(t));
-  if (!toks.length) return { error: 'usage' };
-  const amount = parseMoney(toks[0]);
-  if (!(amount > 0) || amount > MAX_LOAN) return { error: 'amount' };
-  let years = 30;
-  let rate = null;
-  let i = 1;
-  const y = takeYears(toks, i);
-  if (y) { years = y.years; i += y.used; }
-  if (i < toks.length) {
-    const m = /^(\d+(?:\.\d+)?)%?$/.exec(toks[i]);
-    if (!m) return { error: 'usage' };
-    rate = Number(m[1]);
-    i += 1;
-  }
-  if (i !== toks.length) return { error: 'usage' };
-  if (!(years >= 1 && years <= 50)) return { error: 'years' };
-  if (rate !== null && !(rate >= 0 && rate <= 30)) return { error: 'rate' };
-  return { amount, years, rate };
-}
+import { MAX_LOAN, parseMoney, takeYears, parseLoan as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { MAX_LOAN, parseMoney, takeYears, parse };
 
 // The standard fixed-rate payment: P r / (1 - (1 + r)^-n), monthly.
 export function monthlyPayment(principal, annualRate, years) {

@@ -1,0 +1,57 @@
+/* fishtank.js's own styles, loaded with it (public/lazy.js) the first time a screen that
+   uses it opens; the page's always-on styles are in the stylesheets public/index.html links. */
+
+/* ==== from style.css ==== */
+
+/* --- end NEWS SEC tab rows ------------------------------------------------------ */
+
+/* --- FISHTANK (screens/fishtank.js): the S&P 100 as fish ----------------------- */
+/* The canvas sits absolutely inside its box, so drawing never changes the box size. */
+.ft-host { position: relative; height: clamp(420px, 72vh, 760px); min-height: 0; overflow: hidden; background: hsl(213, 43%, 4%); }
+.ft-host > .loading, .ft-host > .panel-msg { padding: 8px; }
+.ft-canvas { position: absolute; left: 0; top: 0; display: block; touch-action: manipulation; }
+.ft-tip {
+  position: absolute; left: 0; top: 0; pointer-events: none; white-space: nowrap;
+  padding: 2px 6px; font-size: 11px; line-height: 16px;
+  background: var(--panel-2); border: 1px solid var(--rule-strong); color: var(--text-2);
+}
+.ft-tip b { color: var(--text); font-weight: 600; }
+.ft-tip-sec { color: var(--dim); }
+/* The legend: one button per sector, a species glyph and its short name. One row that
+   scrolls sideways on a narrow screen, so its height never changes. */
+.ft-leg {
+  display: flex; flex: 0 0 auto; height: 26px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+  background: var(--panel); border-bottom: 1px solid var(--rule-strong);
+}
+.ft-leg::-webkit-scrollbar { display: none; }
+.ft-leg[hidden] { display: none; }
+.ft-leg-btn {
+  display: flex; align-items: center; gap: 5px; flex: 0 0 auto; height: 25px; padding: 0 9px 0 6px;
+  border: 0; border-right: 1px solid var(--rule); background: transparent; color: var(--dim);
+  font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .08em; cursor: pointer; white-space: nowrap;
+}
+.ft-leg-btn:hover { color: var(--text); background: var(--panel-3); }
+.ft-leg-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.ft-leg-btn[aria-pressed="true"] { color: var(--accent); background: var(--accent-tint); box-shadow: inset 0 -2px 0 var(--accent); }
+.ft-glyph { display: block; width: 26px; height: 16px; }
+.ft-sr { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; overflow: hidden; clip: rect(0 0 0 0); }
+.ft-sr:focus-within {
+  width: auto; height: auto; max-height: calc(100% - 32px); max-width: calc(100% - 16px); left: 8px; top: 24px; z-index: 2;
+  overflow: auto; clip: auto; list-style: none; padding: 4px 0;
+  background: var(--panel-2); border: 1px solid var(--rule-strong);
+}
+.ft-sr:focus-within a { display: block; padding: 0 8px; line-height: 20px; white-space: nowrap; color: var(--text-2); }
+.ft-sr:focus-within a:focus { color: var(--ink); background: var(--accent); outline: none; }
+@media (min-width: 1100px) {
+  html:not(.is-embed) .view > .panel .panel-body:has(> .ft-host) { display: flex; flex-direction: column; overflow: hidden; scrollbar-gutter: auto; }
+  html:not(.is-embed) .view > .panel .panel-body > .ft-host { flex: 1 1 0; height: auto; min-height: 200px; }
+}
+.is-embed .ft-host { height: calc(100vh - 28px); min-height: 160px; }
+.is-embed .ft-leg:not([hidden]) + .ft-host { height: calc(100vh - 54px); }
+.ft-short { display: none; }
+@media (max-width: 639px) {
+  .ft-idx, .ft-upd, .ft-sep, .ft-long { display: none; }
+  .ft-key { display: block; }
+  .ft-short { display: inline; }
+  .ft-leg { mask-image: linear-gradient(to right, #000 88%, transparent); -webkit-mask-image: linear-gradient(to right, #000 88%, transparent); }
+}

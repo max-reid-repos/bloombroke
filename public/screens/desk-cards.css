@@ -1,0 +1,36 @@
+/* desk-cards.js's own styles, loaded with it (public/lazy.js) the first time a screen that
+   uses it opens; the page's always-on styles are in the stylesheets public/index.html links. */
+
+/* ==== from style.css ==== */
+
+.dp .dp-card { flex: 1 1 auto; min-width: 0; min-height: 0; box-shadow: none; container: dpcard / size; }
+.dp .dp-card:focus { box-shadow: inset 2px 0 0 var(--accent); }
+.dp .dp-card > .panel { min-height: 0; }
+.dp .dp-card .panel-body { min-height: 0; overflow: hidden; }
+.dp .dp-card .wd-line { overflow: hidden; }
+/* Narrow or short: each line on one row. */
+@container dpcard (max-height: 104px) or (max-width: 300px) {
+  .dp .dp-card :is(.wd-big, .wd-line, .wd-src) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+/* Short (3 x 3 cells on a short screen): tighter. */
+@container dpcard (max-height: 104px) {
+  .dp .dp-card .panel-body { padding: 4px 8px; gap: 1px; }
+  .dp .dp-card .wd-big { font-size: 18px; line-height: 1.15; }
+  .dp .dp-card .wd-line { min-height: 0; font-size: 11px; line-height: 15px; }
+  .dp .dp-card .wd-spark { min-height: 0; }
+  .dp .dp-card .wd-spark svg { height: 14px; }
+  .dp .dp-card .wd-src { margin-top: 1px; line-height: 12px; }
+}
+/* Bigger cards: a bigger headline, and the sparkline takes the room left. */
+@container dpcard (min-width: 420px) and (min-height: 200px) {
+  .dp .dp-card .panel-body { padding: 12px 14px; gap: 4px; }
+  .dp .dp-card .wd-big { font-size: 30px; }
+  .dp .dp-card .wd-line { font-size: 13px; }
+  .dp .dp-card .wd-spark { flex: 1 1 18px; min-height: 18px; max-height: 72px; }
+  .dp .dp-card .wd-spark svg { width: 100%; height: 100%; }
+  .dp .dp-card .wd-spark polyline { vector-effect: non-scaling-stroke; }
+}
+@container dpcard (min-width: 640px) and (min-height: 320px) {
+  .dp .dp-card .wd-big { font-size: 40px; }
+  .dp .dp-card .wd-line { font-size: 14px; }
+}

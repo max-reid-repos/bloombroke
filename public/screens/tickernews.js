@@ -4,17 +4,11 @@ import { esc, panel, LOADING } from './markets.js';
 import { safeHref, newsTimeHtml, NEWS_POLL_MS } from './news.js';
 import { toolbar, segmented } from '../kit.js';
 import { errorHtml } from './profile.js';
-
-const TICKER = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
+import { parseTickerNews as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { parse };
 
 // The sources, in the panel's title strip.
 export const TICKER_SOURCES = 'NEWS PUBLISHERS · SEC';
-
-// NEWS <ticker>. Returns null for plain NEWS so the market-wide screen handles it.
-export function parse(args) {
-  if (!args.length) return null;
-  return args.length === 1 && TICKER.test(args[0]) ? { ticker: args[0] } : { error: 'usage' };
-}
 
 // Time, source, headline: the source sits in the same slot as on NEWS.
 export function tickerNewsList(items) {

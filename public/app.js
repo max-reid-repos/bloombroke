@@ -2,26 +2,16 @@
 // Pure helpers are exported so node:test can import this file; the DOM wiring
 // only runs in a browser.
 
-import * as helpScreen from './screens/help.js';
+// Only HOME and MARKETS come with the page; every other screen loads on first use
+// (lazy.js), and the key bar's screens are fetched ahead once the page is idle.
 import * as homeScreen from './screens/home.js';
 import * as marketsScreen from './screens/markets.js';
-import * as fxScreen from './screens/fx.js';
-import * as quoteScreen from './screens/quote.js';
-import * as cpiScreen from './screens/cpi.js';
-import * as ratesScreen from './screens/rates.js';
-import * as newsScreen from './screens/news.js';
-import * as buyScreen from './screens/buy.js';
-import * as whatifScreen from './screens/whatif.js';
-import * as fundingScreen from './screens/funding.js';
-import * as financialsScreen from './screens/financials.js';
-import * as screenScreen from './screens/screen.js';
-import { parseFinancialsCommand, parseFinancialsArgs } from './screens/financials.js';
+import { lazyScreen as lazy, screenNow, loadScreen, loadModule, cssReady, prefetch, setStyleOrder, stylesOf } from './lazy.js';
+import { parseHelp, parseFinancialsCommand, parseFinancialsArgs, parseRedeem } from './command-args.js';
 import { parseScreenCommand, parseScreenArgs } from './screener.js';
-import * as watchScreen from './screens/watch.js';
-import * as portfolioScreen from './screens/portfolio.js';
 import { parseWatchArgs, watchInput, WATCH_SUBCOMMANDS, loadWatchlist, saveWatchlist, toggleId } from './watchlist.js';
 import { parsePfArgs, pfInput } from './portfolio.js';
-import { panel } from './screens/markets.js';
+import { panel, LOADING as LOADING_LINE } from './screens/markets.js';
 import { matchInstrument, searchInstruments, instrumentById, resolveInstrument, STOCK_RE, stockSymbol } from './instruments.js';
 import { edgeFade } from './kit.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
@@ -30,21 +20,15 @@ import { dotTitle, popoverHtml } from './provenance.js'; // Provenance: the dot'
 import { EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra, urlCommand, isSecret } from './commands.js';
 import { getTape, loadTapeRows, bareKey, looksLikeKey, bareGift, getSeat, isPro } from './pro.js';
 // --- Pro structure: GIFT, REDEEM, CHAT, SPONSOR, FEEDBACK ---
-import { giftCommand, redeemCommand, parseRedeem } from './screens/pro.js';
-import * as chatScreen from './screens/chat.js';
-import * as sponsorScreen from './screens/sponsor.js';
-import { stripItems, mountStrip } from './sponsor-strip.js';
+import { stripItems, mountStrip, loadSponsors } from './sponsor-strip.js';
 import { countOnly, stripShownBatch } from './goal.js'; // BBRK: sponsor strip shown and clicked
-import * as feedbackScreen from './screens/feedback.js';
 // --- end Pro structure ---
 import { ensureConsent, consentNeeded } from './consent.js';
-import * as deskScreen from './screens/desk.js';
 import { parseDeskArgs, isEmbedSearch, tickerOf, TICKER_SCREENS } from './desk-layout.js';
 import { COMPANY_SCREENS, COMPANY_TAKES_ARGS, matchCompany } from './company.js';
 import { MARKETS_SCREENS, MARKETS_TAKES_ARGS, matchMarkets } from './commands-markets.js';
 import { WEIRD_SCREENS, matchWeird } from './commands-weird.js';
 import { matchNoSuch, dymRows } from './nosuch.js'; // NO SUCH TICKER. YET.: GRAVEYARD, IPO IT
-import { NOSUCH_SCREENS, noSuchInfo, noSuchExtra, wireNoSuch, yardPick, TITLE_YET, TITLE_GONE, HELP_LINE } from './screens/nosuch.js';
 import { LISTED, ALIASES, FUNCTION_BAR, TICKER_FUNCTIONS, findCommand } from './registry.js';
 import { tapeOn, setTapeOn, mountTape, tapeItems } from './tape.js';
 import { createMenu } from './menu.js';
@@ -53,6 +37,7 @@ import { parseAffordArgs } from './afford.js';
 import { resolveInput } from './resolve.js';
 import { tickerForName, LISTED_TICKERS, SHADOWED_TICKERS } from './known-tickers.js';
 import { sendSeen, countsAsOpen } from './trending.js'; // TRENDING
+import { startAlerts } from './alerts.js'; // ALERTS: the watcher
 import './goal.js'; // GOALS: loads DataFast unless Global Privacy Control is on
 
 export { FUNCTION_BAR, TICKER_FUNCTIONS };
@@ -288,7 +273,7 @@ export function parseCommand(raw, depth = 0) {
   const extra = matchExtra(head, rest);
   if (extra) return extra;
   if (SIMPLE.has(head)) return { name: head, input: head };
-  if (head === 'HELP') return { name: 'HELP', args: helpScreen.parse(rest), input: ['HELP', ...rest].join(' ') };
+  if (head === 'HELP') return { name: 'HELP', args: parseHelp(rest), input: ['HELP', ...rest].join(' ') };
   if (head === 'MENU') return { name: 'MENU', input: 'MENU' };
   if (head === 'FX') {
     const args = parseFxArgs(rest);
@@ -550,15 +535,49 @@ const store = {
   },
 };
 
+// The screens by name. HOME and MARKETS are here already; the rest are lazy (lazy.js):
+// a module name, loaded on first use.
+const help = lazy('screens/help.js');
+const buy = lazy('screens/buy.js');
 const SCREENS = {
-  HOME: homeScreen, HELP: helpScreen, MARKETS: marketsScreen, FX: fxScreen,
-  QUOTE: quoteScreen, CPI: cpiScreen, RATES: ratesScreen, NEWS: newsScreen,
-  AFFORD: buyScreen, WAGE: buyScreen, WHATIF: whatifScreen, FUNDING: fundingScreen,
-  WATCH: watchScreen, PORTFOLIO: portfolioScreen,
-  FINANCIALS: financialsScreen, SCREEN: screenScreen, DESK: deskScreen,
-  MENU: helpScreen,
-  GIFT: giftCommand, REDEEM: redeemCommand, CHAT: chatScreen, SPONSOR: sponsorScreen, FEEDBACK: feedbackScreen, // Pro structure
+  HOME: homeScreen, HELP: help, MARKETS: marketsScreen, FX: lazy('screens/fx.js'),
+  QUOTE: lazy('screens/quote.js'), CPI: lazy('screens/cpi.js'), RATES: lazy('screens/rates.js'), NEWS: lazy('screens/news.js'),
+  AFFORD: buy, WAGE: buy, WHATIF: lazy('screens/whatif.js'), FUNDING: lazy('screens/funding.js'),
+  WATCH: lazy('screens/watch.js'), PORTFOLIO: lazy('screens/portfolio.js'),
+  FINANCIALS: lazy('screens/financials.js'), SCREEN: lazy('screens/screen.js'), DESK: lazy('screens/desk.js'),
+  MENU: help,
+  // Pro structure
+  GIFT: lazy('screens/pro.js', 'giftCommand'), REDEEM: lazy('screens/pro.js', 'redeemCommand'), CHAT: lazy('screens/chat.js'), SPONSOR: lazy('screens/sponsor.js'), FEEDBACK: lazy('screens/feedback.js'),
 };
+// NO SUCH TICKER. YET.: GRAVEYARD and IPO IT draw from screens/nosuch.js's own table.
+const NOSUCH = 'screens/nosuch.js';
+const NOSUCH_SCREENS = Object.fromEntries(['GRAVEYARD', 'IPOIT'].map((n) => [n, lazy(NOSUCH, (m) => m.NOSUCH_SCREENS[n])]));
+
+// The screen entry for a command name, or null.
+export function screenFor(name) {
+  return SCREENS[name] || EXTRA_SCREENS[name] || COMPANY_SCREENS[name] || MARKETS_SCREENS[name] || WEIRD_SCREENS[name] || NOSUCH_SCREENS[name] || null;
+}
+
+// A screen's own stylesheets load with its module, before it first draws: the sheet
+// beside the module (screens/whatif.css), and beside each module it imports (the page's
+// manifest lists them, lazy.js). SHEET_ORDER is the order their rules had when they were
+// part of the page's stylesheets, so they stack the same way whatever opens first; a
+// sheet not listed goes last.
+export const SHEET_ORDER = [
+  'screens/financials.css', 'screens/quote.css', 'screens/whatif.css', 'screens/guess.css',
+  'screens/screen.css', 'screens/watch.css', 'screens/portfolio.css', 'screens/desk.css',
+  'screens/desk-cards.css', 'screens/weird.css', 'screens/sponsor.css', 'screens/fishtank.css',
+  'screens/alerts.css', 'screens/pro.css', 'screens/why.css', 'screens/sectors.css', 'screens/heatmap.css',
+  'screens/fxmatrix.css', 'screens/calendar.css', 'screens/bbrk.css', 'screens/options.css',
+  'screens/worldmap.css', 'screens/help.css', 'screens/nosuch.css',
+];
+export const stylesFor = (entry) => (entry?.js ? stylesOf(entry.js) : []);
+
+// The modules a command's screen loads (for the page to fetch them early): { modules }.
+export function screenFiles(raw) {
+  const entry = screenFor(parseCommand(raw).name);
+  return { modules: entry?.js ? [entry.js] : [] };
+}
 
 // Screens about one stock share one tab strip under the title: the same functions, in
 // the same order, with the same names, on every one of them. null for other screens
@@ -708,6 +727,10 @@ export function resolvedNote(command, from) {
   return `Showing ${command} (from '${String(from).toLowerCase()}')`;
 }
 
+// The last line of the "Did you mean" screen (the same as screens/nosuch.js HELP_LINE;
+// test/speed.test.js checks), here so the page can draw it before that module loads.
+export const HELP_LINE = '<p class="muted ns-help">Type <a class="code" href="?c=HELP" data-cmd="HELP">HELP</a> for every command.</p>';
+
 // The "Did you mean" screen: one clickable row per command or symbol (at most 3, never
 // the words typed), keys 1 to 3. extra: what goes under the rows (screens/nosuch.js:
 // a tombstone, IPO IT, "Tell us."); HELP is always the last line.
@@ -723,6 +746,10 @@ export function didYouMeanHtml(typed, found = {}, ticker = null, { extra = '' } 
 }
 
 function boot() {
+  // One terminal per page, even if a second copy of this module were ever loaded.
+  if (window.__bbBooted) return;
+  window.__bbBooted = true;
+  setStyleOrder(SHEET_ORDER); // before the first screen asks for its stylesheets
   const $ = (id) => document.getElementById(id);
   const form = $('cmd-form');
   const input = $('cmd');
@@ -964,7 +991,7 @@ function boot() {
   }
   window.addEventListener('bb:pro', paintPro);
   paintPro();
-  if (!embed) sponsorScreen.loadSponsors().then((cfg) => { sponsorCfg = cfg; paintPro(); });
+  if (!embed) loadSponsors().then((cfg) => { sponsorCfg = cfg; paintPro(); });
   // --- end Pro structure ---
 
   // --- blinking block cursor that follows the caret -------------------------
@@ -1155,7 +1182,7 @@ function boot() {
         placeCursor();
       },
     };
-    const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name] || COMPANY_SCREENS[cmd.name] || MARKETS_SCREENS[cmd.name] || WEIRD_SCREENS[cmd.name] || NOSUCH_SCREENS[cmd.name];
+    const entry = screenFor(cmd.name);
     if (cmd.mutates && fromUrl && !(cmd.name === 'DESK' && cmd.args?.preset)) {
       // A link that changes saved lists never runs by itself: ask first. (A DESK preset
       // asks on the desk itself, and only over panels of your own.)
@@ -1165,16 +1192,43 @@ function boot() {
         <p class="muted">It runs <span class="code">${escapeHtml(cmd.input)}</span> on the list saved in this browser.</p>
         <p class="examples"><button type="button" class="pf-btn" data-cmd="${escapeHtml(cmd.input)}">RUN IT</button> <a class="code" href="${toQuery(cmd.view)}" data-cmd="${escapeHtml(cmd.view)}">No, just show ${escapeHtml(cmd.view)}</a></p>`, { cls: 'panel-solo' });
       setStatus('CONFIRM TO CHANGE YOUR SAVED LIST', 'warn');
-    } else if (mod) {
+    } else if (entry) {
       setStatus('LOADING...');
-      const fn = mod.render(view, cmd, ctx);
-      if (typeof fn === 'function') cleanups.push(fn);
-      // A plain word that is also a stock (GOLD, M, HELP): "Stock: $GOLD" in the title strip.
-      const hint = embed ? null : stockHintFor(raw, cmd);
-      if (hint) cleanups.push(showStockHint(view, hint));
-      // --- TRENDING: count this ticker screen (public/trending.js); not in DESK panels, not before the notice ---
-      if (countsAsOpen(cmd, { embed, consentPending: consentNeeded() })) sendSeen(cmd.args.ticker);
-      // --- end TRENDING ---
+      const draw = (mod) => {
+        const fn = mod.render(view, cmd, ctx);
+        if (typeof fn === 'function') cleanups.push(fn);
+        // A plain word that is also a stock (GOLD, M, HELP): "Stock: $GOLD" in the title strip.
+        const hint = embed ? null : stockHintFor(raw, cmd);
+        if (hint) cleanups.push(showStockHint(view, hint));
+        // --- TRENDING: count this ticker screen (public/trending.js); not in DESK panels, not before the notice ---
+        if (countsAsOpen(cmd, { embed, consentPending: consentNeeded() })) sendSeen(cmd.args.ticker);
+        // --- end TRENDING ---
+      };
+      const styles = stylesFor(entry);
+      const now = screenNow(entry);
+      if (now && styles.every(cssReady)) draw(now); // seen before: draws at once
+      else {
+        // First use: the module and its stylesheet come in. After a moment the panel frame
+        // says LOADING, so the screen is never blank for long.
+        const waiting = setTimeout(() => {
+          if (signal.aborted || view.childElementCount) return;
+          view.classList.add('is-loading');
+          view.innerHTML = panel('1', screenTitle(cmd).title, LOADING_LINE, { cls: 'panel-solo' });
+        }, 80);
+        loadScreen(entry, styles).then((mod) => {
+          clearTimeout(waiting);
+          if (signal.aborted) return;
+          view.classList.remove('is-loading');
+          view.replaceChildren();
+          draw(mod);
+        }, () => {
+          clearTimeout(waiting);
+          if (signal.aborted) return;
+          view.classList.remove('is-loading');
+          view.innerHTML = panel('1', screenTitle(cmd).title, '<p class="notice">This screen did not load. Check your connection and try again.</p>', { cls: 'panel-solo' });
+          setStatus('THE SCREEN DID NOT LOAD. TRY AGAIN', 'warn');
+        });
+      }
     } else if (cmd.name === 'RENAMED') {
       const to = cmd.args.to;
       if (fromUrl) {
@@ -1276,7 +1330,7 @@ function boot() {
       // A ticker with a quote shows as it is (APPLE is Apple's name, not a ticker to ask about).
       if (ticker && !tickerForName(ticker)) {
         // A famous dead ticker beats a non-US quote of the same letters (LEH on Frankfurt).
-        const [ok, info] = await Promise.all([checkTicker(ticker, signal), embed ? null : noSuchInfo(ticker, { signal })]);
+        const [ok, info] = await Promise.all([checkTicker(ticker, signal), embed ? null : loadModule(NOSUCH).then((ns) => ns.noSuchInfo(ticker, { signal }), () => null)]);
         if (signal.aborted) return;
         if (ok !== false && info?.grave && info.wins) { await showDidYouMean(view, typed, {}, ticker, signal, { quote: true }); return; }
         if (ok !== false) { render(raw, { fromUrl, checked: true }); return; }
@@ -1305,16 +1359,19 @@ function boot() {
   async function showDidYouMean(view, typed, found, ticker, signal, { quote = false } = {}) {
     const toks = tokenize(typed);
     const word = ticker || (toks.length === 1 ? toks[0] : null);
-    const [info, yard] = word && !embed
-      ? await Promise.all([noSuchInfo(word, { signal }), yardPick(signal)])
+    // NO SUCH TICKER. YET. (screens/nosuch.js) loads with its stylesheet the first time.
+    const ns = await loadScreen(lazy(NOSUCH), stylesFor(lazy(NOSUCH))).catch(() => null);
+    if (signal?.aborted) return;
+    const [info, yard] = word && !embed && ns
+      ? await Promise.all([ns.noSuchInfo(word, { signal }), ns.yardPick(signal)])
       : [{ grave: null, ipo: false }, []];
     if (signal?.aborted) return;
     neutralHead(ticker || info.grave ? typed : 'Unknown command');
     const rows = dymRows(found, typed, ticker).length;
-    const title = info.grave ? TITLE_GONE : ticker ? TITLE_YET : 'Unknown command';
-    const extra = embed ? '' : noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : yard });
+    const title = info.grave ? ns.TITLE_GONE : ticker ? (ns?.TITLE_YET || 'No such ticker') : 'Unknown command';
+    const extra = embed || !ns ? '' : ns.noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : yard });
     view.innerHTML = panel('1', title, didYouMeanHtml(typed, found, ticker, { extra }), { cls: 'panel-solo', bodyCls: 'ns-page' });
-    if (!embed) cleanups.push(wireNoSuch(view, word, info));
+    if (!embed && ns) cleanups.push(ns.wireNoSuch(view, word, info));
     if (info.grave) setStatus(`${info.grave.ticker}: ${info.grave.what.toUpperCase()}`, 'warn');
     else setStatus(rows ? 'NOT FOUND. PICK ONE BELOW, OR TYPE HELP' : ticker ? 'NO SUCH TICKER. TYPE HELP' : 'UNKNOWN COMMAND. TYPE HELP', 'warn');
   }
@@ -1626,10 +1683,12 @@ function boot() {
 
   // --- ALERTS: the alert watcher (public/alerts.js), once per page, never in a DESK panel
   if (!embed) {
-    import('./alerts.js').then((m) => m.startAlerts({
-      store, fetchJSON, status: (text) => setStatus(text), run: (c) => { run(c); if (!coarse) input.focus(); },
-      statusline: statusMsg.parentElement,
-    })).catch(() => { /* alerts are extra: the terminal runs without them */ });
+    try {
+      startAlerts({
+        store, fetchJSON, status: (text) => setStatus(text), run: (c) => { run(c); if (!coarse) input.focus(); },
+        statusline: statusMsg.parentElement,
+      });
+    } catch { /* alerts are extra: the terminal runs without them */ }
   }
   // --- end ALERTS ------------------------------------------------------------
 
@@ -1720,6 +1779,20 @@ function boot() {
   }
   if (!coarse) input.focus();
   placeCursor();
+
+  // --- lazy screens: fetch ahead, never run -------------------------------------------
+  // Once the page is idle, the key bar's screens; on hover or focus of a key, its screen.
+  const prefetchScreen = (name) => {
+    const entry = screenFor(name);
+    if (!entry?.js) return;
+    prefetch(entry.js);
+    stylesFor(entry).forEach(prefetch);
+  };
+  const whenIdle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500));
+  if (!embed) whenIdle(() => FKEYS.forEach((k) => prefetchScreen(parseCommand(k.cmd).name)), { timeout: 5000 });
+  const keyAhead = (e) => { const k = e.target.closest?.('.fkey[data-name]'); if (k) prefetchScreen(k.dataset.name); };
+  keybar.addEventListener('pointerover', keyAhead);
+  keybar.addEventListener('focusin', keyAhead);
 }
 
 // First visit only: a short, fast boot log. Any key or tap skips it.

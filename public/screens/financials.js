@@ -5,45 +5,10 @@
 
 import { esc, q, fmtNum, dirOf, panel, metaNote, LOADING } from './markets.js';
 import { niceTicks } from './chart.js';
+import { FIN_TICKER_RE, parseFinancialsArgs, financialsInput, parseFinancialsCommand } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { FIN_TICKER_RE, parseFinancialsArgs, financialsInput, parseFinancialsCommand };
 
-export const FIN_TICKER_RE = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
-const STATEMENT_WORDS = {
-  INCOME: 'income', IS: 'income', EARNINGS: 'income',
-  BALANCE: 'balance', BS: 'balance', SHEET: 'balance',
-  CASH: 'cashflow', CASHFLOW: 'cashflow', CF: 'cashflow', FLOW: 'cashflow',
-};
-const PERIOD_WORDS = { ANNUAL: 'annual', YEARLY: 'annual', YEARS: 'annual', QUARTERLY: 'quarterly', QUARTERS: 'quarterly', Q: 'quarterly' };
-// Per-share basis: split-adjusted (the default) or as the filings reported it.
-const BASIS_WORDS = { REPORTED: 'reported', ASREPORTED: 'reported', FILED: 'reported', ADJUSTED: 'adjusted', SPLIT: 'adjusted' };
-const STATEMENT_CMD = { income: '', balance: 'BALANCE', cashflow: 'CASHFLOW' };
 export const STATEMENT_LABEL = { income: 'Income', balance: 'Balance', cashflow: 'Cash flow' };
-
-// Words after the ticker: [INCOME|BALANCE|CASHFLOW] [ANNUAL|QUARTERLY] [REPORTED], any order.
-export function parseFinancialsArgs(toks) {
-  const [ticker, ...rest] = toks;
-  if (!ticker || !FIN_TICKER_RE.test(ticker)) return { error: 'usage' };
-  let statement = 'income';
-  let period = 'annual';
-  let basis = 'adjusted';
-  for (const t of rest) {
-    if (STATEMENT_WORDS[t]) statement = STATEMENT_WORDS[t];
-    else if (PERIOD_WORDS[t]) period = PERIOD_WORDS[t];
-    else if (BASIS_WORDS[t]) basis = BASIS_WORDS[t];
-    else if (t === 'FLOW' || t === 'SHEET' || t === 'STATEMENT' || t === 'AS') continue;
-    else return { error: 'usage', ticker };
-  }
-  return basis === 'reported' ? { ticker, statement, period, basis } : { ticker, statement, period };
-}
-
-export function financialsInput({ ticker, statement = 'income', period = 'annual', basis = 'adjusted' }) {
-  return ['FINANCIALS', ticker, STATEMENT_CMD[statement], period === 'quarterly' ? 'QUARTERLY' : '', basis === 'reported' ? 'REPORTED' : ''].filter(Boolean).join(' ');
-}
-
-export function parseFinancialsCommand(rest) {
-  const args = parseFinancialsArgs(rest);
-  if (args.error) return { name: 'FINANCIALS', args, error: args.error, input: ['FINANCIALS', ...rest].join(' ') };
-  return { name: 'FINANCIALS', args, input: financialsInput(args) };
-}
 
 // ---- formats --------------------------------------------------------------------
 

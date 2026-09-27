@@ -3,25 +3,11 @@
 import { esc, q, fmtNum, panel, LOADING } from './markets.js';
 import { tickerCell, fmtCompact } from './movers.js';
 import { toolbar, segmented, edgeFade } from '../kit.js';
+import { parseEarnings as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { parse };
 
 const WORDS = { TODAY: 0, TOMORROW: 1, YESTERDAY: -1 };
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
-
-// EARNINGS [TODAY|TOMORROW|YESTERDAY|WEEK|NEXT WEEK|YYYY-MM-DD] [WEEK]
-export function parse(args) {
-  const toks = args.filter((t) => t !== 'ON' && t !== 'FOR' && t !== 'THIS');
-  let week = false;
-  let day = 'TODAY';
-  if (toks[0] === 'NEXT' && toks[1] === 'WEEK' && toks.length === 2) return { day: '+7', week: true };
-  const rest = toks.filter((t) => { if (t === 'WEEK') { week = true; return false; } return true; });
-  if (rest.length > 1) return { error: 'usage' };
-  if (rest.length === 1) {
-    if (rest[0] in WORDS) day = rest[0];
-    else if (ISO.test(rest[0]) && !Number.isNaN(Date.parse(`${rest[0]}T12:00:00Z`)) && new Date(`${rest[0]}T12:00:00Z`).toISOString().startsWith(rest[0])) day = rest[0];
-    else return { error: 'usage' };
-  }
-  return { day, week };
-}
 
 export function nyToday(now = new Date()) {
   return now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });

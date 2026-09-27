@@ -2,49 +2,9 @@
 
 import { esc, q, fmtNum, panel, metaNote } from './markets.js';
 import { mountLines, legend } from './lines.js';
-import { parseMoney, takeYears, compactUsd } from './loan.js';
-
-// COMPOUND [<start>] [<amount>/MO | <amount>/YR] <rate>% <years>Y
-export function parse(args) {
-  const toks = args.filter((t) => !['AT', 'FOR', 'A', 'AND', 'PLUS', 'INVEST', 'SAVE'].includes(t));
-  let start = 0;
-  let monthly = 0;
-  let yearly = 0;
-  let rate = null;
-  let years = null;
-  let i = 0;
-  while (i < toks.length) {
-    const t = toks[i];
-    const per = /^(\$?[\d,.]+[KM]?)\/(MO|MON|MONTH|M|YR|YEAR|Y)$/.exec(t);
-    const pct = /^(\d+(?:\.\d+)?)%$/.exec(t);
-    const y = takeYears(toks, i);
-    if (per) {
-      const n = parseMoney(per[1]);
-      if (!(n > 0)) return { error: 'amount' };
-      if (/^(YR|YEAR|Y)$/.test(per[2])) yearly = n; else monthly = n;
-      i += 1;
-    } else if (pct) {
-      rate = Number(pct[1]);
-      i += 1;
-    } else if (y) {
-      years = y.years;
-      i += y.used;
-    } else if (Number.isFinite(parseMoney(t))) {
-      const n = parseMoney(t);
-      const next = toks[i + 1];
-      if (next === 'MONTHLY' || (next === 'PER' && /^(MONTH|MO)$/.test(toks[i + 2] || ''))) { monthly = n; i += next === 'PER' ? 3 : 2; }
-      else if (next === 'YEARLY' || (next === 'PER' && /^(YEAR|YR)$/.test(toks[i + 2] || ''))) { yearly = n; i += next === 'PER' ? 3 : 2; }
-      else { if (start) return { error: 'usage' }; start = n; i += 1; }
-    } else {
-      return { error: 'usage' };
-    }
-  }
-  if (!(start > 0 || monthly > 0 || yearly > 0) || rate === null || years === null) return { error: 'usage' };
-  if (!(rate >= 0 && rate <= 50)) return { error: 'rate' };
-  if (!(years >= 1 && years <= 80) || years % 1) return { error: 'years' };
-  if ([start, monthly, yearly].some((n) => n > 1e10)) return { error: 'amount' };
-  return { start, monthly, yearly, rate, years };
-}
+import { compactUsd } from './loan.js';
+import { parseCompound as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { parse };
 
 // Month by month: growth first, then that month's deposit (end of month). Yearly deposits
 // land at the end of each 12th month. Returns one row per year, row 0 = the start.

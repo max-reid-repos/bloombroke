@@ -4,15 +4,10 @@
 import { esc, q, fmtNum, panel, LOADING } from './markets.js';
 import { metaNote, symbolCell, symbolRow, fmtWeekday, dash } from './company-kit.js';
 import { fmtDate } from '../kit.js';
+import { parseExdiv as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { parse };
 
-const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const PER_DAY = 15;
-
-export function parse(args) {
-  if (!args.length) return { day: null };
-  if (args.length === 1 && ISO.test(args[0]) && new Date(`${args[0]}T12:00:00Z`).toISOString().startsWith(args[0])) return { day: args[0] };
-  return { error: 'usage' };
-}
 
 const cash = (n) => (Number.isFinite(n) ? `$${fmtNum(n, n < 0.1 ? 4 : n < 1 ? 3 : 2)}` : dash);
 

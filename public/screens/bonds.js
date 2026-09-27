@@ -5,15 +5,10 @@
 
 import { esc, q, fmtNum, fmtSigned, dirOf, panel, metaNote, LOADING, tick, settleTicks, rowAttrs, nameCell, rerender } from './markets.js';
 import { toolbar, segmented } from '../kit.js';
+import { BOND_TABS, parseBonds as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { BOND_TABS, parse };
 
-export const BOND_TABS = ['YIELDS', 'SPREADS', 'CURVE'];
 export const REGIONS = ['Americas', 'Europe', 'Asia-Pacific'];
-
-export function parse(args) {
-  if (!args.length) return { tab: 'YIELDS' };
-  if (args.length === 1 && BOND_TABS.includes(args[0])) return { tab: args[0] };
-  return { error: 'usage', tab: 'YIELDS' };
-}
 
 // A bar from 0 to the highest yield on screen.
 export function levelBar(v, max) {

@@ -17,22 +17,13 @@
 
 import { esc, q, fmtNum, nyTime } from './markets.js';
 import { fmtDate } from '../kit.js';
+import { WEIRD_PERIODS, periodWord } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { WEIRD_PERIODS, periodWord };
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
-// ---- Periods (the row of 3M 1Y 5Y 10Y MAX on every WEIRD screen) ---------------------
-// Shared by the browser (the row, the command words) and the server (data/weird/history.js
-// slices each gauge's history to one of these). AUTO is the grid's own start: each tile
-// as the gauge draws it by default.
-export const WEIRD_PERIODS = ['3M', '1Y', '5Y', '10Y', 'MAX'];
 export const PERIOD_DAYS = { '3M': 91, '1Y': 365, '5Y': 1826, '10Y': 3652, MAX: Infinity };
 export const AUTO = 'AUTO';
-
-// One typed word -> '5Y' (any case), or null when it is not a period.
-export function periodWord(tok) {
-  const t = String(tok ?? '').trim().toUpperCase();
-  return WEIRD_PERIODS.includes(t) ? t : null;
-}
 
 // '2026-09-27' -> '27 SEP 2026'.
 export function dayLabel(s) {

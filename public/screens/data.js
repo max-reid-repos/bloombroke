@@ -6,6 +6,8 @@
 import { esc, panel, LOADING, metaNote } from './markets.js';
 import { dash } from './company-kit.js';
 import { ageWords, delayWord, lastUpdateWords } from '../provenance.js';
+import { parseData as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { parse };
 
 // The age cell's tooltip: when the source was last asked, and the data's own time.
 export function ageTitle(r) {
@@ -13,11 +15,6 @@ export function ageTitle(r) {
     Number.isFinite(r.checked_seconds) ? `Checked ${ageWords(r.checked_seconds)} ago` : 'Not checked since the server started',
     r.as_of ? `last update ${lastUpdateWords(r.as_of)}` : '',
   ].filter(Boolean).join(' · ');
-}
-
-export function parse(args) {
-  if (args.length > 1) return { error: 'usage' };
-  return args.length ? { id: String(args[0]).toLowerCase() } : {};
 }
 
 // "SEC filings: seen within ~42s of acceptance", or the same with -- before any.

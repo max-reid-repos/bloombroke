@@ -220,7 +220,7 @@ test('SPONSOR screen: a mock of the bottom rows, facts, proof, email for rates; 
     gauge: { ok: true, headline: 'HORMUZ 3 SHIPS/DAY', line: 'a b c', source: 'IMF PortWatch' } });
   const longest = Math.max(...loadSponsors().house.map((h) => h.text.split(/\s+/).length)) + 1;
   assert.ok(words(page) + longest <= 90, `${words(page) + longest} words`);
-  assert.match(readFileSync('public/style.css', 'utf8'), /\.spon-tile \.wd-line, \.spon-tile \.wd-src \{ display: none; \}/);
+  assert.match(readFileSync('public/screens/sponsor.css', 'utf8'), /\.spon-tile \.wd-line, \.spon-tile \.wd-src \{ display: none; \}/);
   assert.equal(parseCommand('SPONSOR').name, 'SPONSOR');
   assert.doesNotMatch(all, /—/);
 });

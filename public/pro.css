@@ -8,22 +8,8 @@
 .btn-solid { background: var(--accent); color: var(--ink); }
 .btn-solid:hover { background: var(--text); border-color: var(--text); }
 .btn:disabled { opacity: .5; cursor: wait; }
-.pro-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.pro-stats .stat dd { white-space: normal; }
-.pro-key-box { padding: 4px 0 8px; }
-.pro-key {
-  margin: 4px 0 4px; font-size: 32px; font-weight: 600; letter-spacing: .06em; line-height: 1.2;
-  color: var(--accent); overflow-wrap: anywhere; user-select: all;
-}
 .notice.warn { color: var(--down); }
 
 @media (max-width: 639px) {
   .pro-row { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 6px 0; }
-  .pro-stats { grid-template-columns: minmax(0, 1fr); }
-  .pro-key { font-size: 22px; }
 }
-.pro-terms { margin: 4px 0 0; padding-left: 16px; list-style: square; color: var(--text-2); line-height: 1.55; }
-.pro-terms li { margin: 2px 0; }
-.pro-terms a { color: var(--accent); }
-.pro-demo { margin: 0 0 8px; padding: 8px 12px; border: 1px solid var(--accent); background: var(--accent-tint); color: var(--accent); font-weight: 600; letter-spacing: .02em; }
-.pro-demo[hidden] { display: none; }

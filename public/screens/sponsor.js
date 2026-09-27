@@ -6,7 +6,9 @@
 
 import { esc, panel, metaNote, q } from './markets.js';
 import { findCommand } from '../registry.js';
-import { stripItems, mountStrip, ROTATE_MS, MAX_SPONSOR_LINES } from '../sponsor-strip.js';
+import { stripItems, mountStrip, ROTATE_MS, MAX_SPONSOR_LINES, loadSponsors } from '../sponsor-strip.js';
+
+export { loadSponsors }; // the config, asked once per page load: the status line needs it at startup
 import { tileBody, WEIRD_GAUGES } from './weird.js';
 
 export const CONTACT = 'hello@bloombroke.com';
@@ -80,20 +82,6 @@ export const proofLinks = (has = (c) => Boolean(findCommand(c))) => PROOF.filter
 export function gaugeSponsorHtml(cfg, id) {
   const name = cfg?.gauges?.[id]?.name;
   return name ? metaNote(`SPONSORED BY ${String(name).toUpperCase()}`) : '';
-}
-
-// The config, asked once per page load. Anything wrong: no sponsors.
-let loading = null;
-export function loadSponsors() {
-  const none = { lines: [], house: [], gauges: {}, line: null };
-  if (typeof fetch !== 'function') return Promise.resolve(none);
-  loading ||= fetch('/api/sponsors', { headers: { Accept: 'application/json' } })
-    .then((r) => (r.ok ? r.json() : null))
-    .then((d) => (d && typeof d === 'object'
-      ? { lines: Array.isArray(d.lines) ? d.lines : [], house: Array.isArray(d.house) ? d.house : [], gauges: d.gauges || {}, line: d.line || null }
-      : none))
-    .catch(() => { loading = null; return none; });
-  return loading;
 }
 
 // The one hook in the WEIRD gauge screen: if the gauge has a sponsor, a note of its own

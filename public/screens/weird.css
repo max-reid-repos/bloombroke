@@ -1,0 +1,87 @@
+/* weird.js's own styles, loaded with it (public/lazy.js) the first time a screen that
+   uses it opens; the page's always-on styles are in the stylesheets public/index.html links. */
+
+/* ==== from style.css ==== */
+
+/* ---- WEIRD (phase 3: screens/weird.js, weird-gauges.js) --------------------------- */
+/* The rules between tiles are each tile's own 1px outline, drawn into the 1px gaps, so
+   a short last row or a tall screen leaves plain background, not grey blocks or lines. */
+.wd-grid {
+  display: grid; gap: 1px; padding: 1px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  align-content: start;
+}
+.wd-big { font-size: 22px; font-weight: 600; line-height: 1.2; color: var(--text); overflow-wrap: anywhere; }
+.wd-big.is-none { color: var(--dim); }
+.wd-big.is-stale { color: var(--text-2); opacity: .6; }
+.wd-line { color: var(--text-2); font-size: 12px; min-height: 17px; }
+.wd-spark { min-height: 18px; margin-top: auto; }
+.wd-src { font-size: 10px; letter-spacing: .04em; color: var(--dim); text-transform: uppercase; margin-top: 2px; }
+.wd-src a { color: var(--text-2); text-decoration: underline; }
+.wd-head { margin-bottom: 8px; }
+.wd-head .wd-big { font-size: 28px; }
+.wd-body { display: grid; gap: 10px; min-width: 0; overflow-x: auto; }
+.wd-body .stats { max-width: 520px; }
+.wd-chart { height: 240px; margin-left: 0; max-width: 820px; }
+.wd-chart-head .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; color: var(--text-2); }
+.wd-how { max-width: 820px; margin-top: 12px; }
+.wd-how + .wd-src { margin-top: 8px; }
+/* WEIRD periods: the chart toolbar's range look; a period the source does not cover is
+   greyed and not a link (its title says why). */
+.wd-bar { display: flex; padding: 0 0 6px; }
+.wd-periods { flex: 0 0 auto; align-self: flex-start; border: 1px solid var(--rule-strong); }
+.wd-periods .tab.is-off { color: var(--faint); cursor: default; }
+.wd-periods .tab.is-off:hover { color: var(--faint); background: transparent; }
+.wd-rec { font-size: 10px; letter-spacing: .06em; color: var(--accent); text-transform: uppercase; }
+/* One gauge: the number and the period row on top, the big chart with the table beside
+   it (below it under 1100px), then how it is measured, the source and SHARE. */
+.wd-solo > .panel-body { display: flex; flex-direction: column; gap: 10px; }
+.wd-top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 6px 16px; }
+.wd-top .wd-head { margin: 0; min-width: 0; }
+.wd-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px 16px; min-width: 0; }
+.wd-chartbox { display: flex; flex-direction: column; min-width: 0; }
+.wd-chartbox .wd-chart { height: 260px; max-width: none; }
+.wd-chartbox .wd-chart-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; min-height: 17px; font-size: 11px; color: var(--text-2); }
+.wd-chart-label { letter-spacing: .06em; color: var(--dim); text-transform: uppercase; }
+.wd-read { font-variant-numeric: tabular-nums; color: var(--text); }
+.wd-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.wd-side > .wd-body { overflow-x: auto; align-content: start; }
+/* The notes under the table never widen its column: they wrap to the table's width. */
+.wd-side > .wd-foot { width: 0; min-width: 100%; }
+.wd-side .wd-table, .wd-side .wd-two, .wd-side .stats { max-width: none; }
+.wd-side tr[data-key] { cursor: pointer; }
+.wd-side tr[data-key]:hover > * { background: var(--panel-2); }
+.wd-side tr.is-picked > th { color: var(--accent); box-shadow: inset 2px 0 0 var(--accent); }
+.wd-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+.wd-foot .wd-how { margin-top: 0; flex: 1 1 100%; max-width: none; }
+.wd-foot .wd-src { margin-top: 0; }
+.wd-foot .wi-share { margin: 0; }
+@media (min-width: 1100px) {
+  /* The table keeps its own width (up to half); the chart takes the rest. */
+  .wd-main { grid-template-columns: minmax(0, 1fr) fit-content(50%); }
+  .wd-main.is-nochart { grid-template-columns: minmax(0, 1fr); }
+  /* The chart takes the height left; the table scrolls inside its column. */
+  html:not(.is-embed) .view > .stack > .wd-solo > .panel-body { overflow: hidden; }
+  html:not(.is-embed) .wd-solo .wd-main { flex: 1 1 0; min-height: 180px; }
+  html:not(.is-embed) .wd-solo .wd-chartbox .wd-chart { flex: 1 1 0; height: auto; min-height: 160px; }
+  html:not(.is-embed) .wd-solo .wd-side { overflow: auto; min-height: 0; scrollbar-gutter: stable; }
+  .wd-main.is-nochart .wd-side > .wd-foot { width: auto; }
+}
+/* Desktop, full-height screen: the grid takes the room left and scrolls inside. */
+@media (min-width: 1100px) {
+  /* scrollbar-gutter: the room for a classic scrollbar is kept either way, so it
+     showing up never changes the column count (no resize loop on Windows). */
+  html:not(.is-embed) .view > .wd-grid { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: var(--rule-strong) var(--bg); }
+}
+
+@media (max-width: 639px) {
+  .wd-grid { grid-template-columns: minmax(0, 1fr); }
+  .wd-spark { margin-top: 2px; }
+  .wd-big { font-size: 18px; }
+  .wd-head .wd-big { font-size: 22px; }
+  .wd-line { font-size: 11px; }
+  .wd-spark svg { width: 100%; }
+  .wd-chart { height: 200px; }
+  .wd-chartbox .wd-chart { height: 220px; }
+  .wd-top { align-items: flex-start; }
+}

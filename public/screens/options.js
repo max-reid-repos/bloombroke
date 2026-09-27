@@ -4,38 +4,12 @@
 //   OPTIONS AAPL 2026-10-16   one expiry (the tabs list them all)
 
 import { esc, q, fmtNum, fmtSigned, fmtPct, dirOf, fmtAsOf, panel, metaNote, LOADING } from './markets.js';
-import { instrumentById, resolveInstrument } from '../instruments.js';
 import { edgeFade } from '../kit.js';
+import { OPTION_TICKER_RE, OPTION_INDEXES, parseOptions as parse, optionsToInput as toInput } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { OPTION_TICKER_RE, OPTION_INDEXES, parse, toInput };
 
-export const OPTION_TICKER_RE = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
-// Named instruments with listed options at Cboe.
-export const OPTION_INDEXES = ['SPX', 'NDX', 'RUT', 'VIX'];
-const EXPIRY_RE = /^\d{4}-\d{2}-\d{2}(-[A-Z]{1,6})?$/;
 // Strikes shown either side of the price before ALL STRIKES.
 export const NEAR = 12;
-
-// [ticker, expiry?] -> { ticker, expiry } or { error }.
-export function parse(args) {
-  const toks = args.filter((t) => t !== 'FOR' && t !== 'ON');
-  if (!toks.length) return { error: 'usage' };
-  let used = 1;
-  let ticker = toks[0];
-  // "S&P 500" is three words.
-  for (let n = Math.min(3, toks.length); n >= 1; n -= 1) {
-    const inst = resolveInstrument(toks.slice(0, n).join(''));
-    if (inst) { ticker = inst.id; used = n; break; }
-  }
-  const inst = instrumentById(ticker);
-  if (inst && !OPTION_INDEXES.includes(inst.id)) return { error: 'kind', ticker };
-  if (!inst && !OPTION_TICKER_RE.test(ticker)) return { error: 'usage' };
-  const rest = toks.slice(used);
-  if (rest.length > 1 || (rest.length === 1 && !EXPIRY_RE.test(rest[0]))) return { error: 'expiry', ticker };
-  return { ticker, expiry: rest[0] || null };
-}
-
-export function toInput(args) {
-  return args.error ? null : ['OPTIONS', args.ticker, args.expiry].filter(Boolean).join(' ');
-}
 
 // "DELAYED 15 MIN · FILE 12:49 ET": when the underlying price is from.
 export function underlyingAsOf(asOf) {

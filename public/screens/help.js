@@ -6,21 +6,22 @@ import { esc, q } from './markets.js';
 import { edgeFade } from '../kit.js';
 import {
   CATEGORIES, findCommand, byCategory, categoriesInUse, searchCommands,
-  START_HERE, START_KEYS, FUNCTION_BAR,
+  START_HERE, START_KEYS, FUNCTION_BAR, mergeDetail,
 } from '../registry.js';
+import { DETAIL } from '../registry-detail.js';
 import { commandForWord } from '../resolve.js';
 import { LISTED_TICKERS, stockIdOf } from '../known-tickers.js';
+import { parseHelp as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { parse };
+
+// Each command's options, source and delay (registry-detail.js) come in with this screen.
+mergeDetail(DETAIL);
 
 const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 
 // The HELP categories, in order (Pro and Legal included).
 export const HELP_GROUPS = CATEGORIES;
 const CAT_KEY = 'bb.helpcat';
-
-// HELP [topic]: the words after HELP.
-export function parse(args) {
-  return { topic: args.length ? args.join(' ') : null };
-}
 
 // What HELP <topic> shows: { entry, ticker } for a command or a ticker, or { query }
 // to search for anything else. Plain words find their command: HELP SHORT and HELP

@@ -2,19 +2,12 @@
 
 import { esc, q, panel, LOADING } from './markets.js';
 import { toolbar, segmented } from '../kit.js';
+import { parseCalendar as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
+export { parse };
 
 export const SCOPES = { MAJOR: 'US and high impact', ALL: 'Every event', US: 'US only' };
 // The source has no actual results: said in the panel title, not left as an empty column.
 export const CAL_TITLE = 'Economic calendar this week: forecast and previous only';
-
-// CALENDAR [ALL|US]
-export function parse(args) {
-  if (!args.length) return { scope: 'MAJOR' };
-  const t = args.join(' ');
-  if (t === 'ALL') return { scope: 'ALL' };
-  if (t === 'US' || t === 'USD') return { scope: 'US' };
-  return { error: 'usage' };
-}
 
 export function filterEvents(events, scope) {
   if (scope === 'ALL') return events;

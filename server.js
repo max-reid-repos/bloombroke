@@ -22,10 +22,10 @@ import {
 import { commandMeta, mountSiteFiles } from './lib/seo.js';
 import { whatifItemMeta } from './lib/whatif-seo.js'; // WHATIF item pages: plain title and description
 import { mountEmbeds } from './lib/embed-pages.js'; // /embed/whatif and /embed/guess
-import { parseCommand } from './public/app.js';
+import { parseCommand, screenFiles } from './public/app.js';
 import { getFinancials, FinancialsError } from './data/financials.js';
 import { getScreen, ScreenError, startScreenPrewarm } from './data/screen.js';
-import { buildId, versionIndex } from './lib/assets.js';
+import { buildId, buildAssets, hashIndex, serveAssets, preloadTags } from './lib/assets.js';
 import { readFileSync } from 'node:fs';
 import { mountCommandRoutes } from './command-routes.js';
 import { mountLegal } from './lib/legal.js';
@@ -408,8 +408,15 @@ mountSiteFiles(app, path.join(dir, 'public'));
 
 // Pages: the HTML is never cached, and it points at versioned assets (see lib/assets.js).
 const PUBLIC = path.join(dir, 'public');
-const BUILD = buildId(PUBLIC);
-const PAGE = versionIndex(readFileSync(path.join(PUBLIC, 'index.html'), 'utf8'), BUILD);
+const BUILD = buildId(PUBLIC); // the legal and embed pages still use /v/<build>/
+// Per-file hashed URLs for the terminal page (lib/assets.js). The page hints the app's
+// own modules as modulepreload, so the browser fetches them in parallel.
+// The stylesheets index.html links go out as one file, base.css; each screen's own
+// sheet (screens/whatif.css beside screens/whatif.js) loads with the screen.
+const INDEX_HTML = readFileSync(path.join(PUBLIC, 'index.html'), 'utf8');
+const BASE_SHEETS = [...INDEX_HTML.matchAll(/<link rel="stylesheet" href="\/([\w./-]+\.css)">/g)].map((m) => m[1]);
+const ASSETS = buildAssets(PUBLIC, { bundles: { 'base.css': BASE_SHEETS } });
+const PAGE = hashIndex(INDEX_HTML, ASSETS, { bundle: 'base.css', preload: ASSETS.closure('app.js').filter((r) => r !== 'app.js') });
 const INDEX = withMeta(PAGE, DEFAULT_META);
 const HOME = withCanonical(INDEX, `${SITE}/`);
 // /terms, /privacy, /disclaimer: plain server-rendered pages, text in legal/*.md.
@@ -498,10 +505,28 @@ function tickerIndex(c) {
     alt: `${ticker} on Bloombroke.`,
   });
 }
+// A deep link (?c=WHATIF) names its screen: the page asks for that screen's modules and
+// stylesheet at once, next to the app's own, instead of after the app has run.
+const SHELL = new Set(ASSETS.closure('app.js'));
+function withScreenHints(html, c) {
+  let tags = '';
+  try {
+    const { modules } = c ? screenFiles(c) : { modules: [] };
+    const mods = [...new Set(modules.flatMap((m) => ASSETS.closure(m)))].filter((r) => !SHELL.has(r));
+    const styles = [...new Set(modules.flatMap((m) => ASSETS.stylesOf(m, 'app.js')))];
+    tags = preloadTags(ASSETS, { modules: mods, styles });
+  } catch { /* no hints: the page loads the screen itself */ }
+  return tags ? html.replace('<script type="application/json" id="bb-assets">', `${tags}<script type="application/json" id="bb-assets">`) : html;
+}
 app.get(['/', '/index.html'], async (req, res) => {
-  const html = await shareIndex(str(req.query.c) || '');
+  const c = str(req.query.c) || '';
+  const html = withScreenHints(await shareIndex(c), c);
   sendIndex(res, 200, isEmbedQuery(req.query) ? embedHtml(html) : html);
 });
+
+// Hashed URLs (/screens/whatif.3f2a1b9c0d.js): immutable for today's hash, a 404 (the
+// page reloads once) for an old one (lib/assets.js).
+app.use(serveAssets(ASSETS));
 
 // /v/<build>/...: this build's files are immutable. An older build id (a page loaded
 // before a deploy) gets today's files, uncached, so it never pins a mismatched copy.

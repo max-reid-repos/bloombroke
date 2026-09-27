@@ -6,6 +6,20 @@
 
 import { goal } from './goal.js';
 
+// The config, asked once per page load. Anything wrong: no sponsors.
+let loading = null;
+export function loadSponsors() {
+  const none = { lines: [], house: [], gauges: {}, line: null };
+  if (typeof fetch !== 'function') return Promise.resolve(none);
+  loading ||= fetch('/api/sponsors', { headers: { Accept: 'application/json' } })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => (d && typeof d === 'object'
+      ? { lines: Array.isArray(d.lines) ? d.lines : [], house: Array.isArray(d.house) ? d.house : [], gauges: d.gauges || {}, line: d.line || null }
+      : none))
+    .catch(() => { loading = null; return none; });
+  return loading;
+}
+
 export const ROTATE_MS = 7000;
 export const MAX_SPONSOR_LINES = 8;
 export const SLIDE_MS = 180;
