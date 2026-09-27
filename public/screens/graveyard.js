@@ -13,7 +13,7 @@
 import { esc, q, panel, metaNote } from './markets.js';
 import { goal } from '../goal.js';
 import {
-  findGrave, dayText, tombstoneLine, srcHost, graveLinks, stoneYears, flowersFor, respectsText, onThisDayLine, ytThumb, ytEmbed,
+  findGrave, dayText, tombstoneLine, srcHost, graveLinks, stoneYears, flowersFor, respectsText, onThisDayLine, ytEmbed,
 } from '../nosuch.js';
 
 const origin = () => (typeof location !== 'undefined' ? location.origin : 'https://bloombroke.com');
@@ -89,14 +89,24 @@ export function stoneHtml(e, { n = 0, small = false } = {}) {
     </figure>`;
 }
 
-// Every source on the page (the event, the cause, the date, the facts, the comeback), one
-// link per host.
+// Every source behind the page (the event, its dates, the cause, the RIP WHATIF prices,
+// the facts, the comeback), each once, behind one small SOURCES (N) that opens the list.
+export function pageSources(e) {
+  const all = [...e.src, ...(e.foundedSrc || []), ...(e.listedSrc || []), ...(e.anniversarySrc || []), ...(e.causeSrc || []),
+    ...(e.peakLine ? e.peakSrc || [] : []), ...(e.back?.src || []), ...(e.keyFactsSrc || [])];
+  return [...new Set(all.filter((u) => srcHost(u)))];
+}
+
 export function sourcesHtml(e) {
-  const seen = new Set();
-  const all = [...e.src, ...(e.causeSrc || []), ...(e.anniversarySrc || []), ...(e.back?.src || []), ...(e.keyFactsSrc || [])];
-  const links = all.filter((u) => { const h = srcHost(u); if (!h || seen.has(h)) return false; seen.add(h); return true; })
-    .map((u) => ext(u, srcHost(u))).join(', ');
-  return `<p class="muted ns-src">${e.wayback ? `${ext(e.wayback, 'LAST WEBSITE', 'gv-last')} · ` : ''}Source: ${links}. ${code('GRAVEYARD', 'See the graveyard')}.</p>`;
+  const list = pageSources(e);
+  const count = new Map();
+  const items = list.map((u) => {
+    const h = srcHost(u);
+    const k = (count.get(h) || 0) + 1;
+    count.set(h, k);
+    return `<li>${ext(u, k > 1 ? `${h} ${k}` : h)}</li>`;
+  }).join('');
+  return `<div class="muted ns-src gv-links">${e.wayback ? `${ext(e.wayback, 'LAST WEBSITE', 'gv-last')} · ` : ''}<details class="gv-sources"><summary>SOURCES (${list.length})</summary><ul>${items}</ul></details> · ${code('GRAVEYARD', 'See the graveyard')}</div>`;
 }
 
 export function shareRow(links, kind) {
@@ -123,24 +133,23 @@ export function wireShare(el, copy) {
 }
 
 // RIP WHATIF: the sourced peak line, or nothing.
-// Every source behind the line, by host (the same host once).
+// Only with its sources (they are listed under SOURCES).
 export function peakLineHtml(e) {
   const list = Array.isArray(e.peakSrc) ? e.peakSrc : e.peakSrc ? [e.peakSrc] : [];
   if (!e.peakLine || !list.length) return '';
-  const seen = new Set();
-  const links = list.filter((u) => { const h = srcHost(u); if (seen.has(h)) return false; seen.add(h); return true; })
-    .map((u) => ext(u, srcHost(u), 'dim')).join(', ');
-  return `<p class="gv-whatif">${esc(e.peakLine)} <span class="gv-srcs">${links}</span></p>`;
+  return `<p class="gv-whatif">${esc(e.peakLine)}</p>`;
 }
 
-// The video: a still and a play mark. Nothing from YouTube but the still loads until the
-// click; the click swaps in the youtube-nocookie.com player (wireVideo).
+// The video: our own art (the company's doodle) and a play mark, with the channel. Nothing
+// is asked of YouTube or Google until the click; the click swaps in the
+// youtube-nocookie.com player (wireVideo).
 export function videoHtml(e) {
-  const thumb = ytThumb(e.video?.id);
-  if (!thumb) return '';
+  if (!ytEmbed(e.video?.id)) return '';
   const label = `Play: ${e.video.title}${e.video.channel ? ` (${e.video.channel})` : ''}`;
+  const doodle = e.art?.doodle;
   return `<button type="button" class="gv-video" data-yt="${esc(e.video.id)}" aria-label="${esc(label)}" title="${esc(label)}">
-      <img src="${esc(thumb)}" width="480" height="360" alt="" loading="lazy" referrerpolicy="no-referrer"><span class="gv-play" aria-hidden="true"></span>
+      ${doodle ? `<img src="${esc(doodle)}" width="384" height="384" alt="">` : ''}<span class="gv-play" aria-hidden="true"></span>
+      <span class="gv-vlabel">PLAY VIDEO${e.video.channel ? ` · ${esc(e.video.channel)}` : ''}</span>
     </button>`;
 }
 
@@ -173,14 +182,15 @@ export function factsHtml(e, n) {
       ${e.cause ? `<p class="gv-cause">${esc(e.cause)}</p>` : ''}
       ${peakLineHtml(e)}
       ${respectsHtml(e, n)}
-      ${videoHtml(e)}
       ${shareRow(graveLinks(e, origin()), 'grave')}
       ${sourcesHtml(e)}
     </div>`;
 }
 
+// Desk: the stone, the facts and the video side by side; a phone: one under the other.
 export function stonePageHtml(e, n) {
-  return `<div class="gv-page">${stoneHtml(e, { n })}${factsHtml(e, n)}</div>`;
+  const video = videoHtml(e);
+  return `<div class="gv-page${video ? ' has-video' : ''}">${stoneHtml(e, { n })}${factsHtml(e, n)}${video ? `<div class="gv-vcol">${video}</div>` : ''}</div>`;
 }
 
 // F (or the button) pays respects to the stone on screen. F works from the empty command

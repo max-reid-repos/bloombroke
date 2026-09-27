@@ -72,12 +72,14 @@ export function periodText(p) {
   return /^\d{4}$/.test(s) ? s : '';
 }
 
-// The years on a stone: '1994 - 2008', or '2008' when the listing year is not sourced; a
-// zombie: the year it died and the year it came back.
+// The years on a stone: the company's life when its founding year is sourced ('1850 -
+// 2008'), else its listed years ('1995 - 1999'), else the year it died; a zombie: the year
+// it died and the year it came back.
 export function stoneYears(e) {
   const died = String(e.date || '').slice(0, 4);
   if (e.zombie && e.back?.date) return `${died} - ${e.back.date.slice(0, 4)}`;
-  return Number.isInteger(e.listed) ? `${e.listed} - ${died}` : died;
+  const from = Number.isInteger(e.founded) ? e.founded : Number.isInteger(e.listed) ? e.listed : null;
+  return from ? `${from} - ${died}` : died;
 }
 
 // Flowers at a stone's foot for n respects: one more each time the count doubles, 10 at most.
@@ -101,10 +103,9 @@ export function onThisDayLine(e) {
   return `${dayText(day)}: ${e.name}${what}. F to pay respects`;
 }
 
-// A YouTube id, or null. The screen shows a still from i.ytimg.com and loads the player
-// from youtube-nocookie.com only on a click.
+// A YouTube id, or null. The screen shows our own art, and loads the player from
+// youtube-nocookie.com only on a click: nothing is asked of YouTube or Google before.
 export const YT_ID = /^[A-Za-z0-9_-]{11}$/;
-export const ytThumb = (id) => (YT_ID.test(id || '') ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : null);
 export const ytEmbed = (id) => (YT_ID.test(id || '') ? `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0` : null);
 
 // "LEH. Lehman Brothers. Listed 1994. Filed for bankruptcy 15 Sep 2008."

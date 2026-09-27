@@ -11,9 +11,9 @@ import { nosuchMeta, stoneDescription, tombstoneTree, makeNoSuchCards, parseBloc
 import { securityHeaders } from '../lib/embed.js';
 import { sitemapUrls, graveyardSitemapUrls } from '../lib/seo.js';
 import { parseCommand } from '../public/app.js';
-import { stoneYears, flowersFor, respectsText, onThisDayLine, ytThumb, ytEmbed, periodText, MAX_FLOWERS, GRAVEYARD_VIEWS } from '../public/nosuch.js';
+import { stoneYears, flowersFor, respectsText, onThisDayLine, ytEmbed, periodText, MAX_FLOWERS, GRAVEYARD_VIEWS } from '../public/nosuch.js';
 import {
-  stoneHtml, stonePageHtml, peakLineHtml, videoHtml, flowersHtml, layout, stepStone, zombiesHtml, graveyardTable, onThisDayHtml, sourcesHtml,
+  stoneHtml, stonePageHtml, peakLineHtml, videoHtml, flowersHtml, layout, stepStone, zombiesHtml, graveyardTable, onThisDayHtml, sourcesHtml, pageSources,
 } from '../public/screens/graveyard.js';
 
 const FIX = fileURLToPath(new URL('./fixtures/graveyard-v2.json', import.meta.url));
@@ -56,6 +56,28 @@ test('dates: quarters, months, spans and days read as words', () => {
   assert.match(stoneDescription(wm), /Peak price \$[\d.,]+ a share \(Q4 2003\)\./, 'an intraday high is a price, not a close');
 });
 
+test('real data: no Wikipedia; the dates on a stone never contradict its epitaph', () => {
+  const text = readFileSync(new URL('../data/graveyard.json', import.meta.url), 'utf8');
+  assert.doesNotMatch(text, /wikipedia/i);
+  const real = loadGraveyardData();
+  const leh = real.stones.find((e) => e.ticker === 'LEH');
+  assert.equal(stoneYears(leh), '1850 - 2008', 'the company life, when the founding is sourced');
+  assert.equal(stoneYears(real.stones.find((e) => e.ticker === 'NSCP')), '1995 - 1999', 'else the listed years');
+  assert.equal(stoneYears(real.stones.find((e) => e.ticker === 'ENE')), '2001', 'else the year it died');
+  for (const e of [...real.stones, ...real.zombies]) {
+    if (e.founded) assert.ok(e.foundedSrc?.length, `${e.ticker} founded src`);
+    if (e.listed) assert.ok(e.listedSrc?.length || e.src.length, `${e.ticker} listed src`);
+    const start = e.founded || e.listed || null;
+    const died = Number(e.date.slice(0, 4));
+    const end = e.zombie ? Number(e.back.date.slice(0, 4)) : died + 1;
+    for (const y of (e.epitaph || '').match(/\b(1[89]\d\d|20\d\d)\b/g) || []) {
+      assert.ok(Number(y) <= end && (!start || Number(y) >= start), `${e.ticker}: ${y} in "${e.epitaph}" fits ${stoneYears(e)}`);
+    }
+    const age = /(\d+) years/.exec(e.epitaph || '');
+    if (age) assert.ok(start && Math.abs(Number(age[1]) - (died - start)) <= 1, `${e.ticker}: "${e.epitaph}" matches ${stoneYears(e)}`);
+  }
+});
+
 test('real data: research merged, every fact with its sources, zombies came back', () => {
   const real = loadGraveyardData();
   assert.equal(real.stones.length, 34);
@@ -91,35 +113,40 @@ test('stone: years, flowers, the words on its face; zombies say RETURNED', () =>
 });
 
 test('RIP WHATIF: the sourced peak line, hidden when null', () => {
-  assert.match(peakLineHtml(LEH), /\$1,000 at the peak \(Feb 2007\) was worth \$2 by Sep 2008 <span class="gv-srcs"><a class="dim" href="https:\/\/example\.test\/leh-peak" target="_blank" rel="noopener noreferrer">example\.test<\/a><\/span>/, 'one link per host');
+  assert.equal(peakLineHtml(LEH), '<p class="gv-whatif">$1,000 at the peak (Feb 2007) was worth $2 by Sep 2008</p>');
+  assert.ok(pageSources(LEH).includes('https://example.test/leh-final'), 'its sources are under SOURCES');
   assert.equal(peakLineHtml({ ...LEH, peakSrc: [] }), '', 'no source, no line');
   assert.equal(peakLineHtml(BBI), '');
   assert.doesNotMatch(stonePageHtml(BBI, 0), /gv-whatif/);
   assert.match(stonePageHtml(LEH, 0), /gv-whatif/);
 });
 
-test('video: a still and a play mark; nothing from YouTube but the still before a click', () => {
-  const html = videoHtml(LEH);
+test('video: our own art and a play mark; nothing from YouTube or Google before a click', () => {
+  const e = withArt(LEH, { doodles: ['LEH'] });
+  const html = videoHtml({ ...e, video: { ...e.video, channel: 'CBS' } });
   assert.match(html, /<button type="button" class="gv-video" data-yt="AAAAAAAAAAA"/);
-  assert.match(html, /src="https:\/\/i\.ytimg\.com\/vi\/AAAAAAAAAAA\/hqdefault\.jpg"/);
-  assert.doesNotMatch(html, /<iframe|<script|youtube\.com|youtube-nocookie/, 'no player, no script, no youtube.com');
-  const page = stonePageHtml(LEH, 0);
-  assert.doesNotMatch(page, /<iframe|<script|youtube-nocookie|www\.youtube\.com/);
+  assert.match(html, /src="\/img\/graveyard\/doodle-leh\.webp"/, 'our own drawing');
+  assert.match(html, /PLAY VIDEO · CBS/);
+  const page = stonePageHtml(e, 0);
+  for (const h of [html, page]) {
+    assert.doesNotMatch(h, /<iframe|<script/);
+    assert.doesNotMatch(h, /ytimg|youtube|google|googlevideo|gstatic/i, 'no request to any Google or YouTube host before the click');
+  }
   assert.equal(videoHtml(BBI), '');
-  assert.equal(ytThumb('bad'), null);
   assert.equal(ytEmbed('AAAAAAAAAAA'), 'https://www.youtube-nocookie.com/embed/AAAAAAAAAAA?autoplay=1&rel=0');
   assert.equal(ytEmbed('<x>'), null);
   const src = readFileSync(new URL('../public/screens/graveyard.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(src, /youtube\.com\/iframe_api|www\.youtube\.com\/embed/, 'no YouTube script, no tracking player');
+  assert.doesNotMatch(src, /ytimg|youtube\.com\/iframe_api|www\.youtube\.com\/embed/, 'no stills from YouTube, no YouTube script');
+  assert.match(page, /class="gv-page has-video"/, 'desk: the video in its own column');
 });
 
 test('CSP: only the video still and the no-cookie player are added', () => {
   const csp = securityHeaders()['Content-Security-Policy'];
   const dir = (name) => csp.split('; ').find((d) => d.startsWith(`${name} `));
-  assert.equal(dir('img-src'), "img-src 'self' data: https://i.ytimg.com");
+  assert.equal(dir('img-src'), "img-src 'self' data:", 'no YouTube stills');
   assert.equal(dir('frame-src'), "frame-src 'self' https://www.youtube-nocookie.com");
   assert.equal(dir('script-src'), "script-src 'self' https://datafa.st https://static.cloudflareinsights.com", 'no YouTube script');
-  assert.doesNotMatch(csp, /www\.youtube\.com|googlevideo|\*/);
+  assert.doesNotMatch(csp, /ytimg|www\.youtube\.com|googlevideo|\*/);
 });
 
 test('sitemap: the cemetery, ZOMBIES, and one page per stone and zombie', () => {
@@ -257,6 +284,9 @@ test('stone pages: seoTitle, a description from the facts, canonical, LAST WEBSI
   assert.match(nosuchMeta('GRAVEYARD TODAY', deps).image, /\/og\/onthisday\.png$/);
   assert.equal(nosuchMeta('GRAVEYARD TODAY', { ...deps, today: () => '2026-01-02' }), null);
   assert.match(sourcesHtml(LEH), /<a class="gv-last" href="https:\/\/web\.archive\.org\/web\/20080915000000\/http:\/\/www\.lehman\.com\/" target="_blank" rel="noopener noreferrer">LAST WEBSITE<\/a>/);
+  const src = sourcesHtml(LEH);
+  assert.match(src, /<details class="gv-sources"><summary>SOURCES \(3\)<\/summary><ul><li>/, 'one small SOURCES (N)');
+  assert.match(src, /example\.test 2/, 'the same host twice is numbered');
   assert.doesNotMatch(sourcesHtml(BBI), /LAST WEBSITE/);
   for (const v of Object.values(m)) { assert.doesNotMatch(v, BANNED); assert.doesNotMatch(v, /—/); }
 });
