@@ -85,5 +85,5 @@ test('push client: pushed stories merge newest first, once each, capped', () => 
 test('push client: the LIVE marker, filled when streaming, hollow when polling, no amber', () => {
   assert.match(liveMarker(true), /class="news-live is-on"[^>]*>LIVE</);
   assert.match(liveMarker(false), /class="news-live"[^>]*>LIVE</);
-  assert.doesNotMatch(liveMarker(true) + liveMarker(false), /amber|orange|—/i);
+  assert.doesNotMatch(liveMarker(true) + liveMarker(false), /amber|orange|\u2014/i);
 });
