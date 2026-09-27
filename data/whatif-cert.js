@@ -8,6 +8,7 @@ import { resolveTokens, whatifCommand } from './whatif.js';
 export const DOODLES = [
   'actioncam', 'bike', 'box', 'burger', 'burrito', 'car', 'coffee', 'console', 'earbuds', 'gpu', 'handheld',
   'headphones', 'laptop', 'phones', 'qwertyphone', 'smartwatch', 'tablet', 'tv', 'vr',
+  'beer', 'soda', 'chips', 'betting',
 ];
 
 // Bump when the certificate layout changes, so cached share images are redrawn.

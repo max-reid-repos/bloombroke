@@ -2,7 +2,7 @@
 // detection, the shelf picker and the worst-drop date range.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -429,9 +429,12 @@ test('shelves: every item on a shelf; tabs and shelf words', async () => {
   assert.match(habit, /aria-selected="true"/);
 });
 
-test('every catalog doodle exists; vices borrow the nearest existing art', () => {
-  for (const p of [...catalog.products, ...catalog.recurring]) assert.ok(DOODLES.includes(p.doodle), `${p.id}: ${p.doodle}`);
-  assert.deepEqual(VICES.map((id) => item(id).doodle), ['box', 'coffee', 'burrito', 'phones']);
+test('every catalog doodle exists; each vice has its own art', () => {
+  for (const p of [...catalog.products, ...catalog.recurring]) {
+    assert.ok(DOODLES.includes(p.doodle), `${p.id}: ${p.doodle}`);
+    assert.ok(existsSync(`public/img/whatif/doodle-${p.doodle}.webp`), `${p.id}: doodle-${p.doodle}.webp`);
+  }
+  assert.deepEqual(VICES.map((id) => item(id).doodle), ['beer', 'soda', 'chips', 'betting']);
 });
 
 // ---- Worst drop: a date range --------------------------------------------------------
@@ -468,7 +471,7 @@ test('/og/whatif.png still renders, for a vice too', async () => {
   try {
     const deps = { catalog: liveCatalog, getWhatif: (t) => getWhatif(t, { quoteImpl, now: NOW }), cacheDir: dir };
     const m = await getCert('WHATIF BEER:10Y', deps);
-    assert.equal(m.doodle, 'box');
+    assert.equal(m.doodle, 'beer');
     for (const c of ['WHATIF BEER:10Y', 'WHATIF IPHONE6 LATTE:3Y']) {
       const png = await whatifPng(c, deps);
       assert.deepEqual([...png.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], c);
