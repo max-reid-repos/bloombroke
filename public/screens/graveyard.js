@@ -82,7 +82,7 @@ export function stoneHtml(e, { n = 0, small = false } = {}) {
     ? `<span class="gv-rip">${e.zombie ? 'RETURNED' : 'R.I.P.'}</span><span class="gv-tk">${esc(e.ticker)}</span>`
     : `<span class="gv-rip">${e.zombie ? 'RETURNED' : 'R.I.P.'}</span><span class="gv-tk">${esc(e.ticker)}</span><span class="gv-name">${esc(e.name)}</span><span class="gv-years">${esc(stoneYears(e))}</span>${e.epitaph ? `<span class="gv-epitaph">${esc(e.epitaph)}</span>` : ''}`;
   return `<figure class="gv-stone${small ? ' is-small' : ''}${e.zombie ? ' is-zombie' : ''}${art.stone ? ' has-art' : ''}" role="img" aria-label="${esc(tombstoneLine(e))}">
-      ${art.stone ? `<img class="gv-art" src="${esc(art.stone)}" width="1024" height="1536" alt="">` : ''}
+      ${art.stone ? `<img class="gv-art" src="${esc(art.stone)}" width="560" height="778" alt="">` : ''}
       <div class="gv-face">${face}</div>
       ${art.doodle && !small ? `<img class="gv-doodle" src="${esc(art.doodle)}" width="384" height="384" alt="">` : ''}
       ${small ? '' : `<div class="gv-flowers" data-flowers>${flowersHtml(n)}</div>`}
@@ -218,7 +218,7 @@ export function layout(list, { rows = 4 } = {}) {
     const inRow = Math.min(per, sorted.length - r * per);
     const c = i - r * per;
     const x = 6 + ((c + 0.5 + (r % 2 ? 0.25 : -0.25)) / inRow) * 88 + jitter(e.ticker, 1) * 3;
-    const y = 30 + (rows > 1 ? (r / (rows - 1)) * 52 : 26) + jitter(e.ticker, 2) * 3;
+    const y = 46 + (rows > 1 ? (r / (rows - 1)) * 44 : 22) + jitter(e.ticker, 2) * 3; // on the grass, below the hills
     const cap = Number.isFinite(e.peak?.cap) && e.peak.cap > 0 && hi > lo ? (Math.log10(e.peak.cap) - lo) / (hi - lo) : null;
     const size = (0.74 + r * 0.1) * (cap === null ? 1 : 0.82 + cap * 0.46);
     return { e, row: r, x: Math.max(4, Math.min(96, x)), y, size };
@@ -247,7 +247,7 @@ export function stepStone(spots, i, key) {
 function cemeteryHtml(spots, art) {
   const stones = spots.map((s, i) => `<a class="gv-plot" href="${esc(q(`GRAVEYARD ${s.e.ticker}`))}" data-cmd="${esc(`GRAVEYARD ${s.e.ticker}`)}" data-i="${i}" aria-label="${esc(tombstoneLine(s.e))}">${stoneHtml({ ...s.e, art: { stone: art.stone } }, { small: true })}</a>`).join('');
   return `<div class="gv-yard${art.cemetery ? ' has-art' : ''}">
-      ${art.cemetery ? `<img class="gv-bg" src="${esc(art.cemetery)}" width="1536" height="1024" alt="">` : ''}
+      ${art.cemetery ? `<img class="gv-bg" src="${esc(art.cemetery)}" width="1280" height="853" alt="">` : ''}
       <div class="gv-ground">${stones}</div>
       <p class="gv-caption" aria-live="polite"></p>
       <p class="gv-corner">${code('GRAVEYARD ZOMBIES', 'ZOMBIES')}</p>

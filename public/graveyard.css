@@ -19,7 +19,9 @@
   border: 3px solid var(--gv-ink); border-radius: 50% 50% 6px 6px / 34% 34% 6px 6px;
   box-shadow: inset 0 -10px 0 -4px var(--gv-moss), 0 6px 0 -2px var(--dim);
 }
+.gv-stone.has-art { aspect-ratio: 560 / 778; }
 .gv-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.gv-stone.has-art .gv-face { left: 18%; right: 16%; top: 21%; bottom: 20%; }
 .gv-face {
   position: absolute; left: 14%; right: 14%; top: 22%; bottom: 14%;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 1.2cqw;
