@@ -20,6 +20,16 @@ export const MAX_EMAIL = 254;
 export const MAX_SCREEN = 64;
 export const KEEP_MS = 365 * 24 * 60 * 60 * 1000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Characters that can steer a terminal or reorder text when the owner reads notes over
+// ssh: C0 controls except tab and newline, DEL, C1 controls, and the bidi overrides and
+// isolates. They are stripped from a note and refused in an email address.
+export const UNSAFE_RE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+const UNSAFE_ONE = new RegExp(UNSAFE_RE.source);
+
+// A note with Windows line ends made plain and every unsafe character taken out.
+export function cleanMessage(v) {
+  return String(v).replace(/\r\n?/g, '\n').replace(UNSAFE_RE, '');
+}
 const HOUR = 60 * 60 * 1000;
 
 export class FeedbackError extends Error {
@@ -39,7 +49,7 @@ export function cleanScreen(v) {
 // A body -> { message, email, screen } or throws FeedbackError.
 export function validateFeedback(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new FeedbackError('bad_request', 'Send { message }.');
-  const message = typeof body.message === 'string' ? body.message.trim() : '';
+  const message = typeof body.message === 'string' ? cleanMessage(body.message).trim() : '';
   if (!message) throw new FeedbackError('empty', 'Write something first.');
   if (message.length > MAX_MESSAGE) throw new FeedbackError('too_long', `Keep it under ${MAX_MESSAGE} characters.`);
   let email = null;
@@ -47,7 +57,7 @@ export function validateFeedback(body) {
     if (typeof body.email !== 'string') throw new FeedbackError('bad_email', 'That email address does not look right.');
     const e = body.email.trim();
     if (e) {
-      if (e.length > MAX_EMAIL || !EMAIL_RE.test(e)) throw new FeedbackError('bad_email', 'That email address does not look right.');
+      if (e.length > MAX_EMAIL || !EMAIL_RE.test(e) || UNSAFE_ONE.test(e)) throw new FeedbackError('bad_email', 'That email address does not look right.');
       email = e;
     }
   }

@@ -1,7 +1,7 @@
 // The Pro structure: seat numbers (migration 007), the yearly plan, gift codes and
 // REDEEM. Stripe is a fake: no network calls.
 
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, mkdirSync, copyFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -16,6 +16,8 @@ import {
 } from '../pro/licence.js';
 import { checkoutParams, STRIPE_API_VERSION, SUBMIT_MESSAGE, SUBMIT_MESSAGE_YEARLY, billingOf } from '../pro/billing.js';
 import { mountPro, publicStatus } from '../pro/routes.js';
+import { createLimiter } from '../pro/ratelimit.js';
+import { RECORD_KEEP_MS, GIFT_RECORD_KEEP_MS } from '../pro/store.js';
 
 const SECRET = 'whsec_test_dummy_secret_for_unit_tests';
 const AES = revealKeyFrom('x'.repeat(40));
@@ -27,9 +29,28 @@ function fakeStripe() {
   const real = new Stripe('sk_test_dummy', { apiVersion: STRIPE_API_VERSION });
   const subs = {};
   const calls = [];
+  const invoices = {};
+  const refunds = [];
+  let failRefunds = 0;
   const missing = () => Object.assign(new Error('No such object'), { statusCode: 404, code: 'resource_missing' });
-  return {
-    subs, calls,
+  const api = {
+    subs, calls, invoiceData: invoices, refundData: refunds,
+    failRefundsOnce() { failRefunds = 1; },
+    invoices: {
+      async retrieve(id) { calls.push(['invoice.retrieve', id]); if (!invoices[id]) throw missing(); return invoices[id]; },
+    },
+    invoicePayments: { list: ({ invoice }) => [{ status: 'paid', payment: { payment_intent: `pi_${invoice}` } }] },
+    refunds: {
+      list: ({ payment_intent }) => refunds.filter((r) => r.payment_intent === payment_intent),
+      async create(p, opts) {
+        calls.push(['refund', p, opts]);
+        if (failRefunds > 0) { failRefunds -= 1; throw new Error('network down'); }
+        if (refunds.some((r) => r.key === opts.idempotencyKey)) return refunds.find((r) => r.key === opts.idempotencyKey);
+        const r = { ...p, status: 'succeeded', key: opts.idempotencyKey };
+        refunds.push(r);
+        return r;
+      },
+    },
     webhooks: real.webhooks,
     checkout: {
       sessions: {
@@ -43,10 +64,11 @@ function fakeStripe() {
       async retrieve(id) { calls.push(['sub.retrieve', id]); if (!subs[id]) throw missing(); return subs[id]; },
       async update(id, p) { calls.push(['sub.update', id, p]); return { id, ...p }; },
       list({ customer }) { return Object.values(subs).filter((x) => x.customer === customer); },
-      async cancel(id) { subs[id].status = 'canceled'; return subs[id]; },
+      async cancel(id, p, opts) { calls.push(['sub.cancel', id, opts]); subs[id].status = 'canceled'; return subs[id]; },
     },
     billingPortal: { sessions: { async create() { return { url: 'https://billing.stripe.com/p/session/test_1' }; } } },
   };
+  return api;
 }
 
 const sub = (n, interval, extra = {}) => ({
@@ -512,5 +534,162 @@ test('gifts: after the gift month ends, SUBSCRIBE on the same key keeps its seat
     const st = (await s.req('GET', '/api/pro/status', { key })).body;
     assert.equal(st.status, 'active');
     assert.equal(st.canGift, true);
+  } finally { await s.close(); }
+});
+
+// ---- Review fixes ---------------------------------------------------------------------------
+
+test('rate limiter: a timer drops ended windows, so an address is held its window plus at most a minute', () => {
+  mock.timers.enable({ apis: ['setInterval'] });
+  try {
+    let t = 0;
+    const l = createLimiter({ max: 5, windowMs: 15 * 60 * 1000, now: () => t });
+    l.hit('1.2.3.4');
+    l.hit('5.6.7.8');
+    assert.equal(l.size(), 2);
+    t = 15 * 60 * 1000 - 1;
+    mock.timers.tick(15 * 60 * 1000 - 1);
+    assert.equal(l.size(), 2, 'still inside the window');
+    t = 15 * 60 * 1000 + 59_999;
+    mock.timers.tick(60_000);
+    assert.equal(l.size(), 0, 'gone within a minute of the window ending, with no new hits');
+    // A short window sweeps on its own window.
+    let u = 0;
+    const s = createLimiter({ max: 1, windowMs: 1000, now: () => u });
+    s.hit('a');
+    u = 1000;
+    mock.timers.tick(1000);
+    assert.equal(s.size(), 0);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('records purge: licences 5 years after they end, gift codes 12 months after use or expiry; seats never come back', async () => {
+  const s = await setup();
+  try {
+    const old = s.paid();
+    const recent = s.paid();
+    const live = s.paid();
+    // The giver makes a code that a friend redeems; another code expires unused.
+    const giver = s.paid();
+    const { code } = (await s.req('POST', '/api/pro/gifts', { key: giver.key })).body;
+    const gifted = (await s.req('POST', '/api/pro/redeem', { body: { code } })).body;
+    await s.req('POST', '/api/pro/gifts', { key: giver.key });
+    s.store.putDocs(old.licence.id, { watch: { data: ['AAPL'], updatedAt: T0 } });
+    s.store.setStatus(old.licence.id, 'canceled');
+    const maxSeat = s.db.prepare('SELECT MAX(seat) AS n FROM licences').get().n;
+    assert.equal(s.store.purgeRecords().licences, 0, 'nothing is old yet');
+    // 12 months after use and expiry: the code rows go, the licences stay.
+    s.advance(GIFT_RECORD_KEEP_MS + 91 * DAY);
+    s.store.setStatus(recent.licence.id, 'unpaid');
+    assert.deepEqual(s.store.purgeRecords(), { gifts: 2, licences: 0 });
+    assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM gift_codes').get().n, 0);
+    // 5 years after the old one ended (and the gift month): those rows and their data go.
+    s.advance(RECORD_KEEP_MS - GIFT_RECORD_KEEP_MS - 91 * DAY + 30 * DAY);
+    const r = s.store.purgeRecords();
+    assert.equal(r.licences, 2, 'the old paid licence and the gift licence');
+    assert.equal(s.store.findByKey(old.key), null);
+    assert.equal(s.store.findByKey(gifted.key), null);
+    assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM sync_docs WHERE licence_id = ?').get(old.licence.id).n, 0, 'its synced data with it');
+    assert.ok(s.store.findByKey(recent.key), 'ended less than 5 years ago: kept');
+    assert.ok(s.store.findByKey(live.key), 'live: kept');
+    assert.ok(s.store.findByKey(giver.key), 'live giver: kept');
+    // Deleting the highest seat never hands it out again.
+    s.db.prepare('DELETE FROM licences WHERE seat = ?').run(maxSeat);
+    const next = s.paid();
+    assert.equal(next.licence.seat, maxSeat + 1);
+  } finally { await s.close(); }
+});
+
+test('migration 009: seat_high starts at the highest seat already given', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'bb-mig9-'));
+  try {
+    const early = path.join(dir, 'early');
+    mkdirSync(early);
+    for (const f of readdirSync('migrations').filter((f) => f < '009')) copyFileSync(path.join('migrations', f), path.join(early, f));
+    const file = path.join(dir, 'pro.db');
+    const db = openDb(file, { migrationsDir: early });
+    const ins = db.prepare("INSERT INTO licences (key_hash, last4, status, created_at, updated_at, seat) VALUES (?, 'AAAA', 'active', 1, 1, ?)");
+    for (let i = 1; i <= 3; i++) ins.run(`h${i}`, i);
+    db.prepare('DELETE FROM licences WHERE seat = 3').run();
+    db.close();
+    const after = openDb(file);
+    assert.equal(after.prepare('SELECT n FROM seat_high').get().n, 2, 'from the rows there at migration time');
+    const s2 = createStore(after, { aesKey: AES, now: () => T0 });
+    assert.equal(s2.ensureLicence({ sessionId: 'cs_test_m94', subscriptionId: 'sub_m94', status: 'active' }).licence.seat, 3);
+    assert.equal(after.prepare('SELECT n FROM seat_high').get().n, 3, 'the trigger keeps it up');
+    after.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('gifts: a code works only while the paid subscription that made it is active', async () => {
+  const s = await setup();
+  try {
+    const giver = s.paid();
+    const { code } = (await s.req('POST', '/api/pro/gifts', { key: giver.key })).body;
+    for (const status of ['canceled', 'unpaid', 'past_due', 'incomplete_expired']) {
+      s.store.setStatus(giver.licence.id, status);
+      const r = await s.req('POST', '/api/pro/redeem', { body: { code } });
+      assert.equal(r.status, 410, status);
+      assert.equal(r.body.error, 'giver_inactive');
+      assert.match(r.body.message, /the Pro subscription that made it is not active/);
+    }
+    assert.equal(s.db.prepare('SELECT redeemed_at FROM gift_codes').get().redeemed_at, null, 'the code is not used up');
+    assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM licences').get().n, 1, 'no licence made');
+    // Active again (REACTIVATE): the code works.
+    s.store.setStatus(giver.licence.id, 'active');
+    assert.equal((await s.req('POST', '/api/pro/redeem', { body: { code } })).status, 200);
+  } finally { await s.close(); }
+});
+
+test('two tabs, two checkouts for one gift-ended licence: the earlier subscription is refunded in full, then cancelled', async () => {
+  const s = await setup();
+  try {
+    const giver = s.paid();
+    const { code } = (await s.req('POST', '/api/pro/gifts', { key: giver.key })).body;
+    const { key } = (await s.req('POST', '/api/pro/redeem', { body: { code } })).body;
+    s.advance(GIFT_MS);
+    const lic = s.store.findByKey(key);
+    // Two checkout pages, both paid: no customer yet, so checkout could not see the other.
+    assert.equal((await s.req('POST', '/api/pro/checkout', { key })).status, 200);
+    assert.equal((await s.req('POST', '/api/pro/checkout', { key })).status, 200);
+    const session = (n) => ({ ...paidSession(n), client_reference_id: String(lic.id), metadata: { site: 'bloombroke', product: 'pro', licence_id: String(lic.id) } });
+    s.stripe.subs.sub_71 = { ...sub(71, 'month'), latest_invoice: 'in_71' };
+    s.stripe.subs.sub_72 = { ...sub(72, 'month'), latest_invoice: 'in_72' };
+    s.stripe.invoiceData.in_71 = { id: 'in_71', status: 'paid', amount_paid: 420, currency: 'usd' };
+    s.stripe.invoiceData.in_72 = { id: 'in_72', status: 'paid', amount_paid: 420, currency: 'usd' };
+    assert.equal((await s.sendEvent(evt('evt_71', 'checkout.session.completed', session(71)))).status, 200);
+    assert.equal(s.store.findByKey(key).stripe_subscription_id, 'sub_71');
+    // The refund fails once: nothing is cancelled, Stripe retries, then both happen.
+    s.stripe.failRefundsOnce();
+    assert.equal((await s.sendEvent(evt('evt_72', 'checkout.session.completed', session(72)))).status, 500);
+    assert.equal(s.stripe.subs.sub_71.status, 'active', 'still live after a failed refund');
+    assert.equal((await s.sendEvent(evt('evt_72', 'checkout.session.completed', session(72)))).status, 200);
+    assert.deepEqual(s.stripe.refundData.map((r) => [r.payment_intent, r.amount, r.reason, r.key]), [['pi_in_71', 420, 'duplicate', 'bb-duplicate-refund-sub_71-in_71']]);
+    assert.equal(s.stripe.subs.sub_71.status, 'canceled');
+    assert.equal(s.stripe.subs.sub_72.status, 'active');
+    const moved = s.store.findByKey(key);
+    assert.equal(moved.stripe_subscription_id, 'sub_72');
+    assert.equal(moved.seat, lic.seat);
+    // A resend changes nothing more.
+    await s.sendEvent(evt('evt_72b', 'checkout.session.completed', session(72)));
+    assert.equal(s.stripe.refundData.length, 1);
+    assert.equal(s.stripe.calls.filter((c) => c[0] === 'sub.cancel').length, 1);
+  } finally { await s.close(); }
+});
+
+test('checkout: an oversize body gets its own plain error, not the sync one', async () => {
+  const s = await setup();
+  try {
+    const r = await s.req('POST', '/api/pro/checkout', { body: { plan: 'month', pad: 'x'.repeat(2000) } });
+    assert.equal(r.status, 413);
+    assert.equal(r.body.message, 'That request is too large.');
+    const giver = s.paid();
+    const big = await s.req('PUT', '/api/pro/sync', { key: giver.key, body: { docs: { watch: { data: 'x'.repeat(70 * 1024), updatedAt: T0 } } } });
+    assert.equal(big.status, 413);
+    assert.equal(big.body.message, 'Synced data is capped at 64 KB.');
   } finally { await s.close(); }
 });

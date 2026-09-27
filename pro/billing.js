@@ -134,7 +134,10 @@ export async function licenceFromSession(session, { store, stripe, log = console
   const licenceId = reactivateLicenceId(session);
   const target = licenceId ? store.findById(licenceId) : null;
   const prev = target?.stripe_subscription_id;
-  if (prev && prev !== subId) await cancelIfLive(stripe, prev);
+  // Two tabs can each finish a checkout for one licence (a gift or demo licence has no
+  // customer to check against yet). The earlier subscription is the duplicate: its
+  // latest payment is refunded in full, then it is cancelled.
+  if (prev && prev !== subId) await cancelIfLive(stripe, prev, { refund: true });
   const out = store.ensureLicence({
     sessionId: session.id,
     customerId: idOf(session.customer) || idOf(sub.customer),
@@ -180,7 +183,41 @@ export function billingOf(sub) {
 
 const ENDED = new Set(['canceled', 'incomplete_expired']);
 
-export async function cancelIfLive(stripe, subId) {
+async function listAll(list) {
+  const out = [];
+  for await (const x of list) out.push(x);
+  return out;
+}
+
+// Refund what is left of a subscription's latest paid invoice, in full. Idempotent: the
+// key names the invoice, and what was refunded before is taken off. Returns the amount
+// refunded (0 when there is nothing to refund).
+export async function refundLatestInvoice(stripe, sub) {
+  const invoiceId = idOf(sub?.latest_invoice);
+  if (!invoiceId) return 0;
+  const inv = await stripe.invoices.retrieve(invoiceId);
+  if (inv.status !== 'paid' || !(inv.amount_paid > 0)) return 0;
+  const payments = await listAll(stripe.invoicePayments.list({ invoice: inv.id, limit: 10 }));
+  const paid = payments.find((p) => p.status === 'paid');
+  const pi = idOf(paid?.payment?.payment_intent);
+  const charge = idOf(paid?.payment?.charge);
+  const payment = pi ? { payment_intent: pi } : charge ? { charge } : null;
+  if (!payment) return 0;
+  const refunds = await listAll(stripe.refunds.list({ ...payment, limit: 100 }));
+  const done = refunds.filter((r) => r.status === 'succeeded' || r.status === 'pending').reduce((a, r) => a + r.amount, 0);
+  const amount = inv.amount_paid - done;
+  if (amount <= 0) return 0;
+  await stripe.refunds.create(
+    { ...payment, amount, reason: 'duplicate', metadata: { ...PRO_METADATA, bloombroke_duplicate: 'true' } },
+    { idempotencyKey: `bb-duplicate-refund-${sub.id}-${inv.id}` },
+  );
+  return amount;
+}
+
+// refund: also refund the subscription's latest payment before cancelling it (the
+// duplicate of a two-tab checkout). Refund first, so a failure leaves it live and the
+// retry does both.
+export async function cancelIfLive(stripe, subId, { refund = false } = {}) {
   let sub;
   try {
     sub = await stripe.subscriptions.retrieve(subId);
@@ -189,6 +226,7 @@ export async function cancelIfLive(stripe, subId) {
     throw err;
   }
   if (ENDED.has(sub.status)) return 'already';
+  if (refund) await refundLatestInvoice(stripe, sub);
   await stripe.subscriptions.cancel(subId, {}, { idempotencyKey: `bb-reactivate-cancel-${subId}` });
   return 'canceled';
 }

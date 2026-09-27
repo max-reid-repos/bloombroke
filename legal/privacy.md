@@ -13,7 +13,7 @@ Our Data Protection Officer can be reached at {{CONTACT}}. Write to this address
 - You can use the free terminal without an account, a name or an email address.
 - Your watchlist, portfolio, saved wage, command history and screen layouts are stored in your own browser, not on our servers, unless you turn on Pro sync.
 - We use one analytics service, DataFast, to count visits.
-- Sponsor links carry no tracking, and we tell sponsors nothing about you.
+- Sponsor links carry no tracking codes, and sponsors get no data from us.
 - Pro payments go through Stripe. We never see your full card number.
 - We do not sell your personal data, and we do not send marketing messages.
 
@@ -22,13 +22,13 @@ Our Data Protection Officer can be reached at {{CONTACT}}. Write to this address
 ### Using the free terminal
 
 - **Requests to our server.** When you open a screen, your browser asks our server for data, such as the symbols on your watchlist. Our server passes the symbols to the data source and sends back the result. We use these requests only to answer them. When you open a ticker screen, your browser sends its symbol and a random number made for that browser tab. To count each tab once and to stop abuse, our server keeps a coded copy of that number and of your IP address, with the tickers opened, in memory for one hour, then only the count per ticker for 24 hours. Nothing is written to disk. Apart from this count, we do not keep a record of which symbols a person asked for.
-- **Your IP address.** Every connection reveals your IP address. Our network provider, Cloudflare, uses it to deliver the site and block attacks. Our application does not write IP addresses to its logs. It holds an IP address in memory for up to 15 minutes to limit how often the Pro routes and the ticker counter can be called, to stop abuse and guessing of licence keys and gift codes, and for up to one hour to limit how often feedback can be sent.
+- **Your IP address.** Every connection reveals your IP address. Our network provider, Cloudflare, uses it to deliver the site and block attacks. Our application does not write IP addresses to its logs. To limit how often the Pro routes, the ticker counter and the feedback form can be used, and to stop abuse and guessing of licence keys and gift codes, it holds an IP address in memory for the length of a limit window, which is at most 15 minutes, or one hour for feedback, and forgets it within one minute after the window ends.
 - **Error logs.** When something breaks, our server writes an error message to its logs. These messages do not contain your IP address, and we aim to delete them within 14 days.
 - **Your browser storage.** The terminal saves some things in your browser's local storage so they are there next time: your watchlist, portfolio, saved wage, recent commands, screen layouts, your acceptance of these terms (with its version and time) and, for Pro, your licence key. This data stays on your device. We cannot see it unless you use Pro sync. You can delete it at any time by clearing this site's data in your browser.
 
 ### Analytics
 
-We use DataFast (datafa.st) to understand how many people visit and which screens they use. The DataFast script sets two first-party cookies: datafast_visitor_id, which lasts about one year, and datafast_session_id, which lasts about 30 minutes. It sends DataFast the page address, the referring page, your browser, operating system, device type, screen size, language and time zone. DataFast uses your IP address to work out your approximate location, such as your country and city. We use this only as totals and trends, and we do not use it to identify you.
+We use DataFast (datafa.st) to understand how many people visit and which screens they use. The DataFast script sets two first-party cookies: datafast_visitor_id, which lasts about one year, and datafast_session_id, which lasts about 30 minutes. It sends DataFast the page address, the referring page, your browser, operating system, device type, screen size, language and time zone, and it records clicks on links that lead to other sites. DataFast uses your IP address to work out your approximate location, such as your country and city. We use this only as totals and trends, and we do not use it to identify you.
 
 ### Pro subscribers
 
@@ -45,7 +45,7 @@ If you subscribe to Pro, we also process:
 
 ### Sponsors
 
-When a sponsor runs, the status line shows one plain line of text with a plain link, and a WEIRD gauge may show the name of its sponsor. We add no tracking code to the link, we load no sponsor pixels or scripts, and we do not count or record who sees or clicks it. The link asks your browser not to tell the sponsor which page you came from. If you click it, the sponsor's own site and its privacy policy apply.
+When a sponsor runs, the status line shows one plain line of text with a plain link, and a WEIRD gauge may show the name of its sponsor. We add no tracking code to the link, we load no sponsor pixels or scripts, and sponsors get no data from us. Our analytics tool, DataFast, counts link clicks, including clicks on sponsor links, as part of its normal site analytics described above. The link asks your browser not to tell the sponsor which page you came from. If you click it, the sponsor's own site and its privacy policy apply.
 
 ### Feedback
 
@@ -92,12 +92,15 @@ Our server and several providers are outside Singapore, so your personal data is
 
 ## 8. How long we keep it
 
-- **IP addresses** in our rate limiter: up to 15 minutes, or up to one hour for feedback. They are held in memory, never on disk.
+- **IP addresses** in our rate limiter: for the length of the limit window (at most 15 minutes, or one hour for feedback), plus at most one minute. They are held in memory, never on disk.
 - **Ticker counter:** a coded copy of your browser tab's random number and of your IP address, with the tickers opened, for one hour; after that only the count per ticker, for 24 hours. All in memory, never on disk.
 - **Error logs** on our server: we aim to delete them within 14 days.
 - **Cloudflare and DataFast** keep their own records for the periods in their own policies.
-- **Pro licence record and synced data:** deleted within 30 days after your subscription ends, or sooner if you ask. Records of payments that tax and company law require us to keep, such as invoices, are kept for as long as that law requires, normally five years, and are held mainly in Stripe.
-- **Gift licences:** synced data is deleted 30 days after the gift month ends. Gift code records are kept for as long as the licence that made them.
+- **Pro licence record:** the hash and last four characters of your key, your seat number, your Stripe IDs and the dates are kept while your licence exists and for 5 years after your subscription ends (it is cancelled or unpaid), for payment and refund records, and then deleted.
+- **Synced data:** deleted 30 days after your subscription ends, or sooner if you ask. The encrypted copy of your key is deleted as soon as your browser has saved the key, and at the latest 25 hours after checkout.
+- **Payment records:** records of payments that tax and company law require us to keep, such as invoices, are kept for as long as that law requires, normally five years, and are held mainly in Stripe.
+- **Gift licences:** the licence record is kept for 5 years after the gift month ends, and then deleted. Synced data is deleted 30 days after the gift month ends.
+- **Gift code records:** deleted 12 months after the code was used or expired.
 - **Feedback:** up to 12 months, then deleted.
 - **Emails:** for as long as we need them to deal with your message, and then deleted, unless we need to keep them for a legal reason.
 - **Your browser storage:** until you clear it. We have no control over it.

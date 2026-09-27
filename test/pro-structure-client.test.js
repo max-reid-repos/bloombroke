@@ -459,18 +459,59 @@ test('legal: terms s9, disclaimer and privacy say what the code does', () => {
     assert.ok(s9.includes(must), `terms s9: ${must}`);
   }
   const disclaimer = read('disclaimer');
-  assert.ok(disclaimer.includes('we are not paid by any broker, exchange or product issuer for anything shown on the site.'), 'the s2 sentence stays');
+  assert.ok(disclaimer.includes('we are not paid by any broker, exchange or investment product issuer for anything shown on the site.'), 'the s2 sentence, true with any allowed sponsor');
   for (const must of ['marked SPONSOR in the status line, or SPONSORED BY on a WEIRD gauge', 'We do not accept sponsors that sell or promote investment products, brokers, exchanges, crypto, funds or tips', 'Sponsors have no say over the data or content']) {
     assert.ok(disclaimer.includes(must), `disclaimer: ${must}`);
   }
   const privacy = read('privacy');
   assert.ok(privacy.includes('We do not share it with advertisers or data brokers.'), 'privacy s6 stays');
   for (const must of ['We add no tracking code to the link', 'one-way hash of the code and its last four characters', 'your seat number', 'We keep feedback for up to 12 months', 'We do not store your IP address with it', 'your email address only to reply to you',
-    'up to one hour to limit how often feedback can be sent', 'DESK layouts']) {
+    'at most 15 minutes, or one hour for feedback, and forgets it within one minute after the window ends', 'DESK layouts',
+    'sponsors get no data from us', 'DataFast, counts link clicks, including clicks on sponsor links',
+    'kept while your licence exists and for 5 years after your subscription ends', 'Gift code records:** deleted 12 months after the code was used or expired',
+    'the licence record is kept for 5 years after the gift month ends']) {
     assert.ok(privacy.includes(must), `privacy: ${must}`);
   }
   for (const f of ['terms', 'privacy', 'disclaimer']) assert.doesNotMatch(read(f), /\u2014/, `${f}: no em dash`);
+  // The old, untrue lines are gone.
+  assert.ok(!privacy.includes('we do not count or record who sees or clicks it'));
+  assert.ok(!privacy.includes('Gift code records are kept for as long as the licence'));
+  assert.ok(!privacy.includes('Pro licence record and synced data:** deleted within 30 days'));
+  assert.ok(s9.includes('only while the paid subscription that made it is active'));
+  assert.ok(s9.includes('we cancel the earlier one and refund its latest payment in full'));
   // What the text promises, checked against the code.
   assert.equal(GIFT_RULES.includes('90 days'), true);
   assert.equal(KEEP_MS, 365 * 24 * 60 * 60 * 1000);
+});
+
+// ---- Review fixes ---------------------------------------------------------------------------
+
+test('feedback: terminal escapes and bidi overrides never reach the store or the owner terminal', async () => {
+  const { formatFeedback: fmt, safeText } = await import('../scripts/feedback-export.js');
+  const red = 'hi \u001b[31mRED\u001b[0m there';
+  const osc = 'copy me \u001b]52;c;ZXZpbA==\u0007 done';
+  const bidi = 'abc \u202edcba\u202c ok';
+  assert.equal(validateFeedback({ message: red }).message, 'hi [31mRED[0m there');
+  assert.equal(validateFeedback({ message: osc }).message, 'copy me ]52;c;ZXZpbA== done');
+  assert.equal(validateFeedback({ message: bidi }).message, 'abc dcba ok');
+  assert.equal(validateFeedback({ message: 'a\u009b31m b\u0085c' }).message, 'a31m bc', 'C1 controls too');
+  assert.equal(validateFeedback({ message: 'line one\r\nline two\tend' }).message, 'line one\nline two\tend', 'newline and tab stay');
+  assert.throws(() => validateFeedback({ message: '\u001b\u0007' }), (e) => e.code === 'empty');
+  for (const email of ['a\u001b[31m@b.co', 'a@b.co\u202e', 'a\u0000@b.co']) {
+    assert.throws(() => validateFeedback({ message: 'x', email }), (e) => e.code === 'bad_email', JSON.stringify(email));
+  }
+  // Rows written some other way still print safely.
+  const out = fmt([{ id: 1, created_at: T0, message: `${red}\n${osc}\n${bidi}`, email: 'e\u001b@x.co', screen: 'A\u001bB', legal_version: '1.1' }]);
+  assert.doesNotMatch(out, /[\u001b\u0007\u202e\u202c]/);
+  assert.match(out, /\\x1b\[31mRED/);
+  assert.match(out, /\\x1b\]52;c;ZXZpbA==\\x07/);
+  assert.match(out, /\\u202edcba\\u202c/);
+  assert.match(out, /email e\\x1b@x\.co/);
+  assert.equal(safeText('tab\tkept'), 'tab\tkept');
+  // And through the route.
+  const s = await feedbackServer();
+  try {
+    assert.equal((await s.post({ message: osc })).status, 200);
+    assert.equal(s.db.prepare('SELECT message FROM feedback').get().message, 'copy me ]52;c;ZXZpbA== done');
+  } finally { await s.close(); }
 });

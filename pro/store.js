@@ -3,7 +3,7 @@
 import { tx } from './db.js';
 import {
   generateKey, hashKey, last4, encryptReveal, decryptReveal, REVEAL_MS,
-  generateGiftCode, GIFT_MS, GIFT_CODE_MS, MAX_GIFTS,
+  generateGiftCode, GIFT_MS, GIFT_CODE_MS, MAX_GIFTS, ACTIVE_STATUSES, isGiftLicence,
 } from './licence.js';
 
 export const MAX_SYNC_BYTES = 64 * 1024;
@@ -16,8 +16,13 @@ export const ENDED_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
 const ENDED_SQL = "('canceled', 'unpaid')";
 const endedAt = (status, t) => (status === 'canceled' || status === 'unpaid' ? t : null);
 // The next seat number, read inside the same transaction as the insert. Seats are never
-// reused: licence rows are never deleted.
-const NEXT_SEAT = '(SELECT COALESCE(MAX(seat), 0) + 1 FROM licences)';
+// reused: seat_high (migration 009) remembers the highest seat ever given, even after
+// old licence rows are deleted.
+const NEXT_SEAT = '(SELECT MAX(COALESCE((SELECT n FROM seat_high WHERE id = 1), 0), COALESCE((SELECT MAX(seat) FROM licences), 0)) + 1)';
+// Records: licence rows 5 years after the licence ended, gift code rows 12 months after
+// they were used or expired (Privacy Policy).
+export const RECORD_KEEP_MS = 5 * 365 * 24 * 60 * 60 * 1000;
+export const GIFT_RECORD_KEEP_MS = 365 * 24 * 60 * 60 * 1000;
 const INTERVALS = new Set(['month', 'year']);
 
 // A gift code in a listing: never the code, only its last 4 characters and its state.
@@ -76,6 +81,14 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
     giftById: db.prepare('SELECT * FROM gift_codes WHERE id = ?'),
     // The one write that uses a code: only while it is unused and not expired.
     giftUse: db.prepare('UPDATE gift_codes SET redeemed_at = ?, redeemed_licence_id = ? WHERE id = ? AND redeemed_at IS NULL AND expires_at > ?'),
+    oldGifts: db.prepare(`DELETE FROM gift_codes WHERE
+      (redeemed_at IS NOT NULL AND redeemed_at <= ?) OR (redeemed_at IS NULL AND expires_at <= ?)`),
+    // A licence goes once it ended over 5 years ago: a paid one cancelled or unpaid, a gift
+    // one whose month ran out. Never while a gift code row still points at it.
+    oldLicences: db.prepare(`DELETE FROM licences WHERE (
+        (status IN ${ENDED_SQL} AND ended_at IS NOT NULL AND ended_at <= ?)
+        OR (gift_expires_at IS NOT NULL AND stripe_subscription_id IS NULL AND gift_expires_at <= ?)
+      ) AND NOT EXISTS (SELECT 1 FROM gift_codes g WHERE g.giver_licence_id = licences.id OR g.redeemed_licence_id = licences.id)`),
     endedGiftDocs: db.prepare(`DELETE FROM sync_docs WHERE licence_id IN
       (SELECT id FROM licences WHERE gift_expires_at IS NOT NULL AND stripe_subscription_id IS NULL AND gift_expires_at <= ?)`),
     terms: db.prepare('UPDATE licences SET terms_accepted_at = ?, terms_version = ? WHERE id = ? AND terms_accepted_at IS NULL'),
@@ -183,6 +196,19 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
       }));
     },
 
+    // Daily: gift code rows used or expired over 12 months ago, then licence rows (with
+    // their synced data) whose licence ended over 5 years ago. Returns counts only.
+    purgeRecords() {
+      const t = now();
+      return tx(db, () => {
+        const g = t - GIFT_RECORD_KEEP_MS;
+        const gifts = Number(q.oldGifts.run(g, g).changes);
+        const l = t - RECORD_KEEP_MS;
+        const licences = Number(q.oldLicences.run(l, l).changes);
+        return { gifts, licences };
+      });
+    },
+
     // ---- gifts ------------------------------------------------------------------------
     // The route checks the giver may make gifts (a paid, active licence); this counts.
 
@@ -225,6 +251,10 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
         if (g.redeemed_at) throw new GiftError('used', 'That gift code has already been used.');
         if (t >= g.expires_at) throw new GiftError('expired', 'That gift code has expired.');
         const giver = q.byId.get(g.giver_licence_id);
+        // A code works only while the paid subscription that made it is active.
+        if (!giver || isGiftLicence(giver) || !giver.stripe_subscription_id || !ACTIVE_STATUSES.has(giver.status)) {
+          throw new GiftError('giver_inactive', 'This gift code no longer works: the Pro subscription that made it is not active.');
+        }
         let key;
         let hash;
         do { key = generateKey(rand); hash = hashKey(key); } while (q.byHash.get(hash));

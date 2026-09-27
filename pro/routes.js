@@ -349,7 +349,10 @@ export function mountPro(app, {
   // Body parser errors (too large, bad JSON) as JSON.
   pro.use((err, req, res, next) => {
     if (res.headersSent) return next(err);
-    if (err?.type === 'entity.too.large') return fail(res, 413, 'too_large', 'Synced data is capped at 64 KB.');
+    if (err?.type === 'entity.too.large') {
+      // Only sync takes big bodies; everything else takes a few small fields.
+      return req.path === '/sync' ? fail(res, 413, 'too_large', 'Synced data is capped at 64 KB.') : fail(res, 413, 'too_large', 'That request is too large.');
+    }
     if (err?.type === 'entity.parse.failed') return fail(res, 400, 'bad_json', 'That is not valid JSON.');
     log.error('[pro]', err?.message);
     return fail(res, 500, 'error', 'Something went wrong. Try again in a minute.');

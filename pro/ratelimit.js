@@ -1,13 +1,20 @@
 // Fixed-window rate limits in memory, per key (usually the client IP bucket).
 // When the table is full of live entries, new keys are refused (fail closed), so a flood
 // of addresses cannot push out the ones being limited.
+// A timer drops the entries whose window is over, every windowMs or every minute,
+// whichever is sooner, so an address is held for its window plus at most one minute
+// (the Privacy Policy). The timer is unref'd: it never keeps the process alive.
 
-export function createLimiter({ max, windowMs, now = () => Date.now(), maxKeys = 50_000 }) {
+export function createLimiter({ max, windowMs, now = () => Date.now(), maxKeys = 50_000, sweepEvery = Math.min(windowMs, 60_000) }) {
   const hits = new Map();
   let lastSweep = -Infinity;
   function sweep(t) {
     lastSweep = t;
     for (const [k, v] of hits) if (v.reset <= t) hits.delete(k);
+  }
+  if (sweepEvery > 0 && typeof setInterval === 'function') {
+    const timer = setInterval(() => sweep(now()), sweepEvery);
+    timer.unref?.();
   }
   // No room for a new key, even after dropping the expired ones.
   function full(t) {

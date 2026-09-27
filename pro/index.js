@@ -56,6 +56,12 @@ export function startPro(app, { dir, env = process.env, log = console }) {
         const n = store.purgeEnded();
         log.log(`[pro] purge: ${n.docs} synced documents, ${n.reveals} reveal copies`);
       } catch (err) { log.error('[pro] purge', err.message); }
+      // Privacy Policy: licence records go 5 years after the licence ended, gift code
+      // records 12 months after they were used or expired.
+      try {
+        const r = store.purgeRecords();
+        log.log(`[pro] purge: ${r.licences} licence records over 5 years old, ${r.gifts} gift code records over 12 months old`);
+      } catch (err) { log.error('[pro] records purge', err.message); }
       // Privacy Policy: feedback is kept up to 12 months.
       try {
         log.log(`[pro] purge: ${feedback.prune()} feedback notes over 12 months old`);

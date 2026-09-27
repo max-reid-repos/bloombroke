@@ -43,14 +43,24 @@ export function parseArgs(argv) {
   return out;
 }
 
+// Anything a terminal could act on is shown as a visible escape (\x1b, \u202e), so a
+// note can never colour, move or rewrite the owner's terminal. Tab and newline stay.
+const UNSAFE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+export function safeText(v) {
+  return String(v ?? '').replace(UNSAFE, (c) => {
+    const n = c.charCodeAt(0);
+    return n <= 0xff ? `\\x${n.toString(16).padStart(2, '0')}` : `\\u${n.toString(16).padStart(4, '0')}`;
+  });
+}
+
 const utc = (ms) => `${new Date(ms).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 
 // Rows -> the plain text the owner reads.
 export function formatFeedback(rows) {
   if (!rows.length) return 'No feedback.\n';
   return rows.map((r) => {
-    const head = [`#${r.id}`, utc(r.created_at), `screen ${r.screen || '--'}`, `email ${r.email || '--'}`, `legal ${r.legal_version || '--'}`].join('  ');
-    const body = String(r.message).split(/\r?\n/).map((l) => `    ${l}`).join('\n');
+    const head = [`#${r.id}`, utc(r.created_at), `screen ${safeText(r.screen) || '--'}`, `email ${safeText(r.email) || '--'}`, `legal ${safeText(r.legal_version) || '--'}`].join('  ');
+    const body = String(r.message).split(/\r?\n/).map((l) => `    ${safeText(l)}`).join('\n');
     return `${head}\n${body}\n`;
   }).join('\n');
 }
