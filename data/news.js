@@ -108,7 +108,13 @@ export function makeNews({ fetchImpl = globalThis.fetch, cache = createCache() }
     };
   }
 
-  return { getNews };
+  // The news hub fetched a MARKETS feed: keep its rows as the feed's fresh cache entry.
+  function prime(id, items) {
+    if (!FEEDS.some((f) => f.id === id) || !items?.length) return;
+    cache.refresh(`news:${id}`, NEWS_TTL, async () => items).catch(() => {});
+  }
+
+  return { getNews, prime };
 }
 
-export const { getNews } = makeNews();
+export const { getNews, prime: primeNews } = makeNews();

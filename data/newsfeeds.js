@@ -349,7 +349,15 @@ export function makeNewsFeeds({ fetchImpl = globalThis.fetch, cache = createCach
     };
   }
 
-  return { getNewsTab };
+  // The news hub (data/newshub.js) fetched a feed: keep its rows as this feed's fresh
+  // cache entry, so /api/news serves them without fetching the same feed again.
+  function prime(id, items) {
+    const f = Object.values(feeds).flat().find((x) => x.id === id);
+    if (!f || !items?.length) return;
+    cache.refresh(`newsfeed:${id}`, f.ttl || FEED_TTL, async () => items).catch(() => {});
+  }
+
+  return { getNewsTab, prime };
 }
 
-export const { getNewsTab } = makeNewsFeeds();
+export const { getNewsTab, prime: primeNewsFeed } = makeNewsFeeds();
