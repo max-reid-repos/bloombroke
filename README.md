@@ -106,7 +106,14 @@ Sources and credits: CNBC, Nasdaq, SEC EDGAR, Federal Reserve, New York Fed, BLS
 
 ## Pro
 
-The terminal stays free. Pro is $4.20 a month (Stripe subscription, USD): your own ticker tape and sync of the watchlist, portfolio and tape across devices. There are no accounts: checkout makes a licence key, and the server keeps only its hash. Cancel any time: type `PRO` and press MANAGE. If we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month.
+The terminal stays free. Pro is $4.20 a month or $42 a year (Stripe subscription, USD): your own ticker tape, sync of the watchlist, portfolio, tape and DESK layouts across devices, a seat number and no sponsor line. There are no accounts: checkout makes a licence key, and the server keeps only its hash. Cancel any time: type `PRO` and press MANAGE. If we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month or year.
+
+Pro environment (see `.env.example`; `scripts/stripe-setup.js` writes the Stripe values):
+
+- `STRIPE_MODE`: `live` (default) or `test`. Test mode reads the same names with `_TEST`.
+- `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`, `PRO_SECRET`: all four open checkout.
+- `STRIPE_PRICE_ID_YEARLY` (`STRIPE_PRICE_ID_YEARLY_TEST` in test mode): the $42 a year price. Without it, yearly says it is not available yet.
+- Optional: `STRIPE_PORTAL_CONFIG_ID`, `PRO_DB_PATH` (default `var/pro.db`), `PUBLIC_URL`, `TERMS_VERSION`.
 
 ## Built with
 
