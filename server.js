@@ -17,7 +17,9 @@ import { whatifTokens, normalizeWhatif, certModel } from './data/whatif-cert.js'
 import {
   getCert, whatifPng, defaultPng, withMeta, certMeta, DEFAULT_META,
   getQuoteCard, quotePng, quoteMeta, affordModel, affordPng, affordMeta,
+  withCanonical, quoteTicker, SITE,
 } from './lib/og.js';
+import { commandMeta, mountSiteFiles } from './lib/seo.js';
 import { parseCommand } from './public/app.js';
 import { getFinancials, FinancialsError } from './data/financials.js';
 import { getScreen, ScreenError, startScreenPrewarm } from './data/screen.js';
@@ -339,11 +341,15 @@ app.get('/og/default.png', async (req, res) => {
   }
 });
 
+// Icons, the web manifest, robots.txt and /sitemap.xml (lib/seo.js).
+mountSiteFiles(app, path.join(dir, 'public'));
+
 // Pages: the HTML is never cached, and it points at versioned assets (see lib/assets.js).
 const PUBLIC = path.join(dir, 'public');
 const BUILD = buildId(PUBLIC);
 const PAGE = versionIndex(readFileSync(path.join(PUBLIC, 'index.html'), 'utf8'), BUILD);
 const INDEX = withMeta(PAGE, DEFAULT_META);
+const HOME = withCanonical(INDEX, `${SITE}/`);
 // /terms, /privacy, /disclaimer: plain server-rendered pages, text in legal/*.md.
 mountLegal(app, { build: BUILD });
 function sendIndex(res, status = 200, html = INDEX) {
@@ -383,20 +389,38 @@ async function shareIndex(c) {
     return model ? withMeta(PAGE, affordMeta(model)) : INDEX;
   }
   const whatif = /^\s*WHATIF\s+\S/i.test(c);
-  if (!whatif && !c.trim()) return INDEX;
+  if (!whatif && !c.trim()) return HOME;
   const weirdPage = await weirdShareIndex(c).catch(() => null); // WEIRD share cards
   if (weirdPage) return weirdPage;
-  const timeout = new Promise((resolve) => { setTimeout(resolve, 2500, null).unref(); });
+  // A bare command (/?c=MARKETS): its own title, description and canonical, no card.
+  const plain = !whatif && commandMeta(c, parseCommand);
+  if (plain) return withMeta(PAGE, plain);
+  const LATE = Symbol('late');
+  const timeout = new Promise((resolve) => { setTimeout(resolve, 2500, LATE).unref(); });
   try {
     if (whatif) {
       const model = await Promise.race([getCert(c, ogDeps), timeout]);
-      return model ? withMeta(PAGE, certMeta(model)) : INDEX;
+      return model && model !== LATE ? withMeta(PAGE, certMeta(model)) : INDEX;
     }
     const model = await Promise.race([getQuoteCard(c, quoteDeps), timeout]);
+    if (model === LATE) return tickerIndex(c);
     return model ? withMeta(PAGE, quoteMeta(model)) : INDEX;
   } catch {
     return INDEX;
   }
+}
+// A slow quote: the ticker's own title and canonical, without the price.
+function tickerIndex(c) {
+  const ticker = quoteTicker(c, parseCommand);
+  if (!ticker) return INDEX;
+  const q = new URLSearchParams({ c: ticker }).toString();
+  return withMeta(PAGE, {
+    title: `${ticker} | Bloombroke`,
+    description: `${ticker}: price, chart and news. Bloombroke is a free market terminal for normal people.`,
+    image: `${SITE}/og/quote.png?${q}`,
+    url: `${SITE}/?${q}`,
+    alt: `${ticker} on Bloombroke.`,
+  });
 }
 app.get(['/', '/index.html'], async (req, res) => {
   const html = await shareIndex(str(req.query.c) || '');
