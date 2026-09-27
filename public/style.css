@@ -796,6 +796,12 @@ a.ch-flag { cursor: pointer; }
 .news-title { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .news-title:visited { color: var(--text-2); }
 .news-title:hover { color: var(--accent); text-decoration: none; }
+/* Live NEWS: a new story slides in at the top and glows ice blue for about 2 s. */
+.news-row.is-new { animation: news-in .3s ease-out, news-glow 2s ease-out; }
+@keyframes news-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@keyframes news-glow { from { background: hsla(201, 100%, 71%, .22); box-shadow: inset 2px 0 0 var(--accent); } to { background: transparent; box-shadow: inset 2px 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { .news-row.is-new { animation: news-glow 2s ease-out; } }
+.news-new { color: var(--ink); background: var(--accent); padding: 0 5px; margin-right: 8px; font-weight: 700; letter-spacing: .06em; }
 
 /* ---- HELP ------------------------------------------------------------- */
 .cmd-list { margin: -8px -10px; }
