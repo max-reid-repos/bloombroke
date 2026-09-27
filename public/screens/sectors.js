@@ -35,6 +35,9 @@ export function sectorsCmd({ period = '1D', view = 'TABLE' } = {}) {
   return ['SECTORS', period !== '1D' ? period : '', view === 'MAP' ? 'MAP' : ''].filter(Boolean).join(' ');
 }
 
+// The command bar and URL keep the clean form (unknown words dropped).
+export const toInput = (args) => sectorsCmd(args);
+
 // FISHTANK with one sector lit.
 export const swimCmd = (key) => `FISHTANK ${key}`;
 
@@ -52,17 +55,24 @@ export function memberCaps(members) {
   return new Map(members.filter((m) => m.marketCap > 0).map((m) => [m.ticker, m.marketCap / n.get(company(m.ticker))]));
 }
 
+// A cap at the start of the period: today's cap before the period's move. Two equal caps
+// that moved +100% and 0% started at 1:2, so together they moved +33%, not +50%.
+export function startCap(cap, move) {
+  return cap > 0 && Number.isFinite(move) && move > -100 ? cap / (1 + move / 100) : null;
+}
+
 // Members of one sector -> the same rows with weight and pt. weight: the member's share
-// of the cap of the members that have a cap and a known move (the weights sum to 1).
-// pt: weight x move, in percentage points (they sum to the listed members' move).
-// No cap or no move: weight and pt null.
+// of the start-of-period cap of the members that have a cap and a known move (the
+// weights sum to 1). pt: weight x move, in percentage points; they sum to the listed
+// members' move over the period. No cap or no move: weight and pt null.
 export function contributions(members) {
   const caps = memberCaps(members);
-  const counts = (m) => caps.has(m.ticker) && Number.isFinite(m.move);
-  const total = members.filter(counts).reduce((t, m) => t + caps.get(m.ticker), 0);
+  const start = new Map(members.map((m) => [m.ticker, startCap(caps.get(m.ticker), m.move)]));
+  const counts = (m) => start.get(m.ticker) > 0;
+  const total = members.filter(counts).reduce((t, m) => t + start.get(m.ticker), 0);
   return members.map((m) => {
     if (!(total > 0) || !counts(m)) return { ...m, weight: null, pt: null };
-    const weight = caps.get(m.ticker) / total;
+    const weight = start.get(m.ticker) / total;
     return { ...m, weight, pt: weight * m.move };
   });
 }
@@ -91,6 +101,23 @@ export const fmtPt = (pt) => (Number.isFinite(pt) ? `${fmtSigned(pt, 2)} pt` : '
 export function whoLine(rows) {
   const top = topContributors(rows);
   return top.length ? top.map((r) => `${r.ticker} ${fmtPt(r.pt)}`).join(', ') : '--';
+}
+
+// Who moved it is shown only when it can explain the ETF row: at least this many listed
+// members with a pt, and their total on the same side as the ETF's move.
+export const WHO_MIN = 3;
+export function showWho(s) {
+  const total = listedMove(s.members);
+  const known = s.members.filter((m) => Number.isFinite(m.pt)).length;
+  if (known < WHO_MIN || !Number.isFinite(total) || !Number.isFinite(s.move)) return false;
+  return !((total > 0 && s.move < 0) || (total < 0 && s.move > 0));
+}
+
+// The line under an open sector: the listed members' count and total first, then who
+// moved it when showWho allows. "Listed 8 of XLY: +0.20% · AMZN +0.12 pt, TSLA -0.06 pt"
+export function listedLine(s) {
+  const head = `Listed ${s.members.length} of ${s.id}: ${fmtPct(listedMove(s.members))}`;
+  return showWho(s) ? `${head} · ${whoLine(s.members)}` : head;
 }
 
 // /api/sectors -> one entry per sector in the list's order, with its members (biggest
@@ -134,7 +161,7 @@ function sectorRow(s, open, max) {
 function whoRow(s) {
   const swim = s.key ? ` <a class="sc-swim" href="${esc(q(swimCmd(s.key)))}" data-cmd="${esc(swimCmd(s.key))}" tabindex="-1">SWIM</a>` : '';
   return `<tr class="sc-who" data-k="w:${esc(s.id)}" data-parent="${esc(s.id)}" tabindex="-1">
-    <td colspan="5"><span class="sc-who-t">${esc(whoLine(s.members))}</span>${swim}</td>
+    <td colspan="5"><span class="sc-who-t">${esc(listedLine(s))}</span>${swim}</td>
   </tr>`;
 }
 
@@ -267,6 +294,10 @@ export function nextBox(items, cur, key) {
 
 const f1 = (n) => n.toFixed(1);
 
+// A calmer map: small boxes carry no label, middling ones the ticker only.
+export const TILE_MIN = { ticker: [34, 20], pct: [60, 40] };
+export const tileShows = (c, what) => c.w >= TILE_MIN[what][0] && c.h >= TILE_MIN[what][1];
+
 // The map as SVG. cur: the sector id (overview) or ticker (zoomed) under the cursor.
 // select: the map beside the table, where a tile picks its sector (data-sec) instead of
 // linking to its stock.
@@ -276,7 +307,7 @@ export function mapSvg(model, lay, { w, h, period = '1D', zoom = null, cur = nul
   for (const s of lay.secs) {
     parts.push(`<g class="sc-msec" data-sec="${esc(s.id)}"><rect class="hm-sec" x="${f1(s.x)}" y="${f1(s.y)}" width="${f1(s.w)}" height="${f1(s.h)}"/>`);
     if (s.head >= 12) {
-      const extra = zoom ? ` · ${fmtBreadth(byId.get(s.id)?.breadth)} · ${whoLine(byId.get(s.id)?.members || [])}` : '';
+      const extra = zoom && byId.get(s.id) ? ` · ${fmtBreadth(byId.get(s.id).breadth)} · ${listedLine(byId.get(s.id))}` : '';
       const base = zoom ? `${s.id} ${s.name}` : s.id;
       const label = sectorLabel(base, `${fmtPct(s.move)}${extra}`, s.w);
       if (label) parts.push(`<text class="hm-sec-t" x="${f1(s.x + 4)}" y="${f1(s.y + Math.min(12, s.head - 3) + (zoom ? 2 : 0))}">${esc(label)}</text>`);
@@ -285,7 +316,9 @@ export function mapSvg(model, lay, { w, h, period = '1D', zoom = null, cur = nul
   }
   for (const c of lay.cells) {
     const pctText = fmtPct(c.move);
-    const { fs, ps } = tileLabels(c.w, c.h, c.ticker.length, pctText.length);
+    const fit = tileLabels(c.w, c.h, c.ticker.length, pctText.length);
+    const fs = tileShows(c, 'ticker') ? fit.fs : 0;
+    const ps = fs && tileShows(c, 'pct') ? fit.ps : 0;
     const cx = c.x + c.w / 2;
     const block = ps ? fs * 0.72 + ps * 0.35 + ps * 0.72 : 0;
     const ty = ps ? c.y + (c.h - block) / 2 + fs * 0.72 : c.y + c.h / 2 + fs * 0.35;
@@ -326,7 +359,7 @@ export function mapHeight(width, { stretched = 0, embed = null } = {}) {
 // open, the row under the cursor, and the map's zoom and cursor.
 const state = { open: new Set(), cur: null, zoom: null, mcur: null, refocus: false };
 
-const PT_TIP = 'Approx., listed members only. pt = a member\'s share of the listed members\' market cap times its move, in percentage points. The sector ETF holds more than these members.';
+const PT_TIP = 'Approx., listed members only. pt = a member\'s share of the listed members\' market cap at the start of the period times its move, in percentage points. The sector ETF holds more than these members.';
 const KEYS_TIP = 'Down from the empty command bar (or Tab) moves in. Right or Enter opens a sector, Left closes it, Space toggles, E opens all, C closes all, Enter on a stock opens it, M: table or map. On the map: arrows move, Enter goes in, Esc comes out.';
 
 export function render(el, cmd, ctx) {

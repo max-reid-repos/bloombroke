@@ -99,6 +99,7 @@ const MIN = 60_000;
 export const BASES_TTL = 6 * 60 * MIN; // all found: until the next New York day, or 6 hours
 export const BASES_RETRY = 10 * MIN; // some missing: those are tried again after this
 export const BASES_CONCURRENCY = 6;
+export const BASES_WAIT = 12_000; // the longest a request waits on a new day's first load
 // The past closes come from their own small chart cache, so 111 one-year charts never
 // push visitors' charts out of the shared one.
 const ownCharts = () => makeCharts({ cache: createCache({ maxEntries: 20 }) }).getChart;
@@ -113,31 +114,50 @@ async function defaultStocks() {
 
 // warm: a 1D visit starts loading the past closes in the background (once a day), so
 // switching to 1W, 1M, YTD or 1Y does not wait on 112 charts.
-export function makeSectors({ getChart = null, getStocks = defaultStocks, now = () => Date.now(), warm = true, ...opts } = {}) {
+export function makeSectors({ getChart = null, getStocks = defaultStocks, now = () => Date.now(), warm = true, basesWait = BASES_WAIT, ...opts } = {}) {
   const list = makeCnbcList({ key: 'sectors', items: SECTOR_ETFS, minRows: 8, ...opts });
   const chart = getChart || ownCharts();
   const symbols = [...SECTOR_ETFS.map((e) => e.id), ...SP100.map((m) => m.ticker)];
   let memo = null; // { day, bases: { SYM: { '1W', '1M', YTD, '1Y' } }, until }
-  let inflight = null;
+  let inflight = null; // { day, run, next }: a load under way, and what it has so far
 
-  // Past closes for every symbol, for today (New York). Only the missing ones are fetched
-  // again on a retry; a new day starts over.
+  // Load the past closes for `today`: the saved ones kept (same day), the rest fetched.
+  // Each close lands in `next` as it arrives, so a caller that stops waiting still gets
+  // what has come in.
+  function startLoad(today) {
+    const keep = memo && memo.day === today ? memo.bases : {};
+    const next = { day: today, bases: { ...keep }, until: 0 };
+    const want = symbols.filter((s) => !keep[s]);
+    const from = addDays(today, -375);
+    const run = mapLimit(want, BASES_CONCURRENCY, (s) => chart(s, { from })
+      .then((c) => { next.bases[s] = periodBases(c.points, today); })
+      .catch(() => {}))
+      .then(() => {
+        const missing = symbols.filter((s) => !next.bases[s]).length;
+        next.until = now() + (missing ? BASES_RETRY : BASES_TTL);
+        memo = next;
+        return memo;
+      })
+      .finally(() => { if (inflight?.next === next) inflight = null; });
+    inflight = { day: today, run, next };
+    return inflight;
+  }
+
+  // Past closes for every symbol, for today (New York). The same day: the saved closes at
+  // once, and the missing ones tried again in the background. A new day: wait for the
+  // load, at most basesWait, then answer with what has come in (the rest is --).
   function getBases() {
     const today = nyDay(now());
-    if (memo && memo.day === today && now() < memo.until) return Promise.resolve(memo);
-    if (inflight) return inflight;
-    inflight = (async () => {
-      const keep = memo && memo.day === today ? memo.bases : {};
-      const want = symbols.filter((s) => !keep[s]);
-      const from = addDays(today, -375);
-      const got = await mapLimit(want, BASES_CONCURRENCY, (s) => chart(s, { from }).then((c) => periodBases(c.points, today)).catch(() => null));
-      const bases = { ...keep };
-      want.forEach((s, i) => { if (got[i]) bases[s] = got[i]; });
-      const missing = symbols.filter((s) => !bases[s]).length;
-      memo = { day: today, bases, until: now() + (missing ? BASES_RETRY : BASES_TTL) };
-      return memo;
-    })().finally(() => { inflight = null; });
-    return inflight;
+    const same = memo && memo.day === today;
+    if (same && now() < memo.until) return Promise.resolve(memo);
+    const load = inflight && inflight.day === today ? inflight : startLoad(today);
+    if (same) return Promise.resolve(memo);
+    let timer = null;
+    const cut = new Promise((resolve) => {
+      timer = setTimeout(() => resolve(load.next), basesWait);
+      timer.unref?.();
+    });
+    return Promise.race([load.run, cut]).finally(() => clearTimeout(timer));
   }
 
   // { period, sectors: [{ id, key, name, last, changePct, move, ... }], members: [{ ticker,

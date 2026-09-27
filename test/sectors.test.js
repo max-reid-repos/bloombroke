@@ -7,14 +7,15 @@ import {
 } from '../data/sectors.js';
 import { SP100, SECTORS } from '../data/sp100.js';
 import {
-  parse, sectorsCmd, swimCmd, memberCaps, contributions, listedMove, breadth, fmtBreadth, topContributors, fmtPt, whoLine,
+  parse, sectorsCmd, swimCmd, toInput, memberCaps, contributions, startCap, showWho, listedLine, WHO_MIN, tileShows, TILE_MIN, listedMove, breadth, fmtBreadth, topContributors, fmtPt, whoLine,
   sectorModel, tableHtml, treeKey, mapLayout, nextBox, mapSvg, mapFill, mapHeight, PERIODS, MAP_SCALE, secOfKey, SPLIT_MIN_W,
 } from '../public/screens/sectors.js';
 import { parse as fishParse, SPECIES } from '../public/screens/fishtank.js';
 import { matchWeird } from '../public/commands-weird.js';
-import { parseCommand } from '../public/app.js';
+import { parseCommand, urlFor } from '../public/app.js';
 import { findCommand, REGISTRY, ALIASES } from '../public/registry.js';
 import { sectorTable } from '../public/screens/breadth.js';
+import { sectorBreadth } from '../data/breadth.js';
 
 const json = (body, status = 200) => ({ ok: status === 200, status, json: async () => body, headers: { get: () => null } });
 const at = (d) => Date.parse(`${d}T04:00:00Z`); // midnight New York in summer
@@ -137,6 +138,42 @@ test('sectors data: a missing chart is --, and only it is tried again', async ()
   assert.deepEqual(w.calls.slice(before).map((c) => c.sym).sort(), ['AAPL', 'XLE']);
 });
 
+test('sectors data: a slow or dead source never holds a request long', async () => {
+  let t = NOW;
+  let releaseAapl;
+  const aapl = new Promise((r) => { releaseAapl = r; });
+  const pts = { points: [{ t: at('2025-09-01'), v: 50 }, { t: at('2025-12-31'), v: 80 }, { t: at('2026-08-25'), v: 90 }, { t: at('2026-09-18'), v: 95 }] };
+  const hang = new Set();
+  const calls = [];
+  const getChart = (sym) => {
+    calls.push(sym);
+    if (sym === 'AAPL' && calls.filter((c) => c === 'AAPL').length === 1) return aapl.then(() => pts);
+    if (hang.has(sym)) return new Promise(() => {}); // never answers
+    if (sym === 'XLE') return Promise.reject(new Error('down'));
+    return Promise.resolve(pts);
+  };
+  const fetchImpl = async () => json({ FormattedQuoteResult: { FormattedQuote: SECTOR_ETFS.map((e) => ({ symbol: e.src, code: 0, last: '104.50', change: '+1', change_pct: '+1%' })) } });
+  const stocks = SP100.map((m) => ({ ...m, last: 104.5, marketCap: 1e11, changePct: 1 }));
+  const s = makeSectors({ fetchImpl, getChart, getStocks: async () => ({ stocks }), now: () => t, warm: false, basesWait: 300 });
+  const t0 = Date.now();
+  const d = await s.getSectors({ period: '1W' });
+  const waited = Date.now() - t0;
+  assert.ok(waited >= 250 && waited < 1500, `a new day waits basesWait at most (${waited} ms)`);
+  assert.equal(d.members.find((m) => m.ticker === 'AAPL').move, null, 'still loading: --');
+  assert.equal(d.members.find((m) => m.ticker === 'MSFT').move, 10, 'what came in is used');
+  releaseAapl();
+  await s.getBases(); // the load finishes: XLE missing
+  // Later the same day the source is dead: the saved closes at once, XLE retried behind.
+  hang.add('XLE');
+  t = NOW + BASES_RETRY + 1;
+  const before = calls.length;
+  const t1 = Date.now();
+  const d2 = await s.getSectors({ period: '1W' });
+  assert.ok(Date.now() - t1 < 100, 'the same day: no wait');
+  assert.equal(d2.members.find((m) => m.ticker === 'AAPL').move, 10);
+  assert.deepEqual(calls.slice(before), ['XLE'], 'only the missing one is tried again');
+});
+
 // ---- the numbers ----------------------------------------------------------------------------
 
 const MEMBERS = [
@@ -152,14 +189,26 @@ test('sectors: weights sum to 1 and pt sums to the listed members move', () => {
   const w = rows.filter((r) => r.weight != null);
   assert.equal(w.length, 3, 'no cap or no move: left out');
   assert.ok(Math.abs(w.reduce((t, r) => t + r.weight, 0) - 1) < 1e-12);
-  assert.equal(rows.find((r) => r.ticker === 'AMZN').weight, 0.6);
+  const start = 2.4 / 1.01 + 1.2 / 1.02 + 0.4 / 0.99;
+  assert.ok(Math.abs(rows.find((r) => r.ticker === 'AMZN').weight - (2.4 / 1.01) / start) < 1e-12, 'weight by the cap at the start');
   assert.equal(rows.find((r) => r.ticker === 'GM').pt, null);
   assert.equal(rows.find((r) => r.ticker === 'SBUX').pt, null);
-  const cap = 2.4 + 1.2 + 0.4;
-  const weighted = (2.4 * 1 + 1.2 * 2 + 0.4 * -1) / cap;
-  assert.ok(Math.abs(listedMove(rows) - weighted) < 1e-12, 'the pt add up to the cap-weighted move');
+  const real = ((2.4 + 1.2 + 0.4) / start - 1) * 100;
+  assert.ok(Math.abs(listedMove(rows) - real) < 1e-9, 'the pt add up to the listed members\' real move');
   assert.equal(listedMove(contributions([{ ticker: 'X', marketCap: 1, move: null }])), null);
   assert.deepEqual(contributions([]), []);
+});
+
+test('sectors: pt weights by the cap at the start of the period', () => {
+  // Two equal caps today, one doubled and one flat: together they rose a third, not a half.
+  const rows = contributions([{ ticker: 'A', marketCap: 1e12, move: 100 }, { ticker: 'B', marketCap: 1e12, move: 0 }]);
+  assert.ok(Math.abs(rows[0].weight - 1 / 3) < 1e-12);
+  assert.ok(Math.abs(rows[1].weight - 2 / 3) < 1e-12);
+  assert.ok(Math.abs(listedMove(rows) - 100 / 3) < 1e-9, '+33.33%, not +50%');
+  assert.equal(startCap(2e12, 100), 1e12);
+  assert.equal(startCap(1e12, -100), null, 'a total loss has no start cap');
+  assert.equal(startCap(null, 5), null);
+  assert.equal(startCap(1e12, null), null);
 });
 
 test('sectors: GOOG and GOOGL count as one company', () => {
@@ -183,12 +232,33 @@ test('sectors: breadth counts known moves only', () => {
 test('sectors: who moved it is the two biggest pt either way, facts only', () => {
   const rows = contributions(MEMBERS);
   assert.deepEqual(topContributors(rows).map((r) => r.ticker), ['AMZN', 'TSLA']);
-  assert.equal(whoLine(rows), 'AMZN +0.60 pt, TSLA +0.60 pt');
+  assert.equal(whoLine(rows), 'AMZN +0.60 pt, TSLA +0.59 pt');
   const neg = contributions([{ ticker: 'A', marketCap: 1, move: 1 }, { ticker: 'B', marketCap: 3, move: -2 }]);
-  assert.equal(whoLine(neg), 'B −1.50 pt, A +0.25 pt');
+  assert.equal(whoLine(neg), 'B −1.51 pt, A +0.24 pt');
   assert.equal(whoLine([]), '--');
   assert.equal(fmtPt(null), '--');
   assert.equal(fmtPt(0.004), '0.00 pt');
+});
+
+test('sectors: the listed total comes first; who moved it only when it can explain the ETF', () => {
+  const sec = (id, move, members) => ({ id, move, members: contributions(members) });
+  const three = [
+    { ticker: 'A', marketCap: 3, move: 1 }, { ticker: 'B', marketCap: 2, move: 1 }, { ticker: 'C', marketCap: 1, move: -1 },
+  ];
+  const up = sec('XLK', 0.4, three);
+  assert.equal(WHO_MIN, 3);
+  assert.ok(showWho(up));
+  assert.match(listedLine(up), /^Listed 3 of XLK: \+0\.\d\d% · A \+0\.\d\d pt, B \+0\.\d\d pt$/);
+  // XLRE: one listed member moving against the ETF. The total, never "AMT +1.06 pt".
+  const re = sec('XLRE', -0.22, [{ ticker: 'AMT', marketCap: 1e11, move: 1.06 }]);
+  assert.ok(!showWho(re));
+  assert.equal(listedLine(re), 'Listed 1 of XLRE: +1.06%');
+  const against = sec('XLY', -0.3, three);
+  assert.ok(!showWho(against), 'listed total up, ETF down: no who line');
+  assert.equal(listedLine(against).includes('·'), false);
+  assert.ok(!showWho(sec('XLY', null, three)), 'no ETF move: nothing to explain');
+  assert.ok(showWho(sec('XLY', 0, three)), 'a flat ETF is not the opposite side');
+  assert.equal(listedLine(sec('XLB', 0.1, [])), 'Listed 0 of XLB: --');
 });
 
 test('sectors: the model keeps the ETF order and sorts members by cap', () => {
@@ -220,6 +290,10 @@ test('sectors: period and view in the command and the URL', () => {
   assert.deepEqual(c.args, { period: '1W', view: 'MAP' });
   assert.equal(c.input, 'SECTORS 1W MAP');
   assert.deepEqual(parseCommand('sectors').args, { period: '1D', view: 'TABLE' });
+  assert.equal(parseCommand('SECTORS FOO map 1y').input, 'SECTORS 1Y MAP', 'the URL keeps the clean form');
+  assert.equal(parseCommand('SECTORS 1D TABLE').input, 'SECTORS');
+  assert.equal(urlFor('SECTORS FOO 1W').url, 'SECTORS 1W', 'a link with junk opens at the clean URL');
+  assert.equal(toInput({ period: 'YTD', view: 'TABLE' }), 'SECTORS YTD');
 });
 
 test('sectors: HELP entry, every example runs, no pro-terminal function codes', () => {
@@ -257,9 +331,11 @@ test('sectors table: collapsed is one line a sector, -- for an unknown move', ()
 });
 
 test('sectors table: an open sector shows who moved it, SWIM and its members', () => {
-  const html = tableHtml(MODEL, { open: new Set(['XLY']) });
+  const withMove = MODEL.map((s) => (s.id === 'XLY' ? { ...s, move: 0.5 } : s));
+  const html = tableHtml(withMove, { open: new Set(['XLY']) });
   assert.match(html, /aria-expanded="true"/);
-  assert.match(html, /AMZN \+0\.60 pt, TSLA \+0\.60 pt/);
+  assert.match(html, /Listed 5 of XLY: \+1\.09% · AMZN \+0\.60 pt, TSLA \+0\.59 pt/);
+  assert.match(tableHtml(MODEL, { open: new Set(['XLY']) }), /Listed 5 of XLY: \+1\.09%</, 'no ETF move: the total only');
   assert.match(html, /data-cmd="FISHTANK DISC"[^>]*>SWIM</);
   assert.equal((html.match(/class="sc-mem/g) || []).length, 5);
   assert.match(html, /data-k="m:XLY:GM"[\s\S]*?--<\/td>/, 'no cap: pt --');
@@ -387,6 +463,13 @@ test('sectors map: arrows move to the nearest box that way, green and red only',
     }
   }
   assert.equal(mapFill(null), mapFill(0), 'unknown is the flat grey');
+  assert.ok(!tileShows({ w: 30, h: 50 }, 'ticker') && tileShows({ w: 40, h: 25 }, 'ticker') && !tileShows({ w: 40, h: 25 }, 'pct'));
+  assert.ok(tileShows({ w: 80, h: 50 }, 'pct'));
+  const tiny = mapSvg(MODEL, { secs: [], cells: [{ ticker: 'TINY', name: 'T', sector: 'XLK', move: 1, pt: 1, cap: 1, x: 0, y: 0, w: 20, h: 12 }, { ticker: 'MID', name: 'M', sector: 'XLK', move: 1, pt: 1, cap: 1, x: 0, y: 0, w: 50, h: 30 }] }, { w: 100, h: 100 });
+  assert.doesNotMatch(tiny, /class="hm-t"[^>]*>TINY</, 'a small box has no label');
+  assert.match(tiny, /class="hm-t"[^>]*>MID</);
+  assert.equal((tiny.match(/class="hm-p"/g) || []).length, 0, 'a middling box: the ticker only');
+  assert.deepEqual(Object.keys(TILE_MIN), ['ticker', 'pct']);
   assert.equal(mapHeight(800, { stretched: 500 }), 500);
   assert.equal(mapHeight(390), 507);
   assert.equal(mapHeight(390, { embed: { viewport: 600, top: 100 } }), 499);
@@ -440,6 +523,22 @@ test('BREADTH: sector rows open to their members the same way', () => {
   assert.match(html, /data-cmd="AMZN"/);
   assert.match(html, /num up">\+1\.00%/, 'a rise sits in the Up column');
   assert.match(html, /num down">−1\.00%/, 'a fall in the Down column');
+});
+
+test('BREADTH: its counts and its member rows come from the same list', () => {
+  const src = readFileSync('data/breadth.js', 'utf8');
+  assert.match(src, /import \{ getFishtank, SP100_AS_OF \} from '\.\/sp100\.js'/, 'every member, cap or not (not the HEATMAP list)');
+  assert.match(src, /heatmap = allMembers/);
+  // A member without a cap still counts, on both sides.
+  const stocks = [
+    { ticker: 'A', sector: 'DISC', changePct: 1, marketCap: 1e11 },
+    { ticker: 'B', sector: 'DISC', changePct: -1, marketCap: null },
+    { ticker: 'C', sector: 'DISC', changePct: 2, marketCap: null },
+  ];
+  const counts = sectorBreadth(stocks)[0];
+  const rows = breadth(stocks.map((m) => ({ ...m, move: m.changePct })));
+  assert.equal(counts.up, rows.up);
+  assert.equal(counts.total, rows.known);
 });
 
 // ---- copy rules ------------------------------------------------------------------------------
