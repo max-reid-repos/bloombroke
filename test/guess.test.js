@@ -10,7 +10,7 @@ import {
 } from '../data/guess.js';
 import {
   shareText, shareOnX, guessStats, readState, recordResult, msToNextPuzzle, fmtCountdown,
-  matchPool, exactPick, chartSvg, rowsHtml, SQUARES,
+  matchPool, exactPick, chartSvg, rowsHtml, SQUARES, LEGEND, legendHtml, dirText,
 } from '../public/screens/guess.js';
 import { parseCommand } from '../public/app.js';
 import { findCommand } from '../public/registry.js';
@@ -110,21 +110,23 @@ test('GUESS hints: sector, 1Y move, size and first letter, each saying where the
   const cells = hintCells(answer, { ticker: 'AAPL', sector: 'TECH', move: 10, cap: 4e12 });
   assert.deepEqual(cells.map((c) => c.key), ['SECTOR', '1Y MOVE', 'SIZE', 'LETTER']);
   assert.deepEqual(cells[0], { key: 'SECTOR', value: 'TECH', dir: 'SAME', grade: 'hit' });
-  assert.deepEqual(cells[1], { key: '1Y MOVE', value: '+10.0%', dir: 'HIGHER', grade: 'miss' });
+  assert.deepEqual(cells[1], { key: '1Y MOVE', value: '+10.0%', dir: 'ANSWER HIGHER', grade: 'miss' });
   assert.deepEqual(cells[2], { key: 'SIZE', value: '$4.00T', dir: 'CLOSE', grade: 'hit' }, '5T vs 4T is within 25%');
-  assert.deepEqual(cells[3], { key: 'LETTER', value: 'A', dir: 'LATER', grade: 'miss' });
+  assert.deepEqual(cells[3], { key: 'LETTER', value: 'A', dir: 'ANSWER AFTER', grade: 'miss' });
 
   const near = hintCells(answer, { ticker: 'MSFT', sector: 'COMM', move: 52, cap: 8e12 });
   assert.equal(near[0].grade, 'miss');
-  assert.equal(near[0].dir, 'OTHER');
-  assert.deepEqual([near[1].dir, near[1].grade], ['LOWER', 'near'], '12 points off');
-  assert.deepEqual([near[2].dir, near[2].grade], ['SMALLER', 'near'], 'within 2x');
-  assert.deepEqual([near[3].dir, near[3].grade], ['LATER', 'near'], 'M to N is one letter');
+  assert.equal(near[0].dir, 'DIFFERENT');
+  assert.deepEqual([near[1].dir, near[1].grade], ['ANSWER LOWER', 'near'], '12 points off');
+  assert.deepEqual([near[2].dir, near[2].grade], ['ANSWER SMALLER', 'near'], 'within 2x');
+  assert.deepEqual([near[3].dir, near[3].grade], ['ANSWER AFTER', 'near'], 'M to N is one letter');
 
   const unknown = hintCells(answer, { ticker: 'XOM', sector: 'ENERGY', move: null, cap: null });
   assert.deepEqual(unknown[1], { key: '1Y MOVE', value: '--', dir: '--', grade: 'none' }, 'no fake 0.0%');
   assert.deepEqual(unknown[2], { key: 'SIZE', value: '--', dir: '--', grade: 'none' });
-  assert.equal(unknown[3].dir, 'EARLIER');
+  assert.equal(unknown[3].dir, 'ANSWER BEFORE');
+  assert.equal(hintCells(answer, { ticker: 'NFLX', sector: 'COMM', move: 40, cap: 5e12 })[3].dir, 'SAME');
+  for (const c of [...cells, ...near, ...unknown]) assert.ok(['SAME', 'DIFFERENT', 'CLOSE', '--'].includes(c.dir) || /^ANSWER (HIGHER|LOWER|BIGGER|SMALLER|BEFORE|AFTER)$/.test(c.dir), `${c.key}: ${c.dir} says it about the answer`);
 
   const solved = hintCells(answer, { ...answer });
   assert.ok(solved.every((c) => c.grade === 'hit'), 'the answer itself is all hits');
@@ -223,6 +225,16 @@ test('GUESS screen parts: the chart has % and months only, rows show every try',
   const html = rowsHtml([{ ticker: 'AAPL', name: 'Apple', cells: hintCells({ ticker: 'NVDA', sector: 'TECH', move: 1, cap: 1 }, { ticker: 'AAPL', sector: 'TECH', move: 2, cap: 2 }), solved: false }]);
   assert.equal((html.match(/class="gs-row/g) || []).length, 6);
   assert.match(html, /g-hit/);
+  // A row saved before the words changed reads the new way.
+  const old = rowsHtml([{ ticker: 'AAPL', name: 'Apple', cells: [{ grade: 'miss', value: 'A', dir: 'LATER' }, { grade: 'miss', value: 'X', dir: 'SMALLER' }] }]);
+  assert.match(old, />ANSWER AFTER</);
+  assert.match(old, />ANSWER SMALLER</);
+  assert.equal(dirText('SAME'), 'SAME');
+  // The legend: a few plain lines, outside the table.
+  assert.ok(LEGEND.length <= 3);
+  for (const l of LEGEND) assert.doesNotMatch(l, /\u2014|\p{Extended_Pictographic}/u);
+  assert.match(legendHtml(), /^<div class="gs-legend"><p class="gs-lh">HOW TO READ<\/p>/);
+  assert.doesNotMatch(rowsHtml([]), /HOW TO READ/);
 });
 
 test('GUESS copy: no emoji in the screen, no banned words, no em dashes', () => {

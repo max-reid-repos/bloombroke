@@ -186,19 +186,20 @@ export function fmtCap(n) {
 }
 
 // Grades: hit (right or very close), near (close), miss, none (no data to compare).
-// dir says where the ANSWER is compared with the guess.
+// dir says it about the ANSWER, under the guess's own value: ANSWER SMALLER means the
+// mystery stock is smaller than the guess; LETTER is A to Z (ANSWER BEFORE: earlier).
 // a, g: { ticker, sector, move, cap } for the answer and the guess.
 export function hintCells(a, g) {
   const same = a.ticker === g.ticker;
   const cells = [];
 
   const sectorHit = a.sector === g.sector;
-  cells.push({ key: 'SECTOR', value: g.sector || '--', dir: sectorHit ? 'SAME' : 'OTHER', grade: sectorHit ? 'hit' : 'miss' });
+  cells.push({ key: 'SECTOR', value: g.sector || '--', dir: sectorHit ? 'SAME' : 'DIFFERENT', grade: sectorHit ? 'hit' : 'miss' });
 
   if (Number.isFinite(a.move) && Number.isFinite(g.move)) {
     const diff = a.move - g.move;
     const grade = same || Math.abs(diff) < 5 ? 'hit' : Math.abs(diff) < 20 ? 'near' : 'miss';
-    cells.push({ key: '1Y MOVE', value: fmtMove(g.move), dir: grade === 'hit' ? 'CLOSE' : diff > 0 ? 'HIGHER' : 'LOWER', grade });
+    cells.push({ key: '1Y MOVE', value: fmtMove(g.move), dir: grade === 'hit' ? 'CLOSE' : diff > 0 ? 'ANSWER HIGHER' : 'ANSWER LOWER', grade });
   } else {
     cells.push({ key: '1Y MOVE', value: fmtMove(g.move), dir: '--', grade: 'none' });
   }
@@ -206,7 +207,7 @@ export function hintCells(a, g) {
   if (a.cap > 0 && g.cap > 0) {
     const r = a.cap / g.cap;
     const grade = same || (r >= 0.8 && r <= 1.25) ? 'hit' : r >= 0.5 && r <= 2 ? 'near' : 'miss';
-    cells.push({ key: 'SIZE', value: fmtCap(g.cap), dir: grade === 'hit' ? 'CLOSE' : r > 1 ? 'BIGGER' : 'SMALLER', grade });
+    cells.push({ key: 'SIZE', value: fmtCap(g.cap), dir: grade === 'hit' ? 'CLOSE' : r > 1 ? 'ANSWER BIGGER' : 'ANSWER SMALLER', grade });
   } else {
     cells.push({ key: 'SIZE', value: fmtCap(g.cap), dir: '--', grade: 'none' });
   }
@@ -214,7 +215,7 @@ export function hintCells(a, g) {
   const la = a.ticker[0];
   const lg = g.ticker[0];
   const d = la.charCodeAt(0) - lg.charCodeAt(0);
-  cells.push({ key: 'LETTER', value: lg, dir: d === 0 ? 'SAME' : d > 0 ? 'LATER' : 'EARLIER', grade: d === 0 ? 'hit' : Math.abs(d) <= 3 ? 'near' : 'miss' });
+  cells.push({ key: 'LETTER', value: lg, dir: d === 0 ? 'SAME' : d > 0 ? 'ANSWER AFTER' : 'ANSWER BEFORE', grade: d === 0 ? 'hit' : Math.abs(d) <= 3 ? 'near' : 'miss' });
 
   return cells;
 }

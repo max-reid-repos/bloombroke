@@ -1703,7 +1703,9 @@ a.ch-flag { cursor: pointer; }
 .gs-cell { border-left: 2px solid var(--bg); }
 .gs-cell .gs-v, .gs-cell .gs-d { display: block; overflow: hidden; text-overflow: ellipsis; }
 .gs-cell .gs-v { font-size: 12px; line-height: 15px; font-weight: 600; }
-.gs-cell .gs-d { font-size: 10px; line-height: 13px; letter-spacing: .06em; }
+.gs-cell .gs-d { font-size: 10px; line-height: 12px; letter-spacing: .06em; white-space: normal; }
+/* A two-word hint ("ANSWER SMALLER") may take two lines: rows grow instead of cutting it. */
+.gs-table tbody th, .gs-table tbody td { height: 38px; padding-top: 2px; padding-bottom: 2px; }
 .gs-cell.g-hit { background: var(--accent); color: var(--ink); }
 .gs-cell.g-near { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); }
 .gs-cell.g-miss { color: var(--text-2); }
@@ -1722,13 +1724,16 @@ a.ch-flag { cursor: pointer; }
 .gs-stats b { color: var(--text); font-weight: 600; }
 .gs-share { display: flex; flex-wrap: wrap; gap: 8px; }
 .gs-x { height: 24px; }
+.gs-legend { display: grid; gap: 2px; padding: 10px; font-size: 11px; line-height: 15px; color: var(--dim); }
+.gs-legend .gs-lh { letter-spacing: .08em; color: var(--text-2); }
 @media (max-width: 639px) {
-  .gs-table .gs-g { width: 22%; }
+  .gs-table .gs-g { width: 18%; }
   .gs-table .gs-i { width: 3ch; }
   .gs-g .gs-nm { display: none; }
   .gs-table th, .gs-table td { padding: 0 4px; }
   .gs-table thead th { font-size: 10px; letter-spacing: .02em; }
   .gs-cell .gs-v { font-size: 11px; }
+  .gs-cell .gs-d { letter-spacing: .02em; }
 }
 /* --- end GUESS ------------------------------------------------------------------ */
 
