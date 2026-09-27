@@ -1,6 +1,7 @@
 // CALENDAR: this week's economic calendar from the public Forex Factory JSON feed (no key).
 // The feed has forecast and previous values; it does not carry actual results.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { UA } from './quotes.js';
 import { iso } from './lists.js';
@@ -29,7 +30,7 @@ export function parseCalendar(body) {
     .sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
 }
 
-export function makeCalendar({ fetchImpl = globalThis.fetch, cache = createCache() } = {}) {
+export function makeCalendar({ fetchImpl = cappedFetch, cache = createCache() } = {}) {
   async function getCalendar() {
     const { value, stale, fetchedAt } = await cache.cached('calendar', TTL, async () => {
       const res = await fetchImpl(URL_WEEK, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });

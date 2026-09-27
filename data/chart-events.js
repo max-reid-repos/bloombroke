@@ -8,6 +8,7 @@
 // Only stocks: registry instruments (indexes, FX, crypto, futures, yields) get none.
 // Each source may fail on its own; the flags that did load are still shown.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { normalizeTicker, fetchCnbcRows, tickerSource } from './quotes.js';
 import { usDay, money } from './lists.js';
@@ -105,7 +106,7 @@ export function parseEventData(ev) {
 }
 
 export function makeChartEvents({
-  fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 500 }),
+  fetchImpl = cappedFetch, cache = createCache({ maxEntries: 500 }),
   getFilings = defaultGetFilings, getDividends = defaultGetDividends,
 } = {}) {
   async function cnbcEvents(ticker) {

@@ -4,6 +4,7 @@
 
 import { esc, q, panel, LOADING, metaNote } from './markets.js';
 import * as pro from '../pro.js';
+import { reloadAfterKey, takeShowKeyOnce } from '../goal.js';
 import { findCommand } from '../registry.js';
 
 // The rule, and the breakdown under it. A row is [what, status, command to open or ''].
@@ -281,6 +282,8 @@ function renderAccount(el, ctx, note, plan = 'month') {
   wire(host, ctx, '#pro-manage', 'OPENING BILLING...', () => pro.openPortal());
   const show = host.querySelector('#pro-show');
   if (show) show.addEventListener('click', () => { showKey(host.querySelector('#pro-shown'), pro.getKey(), ctx); show.remove(); });
+  // Back from a reload after REDEEM (reloadAfterKey): the new key once more, to save.
+  if (show && pro.getKey() && takeShowKeyOnce()) { showKey(host.querySelector('#pro-shown'), pro.getKey(), ctx); show.remove(); }
 }
 
 // After checkout: fetch the key once the payment is confirmed.
@@ -352,6 +355,7 @@ export const loginCommand = {
       if (!el.isConnected) return;
       renderAccount(el, ctx, st.active ? 'Logged in. Your watchlist, portfolio and tape now sync.' : 'Logged in, but Pro is not active on this key.');
       ctx.status(st.active ? 'PRO: LOGGED IN' : 'PRO: NOT ACTIVE', st.active ? '' : 'warn');
+      reloadAfterKey(); // DataFast was running before the key: stop it now
     }).catch((err) => {
       if (!el.isConnected) return;
       renderAccount(el, ctx, err.message);
@@ -385,6 +389,7 @@ function redeemInto(el, ctx, code) {
     const until = d.giftUntil ? day(d.giftUntil) : '--';
     host.querySelector('#pro-gift-account').innerHTML = `<p class="notice">Your gift month of Pro runs until ${esc(until)}. You are logged in on this browser.</p>`;
     ctx.status('PRO: GIFT MONTH ACTIVE. SAVE YOUR KEY');
+    reloadAfterKey({ showKey: true }); // DataFast was running before the key: stop it now
   }).catch((err) => {
     if (!el.isConnected) return;
     host.innerHTML = `<p class="notice">${esc(err.message)}</p><p class="muted">${esc(REDEEM_HOW)}</p>`;

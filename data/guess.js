@@ -19,7 +19,7 @@
 // Reveal is not enforced (the answer is one request away); that is fine for a game.
 
 import { createHmac, randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SECTORS } from './sp100.js';
@@ -120,10 +120,12 @@ export function loadSecret({ env = process.env, file = SECRET_FILE, log = consol
     try { return readFileSync(file, 'utf8').trim(); } catch { return ''; }
   };
   const kept = read();
+  // The secret file is 0600 (a copy or restore can leave it readable): put it back.
+  if (kept) { try { chmodSync(file, 0o600); } catch { /* not ours to change */ } }
   if (kept.length >= 32) return kept;
   const fresh = randomBytes(32).toString('hex');
   try {
-    mkdirSync(path.dirname(file), { recursive: true });
+    mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     // wx: two processes starting at once both end up with the first one's secret.
     writeFileSync(file, `${fresh}\n`, { flag: kept ? 'w' : 'wx', mode: 0o600 });
     return fresh;

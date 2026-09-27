@@ -2045,3 +2045,7 @@ a.why-link:hover { color: var(--accent); text-decoration: none; }
 /* ---- NEWS push: the LIVE marker in the title strip (filled: streaming, hollow: polling) */
 .news-live { display: inline-block; margin-right: 8px; padding: 0 4px; border: 1px solid var(--accent); color: var(--accent); font-weight: 700; letter-spacing: .08em; line-height: 13px; }
 .news-live.is-on { background: var(--accent); color: var(--ink); }
+
+/* ---- A source line a data licence asks for (the New York Fed on RATES and FEDPATH) ---- */
+.src-note { margin: 6px 0 0; padding: 0 10px 4px; font-size: 11px; letter-spacing: .04em; color: var(--dim); }
+.src-note a { color: var(--accent); }

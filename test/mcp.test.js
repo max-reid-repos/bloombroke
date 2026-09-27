@@ -657,7 +657,7 @@ test('mcp terminal command: MCP opens the screen, plain lines, one per app', () 
   for (const [, how] of MCP_APPS) assert.ok(!how.includes('\n') && how.length < 110, how);
 });
 
-test('mcp legal: terms allow the MCP endpoint narrowly, privacy covers its limiter, version 1.2', () => {
+test('mcp legal: terms allow the MCP endpoint narrowly, privacy covers its limiter and inputs', () => {
   const terms = readFileSync('legal/terms.md', 'utf8');
   const s6 = terms.slice(terms.indexOf('## 6.'), terms.indexOf('## 7.'));
   assert.ok(s6.includes('call our API routes directly'), 'the general rule stays');
@@ -667,7 +667,8 @@ test('mcp legal: terms allow the MCP endpoint narrowly, privacy covers its limit
   assert.match(s6, /change the limits of the MCP endpoint, or turn it off/);
   const privacy = readFileSync('legal/privacy.md', 'utf8');
   assert.match(privacy, /counts it per tool\. The count has no IP address/);
-  assert.equal(TERMS_VERSION, '1.2');
+  assert.match(privacy, /We do not store the inputs a tool is called with/);
+  assert.ok(Number(TERMS_VERSION) >= 1.2);
 });
 
 test('mcp server.json: registry entry for the remote, not published from here', () => {

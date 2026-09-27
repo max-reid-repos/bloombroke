@@ -17,6 +17,7 @@
 // dated after the filing date that the figure came from. The filed values stay in
 // `values`; the adjusted EPS and share rows are in `adjusted`.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { getSplitHistory, factorAfter } from './split-history.js';
 
@@ -323,7 +324,7 @@ export function withSplits(d, hist) {
 
 // ---- service ------------------------------------------------------------------
 
-export function makeFinancials({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 300, retryMs: 60_000 }), gapMs = 150, splitHistory = fetchImpl === globalThis.fetch ? getSplitHistory : async () => null } = {}) {
+export function makeFinancials({ fetchImpl = cappedFetch, cache = createCache({ maxEntries: 300, retryMs: 60_000 }), gapMs = 150, splitHistory = fetchImpl === cappedFetch ? getSplitHistory : async () => null } = {}) {
   // One SEC request at a time, at least gapMs apart (under 10 a second).
   let chain = Promise.resolve();
   let lastAt = 0;
@@ -332,7 +333,8 @@ export function makeFinancials({ fetchImpl = globalThis.fetch, cache = createCac
       const wait = lastAt + gapMs - Date.now();
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       lastAt = Date.now();
-      const res = await fetchImpl(url, { headers: { 'User-Agent': SEC_UA, Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
+      // maxBytes: companyfacts runs to 8 MB and more for the biggest filers.
+      const res = await fetchImpl(url, { headers: { 'User-Agent': SEC_UA, Accept: 'application/json' }, signal: AbortSignal.timeout(20_000), maxBytes: 64 * 1024 * 1024 });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error(`sec HTTP ${res.status}`);
       return res.json();

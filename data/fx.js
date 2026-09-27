@@ -1,5 +1,6 @@
 // Currency conversion and 30-day history from the Frankfurter API (ECB reference rates, no key).
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 
 const BASE = 'https://api.frankfurter.dev/v1';
@@ -65,7 +66,7 @@ async function getJson(fetchImpl, url) {
   return res.json();
 }
 
-export function makeFx({ fetchImpl = globalThis.fetch, cache = createCache(), now = () => new Date() } = {}) {
+export function makeFx({ fetchImpl = cappedFetch, cache = createCache(), now = () => new Date() } = {}) {
   async function currencies() {
     const { value } = await cache.cached('currencies', CURRENCIES_TTL, () => getJson(fetchImpl, `${BASE}/currencies`));
     return value;

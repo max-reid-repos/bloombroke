@@ -13,6 +13,7 @@
 // opens, not people). One address adds at most 3 new session ids per symbol per hour.
 // Memory is capped: symbols, session hashes per symbol and address keys.
 
+import { cappedFetch } from './http.js';
 import express from 'express';
 import { createHmac, randomBytes } from 'node:crypto';
 import { resolveInstrument } from '../public/instruments.js';
@@ -188,7 +189,7 @@ export function createTracker({ now = () => Date.now(), secret = randomBytes(32)
 // ticker-shaped word must have a quote. The check is its own upstream call, never the
 // shared quote cache, so junk words never land there. Answers are kept here, bounded, and
 // new lookups are capped at a few a minute so junk words cannot drive upstream calls.
-export async function uncachedQuote(ticker, fetchImpl = globalThis.fetch) {
+export async function uncachedQuote(ticker, fetchImpl = cappedFetch) {
   const rows = await fetchStockRows(fetchImpl, [ticker]);
   return parseQuoteRow(rows[0], ticker);
 }

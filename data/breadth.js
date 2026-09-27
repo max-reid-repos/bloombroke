@@ -6,6 +6,7 @@
 //   (a missing market cap does not drop one), the same list SECTORS opens to.
 // The screener has no 52-week high or low columns, so there are no new highs or lows here.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { NASDAQ_HEADERS } from './lists.js';
 import { num, parseAsOf } from './screen.js';
@@ -56,7 +57,7 @@ export function sectorBreadth(stocks, names = {}) {
 // Every member with its move, cap or not (HEATMAP's list drops members without a cap).
 const allMembers = async () => ({ ...(await getFishtank()), asOfList: SP100_AS_OF });
 
-export function makeBreadth({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: 60_000 }), heatmap = allMembers } = {}) {
+export function makeBreadth({ fetchImpl = cappedFetch, cache = createCache({ retryMs: 60_000 }), heatmap = allMembers } = {}) {
   async function get(url) {
     const res = await fetchImpl(url, { headers: NASDAQ_HEADERS, signal: AbortSignal.timeout(20_000) });
     if (!res.ok) throw new Error(`screener HTTP ${res.status}`);

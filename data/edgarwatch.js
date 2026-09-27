@@ -18,6 +18,7 @@
 // Speed: for every new filing, seen time minus EDGAR's acceptance time (the entry's
 // <updated>, with its ET offset). The median of the last 200 is what DATA shows.
 
+import { cappedFetch } from './http.js';
 import { fetchFeed } from './newshub.js';
 import { SEC_UA, forgetFinancials } from './financials.js';
 import { secQueued, forgetFilings } from './filings.js';
@@ -121,7 +122,7 @@ export function makeInvalidator({
 // start() / stop(); stats() -> { okAt, failAt, ms, polls, filings, samples, medianDelay,
 // overflow, forms: { form: { gap, okAt, failAt } } }.
 export function makeEdgarWatch({
-  fetchImpl = globalThis.fetch, secQueue = secQueued, forms = WATCH_FORMS, every = EVERY_MS,
+  fetchImpl = cappedFetch, secQueue = secQueued, forms = WATCH_FORMS, every = EVERY_MS,
   onFiling = () => {}, now = () => Date.now(), timers = realTimers, log = (m) => console.error(m), maxBackoff = MAX_BACKOFF_MS,
   isOpen = edgarOpen,
 } = {}) {
@@ -233,7 +234,7 @@ export function makeEdgarWatch({
 }
 
 // The server's watcher: invalidates the shared caches, tickers from the SEC map.
-export function startEdgarWatch({ fetchImpl = globalThis.fetch, log = (m) => console.error(m) } = {}) {
+export function startEdgarWatch({ fetchImpl = cappedFetch, log = (m) => console.error(m) } = {}) {
   const secMap = secTickersFor(fetchImpl);
   // Every ticker of a CIK (the SEC map lists each class share), built once per map.
   let built = null;

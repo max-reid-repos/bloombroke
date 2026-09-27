@@ -1,6 +1,7 @@
 // BEATS <ticker>: reported EPS against the consensus estimate for the last quarters, from
 // the Nasdaq earnings surprise API (no key). Nasdaq serves the last 4 quarters. Cached a day.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { money, usDay, nyDay } from './lists.js';
 import { CompanyDataError, DAY_MS, nasdaqData, tickerOrThrow, cachedOrThrow, text } from './company-kit.js';
@@ -39,7 +40,7 @@ export function parseNextReport(d, today) {
   };
 }
 
-export function makeBeats({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 500, retryMs: 60_000 }), now = () => Date.now() } = {}) {
+export function makeBeats({ fetchImpl = cappedFetch, cache = createCache({ maxEntries: 500, retryMs: 60_000 }), now = () => Date.now() } = {}) {
   // Best effort: a missing next date never fails the screen.
   async function nextReport(ticker) {
     try {

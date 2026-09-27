@@ -39,6 +39,10 @@ export function ratesRows(d) {
   return rows;
 }
 
+// The New York Fed's terms ask for its notice with the EFFR: one line with the figure,
+// linking to the notice in the Disclaimer.
+export const NYFED_NOTICE = '<p class="src-note">Source: Federal Reserve Bank of New York. <a href="/disclaimer#federal-reserve-bank-of-new-york">See notice</a></p>';
+
 function table(rows) {
   return `<table class="grid-table rates">
     <thead><tr><th scope="col">Rate</th><th scope="col" class="tag"><span class="offscreen">Real time or delayed</span></th><th scope="col" class="num">Last</th><th scope="col" class="num bp">Chg</th><th scope="col" class="num time">As of</th><th scope="col" class="moves">What it moves</th></tr></thead>
@@ -69,7 +73,7 @@ export function render(el, cmd, ctx) {
     try {
       const d = await ctx.fetchJSON('/api/rates', { signal: ctx.signal });
       const rows = ratesRows(d);
-      rerender(body, rows.length ? table(rows) : '<p class="panel-msg">Rate data is taking a break.</p>');
+      rerender(body, rows.length ? `${table(rows)}${rows.some((r) => r.id === 'EFFR') ? NYFED_NOTICE : ''}` : '<p class="panel-msg">Rate data is taking a break.</p>');
       settleTicks(body);
       ctx.updated(d.yieldsUpdated || d.updated, d.stale, d.yields);
       const ten = (d.yields || []).find((y) => y.id === 'US10Y');

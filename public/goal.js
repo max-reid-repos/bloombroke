@@ -8,6 +8,12 @@
 // (anything else is dropped). With Global Privacy Control on, DataFast is never loaded
 // and goal() skips it; our own totals (a name and a count, nothing else) still count.
 // Blocked, missing or broken DataFast: goal() does nothing there and never throws.
+// Pro: a browser holding a licence key (localStorage 'bb.pro.key') never loads DataFast,
+// and neither does the checkout return page that fetches the key (?session_id=, or a
+// pending session in this tab). goal() then sends only our own totals. A key that lands
+// after the page loaded (LOGIN, REDEEM) finds DataFast already running: the page reloads
+// (reloadAfterKey) so it stops at once. Cloudflare may still inject its own analytics
+// beacon; that is outside this code.
 // once: a key (the result, the puzzle number). The same goal with the same key is sent
 // once per browser tab session (sessionStorage 'bb.goals'); without storage, every time.
 
@@ -65,6 +71,58 @@ export const DATAFAST = {
   domain: 'bloombroke.com',
 };
 
+// The licence key's storage name (public/pro.js LS.key; a test keeps them the same).
+export const PRO_KEY_STORAGE = 'bb.pro.key';
+const PRO_PENDING_STORAGE = 'bb.pro.session';
+
+// Is a Pro key here, or on its way (the checkout return page)? Never throws; a storage
+// that cannot be read counts as no key.
+export function proKeyPresent({ local, session, loc } = {}) {
+  try {
+    const ls = local === undefined ? globalThis.localStorage : local;
+    if (ls?.getItem?.(PRO_KEY_STORAGE)) return true;
+  } catch { /* no storage */ }
+  try {
+    const ss = session === undefined ? globalThis.sessionStorage : session;
+    if (ss?.getItem?.(PRO_PENDING_STORAGE)) return true;
+  } catch { /* no storage */ }
+  try {
+    const search = (loc === undefined ? globalThis.location : loc)?.search || '';
+    if (/[?&]session_id=/.test(search)) return true;
+  } catch { /* no location */ }
+  return false;
+}
+
+// A key just landed (LOGIN or REDEEM succeeded). If DataFast or a Cloudflare beacon runs
+// in this page, reload to PRO so it stops now; the new page does not load DataFast.
+// showKey: the PRO screen shows the key once after the reload (a REDEEM's new key).
+// True when it reloads. Never throws.
+export const SHOW_KEY_ONCE = 'bb.pro.showkey';
+const THIRD_PARTY = 'script[src^="https://datafa.st/"], script[src*="cloudflareinsights.com"]';
+export function reloadAfterKey({ doc = globalThis.document, loc = globalThis.location, session, showKey = false } = {}) {
+  try {
+    if (!doc?.querySelector?.(THIRD_PARTY) || !loc?.replace) return false;
+    if (showKey) {
+      try { (session === undefined ? globalThis.sessionStorage : session)?.setItem(SHOW_KEY_ONCE, '1'); } catch { /* the key stays under SHOW KEY */ }
+    }
+    loc.replace('/?c=PRO');
+    return true;
+  } catch {
+    return false;
+  }
+}
+// Read and clear the show-the-key-once flag.
+export function takeShowKeyOnce(session) {
+  try {
+    const s = session === undefined ? globalThis.sessionStorage : session;
+    if (!s?.getItem(SHOW_KEY_ONCE)) return false;
+    s.removeItem(SHOW_KEY_ONCE);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Global Privacy Control: the browser says "do not sell or share".
 export function gpcOn(nav = globalThis.navigator) {
   try { return nav?.globalPrivacyControl === true; } catch { return false; }
@@ -82,11 +140,13 @@ export function cleanProps(name, props) {
   return out;
 }
 
-// Add the DataFast script once: not with GPC on, not inside a DESK panel (a desk of
-// panels is one visit), not twice. A queue stands in until the script loads.
-export function loadDataFast({ doc = globalThis.document, nav = globalThis.navigator, win = globalThis.window } = {}) {
+// Add the DataFast script once: not with GPC on, not for Pro (proKeyPresent), not inside
+// a DESK panel (a desk of panels is one visit), not twice. A queue stands in until the
+// script loads.
+export function loadDataFast({ doc = globalThis.document, nav = globalThis.navigator, win = globalThis.window, pro = proKeyPresent } = {}) {
   try {
     if (!doc || !win || gpcOn(nav)) return false;
+    if (pro()) return false;
     if (doc.documentElement?.classList?.contains('is-embed')) return false;
     if (doc.querySelector('script[src^="https://datafa.st/"]')) return false;
     if (typeof win.datafast !== 'function') {
@@ -109,11 +169,11 @@ export function loadDataFast({ doc = globalThis.document, nav = globalThis.navig
 }
 
 // { datafast, counted }: what was sent. Never throws, never waits.
-export function goal(name, props, { once, win = globalThis.window, nav = globalThis.navigator, fetchImpl = globalThis.fetch, store } = {}) {
+export function goal(name, props, { once, win = globalThis.window, nav = globalThis.navigator, fetchImpl = globalThis.fetch, store, pro = proKeyPresent } = {}) {
   const sent = { datafast: false, counted: false };
   if (!GOALS.includes(name)) return sent;
   if (seenBefore(name, once, store)) return sent;
-  if (!gpcOn(nav)) {
+  if (!gpcOn(nav) && !pro()) {
     try {
       const df = win?.datafast;
       if (typeof df === 'function') {

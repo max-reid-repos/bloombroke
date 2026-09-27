@@ -4,6 +4,7 @@
 // - grid: every country in BOND_GRID with its 2Y, 5Y, 10Y and 30Y (null where the source
 //   has no quote). One upstream call feeds both.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { fetchCnbcRows, parseListRows } from './quotes.js';
 import { withCmd, iso } from './lists.js';
@@ -41,7 +42,7 @@ export function buildGrid(cells) {
   }));
 }
 
-export function makeBonds({ fetchImpl = globalThis.fetch, cache = createCache() } = {}) {
+export function makeBonds({ fetchImpl = cappedFetch, cache = createCache() } = {}) {
   async function getBonds() {
     const { value, stale, fetchedAt } = await cache.cached('bonds:grid', TTL, async () => {
       const srcs = [...new Set([...GRID_CELLS, ...BONDS].map((i) => i.src))];

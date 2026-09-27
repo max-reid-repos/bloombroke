@@ -34,6 +34,7 @@
 //             that once complete; daily readings never do (they start with us).
 //   defaultPeriod     the period a gauge screen opens on (default 1Y)
 
+import { cappedFetch } from '../http.js';
 import { mkdirSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -165,7 +166,7 @@ export function summarize(detail) {
   return out;
 }
 
-export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges = GAUGES, lastGoodDir = LAST_GOOD_DIR } = {}) {
+export function makeWeird({ fetchImpl = cappedFetch, now = Date.now, gauges = GAUGES, lastGoodDir = LAST_GOOD_DIR } = {}) {
   const get = sourceClient(fetchImpl);
   const store = lastGoodStore(lastGoodDir);
   const hstore = historyStore(lastGoodDir);

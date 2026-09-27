@@ -2,6 +2,7 @@
 // (no key; data from EDGAR Online). Nasdaq serves one month per call: upcoming comes from
 // this month and next, priced and filed from this month and last. Cached an hour.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { money, usDay, nyDay } from './lists.js';
 import { CompanyDataError, HOUR_MS, nasdaqData, cachedOrThrow, text, symbolOf } from './company-kit.js';
@@ -69,7 +70,7 @@ export function mergeIpoMonths(months) {
   return { upcoming: pick('upcoming', [1, 2], 1), priced: pick('priced', [0, 1], -1), filed: pick('filed', [0, 1], -1) };
 }
 
-export function makeIpos({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: 60_000 }), now = () => Date.now() } = {}) {
+export function makeIpos({ fetchImpl = cappedFetch, cache = createCache({ retryMs: 60_000 }), now = () => Date.now() } = {}) {
   async function getIpos() {
     const today = nyDay(now());
     const months = [-1, 0, 1].map((n) => monthOf(today, n));

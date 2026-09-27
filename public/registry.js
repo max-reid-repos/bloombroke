@@ -533,7 +533,7 @@ export const REGISTRY = [
   {
     name: 'HOTDOG', aliases: ['HOTDOGS'], category: 'Weird data', summary: "Costco's $1.50 hot dog, adjusted for inflation",
     syntax: 'HOTDOG [3M|1Y|5Y|10Y|MAX]', examples: ['HOTDOG', 'HOTDOG 5Y'], keywords: ['costco', 'hot dog', 'inflation', 'cpi'],
-    source: 'FRED CPIAUCSL', delay: 'Monthly CPI',
+    source: 'US Bureau of Labor Statistics (CPI-U)', delay: 'Monthly CPI',
   },
   {
     name: 'OMENS', aliases: ['MOON'], category: 'Weird data', summary: 'Moon phase, New York sky and sunspots',
@@ -573,7 +573,7 @@ export const REGISTRY = [
   {
     name: 'EGGPRICE', aliases: ['EGGPRICES'], category: 'Weird data', summary: 'Average price of a dozen eggs in the US, and how far from the peak',
     syntax: 'EGGPRICE [3M|1Y|5Y|10Y|MAX]', examples: ['EGGPRICE', 'EGGPRICE 5Y'], keywords: ['eggs', 'food prices', 'grocery', 'inflation', 'bird flu'],
-    source: 'FRED APU0000708111 (BLS)', delay: 'Monthly',
+    source: 'US Bureau of Labor Statistics (average price, APU0000708111)', delay: 'Monthly',
   },
   {
     name: 'RIDES', aliases: ['QUEUES'], category: 'Weird data', summary: 'Average ride wait at Walt Disney World and Disneyland right now',
@@ -593,17 +593,17 @@ export const REGISTRY = [
   {
     name: 'TRUCKS', aliases: ['FREIGHT'], category: 'Weird data', summary: 'Freight shipments, truck tonnage and rail carloads vs a year ago',
     syntax: 'TRUCKS [3M|1Y|5Y|10Y|MAX]', examples: ['TRUCKS', 'TRUCKS 5Y'], keywords: ['freight', 'cass', 'trucking', 'rail', 'carloads', 'shipping'],
-    source: 'FRED: Cass, ATA, rail carloads', delay: 'Monthly, each with its own lag',
+    source: 'Public web data: freight, truck tonnage and rail carload indexes', delay: 'Monthly, each with its own lag',
   },
   {
     name: 'BOXES', aliases: ['CARDBOARD'], category: 'Weird data', summary: 'Cardboard box output and box prices vs a year ago',
     syntax: 'BOXES [3M|1Y|5Y|10Y|MAX]', examples: ['BOXES', 'BOXES 5Y'], keywords: ['cardboard', 'corrugated', 'packaging', 'boxes', 'industrial production'],
-    source: 'FRED IPN32221S, PCU322211322211', delay: 'Monthly',
+    source: 'Federal Reserve Board (industrial production); US Bureau of Labor Statistics (producer prices)', delay: 'Monthly',
   },
   {
     name: 'LIPSTICK', category: 'Weird data', summary: 'Cosmetics price index vs a year ago, the lipstick folklore gauge',
     syntax: 'LIPSTICK [3M|1Y|5Y|10Y|MAX]', examples: ['LIPSTICK', 'LIPSTICK 5Y'], keywords: ['lipstick index', 'cosmetics', 'cpi', 'prices', 'beauty'],
-    source: 'FRED CUUR0000SEGB02 (BLS)', delay: 'Monthly',
+    source: 'US Bureau of Labor Statistics (CPI, CUUR0000SEGB02)', delay: 'Monthly',
   },
   {
     name: 'SICK', aliases: ['WASTEWATER'], category: 'Weird data', summary: 'Wastewater virus level, national: COVID, flu A and RSV',

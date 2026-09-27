@@ -11,6 +11,7 @@
 // after D has not been applied to it yet. The factor is the product of those ratios.
 // A per-share figure is divided by it, a share count multiplied.
 
+import { cappedFetch } from './http.js';
 import { readFileSync } from 'node:fs';
 import { createCache } from './cache.js';
 
@@ -104,7 +105,7 @@ export function yahooSymbol(t) {
   return String(t || '').toUpperCase().replace('.', '-');
 }
 
-export function makeSplitHistory({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 500, retryMs: 5 * 60_000 }), bakedFor = (t) => {
+export function makeSplitHistory({ fetchImpl = cappedFetch, cache = createCache({ maxEntries: 500, retryMs: 5 * 60_000 }), bakedFor = (t) => {
   const b = bakedFile();
   const fresh = b.built && Date.now() - Date.parse(`${b.built}T00:00:00Z`) < BAKED_MAX_AGE;
   return fresh && Array.isArray(b.splits[t]) ? b.splits[t] : null;

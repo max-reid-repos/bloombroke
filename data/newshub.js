@@ -20,6 +20,7 @@
 // REPLAY_MAX are kept, so a browser that reconnects with Last-Event-ID gets what it
 // missed.
 
+import { cappedFetch } from './http.js';
 import { randomBytes } from 'node:crypto';
 import { FEEDS as MARKETS_FEEDS, parseRss, primeNews } from './news.js';
 import {
@@ -127,7 +128,7 @@ const realTimers = { setTimeout: (fn, ms) => { const t = setTimeout(fn, ms); t.u
 // client: { send({ event, data, id }) }. subscribe(tabs, client, { lastEventId }) ->
 // unsubscribe().
 export function makeNewsHub({
-  feeds = hubFeeds(), every = HUB_EVERY, fetchImpl = globalThis.fetch, secQueue = secQueued,
+  feeds = hubFeeds(), every = HUB_EVERY, fetchImpl = cappedFetch, secQueue = secQueued,
   decorate = null, timers = realTimers, maxBackoff = MAX_BACKOFF_MS, linger = LINGER_MS,
   replayMax = REPLAY_MAX, boot = randomBytes(4).toString('hex'), log = (m) => console.error(m), seenMax = SEEN_MAX,
 } = {}) {

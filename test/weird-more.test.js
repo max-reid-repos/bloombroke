@@ -493,10 +493,10 @@ test('pool: never more than `limit` at once, starts spaced by at least `gapMs`',
   assert.equal(calls, 2, 'no new work after a failure');
 });
 
-test('the disclaimer names every WEIRD source', () => {
+test('the disclaimer gives the WEIRD sources by class, with the credits their licences require', () => {
   const md = readFileSync('legal/disclaimer.md', 'utf8');
   const line = md.split('\n').find((l) => l.startsWith('- WEIRD gauges:'));
   assert.ok(line);
-  for (const s of ['IMF PortWatch', 'pizzint.watch', 'Apple App Store', 'NHC', 'OpenStreetMap (ODbL)', 'Wikimedia', 'Hacker News (Algolia)', 'FRED', 'NWS', 'NOAA SWPC', 'BLS',
-    'The Economist (CC BY 4.0)', 'Forbes', 'ApeWisdom', 'Polymarket', 'Drewry', 'Queue-Times.com', 'SEC EDGAR', 'the Federal Reserve', 'CDC', 'DICJ Macau']) assert.ok(line.includes(s), s);
+  for (const s of ['public web data', 'US government sources', 'National Hurricane Center', 'National Weather Service', 'NOAA', 'CDC', 'US Bureau of Labor Statistics', 'SEC EDGAR',
+    'The Economist (CC BY 4.0)', '© OpenStreetMap contributors (ODbL)', 'powered by Queue-Times.com']) assert.ok(line.includes(s), s);
 });
