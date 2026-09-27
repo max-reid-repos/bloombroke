@@ -363,3 +363,34 @@ test('headers: Permissions-Policy, HSTS without subdomains or preload, CSP objec
   const csp = h['Content-Security-Policy'].split('; ');
   for (const d of ["object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'self'"]) assert.ok(csp.includes(d), d);
 });
+
+// ---- DataFast never runs next to a Pro key ------------------------------------------------
+
+test('DataFast: not loaded when a Pro key is in storage or on its way; goal() counts only our totals', async () => {
+  const { loadDataFast, goal, proKeyPresent, PRO_KEY_STORAGE } = await import('../public/goal.js');
+  const { LS, PENDING_KEY } = await import('../public/pro.js');
+  assert.equal(PRO_KEY_STORAGE, LS.key, 'the same storage name as public/pro.js');
+  const store = (map) => ({ getItem: (k) => map[k] ?? null });
+  const none = { local: store({}), session: store({}), loc: { search: '?c=AAPL' } };
+  assert.equal(proKeyPresent(none), false);
+  assert.equal(proKeyPresent({ ...none, local: store({ [LS.key]: 'BB-KEY' }) }), true);
+  assert.equal(proKeyPresent({ ...none, session: store({ [PENDING_KEY]: 'cs_1' }) }), true, 'the checkout return, before the key lands');
+  assert.equal(proKeyPresent({ ...none, loc: { search: '?c=PRO&session_id=cs_1' } }), true);
+  assert.equal(proKeyPresent({ local: { getItem() { throw new Error('denied'); } }, session: null, loc: null }), false);
+
+  const doc = { head: { kids: [], appendChild(n) { this.kids.push(n); } }, documentElement: { classList: { contains: () => false } }, querySelector: () => null, createElement: () => ({ setAttribute() {} }) };
+  const win = {};
+  assert.equal(loadDataFast({ doc, nav: {}, win, pro: () => true }), false);
+  assert.equal(doc.head.kids.length, 0, 'no script tag');
+  assert.equal(win.datafast, undefined, 'no queue either');
+  assert.equal(loadDataFast({ doc, nav: {}, win, pro: () => false }), true, 'non-Pro visitors keep it');
+
+  const calls = [];
+  const f = async (...a) => { calls.push(a); return {}; };
+  const df = [];
+  const w = { datafast: (...a) => df.push(a) };
+  assert.deepEqual(goal('guess_shared', { via: 'copy' }, { win: w, nav: {}, fetchImpl: f, pro: () => true }), { datafast: false, counted: true });
+  assert.equal(df.length, 0);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(goal('pro_checkout_started', { plan: 'month' }, { win: w, nav: {}, fetchImpl: f, pro: () => false }).datafast, true, 'the checkout goal still reaches DataFast for non-Pro');
+});
