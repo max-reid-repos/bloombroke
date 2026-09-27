@@ -284,8 +284,8 @@ function fakeFetch() {
   return f;
 }
 
-test('goal(): the twelve goals, each once in the code', () => {
-  assert.deepEqual(GOALS.slice().sort(), ['desk_opened', 'feedback_sent', 'guess_played', 'guess_shared', 'mcp_screen_opened', 'news_why_opened', 'pro_checkout_started', 'weird_gauge_opened', 'whatif_embed', 'whatif_run', 'whatif_share', 'whatif_video']);
+test('goal(): the thirteen goals, each once in the code', () => {
+  assert.deepEqual(GOALS.slice().sort(), ['desk_opened', 'feedback_sent', 'guess_played', 'guess_shared', 'mcp_screen_opened', 'news_why_opened', 'pro_checkout_started', 'sponsor_click', 'weird_gauge_opened', 'whatif_embed', 'whatif_run', 'whatif_share', 'whatif_video']);
   assert.deepEqual(CLIENT_COUNTED, CLIENT_COUNTS, 'the browser posts exactly the names the server allows');
   const wired = {
     'public/screens/whatif.js': ['whatif_run', 'whatif_video', 'whatif_share'],
@@ -296,6 +296,7 @@ test('goal(): the twelve goals, each once in the code', () => {
     'public/pro.js': ['pro_checkout_started'],
     'public/screens/desk.js': ['desk_opened'],
     'public/screens/mcp.js': ['mcp_screen_opened'],
+    'public/sponsor-strip.js': ['sponsor_click'],
   };
   for (const [f, names] of Object.entries(wired)) {
     const s = readFileSync(f, 'utf8');

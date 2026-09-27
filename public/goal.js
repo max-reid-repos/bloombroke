@@ -16,6 +16,7 @@ export const GOALS = [
   'guess_played', 'guess_shared',
   'news_why_opened', 'weird_gauge_opened', 'mcp_screen_opened',
   'feedback_sent', 'pro_checkout_started', 'desk_opened',
+  'sponsor_click', // a paid sponsor line clicked (never our own AD lines)
 ];
 
 // Counted on our server by the route itself (lib/counters.js SERVER_COUNTS), so not here:

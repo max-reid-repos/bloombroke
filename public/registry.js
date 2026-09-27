@@ -463,7 +463,7 @@ export const REGISTRY = [
     source: 'Built in', delay: 'None',
   },
   {
-    name: 'SPONSOR', category: 'Legal', summary: 'Sponsors: one plain line, no tracking, and who we do not take',
+    name: 'SPONSOR', category: 'Legal', summary: 'Sponsors: lines that rotate in the status bar, no tracking, and who we do not take',
     syntax: 'SPONSOR', examples: ['SPONSOR'], keywords: ['sponsor', 'sponsored', 'advertise', 'ads'],
     source: 'Built in', delay: 'None',
   },

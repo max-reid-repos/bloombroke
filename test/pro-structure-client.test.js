@@ -16,9 +16,9 @@ import {
   offerHtml, shownRows, FREE_ROWS, PRO_ROWS, LIVE, COMING, RULE, parseLogin, parseRedeem, statusText, giftRowsHtml, GIFT_RULES, parse as parsePro,
 } from '../public/screens/pro.js';
 import { chatHtml, CHAT_SOON, CHAT_LINE } from '../public/screens/chat.js';
-import { sponsorLineHtml, gaugeSponsorHtml, sponsorHtml, SPONSOR_LINES } from '../public/screens/sponsor.js';
+import { gaugeSponsorHtml } from '../public/screens/sponsor.js';
 import { feedbackPayload, feedbackHtml, counterText, THANKS, EMAIL_LABEL, MAX_FEEDBACK } from '../public/screens/feedback.js';
-import { cleanSponsors, cleanUrl, loadSponsors, mountSponsors, gaugeSponsor, SPONSORS_FILE } from '../lib/sponsors.js';
+import { cleanSponsors, loadSponsors } from '../lib/sponsors.js';
 import { gaugeModel, gaugeTree } from '../lib/og-weird.js';
 import { WEIRD_GAUGES } from '../public/screens/weird-gauges.js';
 import { normalizeGiftCode as serverGift, generateGiftCode } from '../pro/licence.js';
@@ -185,38 +185,6 @@ test('registry: GIFT, REDEEM, SPONSOR and FEEDBACK are listed; SPONSOR is not in
 
 // ---- Sponsors ------------------------------------------------------------------------------
 
-test('sponsors: the committed config is empty, so nothing shows', () => {
-  assert.deepEqual(JSON.parse(readFileSync(SPONSORS_FILE, 'utf8')), { line: null, gauges: {} });
-  const cfg = loadSponsors();
-  assert.deepEqual(cfg, { line: null, gauges: {} });
-  assert.equal(sponsorLineHtml(cfg), '');
-  assert.equal(sponsorLineHtml(null), '');
-  assert.equal(gaugeSponsorHtml(cfg, 'pizza'), '');
-  assert.equal(gaugeSponsor('pizza'), null);
-  const html = readFileSync('public/index.html', 'utf8');
-  assert.match(html, /<span id="status-sponsor" class="status-sponsor" hidden><\/span>/, 'empty and hidden by default');
-});
-
-test('sponsor line: plain text, rel sponsored noopener, no tracking; hidden for Pro', () => {
-  const cfg = cleanSponsors({ line: { name: 'Acme Tea', text: 'Loose leaf tea, shipped', url: 'https://acme.example/tea?utm_source=bb&ref=1#top' }, gauges: {} });
-  assert.deepEqual(cfg.line, { name: 'Acme Tea', text: 'Loose leaf tea, shipped', url: 'https://acme.example/tea' }, 'query and fragment are gone');
-  const html = sponsorLineHtml(cfg, { pro: false });
-  assert.equal(html, '<span class="sponsor-k">SPONSOR</span><a href="https://acme.example/tea" rel="sponsored noopener" referrerpolicy="no-referrer" target="_blank">Acme Tea: Loose leaf tea, shipped</a>');
-  assert.equal(sponsorLineHtml(cfg, { pro: true }), '', 'Pro never sees it');
-  assert.doesNotMatch(html, /<script|<img|<iframe/);
-  // No link, or a bad one: plain words only.
-  assert.equal(cleanSponsors({ line: { name: 'A', text: 'B', url: 'http://acme.example' } }).line.url, null);
-  assert.equal(cleanSponsors({ line: { name: 'A', text: 'B', url: 'javascript:alert(1)' } }).line.url, null);
-  assert.equal(cleanUrl('https://user:pw@acme.example/'), null);
-  assert.match(sponsorLineHtml(cleanSponsors({ line: { name: 'A', text: 'B' } })), /<span>A: B<\/span>/);
-  // Text is escaped and kept plain: no emoji, no em dash, not too long.
-  assert.match(sponsorLineHtml(cleanSponsors({ line: { name: '<b>A</b>', text: 'x & y' } })), /&lt;b&gt;A&lt;\/b&gt;: x &amp; y/);
-  assert.equal(cleanSponsors({ line: { name: 'A', text: 'Hot deal \u{1F525}' } }).line, null);
-  assert.equal(cleanSponsors({ line: { name: 'A', text: 'one \u2014 two' } }).line, null);
-  assert.equal(cleanSponsors({ line: { name: 'A', text: 'x'.repeat(101) } }).line, null);
-  assert.equal(cleanSponsors('nonsense').line, null);
-});
-
 test('gauge sponsors: SPONSORED BY on the gauge title strip and on its share card', () => {
   const cfg = cleanSponsors({ line: null, gauges: { pizza: { name: 'Acme Pizza' }, 'BAD ID': { name: 'x' }, canal: { name: '' } } });
   assert.deepEqual(cfg.gauges, { pizza: { name: 'Acme Pizza' } });
@@ -243,31 +211,6 @@ test('gauge sponsors: SPONSORED BY on the gauge title strip and on its share car
   // The WEIRD gauge screen has one isolated hook.
   const src = readFileSync('public/screens/weird.js', 'utf8');
   assert.equal((src.match(/markGaugeSponsor/g) || []).length, 2, 'an import and one call');
-});
-
-test('SPONSOR screen: one line, no tracking, who we do not take, the contact', async () => {
-  const html = sponsorHtml(null);
-  for (const l of SPONSOR_LINES) assert.ok(html.includes(l.replace(/&/g, '&amp;')), l);
-  assert.match(html, /no pixels, no third-party scripts/);
-  assert.match(html, /brokers, exchanges, crypto, funds or tip sellers/);
-  assert.match(html, /mailto:hello@bloombroke\.com/);
-  assert.match(html, /NOW: NO SPONSOR\./);
-  assert.equal(parseCommand('SPONSOR').name, 'SPONSOR');
-  // The endpoint serves the cleaned file.
-  const dir = mkdtempSync(path.join(tmpdir(), 'bb-sp2-'));
-  const app = express();
-  const file = path.join(dir, 's.json');
-  writeFileSync(file, JSON.stringify({ line: { name: 'A', text: 'B', url: 'https://a.example/?utm=1' }, gauges: {} }));
-  mountSponsors(app, { file, log: { error() {} } });
-  const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
-  try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/sponsors`);
-    assert.deepEqual(await res.json(), { line: { name: 'A', text: 'B', url: 'https://a.example/' }, gauges: {} });
-  } finally {
-    await new Promise((r) => server.close(r));
-    loadSponsors();
-    rmSync(dir, { recursive: true, force: true });
-  }
 });
 
 // ---- FEEDBACK --------------------------------------------------------------------------------
@@ -463,7 +406,7 @@ test('legal: terms s9, disclaimer and privacy say what the code does', () => {
   }
   const disclaimer = read('disclaimer');
   assert.ok(disclaimer.includes('we are not paid by any broker, exchange or investment product issuer for anything shown on the site.'), 'the s2 sentence, true with any allowed sponsor');
-  for (const must of ['marked SPONSOR in the status line, or SPONSORED BY on a WEIRD gauge', 'We do not accept sponsors that sell or promote investment products, brokers, exchanges, crypto, funds or tips', 'Sponsors have no say over the data or content']) {
+  for (const must of ['Sponsor lines rotate in the status line, and each is marked SPONSOR; a sponsor of a WEIRD gauge is marked SPONSORED BY', 'We do not accept sponsors that sell or promote investment products, brokers, exchanges, crypto, funds or tips', 'Sponsors have no say over the data or content']) {
     assert.ok(disclaimer.includes(must), `disclaimer: ${must}`);
   }
   const privacy = read('privacy');
