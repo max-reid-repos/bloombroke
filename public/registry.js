@@ -113,9 +113,10 @@ export const REGISTRY = [
   },
   // --- end WORLDMAP ---
   {
-    name: 'SECTORS', category: 'Markets', summary: 'The 11 sectors: today, 1 month and this year',
-    syntax: 'SECTORS', examples: ['SECTORS'], keywords: ['industries', 'etf', 'performance', 'rotation'],
-    source: 'CNBC', delay: 'May be delayed',
+    name: 'SECTORS', category: 'Markets', summary: 'The 11 sectors and their S&P 100 stocks, as a table or a map',
+    syntax: 'SECTORS [1D|1W|1M|YTD|1Y] [MAP]', examples: ['SECTORS', 'SECTORS 1M', 'SECTORS YTD MAP'], keywords: ['industries', 'etf', 'performance', 'rotation', 'members', 'market map', 'drill down', 'contribution'],
+    options: [['1D 1W 1M YTD 1Y', 'The period'], ['MAP', 'Boxes sized by market cap'], ['Right Left E C', 'Open and close sectors'], ['M', 'Table or map']],
+    source: 'CNBC; S&P 100 list', delay: 'May be delayed',
   },
   {
     name: 'BREADTH', category: 'Markets', summary: 'How many stocks rose and fell, by exchange and sector',
@@ -616,7 +617,7 @@ export const REGISTRY = [
   // --- FISHTANK (screens/fishtank.js) ---
   {
     name: 'FISHTANK', category: 'Weird data', summary: 'The market as fish',
-    syntax: 'FISHTANK', examples: ['FISHTANK'], keywords: ['aquarium', 'tank', 'easter egg', 'sea', 'swim', 's&p 100'],
+    syntax: 'FISHTANK [sector]', examples: ['FISHTANK', 'FISHTANK TECH'], keywords: ['aquarium', 'tank', 'easter egg', 'sea', 'swim', 's&p 100'],
     source: 'CNBC, the S&P 100 batch HEATMAP uses', delay: 'May be delayed; refreshes every minute',
   },
   // --- end FISHTANK ---
