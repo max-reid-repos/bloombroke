@@ -206,7 +206,7 @@ test('rides: open rides with a posted wait, closed parks say closed', () => {
   assert.match(tile, link, 'the tile credit links to Queue-Times.com');
   assert.match(tile, /target="_blank" rel="noopener noreferrer"/);
   assert.match(tileBody(gauge, { id: 'rides', ok: false, headline: 'NO DATA', source: 'Queue-Times.com' }), /<a href="https:\/\/queue-times\.com\/"/);
-  assert.match(readFileSync('public/screens/weird.js', 'utf8'), /\$\{sourceHtml\(g, d\)\}<\/p>\s*`;\s*const host/, 'the detail footer uses the linked credit too');
+  assert.match(readFileSync('public/screens/weird.js', 'utf8'), /<div class="wd-foot">\$\{how\}<p class="wd-src">\$\{sourceHtml\(g, d\)\}<\/p>/, 'the detail footer uses the linked credit too');
   // Other credits stay plain text.
   assert.doesNotMatch(tileBody(WEIRD_GAUGES.find((x) => x.id === 'wsb'), { id: 'wsb', ok: true, headline: 'X', source: 'ApeWisdom', asOf: '2026-09-26' }), /<a /);
 });

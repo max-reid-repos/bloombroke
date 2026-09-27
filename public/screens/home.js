@@ -4,6 +4,7 @@ import { esc, fmtNum, fmtSigned, fmtPct, dirOf, panel, LOADING, marketsColumns, 
 import { rangeChart } from './chart.js';
 import { freshTag } from '../freshness.js';
 import { newsList } from './news.js';
+import { startSince } from '../since.js'; // SINCE line
 
 export function fxTable(pairs) {
   const rows = pairs.map((p) => {
@@ -85,6 +86,7 @@ export function render(el, cmd, ctx) {
     symbol: 'SPX', range: { range: '1D' }, meta: el.querySelector('#h-ch-meta'), hostCls: 'chart-host-home',
     label: 'S&P 500', decimals: 2, fmtY: (v) => fmtNum(v, 0),
   });
+  const since = startSince(el.querySelector('#h-mk-meta'), ctx); // SINCE: in the MARKETS title strip
 
   async function loadMarkets() {
     try {
@@ -94,6 +96,7 @@ export function render(el, cmd, ctx) {
       settleTicks(mkBody);
       const spx = d.instruments.find((m) => m.id === 'SPX');
       if (spx) chart.setLive({ t: Date.parse(spx.asOf), v: spx.last });
+      since.markets(d.instruments);
       ctx.updated(d.updated, d.stale, rows);
     } catch (err) {
       if (!fail(mkBody, err, 'table')) ctx.status('COULD NOT REFRESH MARKETS', 'warn');

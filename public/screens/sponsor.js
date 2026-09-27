@@ -41,12 +41,14 @@ export function loadSponsors() {
   return loading;
 }
 
-// The one hook in the WEIRD gauge screen: fill its title strip if the gauge has a sponsor.
+// The one hook in the WEIRD gauge screen: if the gauge has a sponsor, a note of its own
+// goes in the title strip just before the gauge's meta, so the screen can keep writing
+// its own notes (record lines) into that meta without touching this one.
 export function markGaugeSponsor(metaEl, id) {
   if (!metaEl) return;
   loadSponsors().then((cfg) => {
     const html = gaugeSponsorHtml(cfg, id);
-    if (html && metaEl.isConnected) metaEl.innerHTML = html;
+    if (html && metaEl.isConnected) metaEl.insertAdjacentHTML('beforebegin', `<span class="panel-meta wd-sponsor">${html}</span>`);
   });
 }
 

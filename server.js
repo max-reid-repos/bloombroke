@@ -279,13 +279,14 @@ app.get('/api/screen', async (req, res) => {
 // a value (fresh, or its last good one while a refresh runs) at once, one with none comes
 // back pending (not cached, so the screen can ask again in a few seconds). A failed
 // source is { ok: false, headline: 'NO DATA', source }, never an error page.
+// ?p=3M|1Y|5Y|10Y|MAX: the history period (tile sparks, the gauge's chart); none: AUTO.
 app.get('/api/weird', async (req, res) => {
-  const data = await getWeird({ wait: FAST_WAIT });
+  const data = await getWeird({ wait: FAST_WAIT, period: str(req.query.p) });
   res.set('Cache-Control', data.gauges.some((g) => g.pending) ? 'no-store' : 'public, max-age=60');
   res.json(data);
 });
 app.get('/api/weird/:name', async (req, res) => {
-  const data = await getGauge(str(req.params.name), { wait: FAST_WAIT });
+  const data = await getGauge(str(req.params.name), { wait: FAST_WAIT, period: str(req.query.p) });
   if (!data) return res.status(404).json({ error: 'not_found', message: 'No such WEIRD gauge. Type WEIRD for the list.' });
   res.set('Cache-Control', data.pending ? 'no-store' : `public, max-age=${data.ok && !data.stale ? 300 : 30}`);
   res.json(data);
@@ -300,6 +301,12 @@ mountTrending(app, { getQuoteList });
 
 // Sponsors (lib/sponsors.js): GET /api/sponsors from data/sponsors.json, empty by default.
 mountSponsors(app);
+
+// --- GUESS (data/guess.js): one mystery stock a day ---
+import { mountGuess } from './data/guess.js';
+import { getFishtank } from './data/sp100.js';
+mountGuess(app, { getChart, getCaps: getFishtank });
+// --- end GUESS ---
 
 startPro(app, { dir });
 

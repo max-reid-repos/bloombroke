@@ -10,6 +10,13 @@ export const id = 'billions';
 export const source = 'Forbes';
 export const ttl = 15 * 60_000;
 
+// No past at the source: one reading per UTC day is recorded (data/weird/history.js).
+// The biggest mover is a different person most days: no record line.
+export const record = false;
+export const defaultPeriod = 'MAX';
+export const snapshotSeries = [{ key: 'move', label: 'Biggest one-day change, $B' }];
+export const snapshot = (v) => ({ move: v.moves?.[0]?.change ?? null });
+
 const FIELDS = 'rank,uri,personName,lastName,finalWorth,estWorthPrev,timestamp';
 const URL_RTB = `https://www.forbes.com/forbesapi/person/rtb/0/position/true.json?fields=${FIELDS}`;
 

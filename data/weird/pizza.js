@@ -8,6 +8,13 @@ export const id = 'pizza';
 export const source = 'pizzint.watch';
 export const ttl = 10 * 60_000;
 
+// No past at the source: one reading per UTC day is recorded (data/weird/history.js).
+// DEFCON counts down as it gets busier, so a record line would read backwards: none.
+export const record = false;
+export const defaultPeriod = 'MAX';
+export const snapshotSeries = [{ key: 'defcon', label: 'DEFCON level' }, { key: 'index', label: 'Index', hidden: true }];
+export const snapshot = (v) => ({ defcon: v.defcon, index: v.index });
+
 const URL_DATA = 'https://www.pizzint.watch/api/dashboard-data';
 
 // The site's own page adds ?_t=<time, in 30-second steps>. Without it the CDN can hand
