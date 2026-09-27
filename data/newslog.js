@@ -3,11 +3,12 @@
 //
 // One JSON file per ticker under data/.cache/newslog/ (gitignored, so a deploy's git
 // pull never touches it). Each row is { time, source, title, url }, newest first, one
-// copy per story, at most LOG_CAP per ticker. Writes go to a temp file and are renamed
+// copy per story, at most LOG_CAP per ticker, at most MAX_FILES tickers (the least
+// recently written go first). Writes go to a temp file and are renamed
 // into place, one at a time per ticker; a write that fails is logged and skipped (the
 // log is extra, the screens never wait on it).
 
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { titleKey } from './news.js';
@@ -15,6 +16,8 @@ import { titleKey } from './news.js';
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const LOG_DIR = path.join(root, 'data', '.cache', 'newslog');
 export const LOG_CAP = 400;
+// At most this many ticker files: past it, the least recently written ones are removed.
+export const MAX_FILES = 2000;
 
 const SAFE = /^[A-Z0-9][A-Z0-9.^=-]{0,15}$/;
 const httpUrl = (u) => {
@@ -56,10 +59,41 @@ export function mergeLog(old, incoming, cap = LOG_CAP) {
   return { rows, added };
 }
 
-export function makeNewsLog({ dir = LOG_DIR, cap = LOG_CAP, maxOpen = 300 } = {}) {
+export function makeNewsLog({ dir = LOG_DIR, cap = LOG_CAP, maxOpen = 300, maxFiles = MAX_FILES } = {}) {
   const open = new Map(); // ticker -> Promise<rows>, least recently used first
   const chains = new Map(); // ticker -> the write queue
   const file = (t) => path.join(dir, `${t}.json`);
+
+  // The ticker files on disk, least recently written first (read once, from mtimes).
+  let written = null;
+  function index() {
+    if (!written) {
+      written = readdir(dir).then(async (names) => {
+        const found = [];
+        for (const n of names) {
+          const m = /^(.+)\.json$/.exec(n);
+          if (!m || !SAFE.test(m[1])) continue;
+          const st = await stat(path.join(dir, n)).catch(() => null);
+          if (st) found.push([m[1], st.mtimeMs]);
+        }
+        found.sort((a, b) => a[1] - b[1]);
+        return new Map(found);
+      }).catch(() => new Map());
+    }
+    return written;
+  }
+  // A file was just written: it is the newest; past maxFiles the oldest are removed.
+  async function touched(ticker) {
+    const idx = await index();
+    idx.delete(ticker);
+    idx.set(ticker, Date.now());
+    while (idx.size > maxFiles) {
+      const oldest = idx.keys().next().value;
+      idx.delete(oldest);
+      open.delete(oldest);
+      await unlink(file(oldest)).catch(() => {});
+    }
+  }
 
   function load(ticker) {
     if (open.has(ticker)) {
@@ -98,6 +132,7 @@ export function makeNewsLog({ dir = LOG_DIR, cap = LOG_CAP, maxOpen = 300 } = {}
       const tmp = `${file(ticker)}.${process.pid}.${Date.now()}.tmp`;
       await writeFile(tmp, JSON.stringify({ ticker, rows }));
       await rename(tmp, file(ticker));
+      await touched(ticker);
       return added;
     }).catch((err) => {
       console.error('[newslog]', ticker, err.message);

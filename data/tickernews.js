@@ -11,6 +11,7 @@ import { fetchCapped, parseSeekingAlpha, filingTitle, companyName, mergeItems, s
 import { secTicker } from './financials.js';
 import { filingUrl } from './filings.js';
 import { newsLog } from './newslog.js';
+import { instrumentById } from '../public/instruments.js';
 import { aboutTicker } from '../public/screens/tickernews.js';
 
 const TTL = 5 * 60_000;
@@ -125,15 +126,20 @@ export function makeTickerNews({ fetchImpl = globalThis.fetch, cache = createCac
 
   const sec = (ticker) => deadline(secFilings(ticker), secBudgetMs);
 
-  // The company's name from the SEC ticker map (null when it has none or the map is down).
-  const nameOf = (ticker) => secTickers().then((m) => m.value.byTicker.get(secTicker(ticker))?.title || null, () => null);
+  // The ticker's SEC filer entry { cik, title }: null for index, FX, coin and future
+  // symbols (registry instruments), for anything the SEC map does not list, and while
+  // the map is down.
+  const filerOf = (ticker) => (instrumentById(ticker) ? Promise.resolve(null)
+    : secTickers().then((m) => m.value.byTicker.get(secTicker(ticker)) || null, () => null));
+  const nameOf = (ticker) => filerOf(ticker).then((hit) => hit?.title || null);
 
-  // Headlines about the company go in the news log (WHY reads it). Filings are not kept:
-  // WHY reads them from EDGAR itself.
+  // Headlines about the company go in the news log (WHY reads it), for company stocks
+  // the SEC map knows only: no file for BTC or SPX. Filings are not kept: WHY reads them
+  // from EDGAR itself.
   function logAbout(ticker, items) {
     const heads = items.filter((n) => n.source !== 'SEC');
     if (!log || !heads.length) return;
-    nameOf(ticker).then((name) => log.record(ticker, aboutTicker(heads, ticker, name))).catch(() => {});
+    filerOf(ticker).then((hit) => (hit ? log.record(ticker, aboutTicker(heads, ticker, hit.title)) : 0)).catch(() => {});
   }
 
   async function getTickerNews(raw) {
@@ -158,6 +164,8 @@ export function makeTickerNews({ fetchImpl = globalThis.fetch, cache = createCac
   async function getTickerHeadlines(raw) {
     const ticker = normalizeTicker(raw);
     if (!ticker) throw new TickerNewsError('bad_symbol', 'That does not look like a ticker.');
+    // N flags are for company stocks: an index, pair, coin or future gets none.
+    if (instrumentById(ticker)) return { ticker, items: [] };
     const [live, name, logged] = await Promise.all([
       getTickerNews(ticker).then((d) => d.items.filter((n) => n.source !== 'SEC'), () => []),
       nameOf(ticker),

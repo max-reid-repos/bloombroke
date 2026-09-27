@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { makeNewsLog, mergeLog, logRow, LOG_CAP, LOG_DIR } from '../data/newslog.js';
+import { makeNewsLog, mergeLog, logRow, LOG_CAP, LOG_DIR, MAX_FILES } from '../data/newslog.js';
+import { utimesSync, writeFileSync, mkdirSync } from 'node:fs';
 import { makeTickerNews } from '../data/tickernews.js';
 
 const tmp = () => mkdtempSync(path.join(os.tmpdir(), 'bb-newslog-'));
@@ -75,6 +76,49 @@ test('news log: NEWS <ticker> saves the headlines about the company, not the fil
     const heads = await makeTickerNews({ fetchImpl, secTickers, log, now: () => Date.parse('2026-09-27T00:00:00Z') }).getTickerHeadlines('AAPL');
     assert.equal(heads.items.length, 2);
     assert.deepEqual(Object.keys(heads.items[0]).sort(), ['source', 'time', 'title', 'url']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('news log: at most MAX_FILES tickers; the least recently written go first', async () => {
+  const dir = tmp();
+  try {
+    assert.equal(MAX_FILES, 2000);
+    // Files left by an earlier run: OLD is the oldest on disk.
+    mkdirSync(dir, { recursive: true });
+    for (const [t, age] of [['OLD', 300], ['MID', 200]]) {
+      writeFileSync(path.join(dir, `${t}.json`), JSON.stringify({ ticker: t, rows: [logRow(row(1))] }));
+      const when = new Date(Date.now() - age * 1000);
+      utimesSync(path.join(dir, `${t}.json`), when, when);
+    }
+    const log = makeNewsLog({ dir, maxFiles: 3 });
+    await log.record('AAA', [row(1)]);
+    assert.deepEqual(readdirSync(dir).sort(), ['AAA.json', 'MID.json', 'OLD.json']);
+    await log.record('BBB', [row(1)]);
+    assert.deepEqual(readdirSync(dir).sort(), ['AAA.json', 'BBB.json', 'MID.json'], 'OLD went first');
+    await log.record('MID', [row(2)]); // MID is written again: now the newest
+    await log.record('CCC', [row(1)]);
+    assert.deepEqual(readdirSync(dir).sort(), ['BBB.json', 'CCC.json', 'MID.json']);
+    assert.deepEqual(await log.read('AAA'), [], 'an evicted ticker reads as empty');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('news log: only company stocks the SEC map knows get a file', async () => {
+  const dir = tmp();
+  try {
+    const log = makeNewsLog({ dir });
+    const rss = '<rss><channel><item><title>Bitcoin and Apple rally</title><link>https://www.nasdaq.com/articles/1</link><pubDate>Fri, 25 Sep 2026 12:00:00 GMT</pubDate></item></channel></rss>';
+    const fetchImpl = async (url) => (url.includes('nasdaq.com') ? new Response(rss) : new Response('<rss></rss>'));
+    const secTickers = async () => ({ value: { byTicker: new Map([['AAPL', { cik: 320193, title: 'Apple Inc.' }]]) } });
+    const tn = makeTickerNews({ fetchImpl, secTickers, log, now: () => Date.parse('2026-09-27T00:00:00Z') });
+    for (const t of ['BTC', 'SPX', 'ZZZZ']) await tn.getTickerNews(t).catch(() => {});
+    assert.deepEqual(await tn.getTickerHeadlines('BTC'), { ticker: 'BTC', items: [] }, 'no N flags for a coin');
+    await tn.getTickerNews('AAPL');
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(existsSync(dir) ? readdirSync(dir) : [], ['AAPL.json']);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
