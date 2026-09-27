@@ -12,6 +12,8 @@ export const source = 'FRED';
 export const ttl = FRED_TTL;
 export const retryMs = FRED_RETRY;
 export const defaultPeriod = '5Y';
+// The CSV is the whole series, from its first month: a new high or low is a record.
+export const fullSeries = true;
 
 export const SERIES = [
   { key: 'cass', fred: 'FRGSHPUSM649NCIS', label: 'Cass freight shipments', short: 'CASS', dp: 3 },

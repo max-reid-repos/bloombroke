@@ -29,6 +29,9 @@
 //             UTC day is recorded (snapshotSeries names the keys, the first is the lead)
 //   recordPoints(hist) -> [{ d, v }]  what the record line reads (default: the lead)
 //   record = false    no record line (the headline is not a number that has one)
+//   fullSeries = true value.hist starts where the source's data starts (a FRED CSV), so
+//             a reading past every earlier one is a RECORD. A deep history counts as
+//             that once complete; daily readings never do (they start with us).
 //   defaultPeriod     the period a gauge screen opens on (default 1Y)
 
 import { mkdirSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
@@ -247,13 +250,19 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
     else hist = mergeHist(dp?.hist, l?.value?.hist);
     const first = g.snapshot ? days.read(g.id)[0]?.[0] || null : null;
     const periods = periodInfo(hist, { recordingSince: first });
+    // No record line while the deep past is missing or still filling in (BUZZWORD's
+    // backfill): the "since" date would only be where our copy happens to start.
     let record = null;
-    if (g.record !== false && hist) {
-      try { record = recordLine(g.recordPoints ? g.recordPoints(hist) : leadPoints(hist)); } catch { record = null; }
+    const filling = g.history && (!dp || dp.hist.complete === false);
+    if (g.record !== false && hist && !filling) {
+      const fromStart = !g.snapshot && (g.history ? true : Boolean(g.fullSeries));
+      try { record = recordLine(g.recordPoints ? g.recordPoints(hist) : leadPoints(hist), { fromStart }); } catch { record = null; }
     }
     const out = {
       key, hist, periods, record,
       recording: first && !periods[RECORDING_UNTIL].ok ? { since: first } : null,
+      // Grid sparks per period, worked out once for this version of the history.
+      sparks: new Map(),
     };
     memo.set(g.id, out);
     return out;
@@ -277,13 +286,34 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
     };
   }
 
+  // Snapshot gauges upkeep fetched today: id -> { day, tries, failed }. A gauge is tried
+  // once per UTC day, and once more only when that try failed (the source threw or was
+  // empty); a fetch that worked but gave no number (parks closed, a partial storm count)
+  // is not retried. Never while its value is still fresh: a fresh value with no reading
+  // for today has no number to give.
+  const tried = new Map();
+  function snapshotDue(g, today) {
+    if (!g.snapshot || days.has(g.id, today) || queued.has(g.id) || held(g) || inflight.has(g.id)) return false;
+    const l = latest.get(g.id);
+    if (l && isFresh(g, l)) return false;
+    const t = tried.get(g.id);
+    if (!t || t.day !== today) return true;
+    return t.tries < 2 && t.failed;
+  }
+
   // One step of upkeep: record today's reading where one is in memory, fetch one snapshot
-  // gauge that has none for today, and start one deep-history fetch that is due.
+  // gauge that has none for today (see snapshotDue), and start one deep-history fetch
+  // that is due.
   function tick() {
     const today = isoDay(now());
     for (const g of gauges) { const l = latest.get(g.id); if (l) snap(g, l); }
-    const need = gauges.find((g) => g.snapshot && !days.has(g.id, today) && !queued.has(g.id) && !held(g) && !inflight.has(g.id));
-    if (need) refresh(need);
+    const need = gauges.find((g) => snapshotDue(g, today));
+    if (need) {
+      const t = tried.get(need.id);
+      const tries = t && t.day === today ? t.tries + 1 : 1;
+      tried.set(need.id, { day: today, tries, failed: false });
+      refresh(need).then((got) => { if (!got) tried.set(need.id, { day: today, tries, failed: true }); });
+    }
     if (!histInflight.size) {
       const due = gauges.find((g) => g.history && !historyHeld(g) && historyDue(g));
       if (due) refreshHistory(due);
@@ -380,7 +410,8 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
       if (p) {
         const info = f.periods[p];
         const shown = info.ok ? p : /^Too few readings in/.test(info.title) ? null : 'MAX';
-        row.spark = shown ? sparkFor(f.hist, shown) : [];
+        if (shown && !f.sparks.has(shown)) f.sparks.set(shown, sparkFor(f.hist, shown));
+        row.spark = shown ? f.sparks.get(shown) : [];
         if (row.spark.length < 3) row.spark = [];
         if (shown && shown !== p && f.hist?.d?.length) row.sparkFrom = f.hist.d[0];
       }
@@ -399,7 +430,9 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
     // A value saved before its gauge built a history (value.hist) is fetched again too,
     // so the period row and the record line do not wait a whole ttl after a deploy.
     // (Every gauge whose load() builds one names a defaultPeriod.)
-    const noHist = (g, l) => Boolean(g.defaultPeriod && !g.snapshot && !l.value.hist);
+    // (hist: null is a gauge that had nothing to build one from, OMENS without SWPC: that
+    // waits for its normal ttl like any value.)
+    const noHist = (g, l) => Boolean(g.defaultPeriod && !g.snapshot && l.value.hist === undefined);
     const due = gauges.filter((g) => { const l = latest.get(g.id); return !held(g) && (!l || !isFresh(g, l) || noHist(g, l)); });
     due.sort((a, b) => Number(latest.has(a.id)) - Number(latest.has(b.id)));
     for (const g of due) queued.add(g.id);

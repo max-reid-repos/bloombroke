@@ -55,7 +55,8 @@ export function build({ moon, sky, sun, now }) {
     },
     sky,
     sunspots: lastSun ? { month: lastSun.month, ssn: lastSun.ssn, series: sun.slice(-120) } : null,
-    ...(sun ? { hist: histFrom(sun.map((r) => ({ d: `${r.month}-01`, ssn: r.ssn })), [{ key: 'ssn', label: 'Sunspot number' }], { step: 'month' }) } : {}),
+    // null when SWPC did not answer: the value waits its normal ttl, like any other.
+    hist: sun ? histFrom(sun.map((r) => ({ d: `${r.month}-01`, ssn: r.ssn })), [{ key: 'ssn', label: 'Sunspot number' }], { step: 'month' }) : null,
   };
 }
 

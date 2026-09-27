@@ -13,6 +13,8 @@ export const ttl = FRED_TTL;
 export const retryMs = FRED_RETRY;
 export const SERIES = 'CUUR0000SEGB02';
 export const defaultPeriod = '5Y';
+// The CSV is the whole series, from its first month: a new high or low is a record.
+export const fullSeries = true;
 
 export function build(rows) {
   if (!rows.length) throw new NoData('FRED: no cosmetics values');

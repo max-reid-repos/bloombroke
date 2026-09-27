@@ -19,6 +19,8 @@ export const source = 'Federal Reserve';
 export const ttl = 24 * 60 * 60_000;
 export const retryMs = 60 * 60_000;
 export const defaultPeriod = 'MAX';
+// Eight editions are too few for a record line.
+export const record = false;
 
 const BASE = 'https://www.federalreserve.gov/monetarypolicy/';
 const INDEX = `${BASE}publications/beige-book-default.htm`;

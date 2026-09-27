@@ -10,6 +10,8 @@ export const id = 'bigmac';
 export const source = 'The Economist';
 export const ttl = 24 * 60 * 60_000;
 export const defaultPeriod = 'MAX';
+// The CSV is the whole series, from its first month: a new high or low is a record.
+export const fullSeries = true;
 
 const URL_CSV = 'https://raw.githubusercontent.com/TheEconomist/big-mac-data/master/output-data/big-mac-full-index.csv';
 

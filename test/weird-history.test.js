@@ -105,12 +105,15 @@ test('sliceHist: a period ends at the newest reading; long runs are averaged, th
   assert.equal(y.d.length, 366);
   assert.equal(y.bucket, 1);
   assert.equal(sliceHist(h, 'MAX').d.length, 1000);
-  // Capped at 100 points: runs of 10 averaged, counted from the newest.
+  // Capped at 100 points: the newest reading on its own, then runs of 10 averaged back
+  // from the one before it.
   const c = sliceHist(h, 'MAX', 100);
   assert.equal(c.bucket, 10);
-  assert.equal(c.d.length, 100);
-  assert.equal(c.d[99], h.d[999]);
-  assert.equal(c.series[0].v[99], (990 + 999) / 2);
+  assert.equal(c.d.length, 101);
+  assert.equal(c.d[100], h.d[999]);
+  assert.equal(c.series[0].v[100], 999, 'the newest reading as it is, not averaged');
+  assert.equal(c.d[99], h.d[998]);
+  assert.equal(c.series[0].v[99], (989 + 998) / 2);
   // Grid sparks: at most SPARK_POINTS numbers, empty readings left out.
   const s = sparkFor(h, 'MAX');
   assert.ok(s.length <= SPARK_POINTS && s.length > 100);
@@ -135,9 +138,14 @@ test('mergeHist: the deep past under the recent readings; a recent gap keeps the
 // ---- the record line -----------------------------------------------------------------
 
 test('record line: lowest or highest since the last reading as low or high', () => {
-  // Monthly: 50, then 60 for a year, then 40 now -> lower than everything: a record.
-  assert.deepEqual(recordLine(pts([50, ...Array(12).fill(60), 40])), {
+  // Monthly: 50, then 60 for a year, then 40 now -> lower than everything. A record only
+  // when the series starts where the source's data starts.
+  assert.deepEqual(recordLine(pts([50, ...Array(12).fill(60), 40]), { fromStart: true }), {
     kind: 'low', record: true, since: pts([0])[0].d, text: 'RECORD LOW SINCE JAN 2020', short: 'RECORD LOW',
+  });
+  // Otherwise it never reads as all-time: lowest since the first reading we have.
+  assert.deepEqual(recordLine(pts([50, ...Array(12).fill(60), 40])), {
+    kind: 'low', record: false, since: pts([0])[0].d, text: 'LOWEST SINCE JAN 2020', short: 'LOW SINCE JAN 2020',
   });
   // 30 then 60 x 12 then 45: the last time it was as low was 13 readings ago.
   const r = recordLine(pts([30, ...Array(12).fill(60), 45]));
@@ -148,7 +156,8 @@ test('record line: lowest or highest since the last reading as low or high', () 
   // Up: highest since.
   const u = recordLine(pts([90, ...Array(12).fill(10), 80]));
   assert.equal(u.text, 'HIGHEST SINCE JAN 2020');
-  assert.equal(recordLine(pts([1, ...Array(12).fill(10), 80])).text, 'RECORD HIGH SINCE JAN 2020');
+  assert.equal(recordLine(pts([1, ...Array(12).fill(10), 80]), { fromStart: true }).text, 'RECORD HIGH SINCE JAN 2020');
+  assert.equal(recordLine(pts([1, ...Array(12).fill(10), 80])).short, 'HIGH SINCE JAN 2020');
 });
 
 test('record line edge cases: gap under 6 months, flat, too short, ties', () => {
@@ -156,9 +165,13 @@ test('record line edge cases: gap under 6 months, flat, too short, ties', () => 
   assert.equal(recordLine(pts([10, 50, 50, 50, 50, 50, 50, 50, 50, 20, 50, 50, 25])), null);
   // Flat: every reading ties the last one, which is a month back.
   assert.equal(recordLine(pts(Array(24).fill(7))), null);
-  // Too short: fewer than 3 readings, or under 6 months from first to last.
+  // Too short: too few readings, or under 6 months from first to last.
   assert.equal(recordLine(pts([1, 2])), null);
-  assert.equal(recordLine(pts([5, 4, 3, 2, 1], 7)), null, 'five weekly readings: a month of data');
+  assert.equal(recordLine(pts([9, 8, 7, 6, 5, 4, 3, 2, 1], 7), { fromStart: true }), null, 'nine weekly readings: two months of data');
+  // Sparse (twice a year): the gap is long but too few readings lie between.
+  const half = (vals) => vals.map((v, i) => ({ d: `${2000 + Math.floor(i / 2)}-${i % 2 ? '07' : '01'}-01`, v }));
+  assert.equal(recordLine(half([10, 50, 50, 50, 50, 20])), null, 'four readings between: not enough');
+  assert.equal(recordLine(half([10, 50, 50, 50, 50, 50, 50, 20])).text, 'LOWEST SINCE JAN 2000', 'six between: enough');
   assert.equal(recordLine([]), null);
   assert.equal(recordLine(null), null);
   // A tie long ago counts as "as low": lowest since then, not a record.
@@ -167,7 +180,9 @@ test('record line edge cases: gap under 6 months, flat, too short, ties', () => 
   assert.equal(tie.since, pts([0])[0].d);
   assert.equal(tie.text, 'LOWEST SINCE JAN 2020');
   // Empty readings are skipped, never read as zero.
-  assert.equal(recordLine([{ d: '2020-01-01', v: 5 }, { d: '2020-06-01', v: null }, { d: '2020-12-01', v: 9 }, { d: '2021-01-01', v: 1 }]).text, 'RECORD LOW SINCE JAN 2020');
+  const gappy = pts([5, 9, 9, 9, 9, 9, 9, 9, 1]);
+  gappy.splice(3, 0, { d: '2020-03-15', v: null });
+  assert.equal(recordLine(gappy, { fromStart: true }).text, 'RECORD LOW SINCE JAN 2020');
 });
 
 test('record line per gauge: CANAL reads 7-day runs, PANIC its 30-day comparison, MACAU year on year', () => {
@@ -178,7 +193,7 @@ test('record line per gauge: CANAL reads 7-day runs, PANIC its 30-day comparison
   const rp = canal.recordPoints(h);
   assert.equal(rp.length, 394, 'one mean per full run of 7 days');
   assert.equal(rp[rp.length - 1].v, 5);
-  assert.equal(recordLine(rp).text, 'RECORD LOW SINCE JAN 2020');
+  assert.equal(recordLine(rp, { fromStart: true }).text, 'RECORD LOW SINCE JAN 2020');
   // A missing day breaks the run.
   const gap = canal.toHist({ chokepoint6: days.filter((_, i) => i !== 396) });
   assert.notEqual(canal.recordPoints(gap).at(-1).d, days[396].date);
@@ -187,7 +202,7 @@ test('record line per gauge: CANAL reads 7-day runs, PANIC its 30-day comparison
   const ph = panic.toHist(Object.fromEntries(panic.ARTICLES.map((a) => [a.page, views(400, 400)])));
   const pp = panic.recordPoints(ph);
   assert.equal(Math.round(pp.at(-1).v), 300);
-  assert.equal(recordLine(pp).text, 'RECORD HIGH SINCE JAN 2020');
+  assert.equal(recordLine(pp, { fromStart: true }).text, 'RECORD HIGH SINCE JAN 2020');
   // MACAU: each month on the same month a year before.
   const mh = macau.toHist(Array.from({ length: 36 }, (_, i) => ({ month: `${2020 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`, value: 100 + i })));
   const mp = macau.recordPoints(mh);
@@ -197,25 +212,28 @@ test('record line per gauge: CANAL reads 7-day runs, PANIC its 30-day comparison
 
 // ---- snapshots ---------------------------------------------------------------------
 
-test('snapshots: one reading per UTC day, first one kept, survives a restart', () => withDir((dir) => {
+test('snapshots: one reading per UTC day (the latest of that day), survives a restart', () => withDir((dir) => {
   const a = snapshotStore(dir);
   assert.equal(a.record('wsb', '2026-09-27', { top: 100 }), true);
-  assert.equal(a.record('wsb', '2026-09-27', { top: 999 }), false, 'same day: kept as it was');
+  assert.equal(a.record('wsb', '2026-09-27', { top: 100 }), false, 'the same reading again writes nothing');
+  assert.equal(a.record('wsb', '2026-09-27', { top: 90 }), true, 'a later reading the same day replaces it');
+  assert.equal(a.read('wsb').length, 1, 'still one entry for the day');
   assert.equal(a.record('wsb', '2026-09-28', { top: 200 }), true);
+  assert.equal(a.record('wsb', '2026-09-27', { top: 5 }), false, 'a past day is never touched');
   assert.equal(a.record('wsb', '2026-09-29', { top: null }), false, 'no number: nothing recorded');
   assert.equal(a.record('wsb', 'yesterday', { top: 5 }), false);
   // A new process reads the same file.
   const b = snapshotStore(dir);
-  assert.deepEqual(b.read('wsb'), [['2026-09-27', { top: 100 }], ['2026-09-28', { top: 200 }]]);
-  assert.equal(b.record('wsb', '2026-09-28', { top: 1 }), false);
+  assert.deepEqual(b.read('wsb'), [['2026-09-27', { top: 90 }], ['2026-09-28', { top: 200 }]]);
+  assert.equal(b.record('wsb', '2026-09-28', { top: 200 }), false);
   assert.equal(b.has('wsb', '2026-09-27'), true);
   assert.ok(existsSync(path.join(dir, 'wsb.json')));
   const h = snapshotHist(b.read('wsb'), wsb.snapshotSeries);
-  assert.deepEqual(points(h), [{ d: '2026-09-27', v: 100 }, { d: '2026-09-28', v: 200 }]);
+  assert.deepEqual(points(h), [{ d: '2026-09-27', v: 90 }, { d: '2026-09-28', v: 200 }]);
   // No dir: memory only, still once a day.
   const m = snapshotStore(null);
   assert.equal(m.record('x', '2026-09-27', { v: 1 }), true);
-  assert.equal(m.record('x', '2026-09-27', { v: 2 }), false);
+  assert.equal(m.record('x', '2026-09-27', { v: 1 }), false);
 }));
 
 test('engine: a snapshot gauge records its value day by day, and says since when', () => withDir(async (dir) => {
@@ -230,11 +248,14 @@ test('engine: a snapshot gauge records its value day by day, and says since when
   const first = await w.getGauge('snap');
   assert.equal(first.headline, 'N 1');
   assert.deepEqual(first.recording, { since: '2026-09-27' });
-  // A later refresh the same day does not change the day's reading.
+  // A later refresh the same day replaces the day's reading: the chart ends on the headline.
   t += 2 * 60_000;
   await w.getGauge('snap');
   await new Promise((r) => setTimeout(r, 10));
-  assert.deepEqual(snapshotStore(path.join(dir, 'days')).read('snap'), [['2026-09-27', { v: 10 }]]);
+  assert.deepEqual(snapshotStore(path.join(dir, 'days')).read('snap'), [['2026-09-27', { v: 20 }]]);
+  const same = await w.getGauge('snap');
+  assert.equal(same.headline, 'N 2');
+  assert.equal(same.hist.series[0].v.at(-1), 20);
   // Next day: upkeep fetches once (none recorded for today) and records it.
   t = Date.parse('2026-09-28T01:00:00Z');
   w.tick();
@@ -246,6 +267,50 @@ test('engine: a snapshot gauge records its value day by day, and says since when
   // A restart reads the same days back.
   const w2 = makeWeird({ gauges: [{ ...g, load: () => new Promise(() => {}) }], lastGoodDir: dir, now: () => t });
   assert.equal((await w2.getGauge('snap', { wait: 50 })).hist.d.length, 2);
+}));
+
+test('engine: upkeep tries a snapshot gauge once a day when it gives no number, and never while fresh', () => withDir(async (dir) => {
+  let t = Date.parse('2026-09-27T10:00:00Z');
+  let loads = 0;
+  // Parks closed all day: the fetch works, the reading has no number.
+  const g = {
+    id: 'shut', source: 'S', ttl: 10 * 60_000, snapshotSeries: [{ key: 'avg', label: 'A' }],
+    snapshot: (v) => ({ avg: v.avg }),
+    load: async () => { loads += 1; return { headline: 'PARKS CLOSED', avg: null, asOf: new Date(t).toISOString(), source: 'S' }; },
+  };
+  const w = makeWeird({ gauges: [g], lastGoodDir: dir, now: () => t });
+  for (let i = 0; i < 300; i += 1) { w.tick(); await new Promise((r) => setImmediate(r)); t += 60_000; }
+  assert.equal(loads, 1, 'one load across 300 ticks (5 hours)');
+  // The next UTC day: one more.
+  t = Date.parse('2026-09-28T00:30:00Z');
+  for (let i = 0; i < 30; i += 1) { w.tick(); await new Promise((r) => setImmediate(r)); t += 60_000; }
+  assert.equal(loads, 2);
+  // A fresh value is never refetched by upkeep, even with no reading for today.
+  let fresh = 0;
+  const f = { ...g, id: 'fresh', load: async () => { fresh += 1; return { headline: 'X', avg: null, asOf: '2026-09-28', source: 'S' }; } };
+  const w2 = makeWeird({ gauges: [f], lastGoodDir: dir, now: () => t });
+  await w2.getGauge('fresh');
+  for (let i = 0; i < 5; i += 1) { w2.tick(); await new Promise((r) => setImmediate(r)); t += 60_000; }
+  assert.equal(fresh, 1, 'the request\'s own load only');
+}));
+
+test('engine: a snapshot fetch that throws gets one retry later that day, no more', () => withDir(async (dir) => {
+  let t = Date.parse('2026-09-27T10:00:00Z');
+  let loads = 0;
+  const g = {
+    id: 'down', source: 'S', ttl: 10 * 60_000, retryMs: 5 * 60_000, snapshotSeries: [{ key: 'v', label: 'V' }],
+    snapshot: (v) => ({ v: v.v }),
+    load: async () => { loads += 1; throw new Error('HTTP 503'); },
+  };
+  const w = makeWeird({ gauges: [g], lastGoodDir: dir, now: () => t });
+  const errs = console.error;
+  console.error = () => {};
+  try {
+    for (let i = 0; i < 200; i += 1) { w.tick(); await new Promise((r) => setImmediate(r)); t += 60_000; }
+  } finally {
+    console.error = errs;
+  }
+  assert.equal(loads, 2, 'a try and one retry after the hold');
 }));
 
 // ---- engine: history, periods, holds --------------------------------------------------
@@ -335,9 +400,67 @@ test('undies history: five ten-year BLS queries once; a complete history is neve
   assert.deepEqual(asked[0].slice(1), ['1978', '1987']);
   assert.deepEqual(asked[4].slice(1), ['2018', '2026']);
   assert.equal(h.complete, true);
-  assert.equal(h.d[0], '1979-01-01', 'a change on a year before needs a year');
+  assert.equal(points(h, 'yoy')[0].d, '1979-01-01', 'a change on a year before needs a year');
   assert.equal(await undies.history(get, { now, prev: h }), h);
   assert.equal(asked.length, 5, 'no more queries');
+});
+
+test('undies history: a failed BLS piece is the only one asked for again', async () => {
+  const asked = [];
+  let fail = true;
+  const get = {
+    json: async (url, opts) => {
+      const body = JSON.parse(opts.body);
+      asked.push(body.startyear);
+      if (fail && body.startyear === '1998') throw new Error('BLS HTTP 500');
+      const data = [];
+      for (let y = Number(body.startyear); y <= Number(body.endyear); y += 1) for (let m = 1; m <= 12; m += 1) data.push({ year: String(y), period: `M${String(m).padStart(2, '0')}`, value: String(100 + y - 1978 + m / 100) });
+      return { status: 'REQUEST_SUCCEEDED', Results: { series: [{ data }] } };
+    },
+  };
+  const now = () => Date.parse('2026-09-27T00:00:00Z');
+  const errs = console.error;
+  console.error = () => {};
+  let first;
+  try { first = await undies.history(get, { now }); } finally { console.error = errs; }
+  assert.equal(first.complete, false);
+  assert.equal(asked.length, 5);
+  fail = false;
+  const second = await undies.history(get, { now, prev: first });
+  assert.deepEqual(asked.slice(5), ['1998'], 'only the failed piece');
+  assert.equal(second.complete, true);
+  // The change on a year before is right across the piece that came in late.
+  const yoy = new Map(points(second, 'yoy').map((p) => [p.d, p.v]));
+  assert.ok(Number.isFinite(yoy.get('1998-01-01')) && Number.isFinite(yoy.get('2008-01-01')));
+});
+
+test('macau history: a year that fails on three runs is left alone', async () => {
+  let askedBad = 0; // 2024: no later report gives it (the newest one read is two years back)
+  const xml = (y) => `<x>Games of Fortune in ${y} and ${y - 1}</x><RECORD><DATA>Jan</DATA><DATA>1,000</DATA><DATA>900</DATA><DATA></DATA><DATA>1,000</DATA><DATA>900</DATA></RECORD>`;
+  const get = { text: async (u) => { const y = Number(/\/(\d{4})\//.exec(u)[1]); if (y === 2024) { askedBad += 1; throw new Error('HTTP 404'); } return xml(y); } };
+  const now = () => Date.parse('2026-09-27T00:00:00Z');
+  const errs = console.error;
+  console.error = () => {};
+  let h = null;
+  try {
+    for (let run = 0; run < 5; run += 1) h = await macau.history(get, { now, prev: h });
+  } finally { console.error = errs; }
+  assert.equal(askedBad, macau.MAX_YEAR_FAILS);
+  assert.equal(h.complete, true, 'given up on: complete');
+});
+
+test('buzz history: a search that keeps failing stops after three runs', async () => {
+  const bad = '2005-01-01';
+  let badAsks = 0;
+  const get = { json: async (u) => { if (u.includes(`startdt=${bad}`) && u.includes('tariff')) { badAsks += 1; throw new Error('HTTP 500'); } return { hits: { total: { value: 7, relation: 'eq' } } }; } };
+  const now = () => Date.parse('2026-09-27T00:00:00Z');
+  let h = null;
+  for (let run = 0; run < 12 && !h?.complete; run += 1) h = await buzz.history(get, { now, prev: h, retryWait: 0, gapMs: 0 });
+  assert.equal(h.complete, true);
+  assert.equal(badAsks, 2 * buzz.MAX_CELL_FAILS, 'two tries a run, three runs');
+  // The weekly run after that tries it once more (then counts again).
+  await buzz.history(get, { now, prev: h, retryWait: 0, gapMs: 0 });
+  assert.equal(badAsks, 2 * buzz.MAX_CELL_FAILS + 2);
 });
 
 test('buzz history: only missing quarters are asked for, at most a batch per run', async () => {
@@ -388,3 +511,33 @@ test('period words: CANAL 5Y, WEIRD 10Y, PANIC MAX, aliases, any case; other wor
   assert.equal(periodWord('1D'), null);
   assert.equal(dayLabel('2026-09-07'), '7 SEP 2026');
 });
+
+test('engine: no record line while a deep history is missing or filling in; none for BEIGE', () => withDir(async (dir) => {
+  const t = Date.parse('2026-09-27T00:00:00Z');
+  // Readings that would give a record line: flat for years, then a new low.
+  const hist = monthly(120, (i) => (i === 119 ? 1 : 50), 2016);
+  let deep = { ...monthly(12, () => 50, 2015), complete: false };
+  const g = { id: 'fill', source: 'F', ttl: 60 * 60_000, defaultPeriod: 'MAX', load: async () => ({ headline: 'F', asOf: '2025-12-01', source: 'F', hist }), history: async () => deep };
+  const w = makeWeird({ gauges: [g], lastGoodDir: dir, now: () => t });
+  assert.equal((await w.getGauge('fill')).record, null, 'no deep history yet');
+  w.tick();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal((await w.getGauge('fill')).record, null, 'still filling in');
+  const beige = GAUGES.find((x) => x.id === 'beige');
+  assert.equal(beige.record, false);
+  // Once complete: a record from the source's start.
+  deep = { ...deep, complete: true };
+  const w2 = makeWeird({ gauges: [{ ...g, history: async () => deep }], lastGoodDir: null, now: () => t });
+  await w2.getGauge('fill');
+  w2.tick();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal((await w2.getGauge('fill')).record.text, 'RECORD LOW SINCE JAN 2015');
+}));
+
+test('engine: grid sparks are worked out once per period until a value changes', () => withDir(async (dir) => {
+  const t = Date.parse('2026-09-27T00:00:00Z');
+  const w = makeWeird({ gauges: [fakeGauge()], lastGoodDir: dir, now: () => t });
+  const a = await w.getWeird({ period: '1Y' });
+  const b = await w.getWeird({ period: '1Y' });
+  assert.equal(a.gauges[0].spark, b.gauges[0].spark, 'the same array: not recomputed');
+}));

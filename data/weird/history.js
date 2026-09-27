@@ -25,6 +25,9 @@ import { WEIRD_PERIODS, PERIOD_DAYS, monthLabel, dayLabel } from '../../public/s
 export const DAY_MS = 86_400_000;
 // The record line needs at least this gap: "LOWEST SINCE" last month is not news.
 export const MIN_GAP_DAYS = 182;
+// ...and at least this many readings between the latest one and the "since" one, so a
+// twice-a-year series (BIGMAC) needs three years, not two readings.
+export const MIN_BETWEEN = 6;
 // A period is only offered when the readings go back at least this share of it.
 export const COVER_SHARE = 0.9;
 // ...and it holds at least this many readings.
@@ -130,13 +133,15 @@ export function pickPeriod(info, asked, fallback = '1Y') {
   return below || 'MAX';
 }
 
-// Mean of each run of `size` readings, runs counted from the newest (so the latest point
-// stays as it is). Empty readings are left out of a run's mean.
+// Mean of each run of `size` readings, runs counted back from the one before the newest.
+// The newest reading stays a point of its own, so a chart ends on the number the table
+// and the headline show. Empty readings are left out of a run's mean.
 function bucket(d, cols, size) {
-  if (size <= 1) return { d, cols };
-  const outD = [];
-  const outCols = cols.map(() => []);
-  for (let end = d.length; end > 0; end -= size) {
+  if (size <= 1 || d.length < 2) return { d, cols };
+  const n = d.length - 1;
+  const outD = [d[n]];
+  const outCols = cols.map((v) => [v[n]]);
+  for (let end = n; end > 0; end -= size) {
     const start = Math.max(0, end - size);
     outD.unshift(d[end - 1]);
     cols.forEach((v, k) => {
@@ -187,13 +192,15 @@ export function leadPoints(hist) {
 // A plain fact about the latest reading of `pts` ([{ d, v }] oldest first), or null:
 //   LOWEST SINCE MAR 2021   the last reading as low or lower was in MAR 2021
 //   HIGHEST SINCE MAR 2021  the same, upwards
-//   RECORD LOW SINCE JAN 1985  lower than every reading since the series starts
-// Only when the gap to that reading (or the whole series, for a record) is at least
-// minGapDays. A tie counts as "as low": a flat series says nothing.
+//   RECORD LOW SINCE JAN 1985  lower than every reading there is (fromStart only)
+// Only when the gap to that reading is at least minGapDays and at least minBetween
+// readings lie between the two. A tie counts as "as low": a flat series says nothing.
+// fromStart: the series begins where the source's own data begins. Without it a reading
+// past every earlier one is "HIGHEST SINCE <first reading>", never a record.
 // -> { kind: 'low' | 'high', record, since, text, short }
-export function recordLine(pts, { minGapDays = MIN_GAP_DAYS } = {}) {
+export function recordLine(pts, { minGapDays = MIN_GAP_DAYS, minBetween = MIN_BETWEEN, fromStart = false } = {}) {
   const p = (pts || []).filter((x) => x && DATE_RE.test(String(x.d)) && num(x.v) !== null);
-  if (p.length < 3) return null;
+  if (p.length < minBetween + 2) return null;
   const last = p[p.length - 1];
   const lastMs = ms(last.d);
   if ((lastMs - ms(p[0].d)) / DAY_MS < minGapDays) return null;
@@ -205,11 +212,14 @@ export function recordLine(pts, { minGapDays = MIN_GAP_DAYS } = {}) {
   }
   const fact = (kind, at) => {
     const word = kind === 'low' ? 'LOW' : 'HIGH';
-    if (at < 0) {
+    if (at < 0 && fromStart) {
       return { kind, record: true, since: p[0].d, text: `RECORD ${word} SINCE ${monthLabel(p[0].d)}`, short: `RECORD ${word}` };
     }
-    if ((lastMs - ms(p[at].d)) / DAY_MS < minGapDays) return null;
-    const since = monthLabel(p[at].d);
+    const from = Math.max(0, at);
+    if ((lastMs - ms(p[from].d)) / DAY_MS < minGapDays) return null;
+    if (p.length - 1 - from - 1 < minBetween) return null;
+    const since = monthLabel(p[from].d);
+    if (at < 0) return { kind, record: false, since: p[0].d, text: `${word}EST SINCE ${since}`, short: `${word} SINCE ${since}` };
     return { kind, record: false, since: p[at].d, text: `${word}EST SINCE ${since}`, short: `${word} SINCE ${since}` };
   };
   return fact('low', lowAt) || fact('high', highAt);
@@ -245,8 +255,9 @@ export function historyStore(dir) {
 
 // Daily readings for the gauges whose source keeps no past, one file per gauge:
 // <dir>/<id>.json = { days: [['YYYY-MM-DD', { key: number }], ...] } oldest first.
-// record() keeps the first reading of each UTC day and never overwrites one, so a restart
-// (or many refreshes) in the same day changes nothing. The folder sits under data/.cache/,
+// record() keeps one reading per UTC day: the latest good one of that day (so the chart
+// ends on the number the headline shows). The same reading again writes nothing, and a
+// day never gets a second entry. The folder sits under data/.cache/,
 // which git ignores, so a deploy's git pull leaves it alone. No dir: in memory only.
 export function snapshotStore(dir) {
   const mem = new Map();
@@ -269,15 +280,21 @@ export function snapshotStore(dir) {
   return {
     read,
     has: (id, day) => read(id).some((x) => x[0] === day),
-    // reading: { key: number | null }. Returns true when a new day was written.
+    // reading: { key: number | null }. Returns true when the day's reading changed. A
+    // day before the newest one on file is never touched.
     record(id, day, reading) {
       if (!DATE_RE.test(String(day)) || !reading) return false;
       const clean = Object.fromEntries(Object.entries(reading).filter(([, v]) => num(v) !== null));
       if (!Object.keys(clean).length) return false;
       const days = read(id);
-      if (days.some((x) => x[0] === day)) return false;
-      days.push([day, clean]);
-      days.sort((a, b) => (a[0] < b[0] ? -1 : 1));
+      const newest = days[days.length - 1]?.[0];
+      if (newest && day < newest) return false;
+      if (newest === day) {
+        if (JSON.stringify(days[days.length - 1][1]) === JSON.stringify(clean)) return false;
+        days[days.length - 1] = [day, clean];
+      } else {
+        days.push([day, clean]);
+      }
       if (dir) {
         try { writeJson(file(id), { days }); } catch (err) { console.error(`[weird:${id}] reading not saved:`, err.message); }
       }

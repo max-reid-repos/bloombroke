@@ -11,6 +11,8 @@ export const ttl = FRED_TTL;
 export const retryMs = FRED_RETRY;
 export const SERIES = 'APU0000708111';
 export const defaultPeriod = '10Y';
+// The CSV is the whole series, from its first month: a new high or low is a record.
+export const fullSeries = true;
 
 export function build(rows) {
   if (!rows.length) throw new NoData('FRED: no egg prices');
