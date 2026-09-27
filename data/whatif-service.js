@@ -7,15 +7,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getQuote } from './quotes.js';
 import { getChart } from './charts.js';
-import { computeWhatif, resolveTokens, WhatifError, maxDrawdown, holdingPath } from './whatif.js';
+import { computeWhatif, resolveTokens, WhatifError, maxDrawdown, holdingPath, replaySeries } from './whatif.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const load = (f) => JSON.parse(readFileSync(path.join(dir, f), 'utf8'));
 export const catalog = load('whatif-products.json');
 export const prices = load('whatif-prices.json');
+// CPI-U (the REPLAY jar) and the BLS average prices behind the VICES items.
+export const bls = load('bls-monthly.json');
 
 export const SOURCE = 'CNBC, cross-checked with Yahoo Finance';
-export const METHOD = 'Split-adjusted close on the purchase date, or the last trading day before it. Recurring items buy once a month, on the first trading day. Price return only: dividends and spin-offs are not included. Today\'s price is live and may be delayed.';
+export const METHOD = 'Split-adjusted close on the purchase date, or the last trading day before it. Recurring items buy once a month, on the first trading day. Beer, soda and chips use the BLS US average price of each month (a month BLS skipped keeps the month before). Price return only: dividends and spin-offs are not included. Today\'s price is live and may be delayed.';
 
 async function priceNow(ticker, quoteImpl) {
   try {
@@ -54,7 +56,7 @@ export function attachRisk(result, bars, { prices: p = prices } = {}) {
     const series = bars[row.ticker];
     const first = row.kind === 'once' ? { date: row.bought, close: row.close } : p.monthly[row.ticker]?.[row.from];
     const dd = series && first ? maxDrawdown(holdingPath(first, series, row.price)) : null;
-    row.worstDrop = dd ? { pct: dd.pct, month: dd.month } : null;
+    row.worstDrop = dd ? { pct: dd.pct, peakMonth: dd.peakMonth, month: dd.month } : null;
   }
   const measured = result.rows.filter((r) => r.worstDrop);
   const worst = measured.sort((a, b) => a.worstDrop.pct - b.worstDrop.pct)[0] || null;
@@ -68,8 +70,8 @@ export function attachRisk(result, bars, { prices: p = prices } = {}) {
 
 // The picker's list: small, no prices history.
 export function getCatalog() {
-  const pick = ({ id, name, company, ticker, date, price, category, family, note, per, start, defaultYears }) =>
-    ({ id, name, company, ticker, date, price, category, family, note, per, start, defaultYears });
+  const pick = ({ id, name, company, ticker, date, price, category, family, note, per, start, defaultYears, doodle, shelves }) =>
+    ({ id, name, company, ticker, date, price, category, family, note, per, start, defaultYears, doodle, shelves });
   return {
     products: catalog.products.map((p) => ({ ...pick(p), kind: 'once' })),
     recurring: catalog.recurring.map((r) => ({ ...pick(r), kind: 'monthly' })),
@@ -89,9 +91,11 @@ export async function getWhatif(tokens, { quoteImpl = getQuote, now = new Date()
   const tickers = [...new Set(picks.map(({ id }) => [...catalog.products, ...catalog.recurring].find((p) => p.id === id).ticker))];
   const [live, bars] = await Promise.all([quotesFor(tickers, quoteImpl), risk ? monthlyBars(tickers, chartImpl, riskWaitMs) : null]);
   const quotes = Object.fromEntries(Object.entries(live).map(([t, q]) => [t, q.price]));
-  const result = computeWhatif(picks, { catalog, prices, quotes, now });
+  const result = computeWhatif(picks, { catalog, prices, quotes, now, bls });
   if (risk) attachRisk(result, bars);
   const asOf = Object.values(live).map((q) => q.asOf).filter(Boolean).sort().pop() || null;
+  // REPLAY: the race month by month; the screen asks for it (with risk), the share image does not.
+  if (risk) result.replay = replaySeries(result, { catalog, prices, bls, now, asOf });
   return {
     ...result,
     picks,
