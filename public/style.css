@@ -577,6 +577,11 @@ a.ch-flag { cursor: pointer; }
 .ch-flag.is-E .ch-flag-box { stroke: var(--accent); }
 .ch-flag.is-E .ch-flag-t { fill: var(--accent); }
 .ch-flag:hover .ch-flag-box { fill: var(--panel-3); }
+/* N: news and other 8-K filings, same box as E and D. */
+.ch-flag.is-N .ch-flag-box { stroke: var(--text); }
+.ch-flag.is-N .ch-flag-t { fill: var(--text); }
+a.ch-flag:focus { outline: none; }
+a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accent); stroke-width: 2; }
 /* The measure: a shaded band between two bars and a big label. */
 .ch-meas { pointer-events: none; }
 .ch-meas-band { opacity: .14; }
