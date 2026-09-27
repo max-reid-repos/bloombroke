@@ -199,7 +199,7 @@ test('services: unknown symbol is not_found, a dead source is unavailable, then 
   const first = await o.getOwners('aapl');
   assert.equal(first.ticker, 'AAPL');
   assert.equal(first.stale, false);
-  assert.match(first.source, /Nasdaq/);
+  assert.match(first.source, /^Market data provider/, 'a source class, never a vendor name');
   up = false;
   t += 2 * 24 * 3600_000;
   const second = await o.getOwners('AAPL');
@@ -230,7 +230,7 @@ test('value and exdiv services', async () => {
   const v = makeValue({ fetchImpl: async () => json(fx('cnbc-fund.json')), cache: createCache() });
   const d = await v.getValue('AAPL');
   assert.equal(d.ticker, 'AAPL');
-  assert.equal(d.source, 'CNBC quote service');
+  assert.equal(d.source, 'Market data provider');
   const m = await v.getFundMap(['AAPL', 'KO', 'SPY'], { batch: 2 });
   assert.ok(m.has('AAPL'));
 
@@ -283,7 +283,7 @@ test('screen service: CNBC numbers only fetched when asked for, and labelled', a
   const pe = await s.getScreen('PE<30');
   assert.equal(fundCalls, 1);
   assert.deepEqual(pe.rows.map((r) => r.symbol), ['AAA']);
-  assert.match(pe.source, /P\/E and dividend yield from CNBC, may be missing for some stocks/);
+  assert.match(pe.source, /P\/E and dividend yield from a market data provider, may be missing for some stocks/);
   await s.getScreen('DIV>1');
   assert.equal(fundCalls, 1, 'cached for an hour');
 });

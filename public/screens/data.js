@@ -1,5 +1,5 @@
-// DATA (alias SOURCES): every dataset on Bloombroke in one dense table. Source, licence,
-// coverage, history, how often it updates, its age right now (from the server's caches),
+// DATA (alias SOURCES): every dataset on Bloombroke in one dense table. Source (a class
+// like "market data provider"; only US government sources are named), coverage, history, how often it updates, its age right now (from the server's caches),
 // its delay class and known gaps. This is the one place the detail lives: screens keep
 // only the freshness dot, whose list links here. DATA <dataset> opens with that row lit.
 
@@ -27,7 +27,7 @@ export function secLine(sec) {
 }
 
 const COLS = [
-  ['Dataset', 'dt-name'], ['Source', 'dt-src'], ['Licence', 'dt-lic'], ['Coverage', 'dt-cov hide-m'], ['History', 'dt-hist hide-m'],
+  ['Dataset', 'dt-name'], ['Source', 'dt-src'], ['Coverage', 'dt-cov hide-m'], ['History', 'dt-hist hide-m'],
   ['Updates', 'dt-upd hide-m'], ['Data age', 'num dt-age'], ['Delay', 'dt-delay'], ['Known gaps', 'dt-gaps hide-m'],
 ];
 
@@ -43,7 +43,6 @@ export function dataTable(rows, { lit = '' } = {}) {
     return `${head}<tr id="data-${esc(r.id)}" class="${on ? 'is-lit' : ''}">
       <th scope="row" class="name dt-name">${esc(r.name)}</th>
       <td class="dt-src">${src}</td>
-      <td class="dt-lic dim">${esc(r.licence)}</td>
       <td class="dt-cov hide-m dim">${esc(r.coverage || dash)}</td>
       <td class="dt-hist hide-m dim">${esc(r.history || dash)}</td>
       <td class="dt-upd hide-m dim">${esc(r.cadence || dash)}</td>

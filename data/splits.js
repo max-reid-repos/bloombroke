@@ -11,8 +11,8 @@ import { CompanyDataError, HOUR_MS, nasdaqData, cachedOrThrow, text, symbolOf } 
 
 export { CompanyDataError as SplitsError };
 
-export const SPLITS_SOURCE = 'Nasdaq stock splits calendar';
-export const EXDIV_SOURCE = 'Nasdaq dividend calendar';
+export const SPLITS_SOURCE = 'Exchange calendars';
+export const EXDIV_SOURCE = 'Exchange calendars';
 
 // "3 : 1" / "1:150" / "1.5:1" -> { ratio: "3:1", reverse: false }.
 export function parseRatio(s) {

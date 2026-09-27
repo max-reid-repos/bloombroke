@@ -86,7 +86,7 @@ export function render(el, cmd, ctx) {
       const d = await ctx.fetchJSON('/api/fxmatrix', { signal: ctx.signal });
       if (heat && d.live) {
         body.innerHTML = matrixTable({ codes: d.codes, matrix: d.live.matrix, prev: d.live.prev }, { heat: true }) + heatLegend();
-        meta.innerHTML = `${freshTag({ realTime: Boolean(d.live.realTime) })} CHANGE TODAY, CNBC`;
+        meta.innerHTML = `${freshTag({ realTime: Boolean(d.live.realTime) })} CHANGE TODAY`;
         if (!cmd.args?.error) ctx.updated(d.live.updated, d.live.stale);
       } else if (heat) {
         body.innerHTML = matrixTable(d, { heat: true }) + heatLegend();

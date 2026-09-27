@@ -135,7 +135,7 @@ export function makeDividends({ fetchImpl = globalThis.fetch, cache = createCach
     // Yahoo's amounts are on today's basis, so the check needs ours adjusted too.
     const yahoo = hist && split ? hist.dividends : null;
     const years = checkYears(yearlyTotals(rows), yahoo, String(new Date(now()).getUTCFullYear()));
-    return { ticker, ...got.value, rows, split, years, checkSource: Array.isArray(yahoo) ? 'Yahoo Finance dividend history' : null, stale: got.stale, updated: iso(got.fetchedAt) };
+    return { ticker, ...got.value, rows, split, years, checkSource: Array.isArray(yahoo) ? 'a second market data provider' : null, stale: got.stale, updated: iso(got.fetchedAt) };
   }
   return { getDividends };
 }

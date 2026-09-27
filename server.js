@@ -350,6 +350,7 @@ mountProvenanceRoutes(app, {
   gauges: GAUGES.map((g) => ({ id: g.id, source: g.source })),
   weird: async () => (await getWeird({ wait: 0 })).gauges,
   edgar: () => edgarWatch?.stats() || null,
+  isPro: (req) => Boolean(pro?.proActive?.(req)), // STATUS is part of Pro
 });
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));

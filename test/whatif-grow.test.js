@@ -128,7 +128,7 @@ const certFor = async (c) => {
 
 function assertFooter(html, what) {
   assert.ok(html.includes(EMBED_SOURCE), `${what}: source line`);
-  assert.equal(EMBED_SOURCE, 'Prices: CNBC closes, split-adjusted, price only.');
+  assert.equal(EMBED_SOURCE, 'Prices: daily closes from a market data provider, split-adjusted, price only.');
   assert.ok(html.includes(EMBED_NOT_ADVICE), `${what}: not advice`);
   assert.equal(EMBED_NOT_ADVICE, 'Hindsight. Not financial advice.');
   assert.match(html, /<footer class="em-foot">[\s\S]*<a href="https:\/\/bloombroke\.com\/\?c=[^"]+" target="_blank" rel="noopener">bloombroke\.com<\/a><\/footer>/, `${what}: link`);

@@ -82,7 +82,7 @@ export function parseAsOf(body) {
   return mon ? `${m[3]}-${String(mon).padStart(2, '0')}-${m[2].padStart(2, '0')}` : null;
 }
 
-export const CNBC_NOTE = 'P/E and dividend yield from CNBC, may be missing for some stocks';
+export const CNBC_NOTE = 'P/E and dividend yield from a market data provider, may be missing for some stocks';
 
 // rows + Map(symbol -> { pe, divYield }) -> rows with pe and divYield (null when missing).
 export function withFund(rows, fund) {
@@ -149,7 +149,7 @@ export function makeScreen({ fetchImpl = globalThis.fetch, cache = createCache({
       today: nyDay(now()),
       updated: new Date(u.fetchedAt).toISOString(),
       stale: u.stale || Boolean(f?.stale),
-      source: cnbc ? `Nasdaq stock screener; ${CNBC_NOTE}` : 'Nasdaq stock screener',
+      source: cnbc ? `Market data provider; ${CNBC_NOTE}` : 'Market data provider',
       cnbc,
     };
   }

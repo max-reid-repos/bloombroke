@@ -102,7 +102,7 @@ export function makeFedPath({ fetchImpl = globalThis.fetch, cache = createCache(
       fed,
       stale: fut.value.stale || (rt.status === 'fulfilled' && rt.value.stale),
       updated: new Date(fut.value.fetchedAt).toISOString(),
-      source: 'CBOT 30-day Fed funds futures via CNBC (delayed); target range and effective rate: New York Fed',
+      source: 'CBOT 30-day Fed funds futures from a market data provider (delayed); target range and effective rate: public web data',
     };
   }
   return { getFedPath };

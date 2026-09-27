@@ -243,8 +243,8 @@ test('VALUE: the live last price with its time, the snapshot time for the rest',
   // Quote down: the snapshot's last, with the snapshot's time, never a time it does not have.
   const down = await makeValue({ fetchImpl: async () => json(fund), cache: createCache(), quote: async () => { throw new Error('down'); } }).getValue('AAPL');
   assert.deepEqual([down.last, down.lastAsOf], [338.71, '2026-09-25T11:32:38.375-0400']);
-  assert.match(underlyingAsOf('2026-09-25T16:49:02Z'), /CBOE, DELAYED 15 MIN · FILE 12:49 ET/);
-  assert.equal(underlyingAsOf(null), 'CBOE, DELAYED 15 MIN');
+  assert.match(underlyingAsOf('2026-09-25T16:49:02Z'), /^DELAYED 15 MIN · FILE 12:49 ET$/);
+  assert.equal(underlyingAsOf(null), 'DELAYED 15 MIN');
 });
 
 // ---- IPOS -----------------------------------------------------------------------

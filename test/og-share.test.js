@@ -43,8 +43,8 @@ test('ticker card: numbers straight from the quote and the 1-month bars', () => 
   assert.equal(m.points.length, 17);
   assert.equal(m.monthPct, `+${((340.08 / 309.9 - 1) * 100).toFixed(1)}%`);
   assert.equal(m.asOf, 'SEP 25 2026 14:14 ET');
-  assert.equal(m.fresh, 'REAL TIME (NASDAQ LAST SALE)');
-  assert.equal(m.source, 'CNBC');
+  assert.equal(m.fresh, 'REAL TIME');
+  assert.equal(m.source, '', 'no vendor name on share cards');
   const down = quoteModel({ ...QUOTE, change: -2.5, changePct: -0.73, realTime: false, kind: 'future', decimals: 1 }, null, 'GOLD');
   assert.deepEqual([down.change, down.changePct, down.dir, down.fresh, down.monthPct, down.points.length], ['-2.5', '-0.73%', 'down', 'DELAYED', null, 0]);
   assert.equal(asOfText('2026-09-24'), 'SEP 24 2026 CLOSE');
@@ -71,7 +71,7 @@ test('ticker card: meta, cached 10 minutes, never for last-known prices', async 
     assert.equal(readdirSync(dir).length, before, 'stale quotes are not kept');
     const meta = quoteMeta(a);
     assert.equal(meta.title, 'AAPL: Apple Inc. 340.08 USD, +1.24% today');
-    assert.match(meta.description, /^As of SEP 25 2026 14:14 ET, real time \(Nasdaq Last Sale\)\. 1 month: \+9\.7%\. Source: CNBC\./);
+    assert.match(meta.description, /^As of SEP 25 2026 14:14 ET, real time\. 1 month: \+9\.7%\. Bloombroke/);
     assert.equal(meta.image, 'https://bloombroke.com/og/quote.png?c=AAPL');
     assert.equal(meta.url, 'https://bloombroke.com/?c=AAPL');
     const html = withMeta('<head>\n</head>', meta);

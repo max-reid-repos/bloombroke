@@ -136,7 +136,7 @@ export function makeOptions({ fetchImpl = globalThis.fetch, cache = createCache(
       expiries: value.expiries.map((e) => ({ id: e.id, date: e.date, root: e.root, days: daysTo(e.date, today), strikes: e.rows.length })),
       expiry: { id: exp.id, date: exp.date, root: exp.root, days: daysTo(exp.date, today) },
       rows: exp.rows,
-      source: 'Cboe delayed quotes',
+      source: 'Market data provider, delayed 15 minutes',
       delayedMinutes: 15,
       stale,
       updated: new Date(fetchedAt).toISOString(),

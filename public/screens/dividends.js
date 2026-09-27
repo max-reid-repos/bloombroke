@@ -17,7 +17,7 @@ export function basisNote(d) {
   return `Amounts split-adjusted to today's share basis for the ${list.map((x) => `${x.ratio} split on ${x.date}`).join(', ')} (${d.split.source}); hover an amount for what was paid.`;
 }
 
-const mismatchTitle = (y) => `Not shown: Nasdaq lists ${y.nasdaq.count} payments (${cash(y.nasdaq.total)}), Yahoo Finance ${y.other.count} (${cash(y.other.total)})`;
+const mismatchTitle = (y) => `Not shown: one source lists ${y.nasdaq.count} payments (${cash(y.nasdaq.total)}), the other ${y.other.count} (${cash(y.other.total)})`;
 
 // The words on the yearly cross-check (the same tooltip).
 export function checkNote(d) {
@@ -86,7 +86,7 @@ export function render(el, cmd, ctx) {
         <p class="q-name">Dividend yield</p>
         <p class="q-hero num">${Number.isFinite(d.yield) ? `${fmtNum(d.yield, 2)}<span class="q-ccy">%</span>` : '--'}</p>
         <dl class="stats dv-stats"><div class="stat"><dt>Per year</dt><dd class="num">${esc(cash(d.annual))}</dd></div></dl>
-        <p class="muted dv-note">Payment history is only available here for Nasdaq-listed stocks. Yield and yearly dividend from CNBC.</p>
+        <p class="muted dv-note">Payment history is only available here for Nasdaq-listed stocks. Yield and yearly dividend from a market data provider.</p>
       </div>`;
       list.closest('.panel').hidden = true;
       ctx.updated(d.updated, d.stale);

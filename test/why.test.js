@@ -97,7 +97,7 @@ test('WHY: what came out in the window, prior close to that close', () => {
 
 test('WHY: the earnings date shows when no results 8-K is there; nothing is an empty list', () => {
   const move = { date: '2026-10-29', prevDate: '2026-10-28', pct: -7 };
-  assert.deepEqual(whatCameOut(move, { earnings: [{ date: '2026-10-29', est: true, url: null }] }).map((x) => [x.kind, x.text, x.source]), [['EARNINGS', 'Earnings date (estimated)', 'CNBC']]);
+  assert.deepEqual(whatCameOut(move, { earnings: [{ date: '2026-10-29', est: true, url: null }] }).map((x) => [x.kind, x.text, x.source]), [['EARNINGS', 'Earnings date (estimated)', 'market data provider']]);
   // A Monday move takes in the weekend.
   const monday = { date: '2026-11-02', prevDate: '2026-10-30', pct: 4 };
   assert.equal(whatCameOut(monday, { earnings: [{ date: '2026-11-01', url: 'https://www.sec.gov/e' }] }).length, 1);

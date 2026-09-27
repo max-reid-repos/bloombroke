@@ -96,7 +96,7 @@ export function render(el, cmd, ctx) {
     <p class="wm-read" id="wm-read" aria-live="polite">&nbsp;</p>
     <div class="wm-host" id="wm-host">${LOADING}</div>
     <div class="wm-foot" id="wm-foot"><div class="wm-legend" id="wm-legend"></div>
-      <p class="wm-src">Sources: CNBC, IMF PortWatch, NHC. Map: Natural Earth.</p></div>`, { cls: 'panel-solo wm-panel', metaId: 'wm-meta' });
+      <p class="wm-src">Sources: market data provider, public web data, NHC. Map: Natural Earth.</p></div>`, { cls: 'panel-solo wm-panel', metaId: 'wm-meta' });
   const host = el.querySelector('#wm-host');
   const read = el.querySelector('#wm-read');
   const meta = el.querySelector('#wm-meta');

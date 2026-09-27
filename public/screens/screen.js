@@ -110,7 +110,7 @@ function formHtml(spec, open = true) {
     ${nums}
     <div class="sc-actions"><button class="wi-run" type="submit">RUN SCREEN</button><button class="sc-clear" type="button">CLEAR</button><span class="sc-err" role="alert"></span></div>
   </form></details>
-  <p class="sc-presets muted">Numbers are the least (over) and the most (under). Sizes take K, M, B and T, like MCAP&gt;10B or VOL&gt;1M. P/E from CNBC, may be missing for some stocks; so may dividend yield.</p>`;
+  <p class="sc-presets muted">Numbers are the least (over) and the most (under). Sizes take K, M, B and T, like MCAP&gt;10B or VOL&gt;1M. P/E from a market data provider, may be missing for some stocks; so may dividend yield.</p>`;
 }
 
 // The presets: one set of buttons under the title, the one in use lit. Picking one keeps

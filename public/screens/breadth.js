@@ -75,7 +75,7 @@ export function render(el, cmd, ctx) {
     try {
       const d = await ctx.fetchJSON('/api/breadth', { signal: ctx.signal });
       rerender(xBody, exchangeTable(d.exchanges));
-      el.querySelector('#bb-meta').innerHTML = `SESSION ${esc(d.sessionDate || '--')}<span class="m-hide"> · NASDAQ SCREENER</span>`;
+      el.querySelector('#bb-meta').innerHTML = `SESSION ${esc(d.sessionDate || '--')}`;
       rerender(sBody, d.sectors.length ? sectorTable(d.sectors, d.sp100) : '<p class="panel-msg">S&P 100 prices are taking a break.</p>');
       el.querySelector('#bb-s-meta').textContent = d.sp100 ? `${d.sp100.up} OF ${d.sp100.total} UP` : '--';
       ctx.updated(d.updated, d.stale);

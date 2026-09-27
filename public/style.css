@@ -145,12 +145,23 @@ kbd {
 .dt-scroll { overflow-x: auto; }
 .data-table { table-layout: fixed; width: 100%; font-size: 11px; }
 .grid-table.data-table th, .grid-table.data-table td { white-space: normal; overflow-wrap: break-word; max-width: none; text-overflow: clip; height: auto; line-height: 1.35; padding-top: 3px; padding-bottom: 3px; vertical-align: top; }
-.data-table .dt-name { width: 15%; } .data-table .dt-src { width: 15%; } .data-table .dt-lic { width: 9%; }
-.data-table .dt-cov { width: 13%; } .data-table .dt-hist { width: 10%; } .data-table .dt-upd { width: 10%; }
+.data-table .dt-name { width: 17%; } .data-table .dt-src { width: 15%; }
+.data-table .dt-cov { width: 15%; } .data-table .dt-hist { width: 11%; } .data-table .dt-upd { width: 11%; }
 .data-table .dt-age { width: 5%; } .data-table .dt-delay { width: 7%; } .data-table .dt-gaps { width: 16%; }
 .data-table tr.is-lit > * { background: var(--accent-tint); }
-@media (max-width: 639px) { .data-table .hide-m, .status-table .hide-m { display: none; } .data-table .dt-name { width: 29%; } .data-table .dt-src { width: 27%; } .data-table .dt-lic { width: 18%; } .data-table .dt-age { width: 10%; } .data-table .dt-delay { width: 16%; } }
-.status-table .st-ok { color: var(--accent); }
+@media (max-width: 639px) { .data-table .hide-m, .status-table .hide-m { display: none; } .data-table .dt-name { width: 38%; } .data-table .dt-src { width: 30%; } .data-table .dt-age { width: 13%; } .data-table .dt-delay { width: 19%; } }
+/* STATUS: the HOME markets grid, four columns on desktop, one on phones. */
+.mk-cols.st-cols { columns: 4 260px; }
+@media (max-width: 639px) { .mk-cols.st-cols { columns: 1; } }
+.st-group .c-st { width: 11ch; }
+.st-group .c-age { width: 7ch; }
+.sx-dot { display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; vertical-align: 1px; background: var(--faint); }
+.sx-dot[data-state="ok"] { background: var(--up); }
+.sx-dot[data-state="slow"] { background: var(--dim); }
+.sx-dot[data-state="failing"] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--down); }
+.sx-word { font-size: 11px; letter-spacing: .04em; color: var(--dim); }
+.sx-word.sx-ok { color: var(--text-2); }
+.sx-word.sx-failing { color: var(--down); }
 .fin-d { position: absolute; left: 100%; top: -3px; padding-left: 1px; font-size: 8px; line-height: 1; color: var(--dim); }
 .status[data-open="true"] { color: var(--up); }
 .status[data-open="true"] .status-dot { background: var(--up); }
@@ -296,7 +307,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 }
 .fresh.is-rt { color: var(--accent); }
 .fresh.is-dly { color: var(--dim); }
-/* In a panel head (DLY CBOE, 15 MIN) the tag is a word in the line, not a column. */
+/* In a panel head (DLY 15 MIN) the tag is a word in the line, not a column. */
 .panel-meta .fresh { width: auto; }
 /* A note on how to read the numbers (metaNote): it wraps inside the title strip rather
    than being cut off, so the strip grows a line when it has to. */

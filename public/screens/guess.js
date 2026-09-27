@@ -236,7 +236,7 @@ export function endLine(solvedIn, answer) {
 export function render(el, cmd, ctx) {
   const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
   el.innerHTML = `<div class="grid grid-guess">
-    ${panel('1', 'Guess', LOADING, { metaId: 'gs-meta', meta: metaNote('MYSTERY STOCK · 1 YEAR · % CHANGE', 'Past prices only: its daily closes over the last year (CNBC), as percent change from the first close.'), bodyCls: 'flush', cls: 'gs-chart-panel' })}
+    ${panel('1', 'Guess', LOADING, { metaId: 'gs-meta', meta: metaNote('MYSTERY STOCK · 1 YEAR · % CHANGE', 'Past prices only: its daily closes over the last year, as percent change from the first close.'), bodyCls: 'flush', cls: 'gs-chart-panel' })}
     ${panel('2', 'Your guesses', LOADING, { metaId: 'gs-left', cls: 'gs-play', bodyCls: 'flush' })}
   </div>`;
   const [chartBody, playBody] = el.querySelectorAll('.panel-body');

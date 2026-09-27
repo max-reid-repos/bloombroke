@@ -37,9 +37,9 @@ export function toInput(args) {
   return args.error ? null : ['OPTIONS', args.ticker, args.expiry].filter(Boolean).join(' ');
 }
 
-// "CBOE, DELAYED 15 MIN · FILE 12:49 ET": when the underlying price is from.
+// "DELAYED 15 MIN · FILE 12:49 ET": when the underlying price is from.
 export function underlyingAsOf(asOf) {
-  return `CBOE, DELAYED 15 MIN${asOf ? ` · FILE ${fmtAsOf(asOf)} ET` : ''}`;
+  return `DELAYED 15 MIN${asOf ? ` · FILE ${fmtAsOf(asOf)} ET` : ''}`;
 }
 
 // In the money: a call below the price, a put above it.
@@ -129,7 +129,7 @@ export function render(el, cmd, ctx) {
   }
   const { ticker } = args;
   el.innerHTML = `<div class="stack">
-    ${panel('1', `${ticker} options`, `<div class="oc-top" id="oc-top">${LOADING}</div><div id="oc-tabs"></div><div id="oc-chain"></div>`, { metaId: 'oc-meta', bodyCls: 'flush', meta: `${metaNote('SHADED = IN THE MONEY', 'IV = implied volatility')} · <span class="fresh is-dly" title="Delayed: about 15 min">DLY</span> CBOE, 15 MIN` })}
+    ${panel('1', `${ticker} options`, `<div class="oc-top" id="oc-top">${LOADING}</div><div id="oc-tabs"></div><div id="oc-chain"></div>`, { metaId: 'oc-meta', bodyCls: 'flush', meta: `${metaNote('SHADED = IN THE MONEY', 'IV = implied volatility')} · <span class="fresh is-dly" title="Delayed: about 15 min">DLY</span> 15 MIN` })}
   </div>`;
   const top = el.querySelector('#oc-top');
   const tabs = el.querySelector('#oc-tabs');

@@ -75,7 +75,7 @@ function errorView(el, title, detail, examples) {
     <p class="muted examples">Try ${examplesHtml(examples || DEFAULT_EXAMPLES)}</p>`, { cls: 'panel-solo' });
 }
 
-export const FX_SOURCE = 'Source: ECB statistics via Frankfurter. Reference rates, published once a working day (DAILY), not live prices. A rate between two currencies other than the euro is calculated from their euro rates. Not financial advice.';
+export const FX_SOURCE = 'Source: ECB reference rates, published once a working day (DAILY), not live prices. A rate between two currencies other than the euro is calculated from their euro rates. Not financial advice.';
 
 // ECB reference rates are all against the euro: any other pair is worked out from two of them.
 export function isCalculated(from, to) {

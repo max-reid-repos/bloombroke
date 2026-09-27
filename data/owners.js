@@ -11,7 +11,7 @@ const LIMIT = 25;
 // The whole holder list in one call (AAPL, among the biggest, has about 6,500), so the
 // totals can be summed from the rows themselves.
 const FETCH_LIMIT = 10_000;
-export const OWNERS_SOURCE = 'Nasdaq institutional holdings (SEC Form 13F)';
+export const OWNERS_SOURCE = 'Market data provider, from SEC Form 13F';
 
 function positions(rows, re) {
   const r = (Array.isArray(rows) ? rows : []).find((x) => re.test(String(x.positions || '')));

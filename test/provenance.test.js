@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   SEEN_AS_OF, nyCloseIso, etagOf, envelope, isoOf, combine, provenanceFor, provenanceJson, ROUTES, DATASETS, DELAYS, LICENCES, dataRows,
-  weirdDataset, statusRows, upstreamState, UPSTREAMS, gaugeEnvelope, weirdEnvelope, liveDelay,
+  weirdDataset, statusGroups, upstreamState, STATUS_GROUPS, gaugeEnvelope, weirdEnvelope, liveDelay, mountProvenanceRoutes, MDP,
 } from '../lib/provenance.js';
 import { dotTitle, popoverHtml, worstOf, ageWords, asOfWords, delayWord, flatten, MAX_PARTS, lastUpdateWords } from '../public/provenance.js';
 import { createCache, cacheStats, callerName } from '../data/cache.js';
@@ -15,7 +15,7 @@ import { makeCpi, CPI_GAPS } from '../data/cpi.js';
 import { cpiLoader, cpiGapNote } from '../data/whatif.js';
 import { bls } from '../data/whatif-service.js';
 import { dataTable, secLine, parse as parseData, ageTitle } from '../public/screens/data.js';
-import { statusTable } from '../public/screens/status.js';
+import { statusGrid, proOnlyHtml, stateHtml, PRO_ONLY_LINE } from '../public/screens/status.js';
 import { changesTable } from '../public/screens/changes.js';
 import { parseCommand, FKEYS } from '../public/app.js';
 
@@ -103,18 +103,25 @@ const SAMPLES = {
   '/api/guess/reveal': { ticker: 'AAPL' },
 };
 
+// Vendor names never leave the server in DATA, STATUS, the dot or the envelope.
+const VENDORS = /CNBC|Nasdaq|NASDAQ|Yahoo|Cboe|CBOE|CoinGecko|Frankfurter|Forex ?Factory|Seeking Alpha|Queue-Times|ApeWisdom|pizzint|Polymarket|Drewry|Forbes|DICJ|IMF|PortWatch|FRED|Freddie|New York Fed|NY Fed|MarketWatch|Dow Jones|Business ?Wire|PR ?Newswire|GlobeNewswire|Reddit|Algolia|Hacker News|App Store|Wikimedia|iShares|EDGAR Online/;
+// Links allowed: US government, the ECB (its terms require it be cited), credits a licence requires.
+const GOV_URL = /^https:\/\/([a-z0-9-]+\.)*(sec\.gov|bls\.gov|treasury\.gov|federalreserve\.gov|noaa\.gov|cdc\.gov|ecb\.europa\.eu|naturalearthdata\.com|github\.com\/TheEconomist)\b/;
+
 test('every data route has a sample here, and every sample gets a complete envelope', () => {
   assert.deepEqual(Object.keys(SAMPLES).sort(), Object.keys(ROUTES).sort(), 'a new route needs a sample and an envelope');
   const ids = new Set(DATASETS.map((d) => d.id));
   for (const [path, body] of Object.entries(SAMPLES)) {
     const p = provenanceFor(path, body, { now: NOW });
     assert.ok(p, `${path}: an envelope`);
-    for (const k of ['source', 'source_url', 'as_of', 'fetched_at', 'age_seconds', 'delay']) assert.ok(p[k] !== undefined && p[k] !== '', `${path}: ${k}`);
+    for (const k of ['source', 'as_of', 'fetched_at', 'age_seconds', 'delay']) assert.ok(p[k] !== undefined && p[k] !== '', `${path}: ${k}`);
     assert.ok(DELAYS.includes(p.delay), `${path}: delay ${p.delay}`);
-    assert.match(p.source_url, /^https:\/\//, `${path}: source_url`);
+    // A link only for a named public source; a class has none.
+    for (const part of p.parts || [p]) if (part.source_url) assert.match(part.source_url, GOV_URL, `${path}: ${part.source_url}`);
     assert.ok(Number.isFinite(Date.parse(p.as_of)) && Number.isFinite(Date.parse(p.fetched_at)), `${path}: ISO times`);
     assert.ok(p.age_seconds >= 0);
     for (const part of p.parts || [p]) assert.ok(ids.has(part.dataset), `${path}: dataset ${part.dataset} is a DATA row`);
+    assert.doesNotMatch(JSON.stringify(p), VENDORS, `${path}: no vendor name in the envelope`);
   }
 });
 
@@ -143,7 +150,7 @@ test('WEIRD: one envelope per gauge, one summary line on top', () => {
   assert.equal(all.source, 'WEIRD gauges, one source each');
   assert.equal(all.delay, 'monthly', 'the class most gauges have');
   assert.equal(all.parts.length, 3);
-  assert.equal(provenanceFor('/api/weird/canal', g, { now: NOW }).source, 'IMF PortWatch');
+  assert.equal(provenanceFor('/api/weird/canal', g, { now: NOW }).source, 'public web data', 'a class, not the vendor');
   assert.match(gaugeEnvelope({ ...g, id: 'eggs' }, NOW).note, /Oct 2025 not published/);
 });
 
@@ -203,21 +210,29 @@ test('dot popover: one line per source linking to its DATA row, then All sources
 
 // ---- DATA, STATUS, CHANGES ----------------------------------------------------------------
 
-test('DATA rows: every field filled, a known licence and class, every WEIRD gauge listed', () => {
+test('DATA rows: every field filled, a source class, no licence column, no vendor names', () => {
   const gauges = GAUGES.map((g) => ({ id: g.id, source: g.source }));
   const rows = dataRows({ stats: [], gauges, weird: [], edgar: null, now: NOW });
   assert.equal(rows.length, DATASETS.length + GAUGES.length);
   for (const r of rows) {
-    for (const k of ['id', 'group', 'name', 'source', 'url', 'licence', 'coverage', 'history', 'cadence', 'delay', 'gaps']) assert.ok(r[k], `${r.id}: ${k}`);
-    assert.ok(LICENCES.includes(r.licence) || (r.licence === '--' && ['trending', 'bbrk'].includes(r.id)), `${r.id}: licence ${r.licence}`);
+    for (const k of ['id', 'group', 'name', 'source', 'coverage', 'history', 'cadence', 'delay', 'gaps']) assert.ok(r[k], `${r.id}: ${k}`);
+    assert.equal(r.licence, undefined, `${r.id}: the licence stays on the server`);
     assert.ok(DELAYS.includes(r.delay), `${r.id}: delay`);
-    assert.match(r.url, /^https:\/\//);
+    if (r.url) assert.match(r.url, GOV_URL, `${r.id}: a link only for a named public source`);
   }
+  assert.doesNotMatch(JSON.stringify(rows), VENDORS, 'no vendor name in DATA');
+  const html = dataTable(rows);
+  assert.doesNotMatch(html, VENDORS);
+  assert.doesNotMatch(html, /Licence|third-party terms|public domain/, 'no licence column');
+  const src = (id) => rows.find((r) => r.id === id).source;
+  assert.deepEqual(['quotes', 'fx', 'calendar', 'news', 'weird-pizza', 'bbrk', 'sec-facts', 'cpi', 'treasury', 'news-macro', 'weird-beige', 'weird-sick', 'weird-bigmac', 'weird-waffle'].map(src),
+    [MDP, 'reference FX rates (ECB)', 'exchange calendars', 'news publishers', 'public web data', 'our own counters', 'SEC EDGAR', 'BLS', 'US Treasury', 'Federal Reserve Board, BLS', 'Federal Reserve Board', 'CDC', 'The Economist (CC BY 4.0)', 'National Hurricane Center; stores © OpenStreetMap contributors (ODbL)'],
+    'government sources named, licence credits kept, the rest a class');
+  assert.equal(rows.find((r) => r.id === 'quotes').url, undefined, 'no link to a vendor');
   const fresh = dataRows({ stats: [], gauges, weird: [], edgar: null, seen: new Map(), now: NOW });
   assert.ok(fresh.every((r) => r.age_seconds === null && r.checked_seconds === null), 'nothing loaded: no age, never a made-up one');
   assert.deepEqual(LICENCES, ['public domain', 'credit required', 'share-alike', 'third-party terms']);
-  assert.doesNotMatch(JSON.stringify(rows), /display only|open with credit|restricted/, 'no right we have not checked');
-  const lic = (id) => rows.find((r) => r.id === id).licence;
+  const lic = (id) => [...DATASETS].find((d) => d.id === id)?.licence ?? weirdDataset({ id: id.replace('weird-', '') }).licence;
   assert.deepEqual(['sec-facts', 'cpi', 'treasury', 'nyfed', 'fx', 'crypto', 'economy', 'mortgage', 'quotes', 'geo', 'weird-waffle', 'weird-bigmac', 'weird-panic', 'weird-canal'].map(lic),
     ['public domain', 'public domain', 'public domain', 'third-party terms', 'credit required', 'third-party terms', 'third-party terms', 'third-party terms', 'third-party terms', 'public domain', 'share-alike', 'credit required', 'public domain', 'third-party terms']);
   assert.equal(new Set(rows.map((r) => r.id)).size, rows.length, 'ids are unique');
@@ -240,7 +255,6 @@ test('DATA rows: data age from the last answer, checked age from the caches, WEI
   const html = dataTable(rows, { lit: 'quotes' });
   assert.match(html, /<tr id="data-quotes" class="is-lit">/);
   assert.match(html, /title="Checked 12s ago · last update [^"]+">2h</);
-  assert.match(html, /third-party terms/);
   assert.equal(ageTitle({ checked_seconds: null, as_of: null }), 'Not checked since the server started');
   assert.equal(secLine({ seen_within_seconds: 42 }), 'SEC filings: seen within ~42s of acceptance');
   assert.equal(secLine(null), 'SEC filings: seen within -- of acceptance');
@@ -248,19 +262,51 @@ test('DATA rows: data age from the last answer, checked age from the caches, WEI
   assert.deepEqual(parseData(['A', 'B']), { error: 'usage' });
 });
 
-test('STATUS: OK, SLOW, FAILING or -- per upstream, from the caches only', () => {
+test('STATUS: grouped like HOME, one row per item by its own name, no source names', () => {
   const s = (over) => ({ name: 'quotes', okAt: 0, failAt: 0, ms: 0, ...over });
   assert.equal(upstreamState(['quotes'], [s({ okAt: 10, ms: 200 })]).state, 'OK');
   assert.equal(upstreamState(['quotes'], [s({ okAt: 10, ms: 9000 })]).state, 'SLOW');
   assert.equal(upstreamState(['quotes'], [s({ okAt: 10, failAt: 20 })]).state, 'FAILING');
   assert.equal(upstreamState(['quotes'], []).state, '--');
-  const rows = statusRows({ stats: [s({ okAt: NOW - 5000, ms: 100 })], weird: [{ id: 'canal', ok: true, source: 'IMF PortWatch', updated: UPD }], edgar: { okAt: NOW, failAt: 0 }, now: NOW });
-  assert.equal(rows.length, UPSTREAMS.length + 2);
-  assert.equal(rows[0].last_ok_seconds, 5);
-  const html = statusTable(rows);
-  assert.match(html, /CNBC quote service/);
-  assert.match(html, /st-ok">OK/);
-  assert.doesNotMatch(JSON.stringify(rows), /@|\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/, 'no personal data');
+  const weird = GAUGES.map((g) => ({ id: g.id, ok: g.id !== 'pizza', source: g.source, updated: UPD }));
+  const groups = statusGroups({ stats: [s({ okAt: NOW - 5000, ms: 100 })], weird, edgar: { okAt: NOW, failAt: 0 }, now: NOW });
+  assert.deepEqual(groups.map((g) => g.group), ['PRICES', 'CHARTS', 'COMPANY DATA', 'SEC', 'MACRO', 'NEWS', 'WEIRD', 'OUR COUNTERS']);
+  assert.equal(groups[0].rows[0].name, 'Quotes');
+  assert.equal(groups[0].rows[0].last_ok_seconds, 5);
+  const w = groups.find((g) => g.group === 'WEIRD').rows;
+  assert.equal(w.length, GAUGES.length);
+  assert.deepEqual([w[0].name, w[1].name, w[1].state], ['Hormuz ships', 'Pentagon pizza', 'FAILING']);
+  assert.ok(w.every((r) => !/^WEIRD/.test(r.name)), 'the group header says WEIRD once');
+  assert.equal(groups.find((g) => g.group === 'SEC').rows.find((r) => r.name === 'Latest filings feed').state, 'OK');
+  assert.doesNotMatch(JSON.stringify(groups), VENDORS, 'no vendor name in STATUS');
+  assert.doesNotMatch(JSON.stringify(groups), /@|\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/, 'no personal data');
+  const html = statusGrid(groups);
+  assert.equal((html.match(/<tr class="group-row">/g) || []).length, 8, 'one header row per group');
+  assert.match(html, /<th colspan="3" scope="rowgroup">WEIRD<\/th>/);
+  assert.match(html, /<span class="sx-dot" data-state="ok" aria-hidden="true"><\/span><span class="sx-word sx-ok">OK<\/span>/);
+  assert.match(html, /data-state="failing"[^>]*><\/span><span class="sx-word sx-failing">FAILING/);
+  assert.doesNotMatch(html, VENDORS);
+  assert.match(stateHtml('--'), /data-state="none".*>--</);
+  assert.equal(PRO_ONLY_LINE, 'STATUS is part of Pro.');
+  assert.match(proOnlyHtml(), /STATUS is part of Pro\. <a class="code" href="\?c=PRO" data-cmd="PRO">PRO<\/a>/);
+});
+
+test('STATUS: the server answers 403 without an active Pro key, the groups with one', async () => {
+  const routes = {};
+  const app = { get: (path, fn) => { routes[path] = fn; } };
+  mountProvenanceRoutes(app, { weird: async () => [], isPro: (req) => req.key === 'good' });
+  const call = async (key) => {
+    const res = { code: 200, headers: {}, set(h, v) { this.headers[h] = v; return this; }, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } };
+    await routes['/api/status']({ key, get: () => key }, res);
+    return res;
+  };
+  const free = await call(null);
+  assert.deepEqual([free.code, free.body.error, free.body.message], [403, 'pro_only', 'STATUS is part of Pro.']);
+  assert.equal(free.body.groups, undefined, 'nothing about the feeds without Pro');
+  const pro = await call('good');
+  assert.equal(pro.code, 200);
+  assert.ok(Array.isArray(pro.body.groups));
+  assert.equal(pro.headers['Cache-Control'], 'no-store');
 });
 
 test('CHANGES: the hand-kept list is valid, plain and newest first', () => {
@@ -408,9 +454,21 @@ test('WEIRD: the envelope adds little (compact per-gauge parts)', () => {
   const gauges = GAUGES.map((g) => ({ id: g.id, ok: true, source: g.source, asOf: '2026-09-20', updated: SUN_UPD }));
   const p = weirdEnvelope(gauges, SUNDAY);
   assert.equal(p.parts.length, GAUGES.length);
-  for (const x of p.parts) assert.deepEqual(Object.keys(x).filter((k) => k !== 'note'), ['dataset', 'source_url', 'delay']);
+  for (const x of p.parts) assert.deepEqual(Object.keys(x).filter((k) => k !== 'note' && k !== 'source_url'), ['dataset', 'delay']);
   assert.ok(JSON.stringify(p).length < 3500, `about ${JSON.stringify(p).length} bytes for ${GAUGES.length} gauges`);
   // The dot's list still works from a compact part: it takes the answer's times.
   const flat = flatten([{ ...p, parts: p.parts.slice(0, 2), receivedAt: SUNDAY }]);
   assert.ok(flat.every((x) => x.as_of && x.fetched_at && x.source));
+});
+
+test('the dot and its list: source classes only; headlines keep their publisher', async () => {
+  const envs = Object.entries(SAMPLES).map(([path, body]) => ({ ...provenanceFor(path, body, { now: NOW }), receivedAt: NOW }));
+  const html = popoverHtml(envs, { now: NOW, max: 100 });
+  assert.doesNotMatch(html, VENDORS, 'no vendor in the popover');
+  assert.match(html, /market data provider/);
+  assert.match(html, /SEC EDGAR/, 'government sources keep their names');
+  for (const e of envs) assert.doesNotMatch(dotTitle([e], { now: NOW }), VENDORS);
+  // A headline still names its publisher: that is attribution, not a data source list.
+  const { newsList } = await import('../public/screens/news.js');
+  assert.match(newsList([{ title: 'Stocks rise', link: 'https://example.com/a', source: 'CNBC', time: UPD }]), />CNBC</);
 });
