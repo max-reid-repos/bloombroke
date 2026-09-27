@@ -2,6 +2,7 @@
 // per app, and the rule. The server side is lib/mcp/.
 
 import { esc, panel, metaNote } from './markets.js';
+import { goal } from '../goal.js'; // GOALS
 
 export const MCP_URL = 'https://bloombroke.com/mcp';
 export const MCP_APPS = [
@@ -20,5 +21,6 @@ export function mcpHtml() {
 
 export function render(el, cmd, ctx) {
   el.innerHTML = mcpHtml();
+  goal('mcp_screen_opened');
   ctx.status('MCP');
 }

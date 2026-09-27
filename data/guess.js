@@ -326,7 +326,9 @@ export function makeGuess({ getChart, getCaps, secret, now = () => new Date(), p
 export const GUESS_LIMIT = { perMinute: 60 };
 
 // The routes. A mild limit per visitor over all three.
-export function mountGuess(app, { getChart, getCaps, secret = loadSecret(), now = () => new Date(), limiter } = {}) {
+// count(name, req, key): BBRK's site totals (lib/counters.js). A solved game counts here,
+// once; a lost game is counted by the page when it ends (public/goal.js), never on reveal.
+export function mountGuess(app, { getChart, getCaps, secret = loadSecret(), now = () => new Date(), limiter, count = () => {} } = {}) {
   const game = makeGuess({ getChart, getCaps, secret, now });
   const lim = limiter || createLimiter({ max: GUESS_LIMIT.perMinute, windowMs: 60_000, maxKeys: 20_000 });
   const str = (v) => (typeof v === 'string' ? v.slice(0, 60) : undefined);
@@ -349,7 +351,8 @@ export function mountGuess(app, { getChart, getCaps, secret = loadSecret(), now 
   };
 
   app.get('/api/guess/today', handle(60, () => game.todayPuzzle()));
-  app.get('/api/guess/check', handle(60, (req) => game.check(str(req.query.n), str(req.query.g))));
+  const played = (req, d) => { try { count('guess_played', req, `guess:${d.n}`); } catch { /* never fails the game */ } return d; };
+  app.get('/api/guess/check', handle(60, async (req) => { const d = await game.check(str(req.query.n), str(req.query.g)); return d.solved ? played(req, d) : d; }));
   app.get('/api/guess/reveal', handle(300, (req) => game.reveal(str(req.query.n))));
   return game;
 }
