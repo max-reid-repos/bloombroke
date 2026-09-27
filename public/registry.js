@@ -212,6 +212,13 @@ export const REGISTRY = [
     options: [['<from>', 'A year (2024) or a date'], ['<to>', 'An end date']],
     source: 'CNBC, adjusted for splits', delay: 'Daily closes',
   },
+  // --- GUESS (screens/guess.js, data/guess.js) ---
+  {
+    name: 'GUESS', category: 'Charts', summary: 'One mystery stock a day: guess it from its 1-year chart',
+    syntax: 'GUESS', examples: ['GUESS'], keywords: ['game', 'puzzle', 'daily', 'mystery', 'play', 'guessing game', 's&p 100'],
+    source: 'CNBC daily closes and market caps; the S&P 100 list', delay: 'A new puzzle at midnight New York time; past prices only',
+  },
+  // --- end GUESS ---
 
   // --- Rates and bonds ----------------------------------------------------------------
   {

@@ -1629,6 +1629,96 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 }
 /* --- end FISHTANK -------------------------------------------------------------- */
 
+/* --- GUESS (screens/guess.js): one mystery stock a day ------------------------- */
+.grid-guess { grid-template-columns: minmax(0, 1fr); }
+.gs-chart { position: relative; height: 280px; min-height: 0; overflow: hidden; }
+@media (min-width: 1100px) {
+  .grid-guess { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+  html:not(.is-embed) .view > .grid-guess { grid-template-rows: minmax(0, 1fr); }
+  html:not(.is-embed) .view > .grid-guess > .gs-chart-panel > .panel-body { display: flex; flex-direction: column; overflow: hidden; scrollbar-gutter: auto; }
+  html:not(.is-embed) .view > .grid-guess .gs-chart { flex: 1 1 0; height: auto; min-height: 200px; }
+  .is-embed .gs-chart { height: calc(100vh - 40px); }
+}
+.gs-svg { display: block; }
+.gs-line { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; }
+.gs-area { fill: var(--accent-tint); stroke: none; }
+.gs-grid { stroke: var(--rule); stroke-width: 1; }
+.gs-grid.is-zero { stroke: var(--rule-strong); stroke-dasharray: 4 3; }
+.gs-mtick { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 1 3; }
+.gs-ylab, .gs-xlab { fill: var(--dim); font-family: var(--font); font-size: 11px; }
+.gs-tag { fill: var(--accent); }
+.gs-tagt { fill: var(--ink); font-family: var(--font); font-size: 11px; font-weight: 600; }
+.gs-form { flex-wrap: nowrap; padding: 8px 10px; border-bottom: 1px solid var(--rule); }
+.gs-field { position: relative; flex: 1 1 auto; min-width: 0; }
+.gs-in { width: 100%; }
+.gs-in:focus { outline: 1px solid var(--accent); outline-offset: 0; }
+.gs-sug { position: absolute; top: 100%; left: 0; right: 0; z-index: 20; list-style: none; padding: 0; background: var(--panel-2); border: 1px solid var(--rule-strong); }
+.gs-sug[hidden] { display: none; }
+.gs-sug button {
+  display: flex; align-items: center; gap: 10px; width: 100%; height: 26px; padding: 0 8px;
+  border: 0; background: transparent; color: var(--text-2); font-family: var(--font); font-size: 12px; text-align: left; cursor: pointer;
+}
+.gs-sug li[aria-selected="true"] button, .gs-sug button:hover { background: var(--panel-3); color: var(--text); }
+.gs-sug .gs-tk { min-width: 6ch; color: var(--text); font-weight: 600; }
+.gs-sug .gs-nm { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
+.gs-table th, .gs-table td { height: 34px; padding: 0 6px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid var(--rule); }
+.gs-table thead th { height: 22px; font-size: 11px; font-weight: 400; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+.gs-table .gs-i { width: 4ch; color: var(--dim); }
+.gs-table .gs-g { width: 28%; font-weight: 400; color: var(--faint); }
+.gs-g .gs-tk { display: block; color: var(--text); font-weight: 600; line-height: 15px; }
+.gs-g .gs-nm { display: block; font-size: 11px; line-height: 14px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+.gs-cell { border-left: 2px solid var(--bg); }
+.gs-cell .gs-v, .gs-cell .gs-d { display: block; overflow: hidden; text-overflow: ellipsis; }
+.gs-cell .gs-v { font-size: 12px; line-height: 15px; font-weight: 600; }
+.gs-cell .gs-d { font-size: 10px; line-height: 13px; letter-spacing: .06em; }
+.gs-cell.g-hit { background: var(--accent); color: var(--ink); }
+.gs-cell.g-near { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); }
+.gs-cell.g-miss { color: var(--text-2); }
+.gs-cell.g-miss .gs-d { color: var(--dim); }
+.gs-cell.g-none { color: var(--faint); }
+.gs-end { display: grid; gap: 8px; padding: 10px; }
+.gs-result { font-size: 13px; font-weight: 600; letter-spacing: .08em; color: var(--accent); }
+.gs-answer { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+.gs-answer .gs-tk { font-size: 18px; font-weight: 800; color: var(--text); }
+.gs-answer .gs-nm { color: var(--text-2); }
+.gs-ak, .gs-sk { font-size: 11px; color: var(--dim); letter-spacing: .08em; }
+.gs-hint { color: var(--text-2); }
+.gs-next { font-size: 12px; letter-spacing: .06em; color: var(--text-2); }
+.gs-cd { color: var(--text); font-weight: 600; }
+.gs-stats { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; }
+.gs-stats b { color: var(--text); font-weight: 600; }
+.gs-share { display: flex; flex-wrap: wrap; gap: 8px; }
+.gs-x { height: 24px; }
+@media (max-width: 639px) {
+  .gs-table .gs-g { width: 22%; }
+  .gs-table .gs-i { width: 3ch; }
+  .gs-g .gs-nm { display: none; }
+  .gs-table th, .gs-table td { padding: 0 4px; }
+  .gs-table thead th { font-size: 10px; letter-spacing: .02em; }
+  .gs-cell .gs-v { font-size: 11px; }
+}
+/* --- end GUESS ------------------------------------------------------------------ */
+
+/* --- SINCE on HOME (since.js): one line in the MARKETS title strip ------------ */
+.since { color: var(--dim); }
+.since .sn-sep { color: var(--faint); }
+.since .sn-i { white-space: nowrap; }
+/* Phones: the line takes its own row under the panel title, like a metaNote. */
+@media (max-width: 639px) {
+  .panel-head:has(.since) { flex-wrap: wrap; }
+  .panel-meta:has(.since) { flex: 1 1 100%; justify-content: flex-start; text-align: left; padding-left: 8px; }
+}
+/* --- end SINCE ------------------------------------------------------------------ */
+
+/* --- Phone key bar: short labels, so every key shows its whole word -------------- */
+.fkey-short { display: none; }
+@media (max-width: 639px) {
+  .fkeys .fkey-l:has(+ .fkey-short) { display: none; }
+  .fkeys .fkey-short { display: inline; }
+}
+/* --- end phone key bar ----------------------------------------------------------- */
+
 /* --- ALERTS (price and gauge alerts) -------------------------------------------- */
 .status-alerts {
   margin-left: auto; height: 16px; padding: 0 6px;
