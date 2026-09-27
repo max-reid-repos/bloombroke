@@ -536,7 +536,7 @@ function resultHtml(d, key, links) {
     const start = r.kind === 'once' ? r.bought : /^\d{4}-\d{2}$/.test(r.from || '') ? `${r.from}-01` : r.from;
     const cmd = /^\d{4}-\d{2}-\d{2}$/.test(start || '') ? `${r.ticker} FROM ${start}` : `${r.ticker} 5Y`;
     return `<tr class="row-link${loss ? ' is-loss' : ''}" data-cmd="${esc(cmd)}" tabindex="0">
-      <th scope="row" class="name"><a href="${esc(q(cmd))}" data-cmd="${esc(cmd)}" tabindex="-1">${esc(r.name)}</a> <a class="dim wi-tk" href="${esc(q(r.ticker))}" data-cmd="${esc(r.ticker)}" tabindex="-1">${esc(r.ticker)}</a><span class="wi-when-m dim">${bought}</span></th>
+      <th scope="row" class="name"><a href="${esc(q(cmd))}" data-cmd="${esc(cmd)}" tabindex="-1">${esc(r.name)}</a>${r.mine ? '' : ` <a class="dim wi-tk" href="${esc(q(r.ticker))}" data-cmd="${esc(r.ticker)}" tabindex="-1">${esc(r.ticker)}</a>`}<span class="wi-when-m dim">${bought}</span></th>
       <td class="num wi-when">${bought}</td>
       <td class="num">${esc(fmtUsd(r.paid))}</td>
       <td class="num wi-sh">${esc(fmtShares(r.shares))}</td>
@@ -596,8 +596,18 @@ function resultHtml(d, key, links) {
 
 // ---- REPLAY ------------------------------------------------------------------------
 
-export const MINE_NOTE = 'YOUR OWN: CNBC DAILY CLOSES, SPLIT-ADJUSTED, PRICE ONLY';
-export const JAR_NOTE = 'JAR: CASH DEFLATED BY CPI-U (BLS)';
+// The title strip: short notes, each with its long form as the tooltip, so it stays one
+// line at 1536 wide. The Space key hint sits on the REPLAY row.
+export const MINE_NOTE = 'YOURS: CNBC, PRICE ONLY';
+export const HABIT_NOTE = 'HABITS BUY MONTHLY';
+export const JAR_NOTE = 'JAR: CPI-U';
+export function resultMeta(d) {
+  const parts = [metaNote(HINDSIGHT_NOTE)];
+  if (d.mine) parts.push(metaNote(MINE_NOTE, 'Your own purchase: CNBC daily closes, split-adjusted, price only. Not checked against a second source.'));
+  if (d.rows.some((r) => r.kind === 'monthly')) parts.push(metaNote(HABIT_NOTE, 'Habits are bought once a month, on the first trading day. The month still running counts only the days so far.'));
+  if (d.replay?.cpi?.last) parts.push(metaNote(JAR_NOTE, `CASH IN A JAR: the same cash, deflated by CPI-U from the BLS, to ${fmtMonth(d.replay.cpi.last)}. Later months use the latest value.`));
+  return parts.join('');
+}
 const money = (n) => (n > 0 ? `−${fmtUsd(n)}` : fmtUsd(0));
 
 export function replayHtml(d, support = videoSupport()) {
@@ -615,6 +625,7 @@ export function replayHtml(d, support = videoSupport()) {
         <span class="wr-key wr-jar">CASH IN A JAR <span class="num" data-wr="jar">${esc(fmtUsd(last.jar))}</span></span>
         <span class="wr-key wr-spent">SPENT <span class="num" data-wr="spent">${esc(money(last.spent))}</span></span>
         <span class="wr-actions">
+          <span class="wi-hint dim"><kbd>Space</kbd> replay</span>
           <button type="button" class="wi-btn wr-btn" data-replay>REPLAY</button>
           ${video}
         </span>
@@ -735,10 +746,7 @@ export function render(el, cmd, ctx) {
     return ctx.fetchJSON(`/api/whatif?${new URLSearchParams({ c: plan.words.join(' ') })}`, { signal: ctx.signal }).then((d) => {
       if (d.picker) { renderPicker(el, ctx, cat, plan.picks, plan.shelf, plan.mine); return; }
       const links = d.cert ? shareLinks(d.cert, location.origin) : null;
-      const jar = d.replay?.cpi?.last ? `${metaNote(JAR_NOTE, `CPI-U from the BLS, to ${fmtMonth(d.replay.cpi.last)}. Later months use the latest value.`)}<span class="wi-hint">${metaNote('SPACE REPLAYS')}</span>` : '';
-      el.innerHTML = panel('1', WHATIF_TITLE, resultHtml(d, key, links), {
-        cls: 'panel-solo wi-panel', meta: `<span>${d.rows.length} ${d.rows.length === 1 ? 'ITEM' : 'ITEMS'}</span>${metaNote(HINDSIGHT_NOTE)}${d.mine ? metaNote(MINE_NOTE) : ''}${jar}`,
-      });
+      el.innerHTML = panel('1', WHATIF_TITLE, resultHtml(d, key, links), { cls: 'panel-solo wi-panel', meta: resultMeta(d) });
       sizeCert(el);
       setupReplay(el, d, ctx);
       el.querySelector('[data-copy]')?.addEventListener('click', async (e) => {
