@@ -78,7 +78,7 @@ test('URL state round-trips', () => {
 test('suggestions match command prefixes', () => {
   assert.deepEqual(suggest('ma').map((s) => s.name), ['MARKETS', 'MACAU']);
   assert.deepEqual(suggest('m').map((s) => s.name), ['MARKETS', 'MOVERS', 'MACAU', 'MENU']);
-  assert.deepEqual(suggest('F').map((s) => s.name), ['FINANCIALS', 'FILINGS', 'FEDPATH', 'FX', 'FXMATRIX', 'FISHTANK']);
+  assert.deepEqual(suggest('F').map((s) => s.name), ['FINANCIALS', 'FILINGS', 'FEDPATH', 'FX', 'FXMATRIX', 'FEEDBACK', 'FISHTANK']);
   assert.deepEqual(suggest('H').map((s) => s.name), ['HOME', 'HEATMAP', 'HISTORY', 'HIRING', 'HOTDOG', 'HELP']);
   assert.deepEqual(suggest('cp').map((s) => s.name), ['CPI']);
   assert.equal(suggest('').length, COMMANDS.length);

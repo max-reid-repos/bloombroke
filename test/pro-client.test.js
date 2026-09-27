@@ -10,7 +10,7 @@ import {
 } from '../public/pro.js';
 import {
   parseLogin, maskKey, keyFileText, statusText, SAVE_LINE, BUY_TERMS, OPERATOR, CONTACT, EXPERIMENTAL_LINE, DEMO_BANNER,
-  FEATURES, COMING_NEXT,
+  PRO_ROWS, FREE_ROWS, COMING, LIVE,
 } from '../public/screens/pro.js';
 import { normalizeKey as serverNormalize, generateKey } from '../pro/licence.js';
 
@@ -95,7 +95,8 @@ test('TAPE: rows come from one /api/quotes call, in tape order', async () => {
 });
 
 test('sync planning: pull newer server copies, push local changes once', () => {
-  assert.deepEqual(Object.keys(SYNC_DOCS), ['watch', 'pf', 'tape']);
+  assert.deepEqual(Object.keys(SYNC_DOCS), ['watch', 'pf', 'tape', 'desk']);
+  assert.equal(SYNC_DOCS.desk, 'bb.desks', 'saved DESK layouts sync for Pro');
   const meta = { watch: { raw: '["AAPL"]', updatedAt: 100 } };
   // Pull: only newer, only known names.
   const pulls = planPull(meta, {
@@ -139,9 +140,10 @@ test('PRO screen copy: the save line, the key file, the mask, the free-user line
   // Before SUBSCRIBE: price, monthly renewal, how to cancel, the shutdown promise.
   const terms = BUY_TERMS.join(' ');
   assert.match(terms, /\$4\.20 USD a month/);
-  assert.match(terms, /renews automatically every month/);
+  assert.match(terms, /renews automatically every month or every year/);
+  assert.match(terms, /\$42 USD a year/);
   assert.match(terms, /Cancel any time: type PRO and press MANAGE/);
-  assert.ok(BUY_TERMS.includes('If we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month.'));
+  assert.ok(BUY_TERMS.includes('If we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month or year.'));
   assert.equal(OPERATOR, 'Run by Bloombroke.');
   assert.equal(CONTACT, 'hello@bloombroke.com');
   assert.ok(txt.includes(CONTACT));
@@ -208,13 +210,14 @@ test('PRO screen: experimental notice before SUBSCRIBE, demo banner text', () =>
   assert.equal(DEMO_BANNER, 'Demo checkout. No real money. Use card 4242 4242 4242 4242, any future date, any CVC.');
 });
 
-test('PRO screen: renewal line, and alerts only as coming next', () => {
+test('PRO screen: renewal line, and closed-tab alerts only as coming when Pro launches', () => {
   const end = new Date(Date.UTC(2026, 9, 26, 12)).toISOString();
   assert.equal(statusText({ status: 'active', cancelAtPeriodEnd: false, currentPeriodEnd: end }), 'Renews Oct 26');
   assert.equal(statusText({ status: 'active', cancelAtPeriodEnd: true, currentPeriodEnd: end }), 'Active until Oct 26 (cancelled, will not renew)');
   assert.equal(statusText({ status: 'active', cancelAtPeriodEnd: false, cancelAt: end, currentPeriodEnd: end }), 'Active until Oct 26 (cancelled, will not renew)');
   assert.equal(statusText({ status: 'active' }), 'ACTIVE');
-  assert.ok(FEATURES.every(([name, text]) => !/alert/i.test(name + text)), 'Pro does not promise alerts');
-  assert.match(COMING_NEXT, /^Coming next: price alerts/);
+  // Alerts while the tab is open are free and live; alerts with the tab closed are not built.
+  assert.ok(PRO_ROWS.filter(([name]) => /alert/i.test(name)).every(([, status]) => status === COMING), 'Pro does not promise alerts yet');
+  assert.ok(FREE_ROWS.some(([name, status]) => /alerts while the tab is open/i.test(name) && status === LIVE));
   for (const t of BUY_TERMS) assert.doesNotMatch(t, /alert/i);
 });

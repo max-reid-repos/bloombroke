@@ -1,7 +1,10 @@
 // Pro storage: licences, processed Stripe events and synced documents.
 
 import { tx } from './db.js';
-import { generateKey, hashKey, last4, encryptReveal, decryptReveal, REVEAL_MS } from './licence.js';
+import {
+  generateKey, hashKey, last4, encryptReveal, decryptReveal, REVEAL_MS,
+  generateGiftCode, GIFT_MS, GIFT_CODE_MS, MAX_GIFTS, ACTIVE_STATUSES, isGiftLicence,
+} from './licence.js';
 
 export const MAX_SYNC_BYTES = 64 * 1024;
 export const MAX_SYNC_DOCS = 16;
@@ -12,6 +15,28 @@ export const ENDED_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
 // Subscription ended for good: synced data goes 30 days after (Privacy Policy).
 const ENDED_SQL = "('canceled', 'unpaid')";
 const endedAt = (status, t) => (status === 'canceled' || status === 'unpaid' ? t : null);
+// The next seat number, read inside the same transaction as the insert. Seats are never
+// reused: seat_high (migration 009) remembers the highest seat ever given, even after
+// old licence rows are deleted.
+const NEXT_SEAT = '(SELECT MAX(COALESCE((SELECT n FROM seat_high WHERE id = 1), 0), COALESCE((SELECT MAX(seat) FROM licences), 0)) + 1)';
+// Records: licence rows 5 years after the licence ended, gift code rows 12 months after
+// they were used or expired (Privacy Policy).
+export const RECORD_KEEP_MS = 5 * 365 * 24 * 60 * 60 * 1000;
+export const GIFT_RECORD_KEEP_MS = 365 * 24 * 60 * 60 * 1000;
+const INTERVALS = new Set(['month', 'year']);
+
+// A gift code in a listing: never the code, only its last 4 characters and its state.
+export function giftState(g, t) {
+  if (g.redeemed_at) return 'redeemed';
+  return t >= g.expires_at ? 'expired' : 'unused';
+}
+
+export class GiftError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+}
 
 export class SyncError extends Error {
   constructor(code, message) {
@@ -35,14 +60,45 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
       terms_version = COALESCE(?, terms_version),
       livemode = COALESCE(?, livemode),
       ended_at = NULL,
+      gift_expires_at = NULL,
       updated_at = ?
       WHERE id = ?`),
-    billing: db.prepare('UPDATE licences SET cancel_at_period_end = ?, current_period_end = ?, cancel_at = ? WHERE id = ?'),
+    billing: db.prepare('UPDATE licences SET cancel_at_period_end = ?, current_period_end = ?, cancel_at = ?, billing_interval = COALESCE(?, billing_interval) WHERE id = ?'),
     rotate: db.prepare('UPDATE licences SET key_hash = ?, last4 = ?, reveal_ciphertext = NULL, updated_at = ? WHERE id = ?'),
     forget: db.prepare('UPDATE licences SET reveal_ciphertext = NULL WHERE checkout_session_id = ? AND key_hash = ? AND reveal_ciphertext IS NOT NULL'),
     insert: db.prepare(`INSERT INTO licences
-      (key_hash, last4, stripe_customer_id, stripe_subscription_id, checkout_session_id, status, past_due_since, created_at, updated_at, reveal_ciphertext, reveal_expires_at, terms_accepted_at, terms_version, livemode, ended_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+      (key_hash, last4, stripe_customer_id, stripe_subscription_id, checkout_session_id, status, past_due_since, created_at, updated_at, reveal_ciphertext, reveal_expires_at, terms_accepted_at, terms_version, livemode, ended_at, seat)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${NEXT_SEAT})`),
+    // A gift licence: its own key and seat, no Stripe ids, Pro until gift_expires_at.
+    insertGiftLicence: db.prepare(`INSERT INTO licences
+      (key_hash, last4, status, created_at, updated_at, livemode, gift_expires_at, seat)
+      VALUES (?, ?, 'gift', ?, ?, ?, ?, ${NEXT_SEAT})`),
+    giftByHash: db.prepare('SELECT * FROM gift_codes WHERE code_hash = ?'),
+    giftsOf: db.prepare('SELECT * FROM gift_codes WHERE giver_licence_id = ? ORDER BY created_at DESC, id DESC'),
+    // Codes that use up one of the 3, for life: redeemed (listed, or counted on the
+    // licence once their rows were deleted), or not yet expired.
+    giftsHeld: db.prepare(`SELECT
+      (SELECT COUNT(*) FROM gift_codes WHERE giver_licence_id = @lic AND (redeemed_at IS NOT NULL OR expires_at > @t))
+      + COALESCE((SELECT gifts_redeemed_purged FROM licences WHERE id = @lic), 0) AS n`),
+    giftsPurgedOf: db.prepare('SELECT gifts_redeemed_purged AS n FROM licences WHERE id = ?'),
+    giftInsert: db.prepare('INSERT INTO gift_codes (code_hash, last4, giver_licence_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)'),
+    giftById: db.prepare('SELECT * FROM gift_codes WHERE id = ?'),
+    // The one write that uses a code: only while it is unused and not expired.
+    giftUse: db.prepare('UPDATE gift_codes SET redeemed_at = ?, redeemed_licence_id = ? WHERE id = ? AND redeemed_at IS NULL AND expires_at > ?'),
+    countPurgedGifts: db.prepare(`UPDATE licences SET gifts_redeemed_purged = gifts_redeemed_purged +
+      (SELECT COUNT(*) FROM gift_codes g WHERE g.giver_licence_id = licences.id AND g.redeemed_at IS NOT NULL AND g.redeemed_at <= @before)
+      WHERE id IN (SELECT giver_licence_id FROM gift_codes WHERE redeemed_at IS NOT NULL AND redeemed_at <= @before)`),
+    oldGifts: db.prepare(`DELETE FROM gift_codes WHERE
+      (redeemed_at IS NOT NULL AND redeemed_at <= ?) OR (redeemed_at IS NULL AND expires_at <= ?)`),
+    // A licence goes once it ended over 5 years ago: a paid one cancelled (never one whose
+    // last status could still charge: unpaid, past_due, incomplete), a gift one whose
+    // month ran out. Never while a gift code row still points at it.
+    oldLicences: db.prepare(`DELETE FROM licences WHERE (
+        (status = 'canceled' AND ended_at IS NOT NULL AND ended_at <= ?)
+        OR (gift_expires_at IS NOT NULL AND stripe_subscription_id IS NULL AND gift_expires_at <= ?)
+      ) AND NOT EXISTS (SELECT 1 FROM gift_codes g WHERE g.giver_licence_id = licences.id OR g.redeemed_licence_id = licences.id)`),
+    endedGiftDocs: db.prepare(`DELETE FROM sync_docs WHERE licence_id IN
+      (SELECT id FROM licences WHERE gift_expires_at IS NOT NULL AND stripe_subscription_id IS NULL AND gift_expires_at <= ?)`),
     terms: db.prepare('UPDATE licences SET terms_accepted_at = ?, terms_version = ? WHERE id = ? AND terms_accepted_at IS NULL'),
     status: db.prepare(`UPDATE licences SET
       status = ?,
@@ -118,7 +174,8 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
 
     // Renewal facts from a fresh Stripe subscription: { cancelAtPeriodEnd, currentPeriodEnd, cancelAt }.
     setBilling(id, b) {
-      q.billing.run(b.cancelAtPeriodEnd ? 1 : 0, b.currentPeriodEnd ?? null, b.cancelAt ?? null, id);
+      const interval = INTERVALS.has(b.interval) ? b.interval : null;
+      q.billing.run(b.cancelAtPeriodEnd ? 1 : 0, b.currentPeriodEnd ?? null, b.cancelAt ?? null, interval, id);
       return q.byId.get(id);
     },
 
@@ -142,9 +199,81 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
     purgeEnded() {
       const before = now() - ENDED_KEEP_MS;
       return tx(db, () => ({
-        docs: Number(q.endedDocs.run(before).changes),
+        docs: Number(q.endedDocs.run(before).changes) + Number(q.endedGiftDocs.run(before).changes),
         reveals: Number(q.endedReveals.run(before).changes),
       }));
+    },
+
+    // Daily: gift code rows used or expired over 12 months ago, then licence rows (with
+    // their synced data) whose licence ended over 5 years ago. Returns counts only.
+    purgeRecords() {
+      const t = now();
+      return tx(db, () => {
+        const g = t - GIFT_RECORD_KEEP_MS;
+        q.countPurgedGifts.run({ before: g });
+        const gifts = Number(q.oldGifts.run(g, g).changes);
+        const l = t - RECORD_KEEP_MS;
+        const licences = Number(q.oldLicences.run(l, l).changes);
+        return { gifts, licences };
+      });
+    },
+
+    // ---- gifts ------------------------------------------------------------------------
+    // The route checks the giver may make gifts (a paid, active licence); this counts.
+
+    // { gifts: [{ last4, createdAt, expiresAt, redeemedAt, state }], older, held, left }
+    // older: redeemed codes whose rows were deleted after 12 months; they still count.
+    listGifts(licenceId) {
+      const t = now();
+      const rows = q.giftsOf.all(licenceId);
+      const held = Number(q.giftsHeld.get({ lic: licenceId, t }).n);
+      return {
+        gifts: rows.map((g) => ({ last4: g.last4, createdAt: g.created_at, expiresAt: g.expires_at, redeemedAt: g.redeemed_at ?? null, state: giftState(g, t) })),
+        older: Number(q.giftsPurgedOf.get(licenceId)?.n || 0),
+        held,
+        left: Math.max(0, MAX_GIFTS - held),
+      };
+    },
+
+    // A new code for this licence, or GiftError('limit') when 3 are redeemed or unused.
+    // Returns { code, gift }: the code in full, this one time only.
+    createGift(licenceId) {
+      return tx(db, () => {
+        if (!q.byId.get(licenceId)) throw new Error('no such licence');
+        const t = now();
+        if (Number(q.giftsHeld.get({ lic: licenceId, t }).n) >= MAX_GIFTS) throw new GiftError('limit', `You have made ${MAX_GIFTS} gift codes. A code that expires unused frees its place.`);
+        let code;
+        let hash;
+        do { code = generateGiftCode(rand); hash = hashKey(code); } while (q.giftByHash.get(hash));
+        const r = q.giftInsert.run(hash, last4(code), licenceId, t, t + GIFT_CODE_MS);
+        const g = q.giftById.get(r.lastInsertRowid);
+        return { code, gift: { last4: g.last4, createdAt: g.created_at, expiresAt: g.expires_at, redeemedAt: null, state: 'unused' } };
+      });
+    },
+
+    // Use a code: one new licence with its own key and seat, Pro for 30 days, in one
+    // transaction, so a code can never make two licences. Throws GiftError('bad_code' |
+    // 'used' | 'expired'). Returns { key, licence }: the key in full, this one time only.
+    redeemGift(code) {
+      return tx(db, () => {
+        const g = q.giftByHash.get(hashKey(code));
+        if (!g) throw new GiftError('bad_code', 'That gift code is not valid. Check it and try again.');
+        const t = now();
+        if (g.redeemed_at) throw new GiftError('used', 'That gift code has already been used.');
+        if (t >= g.expires_at) throw new GiftError('expired', 'That gift code has expired.');
+        const giver = q.byId.get(g.giver_licence_id);
+        // A code works only while the paid subscription that made it is active.
+        if (!giver || isGiftLicence(giver) || !giver.stripe_subscription_id || !ACTIVE_STATUSES.has(giver.status)) {
+          throw new GiftError('giver_inactive', 'This gift code no longer works: the Pro subscription that made it is not active.');
+        }
+        let key;
+        let hash;
+        do { key = generateKey(rand); hash = hashKey(key); } while (q.byHash.get(hash));
+        const live = giver?.livemode === 0 || giver?.livemode === 1 ? giver.livemode : null;
+        const r = q.insertGiftLicence.run(hash, last4(key), t, t, live, t + GIFT_MS);
+        if (Number(q.giftUse.run(t, r.lastInsertRowid, g.id, t).changes) !== 1) throw new GiftError('used', 'That gift code has already been used.');
+        return { key, licence: q.byId.get(r.lastInsertRowid) };
+      });
     },
 
     // The browser saved the key: wipe the reveal copy now. Needs the key itself.

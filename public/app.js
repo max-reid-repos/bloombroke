@@ -27,7 +27,13 @@ import { edgeFade } from './kit.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { updatedTitle } from './freshness.js';
 import { EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra, urlCommand, isSecret } from './commands.js';
-import { getTape, loadTapeRows, bareKey, looksLikeKey } from './pro.js';
+import { getTape, loadTapeRows, bareKey, looksLikeKey, bareGift, getSeat, isPro } from './pro.js';
+// --- Pro structure: GIFT, REDEEM, CHAT, SPONSOR, FEEDBACK ---
+import { giftCommand, redeemCommand, parseRedeem } from './screens/pro.js';
+import * as chatScreen from './screens/chat.js';
+import * as sponsorScreen from './screens/sponsor.js';
+import * as feedbackScreen from './screens/feedback.js';
+// --- end Pro structure ---
 import { ensureConsent, consentNeeded } from './consent.js';
 import * as deskScreen from './screens/desk.js';
 import { parseDeskArgs, isEmbedSearch, tickerOf, TICKER_SCREENS } from './desk-layout.js';
@@ -228,6 +234,13 @@ export function parseCommand(raw, depth = 0) {
   // A pasted Pro key on its own is LOGIN <key>: the key never reaches the URL or history.
   const key = !isCommandHead(head) && bareKey(toks);
   if (key) return { name: 'LOGIN', args: { key }, input: 'LOGIN', secret: true, url: 'PRO' };
+  // --- Pro structure: a gift code (pasted alone, after GIFT or after REDEEM) is REDEEM,
+  // and like a key it never reaches the URL or history. ---
+  if (head === 'REDEEM') return { name: 'REDEEM', args: parseRedeem(rest), input: 'REDEEM', secret: true, url: 'REDEEM' };
+  const giftCode = (!isCommandHead(head) || head === 'GIFT') && bareGift(toks);
+  if (giftCode) return { name: 'REDEEM', args: { code: giftCode }, input: 'REDEEM', secret: true, url: 'REDEEM' };
+  if (head === 'GIFT' || head === 'CHAT' || head === 'SPONSOR' || head === 'FEEDBACK') return { name: head, input: head };
+  // --- end Pro structure ---
   const extra = matchExtra(head, rest);
   if (extra) return extra;
   if (SIMPLE.has(head)) return { name: head, input: head };
@@ -486,6 +499,7 @@ const SCREENS = {
   WATCH: watchScreen, PORTFOLIO: portfolioScreen,
   FINANCIALS: financialsScreen, SCREEN: screenScreen, DESK: deskScreen,
   MENU: helpScreen,
+  GIFT: giftCommand, REDEEM: redeemCommand, CHAT: chatScreen, SPONSOR: sponsorScreen, FEEDBACK: feedbackScreen, // Pro structure
 };
 
 // Screens about one stock share one tab strip under the title: the same functions, in
@@ -821,6 +835,22 @@ function boot() {
     window.dispatchEvent(new Event('resize')); // DESK refits to the new dock height
   }
 
+  // --- Pro structure: SEAT 00042 by the name, and the sponsor line (never for Pro) ------
+  // The seat comes from the server with the licence status; it is only ever shown.
+  const seatEl = $('seat');
+  const sponsorEl = $('status-sponsor');
+  let sponsorCfg = null;
+  function paintPro() {
+    const seat = embed ? null : getSeat();
+    if (seatEl) { seatEl.textContent = seat || ''; seatEl.hidden = !seat; }
+    const html = embed || !sponsorEl ? '' : sponsorScreen.sponsorLineHtml(sponsorCfg, { pro: isPro() });
+    if (sponsorEl) { sponsorEl.innerHTML = html; sponsorEl.hidden = !html; }
+  }
+  window.addEventListener('bb:pro', paintPro);
+  paintPro();
+  if (!embed) sponsorScreen.loadSponsors().then((cfg) => { sponsorCfg = cfg; paintPro(); });
+  // --- end Pro structure ---
+
   // --- blinking block cursor that follows the caret -------------------------
   function placeCursor() {
     const ch = measure.getBoundingClientRect().width || 9;
@@ -937,6 +967,8 @@ function boot() {
   // checked: the words were already looked up (lookUp below); note: the status line note.
   function render(raw, { fromUrl = false, checked = false, note = '' } = {}) {
     const cmd = parseCommand(raw);
+    // FEEDBACK says which screen you came from, in its address bar form (no keys, no codes).
+    const previous = currentCmd && currentCmd !== raw ? urlFor(currentCmd).url : '';
     currentCmd = raw;
     runCleanups();
     maxPanel = null;
@@ -977,7 +1009,7 @@ function boot() {
     if (cmd.name === 'MENU' && fromUrl) setTimeout(() => menu?.open(), 0);
 
     const ctx = {
-      run, fetchJSON, signal, escapeHtml, toQuery, store, copy: copyText,
+      run, fetchJSON, signal, escapeHtml, toQuery, store, copy: copyText, previous,
       tickerFunctions: (t) => tickerFunctions(t),
       commands: COMMANDS, soon: SOON, fkeys: FKEYS,
       status: setStatus, updated: setUpdated,
@@ -1163,7 +1195,8 @@ function boot() {
       }
     }
     // LOGIN (typed or a pasted key) never goes to a DESK panel or into history with its key.
-    const secret = parseCommand(clean).name === 'LOGIN';
+    const parsedNow = parseCommand(clean);
+    const secret = parsedNow.name === 'LOGIN' || Boolean(parsedNow.secret);
     if (typed && commandHook && !secret && commandHook(clean)) {
       remember(clean);
       histIndex = cmdHistory.length;

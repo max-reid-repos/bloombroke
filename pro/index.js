@@ -4,6 +4,7 @@
 // Environment (all in .env, never committed):
 //   STRIPE_MODE               live (default) or test; test reads the *_TEST names below
 //   STRIPE_SECRET_KEY, STRIPE_PRICE_ID, STRIPE_WEBHOOK_SECRET   Stripe
+//   STRIPE_PRICE_ID_YEARLY    optional: the $42 a year price; without it yearly says not yet
 //   TERMS_VERSION             the Terms buyers accept (default 2026-09-25)
 //   STRIPE_PORTAL_CONFIG_ID   optional Billing Portal configuration (scripts/stripe-setup.js)
 //   PRO_SECRET                32+ characters; encrypts the 24 hour key reveal
@@ -16,6 +17,7 @@ import { createStore } from './store.js';
 import { revealKeyFrom } from './licence.js';
 import { createStripe, stripeEnv, DEFAULT_TERMS_VERSION } from './billing.js';
 import { mountPro } from './routes.js';
+import { createFeedbackStore, mountFeedback } from './feedback.js';
 
 export function startPro(app, { dir, env = process.env, log = console }) {
   try {
@@ -32,6 +34,7 @@ export function startPro(app, { dir, env = process.env, log = console }) {
       config: {
         mode: se.mode,
         priceId: se.priceId,
+        priceIdYearly: se.priceIdYearly,
         webhookSecret: se.webhookSecret,
         portalConfigId: se.portalConfigId,
         publicUrl: env.PUBLIC_URL || 'https://bloombroke.com',
@@ -39,6 +42,9 @@ export function startPro(app, { dir, env = process.env, log = console }) {
         termsVersion: (env.TERMS_VERSION || '').trim() || DEFAULT_TERMS_VERSION,
       },
     });
+    // FEEDBACK lives in the same database: POST /api/feedback, for everyone.
+    const feedback = createFeedbackStore(db);
+    mountFeedback(app, { store: feedback, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', log });
     const clean = () => {
       try { store.purgeReveals(); store.pruneEvents(); } catch (err) { log.error('[pro] clean-up', err.message); }
     };
@@ -50,11 +56,21 @@ export function startPro(app, { dir, env = process.env, log = console }) {
         const n = store.purgeEnded();
         log.log(`[pro] purge: ${n.docs} synced documents, ${n.reveals} reveal copies`);
       } catch (err) { log.error('[pro] purge', err.message); }
+      // Privacy Policy: licence records go 5 years after the licence ended, gift code
+      // records 12 months after they were used or expired.
+      try {
+        const r = store.purgeRecords();
+        log.log(`[pro] purge: ${r.licences} licence records over 5 years old, ${r.gifts} gift code records over 12 months old`);
+      } catch (err) { log.error('[pro] records purge', err.message); }
+      // Privacy Policy: feedback is kept up to 12 months.
+      try {
+        log.log(`[pro] purge: ${feedback.prune()} feedback notes over 12 months old`);
+      } catch (err) { log.error('[pro] feedback purge', err.message); }
     };
     purge();
     setInterval(purge, 24 * 60 * 60 * 1000).unref();
     log.log(`[pro] ${se.mode} mode, ${ready ? 'ready' : 'not configured: checkout is closed'}`);
-    return { db, store, ready };
+    return { db, store, feedback, ready };
   } catch (err) {
     log.error('[pro] could not start:', err.message);
     return null;

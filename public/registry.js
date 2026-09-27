@@ -382,10 +382,29 @@ export const REGISTRY = [
 
   // --- Pro ------------------------------------------------------------------------------
   {
-    name: 'PRO', category: 'Pro', summary: 'Your own ticker tape and sync across devices, $4.20 a month',
-    syntax: 'PRO', examples: ['PRO'], keywords: ['subscribe', 'upgrade', 'paid', 'account', 'sync'],
+    name: 'PRO', category: 'Pro', summary: 'What is free and what is Pro: sync, DESK, tape, seat. $4.20 a month or $42 a year',
+    syntax: 'PRO [YEARLY]', examples: ['PRO', 'PRO YEARLY'], keywords: ['subscribe', 'upgrade', 'paid', 'account', 'sync', 'yearly', 'annual', 'seat'],
+    options: [['YEARLY', 'Lead with the $42 a year plan']],
     source: 'Built in', delay: 'None',
   },
+  // --- Pro structure: GIFT, REDEEM, CHAT, SPONSOR ---
+  {
+    name: 'GIFT', category: 'Pro', summary: 'Give a friend a free month of Pro: up to 3 gift codes',
+    syntax: 'GIFT', examples: ['GIFT'], keywords: ['gift', 'friend', 'invite', 'code', 'free month'],
+    source: 'Built in', delay: 'None',
+  },
+  {
+    name: 'REDEEM', category: 'Pro', summary: 'Use a gift code: 30 days of Pro, no card',
+    syntax: 'REDEEM <code>', examples: ['REDEEM'], keywords: ['gift code', 'redeem', 'free month', 'code'],
+    options: [['<code>', 'The gift code, GIFT-XXXX-.... It never goes in the address bar']],
+    source: 'Built in', delay: 'None',
+  },
+  {
+    name: 'CHAT', category: 'Pro', summary: 'Private 1-to-1 chat between Pro seats. Coming when Pro launches',
+    syntax: 'CHAT', examples: ['CHAT'], keywords: ['chat', 'message', 'talk', 'private'],
+    source: 'Built in', delay: 'None',
+  },
+  // --- end Pro structure ---
   {
     name: 'LOGIN', category: 'Pro', summary: 'Use your Pro key on this device',
     syntax: 'LOGIN <key>', examples: ['LOGIN'], keywords: ['sign in', 'key', 'account', 'device'],
@@ -421,6 +440,16 @@ export const REGISTRY = [
   {
     name: 'DISCLAIMER', category: 'Legal', summary: 'Disclaimer: data may be delayed or wrong, investing is risky',
     syntax: 'DISCLAIMER', examples: ['DISCLAIMER'], keywords: ['risk', 'advice', 'legal', 'warning'],
+    source: 'Built in', delay: 'None',
+  },
+  {
+    name: 'FEEDBACK', aliases: ['IDEA'], category: 'Legal', summary: 'Tell us what to fix or build: a short note, email optional',
+    syntax: 'FEEDBACK', examples: ['FEEDBACK'], keywords: ['feedback', 'idea', 'suggestion', 'bug', 'contact', 'report'],
+    source: 'Built in', delay: 'None',
+  },
+  {
+    name: 'SPONSOR', category: 'Legal', summary: 'Sponsors: one plain line, no tracking, and who we do not take',
+    syntax: 'SPONSOR', examples: ['SPONSOR'], keywords: ['sponsor', 'sponsored', 'advertise', 'ads'],
     source: 'Built in', delay: 'None',
   },
 

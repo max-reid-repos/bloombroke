@@ -1,5 +1,6 @@
 // Stripe side of Pro: the pinned client, checkout sessions, and the webhook events.
-// Every amount and price comes from the server (STRIPE_PRICE_ID), never from the client.
+// Every amount and price comes from the server (STRIPE_PRICE_ID for monthly,
+// STRIPE_PRICE_ID_YEARLY for yearly), never from the client. The client only picks the plan.
 
 import Stripe from 'stripe';
 
@@ -9,11 +10,11 @@ export const STRIPE_API_VERSION = '2026-08-26.dahlia';
 // metadata, and events for anything else are ignored.
 export const PRO_METADATA = { site: 'bloombroke', product: 'pro' };
 
-export const DEFAULT_TERMS_VERSION = '2026-09-25';
+export const DEFAULT_TERMS_VERSION = '2026-09-27';
 
 // STRIPE_MODE=test|live (default live) picks the key set: STRIPE_SECRET_KEY,
-// STRIPE_PRICE_ID, STRIPE_WEBHOOK_SECRET, STRIPE_PORTAL_CONFIG_ID, or the same names with
-// _TEST. A key of the other mode is refused, so a demo can never charge real money and a
+// STRIPE_PRICE_ID, STRIPE_PRICE_ID_YEARLY (optional), STRIPE_WEBHOOK_SECRET,
+// STRIPE_PORTAL_CONFIG_ID, or the same names with _TEST. A key of the other mode is refused, so a demo can never charge real money and a
 // live site never runs on a test key.
 export function stripeEnv(env = process.env) {
   const mode = String(env.STRIPE_MODE || '').trim().toLowerCase() === 'test' ? 'test' : 'live';
@@ -28,9 +29,13 @@ export function stripeEnv(env = process.env) {
   return {
     mode, error, secretKey,
     priceId: get('STRIPE_PRICE_ID'),
+    priceIdYearly: get('STRIPE_PRICE_ID_YEARLY'),
     webhookSecret: get('STRIPE_WEBHOOK_SECRET'),
     portalConfigId: get('STRIPE_PORTAL_CONFIG_ID'),
-    names: { secretKey: `STRIPE_SECRET_KEY${sfx}`, priceId: `STRIPE_PRICE_ID${sfx}`, webhookSecret: `STRIPE_WEBHOOK_SECRET${sfx}`, portalConfigId: `STRIPE_PORTAL_CONFIG_ID${sfx}` },
+    names: {
+      secretKey: `STRIPE_SECRET_KEY${sfx}`, priceId: `STRIPE_PRICE_ID${sfx}`, priceIdYearly: `STRIPE_PRICE_ID_YEARLY${sfx}`,
+      webhookSecret: `STRIPE_WEBHOOK_SECRET${sfx}`, portalConfigId: `STRIPE_PORTAL_CONFIG_ID${sfx}`,
+    },
   };
 }
 
@@ -59,10 +64,15 @@ export function isPaidSession(s) {
 
 export const TERMS_MESSAGE = 'I agree to the [Terms](https://bloombroke.com/terms) and understand Bloombroke gives information only, not investment advice.';
 export const SUBMIT_MESSAGE = 'Auto-renews monthly at $4.20 USD. Cancel any time in MANAGE; access continues to the end of the paid month.';
+export const SUBMIT_MESSAGE_YEARLY = 'Auto-renews yearly at $42 USD. Cancel any time in MANAGE; access continues to the end of the paid year.';
+
+// The plans a buyer can pick. The price id for each comes from the environment.
+export const PLANS = { month: { cents: 420 }, year: { cents: 4200 } };
 
 // licence: set for REACTIVATE, so the new subscription lands on the same licence and
-// the same Stripe customer.
-export function checkoutParams({ priceId, publicUrl, licence = null }) {
+// the same Stripe customer. interval: 'month' (default) or 'year'; priceId must be the
+// price for that interval.
+export function checkoutParams({ priceId, publicUrl, licence = null, interval = 'month' }) {
   const base = publicUrl.replace(/\/+$/, '');
   const metadata = licence ? { ...PRO_METADATA, licence_id: String(licence.id) } : { ...PRO_METADATA };
   const params = {
@@ -79,7 +89,7 @@ export function checkoutParams({ priceId, publicUrl, licence = null }) {
     consent_collection: { terms_of_service: 'required' },
     custom_text: {
       terms_of_service_acceptance: { message: TERMS_MESSAGE },
-      submit: { message: SUBMIT_MESSAGE },
+      submit: { message: interval === 'year' ? SUBMIT_MESSAGE_YEARLY : SUBMIT_MESSAGE },
     },
     metadata,
     subscription_data: { metadata: { ...metadata } },
@@ -118,13 +128,33 @@ export async function licenceFromSession(session, { store, stripe, log = console
   const subId = idOf(session.subscription);
   const sub = await stripe.subscriptions.retrieve(subId);
   const accepted = termsAcceptedAt(session, at);
-  // REACTIVATE: the licence's old subscription must not keep billing next to the new one.
-  // Checkout already refuses while one is live; this is the backstop. Done before the
-  // licence moves, so a failure here makes Stripe (or the success page) try again.
   const licenceId = reactivateLicenceId(session);
   const target = licenceId ? store.findById(licenceId) : null;
-  const prev = target?.stripe_subscription_id;
-  if (prev && prev !== subId) await cancelIfLive(stripe, prev);
+  // Already known (a resent event, a reloaded success page): only the status is read
+  // again below. Nothing is cancelled or refunded, and no licence moves.
+  const known = Boolean(store.findBySubscription(subId) || store.findBySession(session.id));
+  if (!known && target) {
+    // A REACTIVATE session whose own subscription has ended (it lost a two-tab race, or
+    // was cancelled): the licence stays where it is. No Stripe calls.
+    if (ENDED.has(sub.status)) return { licence: target, created: false, reactivated: true, stale: true };
+    // REACTIVATE: the licence's old subscription must not keep billing next to the new
+    // one. Checkout already refuses while one is live; this is the backstop, for two
+    // tabs that each finished a checkout (a gift or demo licence has no customer to
+    // check against yet). The subscription started last is kept; the other one's
+    // latest payment is refunded in full, then it is cancelled. Done before the licence
+    // moves, so a failure here makes Stripe (or the success page) try again.
+    const prevId = target.stripe_subscription_id;
+    const prevSub = prevId && prevId !== subId ? await retrieveOrNull(stripe, prevId) : null;
+    if (prevSub && !ENDED.has(prevSub.status)) {
+      if (startedAfter(prevSub, sub)) {
+        // The licence already has the later one (events came out of order): this
+        // session's subscription is the duplicate.
+        await refundAndCancel(stripe, sub);
+        return { licence: target, created: false, reactivated: true, duplicate: true };
+      }
+      await refundAndCancel(stripe, prevSub);
+    }
+  }
   const out = store.ensureLicence({
     sessionId: session.id,
     customerId: idOf(session.customer) || idOf(sub.customer),
@@ -153,20 +183,77 @@ export async function licenceFromSession(session, { store, stripe, log = console
 }
 
 // Renewal facts of a subscription, times in ms. The period end sits on the items in
-// current API versions and on the subscription in older ones.
+// current API versions and on the subscription in older ones. interval: 'month' or
+// 'year' from the item's price (or its legacy plan), null when it is something else.
 export function billingOf(sub) {
   const item = sub?.items?.data?.[0];
   const end = item?.current_period_end ?? sub?.current_period_end;
+  const every = item?.price?.recurring?.interval ?? item?.plan?.interval ?? null;
+  const count = item?.price?.recurring?.interval_count ?? item?.plan?.interval_count ?? 1;
   return {
     cancelAtPeriodEnd: Boolean(sub?.cancel_at_period_end),
     currentPeriodEnd: Number.isFinite(end) ? end * 1000 : null,
     cancelAt: Number.isFinite(sub?.cancel_at) ? sub.cancel_at * 1000 : null,
+    interval: (every === 'month' || every === 'year') && count === 1 ? every : null,
   };
 }
 
 const ENDED = new Set(['canceled', 'incomplete_expired']);
 
-export async function cancelIfLive(stripe, subId) {
+async function listAll(list) {
+  const out = [];
+  for await (const x of list) out.push(x);
+  return out;
+}
+
+// Refund what is left of a subscription's latest paid invoice, in full. Idempotent: the
+// key names the invoice, and what was refunded before is taken off. Returns the amount
+// refunded (0 when there is nothing to refund).
+export async function refundLatestInvoice(stripe, sub) {
+  const invoiceId = idOf(sub?.latest_invoice);
+  if (!invoiceId) return 0;
+  const inv = await stripe.invoices.retrieve(invoiceId);
+  if (inv.status !== 'paid' || !(inv.amount_paid > 0)) return 0;
+  const payments = await listAll(stripe.invoicePayments.list({ invoice: inv.id, limit: 10 }));
+  const paid = payments.find((p) => p.status === 'paid');
+  const pi = idOf(paid?.payment?.payment_intent);
+  const charge = idOf(paid?.payment?.charge);
+  const payment = pi ? { payment_intent: pi } : charge ? { charge } : null;
+  if (!payment) return 0;
+  const refunds = await listAll(stripe.refunds.list({ ...payment, limit: 100 }));
+  const done = refunds.filter((r) => r.status === 'succeeded' || r.status === 'pending').reduce((a, r) => a + r.amount, 0);
+  const amount = inv.amount_paid - done;
+  if (amount <= 0) return 0;
+  await stripe.refunds.create(
+    { ...payment, amount, reason: 'duplicate', metadata: { ...PRO_METADATA, bloombroke_duplicate: 'true' } },
+    { idempotencyKey: `bb-duplicate-refund-${sub.id}-${inv.id}` },
+  );
+  return amount;
+}
+
+// refund: also refund the subscription's latest payment before cancelling it (the
+// duplicate of a two-tab checkout). Refund first, so a failure leaves it live and the
+// retry does both.
+// a started strictly after b (Stripe's created, in seconds). Equal or unknown: no.
+export const startedAfter = (a, b) => Number.isFinite(a?.created) && Number.isFinite(b?.created) && a.created > b.created;
+
+async function retrieveOrNull(stripe, subId) {
+  try {
+    return await stripe.subscriptions.retrieve(subId);
+  } catch (err) {
+    if (err?.statusCode === 404 || err?.code === 'resource_missing') return null;
+    throw err;
+  }
+}
+
+// The duplicate of a two-tab checkout: refund its latest payment, then cancel it. Refund
+// first, so a failure leaves it live and the retry does both. Both calls are idempotent.
+export async function refundAndCancel(stripe, sub) {
+  await refundLatestInvoice(stripe, sub);
+  await stripe.subscriptions.cancel(sub.id, {}, { idempotencyKey: `bb-reactivate-cancel-${sub.id}` });
+}
+
+export async function cancelIfLive(stripe, subId, { refund = false } = {}) {
   let sub;
   try {
     sub = await stripe.subscriptions.retrieve(subId);
@@ -175,6 +262,7 @@ export async function cancelIfLive(stripe, subId) {
     throw err;
   }
   if (ENDED.has(sub.status)) return 'already';
+  if (refund) await refundLatestInvoice(stripe, sub);
   await stripe.subscriptions.cancel(subId, {}, { idempotencyKey: `bb-reactivate-cancel-${subId}` });
   return 'canceled';
 }

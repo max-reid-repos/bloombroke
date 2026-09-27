@@ -14,6 +14,7 @@ import { fmtDate } from '../kit.js';
 import {
   WEIRD_GAUGES, WEIRD_PERIODS, AUTO, gaugeByCommand, sourceHtml, dayLabel, monthLabel,
 } from './weird-gauges.js';
+import { markGaugeSponsor } from './sponsor.js'; // Sponsor hook
 
 export { WEIRD_GAUGES };
 
@@ -183,6 +184,7 @@ export function firstKeys(g, hist) {
 function detail(el, g, ctx, asked) {
   const n = WEIRD_GAUGES.indexOf(g) + 1;
   el.innerHTML = `<div class="stack">${panel(String(n), g.title, LOADING, { metaId: 'wd-meta', cls: 'wd-solo' })}</div>`;
+  markGaugeSponsor(el.querySelector('#wd-meta'), g.id); // Sponsor hook: SPONSORED BY in the title strip
   const body = el.querySelector('.panel-body');
   const meta = el.querySelector('#wd-meta');
   let cleanup = null;
