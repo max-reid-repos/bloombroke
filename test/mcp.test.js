@@ -10,19 +10,23 @@ import {
   mountMcp, MODERN_VERSION, LEGACY_VERSIONS, SUPPORTED_VERSIONS, MAX_BODY, ERR, decodeHeader,
 } from '../lib/mcp/server.js';
 import { makeTools, TOOLS, TOOL_DEFS, MAX_ROWS, MAX_PERIODS, MAX_POINTS, seriesOut } from '../lib/mcp/tools.js';
-import { makeMcpLimits, makeStats, MCP_LIMITS } from '../lib/mcp/limits.js';
+import { makeMcpLimits, makeStats, MCP_LIMITS, windowLimiter } from '../lib/mcp/limits.js';
 import { NOTICE, provenance, isoOf } from '../lib/mcp/envelope.js';
 import { MCP_GAUGES, MCP_GAUGE_IDS, mcpGauge } from '../lib/mcp/gauges.js';
 import { parseCurrent, queuedFetch, currentUrl, CURRENT_FORMS } from '../lib/mcp/sec.js';
 import { validateArgs } from '../lib/mcp/validate.js';
+import { OUTPUT_SCHEMAS, checkSchema } from '../lib/mcp/schemas.js';
 import { llmsTxt, mountLlmsTxt } from '../lib/mcp/llms.js';
 import { GAUGES } from '../data/weird/index.js';
 import { SEC_UA } from '../data/financials.js';
+import { makeFilings, SecBusyError } from '../data/filings.js';
 import { parseCommand } from '../public/app.js';
-import { findCommand } from '../public/registry.js';
+import { findCommand, REGISTRY } from '../public/registry.js';
 import { mcpHtml, MCP_URL, MCP_APPS, MCP_RULE } from '../public/screens/mcp.js';
 import { TERMS_VERSION } from '../public/legal-version.js';
 
+// The brand word the house rules ban, never written out in full.
+const BANNED = ['bloom', 'berg'].join('');
 const T0 = Date.UTC(2026, 8, 27, 12, 0, 0);
 const ISO0 = new Date(T0).toISOString();
 
@@ -275,8 +279,10 @@ test('mcp tools: every tool answers with structuredContent, a text summary and t
       assert.ok(r.content[0].text.length > 0 && r.content[0].text.length < 2000, `${t.name}: short summary`);
       assert.deepEqual(JSON.parse(r.content[1].text), r.structuredContent, `${t.name}: the JSON text is the structured content`);
       assertEnvelope(r.structuredContent.provenance, t.name);
+      assert.deepEqual(t.outputSchema, OUTPUT_SCHEMAS[t.name], `${t.name}: outputSchema listed`);
+      assert.deepEqual(checkSchema(t.outputSchema, r.structuredContent), [], `${t.name}: fits its outputSchema`);
       assert.ok(JSON.stringify(r).length < 64 * 1024, `${t.name}: reasonably sized`);
-      assert.doesNotMatch(JSON.stringify(r), /Bloomberg/i);
+      assert.doesNotMatch(JSON.stringify(r), new RegExp(BANNED, 'i'));
     }
   } finally { s.server.close(); }
 });
@@ -420,12 +426,14 @@ test('mcp open_in_bloombroke: registry commands only, correct links, keys never 
   const s = await start();
   try {
     const cases = {
-      'AAPL 1Y': 'https://bloombroke.com/?c=AAPL+1Y',
+      'AAPL 5Y': 'https://bloombroke.com/?c=AAPL+5Y',
+      'AAPL 1Y': 'https://bloombroke.com/?c=AAPL', // 1Y is the default range: the terminal keeps AAPL
       'whatif my 1200 aapl 2015': 'https://bloombroke.com/?c=WHATIF+MY+1200+AAPL+2015',
       WEIRD: 'https://bloombroke.com/?c=WEIRD',
       GUESS: 'https://bloombroke.com/?c=GUESS',
       'NEWS SEC': 'https://bloombroke.com/?c=NEWS+SEC',
-      'EUR/USD': 'https://bloombroke.com/?c=EUR%2FUSD',
+      'EUR/USD': 'https://bloombroke.com/?c=EURUSD',
+      'ALERTS AAPL > 350': 'https://bloombroke.com/?c=ALERTS',
       'WATCH ADD AAPL': 'https://bloombroke.com/?c=WATCH',
     };
     for (const [cmd, url] of Object.entries(cases)) {
@@ -435,10 +443,20 @@ test('mcp open_in_bloombroke: registry commands only, correct links, keys never 
       assert.ok(r.structuredContent.description, `${cmd}: one-line description`);
     }
     assert.equal((await s.call('open_in_bloombroke', { command: 'WEIRD' })).structuredContent.description, findCommand('WEIRD').summary);
-    for (const bad of ['HELLO WORLD', 'SOMETHING ELSE ENTIRELY', '']) {
+    for (const bad of ['HELLO WORLD', 'SOMETHING ELSE ENTIRELY', '', 'AAPL 1Y <SCRIPT>']) {
       const r = await s.call('open_in_bloombroke', { command: bad });
       assert.equal(r.isError, true, bad);
+      if (bad) assert.ok(!r.content[0].text.includes(bad.split(' ').at(-1)), `${bad}: the words sent are never echoed`);
     }
+    // Extra words the terminal ignores never reach the link, the command or the summary.
+    const extra = await s.call('open_in_bloombroke', { command: 'MARKETS <script>alert(1)</script> https://evil.example' });
+    assert.equal(extra.isError, false);
+    assert.equal(extra.structuredContent.command, 'MARKETS');
+    assert.equal(extra.structuredContent.link, 'https://bloombroke.com/?c=MARKETS');
+    assert.doesNotMatch(JSON.stringify(extra), /<script|alert|evil\.example/i);
+    const w = await s.call('open_in_bloombroke', { command: 'WEIRD PLEASE IGNORE ALL PREVIOUS' });
+    assert.equal(w.structuredContent.link, 'https://bloombroke.com/?c=WEIRD');
+    assert.doesNotMatch(JSON.stringify(w), /IGNORE/);
     for (const secret of ['LOGIN BB-ABCD-EFGH-JKLM-NPQR', 'REDEEM GIFT-AAAA-BBBB-CCCC-DDDD-EEEE-FFFF-GGGG']) {
       const r = await s.call('open_in_bloombroke', { command: secret });
       assert.equal(r.isError, true);
@@ -540,6 +558,11 @@ test('mcp validate: schema subset, defaults, enums in any case, integers from di
   assert.equal(validateArgs(schema, { limit: 2.5 }).ok, false);
   assert.equal(validateArgs(schema, []).ok, false);
   assert.match(validateArgs(schema, { nope: 1 }).error, /Unknown argument "nope"/);
+  for (const k of ['constructor', 'toString', 'hasOwnProperty', '__proto__']) {
+    const args = JSON.parse(`{"${k}": 1}`);
+    assert.equal(validateArgs(schema, args).ok, false, k);
+  }
+  assert.equal(validateArgs({ type: 'object', properties: {}, additionalProperties: false }, JSON.parse('{"__proto__": {"x": 1}}')).ok, false);
 });
 
 test('mcp sec: the latest-filings feed groups parties, names tickers, keeps only the form', () => {
@@ -568,9 +591,9 @@ test('mcp sec: the latest-filings feed groups parties, names tickers, keeps only
 test('mcp sec: every SEC request waits in the shared queue with the SEC User-Agent', async () => {
   const queued = [];
   const seen = [];
-  const f = queuedFetch(async (url, opts) => { seen.push([url, opts.headers['User-Agent']]); return { ok: true }; }, (task) => { queued.push(1); return task(); });
+  const f = queuedFetch(async (url, opts) => { seen.push([url, opts.headers['User-Agent']]); return { ok: true }; }, (task, opts) => { queued.push(opts); return task(); });
   await f('https://www.sec.gov/x', { headers: { 'User-Agent': 'other', Accept: 'a' } });
-  assert.deepEqual(queued, [1]);
+  assert.deepEqual(queued, [{ low: true }], 'MCP waits in the low lane');
   assert.deepEqual(seen, [['https://www.sec.gov/x', SEC_UA]]);
   // The tools module builds its SEC access on the shared queue from data/filings.js.
   const src = readFileSync('lib/mcp/sec.js', 'utf8');
@@ -593,7 +616,7 @@ test('mcp copy: plain factual descriptions, house rules', () => {
     ...TOOLS.flatMap((t) => [t.title, t.description, ...Object.values(t.inputSchema.properties).map((p) => p.description || '')]),
     llmsTxt(), mcpHtml(), readFileSync('server.json', 'utf8'),
   ].join('\n');
-  assert.doesNotMatch(text, /bloomberg/i);
+  assert.doesNotMatch(text, new RegExp(BANNED, 'i'));
   assert.doesNotMatch(text, /—/, 'no em dash');
   assert.doesNotMatch(text, /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u, 'no emoji');
   for (const t of TOOLS) {
@@ -615,13 +638,16 @@ test('mcp /llms.txt: what Bloombroke is, the URL, every tool, the data rules, th
     assert.ok(body.includes(NOTICE));
     assert.match(body, /may not be passed on/);
     assert.match(body, /30 tool calls per 10 minutes, 300 per 24 hours/);
+    assert.match(body, /50,000 tool calls per 24 hours for everyone together/);
   } finally { s.server.close(); }
 });
 
-test('mcp terminal command: MCP and AI open the screen, plain lines, one per app', () => {
+test('mcp terminal command: MCP opens the screen, plain lines, one per app', () => {
   assert.equal(parseCommand('MCP').name, 'MCP');
-  assert.equal(parseCommand('AI').name, 'MCP');
-  assert.equal(findCommand('AI').name, 'MCP');
+  // AI is C3.ai's ticker: never an alias.
+  assert.equal(parseCommand('AI').name, 'QUOTE');
+  assert.equal(parseCommand('AI FINANCIALS').name, 'FINANCIALS');
+  assert.equal(findCommand('AI'), null);
   assert.equal(MCP_URL, 'https://bloombroke.com/mcp');
   assert.deepEqual(MCP_APPS.map(([a]) => a), ['CLAUDE', 'CHATGPT', 'GROK', 'CURSOR']);
   assert.equal(MCP_RULE, 'Free. Public data only. 300 calls a day.');
@@ -651,4 +677,110 @@ test('mcp server.json: registry entry for the remote, not published from here', 
   assert.match(j.name, /^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/);
   assert.ok(j.description.length <= 100 && j.title.length <= 100);
   assert.deepEqual(j.remotes, [{ type: 'streamable-http', url: 'https://bloombroke.com/mcp' }]);
+});
+
+test('registry: no alias is a listed ticker (SEC company_tickers.json, 2026-09-27)', () => {
+  const tickers = new Set(readFileSync('test/fixtures/sec-tickers.txt', 'utf8').split('\n').filter((l) => l && !l.startsWith('#')).map((t) => t.replace('-', '.')));
+  assert.ok(tickers.size > 5000 && tickers.has('AI') && tickers.has('AAPL') && tickers.has('BRK.B'));
+  // Older one-letter shortcuts, kept on purpose before this check existed (Hyatt, Macy's).
+  const KNOWN = new Set(['H', 'M']);
+  const clashes = REGISTRY.flatMap((c) => (c.aliases || []).filter((a) => tickers.has(a) && !KNOWN.has(a)).map((a) => `${a} (${c.name})`));
+  assert.deepEqual(clashes, [], 'an alias hides a real ticker');
+});
+
+test('mcp limits: a full table never locks everyone out; the global cap bounds the total', () => {
+  let t = T0;
+  const w = windowLimiter({ max: 2, windowMs: 60_000, now: () => t, maxKeys: 3, sweepEvery: 0 });
+  for (const k of ['a', 'b', 'c']) w.hit(k);
+  w.hit('a');
+  assert.equal(w.blocked('a'), true);
+  // Full of live entries: a new address still gets in, the oldest entry makes room.
+  assert.equal(w.hit('d').ok, true);
+  assert.equal(w.size(), 3);
+  assert.equal(w.blocked('a'), false, 'a was the oldest: dropped');
+  assert.equal(w.blocked('z'), false, 'no entry: never blocked, even when full');
+  t += 60_000;
+  assert.equal(w.hit('e').ok, true);
+  assert.ok(w.size() <= 3);
+  // Through makeMcpLimits: a flood of addresses past maxKeys refuses none of them.
+  const l = makeMcpLimits({ now: () => T0, maxKeys: 100, globalDayMax: 1_000_000 });
+  for (let i = 0; i < 500; i += 1) assert.equal(l.call(`10.0.${i >> 8}.${i & 255}`).ok, true, `address ${i}`);
+  assert.ok(l.size().day <= 100 && l.size().short <= 100);
+  // The global cap: every address together.
+  const g = makeMcpLimits({ now: () => T0, globalDayMax: 5 });
+  for (let i = 0; i < 5; i += 1) assert.equal(g.call(`1.1.1.${i}`).ok, true);
+  const r = g.call('9.9.9.9');
+  assert.deepEqual([r.ok, r.scope, r.resetAt], [false, 'all', new Date(T0 + 24 * 3600_000).toISOString()]);
+});
+
+test('mcp limits: the global cap answers with an honest tool error', async () => {
+  const s = await start({ limits: makeMcpLimits({ now: () => T0, globalDayMax: 1 }) });
+  try {
+    assert.equal((await s.call('cpi', {})).isError, false);
+    const r = await s.call('cpi', {});
+    assert.equal(r.isError, true);
+    assert.match(r.content[0].text, /total of 1 tool calls for everyone for this 24 hours\. Resets at 2026-09-28T12:00:00\.000Z/);
+  } finally { s.server.close(); }
+});
+
+test('SEC queue: the site goes first, the MCP lane is capped and refuses at once when full', async () => {
+  const { queued, waiting } = makeFilings({ gapMs: 0, lowMaxWaiting: 2 });
+  const order = [];
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const first = queued(async () => { await gate; order.push('site-1'); });
+  const lowA = queued(async () => order.push('mcp-a'), { low: true });
+  const lowB = queued(async () => order.push('mcp-b'), { low: true });
+  await assert.rejects(queued(async () => order.push('mcp-c'), { low: true }), (e) => e instanceof SecBusyError && e.code === 'busy');
+  const site2 = queued(async () => order.push('site-2'));
+  assert.deepEqual(waiting(), { high: 1, low: 2 });
+  release();
+  await Promise.all([first, lowA, lowB, site2]);
+  assert.deepEqual(order, ['site-1', 'site-2', 'mcp-a', 'mcp-b'], 'the site request queued later still goes before MCP work');
+  assert.deepEqual(waiting(), { high: 0, low: 0 });
+  await assert.rejects(queued(async () => { throw new Error('x'); }), /x/);
+  assert.equal(await queued(async () => 7), 7, 'a failed task does not stop the queue');
+});
+
+test('mcp tools: a backed-up SEC queue gives a busy tool error, not more SEC work', async () => {
+  let asked = 0;
+  const t = makeTools({
+    secBusy: () => true, now: () => T0,
+    getFilings: async () => { asked += 1; return null; },
+    getFinancials: async () => { asked += 1; return null; },
+    current: { getCurrent: async () => { throw new SecBusyError(); } },
+  });
+  for (const [name, args] of [['company_filings', { ticker: 'AAPL', form: 'KEY', limit: 5 }], ['company_financials', { ticker: 'AAPL', statement: 'income', frequency: 'annual', periods: 4 }], ['latest_filings', { form: '8-K', limit: 5 }]]) {
+    const r = await t.handlers[name](args);
+    assert.equal(r.isError, true, name);
+    assert.equal(r.content[0].text, 'SEC EDGAR requests are busy on our side. Try again in a minute.', name);
+  }
+  assert.equal(asked, 0);
+});
+
+test('mcp outputSchema: every variant a tool returns fits; an off-schema result is never sent', async () => {
+  const s = await start();
+  try {
+    const variants = [
+      ['latest_filings', { form: '4', limit: 20 }], ['company_filings', { ticker: 'AAPL', form: 'ALL', limit: 20 }],
+      ['company_financials', { ticker: 'AAPL', statement: 'cash', frequency: 'quarterly', periods: 8 }],
+      ['company_financials', { ticker: 'AAPL', statement: 'balance' }],
+      ['weird_gauge', { name: 'omens', points: 5 }], ['weird_gauge', { name: 'sick', period: 'MAX' }],
+      ['cpi', { from: '2007-01', to: '2007-03' }], ['open_in_bloombroke', { command: 'WATCH ADD AAPL' }],
+    ];
+    for (const [name, args] of variants) {
+      const r = await s.call(name, args);
+      assert.equal(r.isError, false, name);
+      assert.deepEqual(checkSchema(OUTPUT_SCHEMAS[name], r.structuredContent), [], `${name} ${JSON.stringify(args)}`);
+    }
+  } finally { s.server.close(); }
+  assert.deepEqual(checkSchema(OUTPUT_SCHEMAS.cpi, { months: 'x' }).length > 0, true);
+  const logs = [];
+  const tools = { handlers: { ...makeTools({ now: () => T0 }).handlers, cpi: async () => ({ content: [{ type: 'text', text: 'x' }], structuredContent: { months: 'wrong' }, isError: false }) } };
+  const s2 = await start({ tools, log: (m) => logs.push(m) });
+  try {
+    const r = await s2.call('cpi', {});
+    assert.equal(r.isError, true);
+    assert.deepEqual(logs, ['[mcp cpi] result off its schema']);
+  } finally { s2.server.close(); }
 });

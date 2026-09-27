@@ -1,4 +1,4 @@
-// MCP (and AI): hook Claude, ChatGPT, Grok or Cursor up to Bloombroke. The URL, one line
+// MCP: hook Claude, ChatGPT, Grok or Cursor up to Bloombroke. The URL, one line
 // per app, and the rule. The server side is lib/mcp/.
 
 import { esc, panel, metaNote } from './markets.js';

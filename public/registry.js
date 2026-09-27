@@ -43,7 +43,7 @@ export const REGISTRY = [
   // --- Start here -----------------------------------------------------------------
   // --- MCP (screens/mcp.js, server lib/mcp/) ---
   {
-    name: 'MCP', aliases: ['AI'], category: 'Start here', summary: 'Use Bloombroke from Claude, ChatGPT, Grok or Cursor: the MCP link',
+    name: 'MCP', category: 'Start here', summary: 'Use Bloombroke from Claude, ChatGPT, Grok or Cursor: the MCP link',
     syntax: 'MCP', examples: ['MCP'], keywords: ['mcp', 'ai', 'claude', 'chatgpt', 'grok', 'cursor', 'connector', 'llm', 'agent'],
     source: 'Public data only: SEC EDGAR, BLS, Federal Reserve, NWS, NOAA, CDC, Wikimedia', delay: 'None',
   },
