@@ -382,9 +382,9 @@ export const REGISTRY = [
 
   // --- Pro ------------------------------------------------------------------------------
   {
-    name: 'PRO', category: 'Pro', summary: 'What is free and what is Pro: sync, DESK, tape, seat. $4.20 a month or $42 a year',
+    name: 'PRO', category: 'Pro', summary: 'What is free and what is Pro: sync, DESK, tape, seat. $42 a month or $420 a year',
     syntax: 'PRO [YEARLY]', examples: ['PRO', 'PRO YEARLY'], keywords: ['subscribe', 'upgrade', 'paid', 'account', 'sync', 'yearly', 'annual', 'seat'],
-    options: [['YEARLY', 'Lead with the $42 a year plan']],
+    options: [['YEARLY', 'Lead with the $420 a year plan']],
     source: 'Built in', delay: 'None',
   },
   // --- Pro structure: GIFT, REDEEM, CHAT, SPONSOR ---

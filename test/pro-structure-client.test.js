@@ -46,10 +46,10 @@ test('PRO: free is what you look at, Pro is your own stuff; every row says LIVE 
   const html = offerHtml();
   assert.match(html, />FREE</);
   assert.match(html, />PRO</);
-  assert.match(html, /\$4\.20<\/span><span class="hero-unit">A MONTH/);
-  assert.match(html, /\$42<\/span><span class="hero-unit">A YEAR/);
+  assert.match(html, /\$42<\/span><span class="hero-unit">A MONTH/);
+  assert.match(html, /\$420<\/span><span class="hero-unit">A YEAR/);
   assert.equal((html.match(/COMING WHEN PRO LAUNCHES/g) || []).length, 2);
-  assert.equal(PRICE_BOTH, '$4.20 a month or $42 a year');
+  assert.equal(PRICE_BOTH, '$42 a month or $420 a year');
   // A row for a command this site does not have is left out, never shown as live.
   const guess = FREE_ROWS.find(([n]) => n === 'GUESS');
   assert.equal(shownRows([guess]).length, findCommand('GUESS') ? 1 : 0);
@@ -457,7 +457,7 @@ test('legal: terms s9, disclaimer and privacy say what the code does', () => {
   const read = (f) => readFileSync(`legal/${f}.md`, 'utf8');
   const terms = read('terms');
   const s9 = terms.slice(terms.indexOf('## 9. Pro subscription'), terms.indexOf('## 10.'));
-  for (const must of ['USD 4.20 a month, or USD 42 a year', 'a yearly subscription renews automatically every year', 'up to 3 gift codes', 'Pro for 30 days, free, with no card', 'works only once', 'within 90 days after it was made',
+  for (const must of ['USD 42 a month, or USD 420 a year', 'If you subscribed before 27 September 2026 you keep your price while your subscription stays active.', 'a yearly subscription renews automatically every year', 'up to 3 gift codes', 'Pro for 30 days, free, with no card', 'works only once', 'within 90 days after it was made',
     'A gift month does not renew', 'A licence from a gift code cannot make gift codes', 'A seat number is for display only', 'cannot be chosen, changed or transferred', 'never reused']) {
     assert.ok(s9.includes(must), `terms s9: ${must}`);
   }
