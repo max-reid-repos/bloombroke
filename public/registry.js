@@ -86,6 +86,13 @@ export const REGISTRY = [
     source: 'Anonymous counts of ticker screens opened on Bloombroke; prices from CNBC', delay: 'The last hour, or the last 24 hours when it is quiet; refreshed every minute',
   },
   // --- end TRENDING ---
+  // --- BBRK: our own site numbers as a joke quote (screens/bbrk.js, lib/counters.js) ---
+  {
+    name: 'BBRK', category: 'Markets', summary: 'Our own site numbers, drawn like a quote. Not a security, not for sale',
+    syntax: 'BBRK', examples: ['BBRK'], keywords: ['bloombroke', 'site numbers', 'stats', 'usage', 'open startup', 'metrics', 'mrr', 'parody'],
+    source: 'Bloombroke server counters', delay: 'Live',
+  },
+  // --- end BBRK ---
   {
     name: 'HEATMAP', category: 'Markets', summary: 'The S&P 100 by sector, size and colour',
     syntax: 'HEATMAP', examples: ['HEATMAP'], keywords: ['map', 'treemap', 'sectors', 'colour', 'color'],
