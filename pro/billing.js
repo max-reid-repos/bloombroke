@@ -63,11 +63,11 @@ export function isPaidSession(s) {
 }
 
 export const TERMS_MESSAGE = 'I agree to the [Terms](https://bloombroke.com/terms) and understand Bloombroke gives information only, not investment advice.';
-export const SUBMIT_MESSAGE = 'Auto-renews monthly at $4.20 USD. Cancel any time in MANAGE; access continues to the end of the paid month.';
-export const SUBMIT_MESSAGE_YEARLY = 'Auto-renews yearly at $42 USD. Cancel any time in MANAGE; access continues to the end of the paid year.';
+export const SUBMIT_MESSAGE = 'Auto-renews monthly at $42 USD. Cancel any time in MANAGE; access continues to the end of the paid month.';
+export const SUBMIT_MESSAGE_YEARLY = 'Auto-renews yearly at $420 USD. Cancel any time in MANAGE; access continues to the end of the paid year.';
 
 // The plans a buyer can pick. The price id for each comes from the environment.
-export const PLANS = { month: { cents: 420 }, year: { cents: 4200 } };
+export const PLANS = { month: { cents: 4200 }, year: { cents: 42000 } };
 
 // licence: set for REACTIVATE, so the new subscription lands on the same licence and
 // the same Stripe customer. interval: 'month' (default) or 'year'; priceId must be the

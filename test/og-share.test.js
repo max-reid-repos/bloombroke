@@ -18,7 +18,7 @@ const QUOTE = {
 const CHART = { points: [309.9, 313.45, 314.58, 319.7, 316.85, 325.13, 324.96, 328.21, 319.97, 316.22, 315.34, 326.57, 332.27, 333.08, 331.34, 332.41, 337].map((v, i) => ({ t: 1787630400000 + i * 864e5, v })), stale: false };
 
 test('site share text: free first, Pro second, no paid-sounding lines', () => {
-  assert.equal(DEFAULT_META.title, 'Bloombroke: a free market terminal. Pro $4.20/mo.');
+  assert.equal(DEFAULT_META.title, 'Bloombroke: a free market terminal. Pro $420 a year.');
   assert.match(DEFAULT_META.description, /free market terminal/);
   for (const v of Object.values(DEFAULT_META)) {
     assert.doesNotMatch(v, /32,000|a month\.$|less than a coffee/);

@@ -166,7 +166,7 @@ test('titles: aliases show their full names', () => {
 });
 
 test('first minute: the site does not sound paid; typing during the notice is kept', () => {
-  assert.equal(DEFAULT_TITLE, 'Bloombroke: a free market terminal. Pro $4.20/mo.');
+  assert.equal(DEFAULT_TITLE, 'Bloombroke: a free market terminal. Pro $420 a year.');
   assert.ok(BOOT_LINES.some(([t]) => /free/.test(t)));
   assert.ok(!BOOT_LINES.some(([t]) => /32,000/.test(t)));
   let typed = '';
