@@ -27,7 +27,7 @@ const BODIES = {
   'analytics/overview:today': { status: 'success', data: [{ visitors: 412 }] },
   'analytics/overview:ySoFar': { status: 'success', data: [{ visitors: 377 }] },
   'analytics/overview:week': { status: 'success', data: [{ visitors: 3180 }] },
-  'analytics/overview:month': { status: 'success', data: [{ visitors: 10000, avg_session_duration: 96.6, visitorBreakdown: { new: 7000, returning: 3000, newPercentage: 70, returningPercentage: 30 } }] },
+  'analytics/overview:month': { status: 'success', data: [{ visitors: 10000, avg_session_duration: 96600, visitorBreakdown: { new: 7000, returning: 3000, newPercentage: 70, returningPercentage: 30 } }] },
   'analytics/timeseries': { status: 'success', data: Array.from({ length: 30 }, (_, i) => ({ timestamp: `2026-09-${String(i + 1).padStart(2, '0')}T00:00:00Z`, visitors: 100 + i })) },
   'analytics/countries:30': { status: 'success', data: [{ country: 'United States', image: '🇺🇸', visitors: 4120 }, { country: 'United Kingdom', visitors: 890 }, { country: 'Germany', visitors: 610 }] },
   'analytics/countries:7': { status: 'success', data: [{ country: 'United States', image: '🇺🇸', visitors: 1310 }, { country: 'Germany', visitors: 194 }, { country: 'Iceland', visitors: 2 }, { country: 'Atlantis', visitors: 9 }] },
@@ -404,4 +404,35 @@ test('copy rules: no banned brand word, no em dash, no emoji, no amber, no advic
     assert.doesNotMatch(s, /amber|orange|#f5a|#ffa|#ff9/i, `${f}: amber`);
     assert.doesNotMatch(s, /\b(you should|we recommend|buy now|invest in)\b/i, `${f}: advice`);
   }
+});
+
+// ---- units, from a real-shaped DataFast payload (prod, Sep 27 2026) ----------------------
+test('DataFast units: avg_session_duration is milliseconds; shares are 0 to 100; buckets in time order', () => {
+  const a = shapeAudience({
+    month: { status: 'success', data: [{ visitors: 1287, new_visitors: 1101, returning_visitors: 186, visitorBreakdown: { new: 1101, returning: 186, newPercentage: 85.55, returningPercentage: 14.45 }, pageviews: 5310, sessions: 1523, bounce_rate: 38.6, avg_session_duration: 433129.87 }] },
+    series: { status: 'success', data: [{ timestamp: '2026-09-27T04:00:00Z', visitors: 90 }, { timestamp: '2026-09-25T04:00:00Z', visitors: 70 }, { timestamp: '2026-09-26T04:00:00Z', visitors: 80 }] },
+    devices: { status: 'success', data: [{ device: 'desktop', visitors: 812 }, { device: 'mobile', visitors: 450 }, { device: 'tablet', visitors: 25 }] },
+  }, '2026-09-27T16:00:00Z');
+  assert.equal(a.avgVisitSec, 433);
+  assert.equal(visitTime(a.avgVisitSec), '7m 13s');
+  assert.equal(a.returningPct, 14.5, 'from the counts, 0 to 100');
+  assert.equal(a.desktopPct, 63.1);
+  assert.deepEqual(a.spark30, [70, 80, 90], 'oldest first');
+  assert.ok(a.returningPct <= 100 && a.desktopPct <= 100);
+  // Only the percentage: used when it is 0 to 100, never a 0 to 1 share read as a percent.
+  const p = shapeAudience({ month: { status: 'success', data: [{ visitors: 10, visitorBreakdown: { returningPercentage: 14.45 } }] } }, null);
+  assert.equal(p.returningPct, 14.5);
+  assert.equal(shapeAudience({ month: { status: 'success', data: [{ visitors: 10, avg_session_duration: -5 }] } }, null).avgVisitSec, null);
+});
+
+test('top countries and referrers: fewer than 3 visitors is never named', () => {
+  const a = shapeAudience({
+    month: { status: 'success', data: [{ visitors: 100 }] },
+    countries: { status: 'success', data: [{ country: 'United States', visitors: 60 }, { country: 'Iceland', visitors: 2 }, { country: 'Germany', visitors: 3 }, { country: 'Malta', visitors: 1 }] },
+    referrers: { status: 'success', data: [{ referrer: 'x.com', visitors: 40 }, { referrer: 'someones-blog.example', visitors: 2 }, { referrer: 'Google', visitors: 9 }, { referrer: 'tiny.example', visitors: 1 }] },
+  }, null);
+  assert.deepEqual(a.countries, [{ name: 'United States', pct: 60 }, { name: 'Germany', pct: 3 }]);
+  assert.deepEqual(a.referrers, [{ name: 'x.com', pct: 40 }, { name: 'Google', pct: 9 }]);
+  assert.equal(plan(T0).referrers[1].limit, '10', 'enough rows to skip the small ones');
+  assert.equal(plan(T0).countries[1].limit, '10');
 });
