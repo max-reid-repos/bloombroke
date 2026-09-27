@@ -14,18 +14,19 @@ test('live news: the poll and badge timings', () => {
   assert.equal(GLOW_MS, 2000);
 });
 
-test('live news: one key per story, filings by link, headlines by words', () => {
-  assert.equal(newsKey(h('Stocks rise!')), newsKey(h('stocks  RISE', 'https://other.test/a')));
+test('live news: one key per story, by link first, words only without a link', () => {
+  assert.equal(newsKey(h('Stocks rise')), 'l:https://x.test/Stocks%20rise');
+  assert.equal(newsKey(h('Stocks rise', 'https://a.test/1')), newsKey(h('Stocks rise sharply (updated)', 'https://a.test/1')), 'an edited headline is the same story');
   assert.notEqual(newsKey({ title: 'Apple: Results', link: 'https://sec.gov/1', ticker: 'AAPL' }), newsKey({ title: 'Apple: Results', link: 'https://sec.gov/2', ticker: 'AAPL' }));
-  assert.equal(newsKey({ title: 'Apple: Results', link: 'https://sec.gov/1', source: 'SEC' }), 'l:https://sec.gov/1');
+  assert.equal(newsKey({ title: 'No  Link!', link: 'javascript:x' }), 't:no link');
 });
 
 test('live news: a merged list never shows a story twice', () => {
-  const items = [h('A'), h('B'), h('a'), h('C'), h('B', 'https://y.test/b'), { title: '', link: 'https://z.test' }];
+  const items = [h('A'), h('B'), h('a'), h('C'), h('B', 'https://y.test/b'), h('A edited', 'https://x.test/A'), { title: '', link: 'https://z.test' }];
   assert.deepEqual(dedupeNews(items).map((n) => n.title), ['A', 'B', 'C']);
-  const html = newsList(items);
+  const html = newsList(items.slice(0, 6));
   assert.equal((html.match(/<li /g) || []).length, 3);
-  assert.match(html, /data-k="t:a"/);
+  assert.match(html, /data-k="l:https:\/\/x\.test\/A"/);
 });
 
 test('live news: the first look has nothing new; later looks flag only new stories', () => {
@@ -39,8 +40,9 @@ test('live news: the first look has nothing new; later looks flag only new stori
   // B drops off the list and comes back: it is not new.
   t.track([h('C'), h('A')]);
   assert.equal(t.track([h('C'), h('A'), h('B')]).size, 0);
-  // A story that only changed its link is the same story.
-  assert.equal(t.track([h('C', 'https://moved.test/c')]).size, 0);
+  // An edited headline on the same link is not new; a new link is.
+  assert.equal(t.track([h('C, updated', 'https://x.test/C')]).size, 0);
+  assert.equal(t.track([h('C', 'https://moved.test/c')]).size, 1);
 });
 
 test('live news: the tracker keeps a bounded memory', () => {

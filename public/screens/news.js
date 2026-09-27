@@ -87,21 +87,26 @@ export const NEWS_POLL_MS = 60_000;
 export const NEW_BADGE_MS = 30_000;
 export const GLOW_MS = 2000;
 
-// One key per story, the rule the server dedupes by: filings by link (a company files
-// "Results" every quarter), headlines by their words.
+// One key per story: its link, so a headline edited in place is still the same story.
+// A story with no link falls back to its words.
+const titleWords = (n) => String(n?.title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 export function newsKey(n) {
-  const filing = 'ticker' in (n || {}) || n?.source === 'SEC' || n?.source === 'SEC EDGAR';
-  if (filing) return `l:${n.link || ''}`;
-  return `t:${String(n?.title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}`;
+  const link = safeHref(n?.link);
+  return link ? `l:${link}` : `t:${titleWords(n)}`;
 }
 
-// One copy of each story, first one kept (the list comes newest first).
+// One copy of each story, first one kept (the list comes newest first): a repeat link,
+// or the same words under another link (one story on two feeds), is dropped, and so is
+// a story with no words.
 export function dedupeNews(items) {
-  const seen = new Set();
+  const links = new Set();
+  const words = new Set();
   return (items || []).filter((n) => {
     const k = newsKey(n);
-    if (k === 't:' || k === 'l:' || seen.has(k)) return false;
-    seen.add(k);
+    const w = titleWords(n);
+    if (!w || links.has(k) || words.has(w)) return false;
+    links.add(k);
+    words.add(w);
     return true;
   });
 }
