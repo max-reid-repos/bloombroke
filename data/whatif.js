@@ -76,10 +76,36 @@ export function stepPrice(steps, key) {
   return hit.usd;
 }
 
-// What one month of this habit costs.
-export function monthlyCost(item, key, catalog) {
+// A monthly BLS series ({ values: { 'YYYY-MM': v } }) in a month: that month's value, or
+// the last one before it (a month BLS did not publish, like October 2025, or one not out
+// yet), or the first one for a month before the series starts.
+export function seriesAt(series, key) {
+  const values = series?.values;
+  if (!values) return NaN;
+  if (Number.isFinite(values[key])) return values[key];
+  const keys = Object.keys(values).sort();
+  let hit = values[keys[0]];
+  for (const k of keys) if (k <= key) hit = values[k];
+  return hit;
+}
+
+// CPI-U (BLS CUUR0000SA0) from data/bls-monthly.json: { at(key), last }.
+export const CPI_SERIES = 'CUUR0000SA0';
+export function cpiLoader(bls) {
+  const series = bls?.series?.[CPI_SERIES];
+  if (!series?.values || !Object.keys(series.values).length) throw new Error('CPI data missing');
+  const keys = Object.keys(series.values).sort();
+  return { at: (key) => seriesAt(series, key), first: keys[0], last: keys[keys.length - 1] };
+}
+
+// What one month of this habit costs. bls: data/bls-monthly.json, for items priced by a
+// BLS average price series ({ series: { id, units } }: units of that series each time).
+export function monthlyCost(item, key, catalog, bls = null) {
   let unit;
-  if (item.scaleWith) {
+  if (item.series) {
+    unit = item.series.units * seriesAt(bls?.series?.[item.series.id], key);
+    if (!Number.isFinite(unit)) throw new Error(`${item.id}: no ${item.series.id} price`);
+  } else if (item.scaleWith) {
     const ref = catalog.recurring.find((r) => r.id === item.scaleWith).prices;
     unit = item.today * (stepPrice(ref, key) / ref[ref.length - 1].usd);
   } else {
@@ -103,12 +129,12 @@ export function oneOffRow(product, buy, current) {
 
 // monthly: { 'YYYY-MM': { date, close } } for the first trading day of each month.
 // Months after the baked data use today's price.
-export function recurringRow(item, range, monthly, current, catalog) {
+export function recurringRow(item, range, monthly, current, catalog, bls = null) {
   let paid = 0;
   let shares = 0;
   const months = monthsBetween(range.start, range.end);
   for (const key of months) {
-    const spend = monthlyCost(item, key, catalog);
+    const spend = monthlyCost(item, key, catalog, bls);
     const close = monthly[key]?.close ?? current;
     paid += spend;
     shares += spend / close;
@@ -118,7 +144,7 @@ export function recurringRow(item, range, monthly, current, catalog) {
     id: item.id, kind: 'monthly', name: item.name, company: item.company, ticker: item.ticker,
     bought: `${range.start} to ${range.end}`, from: range.start, to: range.end, clamped: range.clamped,
     buys: months.length, paid, shares, price: current, value, multiple: value / paid,
-    note: item.note || '', src: item.src,
+    note: item.note || '', startNote: item.startNote || '', src: item.src,
   };
 }
 
@@ -144,6 +170,9 @@ export function familyWords(catalog) {
   return map;
 }
 
+// Shelf words open the picker on that shelf (tab), with nothing picked.
+export const SHELF_WORDS = ['GADGETS', 'GAMES', 'HABITS', 'VICES'];
+
 // "IPHONE6 LATTE:3Y APPLE" -> { picks: [{ id, spec }], families: ['APPLE'], unknown: [] }
 export function resolveTokens(tokens, catalog) {
   const ids = new Map([...catalog.products, ...catalog.recurring].map((p) => [p.id.toUpperCase(), p]));
@@ -158,6 +187,7 @@ export function resolveTokens(tokens, catalog) {
       if (!picks.some((p) => p.id === item.id)) picks.push({ id: item.id, spec });
       continue;
     }
+    if (SHELF_WORDS.includes(head) && !spec) { if (!fams.includes(head)) fams.push(head); continue; }
     const fam = families.get(head) ? head : families.get(head.replace(/S$/, '')) ? head.replace(/S$/, '') : null;
     if (fam && !spec) { if (!fams.includes(fam)) fams.push(fam); continue; }
     unknown.push(raw);
@@ -166,7 +196,7 @@ export function resolveTokens(tokens, catalog) {
 }
 
 // Everything needed for the result screen. quotes: { TICKER: price now }.
-export function computeWhatif(picks, { catalog, prices, quotes, now = new Date() }) {
+export function computeWhatif(picks, { catalog, prices, quotes, now = new Date(), bls = null }) {
   if (!picks.length) throw new WhatifError('empty', 'Pick at least one thing you bought.');
   if (picks.length > 30) throw new WhatifError('too_many', 'Pick 30 things or fewer.');
   const rows = picks.map(({ id, spec }) => {
@@ -177,7 +207,7 @@ export function computeWhatif(picks, { catalog, prices, quotes, now = new Date()
     }
     const item = catalog.recurring.find((r) => r.id === id);
     const range = parseSpec(spec, item, now);
-    return recurringRow(item, range, prices.monthly[item.ticker] || {}, quotes[item.ticker], catalog);
+    return recurringRow(item, range, prices.monthly[item.ticker] || {}, quotes[item.ticker], catalog, bls);
   });
   return { rows, total: totals(rows) };
 }
@@ -220,3 +250,72 @@ export function holdingPath({ date, close }, bars, current) {
 export function whatifCommand(picks) {
   return ['WHATIF', ...picks.map((p) => (p.spec ? `${p.id}:${p.spec}` : p.id).toUpperCase())].join(' ');
 }
+
+// ---- REPLAY: the race from the first buy to today --------------------------------------
+
+// Three lines, summed over every row, at each point in time:
+//   stock  the shares bought so far, at that day's close
+//   jar    the same cash kept in a jar: each buy's dollars deflated by CPI-U from the
+//          month it was spent to that month (what the jar still buys, in money of then)
+//   spent  the running total paid (drawn below zero on screen)
+// Points: the first trading day of every month (the day habits buy), each one-off
+// purchase day, and today. Monthly closes come from the baked file (the first trading
+// day of each month); a month past the baked data uses today's price, like the result.
+// The last point is today and equals the result's totals exactly.
+// Between a purchase day and the next month, a holding keeps its last known close.
+export function replaySeries(result, { catalog, prices, bls, now = new Date(), asOf = null }) {
+  const cpi = cpiLoader(bls);
+  const current = monthKey(now);
+  const monthly = (t) => prices.monthly[t] || {};
+  const plans = result.rows.map((r) => {
+    if (r.kind === 'once') {
+      return { r, buys: [{ key: r.bought.slice(0, 7), date: r.bought, spend: r.paid, shares: r.shares, once: true }] };
+    }
+    const item = catalog.recurring.find((x) => x.id === r.id);
+    const m = monthly(r.ticker);
+    const buys = monthsBetween(r.from, r.to).map((key) => {
+      const spend = monthlyCost(item, key, catalog, bls);
+      const close = m[key]?.close ?? r.price;
+      return { key, date: `${key}-01`, spend, shares: spend / close };
+    });
+    return { r, buys };
+  });
+  const start = plans.map((p) => p.buys[0].key).sort()[0];
+  const today = /^\d{4}-\d{2}-\d{2}/.test(asOf || '') ? String(asOf).slice(0, 10) : now.toISOString().slice(0, 10);
+  const points = monthsBetween(start, current).map((key) => ({ d: `${key}-01`, key, kind: 'month' }));
+  for (const p of plans) if (p.r.kind === 'once') points.push({ d: p.r.bought, key: p.r.bought.slice(0, 7), kind: 'buy', row: p.r });
+  points.sort((a, b) => a.d.localeCompare(b.d) || (a.kind === 'month' ? -1 : 1));
+
+  // A bought one-off counts from its purchase day; a habit's buy from its month's point.
+  const counts = (b, pt) => (b.once ? b.date <= pt.d && !(pt.kind === 'month' && b.key === pt.key) : b.key <= pt.key);
+  const last = new Map(); // ticker -> last known close
+  const cpiNow = cpi.at(current);
+  const out = [];
+  for (const pt of points) {
+    let stock = 0; let jar = 0; let spent = 0;
+    const cpiThen = cpi.at(pt.key);
+    for (const { r, buys } of plans) {
+      let close;
+      if (pt.kind === 'month') close = monthly(r.ticker)[pt.key]?.close ?? (pt.key > (prices.built || '').slice(0, 7) ? r.price : last.get(r.ticker));
+      else if (pt.row === r) close = r.close;
+      else close = last.get(r.ticker);
+      if (Number.isFinite(close)) last.set(r.ticker, close);
+      let shares = 0;
+      for (const b of buys) {
+        if (!counts(b, pt)) continue;
+        shares += b.shares;
+        spent += b.spend;
+        jar += b.spend * (cpi.at(b.key) / cpiThen);
+      }
+      if (shares) stock += shares * (Number.isFinite(close) ? close : r.price);
+    }
+    out.push({ d: pt.d, stock: cents(stock), jar: cents(jar), spent: cents(spent) });
+  }
+  // Today: exactly the numbers in the table.
+  let jar = 0;
+  for (const { buys } of plans) for (const b of buys) jar += b.spend * (cpi.at(b.key) / cpiNow);
+  out.push({ d: today > out[out.length - 1].d ? today : out[out.length - 1].d, stock: result.total.value, jar, spent: result.total.paid, now: true });
+  return { points: out, cpi: { series: CPI_SERIES, last: cpi.last } };
+}
+const cents = (v) => Math.round(v * 100) / 100;
+
