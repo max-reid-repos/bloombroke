@@ -209,6 +209,12 @@ app.get('/api/news', async (req, res) => {
   }
 });
 
+// ---- NEWS push: /api/news/stream (lib/newsstream.js), fed by the news hub ------------
+import { makeNewsHub } from './data/newshub.js';
+import { mountNewsStream } from './lib/newsstream.js';
+mountNewsStream(app, makeNewsHub());
+// ---- end NEWS push ----------------------------------------------------------------------
+
 app.get('/api/whatif/catalog', (req, res) => {
   res.set('Cache-Control', 'public, max-age=3600');
   res.json(getCatalog());
