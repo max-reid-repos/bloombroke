@@ -700,18 +700,26 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .wi-years input:focus { outline: 1px solid var(--accent); outline-offset: 0; }
 /* YOUR OWN: the first card on every shelf, and its inline form under the tabs. */
 .wi-own .wi-cname { color: var(--accent); font-weight: 600; letter-spacing: .06em; }
-.wi-ownform { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; margin-bottom: 8px; padding: 8px; border: 1px solid var(--rule-strong); background: var(--panel); }
+/* The form reads as one sentence: [$ 15] [a week] in [AAPL] since [2015]  ADD. */
+.wi-ownform { margin-bottom: 8px; padding: 8px 10px; border: 1px solid var(--rule-strong); background: var(--panel); }
 .wi-ownform[hidden] { display: none; }
-.wo-field { display: flex; flex-direction: column; gap: 2px; font-size: 10px; letter-spacing: .08em; color: var(--dim); }
-.wo-field input, .wo-field select {
-  height: 24px; padding: 0 6px; width: 12ch;
+.wo-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 14px; color: var(--text-2); }
+.wo-line input, .wo-line select {
+  height: 28px; padding: 0 6px;
   border: 1px solid var(--rule-strong); background: var(--bg);
-  color: var(--text); font-family: var(--font); font-size: 12px; text-transform: uppercase;
+  color: var(--text); font-family: var(--font); font-size: 14px;
 }
-.wo-field input:focus, .wo-field select:focus { outline: 1px solid var(--accent); outline-offset: 0; }
-.wo-to[hidden] { display: none; }
-.wi-ownform .wi-btn { height: 24px; }
-.wo-msg { flex-basis: 100%; font-size: 11px; color: var(--down); }
+.wo-line input::placeholder { color: var(--faint); }
+.wo-line input:focus, .wo-line select:focus { outline: 1px solid var(--accent); outline-offset: 0; }
+.wo-amt { position: relative; display: inline-flex; }
+.wo-cur { position: absolute; left: 7px; top: 50%; transform: translateY(-50%); color: var(--dim); pointer-events: none; }
+.wo-amt input { width: 9ch; padding-left: 18px; }
+.wo-tk { width: 7ch; text-transform: uppercase; }
+.wo-dt { width: 10ch; }
+.wi-ownform .wo-add { height: 28px; margin-left: 4px; }
+.wo-close { height: 28px; padding: 0 8px; border: 0; background: transparent; color: var(--dim); font-family: var(--font); font-size: 16px; cursor: pointer; }
+.wo-close:hover { color: var(--text); }
+.wo-msg { margin-top: 6px; font-size: 12px; color: var(--down); }
 .wo-msg:empty { display: none; }
 /* The RUN bar sticks right on the dock (no gap for cards to show through); a card moved
    to by keys is never left under it (scroll-margin), and the card behind it fades. */
@@ -726,7 +734,6 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 }
 .wi-count { color: var(--text); font-weight: 600; letter-spacing: .06em; white-space: nowrap; }
 .wi-cmd { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.wi-keys { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .wi-run {
   height: 24px; padding: 0 16px;
   border: 1px solid var(--accent); background: var(--accent); color: var(--ink);
@@ -734,15 +741,12 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 }
 .wi-run:hover { background: var(--text); border-color: var(--text); }
 
-.wi-sentence { font-size: 16px; color: var(--text-2); }
-.wi-sentence .num { color: var(--text); font-weight: 600; }
-.wi-sentence .up, .hero-value.up { color: var(--up); }
-.wi-sentence .down, .hero-value.down { color: var(--down); }
-.wi-mult { font-size: 18px; font-weight: 600; }
-.wi-mult span + span { margin-left: 12px; }
-.wi-quip { margin-top: 8px; color: var(--text-2); }
-.wi-risk { margin-top: 6px; color: var(--text-2); font-size: 12px; }
-.wi-risk-list { margin-top: 8px; color: var(--text-2); font-size: 12px; }
+.wi-hero { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 16px; }
+.hero-value.up, .wi-x.up { color: var(--up); }
+.hero-value.down, .wi-x.down { color: var(--down); }
+.wi-x { font-size: 26px; font-weight: 700; }
+.wi-sentence { margin-top: 4px; font-size: 15px; color: var(--text); }
+.wi-quip { margin-top: 6px; color: var(--text-2); font-size: 13px; }
 .wi-receipt { margin: 16px -10px 0; border-top: 1px solid var(--rule-strong); overflow-x: auto; }
 .wi-table tfoot th, .wi-table tfoot td { height: 28px; font-weight: 600; border-top: 1px solid var(--rule-strong); padding: 0 10px; }
 .wi-table tfoot .name { color: var(--text); letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
@@ -750,9 +754,13 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .wi-when { color: var(--text-2); }
 .wi-when-m { display: none; }
 .wi-source { margin-top: 10px; font-size: 11px; color: var(--dim); }
-.wi-actions { display: flex; gap: 16px; margin-top: 10px; font-size: 12px; }
+.wi-actions { display: flex; gap: 16px; margin-top: 10px; font-size: 11px; letter-spacing: .06em; }
+.wi-actions .code { color: var(--dim); }
+.wi-actions .code:hover { color: var(--accent); }
 .wi-note-name { color: var(--text); }
 .how-list a { color: var(--accent); }
+.how-h { margin-top: 12px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.wi-details { margin-top: 10px; }
 
 /* WHATIF certificate: text over the art, placed in % of the image (the same numbers as
    POS in lib/og.js), sized in cqw so it scales with the paper. */
@@ -775,14 +783,17 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .wr-jar { color: var(--cmp-3); }
 .wr-spent { color: var(--down); }
 .wr-canvas { display: block; width: 100%; height: 130px; margin-top: 6px; }
-.wr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
-.wr-actions .wi-btn { height: 22px; padding: 0 8px; font-size: 10px; }
-.wr-msg:empty { display: none; }
-.wr-actions .wr-btn:first-child { background: transparent; border-color: var(--rule-strong); color: var(--text); }
-.wr-actions .wr-btn:hover { background: var(--text); border-color: var(--text); color: var(--ink); }
-.wr-btn:disabled { opacity: .5; cursor: progress; }
-.wr-msg { margin-top: 4px; font-size: 11px; color: var(--dim); letter-spacing: .04em; }
-.wr-actions .wr-msg { margin: 0; }
+/* REPLAY: a small quiet control at the chart's top right. */
+.wr-play {
+  margin-left: auto; height: 20px; padding: 0 8px;
+  border: 1px solid var(--rule-strong); background: transparent; color: var(--text-2);
+  font-family: var(--font); font-size: 10px; letter-spacing: .1em; cursor: pointer;
+}
+.wr-play:hover { border-color: var(--text); color: var(--text); }
+.wi-btn:disabled { opacity: .5; cursor: progress; }
+.wi-vmsg { margin-top: 6px; font-size: 11px; color: var(--dim); letter-spacing: .04em; }
+.wi-vmsg:empty { display: none; }
+.wi-vneeds { align-self: center; font-size: 11px; color: var(--dim); }
 /* Title strip parts, split by a dot (on phones they wrap, one per line, no dots). */
 .wi-panel .panel-meta > * + *::before { content: '· '; }
 .wi-certcol { overflow: clip; }
@@ -1008,11 +1019,10 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
   .hero-unit { font-size: 14px; }
   .buy { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .wi-shelf { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .wi-keys, .wi-hint, .wi-cmd { display: none; }
+  .wi-hint, .wi-cmd { display: none; }
   .wi-bar { gap: 8px; flex-wrap: nowrap; }
   .wi-run { margin-left: auto; }
   .wr-canvas { height: 150px; }
-  .wr-actions { margin-left: 0; flex-basis: 100%; }
   .wi-panel .panel-head { flex-wrap: wrap; }
   .wi-panel .panel-label { flex: 1 1 100%; max-width: none; }
   .wi-panel .panel-meta { flex: 1 1 100%; justify-content: flex-start; text-align: left; padding-left: 8px; }
@@ -1022,6 +1032,12 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
   .wi-table tbody .name { white-space: normal; padding-top: 4px; padding-bottom: 4px; }
   .wi-when-m { display: block; font-size: 11px; }
   .wi-sentence { font-size: 14px; }
+  .wi-x { font-size: 20px; }
+  .wo-line { gap: 6px; font-size: 13px; }
+  .wo-line input, .wo-line select { padding: 0 4px; font-size: 13px; }
+  .wo-amt input { width: 6ch; padding-left: 16px; }
+  .wo-cur { left: 5px; }
+  .wo-dt { width: 8ch; }
   .wi-receipt { margin: 12px -10px 0; }
   .stamp-v { font-size: 26px; }
   .stats-row { grid-template-columns: minmax(0, 1fr); }
@@ -1768,43 +1784,39 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .gs-table th, .gs-table td { height: 34px; padding: 0 6px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid var(--rule); }
 .gs-table thead th { height: 22px; font-size: 11px; font-weight: 400; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
 .gs-table .gs-i { width: 4ch; color: var(--dim); }
-.gs-table .gs-g { width: 28%; font-weight: 400; color: var(--faint); }
+.gs-table .gs-g { width: 24%; font-weight: 400; color: var(--faint); }
 .gs-g .gs-tk { display: block; color: var(--text); font-weight: 600; line-height: 15px; }
 .gs-g .gs-nm { display: block; font-size: 11px; line-height: 14px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
 .gs-cell { border-left: 2px solid var(--bg); }
-.gs-cell .gs-v, .gs-cell .gs-d { display: block; overflow: hidden; text-overflow: ellipsis; }
-.gs-cell .gs-v { font-size: 12px; line-height: 15px; font-weight: 600; }
-.gs-cell .gs-d { font-size: 10px; line-height: 12px; letter-spacing: .06em; white-space: normal; }
-/* A two-word hint ("ANSWER SMALLER") may take two lines: rows grow instead of cutting it. */
-.gs-table tbody th, .gs-table tbody td { height: 38px; padding-top: 2px; padding-bottom: 2px; }
-.gs-cell.g-hit { background: var(--accent); color: var(--ink); }
+.gs-cell .gs-v { font-size: 12px; font-weight: 600; }
+/* The arrow that points to the answer, after the guess's value. */
+.gs-cell .gs-d { margin-left: 6px; font-size: 14px; font-weight: 700; }
+.gs-table tbody th, .gs-table tbody td { height: 36px; padding-top: 2px; padding-bottom: 2px; }
+/* Green: same or close, as the green square in the share text. Blue: near. */
+.gs-cell.g-hit { background: var(--up); color: var(--ink); }
 .gs-cell.g-near { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); }
 .gs-cell.g-miss { color: var(--text-2); }
 .gs-cell.g-miss .gs-d { color: var(--dim); }
 .gs-cell.g-none { color: var(--faint); }
-.gs-end { display: grid; gap: 8px; padding: 10px; }
-.gs-result { font-size: 13px; font-weight: 600; letter-spacing: .08em; color: var(--accent); }
-.gs-answer { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
-.gs-answer .gs-tk { font-size: 18px; font-weight: 800; color: var(--text); }
-.gs-answer .gs-nm { color: var(--text-2); }
-.gs-ak, .gs-sk { font-size: 11px; color: var(--dim); letter-spacing: .08em; }
-.gs-hint { color: var(--text-2); }
-.gs-next { font-size: 12px; letter-spacing: .06em; color: var(--text-2); }
+.gs-end { display: grid; gap: 8px; padding: 4px 10px 10px; }
+.gs-result { font-size: 16px; font-weight: 600; color: var(--text); }
+.gs-result .gs-tk { color: var(--accent); }
+.gs-sk { font-size: 11px; color: var(--dim); letter-spacing: .08em; }
+.gs-next { margin-left: auto; align-self: center; font-size: 11px; letter-spacing: .06em; color: var(--dim); }
 .gs-cd { color: var(--text); font-weight: 600; }
 .gs-stats { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; }
 .gs-stats b { color: var(--text); font-weight: 600; }
-.gs-share { display: flex; flex-wrap: wrap; gap: 8px; }
+.gs-share { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .gs-x { height: 24px; }
-.gs-legend { display: grid; gap: 2px; padding: 10px; font-size: 11px; line-height: 15px; color: var(--dim); }
-.gs-legend .gs-lh { letter-spacing: .08em; color: var(--text-2); }
+.gs-legend { padding: 8px 10px; font-size: 11px; line-height: 15px; color: var(--dim); }
 @media (max-width: 639px) {
   .gs-table .gs-g { width: 18%; }
   .gs-table .gs-i { width: 3ch; }
   .gs-g .gs-nm { display: none; }
   .gs-table th, .gs-table td { padding: 0 4px; }
-  .gs-table thead th { font-size: 10px; letter-spacing: .02em; }
+  .gs-table thead th { height: 28px; font-size: 10px; line-height: 12px; letter-spacing: .02em; white-space: normal; }
   .gs-cell .gs-v { font-size: 11px; }
-  .gs-cell .gs-d { letter-spacing: .02em; }
+  .gs-cell .gs-d { margin-left: 3px; }
 }
 /* --- end GUESS ------------------------------------------------------------------ */
 
