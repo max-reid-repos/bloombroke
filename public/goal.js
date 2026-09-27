@@ -17,6 +17,7 @@ export const GOALS = [
   'news_why_opened', 'weird_gauge_opened', 'mcp_screen_opened',
   'feedback_sent', 'pro_checkout_started', 'desk_opened',
   'sponsor_click', // a paid sponsor line clicked (never our own AD lines)
+  'notfound_seen', 'graveyard_seen', 'ipo_made', 'ipo_shared', // NO SUCH TICKER. YET.
 ];
 
 // Counted on our server by the route itself (lib/counters.js SERVER_COUNTS), so not here:
@@ -53,6 +54,7 @@ export const GOAL_PROPS = {
   guess_shared: ['via'],
   weird_gauge_opened: ['gauge'],
   pro_checkout_started: ['plan'],
+  ipo_shared: ['via'],
 };
 const VALUE_RE = /^[a-z0-9_]{1,16}$/;
 const QUEUE_MAX = 50;

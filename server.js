@@ -353,6 +353,11 @@ mountProvenanceRoutes(app, {
   isPro: (req) => Boolean(pro?.proActive?.(req)), // STATUS is part of Pro
 });
 
+// --- NO SUCH TICKER. YET. (lib/og-nosuch.js): GRAVEYARD, IPO IT and their share cards ---
+import { mountNoSuch } from './lib/og-nosuch.js';
+const noSuch = mountNoSuch(app, { getQuote }); // getQuote: a graveyard ticker's live US listing wins
+// --- end NO SUCH TICKER ---
+
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));
 
 // Share images. A bad or unknown command gets the site card, never an error.
@@ -457,6 +462,8 @@ async function shareIndex(c) {
   if (weirdPage) return weirdPage;
   const whyPage = await whyCards.meta(c).catch(() => null); // WHY share cards
   if (whyPage) return withMeta(PAGE, whyPage);
+  const noSuchPage = noSuch.meta(c); // GRAVEYARD <ticker> and IPO IT <word> share cards
+  if (noSuchPage) return withMeta(PAGE, noSuchPage);
   // A bare command (/?c=MARKETS): its own title, description and canonical, no card.
   const plain = !whatif && commandMeta(c, parseCommand);
   if (plain) return withMeta(PAGE, plain);

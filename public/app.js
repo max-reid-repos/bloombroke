@@ -43,6 +43,8 @@ import { parseDeskArgs, isEmbedSearch, tickerOf, TICKER_SCREENS } from './desk-l
 import { COMPANY_SCREENS, COMPANY_TAKES_ARGS, matchCompany } from './company.js';
 import { MARKETS_SCREENS, MARKETS_TAKES_ARGS, matchMarkets } from './commands-markets.js';
 import { WEIRD_SCREENS, matchWeird } from './commands-weird.js';
+import { matchNoSuch, dymRows } from './nosuch.js'; // NO SUCH TICKER. YET.: GRAVEYARD, IPO IT
+import { NOSUCH_SCREENS, noSuchInfo, noSuchExtra, wireNoSuch, yardPick, TITLE_YET, TITLE_GONE, HELP_LINE } from './screens/nosuch.js';
 import { LISTED, ALIASES, FUNCTION_BAR, TICKER_FUNCTIONS, findCommand } from './registry.js';
 import { tapeOn, setTapeOn, mountTape, tapeItems } from './tape.js';
 import { createMenu } from './menu.js';
@@ -303,6 +305,7 @@ export function parseCommand(raw, depth = 0) {
   const company = matchCompany(head, rest); if (company) return company;
   const markets = matchMarkets(head, rest); if (markets) return markets;
   const weird = matchWeird(head, rest); if (weird) return weird;
+  const nosuch = matchNoSuch(head, rest); if (nosuch) return nosuch;
   // Add new commands above this line: commands win over symbols of the same name.
   const quote = parseSymbolCommand(toks);
   if (quote) return quote;
@@ -652,17 +655,18 @@ export function resolvedNote(command, from) {
   return `Showing ${command} (from '${String(from).toLowerCase()}')`;
 }
 
-// The "Did you mean" screen: one clickable row per command or symbol, keys 1 to 9.
-export function didYouMeanHtml(typed, { commands = [], symbols = [] } = {}, ticker = null) {
-  const rows = [...commands.map((c) => [c.cmd, c.summary]), ...symbols.map((s) => [s.cmd, s.name])];
+// The "Did you mean" screen: one clickable row per command or symbol (at most 3, never
+// the words typed), keys 1 to 3. extra: what goes under the rows (screens/nosuch.js:
+// a tombstone, IPO IT, "Tell us."); HELP is always the last line.
+export function didYouMeanHtml(typed, found = {}, ticker = null, { extra = '' } = {}) {
+  const rows = dymRows(found, typed, ticker);
   const lead = ticker
     ? `No ticker called <span class="code">${escapeHtml(ticker)}</span>.`
     : `Nothing called <span class="code">${escapeHtml(typed)}</span>.`;
   const list = rows.length
-    ? `<h3 class="hs-h">Did you mean</h3><ol class="hc-list dym-list">${rows.map(([cmd, what], i) => `<li class="hc-row hc-row-fn"><a class="hc-name code" href="${toQuery(cmd)}" data-cmd="${escapeHtml(cmd)}"${i < 9 ? ` data-key="${i + 1}"` : ''}>${escapeHtml(cmd)}</a><span class="hc-sum">${escapeHtml(what || '')}</span></li>`).join('')}</ol>`
+    ? `<h3 class="hs-h">Did you mean</h3><ol class="hc-list dym-list">${rows.map(([cmd, what], i) => `<li class="hc-row hc-row-fn"><a class="hc-name code" href="${toQuery(cmd)}" data-cmd="${escapeHtml(cmd)}" data-key="${i + 1}">${escapeHtml(cmd)}</a><span class="hc-sum">${escapeHtml(what || '')}</span></li>`).join('')}</ol>`
     : '';
-  return `<p class="notice">${lead}</p>${list}
-    <p class="muted">Type <a class="code" href="${toQuery('HELP')}" data-cmd="HELP">HELP</a> for every command. A ticker is one word, like <a class="code" href="${toQuery('AAPL')}" data-cmd="AAPL">AAPL</a> or <a class="code" href="${toQuery('BRK.B')}" data-cmd="BRK.B">BRK.B</a>. A company name works too, like <a class="code" href="${toQuery('NVIDIA')}" data-cmd="NVIDIA">NVIDIA</a>.</p>`;
+  return `<p class="notice">${lead}</p>${list}${extra}${HELP_LINE}`;
 }
 
 function boot() {
@@ -1097,7 +1101,7 @@ function boot() {
         placeCursor();
       },
     };
-    const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name] || COMPANY_SCREENS[cmd.name] || MARKETS_SCREENS[cmd.name] || WEIRD_SCREENS[cmd.name];
+    const mod = SCREENS[cmd.name] || EXTRA_SCREENS[cmd.name] || COMPANY_SCREENS[cmd.name] || MARKETS_SCREENS[cmd.name] || WEIRD_SCREENS[cmd.name] || NOSUCH_SCREENS[cmd.name];
     if (cmd.mutates && fromUrl && !(cmd.name === 'DESK' && cmd.args?.preset)) {
       // A link that changes saved lists never runs by itself: ask first. (A DESK preset
       // asks on the desk itself, and only over panels of your own.)
@@ -1192,8 +1196,10 @@ function boot() {
     try {
       // A ticker with a quote shows as it is (APPLE is Apple's name, not a ticker to ask about).
       if (ticker && !tickerForName(ticker)) {
-        const ok = await checkTicker(ticker, signal);
+        // A famous dead ticker beats a non-US quote of the same letters (LEH on Frankfurt).
+        const [ok, info] = await Promise.all([checkTicker(ticker, signal), embed ? null : noSuchInfo(ticker, { signal })]);
         if (signal.aborted) return;
+        if (ok !== false && info?.grave && info.wins) { await showDidYouMean(view, typed, {}, ticker, signal, { quote: true }); return; }
         if (ok !== false) { render(raw, { fromUrl, checked: true }); return; }
       }
       const found = await resolveInput(raw, {
@@ -1208,17 +1214,29 @@ function boot() {
         render(found.command, { fromUrl, checked: true, note: same ? '' : resolvedNote(found.command, found.from) });
         return;
       }
-      showDidYouMean(view, typed, found, ticker);
+      await showDidYouMean(view, typed, found, ticker, signal);
     } catch (err) {
       if (err.name === 'AbortError' || signal.aborted) return;
-      showDidYouMean(view, typed, {}, ticker);
+      await showDidYouMean(view, typed, {}, ticker, signal);
     }
   }
-  function showDidYouMean(view, typed, found, ticker) {
-    neutralHead(ticker ? typed : 'Unknown command');
-    view.innerHTML = panel('1', ticker ? 'No such ticker' : 'Unknown command', didYouMeanHtml(typed, found, ticker), { cls: 'panel-solo' });
-    const any = (found.commands?.length || 0) + (found.symbols?.length || 0);
-    setStatus(any ? 'NOT FOUND. PICK ONE BELOW, OR TYPE HELP' : 'UNKNOWN COMMAND. TYPE HELP', 'warn');
+  // NO SUCH TICKER. YET.: the rows, then a tombstone for a famous dead ticker, or IPO IT
+  // and "Tell us." for any other word (screens/nosuch.js).
+  async function showDidYouMean(view, typed, found, ticker, signal, { quote = false } = {}) {
+    const toks = tokenize(typed);
+    const word = ticker || (toks.length === 1 ? toks[0] : null);
+    const [info, yard] = word && !embed
+      ? await Promise.all([noSuchInfo(word, { signal }), yardPick(signal)])
+      : [{ grave: null, ipo: false }, []];
+    if (signal?.aborted) return;
+    neutralHead(ticker || info.grave ? typed : 'Unknown command');
+    const rows = dymRows(found, typed, ticker).length;
+    const title = info.grave ? TITLE_GONE : ticker ? TITLE_YET : 'Unknown command';
+    const extra = embed ? '' : noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : yard });
+    view.innerHTML = panel('1', title, didYouMeanHtml(typed, found, ticker, { extra }), { cls: 'panel-solo', bodyCls: 'ns-page' });
+    if (!embed) cleanups.push(wireNoSuch(view, word, info));
+    if (info.grave) setStatus(`${info.grave.ticker}: ${info.grave.what.toUpperCase()}`, 'warn');
+    else setStatus(rows ? 'NOT FOUND. PICK ONE BELOW, OR TYPE HELP' : ticker ? 'NO SUCH TICKER. TYPE HELP' : 'UNKNOWN COMMAND. TYPE HELP', 'warn');
   }
 
   function remember(clean) {
