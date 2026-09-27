@@ -19,9 +19,10 @@ import { createStripe, stripeEnv, DEFAULT_TERMS_VERSION } from './billing.js';
 import { mountPro } from './routes.js';
 import { createFeedbackStore, mountFeedback } from './feedback.js';
 
-export function startPro(app, { dir, env = process.env, log = console }) {
+export function startPro(app, { dir, env = process.env, log = console, counters = null }) {
   try {
     const db = openDb(env.PRO_DB_PATH || path.join(dir, 'var', 'pro.db'));
+    counters?.attach(db); // BBRK: the site's own daily totals (lib/counters.js)
     let aesKey = null;
     try { aesKey = env.PRO_SECRET ? revealKeyFrom(env.PRO_SECRET) : null; } catch (err) { log.error('[pro]', err.message); }
     const store = createStore(db, { aesKey });
@@ -44,7 +45,7 @@ export function startPro(app, { dir, env = process.env, log = console }) {
     });
     // FEEDBACK lives in the same database: POST /api/feedback, for everyone.
     const feedback = createFeedbackStore(db);
-    mountFeedback(app, { store: feedback, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', log });
+    mountFeedback(app, { store: feedback, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', log, onSaved: () => counters?.bump('feedback_sent') });
     const clean = () => {
       try { store.purgeReveals(); store.pruneEvents(); } catch (err) { log.error('[pro] clean-up', err.message); }
     };
@@ -70,7 +71,7 @@ export function startPro(app, { dir, env = process.env, log = console }) {
     purge();
     setInterval(purge, 24 * 60 * 60 * 1000).unref();
     log.log(`[pro] ${se.mode} mode, ${ready ? 'ready' : 'not configured: checkout is closed'}`);
-    return { db, store, feedback, ready };
+    return { db, store, feedback, ready, mode: se.mode };
   } catch (err) {
     log.error('[pro] could not start:', err.message);
     return null;

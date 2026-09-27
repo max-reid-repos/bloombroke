@@ -34,6 +34,7 @@ import { getWeird, getGauge, startWeirdPrewarm, FAST_WAIT } from './data/weird/i
 import { makeWeirdCards, weirdCommand } from './lib/og-weird.js'; // WEIRD share cards
 import { mountWhyCards } from './lib/og-why.js'; // WHY share cards
 import { getWhy } from './data/why.js'; // WHY share cards
+import { siteCounters, mountCounters } from './lib/counters.js'; // BBRK site numbers
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
@@ -232,6 +233,7 @@ app.get('/api/whatif', async (req, res) => {
     // The certificate: the same words and numbers as the share image.
     const norm = data.rows ? normalizeWhatif(tokens.join(' '), catalog) : null;
     if (norm) data.cert = certModel(data, catalog, norm.command);
+    if (data.rows) siteCounters.bump('whatif_run'); // BBRK: a WHATIF result was computed
     res.set('Cache-Control', 'public, max-age=60');
     res.json(data);
   } catch (err) {
@@ -313,10 +315,12 @@ mountSponsors(app);
 // --- GUESS (data/guess.js): one mystery stock a day ---
 import { mountGuess } from './data/guess.js';
 import { getFishtank } from './data/sp100.js';
-mountGuess(app, { getChart, getCaps: getFishtank });
+mountGuess(app, { getChart, getCaps: getFishtank, count: (n) => siteCounters.bump(n) });
 // --- end GUESS ---
 
-startPro(app, { dir });
+// BBRK (lib/counters.js): the site's own daily totals, in the Pro database.
+const pro = startPro(app, { dir, counters: siteCounters });
+mountCounters(app, { counters: siteCounters, mode: pro?.mode || null, publicUrl: process.env.PUBLIC_URL || 'https://bloombroke.com' });
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));
 
