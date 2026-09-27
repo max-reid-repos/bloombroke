@@ -375,7 +375,15 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
       const f = fullHist(g);
       for (const x of WEIRD_PERIODS) if (f.periods[x].ok) periods[x] = { ok: true, title: '' };
       if (f.record) row.record = f.record;
-      if (p) row.spark = f.periods[p].ok || p === 'MAX' ? sparkFor(f.hist, p) : [];
+      // A period longer than the gauge's past draws all of it (as its own screen does);
+      // one with too few readings in it (twice-a-year data at 3M) draws nothing.
+      if (p) {
+        const info = f.periods[p];
+        const shown = info.ok ? p : /^Too few readings in/.test(info.title) ? null : 'MAX';
+        row.spark = shown ? sparkFor(f.hist, shown) : [];
+        if (row.spark.length < 3) row.spark = [];
+        if (shown && shown !== p && f.hist?.d?.length) row.sparkFrom = f.hist.d[0];
+      }
       return row;
     });
     // ttl: DESK cards fetch this summary again when their gauge is due.
@@ -388,7 +396,11 @@ export function makeWeird({ fetchImpl = globalThis.fetch, now = Date.now, gauges
   // of visitors right after a deploy does not hit every source at once. A gauge still on
   // hold after a failure is left out. Returns a stop function.
   function startPrewarm({ gapMs = PREWARM_GAP_MS, tickMs = TICK_MS } = {}) {
-    const due = gauges.filter((g) => { const l = latest.get(g.id); return !held(g) && (!l || !isFresh(g, l)); });
+    // A value saved before its gauge built a history (value.hist) is fetched again too,
+    // so the period row and the record line do not wait a whole ttl after a deploy.
+    // (Every gauge whose load() builds one names a defaultPeriod.)
+    const noHist = (g, l) => Boolean(g.defaultPeriod && !g.snapshot && !l.value.hist);
+    const due = gauges.filter((g) => { const l = latest.get(g.id); return !held(g) && (!l || !isFresh(g, l) || noHist(g, l)); });
     due.sort((a, b) => Number(latest.has(a.id)) - Number(latest.has(b.id)));
     for (const g of due) queued.add(g.id);
     const timers = due.map((g, i) => {
