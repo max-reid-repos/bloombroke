@@ -96,6 +96,17 @@ export const SPECIES = {
   MAT: { short: 'MAT', kind: 'lobster' },
 };
 
+// FISHTANK TECH (or FISHTANK INDUS, its legend name): that sector lit from the start.
+// SECTORS' SWIM links here. -> { args, input } or null (plain FISHTANK).
+export function parse(words = []) {
+  for (const w of words) {
+    const u = String(w).toUpperCase();
+    const key = SPECIES[u] ? u : Object.keys(SPECIES).find((k) => SPECIES[k].short === u);
+    if (key) return { args: { sector: key }, input: `FISHTANK ${key}` };
+  }
+  return null;
+}
+
 export const SPECIES_NAME = {
   swordfish: 'swordfish', shark: 'shark', eel: 'electric eel', angler: 'anglerfish', dolphin: 'dolphin',
   jelly: 'jellyfish', clown: 'clownfish', goldfish: 'goldfish', puffer: 'pufferfish', crab: 'hermit crab',
@@ -1328,7 +1339,7 @@ export function render(el, cmd, ctx) {
   let stocks = null;
   let left = false;
   let names = {}; // sector key -> GICS name, from the data
-  let active = null; // the lit sector
+  let active = SPECIES[cmd.args?.sector] ? cmd.args.sector : null; // the lit sector (FISHTANK TECH lights one)
   let legKey = '';
   const sectorName = (k) => names[k] || SPECIES[k]?.short || k;
   // What holds the animation, besides data: kept here so a tank made later starts right.

@@ -40,6 +40,52 @@
 .pbar-v.down { fill: var(--down); }
 .pbar-level { fill: var(--accent); opacity: .75; }
 
+/* ---- SECTORS: rows that open to their S&P 100 members, and the map (screens/sectors.js) ---- */
+.sc-body { display: flex; flex-direction: column; }
+.sc-body > .toolbar { flex: 0 0 auto; }
+.sc-host { position: relative; min-height: 120px; }
+.sc-host > .loading, .sc-host > .panel-msg { padding: 8px 10px; }
+.sc-scroll { overflow-x: auto; }
+.sc-table { width: auto; min-width: 560px; }
+.sc-table .sc-sym { width: 84px; font-weight: 600; }
+.sc-table .sc-sym a { color: var(--accent); }
+.sc-caret { display: inline-block; width: 14px; color: var(--dim); font-weight: 400; }
+.sc-table .sc-name { width: 240px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
+.sc-table .sc-move { width: 76px; }
+.sc-table td.sc-bar { width: 96px; padding: 0 4px 0 12px; }
+.sc-table .sc-bar .pbar { width: 96px; }
+.sc-table .sc-x { width: 84px; font-size: 11px; color: var(--dim); }
+.sc-table .sc-x.up { color: var(--up); }
+.sc-table .sc-x.down { color: var(--down); }
+.sc-row { cursor: pointer; }
+.sc-table tr:focus, .sc-tree tr:focus { outline: 0; background: var(--panel-3); box-shadow: inset 2px 0 0 var(--accent); }
+.sc-tree .bb-in { padding-left: 24px; }
+.sc-tree .bb-in a { color: var(--text); }
+.sc-tree .sc-x { font-size: 11px; color: var(--dim); }
+.sc-tree .sc-who td { padding-left: 24px; }
+.sc-row.is-open { background: var(--panel-2); }
+.sc-mem .sc-sym { padding-left: 24px; font-weight: 400; }
+.sc-mem .sc-sym a { color: var(--text); }
+.sc-table tr.sc-who { border-bottom: 0; }
+.sc-who td { height: 20px; padding-left: 24px; font-size: 11px; color: var(--dim); }
+.sc-swim { margin-left: 12px; letter-spacing: .08em; }
+.sc-host.is-map { overflow: hidden; }
+.sc-map { outline: 0; }
+.sc-msec { cursor: pointer; }
+.sc-mcur { fill: none; stroke: var(--text-2); stroke-width: 1.5; stroke-dasharray: 3 3; pointer-events: none; }
+.sc-map:focus .sc-mcur { stroke: var(--accent); stroke-width: 2; stroke-dasharray: none; }
+@media (min-width: 1100px) {
+  html:not(.is-embed) .view > .panel > .panel-body.sc-body { overflow: hidden; scrollbar-gutter: auto; }
+  html:not(.is-embed) .sc-host { flex: 1 1 0; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
+  html:not(.is-embed) .sc-host.is-map { overflow: hidden; scrollbar-gutter: auto; }
+}
+@media (max-width: 639px) {
+  .sc-table { min-width: 0; width: 100%; }
+  .sc-table .sc-name { width: auto; max-width: 0; }
+  .sc-table td.sc-bar { display: none; }
+  .sc-table .sc-sym { width: 64px; }
+}
+
 /* ---- Multi-line charts ------------------------------------------------ */
 .ln { fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
 .ln.ln-0 { stroke: var(--ln-0); }
