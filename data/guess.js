@@ -22,15 +22,54 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SP100, SECTORS } from './sp100.js';
+import { SECTORS } from './sp100.js';
 import { nyToday } from '../public/ranges.js';
 import { createLimiter, clientIp } from '../pro/ratelimit.js';
 
 export const GUESS_EPOCH = '2026-09-27';
 export const TRIES = 6;
 export const SOURCE = 'CNBC daily closes';
-// GOOG and GOOGL are one company with one chart: only GOOGL is in the game.
-export const POOL = SP100.filter((m) => m.ticker !== 'GOOG').sort((a, b) => (a.ticker < b.ticker ? -1 : 1));
+// The game's own list, frozen: the S&P 100 of 21 Sep 2026 (data/sp100.js) without GOOG
+// (GOOG and GOOGL are one company with one chart). It is a copy, not a live filter, so a
+// later change to the index list never reshuffles the puzzles. Add or drop names here
+// only knowing that it changes every puzzle from then on.
+export const POOL = [
+  ['AAPL', 'Apple', 'TECH'], ['ABBV', 'AbbVie', 'HEALTH'], ['ABT', 'Abbott Laboratories', 'HEALTH'],
+  ['ACN', 'Accenture', 'TECH'], ['ADBE', 'Adobe', 'TECH'], ['AMAT', 'Applied Materials', 'TECH'],
+  ['AMD', 'Advanced Micro Devices', 'TECH'], ['AMGN', 'Amgen', 'HEALTH'], ['AMT', 'American Tower', 'RE'],
+  ['AMZN', 'Amazon', 'DISC'], ['ANET', 'Arista Networks', 'TECH'], ['AVGO', 'Broadcom', 'TECH'],
+  ['AXP', 'American Express', 'FIN'], ['BA', 'Boeing', 'IND'], ['BAC', 'Bank of America', 'FIN'],
+  ['BKNG', 'Booking Holdings', 'DISC'], ['BLK', 'BlackRock', 'FIN'], ['BMY', 'Bristol Myers Squibb', 'HEALTH'],
+  ['BNY', 'BNY Mellon', 'FIN'], ['BRK.B', 'Berkshire Hathaway B', 'FIN'], ['C', 'Citigroup', 'FIN'],
+  ['CAT', 'Caterpillar', 'IND'], ['CMCSA', 'Comcast', 'COMM'], ['COF', 'Capital One', 'FIN'],
+  ['COP', 'ConocoPhillips', 'ENERGY'], ['COST', 'Costco', 'STAPLES'], ['CRM', 'Salesforce', 'TECH'],
+  ['CSCO', 'Cisco', 'TECH'], ['CVS', 'CVS Health', 'HEALTH'], ['CVX', 'Chevron', 'ENERGY'],
+  ['DE', 'Deere', 'IND'], ['DELL', 'Dell Technologies', 'TECH'], ['DHR', 'Danaher', 'HEALTH'],
+  ['DIS', 'Walt Disney', 'COMM'], ['DUK', 'Duke Energy', 'UTIL'], ['EMR', 'Emerson Electric', 'IND'],
+  ['FDX', 'FedEx', 'IND'], ['GD', 'General Dynamics', 'IND'], ['GE', 'GE Aerospace', 'IND'],
+  ['GEV', 'GE Vernova', 'IND'], ['GILD', 'Gilead Sciences', 'HEALTH'], ['GM', 'General Motors', 'DISC'],
+  ['GOOGL', 'Alphabet A', 'COMM'], ['GS', 'Goldman Sachs', 'FIN'], ['HD', 'Home Depot', 'DISC'],
+  ['IBM', 'IBM', 'TECH'], ['INTC', 'Intel', 'TECH'], ['INTU', 'Intuit', 'TECH'],
+  ['ISRG', 'Intuitive Surgical', 'HEALTH'], ['JNJ', 'Johnson & Johnson', 'HEALTH'], ['JPM', 'JPMorgan Chase', 'FIN'],
+  ['KO', 'Coca-Cola', 'STAPLES'], ['LIN', 'Linde', 'MAT'], ['LLY', 'Eli Lilly', 'HEALTH'],
+  ['LMT', 'Lockheed Martin', 'IND'], ['LOW', "Lowe's", 'DISC'], ['LRCX', 'Lam Research', 'TECH'],
+  ['MA', 'Mastercard', 'FIN'], ['MCD', "McDonald's", 'DISC'], ['MDLZ', 'Mondelez', 'STAPLES'],
+  ['MDT', 'Medtronic', 'HEALTH'], ['META', 'Meta Platforms', 'COMM'], ['MMM', '3M', 'IND'],
+  ['MO', 'Altria', 'STAPLES'], ['MRK', 'Merck', 'HEALTH'], ['MS', 'Morgan Stanley', 'FIN'],
+  ['MSFT', 'Microsoft', 'TECH'], ['MU', 'Micron Technology', 'TECH'], ['NEE', 'NextEra Energy', 'UTIL'],
+  ['NFLX', 'Netflix', 'COMM'], ['NOW', 'ServiceNow', 'TECH'], ['NVDA', 'Nvidia', 'TECH'],
+  ['ORCL', 'Oracle', 'TECH'], ['PANW', 'Palo Alto Networks', 'TECH'], ['PEP', 'PepsiCo', 'STAPLES'],
+  ['PFE', 'Pfizer', 'HEALTH'], ['PG', 'Procter & Gamble', 'STAPLES'], ['PLTR', 'Palantir', 'TECH'],
+  ['PM', 'Philip Morris', 'STAPLES'], ['QCOM', 'Qualcomm', 'TECH'], ['RTX', 'RTX', 'IND'],
+  ['SBUX', 'Starbucks', 'DISC'], ['SCHW', 'Charles Schwab', 'FIN'], ['SNDK', 'Sandisk', 'TECH'],
+  ['SO', 'Southern Company', 'UTIL'], ['T', 'AT&T', 'COMM'], ['TMO', 'Thermo Fisher', 'HEALTH'],
+  ['TMUS', 'T-Mobile US', 'COMM'], ['TSLA', 'Tesla', 'DISC'], ['TXN', 'Texas Instruments', 'TECH'],
+  ['UBER', 'Uber', 'IND'], ['UNH', 'UnitedHealth', 'HEALTH'], ['UNP', 'Union Pacific', 'IND'],
+  ['UPS', 'UPS', 'IND'], ['USB', 'U.S. Bancorp', 'FIN'], ['V', 'Visa', 'FIN'],
+  ['VZ', 'Verizon', 'COMM'], ['WFC', 'Wells Fargo', 'FIN'], ['WMT', 'Walmart', 'STAPLES'],
+  ['XOM', 'ExxonMobil', 'ENERGY'],
+
+].map(([ticker, name, sector]) => ({ ticker, name, sector }));
 export const SECRET_FILE = fileURLToPath(new URL('./.cache/guess-secret', import.meta.url));
 
 const DAY = 86_400_000;
@@ -98,10 +137,22 @@ export function loadSecret({ env = process.env, file = SECRET_FILE, log = consol
   }
 }
 
-// Chart points -> the closes from days before `date` (New York days), oldest first.
-export function closesBefore(points, date) {
+// '2026-09-28' -> '2025-09-28': the first day of the puzzle's one-year window.
+export function yearBefore(date) {
+  return `${Number(date.slice(0, 4)) - 1}${date.slice(4)}`;
+}
+
+// Chart points -> the closes on New York days from `from` (the puzzle date a year back)
+// up to the day before `date`, oldest first. Both ends come from the puzzle date, so every
+// fetch that day (the answer and each guess) covers the same window, whatever day the
+// source's own 1Y window starts on.
+export function closesBefore(points, date, from = yearBefore(date)) {
   return (Array.isArray(points) ? points : [])
-    .filter((p) => Number.isFinite(p?.t) && Number.isFinite(p?.v) && p.v > 0 && nyToday(new Date(p.t)) < date)
+    .filter((p) => {
+      if (!Number.isFinite(p?.t) || !Number.isFinite(p?.v) || !(p.v > 0)) return false;
+      const d = nyToday(new Date(p.t));
+      return d >= from && d < date;
+    })
     .sort((a, b) => a.t - b.t);
 }
 
@@ -243,7 +294,7 @@ export function makeGuess({ getChart, getCaps, secret, now = () => new Date(), p
     async check(rawN, rawGuess) {
       const t = today();
       const n = readN(rawN);
-      if (n === null) throw new GuessError(400, 'usage', 'Say which puzzle: n=1.');
+      if (n === null || n > t.n) throw new GuessError(400, 'usage', `Say which puzzle: n=${t.n} is today's.`);
       if (n !== t.n) throw new GuessError(409, 'old_puzzle', `A new puzzle is out: GUESS #${t.n}. Reload to play it.`);
       const g = findMember(rawGuess, pool);
       if (!g) throw new GuessError(400, 'unknown', 'Pick a stock from the S&P 100 list.');

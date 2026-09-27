@@ -6,7 +6,7 @@ import path from 'node:path';
 import express from 'express';
 import {
   POOL, GUESS_EPOCH, puzzleNumber, puzzleDate, cycleOrder, pickAnswer, loadSecret,
-  closesBefore, normalise, oneYearMove, hintCells, findMember, fmtMove, fmtCap, mountGuess,
+  closesBefore, yearBefore, normalise, oneYearMove, hintCells, findMember, fmtMove, fmtCap, mountGuess,
 } from '../data/guess.js';
 import {
   shareText, shareOnX, guessStats, readState, recordResult, msToNextPuzzle, fmtCountdown,
@@ -55,6 +55,13 @@ test('GUESS pick: stable per date and secret, no repeats inside a cycle', () => 
   }
 });
 
+test('GUESS pick: the pool is frozen, so the answers never reshuffle', () => {
+  assert.deepEqual(Array.from({ length: 10 }, (_, i) => pickAnswer(i + 1, SECRET).ticker),
+    ['GEV', 'COST', 'ACN', 'ORCL', 'XOM', 'SBUX', 'ABT', 'LRCX', 'CVS', 'PANW']);
+  const src = readFileSync('data/guess.js', 'utf8');
+  assert.doesNotMatch(src, /\bSP100\b/, 'a copy of the list, not a filter over the live one');
+});
+
 test('GUESS secret: env first, else a file made once and kept', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'bb-guess-'));
   const file = path.join(dir, 'sub', 'guess-secret');
@@ -84,6 +91,18 @@ test('GUESS chart: closes before today only, as % from the first close', () => {
   assert.equal(Math.round(oneYearMove(c) * 100) / 100, -10);
   assert.equal(oneYearMove(c.slice(0, 1)), null);
   assert.deepEqual(normalise([]), []);
+});
+
+test('GUESS chart: the window starts one year before the puzzle date, whatever the source sent', () => {
+  const day = (d) => Date.parse(`${d}T04:00:00Z`);
+  assert.equal(yearBefore('2026-09-28'), '2025-09-28');
+  // Two fetches that day whose 1Y windows start on different days (a UTC date vs a New
+  // York date) give the same closes.
+  const all = ['2025-09-26', '2025-09-27', '2025-09-28', '2025-09-29', '2026-09-25', '2026-09-28'].map((d, i) => ({ t: day(d), v: 100 + i }));
+  const a = closesBefore(all, '2026-09-28');
+  const b = closesBefore(all.slice(2), '2026-09-28');
+  assert.deepEqual(a, b);
+  assert.deepEqual(a.map((p) => p.v), [102, 103, 104], 'from 2025-09-28 up to the day before');
 });
 
 test('GUESS hints: sector, 1Y move, size and first letter, each saying where the answer is', () => {
@@ -140,9 +159,10 @@ test('GUESS share: header, one row of squares per guess, the link', () => {
   const rows = [row('miss', 'near', 'miss', 'hit'), row('hit', 'hit', 'hit', 'hit')];
   const text = shareText(7, rows, true);
   const [G, Y, B] = [SQUARES.hit, SQUARES.near, SQUARES.miss];
-  assert.equal(text, `BLOOMBROKE GUESS #7  2/6\n${B}${Y}${B}${G}\n${G}${G}${G}${G}\nbloombroke.com/?c=GUESS`);
+  assert.deepEqual([G, Y, B], ['\u{1F7E9}', '\u{1F7E6}', '\u2B1B'], 'green match, blue near, black miss; never yellow');
+  assert.equal(text, `BLOOMBROKE GUESS #7 2/6\n${B}${Y}${B}${G}\n${G}${G}${G}${G}\nbloombroke.com/?c=GUESS`);
   const lost = shareText(8, Array.from({ length: 6 }, () => row('miss', 'none', 'miss', 'miss')), false);
-  assert.match(lost, /^BLOOMBROKE GUESS #8 {2}X\/6\n/);
+  assert.match(lost, /^BLOOMBROKE GUESS #8 X\/6\n/);
   assert.equal(lost.split('\n').length, 8);
   assert.doesNotMatch(lost, /undefined/);
   const x = new URL(shareOnX(text));
@@ -286,6 +306,8 @@ test('GUESS endpoints: today, check, reveal', async () => {
     assert.equal((await get('/api/guess/check?n=1&g=AAPL')).status, 409);
     assert.equal((await get('/api/guess/check?n=2&g=ZZZZ')).status, 400);
     assert.equal((await get('/api/guess/check?g=AAPL')).status, 400);
+    const ahead = await get('/api/guess/check?n=3&g=AAPL');
+    assert.deepEqual([ahead.status, ahead.body.error], [400, 'usage'], 'a future puzzle is a usage error, not a new puzzle');
 
     const rev = await get('/api/guess/reveal?n=2');
     assert.deepEqual([rev.body.ticker, rev.body.name], [answer.ticker, answer.name]);

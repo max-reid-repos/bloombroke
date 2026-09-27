@@ -8,15 +8,16 @@ import { esc, q, panel, metaNote, LOADING } from './markets.js';
 export const STORE_KEY = 'bb.guess';
 export const TRIES = 6;
 export const SHARE_URL = 'bloombroke.com/?c=GUESS';
-// Coloured squares only in the share text: they are how a result reads on X.
-export const SQUARES = { hit: '\u{1F7E9}', near: '\u{1F7E8}', miss: '\u2B1B', none: '\u2B1B' };
+// Coloured squares only in the share text: they are how a result reads on X. Green a
+// match, blue (the ice blue of the site, never yellow) near, black a miss.
+export const SQUARES = { hit: '\u{1F7E9}', near: '\u{1F7E6}', miss: '\u2B1B', none: '\u2B1B' };
 const KEEP_RESULTS = 400;
 
 // rows: [{ cells: [{ grade }] }] -> the text people paste.
 export function shareText(n, rows, solved) {
   const score = solved ? rows.length : 'X';
   const lines = rows.map((r) => (r.cells || []).map((c) => SQUARES[c.grade] || SQUARES.none).join(''));
-  return [`BLOOMBROKE GUESS #${n}  ${score}/${TRIES}`, ...lines, SHARE_URL].join('\n');
+  return [`BLOOMBROKE GUESS #${n} ${score}/${TRIES}`, ...lines, SHARE_URL].join('\n');
 }
 
 export function shareOnX(text) {
@@ -385,7 +386,7 @@ export function render(el, cmd, ctx) {
     ctx.updated(new Date().toISOString(), false);
     ctx.status('');
     if (isDone()) {
-      if (!state.results[game.n]) state = recordResult(state, game.n, game.rows.length, solved());
+      if (!state.results[game.n]) { state = recordResult(state, game.n, game.rows.length, solved()); save(); }
       paint();
       await reveal();
       if (!ctx.signal.aborted) paint();
