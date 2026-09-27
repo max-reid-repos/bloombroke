@@ -1,0 +1,4 @@
+# IPO IT extra word list (lib/og-nosuch.js). The obscenity library (MIT) already refuses
+# profanity and slurs; add any other word the certificate should never show here.
+# One word per line, A-Z. A '*' in front blocks the letters anywhere inside a word.
+# '#' starts a comment.

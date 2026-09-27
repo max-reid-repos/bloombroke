@@ -275,7 +275,7 @@ test('free for everyone: no Pro gate, the FREE list says so', async () => {
   // The server never gates: a free visitor (no key) gets the result.
   const d = await getWhatif(['MY', '649', 'AAPL', '2014-09-19'], { quoteImpl: quote(341.07), dailyImpl: bakedAapl, now: NOW });
   assert.equal(d.mine, true);
-  assert.match(d.source, /CNBC daily closes, split-adjusted, price only/);
+  assert.match(d.source, /Daily closes from a market data provider, split-adjusted, price only/);
   // The screen plan: a result, the words sent written the canonical way.
   const cat = { products: catalog.products.map((p) => ({ ...p, kind: 'once' })), recurring: catalog.recurring.map((r) => ({ ...r, kind: 'monthly' })) };
   const plan = planWhatif(['IPHONE6', 'MY', '$1,200', 'AAPL', '2015'], cat);

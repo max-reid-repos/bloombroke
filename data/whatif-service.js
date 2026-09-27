@@ -17,7 +17,7 @@ export const prices = load('whatif-prices.json');
 // CPI-U (the REPLAY jar) and the BLS average prices behind the VICES items.
 export const bls = load('bls-monthly.json');
 
-export const SOURCE = 'CNBC, cross-checked with Yahoo Finance';
+export const SOURCE = 'A market data provider, cross-checked with a second provider';
 export const METHOD = 'Split-adjusted close on the purchase date, or the last trading day before it. Recurring items buy once a month, on the first trading day. Beer, soda and chips use the BLS US average price of each month (a month BLS skipped keeps the month before). Price return only: dividends and spin-offs are not included. Today\'s price is live and may be delayed.';
 
 async function priceNow(ticker, quoteImpl) {
@@ -34,7 +34,7 @@ async function quotesFor(tickers, quoteImpl) {
   return Object.fromEntries(got);
 }
 
-export const RISK_BASIS = 'Based on month-end closes from CNBC, from the first purchase to today.';
+export const RISK_BASIS = 'Based on month-end closes from a market data provider, from the first purchase to today.';
 const RISK_WAIT_MS = 6000;
 
 // Monthly bars for each ticker, or null when the chart source is slow or down.

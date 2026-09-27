@@ -16,8 +16,9 @@ test('CRYPTO credits CoinGecko with a link', () => {
   assert.match(s, /Powered by <a href="https:\/\/www\.coingecko\.com\/"[^>]*>CoinGecko<\/a>/);
 });
 
-test('FX: ECB via Frankfurter, daily, cross rates marked calculated', () => {
-  assert.match(FX_SOURCE, /^Source: ECB statistics via Frankfurter\./);
+test('FX: ECB reference rates (credit the ECB requires), daily, cross rates marked calculated', () => {
+  assert.match(FX_SOURCE, /^Source: ECB reference rates,/);
+  assert.doesNotMatch(FX_SOURCE, /Frankfurter/, 'no vendor name on screen');
   assert.match(FX_SOURCE, /DAILY/);
   assert.equal(isCalculated('USD', 'THB'), true);
   assert.equal(isCalculated('EUR', 'USD'), false);
@@ -41,7 +42,7 @@ test('news: headline, publisher and link only, credited to the publisher', () =>
   assert.deepEqual(Object.keys(TAB_SOURCES), NEWS_TABS);
   assert.match(src('screens/news.js'), /meta: esc\(TAB_SOURCES\[tab\]\)/);
   assert.match(src('screens/tickernews.js'), /meta: TICKER_SOURCES/);
-  assert.equal(TICKER_SOURCES, 'NASDAQ · SA · SEC');
+  assert.equal(TICKER_SOURCES, 'NEWS PUBLISHERS · SEC');
   for (const f of ['screens/news.js', 'screens/tickernews.js']) assert.doesNotMatch(src(f), /class="footnote"/, f);
   assert.match(disclaimer, /Each headline links to the original publisher/);
   assert.match(disclaimer, /Headlines: CNBC, MarketWatch, Yahoo Finance, Nasdaq, Seeking Alpha, the Federal Reserve, BLS, SEC EDGAR, GlobeNewswire, PR Newswire, Business Wire and Reddit \(r\/wallstreetbets\)\./);

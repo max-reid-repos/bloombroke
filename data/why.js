@@ -109,7 +109,7 @@ export function whatCameOut(move, { filings = [], earnings = [], headlines = [] 
   const results = fil.some((f) => f.items?.includes('2.02'));
   if (!results) {
     const e = earnings.find((x) => x?.date && inDays(x.date));
-    if (e) out.push({ kind: 'EARNINGS', time: null, date: e.date, text: e.est ? 'Earnings date (estimated)' : 'Earnings date', url: e.url || null, source: e.url ? 'SEC EDGAR' : 'CNBC' });
+    if (e) out.push({ kind: 'EARNINGS', time: null, date: e.date, text: e.est ? 'Earnings date (estimated)' : 'Earnings date', url: e.url || null, source: e.url ? 'SEC EDGAR' : 'market data provider' });
   }
   const news = headlines.map((h) => ({ ...h, t: Date.parse(h.time) })).filter((h) => Number.isFinite(h.t) && inWindow(h.t))
     .sort((x, y) => x.t - y.t).slice(0, MAX_NEWS);
@@ -166,7 +166,7 @@ export function makeWhy({
       logSince: oldest,
       // The last daily close in the series (its day, New York): how old the prices are.
       asOf: chart.points?.length ? nyDay(chart.points[chart.points.length - 1].t) : null,
-      sources: ['CNBC daily bars', 'SEC EDGAR', ...(headlines.length ? ['Bloombroke news log'] : [])],
+      sources: ['Daily closes from a market data provider', 'SEC EDGAR', ...(headlines.length ? ['Bloombroke news log'] : [])],
       stale: Boolean(chart.stale || (fil.ok && fil.v.stale)),
       updated: new Date(t).toISOString(),
     };

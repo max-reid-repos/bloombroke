@@ -29,7 +29,7 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
     const se = stripeEnv(env);
     if (se.error) log.error('[pro]', se.error);
     const stripe = se.secretKey ? createStripe(se.secretKey) : null;
-    const { ready } = mountPro(app, {
+    const { ready, proActive } = mountPro(app, {
       store,
       stripe,
       config: {
@@ -71,7 +71,7 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
     purge();
     setInterval(purge, 24 * 60 * 60 * 1000).unref();
     log.log(`[pro] ${se.mode} mode, ${ready ? 'ready' : 'not configured: checkout is closed'}`);
-    return { db, store, feedback, ready, mode: se.mode };
+    return { db, store, feedback, ready, mode: se.mode, proActive };
   } catch (err) {
     log.error('[pro] could not start:', err.message);
     return null;

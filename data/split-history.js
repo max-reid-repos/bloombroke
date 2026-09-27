@@ -17,7 +17,7 @@ import { createCache } from './cache.js';
 const DAY = 24 * 60 * 60_000;
 const YAHOO_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
-export const SPLIT_SOURCE = 'Yahoo Finance split history';
+export const SPLIT_SOURCE = 'split history from a market data provider';
 
 // The WHATIF copy covers 2007-01-01 to its build day. Used only while it is under 60
 // days old: a split after the build would be missing from it.

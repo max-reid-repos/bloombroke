@@ -29,7 +29,7 @@ export const LABEL = 'Implied by futures prices. Not a forecast by Bloombroke.';
 
 const METHOD = `<details class="fp-method"><summary>HOW THIS IS WORKED OUT</summary>
   <p>Each 30-day Fed funds futures contract (CBOT) settles on 100 minus the average effective Fed funds rate over its calendar month. So 100 minus today's price is the average rate traders are paying for that month. Example: a price of 96.105 implies 3.895%.</p>
-  <p>The column "vs effective" is that implied rate minus today's effective Fed funds rate from the New York Fed, in basis points (1 bp = 0.01%). The change column is the move in the implied rate today: the price change with the sign flipped.</p>
+  <p>The column "vs effective" is that implied rate minus today's effective Fed funds rate (EFFR), in basis points (1 bp = 0.01%). The change column is the move in the implied rate today: the price change with the sign flipped.</p>
   <p>This screen shows prices only. It does not turn them into odds for each Fed meeting, and it is not a forecast.</p>
 </details>`;
 

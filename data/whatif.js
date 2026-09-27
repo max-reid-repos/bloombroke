@@ -235,7 +235,7 @@ export function resolveTokens(tokens, catalog, now = new Date()) {
 export function mineHabit(item, company) {
   return { id: item.id, name: mineLabel(item), company, ticker: item.ticker, per: item.per, prices: [{ from: item.start, usd: item.amount }] };
 }
-const MINE_NOTE = 'Your own purchase: CNBC daily closes, split-adjusted, price only (not cross-checked with a second source).';
+const MINE_NOTE = 'Your own purchase: daily closes from a market data provider, split-adjusted, price only (not cross-checked with a second source).';
 // Words the certificate needs (short name, plural, doodle), all generated.
 export function mineMeta(item) {
   return {

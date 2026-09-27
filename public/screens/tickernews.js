@@ -8,7 +8,7 @@ import { errorHtml } from './profile.js';
 const TICKER = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 
 // The sources, in the panel's title strip.
-export const TICKER_SOURCES = 'NASDAQ · SA · SEC';
+export const TICKER_SOURCES = 'NEWS PUBLISHERS · SEC';
 
 // NEWS <ticker>. Returns null for plain NEWS so the market-wide screen handles it.
 export function parse(args) {

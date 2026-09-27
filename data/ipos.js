@@ -8,7 +8,7 @@ import { CompanyDataError, HOUR_MS, nasdaqData, cachedOrThrow, text, symbolOf } 
 
 export { CompanyDataError as IposError };
 
-export const IPOS_SOURCE = 'Nasdaq IPO calendar (EDGAR Online)';
+export const IPOS_SOURCE = 'Exchange calendars';
 
 // "2026-09" plus n months.
 export function monthOf(dayStr, n = 0) {

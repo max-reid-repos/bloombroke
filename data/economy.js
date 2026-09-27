@@ -140,7 +140,7 @@ export function makeEconomy({ fetchImpl = globalThis.fetch, cache = createCache(
       series: rows,
       stale: rows.some((r) => r.stale || r.missing),
       updated: new Date(Math.min(...fetched)).toISOString(),
-      source: 'FRED, Federal Reserve Bank of St. Louis',
+      source: 'Public web data (US statistics)',
     };
   }
 
@@ -159,7 +159,7 @@ export function makeEconomy({ fetchImpl = globalThis.fetch, cache = createCache(
       first: value[0]?.date || null,
       stale,
       updated: new Date(fetchedAt).toISOString(),
-      source: 'FRED, Federal Reserve Bank of St. Louis',
+      source: 'Public web data (US statistics)',
     };
   }
 

@@ -2,13 +2,14 @@
 // - By exchange (NYSE, Nasdaq, NYSE American): the Nasdaq stock screener, one download per
 //   exchange (no key; it wants browser headers). The screener carries the last full
 //   session's closing prices, and says which day that is.
-// - S&P 100 by sector: the live S&P 100 batch that feeds MOVERS and HEATMAP.
+// - S&P 100 by sector: the live S&P 100 batch that feeds MOVERS and HEATMAP, every member
+//   (a missing market cap does not drop one), the same list SECTORS opens to.
 // The screener has no 52-week high or low columns, so there are no new highs or lows here.
 
 import { createCache } from './cache.js';
 import { NASDAQ_HEADERS } from './lists.js';
 import { num, parseAsOf } from './screen.js';
-import { getHeatmap } from './sp100.js';
+import { getFishtank, SP100_AS_OF } from './sp100.js';
 
 const TTL = 30 * 60_000;
 const URL = 'https://api.nasdaq.com/api/screener/stocks?tableonly=true&download=true&exchange=';
@@ -52,7 +53,10 @@ export function sectorBreadth(stocks, names = {}) {
   }).sort((a, b) => b.upPct - a.upPct || b.total - a.total);
 }
 
-export function makeBreadth({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: 60_000 }), heatmap = getHeatmap } = {}) {
+// Every member with its move, cap or not (HEATMAP's list drops members without a cap).
+const allMembers = async () => ({ ...(await getFishtank()), asOfList: SP100_AS_OF });
+
+export function makeBreadth({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: 60_000 }), heatmap = allMembers } = {}) {
   async function get(url) {
     const res = await fetchImpl(url, { headers: NASDAQ_HEADERS, signal: AbortSignal.timeout(20_000) });
     if (!res.ok) throw new Error(`screener HTTP ${res.status}`);

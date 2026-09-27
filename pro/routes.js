@@ -114,24 +114,38 @@ export function mountPro(app, {
   const pro = express.Router();
   pro.use(noStore);
 
-  // X-Pro-Key -> { lic, access } or sends the error and returns null.
-  function auth(req, res, { requireActive = false } = {}) {
+  // X-Pro-Key -> { lic, status }, { bad: true } (no such key: counts against the
+  // wrong-key limit) or { limited } (that limit is hit).
+  function keyCheck(req) {
     const ip = clientIp(req);
-    if (limits.guess.blocked(ip)) { limited(res, limits.guess.hit(ip)); return null; }
+    if (limits.guess.blocked(ip)) return { limited: limits.guess.hit(ip) };
     const key = normalizeKey(req.get(KEY_HEADER) || '');
     const lic = key ? store.findByKey(key) : null;
     if (!lic) {
       limits.guess.hit(ip);
+      return { bad: true };
+    }
+    return { lic, status: publicStatus(lic, now(), mode) };
+  }
+
+  // X-Pro-Key -> { lic, access } or sends the error and returns null.
+  function auth(req, res, { requireActive = false } = {}) {
+    const k = keyCheck(req);
+    if (k.limited) { limited(res, k.limited); return null; }
+    if (k.bad) {
       fail(res, 401, 'bad_key', 'That key is not valid. Check it and try LOGIN again.');
       return null;
     }
-    const status = publicStatus(lic, now(), mode);
-    if (requireActive && !status.active) {
-      fail(res, 402, 'not_active', 'Pro is not active on this key.', { status });
+    if (requireActive && !k.status.active) {
+      fail(res, 402, 'not_active', 'Pro is not active on this key.', { status: k.status });
       return null;
     }
-    return { lic, status };
+    return { lic: k.lic, status: k.status };
   }
+
+  // For routes outside /api/pro (STATUS): does this request carry an active Pro key?
+  // The same check as auth(), true or false. No key at all is simply false.
+  const proActive = (req) => (req.get(KEY_HEADER) ? Boolean(keyCheck(req).status?.active) : false);
 
   // ---- config: what the PRO screen needs to know (test mode shows a demo banner) ----
   pro.get('/config', (req, res) => {
@@ -359,5 +373,5 @@ export function mountPro(app, {
   });
 
   app.use('/api/pro', pro);
-  return { ready };
+  return { ready, proActive };
 }

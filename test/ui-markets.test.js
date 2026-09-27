@@ -208,19 +208,16 @@ test('IPOS: dates in the table format', async () => {
   assert.match(html, /<td class="co-date">SEP 24<\/td>/);
 });
 
-test('SECTORS: the bar sits in the TODAY cell; leaders by period', async () => {
-  const { sectorsTable, sectorLeaders } = await import('../public/screens/sectors.js');
-  const rows = [
-    { id: 'XLK', name: 'Technology', last: 1, changePct: 1, m1: 2, ytd: 30 },
-    { id: 'XLE', name: 'Energy', last: 1, changePct: -1, m1: -2, ytd: 40 },
-  ];
-  const html = sectorsTable(rows);
-  assert.equal((html.match(/<th scope="col"/g) || []).length, 5, 'every column has a header');
-  assert.match(html, /today-cell[^>]*><span class="tbar"><svg class="pbar"/);
-  assert.match(html, /data-cmd="XLK" tabindex="0"/);
-  const lead = sectorLeaders(rows);
-  assert.equal(lead[0].best.id, 'XLK');
-  assert.equal(lead[2].best.id, 'XLE');
+test('SECTORS: one line a sector, the bar in its own cell, the ETF linked by symbol', async () => {
+  const { tableHtml, sectorModel } = await import('../public/screens/sectors.js');
+  const model = sectorModel({ sectors: [
+    { id: 'XLK', key: 'TECH', name: 'Technology', move: 1 },
+    { id: 'XLE', key: 'ENERGY', name: 'Energy', move: -1 },
+  ], members: [] });
+  const html = tableHtml(model);
+  assert.equal((html.match(/<th scope="col"/g) || []).length, 5, 'every column has a header (for screen readers)');
+  assert.match(html, /sc-bar"><svg class="pbar"/);
+  assert.match(html, /data-cmd="XLK" tabindex="-1">XLK</);
 });
 
 test('HOME markets: four groups of ten, change column only, sub-heading bars', () => {

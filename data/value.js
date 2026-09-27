@@ -14,7 +14,7 @@ import { CompanyDataError, cachedOrThrow, tickerOrThrow, text } from './company-
 export { CompanyDataError as ValueError };
 
 const TTL = 15 * 60_000;
-export const VALUE_SOURCE = 'CNBC quote service';
+export const VALUE_SOURCE = 'Market data provider';
 
 // "09/22/26" -> "2026-09-22"
 export function cnbcDay(s) {

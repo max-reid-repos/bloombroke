@@ -95,7 +95,7 @@ export function makeCrypto({ fetchImpl = globalThis.fetch, cache = createCache()
     });
     const ids = await stableIds();
     const { coins, excluded } = excludeCoins(value, ids);
-    return { coins, excluded, note: EXCLUDE_NOTE, stableSource: ids ? 'CoinGecko stablecoins category' : 'hand list', stale, updated: iso(fetchedAt) };
+    return { coins, excluded, note: EXCLUDE_NOTE, stableSource: ids ? 'provider stablecoins category' : 'hand list', stale, updated: iso(fetchedAt) };
   }
   return { getCrypto };
 }

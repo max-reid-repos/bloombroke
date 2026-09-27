@@ -66,7 +66,7 @@ export function freshnessParts(items) {
     else dly.push(`SOME ${c}`);
   }
   const parts = [];
-  if (rt.length) parts.push(`${rt.join(', ')} REAL TIME${rt.includes('US STOCKS') ? ' (NASDAQ LAST SALE)' : ''}`);
+  if (rt.length) parts.push(`${rt.join(', ')} REAL TIME`);
   if (dly.length) parts.push(`${dly.join(', ')} DELAYED`);
   return parts;
 }
@@ -89,7 +89,7 @@ export function lastTradeLine(d, now = new Date()) {
     when = `LAST TRADE ${ymd(day) === ymd(now) ? '' : `${ymd(day)} `}${nyTime(asOf)} ET`;
   }
   let fresh = '';
-  if (d?.realTime === true) fresh = (d.kind === 'stock' || d.kind === 'etf') ? 'REAL TIME (NASDAQ LAST SALE)' : 'REAL TIME';
+  if (d?.realTime === true) fresh = 'REAL TIME';
   else if (d?.realTime === false) fresh = d.kind === 'future' ? 'DELAYED ABOUT 10 MIN' : 'DELAYED';
   return esc([when, fresh].filter(Boolean).join(' · '));
 }

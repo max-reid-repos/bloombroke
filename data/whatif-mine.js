@@ -16,7 +16,7 @@ import { MAX_TICKERS } from '../public/whatif-mine.js';
 import { WhatifError } from './whatif.js';
 
 const BARS_URL = 'https://ts-api.cnbc.com/harmony/app/bars';
-export const MINE_SOURCE = 'CNBC daily closes, split-adjusted, price only';
+export const MINE_SOURCE = 'Daily closes from a market data provider, split-adjusted, price only';
 // The daily closes kept in memory, all tickers together: about 12 bytes a trading day,
 // so a ticker with 45 years of history is about 140 KB.
 export const DAILY_CACHE_BYTES = 16 * 1024 * 1024;

@@ -28,7 +28,7 @@ import { createLimiter, clientIp } from '../pro/ratelimit.js';
 
 export const GUESS_EPOCH = '2026-09-27';
 export const TRIES = 6;
-export const SOURCE = 'CNBC daily closes';
+export const SOURCE = 'Daily closes from a market data provider';
 // The game's own list, frozen: the S&P 100 of 21 Sep 2026 (data/sp100.js) without GOOG
 // (GOOG and GOOGL are one company with one chart). It is a copy, not a live filter, so a
 // later change to the index list never reshuffles the puzzles. Add or drop names here

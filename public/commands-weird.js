@@ -21,6 +21,9 @@ export const WEIRD_SCREENS = { ...Object.fromEntries(WEIRD_COMMANDS.map((n) => [
 // ?c=CANAL+5Y for SHIPS 5y. args.period: '5Y', or left out.
 export function matchWeird(head, rest = []) {
   if (!WEIRD_COMMANDS.includes(head)) return null;
+  // FISHTANK TECH: a screen of its own may take words (parse); they go in the URL.
+  const own = OWN_SCREENS[head]?.parse?.(rest);
+  if (own?.input) return { name: head, args: own.args, input: own.input, url: own.input };
   const period = OWN_SCREENS[head] ? null : rest.map(periodWord).find(Boolean) || null;
   const input = period ? `${head} ${period}` : head;
   return { name: head, args: period ? { period } : {}, input, url: input };

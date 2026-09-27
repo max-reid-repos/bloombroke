@@ -61,7 +61,7 @@ export function sparkSvg(values, w = 96, h = 18) {
 const FREQ = { Q: 'Quarterly', M: 'Monthly', W: 'Weekly', D: 'Daily' };
 
 function dashboard(el, ctx) {
-  el.innerHTML = panel('1', 'US economy', LOADING, { cls: 'panel-solo', metaId: 'ec-meta', meta: 'FRED' });
+  el.innerHTML = panel('1', 'US economy', LOADING, { cls: 'panel-solo', metaId: 'ec-meta', meta: 'US DATA' });
   const body = el.querySelector('.panel-body');
   ctx.fetchJSON('/api/economy', { signal: ctx.signal }).then((d) => {
     body.innerHTML = `<table class="grid-table ec-table">
@@ -69,7 +69,7 @@ function dashboard(el, ctx) {
       <tbody>${d.series.map((s) => {
         const cmd = `ECONOMY ${s.id}`;
         // The FRED id is a tooltip on the row, not a column.
-        return `<tr${rowAttrs(cmd)} title="FRED series ${esc(s.fred)}">
+        return `<tr${rowAttrs(cmd)} title="Series ${esc(s.fred)}">
           ${nameCell(s.name, cmd)}
           <td class="num last">${esc(fmtValue(s.value, s.unit))}</td>
           <td class="ec-per dim">${esc(periodLabel(s.date, s.freq))}</td>
@@ -92,7 +92,7 @@ function series(el, args, ctx) {
   const range = args.range || '10Y';
   const tabs = rangePills(range, (r) => `ECONOMY ${args.id} ${r}`, ECONOMY_RANGES);
   el.innerHTML = `<div class="stack">
-    ${panel('1', args.id, `<div class="ec-head" id="ec-head">${LOADING}</div><div class="ch-bar ec-bar">${tabs}<a class="ec-back code" href="${esc(q('ECONOMY'))}" data-cmd="ECONOMY">ALL INDICATORS</a></div><div class="chart-host" id="ec-chart"></div>`, { metaId: 'ec-meta', bodyCls: 'flush', meta: 'FRED' })}
+    ${panel('1', args.id, `<div class="ec-head" id="ec-head">${LOADING}</div><div class="ch-bar ec-bar">${tabs}<a class="ec-back code" href="${esc(q('ECONOMY'))}" data-cmd="ECONOMY">ALL INDICATORS</a></div><div class="chart-host" id="ec-chart"></div>`, { metaId: 'ec-meta', bodyCls: 'flush', meta: 'US DATA' })}
     ${panel('2', 'Recent readings', LOADING, { metaId: 'ec-t-meta' })}
   </div>`;
   const head = el.querySelector('#ec-head');
@@ -108,7 +108,7 @@ function series(el, args, ctx) {
       <span class="oc-kv"><span class="dim">${esc(periodLabel(d.date, d.freq))}</span></span>
       <span class="oc-kv"><span class="dim">PREVIOUS</span> <span class="num">${esc(fmtValue(d.prev, d.unit))}</span> <span class="dim">${esc(periodLabel(d.prevDate, d.freq))}</span></span>
       <span class="oc-kv dim">${esc(d.note)}</span>`;
-    const base = `FRED ${esc(d.fred)} · ${esc((FREQ[d.freq] || '').toUpperCase())}`;
+    const base = `SERIES ${esc(d.fred)} · ${esc((FREQ[d.freq] || '').toUpperCase())}`;
     meta.innerHTML = base;
     const pts = d.points.map((p) => ({ x: Date.parse(`${p.date}T00:00:00Z`), y: d.unit === 'bp' ? p.value * 100 : p.value }));
     const fmtY = (v) => fmtValue(d.unit === 'bp' ? v / 100 : v, d.unit);

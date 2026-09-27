@@ -72,18 +72,18 @@ test('freshness: RT and DLY tags, and an honest status line', () => {
   assert.deepEqual(freshnessParts([
     { kind: 'stock', realTime: true },
     { kind: 'future', realTime: false },
-  ]), ['US STOCKS REAL TIME (NASDAQ LAST SALE)', 'FUTURES DELAYED']);
+  ]), ['US STOCKS REAL TIME', 'FUTURES DELAYED']);
   assert.deepEqual(freshnessParts([
     { kind: 'index', us: true, realTime: true },
     { kind: 'index', us: true, realTime: false },
     { kind: 'fx', realTime: true },
   ]), ['FX REAL TIME', 'SOME US INDEXES DELAYED'], 'a mixed bucket is never called real time');
   const line = statusLine('2026-09-25T14:09:50Z', false, [{ kind: 'stock', realTime: true }, { kind: 'future', realTime: false }]);
-  assert.equal(line, 'UPDATED 10:09:50 ET · US STOCKS REAL TIME (NASDAQ LAST SALE) · FUTURES DELAYED');
+  assert.equal(line, 'UPDATED 10:09:50 ET · US STOCKS REAL TIME · FUTURES DELAYED');
   assert.match(statusLine('2026-09-25T14:09:50Z', true, []), /^LAST KNOWN DATA 10:09:50 ET$/);
   const now = new Date('2026-09-25T15:00:00Z');
   assert.equal(lastTradeLine({ asOf: '2026-09-25T10:04:44.000-0400', realTime: false, kind: 'future' }, now), 'LAST TRADE 10:04:44 ET · DELAYED ABOUT 10 MIN');
-  assert.equal(lastTradeLine({ asOf: '2026-09-24T15:59:59.000-0400', realTime: true, kind: 'stock' }, now), 'LAST TRADE 2026-09-24 15:59:59 ET · REAL TIME (NASDAQ LAST SALE)');
+  assert.equal(lastTradeLine({ asOf: '2026-09-24T15:59:59.000-0400', realTime: true, kind: 'stock' }, now), 'LAST TRADE 2026-09-24 15:59:59 ET · REAL TIME');
   assert.equal(lastTradeLine({ asOf: '2026-09-24', realTime: false, kind: 'index' }, now), 'CLOSE 2026-09-24 · DELAYED');
 });
 

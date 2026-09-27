@@ -151,7 +151,7 @@ export function render(el, cmd, ctx) {
     const m = d.mortgage;
     if (!m || !Number.isFinite(m.rate30)) throw new Error('no mortgage rate');
     const day = new Date(`${m.date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).toUpperCase();
-    show(el, ctx, a, m.rate30, `Average 30-year fixed mortgage rate, Freddie Mac, week of ${day}`);
+    show(el, ctx, a, m.rate30, `Average 30-year fixed mortgage rate, weekly national survey, week of ${day}`);
     ctx.updated(d.mortgageUpdated || d.updated, d.stale);
   }).catch((err) => {
     if (err.name === 'AbortError') return;

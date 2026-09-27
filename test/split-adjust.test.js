@@ -166,7 +166,7 @@ test('DIVIDENDS service: adjusted rows, split list, checked years; no history me
   const d = await makeDividends({ fetchImpl, now: () => Date.parse('2026-09-25T12:00:00Z'), splitHistory: async () => HIST }).getDividends('AAPL');
   assert.equal(d.split.splits.length, 4);
   assert.equal(d.years.find((y) => y.year === '2019').total, 0.76);
-  assert.equal(d.checkSource, 'Yahoo Finance dividend history');
+  assert.equal(d.checkSource, 'a second market data provider');
   assert.match(divBasisNote(d), /split-adjusted/);
   const raw = await makeDividends({ fetchImpl, splitHistory: async () => null }).getDividends('AAPL');
   assert.equal(raw.split, null);

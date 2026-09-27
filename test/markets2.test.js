@@ -102,7 +102,7 @@ test('Cboe: options service, unknown symbols and stale-if-error', async () => {
   assert.equal(a.symbol, 'AAPL');
   assert.equal(a.expiry.id, '2026-09-25');
   assert.equal(a.expiry.days, 0);
-  assert.equal(a.source, 'Cboe delayed quotes');
+  assert.equal(a.source, 'Market data provider, delayed 15 minutes');
   assert.equal(a.stale, false);
   const b = await getOptions('AAPL', '2026-10-16-AAPL');
   assert.deepEqual(b.rows.map((r) => r.strike), [330, 340]);

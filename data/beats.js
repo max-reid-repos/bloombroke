@@ -7,7 +7,7 @@ import { CompanyDataError, DAY_MS, nasdaqData, tickerOrThrow, cachedOrThrow, tex
 
 export { CompanyDataError as BeatsError };
 
-export const BEATS_SOURCE = 'Nasdaq earnings surprise';
+export const BEATS_SOURCE = 'Earnings surprise history from a market data provider';
 
 export function parseBeats(d) {
   const rows = (Array.isArray(d?.earningsSurpriseTable?.rows) ? d.earningsSurpriseTable.rows : []).map((r) => ({

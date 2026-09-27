@@ -1,5 +1,5 @@
 // SHORTS <ticker>: short interest by settlement date, from the Nasdaq short interest API
-// (no key). Nasdaq publishes it for Nasdaq-listed stocks only. Cached a day.
+// (no key). It is listed here for Nasdaq-listed stocks only. Cached a day.
 
 import { createCache } from './cache.js';
 import { money, usDay } from './lists.js';
@@ -7,7 +7,7 @@ import { CompanyDataError, DAY_MS, nasdaqData, tickerOrThrow, cachedOrThrow } fr
 
 export { CompanyDataError as ShortsError };
 
-export const SHORTS_SOURCE = 'Nasdaq short interest (FINRA settlement dates)';
+export const SHORTS_SOURCE = 'Market data provider (FINRA settlement dates)';
 
 export function parseShorts(d) {
   const rows = (Array.isArray(d?.shortInterestTable?.rows) ? d.shortInterestTable.rows : []).map((r) => {
@@ -35,7 +35,7 @@ export function makeShorts({ fetchImpl = globalThis.fetch, cache = createCache({
     const path = `quote/${encodeURIComponent(ticker)}/short-interest?assetClass=stocks`;
     const got = await cachedOrThrow(cache, `shorts:${ticker}`, DAY_MS, async () => parseShorts(await nasdaqData(fetchImpl, path)), {
       what: 'Short interest data',
-      missing: `No short interest on file for ${ticker}. Nasdaq publishes it for Nasdaq-listed stocks only.`,
+      missing: `No short interest on file for ${ticker}. It is listed here for Nasdaq-listed stocks only.`,
     });
     return { ticker, ...got.value, stale: got.stale, updated: got.updated, source: SHORTS_SOURCE };
   }
