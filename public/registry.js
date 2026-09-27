@@ -468,6 +468,13 @@ export const REGISTRY = [
   },
 
   // --- Weird data (WEIRD and one command per gauge; screens in screens/weird*.js) ------
+  // --- GRAVEYARD (screens/nosuch.js, data/graveyard.json) ---
+  {
+    name: 'GRAVEYARD', category: 'Weird data', summary: 'Famous tickers that are gone: bankrupt, seized, bought out or taken private',
+    syntax: 'GRAVEYARD [<ticker>]', examples: ['GRAVEYARD', 'GRAVEYARD LEH'], keywords: ['dead', 'delisted', 'bankrupt', 'bankruptcy', 'defunct', 'gone', 'failed', 'collapse', 'rip'],
+    source: 'SEC filings, regulators, courts and major news, linked on each row', delay: 'None',
+  },
+  // --- end GRAVEYARD ---
   {
     name: 'WEIRD', category: 'Weird data', summary: 'Odd live gauges on one screen: ships, pizza, waffles, eggs, omens',
     syntax: 'WEIRD [3M|1Y|5Y|10Y|MAX]', examples: ['WEIRD', 'WEIRD 10Y'], keywords: ['odd', 'fun', 'alternative data', 'gauges', 'indicators', 'strange'],
