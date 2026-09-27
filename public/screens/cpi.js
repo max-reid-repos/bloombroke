@@ -89,13 +89,21 @@ export function render(el, cmd, ctx) {
       return { t: Date.UTC(y, m ? m - 1 : 6, 15), v: p.v, label: m ? d.latest.label : String(y) };
     });
     const base = `<span class="dim">1982-84 = 100</span>`;
+    // A month BLS never published (Oct 2025) shows as -- on its year, the reason in the
+    // tooltip. Nothing fills it in.
+    const gapHtml = (label) => (d.gaps || []).filter((g) => g.month.slice(0, 4) === String(label))
+      .map((g) => ` <span class="dim" data-prov title="${esc(g.reason)}">${esc(g.label.toUpperCase())} --</span>`).join('');
     chMeta.innerHTML = base;
     host.textContent = '';
     chartCleanup = mountChart(host, pts, {
       fmtY: (v) => fmtNum(v, 0),
       fmtX: (t) => String(new Date(t).getUTCFullYear()),
       label: `Consumer prices since ${d.year}`,
-      onHover: (p) => { chMeta.innerHTML = p ? `<span class="num">${esc(p.label.toUpperCase())} ${esc(fmtNum(p.v, 3))}</span>` : base; },
+      onHover: (p) => {
+        chMeta.innerHTML = p ? `<span class="num">${esc(p.label.toUpperCase())} ${esc(fmtNum(p.v, 3))}</span>${gapHtml(p.label)}` : base;
+        // The reason, as the chart's own tooltip while the pointer is on that year.
+        host.title = p ? (d.gaps || []).filter((g) => g.month.slice(0, 4) === String(p.label)).map((g) => `${g.label}: ${g.reason}`).join(' ') : '';
+      },
     });
     ctx.updated(d.updated, d.stale);
   }).catch((err) => {

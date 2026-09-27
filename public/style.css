@@ -125,6 +125,33 @@ kbd {
 .fresh-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); cursor: help; }
 .fresh-dot[data-state="stale"] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--down); }
 .fresh-dot[data-state="none"] { visibility: hidden; }
+/* Provenance: the dot opens a small list of this screen's sources (public/provenance.js). */
+.fresh-dot { cursor: pointer; padding: 0; border: 0; }
+.fresh-dot:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
+.prov-pop { position: fixed; z-index: 60; max-width: min(360px, calc(100vw - 16px)); padding: 6px 8px; background: var(--panel-2); border: 1px solid var(--rule-strong); font-size: 11px; line-height: 1.5; }
+.prov-pop[hidden] { display: none; }
+.pv-list { list-style: none; margin: 0 0 4px; padding: 0; }
+.pv-list li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-list a, .pv-all { color: var(--text-2); text-decoration: none; }
+.pv-list a:hover .pv-src, .pv-all:hover { color: var(--accent); }
+.pv-dim { color: var(--dim); }
+.pv-all { color: var(--accent); }
+/* Tiny tags: PRE, MKT, AH, WKD (EDGAR acceptance time), 8-K or 10-Q (earnings). */
+.tod { margin-left: 1px; font-size: 9px; letter-spacing: .04em; color: var(--dim); vertical-align: 1px; }
+.fin-v, .fin-nv { position: relative; color: inherit; text-decoration: none; }
+.fin-v:hover, .fin-v:focus-visible { color: var(--accent); }
+/* The derived marker hangs past the number, so the digits stay aligned with the column. */
+/* DATA: every column on one desktop screen, small type, cells wrap. */
+.dt-scroll { overflow-x: auto; }
+.data-table { table-layout: fixed; width: 100%; font-size: 11px; }
+.grid-table.data-table th, .grid-table.data-table td { white-space: normal; overflow-wrap: break-word; max-width: none; text-overflow: clip; height: auto; line-height: 1.35; padding-top: 3px; padding-bottom: 3px; vertical-align: top; }
+.data-table .dt-name { width: 15%; } .data-table .dt-src { width: 15%; } .data-table .dt-lic { width: 9%; }
+.data-table .dt-cov { width: 13%; } .data-table .dt-hist { width: 10%; } .data-table .dt-upd { width: 10%; }
+.data-table .dt-age { width: 5%; } .data-table .dt-delay { width: 7%; } .data-table .dt-gaps { width: 16%; }
+.data-table tr.is-lit > * { background: var(--accent-tint); }
+@media (max-width: 639px) { .data-table .hide-m, .status-table .hide-m { display: none; } .data-table .dt-name { width: 29%; } .data-table .dt-src { width: 27%; } .data-table .dt-lic { width: 18%; } .data-table .dt-age { width: 10%; } .data-table .dt-delay { width: 16%; } }
+.status-table .st-ok { color: var(--accent); }
+.fin-d { position: absolute; left: 100%; top: -3px; padding-left: 1px; font-size: 8px; line-height: 1; color: var(--dim); }
 .status[data-open="true"] { color: var(--up); }
 .status[data-open="true"] .status-dot { background: var(--up); }
 

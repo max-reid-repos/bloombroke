@@ -34,6 +34,10 @@ import { getWeird, getGauge, startWeirdPrewarm, FAST_WAIT } from './data/weird/i
 import { makeWeirdCards, weirdCommand } from './lib/og-weird.js'; // WEIRD share cards
 import { mountWhyCards } from './lib/og-why.js'; // WHY share cards
 import { getWhy } from './data/why.js'; // WHY share cards
+// --- Provenance: the envelope on every /api answer, DATA, STATUS, CHANGES ---
+import { provenanceJson, mountProvenanceRoutes } from './lib/provenance.js';
+import { GAUGES } from './data/weird/index.js';
+// --- end Provenance ---
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
@@ -50,6 +54,7 @@ app.use((req, res, next) => {
   res.set(HEADERS);
   next();
 });
+app.use('/api', provenanceJson()); // Provenance: { source, as_of, age_seconds, delay, ... } on every JSON answer
 
 app.get('/api/markets', async (req, res) => {
   try {
@@ -317,6 +322,14 @@ mountGuess(app, { getChart, getCaps: getFishtank });
 // --- end GUESS ---
 
 startPro(app, { dir });
+
+// Provenance: /api/data (DATA), /api/status (STATUS), /api/changes (CHANGES).
+const edgarWatch = null;
+mountProvenanceRoutes(app, {
+  gauges: GAUGES.map((g) => ({ id: g.id, source: g.source })),
+  weird: async () => (await getWeird({ wait: 0 })).gauges,
+  edgar: () => edgarWatch?.stats() || null,
+});
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));
 

@@ -1,0 +1,31 @@
+{
+  "note": "Kept by hand: one plain line per shipped feature, newest first. CHANGES shows it.",
+  "items": [
+    { "date": "2026-09-27", "text": "DATA, STATUS and CHANGES: every source, its licence and age in one table; the dot by the clock lists a screen's sources" },
+    { "date": "2026-09-27", "text": "WHATIF: your own purchase of any stock, on a card of its own" },
+    { "date": "2026-09-27", "text": "WHATIF REPLAY: the race from the first buy to today, and SAVE VIDEO" },
+    { "date": "2026-09-27", "text": "WHATIF vices: beer, soda and chips priced from BLS average prices" },
+    { "date": "2026-09-27", "text": "NEWS and HOME: new stories arrive as they come, LIVE in the title strip" },
+    { "date": "2026-09-27", "text": "WHY: the 10 biggest daily moves of the year and what came out each day" },
+    { "date": "2026-09-27", "text": "GUESS: one mystery stock a day from its 1-year chart" },
+    { "date": "2026-09-27", "text": "SINCE on HOME: what moved since your last visit" },
+    { "date": "2026-09-27", "text": "WEIRD: period row, full-panel gauge charts and record lines" },
+    { "date": "2026-09-27", "text": "Chart N flags: headlines on 1D and 5D, other 8-Ks on daily charts" },
+    { "date": "2026-09-27", "text": "PRO: seats, yearly plan, gift codes, REDEEM, CHAT, SPONSOR and FEEDBACK" },
+    { "date": "2026-09-26", "text": "WORLDMAP: a dark world map of index moves, chokepoint ships and storms" },
+    { "date": "2026-09-26", "text": "FISHTANK: the S&P 100 as fish" },
+    { "date": "2026-09-26", "text": "ALERTS: price and gauge alerts, kept in this browser" },
+    { "date": "2026-09-26", "text": "TRENDING: the tickers people open most here" },
+    { "date": "2026-09-26", "text": "DESK: WEIRD gauges as cards and preset desks" },
+    { "date": "2026-09-26", "text": "WEIRD: 23 live odd-data gauges and share cards" },
+    { "date": "2026-09-26", "text": "Charts: 1-minute bars, zoom, measure, candles, volume, compare and event flags" },
+    { "date": "2026-09-26", "text": "NEWS tabs: MACRO, SEC, WIRES and WSB" },
+    { "date": "2026-09-25", "text": "Share cards for ticker screens and AFFORD" },
+    { "date": "2026-09-25", "text": "Type a company name or plain words and the right command runs" },
+    { "date": "2026-09-25", "text": "Money tools: WHATIF, AFFORD, LOAN and COMPOUND" },
+    { "date": "2026-09-25", "text": "Company screens: INSIDERS, OWNERS, FILINGS, SHORTS and BEATS" },
+    { "date": "2026-09-25", "text": "FINANCIALS: split-adjusted EPS and shares by default, AS REPORTED toggle" },
+    { "date": "2026-09-25", "text": "CRYPTO: top 20 without stablecoins and tokenised assets" },
+    { "date": "2026-09-25", "text": "MENU (Ctrl K), HELP directory and the function key bar" }
+  ]
+}
