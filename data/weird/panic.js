@@ -1,12 +1,18 @@
 // PANIC: how many people read the English Wikipedia pages on recessions, crashes,
 // stagflation and bank runs. Source: Wikimedia pageviews REST API (people only, bots
 // excluded). The headline is the latest full day against the 30 days before it.
+// History: daily views since the pageviews API starts (1 Jul 2015), one request per
+// article a week; the record line reads the headline (all four vs their 30-day average).
 
 import { NoData, mean, signedPct, headlineNumber } from './source.js';
+import { histFrom, points } from './history.js';
 
 export const id = 'panic';
 export const source = 'Wikimedia';
 export const ttl = 3 * 60 * 60_000;
+export const defaultPeriod = '3M';
+export const historyTtl = 7 * 24 * 60 * 60_000;
+export const HISTORY_FROM = '20150701';
 
 export const ARTICLES = [
   { page: 'Recession', label: 'Recession' },
@@ -17,10 +23,35 @@ export const ARTICLES = [
 const DAYS = 120;
 const ymd = (ms) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, '');
 
-export function url(page, now) {
+export function url(page, now, from = null) {
   const end = now - 86400_000;
   const start = end - (DAYS - 1) * 86400_000;
-  return `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/${encodeURIComponent(page)}/daily/${ymd(start)}/${ymd(end)}`;
+  return `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/${encodeURIComponent(page)}/daily/${from || ymd(start)}/${ymd(end)}`;
+}
+
+// Per-article series -> a hist: the total of all four (on days every article has) and
+// each article.
+export function toHist(seriesByPage) {
+  const maps = ARTICLES.map((a) => new Map((seriesByPage[a.page] || []).map((p) => [p.date, p.views])));
+  const dates = [...new Set(maps.flatMap((m) => [...m.keys()]))];
+  const rows = dates.map((d) => {
+    const r = { d };
+    ARTICLES.forEach((a, i) => { if (maps[i].has(d)) r[a.page] = maps[i].get(d); });
+    if (maps.every((m) => m.has(d))) r.total = maps.reduce((s, m) => s + m.get(d), 0);
+    return r;
+  });
+  return histFrom(rows, [{ key: 'total', label: 'All four' }, ...ARTICLES.map((a) => ({ key: a.page, label: a.label }))], { step: 'day', lead: 'total' });
+}
+
+// The headline for every day: that day's total against the mean of the 30 days before it.
+export function recordPoints(hist) {
+  const pts = points(hist, 'total');
+  const out = [];
+  for (let i = 30; i < pts.length; i += 1) {
+    const avg = mean(pts.slice(i - 30, i).map((p) => p.v));
+    if (avg) out.push({ d: pts[i].d, v: (pts[i].v / avg - 1) * 100 });
+  }
+  return out;
 }
 
 // Wikimedia body -> [{ date: 'YYYY-MM-DD', views }] oldest first.
@@ -52,6 +83,7 @@ export function build(seriesByPage) {
   const last90 = dates.slice(-90);
   const pct = head.pct;
   return {
+    hist: toHist(seriesByPage),
     headline: signedPct(pct, 0),
     value: headlineNumber(pct, 0), // ALERTS: the headline number and its unit
     unit: '%',
@@ -74,4 +106,14 @@ export async function load(get, { now = Date.now } = {}) {
   const t = now();
   const got = await Promise.all(ARTICLES.map((a) => get.json(url(a.page, t)).then(parse)));
   return build(Object.fromEntries(ARTICLES.map((a, i) => [a.page, got[i]])));
+}
+
+// The deep past: one request per article, one after another.
+export async function history(get, { now = Date.now } = {}) {
+  const t = now();
+  const got = {};
+  for (const a of ARTICLES) got[a.page] = parse(await get.json(url(a.page, t, HISTORY_FROM), { timeout: 30_000 }));
+  const hist = toHist(got);
+  if (points(hist, 'total').length < 60) throw new NoData('Wikimedia: no history');
+  return hist;
 }

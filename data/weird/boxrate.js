@@ -10,6 +10,11 @@ export const source = 'Drewry WCI';
 export const ttl = 6 * 60 * 60_000;
 export const retryMs = 30 * 60_000;
 
+// No past at the source: one reading per UTC day is recorded (data/weird/history.js).
+export const defaultPeriod = 'MAX';
+export const snapshotSeries = [{ key: 'usd', label: '40ft container, $' }];
+export const snapshot = (v) => ({ usd: v.usd });
+
 const URL_WCI = 'https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/world-container-index-assessed-by-drewry';
 const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 

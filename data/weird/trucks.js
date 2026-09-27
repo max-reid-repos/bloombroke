@@ -5,12 +5,15 @@
 //   Rail freight carloads (RAILFRTCARLOADSD11)
 
 import { NoData, signedPct, headlineNumber } from './source.js';
-import { FRED_TTL, FRED_RETRY, fredMonthly, latestYoy } from './fred.js';
+import { FRED_TTL, FRED_RETRY, fredMonthly, latestYoy, monthlyHist } from './fred.js';
 
 export const id = 'trucks';
 export const source = 'FRED';
 export const ttl = FRED_TTL;
 export const retryMs = FRED_RETRY;
+export const defaultPeriod = '5Y';
+// The CSV is the whole series, from its first month: a new high or low is a record.
+export const fullSeries = true;
 
 export const SERIES = [
   { key: 'cass', fred: 'FRGSHPUSM649NCIS', label: 'Cass freight shipments', short: 'CASS', dp: 3 },
@@ -37,6 +40,8 @@ export function build(got) {
     asOf: `${lead.month}-01`,
     source,
     rows,
+    // History: each series' change on a year before, every month in its CSV.
+    hist: monthlyHist(SERIES.filter((s) => got[s.key]?.length).map((s) => ({ key: s.key, label: s.label, rows: got[s.key], yoy: true })), lead.key),
   };
 }
 

@@ -5,6 +5,20 @@ export const id = 'degen';
 export const source = 'Apple App Store';
 export const ttl = 60 * 60_000;
 
+// No past at the source: one reading per UTC day is recorded (data/weird/history.js).
+// A rank is best when lowest, so a record line would read backwards: none.
+export const record = false;
+export const defaultPeriod = 'MAX';
+export const snapshotSeries = [
+  { key: 'best', label: 'Best rank of the five' },
+  ...['Kalshi', 'Polymarket', 'Robinhood', 'Coinbase', 'Webull'].map((n) => ({ key: n.toLowerCase(), label: n, hidden: true })),
+];
+export function snapshot(v) {
+  const ranks = Object.fromEntries((v.apps || []).map((a) => [a.name.toLowerCase(), a.rank || null]));
+  const best = (v.apps || []).map((a) => a.rank).filter((r) => r > 0);
+  return { best: best.length ? Math.min(...best) : null, ...ranks };
+}
+
 const URL_CHART = 'https://rss.marketingtools.apple.com/api/v2/us/apps/top-free/100/apps.json';
 
 // Matched by App Store id first, then by name (names change more often than ids).

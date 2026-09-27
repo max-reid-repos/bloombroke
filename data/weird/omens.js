@@ -4,10 +4,15 @@
 // Center). The moon needs no source, so the gauge shows even when both feeds fail.
 
 import { moonPhase } from './moon.js';
+import { histFrom } from './history.js';
 
 export const id = 'omens';
 export const source = 'NWS, NOAA SWPC';
 export const ttl = 30 * 60_000;
+// History: the monthly sunspot number, which SWPC gives in full (since 1749) with every
+// fetch. The headline is the moon, which has no record, so there is no record line.
+export const defaultPeriod = '10Y';
+export const record = false;
 
 const NWS_URL = 'https://api.weather.gov/stations/KNYC/observations/latest';
 const SUN_URL = 'https://services.swpc.noaa.gov/json/solar-cycle/observed-solar-cycle-indices.json';
@@ -50,6 +55,8 @@ export function build({ moon, sky, sun, now }) {
     },
     sky,
     sunspots: lastSun ? { month: lastSun.month, ssn: lastSun.ssn, series: sun.slice(-120) } : null,
+    // null when SWPC did not answer: the value waits its normal ttl, like any other.
+    hist: sun ? histFrom(sun.map((r) => ({ d: `${r.month}-01`, ssn: r.ssn })), [{ key: 'ssn', label: 'Sunspot number' }], { step: 'month' }) : null,
   };
 }
 

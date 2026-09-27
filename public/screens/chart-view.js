@@ -13,7 +13,7 @@
 
 import { esc } from './markets.js';
 import { niceTicks, nearestIndex } from './chart.js';
-import { lineIndexes, candleBuckets, zoomWindow, axisLabels, measure as measureMath, rebase, commonStart } from './chart-math.js';
+import { lineIndexes, candleBuckets, zoomWindow, axisLabels, measure as measureMath, rebase, commonStart, capFlags, MAX_N_FLAGS } from './chart-math.js';
 import { labelWidth } from './intraday.js';
 import { sizeGuard } from './size-guard.js';
 
@@ -357,6 +357,9 @@ export function createChartView(host, cb = {}) {
   host.addEventListener('contextmenu', (e) => { if (drag?.touch) e.preventDefault(); });
   host.addEventListener('pointerover', onFlagOver);
   host.addEventListener('pointerout', onFlagOut);
+  // A flag with a link takes keyboard focus (Tab): focus shows it like a hover.
+  host.addEventListener('focusin', onFlagOver);
+  host.addEventListener('focusout', onFlagOut);
 
   // Redraw once the box has settled after a resize, not on every frame of it. The box
   // gets its size from the layout only (the SVG covers it, see style.css), and resizes go
@@ -401,7 +404,7 @@ function attrs(el, a) {
 //   points [{ t, v, o?, h?, l?, x?, live? }], info [{ day, mins, session }] per point,
 //   full [a, b] (b past the last bar leaves room for the rest of a session),
 //   style 'line' | 'candle', pct (compare mode), compare [{ vals (aligned), cls }],
-//   refs { prevClose }, flags [{ i, kind: 'E' | 'D', url?, title }], volume (bool),
+//   refs { prevClose }, flags [{ i, kind: 'E' | 'D' | 'N', url?, title, tip? }], volume (bool),
 //   intraday, fmtY, bp, decimals, label, whenAt(i)
 // }
 export function svgFor(model, win, width, height) {
@@ -415,7 +418,8 @@ export function svgFor(model, win, width, height) {
   const i1 = Math.min(n - 1, Math.floor(b + 1e-9));
   const pxPerBar = W / span;
 
-  const flags = (model.flags || []).filter((f) => f.i >= i0 && f.i <= i1);
+  // N flags: at most MAX_N_FLAGS in view, the latest ones.
+  const flags = capFlags((model.flags || []).filter((f) => f.i >= i0 && f.i <= i1), 'N', MAX_N_FLAGS);
   const flagH = model.flags?.length ? FLAG_H : 0;
   const plotBottom = height - XLAB_H - flagH;
   const plotH = Math.max(40, plotBottom - PAD_T);
@@ -610,7 +614,7 @@ export function svgFor(model, win, width, height) {
       lastX = fx;
       if (fx > W - 6) return;
       const k = model.flags.indexOf(f);
-      const box = `<rect class="ch-flag-box" x="${f1(fx - 6)}" y="${f1(fy)}" width="12" height="13"/><text class="ch-flag-t" x="${f1(fx)}" y="${f1(fy + 10)}" text-anchor="middle">${f.kind}</text><title>${esc(f.title)}</title>`;
+      const box = `<rect class="ch-flag-box" x="${f1(fx - 6)}" y="${f1(fy)}" width="12" height="13"/><text class="ch-flag-t" x="${f1(fx)}" y="${f1(fy + 10)}" text-anchor="middle">${f.kind}</text><title>${esc(f.tip || f.title)}</title>`;
       s += f.url
         ? `<a class="ch-flag is-${f.kind}" data-k="${k}" href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${box}</a>`
         : `<g class="ch-flag is-${f.kind}" data-k="${k}">${box}</g>`;

@@ -31,6 +31,8 @@ import { securityHeaders, isEmbedQuery, embedHtml } from './lib/embed.js';
 import { startPro } from './pro/index.js';
 import { getWeird, getGauge, startWeirdPrewarm, FAST_WAIT } from './data/weird/index.js';
 import { makeWeirdCards, weirdCommand } from './lib/og-weird.js'; // WEIRD share cards
+import { mountWhyCards } from './lib/og-why.js'; // WHY share cards
+import { getWhy } from './data/why.js'; // WHY share cards
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
@@ -278,13 +280,14 @@ app.get('/api/screen', async (req, res) => {
 // a value (fresh, or its last good one while a refresh runs) at once, one with none comes
 // back pending (not cached, so the screen can ask again in a few seconds). A failed
 // source is { ok: false, headline: 'NO DATA', source }, never an error page.
+// ?p=3M|1Y|5Y|10Y|MAX: the history period (tile sparks, the gauge's chart); none: AUTO.
 app.get('/api/weird', async (req, res) => {
-  const data = await getWeird({ wait: FAST_WAIT });
+  const data = await getWeird({ wait: FAST_WAIT, period: str(req.query.p) });
   res.set('Cache-Control', data.gauges.some((g) => g.pending) ? 'no-store' : 'public, max-age=60');
   res.json(data);
 });
 app.get('/api/weird/:name', async (req, res) => {
-  const data = await getGauge(str(req.params.name), { wait: FAST_WAIT });
+  const data = await getGauge(str(req.params.name), { wait: FAST_WAIT, period: str(req.query.p) });
   if (!data) return res.status(404).json({ error: 'not_found', message: 'No such WEIRD gauge. Type WEIRD for the list.' });
   res.set('Cache-Control', data.pending ? 'no-store' : `public, max-age=${data.ok && !data.stale ? 300 : 30}`);
   res.json(data);
@@ -386,6 +389,10 @@ app.get('/og/weird.png', async (req, res) => {
 });
 // ---- end WEIRD share cards ------------------------------------------------------------------
 
+// ---- WHY share cards: /?c=WHY+AAPL gets its own title and /og/why.png (lib/og-why.js) ----
+const whyCards = mountWhyCards(app, { getWhy, parse: parseCommand });
+// ---- end WHY share cards ---------------------------------------------------------------------
+
 // A shared link gets its own title and image, so the card on X shows the result:
 // WHATIF (the certificate), AFFORD (cost per use and verdict) and a ticker (price and a
 // 1-month line). Anything else, or a slow answer, gets the site card.
@@ -398,6 +405,8 @@ async function shareIndex(c) {
   if (!whatif && !c.trim()) return HOME;
   const weirdPage = await weirdShareIndex(c).catch(() => null); // WEIRD share cards
   if (weirdPage) return weirdPage;
+  const whyPage = await whyCards.meta(c).catch(() => null); // WHY share cards
+  if (whyPage) return withMeta(PAGE, whyPage);
   // A bare command (/?c=MARKETS): its own title, description and canonical, no card.
   const plain = !whatif && commandMeta(c, parseCommand);
   if (plain) return withMeta(PAGE, plain);

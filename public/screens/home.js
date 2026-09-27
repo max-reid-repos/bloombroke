@@ -3,7 +3,7 @@
 import { esc, fmtNum, fmtSigned, fmtPct, dirOf, panel, LOADING, marketsColumns, nameCell, rowAttrs, rerender, tick, settleTicks } from './markets.js';
 import { rangeChart } from './chart.js';
 import { freshTag } from '../freshness.js';
-import { newsList } from './news.js';
+import { newsList, liveNews, dedupeNews, NEWS_POLL_MS } from './news.js';
 import { startSince } from '../since.js'; // SINCE line
 
 export function fxTable(pairs) {
@@ -103,10 +103,13 @@ export function render(el, cmd, ctx) {
     }
   }
 
+  // The news box: asked again every minute, new stories glow in at the top (news.js).
+  const liveBox = liveNews({ body: newsBody, meta: el.querySelector('#h-news-meta'), ctx });
   async function loadNews() {
     try {
       const d = await ctx.fetchJSON('/api/news', { signal: ctx.signal });
-      newsBody.innerHTML = newsList(d.items.slice(0, HOME_NEWS_ROWS));
+      const items = dedupeNews(d.items).slice(0, HOME_NEWS_ROWS);
+      liveBox.show(items, items, newsList(items));
     } catch (err) {
       fail(newsBody, err, '.news');
     }
@@ -115,5 +118,5 @@ export function render(el, cmd, ctx) {
   loadMarkets();
   loadNews();
   ctx.live(loadMarkets, 15_000);
-  ctx.live(loadNews, 5 * 60_000);
+  ctx.live(loadNews, NEWS_POLL_MS);
 }
