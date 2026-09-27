@@ -281,7 +281,7 @@ test('freshness: a dot by the clock, the time in its tooltip; the status line ke
   const clock = /<div class="clock"[\s\S]*?<\/div>/.exec(html)[0];
   assert.match(clock, /id="fresh-dot"/);
   const line = /<div class="statusline"[\s\S]*?<\/div>/.exec(html)[0];
-  assert.match(line, /<span id="status-legal" class="status-legal"><span class="legal-line">Not advice<\/span>.*<a href="\/terms">Terms<\/a>/);
+  assert.match(line, /<span id="status-legal" class="status-legal"><span class="legal-line">Not financial advice<\/span>.*<a href="\/terms">Terms<\/a>/);
   assert.doesNotMatch(line, /UPDATED|Information only/);
   assert.doesNotMatch(readFileSync('public/screens/help.js', 'utf8'), /PICK A CATEGORY/, 'no permanent hint in the status line');
 });
