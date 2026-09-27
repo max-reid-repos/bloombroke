@@ -351,3 +351,15 @@ test('guess secret: a readable secret file is put back to 0600', async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---- security headers ----------------------------------------------------------------
+
+test('headers: Permissions-Policy, HSTS without subdomains or preload, CSP object-src and form-action', async () => {
+  const { securityHeaders } = await import('../lib/embed.js');
+  const h = securityHeaders();
+  assert.equal(h['Permissions-Policy'], 'camera=(), microphone=(), geolocation=(), payment=()');
+  assert.equal(h['Strict-Transport-Security'], 'max-age=15552000');
+  assert.doesNotMatch(h['Strict-Transport-Security'], /includeSubDomains|preload/i);
+  const csp = h['Content-Security-Policy'].split('; ');
+  for (const d of ["object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'self'"]) assert.ok(csp.includes(d), d);
+});
