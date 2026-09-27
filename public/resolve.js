@@ -9,11 +9,15 @@
 // check are passed in, so tests run without the network.
 
 import { PHRASES, LISTED, findCommand, searchCommands } from './registry.js';
-import { matchInstrument } from './instruments.js';
+import { matchInstrument, resolveInstrument, stockSymbol } from './instruments.js';
 import { PRESETS, PERIOD_WORDS } from './ranges.js';
 import { tickerForName, LISTED_TICKERS, nameKey } from './known-tickers.js';
 
 export const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
+// A word with a leading $ is a stock and only a stock ($gold, $M, $brk.b).
+const STOCK_WORD = /^\$[A-Za-z]{1,5}(\.[A-Za-z]{1,2})?$/;
+// The stock's id when no router is passed in (tests): $ kept for an instrument's name.
+const defaultStockId = (t) => (resolveInstrument(t) ? `$${t}` : t);
 const MAX_SPAN = 4;
 const MAX_COMPARE = 5;
 
@@ -113,8 +117,15 @@ export function splitWords(raw) {
   const parts = [];
   let i = 0;
   while (i < words.length) {
+    if (STOCK_WORD.test(words[i])) {
+      parts.push({ kind: 'stock', len: 1, words: [words[i]], text: clean[i] });
+      i += 1;
+      continue;
+    }
     let best = null;
-    for (let len = Math.min(MAX_SPAN, words.length - i); len >= 1; len -= 1) {
+    let span = 1;
+    while (span < MAX_SPAN && i + span < words.length && !STOCK_WORD.test(words[i + span])) span += 1;
+    for (let len = span; len >= 1; len -= 1) {
       const span = clean.slice(i, i + len).join(' ');
       if (!best || len > best.len) {
         const named = tickerForName(span) || tickerForName(kept.slice(i, i + len).join(' '));
@@ -182,6 +193,23 @@ async function resolveSymbol(words, text, { search, checkTicker }) {
   return { candidates: results.filter(MAJOR).slice(0, 5) };
 }
 
+// A $ word: the stock, never a name, command or instrument. { id, name, sure } or
+// { candidates } (other stocks, for did-you-mean).
+async function resolveStock(word, { search, checkTicker, stockId = defaultStockId }) {
+  const t = cleanWord(word).toUpperCase();
+  if (!TICKER_RE.test(t)) return { candidates: [] };
+  const id = stockId(t) || t;
+  if (id === t && LISTED_TICKERS.has(t)) return { id, name: null, sure: true };
+  const ok = checkTicker ? await checkTicker(id) : null;
+  if (ok === true) return { id, name: null, sure: true };
+  let results = [];
+  try { results = search ? (await search(t)) || [] : []; } catch { results = []; }
+  const stocks = results.filter((r) => r?.id && (r.kind === 'stock' || r.kind === 'etf')).map((r) => ({ ...r, id: stockId(stockSymbol(r.id)) || r.id }));
+  const hit = stocks.find((r) => stockSymbol(r.id) === t);
+  if (hit) return { id, name: hit.name, sure: true, byLookup: true };
+  return { candidates: stocks.filter(MAJOR).slice(0, 5) };
+}
+
 const cmdEntry = (c, cmd) => ({ name: c.name, summary: c.summary, cmd: cmd || c.examples?.[0] || c.name });
 
 // words -> { confident, command } or { confident: false, commands, symbols }.
@@ -202,8 +230,10 @@ export async function resolveInput(raw, deps = {}) {
     if (run.length) groups.push(run);
     run = [];
   };
+  const stockParts = [];
   for (const p of parts) {
     if (p.kind === 'name') symbols.push({ at: parts.indexOf(p), id: p.id, name: p.label, sure: true });
+    if (p.kind === 'stock') stockParts.push(p);
     if (p.kind === 'other' || (p.kind === 'filler' && run.length)) run.push(p);
     else endRun();
   }
@@ -223,6 +253,11 @@ export async function resolveInput(raw, deps = {}) {
       else unsure.push({ text: own[k].text, candidates: r.candidates || [] });
     });
   }
+  for (const p of stockParts) {
+    const r = await resolveStock(p.words[0], deps);
+    if (r.sure) symbols.push({ at: parts.indexOf(p), ...r });
+    else unsure.push({ text: p.words[0].toUpperCase(), candidates: r.candidates || [] });
+  }
   symbols.sort((a, b) => a.at - b.at);
 
   // The command the phrases name: with a ticker, one that takes a ticker.
@@ -235,7 +270,7 @@ export async function resolveInput(raw, deps = {}) {
   const picked = phrases.map(pickFn).filter(Boolean);
   const distinct = [...new Map(picked.map((f) => [f.name, f])).values()];
 
-  const suggestions = () => didYouMean({ from, parts, phrases, symbols, unsure, fnNames });
+  const suggestions = () => didYouMean({ from, parts, phrases, symbols, unsure, fnNames, stockId: deps.stockId });
 
   if (unsure.length || distinct.length > 1 || (!symbols.length && !distinct.length)) return { confident: false, from, ...suggestions() };
 
@@ -255,19 +290,26 @@ export async function resolveInput(raw, deps = {}) {
   if (!command) return { confident: false, from, ...suggestions() };
   // Nothing changed: the words were already this command (a bad ticker, say). Unless the
   // symbol list has each typed ticker: then it runs, and the screen asks for the quote again.
-  if (command === from.toUpperCase() && !(symbols.length && symbols.every((s) => s.byLookup))) return { confident: false, from, ...suggestions() };
+  if (sameWords(command, from, deps.stockId) && !(symbols.length && symbols.every((s) => s.byLookup))) return { confident: false, from, ...suggestions() };
   return { confident: true, from, command };
 }
 
+// Words as one command, each $ stock in its id form: "$aapl 5y" and "AAPL 5Y" match.
+function canonWords(text, stockId = defaultStockId) {
+  return String(text ?? '').trim().split(/\s+/).filter(Boolean)
+    .map((w) => (STOCK_WORD.test(w) ? stockId(w.slice(1).toUpperCase()) || w.toUpperCase() : w.toUpperCase())).join(' ');
+}
+const sameWords = (a, b, stockId) => canonWords(a, stockId) === canonWords(b, stockId);
+
 // The "Did you mean" rows: commands, then symbols, five of each at most. Never the words
 // typed: "No such ticker XLY. Did you mean XLY?" helps nobody.
-function didYouMean({ from = '', parts, phrases, symbols, unsure, fnNames }) {
-  const typed = String(from).trim().replace(/\s+/g, ' ').toUpperCase();
+function didYouMean({ from = '', parts, phrases, symbols, unsure, fnNames, stockId }) {
+  const typed = canonWords(from, stockId);
   const seen = new Set();
   const commands = [];
   const addCmd = (c, cmd) => {
     if (!c || c.hidden || c.pattern || c.soon || seen.has(c.name) || commands.length >= 5) return;
-    if (String(cmd || c.examples?.[0] || c.name).toUpperCase() === typed) return;
+    if (canonWords(cmd || c.examples?.[0] || c.name, stockId) === typed) return;
     seen.add(c.name);
     commands.push(cmdEntry(c, cmd));
   };
@@ -288,7 +330,7 @@ function didYouMean({ from = '', parts, phrases, symbols, unsure, fnNames }) {
     if (!s?.id || seenSym.has(s.id) || symRows.length >= 5) return;
     seenSym.add(s.id);
     const cmd = fn ? `${s.id} ${fn.name}` : s.id;
-    if (cmd.toUpperCase() !== typed) symRows.push({ id: s.id, name: s.name || '', cmd });
+    if (canonWords(cmd, stockId) !== typed) symRows.push({ id: s.id, name: s.name || '', cmd });
   };
   symbols.forEach(addSym);
   unsure.forEach((u) => u.candidates.forEach(addSym));

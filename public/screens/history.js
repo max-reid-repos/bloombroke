@@ -10,7 +10,7 @@ import { fmtDay } from './company-kit.js';
 import { toolbar, rangePills, panelTools, moreButton, dataTable, sortRows, nextSort, fmtDate } from '../kit.js';
 import { nyToday, FIRST_DAY } from '../ranges.js';
 
-const TICKER = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
+const TICKER = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 const RATE = /^(US(2|10|30)Y)$/;
 
 // Daily rows: no 1D (one row) and no MAX (the source keeps 10 years).

@@ -348,7 +348,7 @@ export function makeFinancials({ fetchImpl = globalThis.fetch, cache = createCac
   });
 
   async function getFinancials(raw) {
-    const ticker = String(raw ?? '').trim().toUpperCase();
+    const ticker = String(raw ?? '').trim().toUpperCase().replace(/^\$/, ''); // $GOLD: the stock
     if (!FIN_TICKER_RE.test(ticker)) throw new FinancialsError('bad_symbol', 'That does not look like a ticker.');
     let map;
     try {

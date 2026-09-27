@@ -276,6 +276,15 @@ a.panel-label:hover { text-decoration: none; background: var(--text); }
   font-size: 11px; color: var(--dim); letter-spacing: .04em;
   white-space: nowrap; overflow: hidden;
 }
+/* "Stock: $GOLD": a plain word that is also a listed stock. One dim link, never more. */
+.stock-hint {
+  display: flex; align-items: center; flex: 0 0 auto;
+  margin-right: auto; /* next to the label; the panel's own meta stays right */
+  padding: 0 8px;
+  font-size: 11px; color: var(--dim); letter-spacing: .04em; white-space: nowrap;
+}
+.stock-hint:hover, .stock-hint:focus-visible { color: var(--text); text-decoration: none; }
+.help-search .stock-hint, .desk-bar .stock-hint { margin-right: 0; margin-left: auto; }
 /* Phones: a long panel title wraps inside its label instead of pushing the page wide. */
 @media (max-width: 639px) {
   .panel-head { height: auto; min-height: 22px; }

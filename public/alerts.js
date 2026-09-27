@@ -5,7 +5,7 @@
 // exists), pauses while the tab is hidden, and lets only one open tab do the checking.
 
 import { matchInstrument } from './instruments.js';
-import { tickerForName, LISTED_TICKERS } from './known-tickers.js';
+import { tickerForName, LISTED_TICKERS, stockIdOf } from './known-tickers.js';
 import { findCommand } from './registry.js';
 
 export const ALERTS_KEY = 'bb.alerts';
@@ -71,6 +71,8 @@ const decimalsIn = (text) => (/\.(\d+)/.exec(String(text)) || [, ''])[1].length;
 // | { error, bad }. Named instruments (SPX, EUR/USD, S&P 500), tickers, and the company
 // names the terminal knows offline (APPLE -> AAPL), like the command bar.
 export function resolveAlertSymbol(words) {
+  // $GOLD > 30: the stock GOLD, never spot gold.
+  if (words.length === 1 && stockIdOf(words[0])) return { kind: 'quote', sym: stockIdOf(words[0]) };
   const toks = words.map((w) => String(w).toUpperCase().replace(/^\$/, '')).filter(Boolean);
   if (!toks.length) return { error: 'usage' };
   const text = toks.join(' ');

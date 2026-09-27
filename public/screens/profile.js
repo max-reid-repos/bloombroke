@@ -4,7 +4,7 @@
 import { esc, q, panel, LOADING } from './markets.js';
 import { fmtCompact } from './movers.js';
 
-const TICKER = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
+const TICKER = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 
 // <COMMAND> <ticker>
 export function parseTicker(args) {
