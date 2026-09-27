@@ -9,7 +9,7 @@ import {
   START_HERE, START_KEYS, FUNCTION_BAR,
 } from '../registry.js';
 import { commandForWord } from '../resolve.js';
-import { LISTED_TICKERS } from '../known-tickers.js';
+import { LISTED_TICKERS, stockIdOf } from '../known-tickers.js';
 
 const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 
@@ -34,6 +34,7 @@ export function resolveTopic(topic) {
     if (entry && !entry.hidden) return { entry };
   }
   const one = words.length === 1 && TICKER_RE.test(words[0]) ? words[0] : null;
+  if (words.length === 1 && stockIdOf(words[0])) return { entry: findCommand('<TICKER>'), ticker: stockIdOf(words[0]) }; // HELP $GOLD
   if (one && LISTED_TICKERS.has(one)) return { entry: findCommand('<TICKER>'), ticker: one };
   const guess = commandForWord(words.join(' '));
   if (guess) return { entry: guess, from: words.join(' ') };

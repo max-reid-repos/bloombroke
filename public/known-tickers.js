@@ -3,6 +3,9 @@
 // names outside the index. Used to turn a company name into its ticker offline
 // ("nvidia" -> NVDA) and to tell a real ticker from an ordinary word (AFFORD 1200 BIKE).
 
+import { ALIASES, REGISTRY } from './registry.js';
+import { resolveInstrument, STOCK_RE } from './instruments.js';
+
 // [ticker, name, ...other names people type]
 export const SP100_NAMES = [
   ['AAPL', 'Apple'], ['ABBV', 'AbbVie'], ['ABT', 'Abbott Laboratories', 'Abbott'], ['ACN', 'Accenture'], ['ADBE', 'Adobe'],
@@ -77,3 +80,17 @@ export const SHADOWED_TICKERS = new Set([
   'M', 'H', 'DOW', 'GOLD', 'WTI', 'BTC', 'ETH', 'CORN', 'DAX', 'ASX', 'USDX', 'XPT', 'TRON',
   'HELP', 'DESK', 'CHAT', 'IPOS', 'LOAN', 'GIFT',
 ]);
+
+// "$" + ticker typed anywhere (WATCH ADD $GOLD, ALERTS $GOLD > 30, a form field): the
+// stock's id. The plain ticker when the plain word opens only that stock ($AAPL -> AAPL),
+// else the ticker with its $ ($GOLD, $M, $W). null for anything else. The router's own
+// stockId (app.js) gives the same answer; words typed in the command bar reach the
+// screens already in this form.
+export function stockIdOf(word) {
+  const w = String(word ?? '').trim().toUpperCase();
+  const m = STOCK_RE.exec(w);
+  if (!m) return null;
+  const t = m[1];
+  const clash = resolveInstrument(t) || ALIASES[t] || t === 'W' || SHADOWED_TICKERS.has(t) || REGISTRY.some((c) => c.name === t);
+  return clash ? `$${t}` : t;
+}

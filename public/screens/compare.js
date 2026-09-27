@@ -5,6 +5,7 @@ import { fmtXForSpan, fmtHoverForBar } from './chart.js';
 import { mountLines } from './lines.js';
 import { PRESETS } from '../ranges.js';
 import { toolbar, rangePills } from '../kit.js';
+import { stockIdOf } from '../known-tickers.js';
 
 // The standard daily range set (1M to MAX); intraday ranges are not compared.
 export const RANGES = PRESETS.filter((r) => r !== '1D' && r !== '5D');
@@ -25,7 +26,8 @@ export const compareCmd = (tickers, range) => `COMPARE ${tickers.join(' ')} ${ra
 
 // The command after adding a ticker, or null when it cannot be added.
 export function addTicker(tickers, range, raw) {
-  const t = String(raw || '').trim().toUpperCase();
+  const typed = String(raw || '').trim().toUpperCase();
+  const t = stockIdOf(typed) || typed; // $GOLD: the stock
   if (!TICKER.test(t) || tickers.includes(t) || tickers.length >= MAX_TICKERS) return null;
   return compareCmd([...tickers, t], range);
 }

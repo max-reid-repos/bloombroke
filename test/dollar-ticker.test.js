@@ -150,3 +150,97 @@ test('$: the server quotes the stock GOLD for $GOLD and spot gold for GOLD', asy
   assert.deepEqual(list.quotes.map((x) => [x.ticker, x.kind]), [['$GOLD', 'stock'], ['GOLD', 'spot'], ['$M', 'stock']]);
   assert.deepEqual(list.missing, []);
 });
+
+// ---- $ everywhere a command takes a symbol ------------------------------------------
+import { parseSymbols } from '../public/watchlist.js';
+import { parseCsv, readPfForm } from '../public/portfolio.js';
+import { resolveAlertSymbol } from '../public/alerts.js';
+import { tapeSymbol, parseTape } from '../public/pro.js';
+import { parse as parseCompare, addTicker } from '../public/screens/compare.js';
+import { parseMine, formWords } from '../public/whatif-mine.js';
+import { whatifTokens } from '../data/whatif-cert.js';
+import { resolveTopic as helpTopic } from '../public/screens/help.js';
+import { parseAdd, tickerOf, retarget, embedSrc, parseDesks, serializeDesks, defaultDesks, addPanel } from '../public/desk-layout.js';
+import { stockIdOf } from '../public/known-tickers.js';
+
+test('$ everywhere: the shared stock id agrees with the router', () => {
+  for (const t of [...COLLISIONS, 'W', 'AAPL', 'BRK.B', 'SPX', 'NEWS', 'HOME', 'PF', 'CPI', 'FX', 'F', 'X']) {
+    assert.equal(stockIdOf(`$${t}`), stockId(t), t);
+  }
+  assert.equal(stockIdOf('GOLD'), null, 'no $, no stock');
+  assert.equal(stockIdOf('$1200'), null, 'an amount is no stock');
+});
+
+test('$ everywhere: WATCH ADD $GOLD watches the stock; WATCH ADD GOLD spot gold', () => {
+  for (const t of COLLISIONS) {
+    assert.deepEqual(parseCommand(`WATCH ADD $${t}`).args.ids, [`$${t}`], t);
+    assert.deepEqual(parseSymbols([`$${t.toLowerCase()}`]).ids, [`$${t}`], 'the WATCH add field too');
+  }
+  assert.deepEqual(parseCommand('WATCH ADD GOLD').args.ids, ['GOLD']);
+  assert.deepEqual(parseCommand('WATCH ADD DOW').args.ids, ['DJI']);
+  assert.deepEqual(parseCommand('W ADD $M').args.ids, ['$M']);
+  assert.deepEqual(parseCommand('WATCH ADD $AAPL').args.ids, ['AAPL']);
+  assert.deepEqual(parseSymbols(['$GOLD,GOLD,$1200']), { ids: ['$GOLD', 'GOLD'], bad: ['1200'] });
+});
+
+test('$ everywhere: PORTFOLIO ADD $M holds Macy\'s; plain GOLD is spot gold', () => {
+  const m = parseCommand('PORTFOLIO ADD $M 10 @ 20');
+  assert.deepEqual([m.args.action, m.args.ticker, m.args.shares, m.args.cost], ['add', '$M', 10, 20]);
+  assert.equal(parseCommand('PF ADD $GOLD 5 @ 40').args.ticker, '$GOLD');
+  assert.equal(parseCommand('PF ADD GOLD 1 @ 3000').args.ticker, 'GOLD');
+  assert.equal(parseCommand('PF SELL $M 5').args.ticker, '$M');
+  assert.equal(readPfForm({ ticker: '$gold', shares: '5', price: '40' }).ticker, '$GOLD');
+  assert.deepEqual(parseCsv('$GOLD,5,40\nGOLD,1,3000').holdings.map((h) => h.ticker), ['$GOLD', 'GOLD']);
+});
+
+test('$ everywhere: ALERTS $GOLD > 30 watches the stock; ALERTS GOLD > 3000 spot gold', () => {
+  const a = parseCommand('ALERTS $GOLD > 30').args.alert;
+  assert.deepEqual([a.kind, a.sym, a.op, a.level], ['quote', '$GOLD', '>', 30]);
+  assert.equal(parseCommand('ALERTS $GOLD>30').args.alert.sym, '$GOLD');
+  assert.equal(parseCommand('ALERTS GOLD > 3000').args.alert.sym, 'GOLD');
+  assert.equal(parseCommand('ALERTS $M < 20').args.alert.sym, '$M');
+  for (const t of COLLISIONS) assert.deepEqual(resolveAlertSymbol([`$${t}`]), { kind: 'quote', sym: `$${t}` }, t);
+});
+
+test('$ everywhere: COMPARE and its add field', () => {
+  assert.deepEqual(parseCommand('COMPARE $GOLD $DOW AAPL').args.tickers, ['$GOLD', '$DOW', 'AAPL']);
+  assert.deepEqual(parseCommand('COMPARE GOLD AAPL').args.tickers, ['GOLD', 'AAPL']);
+  assert.deepEqual(parseCompare(['$GOLD', 'GOLD']).tickers, ['$GOLD', 'GOLD'], 'the stock and the metal side by side');
+  assert.equal(addTicker(['AAPL'], '1Y', '$gold'), 'COMPARE AAPL $GOLD 1Y');
+  assert.equal(addTicker(['AAPL'], '1Y', '$msft'), 'COMPARE AAPL MSFT 1Y');
+});
+
+test('$ everywhere: TAPE, WHATIF MY and HELP', () => {
+  assert.equal(tapeSymbol('$GOLD'), '$GOLD');
+  assert.equal(tapeSymbol('GOLD'), 'GOLD');
+  assert.deepEqual(parseCommand('TAPE ADD $GOLD $M').args.symbols, ['$GOLD', '$M']);
+  assert.deepEqual(parseTape(['ADD', 'GOLD']).symbols, ['GOLD']);
+  // WHATIF MY: your own purchase of the stock.
+  const now = new Date('2026-09-27T12:00:00Z');
+  assert.equal(parseMine(['MY', '1000', '$GOLD', '2020'], now).mine[0].ticker, '$GOLD');
+  assert.equal(parseMine(['MY', '1000', 'GOLD', '2020'], now).mine[0].ticker, 'GOLD');
+  assert.deepEqual(formWords({ amount: '1000', ticker: '$gold', date: '2020' }, now), ['MY', '1000', '$GOLD', '2020']);
+  assert.deepEqual(whatifTokens('WHATIF MY 1000 $GOLD 2020'), ['MY', '1000', '$GOLD', '2020'], 'the server takes it');
+  assert.equal(whatifTokens('MY 1000 $<SCRIPT> 2020'), null);
+  assert.deepEqual(parseCommand('WHATIF MY 1000 $GOLD 2020').args.tokens, ['MY', '1000', '$GOLD', '2020']);
+  // HELP $GOLD: the stock's functions.
+  assert.equal(helpTopic('$GOLD').ticker, '$GOLD');
+  assert.equal(helpTopic('GOLD').ticker, undefined);
+});
+
+test('$ everywhere: DESK panels', () => {
+  assert.deepEqual(parseAdd('+ $gold'), { cmd: '$GOLD' });
+  const panels = addPanel([], '$GOLD');
+  assert.equal(tickerOf(panels[0].cmd, parseCommand), '$GOLD');
+  assert.equal(tickerOf('GOLD', parseCommand), 'GOLD', 'plain GOLD stays the metal');
+  assert.equal(retarget('NEWS AAPL', '$GOLD', parseCommand), 'NEWS $GOLD');
+  assert.equal(retarget('FINANCIALS AAPL', '$M', parseCommand), 'FINANCIALS $M');
+  // The panel's frame loads the stock.
+  const src = new URL(embedSrc('$GOLD 5Y'), 'https://bloombroke.com');
+  assert.deepEqual(parseCommand(src.searchParams.get('c')).args, { ticker: '$GOLD', range: '5Y' });
+  // Saved and loaded again, the panel is still the stock.
+  const state = defaultDesks();
+  state.desks[0].panels = panels;
+  const back = parseDesks(JSON.parse(JSON.stringify(serializeDesks(state))));
+  assert.equal(back.state.desks[0].panels[0].cmd, '$GOLD');
+});
