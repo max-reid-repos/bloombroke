@@ -1689,6 +1689,17 @@ a.ch-flag { cursor: pointer; }
 }
 /* --- end GUESS ------------------------------------------------------------------ */
 
+/* --- SINCE on HOME (since.js): one line in the MARKETS title strip ------------ */
+.since { color: var(--dim); }
+.since .sn-sep { color: var(--faint); }
+.since .sn-i { white-space: nowrap; }
+/* Phones: the line takes its own row under the panel title, like a metaNote. */
+@media (max-width: 639px) {
+  .panel-head:has(.since) { flex-wrap: wrap; }
+  .panel-meta:has(.since) { flex: 1 1 100%; justify-content: flex-start; text-align: left; padding-left: 8px; }
+}
+/* --- end SINCE ------------------------------------------------------------------ */
+
 /* --- Phone key bar: short labels, so every key shows its whole word -------------- */
 .fkey-short { display: none; }
 @media (max-width: 639px) {
