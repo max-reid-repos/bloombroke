@@ -1905,6 +1905,15 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .spon-facts { margin: 0 0 12px; border-top: 1px solid var(--rule); }
 .spon-facts li { min-height: var(--row-h); padding: 3px 0; border-bottom: 1px solid var(--rule); color: var(--text-2); }
 .spon-facts li.is-no { color: var(--dim); }
+.spon-proofs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; margin: 0 0 12px; max-width: 900px; }
+.spon-h { display: flex; gap: 12px; margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .14em; color: var(--dim); }
+.spon-nums { width: 100%; border-collapse: collapse; }
+.spon-nums th, .spon-nums td { height: var(--row-h); padding: 0 8px 0 0; border-bottom: 1px solid var(--rule); text-align: left; font-weight: 400; color: var(--text-2); white-space: nowrap; }
+.spon-nums thead th { font-size: 11px; letter-spacing: .08em; color: var(--dim); }
+.spon-nums .num { text-align: right; color: var(--text); }
+.spon-tile .wd-line { display: none; }
+.spon-tile .panel-body { min-height: 0; }
+@media (max-width: 639px) { .spon-proofs { grid-template-columns: minmax(0, 1fr); } }
 .spon-proof { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 12px; }
 .spon-proof li { white-space: nowrap; color: var(--dim); }
 .panel-head > .wd-sponsor { margin-left: auto; padding-right: 0; }

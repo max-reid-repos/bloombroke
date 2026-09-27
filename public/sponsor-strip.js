@@ -4,6 +4,8 @@
 // SPONSOR and open the sponsor's site; our own lines are marked AD and run a command.
 // Pro users see nothing. The same component is the live preview on the SPONSOR screen.
 
+import { goal } from './goal.js';
+
 export const ROTATE_MS = 7000;
 export const MAX_SPONSOR_LINES = 8;
 export const SLIDE_MS = 180;
@@ -36,8 +38,9 @@ export function itemHtml(item) {
 }
 
 // Rotate items in host. Returns { stop, next, index, paused }. isHidden: whether the tab
-// is hidden (skips a turn). reduceMotion: swap without the slide.
-export function mountStrip(host, items, { reduceMotion = false, isHidden = () => false, rotateMs = ROTATE_MS } = {}) {
+// is hidden (skips a turn). reduceMotion: swap without the slide. onPaidClick: a click on
+// a paid line (the sponsor_click goal; our own AD lines send nothing).
+export function mountStrip(host, items, { reduceMotion = false, isHidden = () => false, rotateMs = ROTATE_MS, onPaidClick = () => goal('sponsor_click') } = {}) {
   let i = 0;
   let hover = false;
   let focus = false;
@@ -72,6 +75,7 @@ export function mountStrip(host, items, { reduceMotion = false, isHidden = () =>
     ['mouseleave', () => { hover = false; }],
     ['focusin', () => { focus = true; }],
     ['focusout', () => { focus = false; }],
+    ['click', (e) => { if (e?.target?.closest?.('a.spon-item[rel~="sponsored"]')) onPaidClick(); }],
   ];
   for (const [t, f] of on) host.addEventListener(t, f);
   show(false);

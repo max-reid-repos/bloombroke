@@ -7,6 +7,7 @@
 import { esc, panel, metaNote, q } from './markets.js';
 import { findCommand } from '../registry.js';
 import { stripItems, mountStrip, ROTATE_MS, MAX_SPONSOR_LINES } from '../sponsor-strip.js';
+import { tileBody, WEIRD_GAUGES } from './weird.js';
 
 export const CONTACT = 'hello@bloombroke.com';
 export const FACTS = [
@@ -19,10 +20,36 @@ export const NOT_FOR = 'Not for brokers, exchanges, crypto, funds or tip sellers
 export const PROOF = [
   ['BBRK', 'site numbers'],
   ['CHANGES', 'what is new'],
-  ['DATA', 'where data comes from'],
+  ['DATA', 'sources'],
   ['MCP', 'AI access'],
-  ['WEIRD', 'sponsor one gauge'],
+  ['WEIRD', 'gauges'],
 ];
+// SITE NUMBERS: a few rows from /api/bbrk, today so far and the last 7 days.
+export const NUMBERS = [['whatif_run', 'WHATIF results'], ['guess_played', 'GUESS games'], ['mcp_call', 'MCP calls']];
+// The gauge shown as a sponsorship preview. Never saved to the sponsor config.
+export const PREVIEW_GAUGE = 'canal';
+export const PREVIEW_SPONSOR = 'SPONSORED BY YOUR NAME';
+
+const fmtN = (v) => (Number.isFinite(v) ? v.toLocaleString('en-US') : '--');
+
+// The rows, from /api/bbrk (null while it loads or fails: every number is --).
+export function numbersHtml(bbrk) {
+  const rows = NUMBERS.map(([k, label]) => {
+    const c = bbrk?.counts?.[k];
+    return `<tr><th scope="row">${esc(label)}</th><td class="num">${fmtN(c?.today)}</td><td class="num">${fmtN(c?.d7)}</td></tr>`;
+  }).join('');
+  return `<table class="spon-nums"><thead><tr><th></th><th class="num">TODAY</th><th class="num">7 DAYS</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// A real WEIRD tile with a made-up sponsor, marked as a preview. d: /api/weird/<id>.
+export function gaugePreviewHtml(d) {
+  const g = WEIRD_GAUGES.find((x) => x.id === PREVIEW_GAUGE);
+  if (!g) return '';
+  return `<div class="wd-tile spon-tile" data-cmd="${esc(g.command)}" tabindex="0"><section class="panel">
+    <header class="panel-head"><h2 class="panel-label">${esc(g.command)}</h2><span class="panel-meta">${metaNote(PREVIEW_SPONSOR, 'A preview: no gauge is sponsored yet')}</span></header>
+    <div class="panel-body">${tileBody(g, d)}</div></section></div>`;
+}
+
 export const proofLinks = (has = (c) => Boolean(findCommand(c))) => PROOF.filter(([c]) => has(c));
 
 // A WEIRD gauge's title strip: SPONSORED BY <name>, or '' when the gauge has no sponsor.
@@ -56,13 +83,18 @@ export function markGaugeSponsor(metaEl, id) {
   });
 }
 
-export function sponsorHtml({ has } = {}) {
+export function sponsorHtml({ has, bbrk = null, gauge = null } = {}) {
   const link = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
-  const proof = proofLinks(has);
+  const hasBbrk = (has || ((c) => Boolean(findCommand(c))))('BBRK');
+  // BBRK already heads the numbers block, so it is not listed twice.
+  const proof = proofLinks(has).filter(([c]) => !(hasBbrk && c === 'BBRK'));
+  const numbers = hasBbrk
+    ? `<section class="spon-box"><h3 class="spon-h">SITE NUMBERS ${link('BBRK')}</h3><div id="spon-nums">${numbersHtml(bbrk)}</div></section>` : '';
   return panel('1', 'Sponsor', `<div class="spon-preview" aria-label="Preview of the sponsor strip"><span class="spon-strip" id="spon-demo"></span></div>
     <ul class="spon-facts">${FACTS.map((t) => `<li>${esc(t)}</li>`).join('')}<li class="is-no">${esc(NOT_FOR)}</li></ul>
+    <div class="spon-proofs">${numbers}<section class="spon-box"><h3 class="spon-h">PREVIEW</h3><div id="spon-gauge">${gaugePreviewHtml(gauge)}</div></section></div>
     ${proof.length ? `<ul class="spon-proof">${proof.map(([c, what]) => `<li>${link(c)} ${esc(what)}</li>`).join('')}</ul>` : ''}
-    <p class="notice">Email for rates: <a href="mailto:${CONTACT}">${CONTACT}</a></p>`, { cls: 'panel-solo', meta: metaNote('EMAIL FOR RATES') });
+    <p class="notice">Email for rates: <a href="mailto:${CONTACT}">${CONTACT}</a></p>`, { cls: 'panel-solo' });
 }
 
 export function render(el, cmd, ctx) {
@@ -78,4 +110,9 @@ export function render(el, cmd, ctx) {
     const items = stripItems(cfg, { pro: false });
     if (items.length) demo = mountStrip(host, items, { reduceMotion, isHidden: () => document.hidden });
   });
+  // Proof: the site numbers and a live gauge, each filled in when it comes.
+  const get = (url) => (ctx.fetchJSON ? ctx.fetchJSON(url, { signal: ctx.signal }) : Promise.reject(new Error('no fetch')));
+  get('/api/bbrk').then((d) => { const h = el.querySelector('#spon-nums'); if (h) h.innerHTML = numbersHtml(d); }).catch(() => {});
+  get(`/api/weird/${PREVIEW_GAUGE}`).then((d) => { const h = el.querySelector('#spon-gauge'); if (h) h.innerHTML = gaugePreviewHtml(d); })
+    .catch(() => { const h = el.querySelector('#spon-gauge'); if (h) h.innerHTML = gaugePreviewHtml({ ok: false }); });
 }

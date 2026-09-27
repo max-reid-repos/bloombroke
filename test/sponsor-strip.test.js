@@ -8,7 +8,8 @@ import path from 'node:path';
 import express from 'express';
 import { cleanSponsors, cleanUrl, loadSponsors, mountSponsors, SPONSORS_FILE, MAX_LINES, MAX_HOUSE } from '../lib/sponsors.js';
 import { stripItems, itemHtml, mountStrip, ROTATE_MS, SLIDE_MS, MAX_SPONSOR_LINES } from '../public/sponsor-strip.js';
-import { sponsorHtml, FACTS, NOT_FOR, PROOF, proofLinks } from '../public/screens/sponsor.js';
+import { sponsorHtml, FACTS, NOT_FOR, PROOF, proofLinks, numbersHtml, gaugePreviewHtml, PREVIEW_SPONSOR } from '../public/screens/sponsor.js';
+import { findCommand } from '../public/registry.js';
 import { parseCommand } from '../public/app.js';
 
 // A stand-in for the strip's host element: innerHTML, a class list and listeners.
@@ -203,14 +204,57 @@ test('SPONSOR screen: preview, four facts, proof links only for commands that ex
   assert.doesNotMatch(all, /\$\d/, 'no prices');
   // Missing commands: their links are hidden; none left, no list at all.
   const some = sponsorHtml({ has: (c) => c === 'WEIRD' });
-  assert.match(some, /data-cmd="WEIRD">WEIRD<\/a> sponsor one gauge/);
+  assert.match(some, /data-cmd="WEIRD">WEIRD<\/a> gauges/);
   for (const c of ['BBRK', 'CHANGES', 'DATA', 'MCP']) assert.doesNotMatch(some, new RegExp(`data-cmd="${c}"`));
-  assert.doesNotMatch(sponsorHtml({ has: () => false }), /spon-proof/);
+  assert.doesNotMatch(sponsorHtml({ has: () => false }), /class="spon-proof"/);
   // By default it asks the registry.
   assert.ok(proofLinks().some(([c]) => c === 'WEIRD'));
-  // Short: at most about 70 words on screen with every link and a house line in the preview.
-  const words = (h) => h.replace(/<[^>]+>/g, ' ').split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w)).length;
-  assert.ok(words(all) + 10 <= 70, `${words(all)} words`);
+  // Short: under 90 words on screen with every link, the numbers, the gauge and a house
+  // line in the strip preview. The gauge's long line is hidden in the preview (CSS).
+  const words = (h) => h.replace(/<p class="wd-line">[^<]*<\/p>/g, '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w)).length;
+  const full = sponsorHtml({ has: () => true, bbrk: { counts: { whatif_run: { today: 12, d7: 340 }, guess_played: { today: 5, d7: 61 }, mcp_call: { today: 1, d7: 9 } } },
+    gauge: { ok: true, headline: 'HORMUZ 3 SHIPS/DAY', line: '7-day average; 1-year average 35', source: 'IMF PortWatch' } });
+  assert.ok(words(full) + 10 <= 90, `${words(full)} words`);
+  assert.match(readFileSync('public/style.css', 'utf8'), /\.spon-tile \.wd-line \{ display: none; \}/);
   assert.equal(parseCommand('SPONSOR').name, 'SPONSOR');
   assert.doesNotMatch(all, /\u2014/);
+});
+
+test('SPONSOR proof: live site numbers from BBRK, and a real gauge tile with a preview sponsor', () => {
+  const html = numbersHtml({ counts: { whatif_run: { today: 1234, d7: 5678 }, guess_played: { today: 0, d7: 3 }, mcp_call: null } });
+  assert.match(html, /<th scope="row">WHATIF results<\/th><td class="num">1,234<\/td><td class="num">5,678<\/td>/);
+  assert.match(html, /<th scope="row">GUESS games<\/th><td class="num">0<\/td><td class="num">3<\/td>/);
+  assert.match(html, /<th scope="row">MCP calls<\/th><td class="num">--<\/td><td class="num">--<\/td>/, 'unknown is --');
+  assert.equal((numbersHtml(null).match(/>--</g) || []).length, 6, 'before it loads, all --');
+  const withBbrk = sponsorHtml({ has: () => true });
+  assert.match(withBbrk, /SITE NUMBERS <a class="code" href="\?c=BBRK" data-cmd="BBRK">BBRK<\/a>/);
+  assert.doesNotMatch(sponsorHtml({ has: (c) => c !== 'BBRK' }), /SITE NUMBERS/, 'no BBRK command, no numbers block');
+  const tile = gaugePreviewHtml({ ok: true, headline: 'HORMUZ 3 SHIPS/DAY', line: 'x', source: 'IMF PortWatch' });
+  assert.match(tile, /data-cmd="CANAL"/);
+  assert.match(tile, /HORMUZ 3 SHIPS\/DAY/);
+  assert.match(tile, new RegExp(PREVIEW_SPONSOR));
+  assert.match(tile, /title="A preview: no gauge is sponsored yet"/);
+  assert.match(gaugePreviewHtml(null), /LOADING/);
+  // A preview only: the sponsor config is untouched.
+  assert.deepEqual(loadSponsors().gauges, {});
+  // The proof links resolve for commands on main now.
+  for (const c of ['BBRK', 'MCP', 'WEIRD']) assert.ok(findCommand(c), c);
+  assert.deepEqual(proofLinks().map(([c]) => c).filter((c) => ['BBRK', 'MCP', 'WEIRD'].includes(c)), ['BBRK', 'MCP', 'WEIRD']);
+});
+
+test('sponsor_click: sent for a paid line, never for an AD line', () => {
+  mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+  try {
+    const clicks = [];
+    const click = (sel) => ({ target: { closest: (q) => (sel === 'paid' && q.includes('sponsored') ? {} : null) } });
+    const host = fakeHost();
+    const s = mountStrip(host, stripItems(cleanSponsors({ lines: [{ name: 'A', text: 'B', url: 'https://a.example' }] })), { onPaidClick: () => clicks.push('paid') });
+    for (const f of host.listeners.click) f(click('paid'));
+    for (const f of host.listeners.click) f(click('house'));
+    assert.deepEqual(clicks, ['paid']);
+    s.stop();
+  } finally { mock.timers.reset(); }
+  const src = readFileSync('public/sponsor-strip.js', 'utf8');
+  assert.match(src, /goal\('sponsor_click'\)/);
+  assert.match(src, /closest\?\.\('a\.spon-item\[rel~="sponsored"\]'\)/, 'only links marked sponsored count');
 });
