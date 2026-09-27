@@ -72,7 +72,8 @@ test('graveyard: lookup by old ticker or by name word; the line reads right', ()
   assert.equal(dayText('2008-09-15'), '15 Sep 2008');
   assert.match(tombstoneLine(leh), /^LEH\. Lehman Brothers\.( Listed \d{4}\.)? Filed for bankruptcy 15 Sep 2008\.$/);
   const html = noSuchExtra('LEH', { grave: leh, ipo: false }, { ticker: 'LEH' });
-  assert.match(html, /ns-stone/);
+  assert.match(html, /gv-stone/);
+  assert.match(html, /PAY RESPECTS/);
   assert.match(html, /SHARE ON X/);
   assert.match(html, /GRAVEYARD\+LEH/);
   assert.doesNotMatch(html, /IPO IT/, 'a tombstone, not a joke');

@@ -472,6 +472,7 @@ test('privacy names every IP-keyed limiter in the code, with its window', () => 
     'data/trending.js': [/windowMs: MIN/],
     'lib/mcp/limits.js': [/shortWindowMs: 10 \* 60_000/, /dayWindowMs: 24 \* 60 \* 60_000/, /requestWindowMs: 60_000/],
     'lib/counters.js': [/windowMs: 60_000/], // BBRK site counters
+    'lib/graveyard.js': [/max: 30, windowMs: 60_000/], // GRAVEYARD respects (privacy text: legal round)
   };
   for (const [f, res] of Object.entries(windows)) for (const re of res) assert.match(readFileSync(f, 'utf8'), re, `${f} window changed: update the Privacy Policy`);
   for (const name of ['Pro routes', 'gift codes', 'ticker counter', 'site counters', 'GUESS game', 'feedback form', 'MCP endpoint']) assert.ok(privacy.includes(name), name);
@@ -479,5 +480,5 @@ test('privacy names every IP-keyed limiter in the code, with its window', () => 
   const users = [];
   const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = `${d}/${e.name}`; if (e.isDirectory()) walk(p); else if (p.endsWith('.js') && readFileSync(p, 'utf8').includes('clientIp(')) users.push(p); } };
   for (const d of ['data', 'lib', 'pro', 'public']) walk(d);
-  assert.deepEqual(users.sort(), ['data/guess.js', 'data/trending.js', 'lib/counters.js', 'lib/mcp/server.js', 'pro/feedback.js', 'pro/ratelimit.js', 'pro/routes.js']);
+  assert.deepEqual(users.sort(), ['data/guess.js', 'data/trending.js', 'lib/counters.js', 'lib/graveyard.js', 'lib/mcp/server.js', 'pro/feedback.js', 'pro/ratelimit.js', 'pro/routes.js']);
 });

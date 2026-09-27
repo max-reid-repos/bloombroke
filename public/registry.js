@@ -490,7 +490,8 @@ export const REGISTRY = [
   // --- GRAVEYARD (screens/nosuch.js, data/graveyard.json) ---
   {
     name: 'GRAVEYARD', category: 'Weird data', summary: 'Famous tickers that are gone: bankrupt, seized, bought out or taken private',
-    syntax: 'GRAVEYARD [<ticker>]', examples: ['GRAVEYARD', 'GRAVEYARD LEH'], keywords: ['dead', 'delisted', 'bankrupt', 'bankruptcy', 'defunct', 'gone', 'failed', 'collapse', 'rip'],
+    syntax: 'GRAVEYARD [<ticker>|TABLE|MOURNED|ZOMBIES|TODAY]', examples: ['GRAVEYARD', 'GRAVEYARD LEH', 'GRAVEYARD ZOMBIES', 'GRAVEYARD MOURNED'],
+    options: [['<ticker>', 'One stone: F pays respects'], ['TABLE', 'Every stone in a table'], ['MOURNED', 'The table, most respects first'], ['ZOMBIES', 'Companies that died and came back'], ['TODAY', 'The stone for this date, if any']], keywords: ['dead', 'delisted', 'bankrupt', 'bankruptcy', 'defunct', 'gone', 'failed', 'collapse', 'rip'],
     source: 'SEC filings, regulators, courts and major news, linked on each row', delay: 'None',
   },
   // --- end GRAVEYARD ---

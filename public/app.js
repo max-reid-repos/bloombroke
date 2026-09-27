@@ -1234,7 +1234,7 @@ function boot() {
     const title = info.grave ? TITLE_GONE : ticker ? TITLE_YET : 'Unknown command';
     const extra = embed ? '' : noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : yard });
     view.innerHTML = panel('1', title, didYouMeanHtml(typed, found, ticker, { extra }), { cls: 'panel-solo', bodyCls: 'ns-page' });
-    if (!embed) cleanups.push(wireNoSuch(view, word, info));
+    if (!embed) cleanups.push(wireNoSuch(view, word, info, { status: setStatus }));
     if (info.grave) setStatus(`${info.grave.ticker}: ${info.grave.what.toUpperCase()}`, 'warn');
     else setStatus(rows ? 'NOT FOUND. PICK ONE BELOW, OR TYPE HELP' : ticker ? 'NO SUCH TICKER. TYPE HELP' : 'UNKNOWN COMMAND. TYPE HELP', 'warn');
   }

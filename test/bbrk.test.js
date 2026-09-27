@@ -270,7 +270,8 @@ test('goal(): the seventeen goals, each once in the code', () => {
     'public/screens/desk.js': ['desk_opened'],
     'public/screens/mcp.js': ['mcp_screen_opened'],
     'public/sponsor-strip.js': ['sponsor_click'],
-    'public/screens/nosuch.js': ['notfound_seen', 'graveyard_seen', 'ipo_made', 'ipo_shared'],
+    'public/screens/nosuch.js': ['notfound_seen', 'graveyard_seen', 'ipo_made'],
+    'public/screens/graveyard.js': ['graveyard_seen', 'ipo_shared'],
   };
   for (const [f, names] of Object.entries(wired)) {
     const s = readFileSync(f, 'utf8');

@@ -5,6 +5,7 @@ import { rangeChart } from './chart.js';
 import { freshTag } from '../freshness.js';
 import { newsList, liveNews, dedupeNews, mergePushed, newsStream, NEWS_POLL_MS } from './news.js';
 import { startSince } from '../since.js'; // SINCE line
+import { mountOnThisDay } from './graveyard.js'; // GRAVEYARD: ON THIS DAY
 
 export function fxTable(pairs) {
   const rows = pairs.map((p) => {
@@ -87,6 +88,7 @@ export function render(el, cmd, ctx) {
     label: 'S&P 500', decimals: 2, fmtY: (v) => fmtNum(v, 0),
   });
   const since = startSince(el.querySelector('#h-mk-meta'), ctx); // SINCE: in the MARKETS title strip
+  mountOnThisDay(el.querySelector('#h-mk-meta')?.parentElement, { signal: ctx.signal }); // GRAVEYARD: ON THIS DAY, one quiet line in the MARKETS title strip
 
   async function loadMarkets() {
     try {
