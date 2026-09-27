@@ -43,7 +43,7 @@ test('did you mean: at most 3 rows, never the words typed', () => {
 
 test('graveyard: every entry is sourced and well formed', () => {
   assert.ok(RAW.length >= 20, `${RAW.length} entries`);
-  assert.equal(GRAVE.length, RAW.length, 'every entry passes the loader');
+  assert.equal(GRAVE.length, RAW.filter((e) => !e.zombie).length, 'every stone passes the loader (zombies: test/graveyard.test.js)');
   const seen = new Set();
   for (const e of RAW) {
     assert.match(e.ticker, /^[A-Z]{1,5}$/, e.ticker);
@@ -55,12 +55,13 @@ test('graveyard: every entry is sourced and well formed', () => {
     assert.ok(Number.isFinite(Date.parse(e.date)), e.ticker);
     if ('listed' in e) assert.ok(Number.isInteger(e.listed) && e.listed <= Number(e.date.slice(0, 4)), `${e.ticker} listed`);
     for (const w of e.also || []) assert.match(w, /^[A-Z]{3,12}$/, `${e.ticker} also`);
-    assert.ok(e.name.length <= 28 && e.what.length <= 34, e.ticker);
+    assert.ok(e.name.length <= (e.zombie ? 40 : 28) && e.what.length <= 34, e.ticker);
   }
   const text = JSON.stringify(RAW);
   assert.doesNotMatch(text, BANNED);
   assert.doesNotMatch(text, /—/, 'no em dashes');
-  assert.doesNotMatch(text, /\bbuy\b|return/i, 'history, not advice');
+  const shown = JSON.stringify(RAW.map((e) => [e.what, e.epitaph, e.cause, e.seoTitle, e.peakLine]));
+  assert.doesNotMatch(shown, /\bbuy\b|\bsell\b|returns?\b|you should|will (rise|fall)/i, 'history, not advice');
 });
 
 test('graveyard: lookup by old ticker or by name word; the line reads right', () => {
@@ -72,7 +73,8 @@ test('graveyard: lookup by old ticker or by name word; the line reads right', ()
   assert.equal(dayText('2008-09-15'), '15 Sep 2008');
   assert.match(tombstoneLine(leh), /^LEH\. Lehman Brothers\.( Listed \d{4}\.)? Filed for bankruptcy 15 Sep 2008\.$/);
   const html = noSuchExtra('LEH', { grave: leh, ipo: false }, { ticker: 'LEH' });
-  assert.match(html, /ns-stone/);
+  assert.match(html, /gv-stone/);
+  assert.match(html, /PAY RESPECTS/);
   assert.match(html, /SHARE ON X/);
   assert.match(html, /GRAVEYARD\+LEH/);
   assert.doesNotMatch(html, /IPO IT/, 'a tombstone, not a joke');

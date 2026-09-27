@@ -355,7 +355,12 @@ mountProvenanceRoutes(app, {
 
 // --- NO SUCH TICKER. YET. (lib/og-nosuch.js): GRAVEYARD, IPO IT and their share cards ---
 import { mountNoSuch } from './lib/og-nosuch.js';
-const noSuch = mountNoSuch(app, { getQuote }); // getQuote: a graveyard ticker's live US listing wins
+// GRAVEYARD v2 (lib/graveyard.js): respects (totals in the Pro database), ON THIS DAY.
+import { mountGraveyard, siteRespects } from './lib/graveyard.js';
+if (pro?.db) siteRespects.attach(pro.db);
+const grave = mountGraveyard(app, { respects: siteRespects, publicUrl: process.env.PUBLIC_URL || 'https://bloombroke.com' });
+// getQuote: a graveyard ticker's live US listing wins.
+const noSuch = mountNoSuch(app, { getQuote, graveyard: grave.data.stones, zombies: grave.data.zombies, art: grave.art, today: grave.today });
 // --- end NO SUCH TICKER ---
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));

@@ -5,6 +5,11 @@ import { rangeChart } from './chart.js';
 import { freshTag } from '../freshness.js';
 import { newsList, liveNews, dedupeNews, mergePushed, newsStream, NEWS_POLL_MS } from './news.js';
 import { startSince } from '../since.js'; // SINCE line
+import { lazyScreen, loadScreen, stylesOf } from '../lazy.js';
+
+// GRAVEYARD: ON THIS DAY comes from screens/graveyard.js, loaded (with its stylesheet)
+// once HOME has drawn, so the page does not wait for the whole graveyard.
+const GRAVEYARD = lazyScreen('screens/graveyard.js');
 
 export function fxTable(pairs) {
   const rows = pairs.map((p) => {
@@ -87,6 +92,9 @@ export function render(el, cmd, ctx) {
     label: 'S&P 500', decimals: 2, fmtY: (v) => fmtNum(v, 0),
   });
   const since = startSince(el.querySelector('#h-mk-meta'), ctx); // SINCE: in the MARKETS title strip
+  // GRAVEYARD: ON THIS DAY, one quiet line in the MARKETS title strip
+  loadScreen(GRAVEYARD, stylesOf(GRAVEYARD.js))
+    .then((g) => { if (!ctx.signal.aborted) g.mountOnThisDay(el.querySelector('#h-mk-meta')?.parentElement, { signal: ctx.signal }); }, () => {});
 
   async function loadMarkets() {
     try {

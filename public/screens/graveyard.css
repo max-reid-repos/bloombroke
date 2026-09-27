@@ -1,0 +1,119 @@
+/* graveyard.js's own styles, loaded with it (public/lazy.js) the first time a screen that
+   uses it opens; the page's always-on styles are in the stylesheets public/index.html links. */
+
+/* ==== from graveyard.css ==== */
+
+/* ---- A stone ---- */
+.gv-stone {
+  position: relative; margin: 0; width: 280px; max-width: 100%; container-type: inline-size;
+  aspect-ratio: 2 / 3; color: var(--gv-ink); text-align: center;
+}
+.gv-stone:not(.has-art) {
+  background: linear-gradient(180deg, var(--gv-stone), var(--gv-stone-2));
+  border: 3px solid var(--gv-ink); border-radius: 50% 50% 6px 6px / 34% 34% 6px 6px;
+  box-shadow: inset 0 -10px 0 -4px var(--gv-moss), 0 6px 0 -2px var(--dim);
+}
+.gv-stone.has-art { aspect-ratio: 560 / 778; }
+.gv-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.gv-stone.has-art .gv-face { left: 18%; right: 16%; top: 21%; bottom: 20%; }
+.gv-face {
+  position: absolute; left: 14%; right: 14%; top: 22%; bottom: 14%;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 1.2cqw;
+}
+.gv-rip { font-family: 'Caveat', cursive; font-weight: 700; font-size: 12cqw; line-height: 1; }
+.is-zombie .gv-rip { font-family: var(--font); font-weight: 800; font-size: 6.5cqw; letter-spacing: .12em; }
+.gv-tk { font-weight: 800; font-size: 19cqw; letter-spacing: -.04em; line-height: 1; }
+.gv-name { font-weight: 800; font-size: 6cqw; line-height: 1.15; }
+.gv-years { font-weight: 600; font-size: 5.2cqw; }
+.gv-epitaph { font-family: 'Caveat', cursive; font-weight: 700; font-size: 8cqw; line-height: 1.05; margin-top: 2cqw; }
+.gv-doodle { position: absolute; right: -24%; bottom: -3%; width: 46%; height: auto; transform: rotate(-6deg); pointer-events: none; }
+.gv-flowers { position: absolute; left: 6%; bottom: -2%; display: flex; align-items: flex-end; gap: 1px; pointer-events: none; }
+.gv-flower { display: block; }
+.gv-stone.is-mourned { animation: gv-nod 380ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .gv-stone.is-mourned { animation: none; } }
+
+/* Small stones: the cemetery and ZOMBIES. Only the mark and the ticker. */
+.gv-stone.is-small { width: 100%; }
+.gv-stone.is-small .gv-face { top: 26%; gap: 3cqw; }
+.gv-stone.is-small .gv-rip { font-size: 20cqw; }
+.gv-stone.is-small.is-zombie .gv-rip { font-size: 12cqw; }
+.gv-stone.is-small .gv-tk { font-size: 26cqw; }
+.gv-stone.is-small:not(.has-art) { border-width: 2px; box-shadow: inset 0 -5px 0 -2px var(--gv-moss); }
+
+/* ---- One stone's page ---- */
+.gv-page { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px 56px; align-items: start; padding: 4px 0 8px 8px; }
+.gv-facts > * { margin: 0 0 10px; }
+.gv-facts > :last-child { margin-bottom: 0; }
+.gv-what { font-size: 18px; font-weight: 800; color: var(--text); }
+.gv-fact { color: var(--text); }
+.gv-cause { color: var(--text-2); max-width: 60ch; }
+.gv-whatif { color: var(--text-2); max-width: 60ch; border-left: 2px solid var(--accent); padding-left: 10px; }
+.gv-respects { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.gv-f kbd { margin-right: 6px; background: var(--ink); color: var(--accent); border-color: var(--ink); }
+.gv-count { color: var(--text-2); }
+.gv-last { font-weight: 700; }
+.gv-video {
+  position: relative; display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 16 / 9; padding: 0;
+  border: 1px solid var(--rule-strong); background: radial-gradient(ellipse at 50% 60%, var(--panel-3), var(--bg)); cursor: pointer; overflow: hidden;
+}
+.gv-video img { position: absolute; left: 50%; top: 46%; width: 46%; height: auto; transform: translate(-50%, -50%) rotate(-4deg); opacity: .9; }
+.gv-video:hover img, .gv-video:focus-visible img { opacity: 1; }
+.gv-play { position: absolute; left: 50%; top: 50%; width: 56px; height: 40px; transform: translate(-50%, -50%); background: var(--accent); border-radius: 8px; }
+.gv-play::after { content: ''; position: absolute; left: 22px; top: 11px; border-style: solid; border-width: 9px 0 9px 15px; border-color: transparent transparent transparent var(--ink); }
+.gv-vlabel { position: absolute; left: 10px; bottom: 8px; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--text-2); }
+.gv-player { display: block; width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--rule-strong); }
+.gv-page.has-video { grid-template-columns: 280px minmax(0, 1fr) minmax(0, 440px); }
+.gv-vcol { min-width: 0; }
+@media (max-width: 1099px) {
+  .gv-page.has-video { grid-template-columns: 280px minmax(0, 1fr); }
+  .gv-page.has-video .gv-vcol { grid-column: 2; }
+}
+.gv-links { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; }
+.gv-sources { display: inline-block; }
+.gv-sources > summary { cursor: pointer; list-style: none; color: var(--accent); }
+.gv-sources > summary::-webkit-details-marker { display: none; }
+.gv-sources[open] > summary { color: var(--text); }
+.gv-sources ul { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 2px 12px; }
+@media (max-width: 639px) {
+  .gv-page { grid-template-columns: minmax(0, 1fr); padding-left: 0; }
+  .gv-page > .gv-stone { width: 220px; margin: 0 auto; }
+}
+
+/* ---- The cemetery ---- */
+.gv-panel .panel-body { padding: 0; }
+.gv-yard {
+  position: relative; overflow: hidden; height: clamp(380px, calc(100vh - 170px), 760px);
+  background: linear-gradient(180deg, var(--gv-sky) 0%, hsl(222, 30%, 20%) 38%, var(--gv-hill) 40%, hsl(150, 14%, 12%) 100%);
+}
+.gv-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .9; }
+.gv-ground { position: absolute; inset: 0; }
+.gv-plot { position: absolute; width: calc(56px * var(--s, 1)); transform: translate(-50%, -100%); text-decoration: none; }
+.gv-plot:hover { text-decoration: none; }
+.gv-plot .gv-stone { transition: transform 120ms ease-out, filter 120ms ease-out; }
+.gv-plot.is-on .gv-stone { transform: translateY(-4px); filter: drop-shadow(0 0 6px var(--accent)); }
+.gv-plot:focus-visible { outline: none; }
+.gv-plot:focus-visible .gv-stone { filter: drop-shadow(0 0 6px var(--accent)); }
+.gv-caption, .gv-corner {
+  position: absolute; bottom: 10px; margin: 0; padding: 4px 10px; background: hsla(213, 43%, 3%, .78);
+  border: 1px solid var(--rule-strong); font-size: 13px; white-space: nowrap;
+}
+.gv-caption { left: 12px; color: var(--text); font-weight: 600; max-width: calc(100% - 140px); overflow: hidden; text-overflow: ellipsis; }
+.gv-caption:empty { display: none; }
+.gv-corner { right: 12px; }
+
+/* ---- ZOMBIES ---- */
+.gv-zombies { display: flex; flex-wrap: wrap; gap: 20px 24px; padding: 8px 4px; }
+.gv-plot.is-flat { position: static; transform: none; width: 104px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.gv-zname { font-size: 12px; color: var(--text-2); text-align: center; line-height: 1.2; }
+
+/* ---- ON THIS DAY: one line in the MARKETS title strip on HOME ---- */
+.panel-head > .gv-otd {
+  flex: 0 1 auto; min-width: 0; margin-left: auto; align-self: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; letter-spacing: .04em; color: var(--text-2);
+}
+.panel-head > .gv-otd:hover { color: var(--text); }
+@media (max-width: 639px) {
+  .gv-page.has-video { grid-template-columns: minmax(0, 1fr); }
+  .gv-page.has-video .gv-vcol { grid-column: auto; }
+}
+.gv-scene:focus { outline: 1px solid var(--rule-strong); outline-offset: -1px; }

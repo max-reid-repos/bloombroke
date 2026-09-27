@@ -14,6 +14,8 @@ import { LISTED_TICKERS } from './known-tickers.js';
 export const IPO_RE = /^[A-Z]{1,5}$/;
 export const MAX_ROWS = 3; // "Did you mean" rows on the screen
 export const SITE = 'https://bloombroke.com';
+// GRAVEYARD's views: GRAVEYARD alone is the cemetery (the table on a phone).
+export const GRAVEYARD_VIEWS = ['TABLE', 'MOURNED', 'ZOMBIES', 'TODAY'];
 
 // The word, upper case, when it has the shape a joke listing may take; else null.
 // The server adds its word list on top (ipoAllowed in lib/og-nosuch.js).
@@ -28,9 +30,11 @@ export function ipoShape(raw) {
 // IPO alone is not a command here (the resolver sends it to IPOS); only IPO IT is.
 export function matchNoSuch(head, rest = []) {
   if (head === 'GRAVEYARD') {
-    const t = rest.length === 1 && /^[A-Z]{1,12}$/.test(rest[0]) ? rest[0] : null;
-    const input = t ? `GRAVEYARD ${t}` : 'GRAVEYARD';
-    return { name: 'GRAVEYARD', args: t ? { ticker: t } : {}, input, url: input };
+    const word = rest.length === 1 && /^[A-Z]{1,12}$/.test(rest[0]) ? rest[0] : null;
+    const view = GRAVEYARD_VIEWS.includes(word) ? word : null;
+    const t = view ? null : word;
+    const input = word ? `GRAVEYARD ${word}` : 'GRAVEYARD';
+    return { name: 'GRAVEYARD', args: view ? { view } : t ? { ticker: t } : {}, input, url: input };
   }
   if (head === 'IPO' && rest[0] === 'IT') {
     const word = rest.length === 2 ? ipoShape(rest[1]) : null;
@@ -55,6 +59,55 @@ export function findGrave(list, word) {
   if (!w || !Array.isArray(list)) return null;
   return list.find((e) => e.ticker === w) || list.find((e) => (e.also || []).includes(w)) || null;
 }
+
+// A research date as words: '2007-02-02' -> '2 Feb 2007', '1995-12' -> 'Dec 1995',
+// '2003-Q4' -> 'Q4 2003', '1999' -> '1999', '2000-03/2000-05' -> 'Mar to May 2000'.
+export function periodText(p) {
+  const s = String(p || '');
+  let m = /^(\d{4})-(\d{2})\/(\d{4})-(\d{2})$/.exec(s);
+  if (m) return m[1] === m[3] ? `${MON[Number(m[2]) - 1]} to ${MON[Number(m[4]) - 1]} ${m[1]}` : `${MON[Number(m[2]) - 1]} ${m[1]} to ${MON[Number(m[4]) - 1]} ${m[3]}`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return dayText(s);
+  if ((m = /^(\d{4})-Q([1-4])$/.exec(s))) return `Q${m[2]} ${m[1]}`;
+  if ((m = /^(\d{4})-(\d{2})$/.exec(s))) return `${MON[Number(m[2]) - 1]} ${m[1]}`;
+  return /^\d{4}$/.test(s) ? s : '';
+}
+
+// The years on a stone: the company's life when its founding year is sourced ('1850 -
+// 2008'), else its listed years ('1995 - 1999'), else the year it died; a zombie: the year
+// it died and the year it came back.
+export function stoneYears(e) {
+  const died = String(e.date || '').slice(0, 4);
+  if (e.zombie && e.back?.date) return `${died} - ${e.back.date.slice(0, 4)}`;
+  const from = Number.isInteger(e.founded) ? e.founded : Number.isInteger(e.listed) ? e.listed : null;
+  return from ? `${from} - ${died}` : died;
+}
+
+// Flowers at a stone's foot for n respects: one more each time the count doubles, 10 at most.
+export const MAX_FLOWERS = 10;
+export function flowersFor(n) {
+  const v = Number(n);
+  return Number.isFinite(v) && v > 0 ? Math.min(MAX_FLOWERS, Math.floor(Math.log2(v)) + 1) : 0;
+}
+
+// 1234 -> '1,234 respects'.
+export function respectsText(n) {
+  const v = Number.isFinite(Number(n)) ? Math.max(0, Math.floor(Number(n))) : 0;
+  return `${v.toLocaleString('en-US')} ${v === 1 ? 'respect' : 'respects'}`;
+}
+
+// ON THIS DAY on HOME: '15 Sep 2008: Lehman Brothers filed for bankruptcy.' (a link to the
+// stone, where F pays respects). When the anniversary is another day than the event on
+// the stone, just the name.
+export function onThisDayLine(e) {
+  const day = e.anniversary || e.date;
+  const what = day === e.date ? ` ${e.what.charAt(0).toLowerCase()}${e.what.slice(1)}` : '';
+  return `${dayText(day)}: ${e.name}${what}.`;
+}
+
+// A YouTube id, or null. The screen shows our own art, and loads the player from
+// youtube-nocookie.com only on a click: nothing is asked of YouTube or Google before.
+export const YT_ID = /^[A-Za-z0-9_-]{11}$/;
+export const ytEmbed = (id) => (YT_ID.test(id || '') ? `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0` : null);
 
 // "LEH. Lehman Brothers. Listed 1994. Filed for bankruptcy 15 Sep 2008."
 export function tombstoneLine(e) {

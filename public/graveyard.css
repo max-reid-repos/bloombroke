@@ -1,0 +1,13 @@
+/* GRAVEYARD v2: stones, the cemetery, ZOMBIES, respects, the video, ON THIS DAY
+   (screens/graveyard.js). Cream and grey stone, ice-blue terminal around it. */
+:root {
+  --gv-stone: hsl(45, 12%, 78%);
+  --gv-stone-2: hsl(45, 8%, 66%);
+  --gv-ink: hsl(25, 40%, 11%);
+  --gv-moss: hsl(95, 22%, 42%);
+  --gv-sky: hsl(218, 38%, 12%);
+  --gv-hill: hsl(150, 12%, 16%);
+}
+
+@keyframes gv-nod { 40% { transform: translateY(3px); } }
+

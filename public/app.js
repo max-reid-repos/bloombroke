@@ -569,7 +569,7 @@ export const SHEET_ORDER = [
   'screens/desk-cards.css', 'screens/weird.css', 'screens/sponsor.css', 'screens/fishtank.css',
   'screens/alerts.css', 'screens/pro.css', 'screens/why.css', 'screens/sectors.css', 'screens/heatmap.css',
   'screens/fxmatrix.css', 'screens/calendar.css', 'screens/bbrk.css', 'screens/options.css',
-  'screens/worldmap.css', 'screens/help.css', 'screens/nosuch.css',
+  'screens/worldmap.css', 'screens/help.css', 'screens/nosuch.css', 'screens/graveyard.css',
 ];
 export const stylesFor = (entry) => (entry?.js ? stylesOf(entry.js) : []);
 
@@ -1371,7 +1371,7 @@ function boot() {
     const title = info.grave ? ns.TITLE_GONE : ticker ? (ns?.TITLE_YET || 'No such ticker') : 'Unknown command';
     const extra = embed || !ns ? '' : ns.noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : yard });
     view.innerHTML = panel('1', title, didYouMeanHtml(typed, found, ticker, { extra }), { cls: 'panel-solo', bodyCls: 'ns-page' });
-    if (!embed && ns) cleanups.push(ns.wireNoSuch(view, word, info));
+    if (!embed && ns) cleanups.push(ns.wireNoSuch(view, word, info, { status: setStatus }));
     if (info.grave) setStatus(`${info.grave.ticker}: ${info.grave.what.toUpperCase()}`, 'warn');
     else setStatus(rows ? 'NOT FOUND. PICK ONE BELOW, OR TYPE HELP' : ticker ? 'NO SUCH TICKER. TYPE HELP' : 'UNKNOWN COMMAND. TYPE HELP', 'warn');
   }

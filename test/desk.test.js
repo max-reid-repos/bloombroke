@@ -167,8 +167,11 @@ test('framing: same origin only', () => {
   assert.equal(h['X-Frame-Options'], 'SAMEORIGIN');
   const csp = h['Content-Security-Policy'].split('; ');
   assert.ok(csp.includes("frame-ancestors 'self'"));
-  assert.ok(csp.includes("frame-src 'self'"));
-  assert.ok(!/frame-(src|ancestors)[^;]*(https?:|\*)/.test(h['Content-Security-Policy']), 'no other origin may frame or be framed');
+  // GRAVEYARD: the only other frame is the youtube-nocookie.com player, after a click.
+  assert.ok(csp.includes("frame-src 'self' https://www.youtube-nocookie.com"));
+  assert.ok(!/frame-ancestors[^;]*(https?:|\*)/.test(h['Content-Security-Policy']), 'no other origin may frame this site');
+  assert.ok(!/frame-src[^;]*\*/.test(h['Content-Security-Policy']));
+  assert.deepEqual(csp.find((d) => d.startsWith('frame-src')).match(/https?:\/\/\S+/g), ['https://www.youtube-nocookie.com'], 'nothing else may be framed');
 });
 
 test('linked panels: a ticker moves to every ticker screen in the group', () => {

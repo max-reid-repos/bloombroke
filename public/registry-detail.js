@@ -77,7 +77,7 @@ export const DETAIL = {
   'STATUS': { source: 'Built in; from the server caches', delay: 'Live' },
   'CHANGES': { source: 'Built in', delay: 'None' },
   'SPONSOR': { source: 'Built in', delay: 'None' },
-  'GRAVEYARD': { source: 'SEC filings, regulators, courts and major news, linked on each row', delay: 'None' },
+  'GRAVEYARD': { options: [['<ticker>', 'One stone: F pays respects'], ['TABLE', 'Every stone in a table'], ['MOURNED', 'The table, most respects first'], ['ZOMBIES', 'Companies that died and came back'], ['TODAY', 'The stone for this date, if any']], source: 'SEC filings, regulators, courts and major news, linked on each row', delay: 'None' },
   'WEIRD': { source: 'Public sources, named on each tile', delay: 'Each tile shows its own date' },
   'CANAL': { source: 'IMF PortWatch', delay: 'Daily, about 6 days behind' },
   'PIZZA': { source: 'pizzint.watch (unofficial)', delay: 'Minutes; often empty overnight' },
