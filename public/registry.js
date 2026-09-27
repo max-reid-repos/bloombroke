@@ -424,17 +424,17 @@ export const REGISTRY = [
   },
   {
     name: 'PIZZA', aliases: ['PIZZINT'], category: 'Weird data', summary: 'Pentagon Pizza Index: pizza place traffic near the Pentagon',
-    syntax: 'PIZZA [3M|1Y|5Y|10Y|MAX]', examples: ['PIZZA', 'PIZZA 5Y'], keywords: ['pentagon', 'pizza index', 'defcon', 'pizzint'],
+    syntax: 'PIZZA [3M|1Y|5Y|10Y|MAX]', examples: ['PIZZA', 'PIZZA MAX'], keywords: ['pentagon', 'pizza index', 'defcon', 'pizzint'],
     source: 'pizzint.watch (unofficial)', delay: 'Minutes; often empty overnight',
   },
   {
     name: 'DEGEN', category: 'Weird data', summary: 'App Store rank of Kalshi, Polymarket, Robinhood, Coinbase',
-    syntax: 'DEGEN [3M|1Y|5Y|10Y|MAX]', examples: ['DEGEN', 'DEGEN 5Y'], keywords: ['app store', 'kalshi', 'polymarket', 'robinhood', 'coinbase', 'prediction markets', 'betting', 'trading apps'],
+    syntax: 'DEGEN [3M|1Y|5Y|10Y|MAX]', examples: ['DEGEN', 'DEGEN MAX'], keywords: ['app store', 'kalshi', 'polymarket', 'robinhood', 'coinbase', 'prediction markets', 'betting', 'trading apps'],
     source: 'Apple App Store top free chart, US', delay: 'About daily',
   },
   {
     name: 'WAFFLE', aliases: ['WAFFLEHOUSE'], category: 'Weird data', summary: 'Waffle House stores inside active tropical storms',
-    syntax: 'WAFFLE [3M|1Y|5Y|10Y|MAX]', examples: ['WAFFLE', 'WAFFLE 5Y'], keywords: ['waffle house index', 'hurricane', 'storm', 'fema', 'tropical'],
+    syntax: 'WAFFLE [3M|1Y|5Y|10Y|MAX]', examples: ['WAFFLE', 'WAFFLE MAX'], keywords: ['waffle house index', 'hurricane', 'storm', 'fema', 'tropical'],
     source: 'National Hurricane Center; stores © OpenStreetMap contributors', delay: 'Latest NHC advisory',
   },
   {
@@ -469,22 +469,22 @@ export const REGISTRY = [
   },
   {
     name: 'BILLIONS', aliases: ['BILLIONAIRES'], category: 'Weird data', summary: 'How much the richest people made or lost today',
-    syntax: 'BILLIONS [3M|1Y|5Y|10Y|MAX]', examples: ['BILLIONS', 'BILLIONS 5Y'], keywords: ['billionaires', 'rich list', 'net worth', 'forbes', 'wealth'],
+    syntax: 'BILLIONS [3M|1Y|5Y|10Y|MAX]', examples: ['BILLIONS', 'BILLIONS MAX'], keywords: ['billionaires', 'rich list', 'net worth', 'forbes', 'wealth'],
     source: 'Forbes real-time billionaires (unofficial feed)', delay: 'Minutes',
   },
   {
     name: 'WSB', aliases: ['WALLSTREETBETS'], category: 'Weird data', summary: 'Most-mentioned tickers on WallStreetBets, 24 hours',
-    syntax: 'WSB [3M|1Y|5Y|10Y|MAX]', examples: ['WSB', 'WSB 5Y'], keywords: ['reddit', 'wallstreetbets', 'mentions', 'meme stocks', 'apewisdom'],
+    syntax: 'WSB [3M|1Y|5Y|10Y|MAX]', examples: ['WSB', 'WSB MAX'], keywords: ['reddit', 'wallstreetbets', 'mentions', 'meme stocks', 'apewisdom'],
     source: 'ApeWisdom', delay: 'About hourly',
   },
   {
     name: 'CHANCES', category: 'Weird data', summary: 'Prediction-market odds of a US recession and the next Fed move',
-    syntax: 'CHANCES [3M|1Y|5Y|10Y|MAX]', examples: ['CHANCES', 'CHANCES 5Y'], keywords: ['odds', 'prediction market', 'polymarket', 'recession', 'fed', 'fomc', 'probability'],
+    syntax: 'CHANCES [3M|1Y|5Y|10Y|MAX]', examples: ['CHANCES', 'CHANCES MAX'], keywords: ['odds', 'prediction market', 'polymarket', 'recession', 'fed', 'fomc', 'probability'],
     source: 'Polymarket', delay: 'Minutes',
   },
   {
     name: 'BOXRATE', aliases: ['FREIGHTRATE'], category: 'Weird data', summary: 'Cost to ship one 40ft container, Drewry World Container Index',
-    syntax: 'BOXRATE [3M|1Y|5Y|10Y|MAX]', examples: ['BOXRATE', 'BOXRATE 5Y'], keywords: ['container', 'shipping', 'freight rate', 'drewry', 'wci'],
+    syntax: 'BOXRATE [3M|1Y|5Y|10Y|MAX]', examples: ['BOXRATE', 'BOXRATE MAX'], keywords: ['container', 'shipping', 'freight rate', 'drewry', 'wci'],
     source: 'Drewry WCI', delay: 'Weekly, Thursdays',
   },
   {
@@ -494,7 +494,7 @@ export const REGISTRY = [
   },
   {
     name: 'RIDES', aliases: ['QUEUES'], category: 'Weird data', summary: 'Average ride wait at Walt Disney World and Disneyland right now',
-    syntax: 'RIDES [3M|1Y|5Y|10Y|MAX]', examples: ['RIDES', 'RIDES 5Y'], keywords: ['disney', 'theme park', 'wait times', 'queues', 'consumer'],
+    syntax: 'RIDES [3M|1Y|5Y|10Y|MAX]', examples: ['RIDES', 'RIDES MAX'], keywords: ['disney', 'theme park', 'wait times', 'queues', 'consumer'],
     source: 'Powered by Queue-Times.com', delay: 'About 5 minutes',
   },
   {
@@ -504,7 +504,7 @@ export const REGISTRY = [
   },
   {
     name: 'BEIGE', aliases: ['BEIGEBOOK'], category: 'Weird data', summary: 'Word counts in the Fed Beige Book: uncertain, tariff, slow, recession, AI',
-    syntax: 'BEIGE [3M|1Y|5Y|10Y|MAX]', examples: ['BEIGE', 'BEIGE 5Y'], keywords: ['beige book', 'federal reserve', 'fed', 'words', 'uncertainty'],
+    syntax: 'BEIGE [3M|1Y|5Y|10Y|MAX]', examples: ['BEIGE', 'BEIGE MAX'], keywords: ['beige book', 'federal reserve', 'fed', 'words', 'uncertainty'],
     source: 'Federal Reserve Beige Book', delay: 'Eight editions a year',
   },
   {
@@ -524,7 +524,7 @@ export const REGISTRY = [
   },
   {
     name: 'SICK', aliases: ['WASTEWATER'], category: 'Weird data', summary: 'Wastewater virus level, national: COVID, flu A and RSV',
-    syntax: 'SICK [3M|1Y|5Y|10Y|MAX]', examples: ['SICK', 'SICK 5Y'], keywords: ['wastewater', 'covid', 'flu', 'rsv', 'cdc', 'virus'],
+    syntax: 'SICK [3M|1Y|5Y|10Y|MAX]', examples: ['SICK', 'SICK 1Y'], keywords: ['wastewater', 'covid', 'flu', 'rsv', 'cdc', 'virus'],
     source: 'CDC NWSS wastewater data', delay: 'Weekly',
   },
   {

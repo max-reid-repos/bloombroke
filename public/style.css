@@ -1557,13 +1557,16 @@ a.ch-flag { cursor: pointer; }
 .wd-chartbox .wd-chart-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; min-height: 17px; font-size: 11px; color: var(--text-2); }
 .wd-chart-label { letter-spacing: .06em; color: var(--dim); text-transform: uppercase; }
 .wd-read { font-variant-numeric: tabular-nums; color: var(--text); }
-.wd-side { min-width: 0; overflow-x: auto; align-content: start; }
+.wd-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.wd-side > .wd-body { overflow-x: auto; align-content: start; }
+/* The notes under the table never widen its column: they wrap to the table's width. */
+.wd-side > .wd-foot { width: 0; min-width: 100%; }
 .wd-side .wd-table, .wd-side .wd-two, .wd-side .stats { max-width: none; }
 .wd-side tr[data-key] { cursor: pointer; }
 .wd-side tr[data-key]:hover > * { background: var(--panel-2); }
 .wd-side tr.is-picked > th { color: var(--accent); box-shadow: inset 2px 0 0 var(--accent); }
 .wd-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
-.wd-foot .wd-how { margin-top: 0; flex: 1 1 320px; }
+.wd-foot .wd-how { margin-top: 0; flex: 1 1 100%; max-width: none; }
 .wd-foot .wd-src { margin-top: 0; }
 .wd-foot .wi-share { margin: 0; }
 @media (min-width: 1100px) {
@@ -1575,7 +1578,7 @@ a.ch-flag { cursor: pointer; }
   html:not(.is-embed) .wd-solo .wd-main { flex: 1 1 0; min-height: 180px; }
   html:not(.is-embed) .wd-solo .wd-chartbox .wd-chart { flex: 1 1 0; height: auto; min-height: 160px; }
   html:not(.is-embed) .wd-solo .wd-side { overflow: auto; min-height: 0; scrollbar-gutter: stable; }
-  html:not(.is-embed) .wd-solo:has(.wd-how[open]) > .panel-body { overflow: auto; }
+  .wd-main.is-nochart .wd-side > .wd-foot { width: auto; }
 }
 /* Desktop, full-height screen: the grid takes the room left and scrolls inside. */
 @media (min-width: 1100px) {

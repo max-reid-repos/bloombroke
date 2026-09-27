@@ -241,9 +241,12 @@ function detail(el, g, ctx, asked) {
       </div>
       <div class="wd-main${chart ? '' : ' is-nochart'}">
         ${chart ? '<div class="wd-chartbox"><div class="wd-chart-head"></div><div class="chart-host wd-chart" id="wd-chart"></div></div>' : ''}
-        <div class="wd-side wd-body">${part.html}</div>
-      </div>
-      <div class="wd-foot">${how}<p class="wd-src">${sourceHtml(g, d)}</p>${shareRow(gaugeShareLinks(g, d, location.origin, asked))}</div>`;
+        <div class="wd-side"><div class="wd-body">${part.html}</div>
+          <div class="wd-foot">${how}<p class="wd-src">${sourceHtml(g, d)}</p>${shareRow(gaugeShareLinks(g, d, location.origin, asked))}</div>
+        </div>
+      </div>`;
+    // Desktop: the method sits open under the table, in the room beside the chart.
+    if (globalThis.matchMedia?.('(min-width: 1100px)').matches) body.querySelector('.wd-how')?.setAttribute('open', '');
     if (chart) {
       drawChart(d, keys);
       // A row that names a series (a chokepoint, a country, a virus) draws that one; a
