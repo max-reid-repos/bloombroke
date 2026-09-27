@@ -766,8 +766,13 @@ a.ch-flag { cursor: pointer; }
 /* Title strip parts, split by a dot (on phones they wrap, one per line, no dots). */
 .wi-panel .panel-meta > * + *::before { content: '· '; }
 .wi-certcol { overflow: clip; }
-.wi-cert.is-waiting { visibility: hidden; }
-.wi-cert.is-stamped { --stamp-rot: 0deg; animation: stamp-in 260ms cubic-bezier(.2, .8, .2, 1) both; }
+.wc-seal { position: absolute; inset: 0; pointer-events: none; transform-origin: 82.5% 68.4%; }
+/* While racing, the number rolls in ink (red while behind) and the seal is empty; it
+   stamps in with the multiple when the race ends. */
+.wi-cert.is-racing .wc-seal { visibility: hidden; }
+.wi-cert.is-racing .wc-big { color: var(--paper-ink); }
+.wi-cert.is-racing.is-behind .wc-big { color: var(--paper-red); }
+.wi-cert.is-stamped .wc-seal { --stamp-rot: 0deg; animation: stamp-in 260ms cubic-bezier(.2, .8, .2, 1) both; }
 .wi-cert {
   --paper-ink: #2A1A10; --paper-soft: #5A4330; --paper-red: #C23B2A;
   position: relative; container-type: inline-size;
@@ -1021,7 +1026,7 @@ a.ch-flag { cursor: pointer; }
   .cmd-focused .cursor.blink { animation: none; opacity: .9; }
   .boot-cursor { animation: none; }
   .stamp { animation: none; }
-  .wi-cert.is-stamped { animation: none; }
+  .wi-cert.is-stamped .wc-seal { animation: none; }
   .tick-up { background: none; color: var(--up) !important; }
   .tick-down { background: none; color: var(--down) !important; }
 }

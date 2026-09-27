@@ -392,8 +392,10 @@ export function certHtml(m, links, actions = '') {
       <div class="wc wc-today" aria-hidden="true">worth today</div>
       <div class="wc wc-l1" data-fs="${esc(m.fit.lines)}" aria-hidden="true">${esc(m.spent)}</div>
       <div class="wc wc-l2" data-fs="${esc(m.fit.lines)}" aria-hidden="true">${esc(m.holding)}</div>
-      <div class="wc wc-mult" data-fs="${esc(m.fit.mult)}" aria-hidden="true">${esc(m.multiple)}</div>
-      ${m.loss ? '<div class="wc wc-strike" aria-hidden="true"></div><div class="wc wc-dodged" aria-hidden="true">dodged</div>' : ''}
+      <div class="wc-seal" aria-hidden="true">
+        <div class="wc wc-mult" data-fs="${esc(m.fit.mult)}">${esc(m.multiple)}</div>
+        ${m.loss ? '<div class="wc wc-strike"></div><div class="wc wc-dodged">dodged</div>' : ''}
+      </div>
       <img class="wc-sticker" src="${esc(art(`doodle-${m.doodle}.webp`))}" width="384" height="384" alt="">
     </figure>
     <div class="wi-share">
@@ -531,32 +533,50 @@ function setupReplay(el, d, ctx) {
   const last = pts[pts.length - 1];
   const $ = (k) => box.querySelector(`[data-wr="${k}"]`);
   const hero = el.querySelector('.hero-value');
-  const cert = el.querySelector('.wi-cert');
-  const finalDir = d.total.multiple >= 1 ? 'up' : 'down';
-  const heroText = hero?.textContent;
   const unit = el.querySelector('.hero-unit');
+  const cert = el.querySelector('.wi-cert');
+  const certBig = cert?.querySelector('.wc-big');
+  const certSpent = cert?.querySelector('.wc-l1');
+  const [sPaid, sValue] = el.querySelectorAll('.wi-sentence .num');
+  const [mMult, mPct] = el.querySelectorAll('.wi-mult span');
+  // Everything that rolls, with its final text and classes, put back exactly at the end.
+  const rolling = [hero, sPaid, sValue, mMult, mPct, certBig, certSpent].filter(Boolean);
+  const finals = rolling.map((n) => [n, n.textContent, n.className]);
+  const setDir = (n, dir) => { n.classList.toggle('up', dir === 'up'); n.classList.toggle('down', dir === 'down'); };
+  const pctText = (x) => `${x >= 1 ? '+' : '−'}${fmtNum(Math.abs((x - 1) * 100), 0)}%`;
   const show = (f) => {
     $('date').textContent = f.done ? fmtDay(last.d) : fmtCounter(f.t);
     $('stock').textContent = fmtUsd(f.stock);
     $('jar').textContent = fmtUsd(f.jar);
     $('spent').textContent = money(f.spent);
-    if (!hero) return;
-    const dir = f.done ? finalDir : isBehind(f) ? 'down' : 'up';
-    hero.textContent = f.done ? heroText : fmtUsd(f.stock);
-    if (unit) unit.hidden = !f.done; // TODAY only once the race is at today
-    hero.classList.toggle('up', dir === 'up');
-    hero.classList.toggle('down', dir === 'down');
+    if (f.done) {
+      for (const [n, text, cls] of finals) { n.textContent = text; n.className = cls; }
+      if (unit) unit.hidden = false;
+      return;
+    }
+    const dir = isBehind(f) ? 'down' : 'up';
+    const x = f.spent > 0 ? f.stock / f.spent : NaN;
+    if (hero) { hero.textContent = fmtUsd(f.stock); setDir(hero, dir); }
+    if (unit) unit.hidden = true; // TODAY only once the race is at today
+    if (sPaid) sPaid.textContent = fmtUsd(f.spent);
+    if (sValue) { sValue.textContent = fmtUsd(f.stock); setDir(sValue, dir); }
+    if (mMult) { mMult.textContent = fmtX(x); setDir(mMult, dir); }
+    if (mPct) { mPct.textContent = Number.isFinite(x) ? pctText(x) : '--'; setDir(mPct, dir); }
+    if (certBig) certBig.textContent = fmtUsd(f.stock);
+    if (certSpent) certSpent.textContent = `You spent ${fmtUsd(f.spent)}`;
+    cert?.classList.toggle('is-behind', dir === 'down');
   };
   const player = createReplay(box.querySelector('.wr-canvas'), pts, {
     onFrame: show,
     onDone: () => {
       if (!cert) return;
-      cert.classList.remove('is-waiting', 'is-stamped');
+      cert.classList.remove('is-racing', 'is-behind', 'is-stamped');
       void cert.offsetWidth; // restart the stamp
       cert.classList.add('is-stamped');
     },
   });
-  const replay = () => { cert?.classList.remove('is-stamped'); cert?.classList.add('is-waiting'); player.play(); };
+  // The certificate shows from the start, its number rolling; the seal stamps at the end.
+  const replay = () => { cert?.classList.remove('is-stamped'); cert?.classList.add('is-racing'); player.play(); };
   box.querySelector('[data-replay]').addEventListener('click', replay);
 
   // Space replays, while the command bar is empty (or nothing else has the focus).
@@ -579,12 +599,16 @@ function setupReplay(el, d, ctx) {
     msg.textContent = 'MAKING VIDEO';
     try {
       const { blob, filename } = await makeVideo({ m: d.cert, replay: d.replay, command: d.cert.command }, {
+        signal: ctx.signal,
         onProgress: (p) => { msg.textContent = `MAKING VIDEO ${Math.round(p * 100)}%`; },
       });
+      // Left the screen while it was being made: nothing is saved.
+      if (ctx.signal?.aborted || !box.isConnected) return;
       downloadBlob(blob, filename);
       msg.textContent = `SAVED ${filename}`;
       ctx.status('VIDEO SAVED');
     } catch (err) {
+      if (err?.name === 'AbortError' || ctx.signal?.aborted) return;
       msg.textContent = err?.message === VIDEO_NEEDS ? VIDEO_NEEDS : 'THE VIDEO DID NOT WORK. TRY AGAIN.';
       ctx.status('VIDEO NOT SAVED', 'warn');
     } finally {
