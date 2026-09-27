@@ -1,6 +1,7 @@
 // NEWS <ticker>: company headlines from the Nasdaq per-symbol RSS feed and Seeking Alpha,
 // plus the company's own recent 8-K filings from SEC EDGAR (no keys). One source failing
-// leaves the others; all three failing is an error.
+// leaves the others; all three failing is an error. Headlines about the company also go
+// in the per-ticker news log (data/newslog.js), for WHY and the chart's N flags.
 
 import { createCache } from './cache.js';
 import { normalizeTicker, UA } from './quotes.js';
@@ -9,6 +10,8 @@ import { iso } from './lists.js';
 import { fetchCapped, parseSeekingAlpha, filingTitle, companyName, mergeItems, secTickersFor, FEED_TTL, FEED_TIMEOUT_MS } from './newsfeeds.js';
 import { secTicker } from './financials.js';
 import { filingUrl } from './filings.js';
+import { newsLog } from './newslog.js';
+import { aboutTicker } from '../public/screens/tickernews.js';
 
 const TTL = 5 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
@@ -88,7 +91,11 @@ const deadline = (p, ms) => new Promise((resolve, reject) => {
   p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
 });
 
-export function makeTickerNews({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 600 }), secTickers = secTickersFor(fetchImpl), secBudgetMs = FEED_TIMEOUT_MS } = {}) {
+const HEADLINE_DAYS = 8; // chart N flags: enough for a 5D chart over a long weekend
+const MAX_HEADLINES = 100;
+
+// log: the per-ticker news log (data/newslog.js), or null to keep none (tests).
+export function makeTickerNews({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 600 }), secTickers = secTickersFor(fetchImpl), secBudgetMs = FEED_TIMEOUT_MS, log = null, now = () => Date.now() } = {}) {
   // Nasdaq resets connections from non-browser User-Agents, so this one keeps the browser UA.
   function nasdaq(ticker) {
     return cache.cached(`tnews:${ticker}`, TTL, async () => {
@@ -118,6 +125,17 @@ export function makeTickerNews({ fetchImpl = globalThis.fetch, cache = createCac
 
   const sec = (ticker) => deadline(secFilings(ticker), secBudgetMs);
 
+  // The company's name from the SEC ticker map (null when it has none or the map is down).
+  const nameOf = (ticker) => secTickers().then((m) => m.value.byTicker.get(secTicker(ticker))?.title || null, () => null);
+
+  // Headlines about the company go in the news log (WHY reads it). Filings are not kept:
+  // WHY reads them from EDGAR itself.
+  function logAbout(ticker, items) {
+    const heads = items.filter((n) => n.source !== 'SEC');
+    if (!log || !heads.length) return;
+    nameOf(ticker).then((name) => log.record(ticker, aboutTicker(heads, ticker, name))).catch(() => {});
+  }
+
   async function getTickerNews(raw) {
     const ticker = normalizeTicker(raw);
     if (!ticker) throw new TickerNewsError('bad_symbol', 'That does not look like a ticker.');
@@ -127,6 +145,7 @@ export function makeTickerNews({ fetchImpl = globalThis.fetch, cache = createCac
     // Headlines fill the first 40; the company's own filings always stay in, in time order.
     const news = mergeItems(ok.map((g) => g.value), 40);
     const filings = ok.flatMap((g) => g.value).filter((n) => n.source === 'SEC' && !news.includes(n));
+    logAbout(ticker, ok.flatMap((g) => g.value));
     return {
       ticker,
       items: mergeItems([news, filings], 40 + SEC_MAX_FILINGS),
@@ -134,7 +153,26 @@ export function makeTickerNews({ fetchImpl = globalThis.fetch, cache = createCac
       updated: iso(Math.min(...ok.map((g) => g.fetchedAt))),
     };
   }
-  return { getTickerNews };
+  // Chart N flags: headlines about the company from the last few days, live and from
+  // the log, newest first: [{ time, source, title, url }].
+  async function getTickerHeadlines(raw) {
+    const ticker = normalizeTicker(raw);
+    if (!ticker) throw new TickerNewsError('bad_symbol', 'That does not look like a ticker.');
+    const [live, name, logged] = await Promise.all([
+      getTickerNews(ticker).then((d) => d.items.filter((n) => n.source !== 'SEC'), () => []),
+      nameOf(ticker),
+      log ? log.read(ticker) : [],
+    ]);
+    const since = new Date(now() - HEADLINE_DAYS * DAY_MS).toISOString();
+    const fromLog = logged.map((r) => ({ title: r.title, link: r.url, time: r.time, source: r.source }));
+    const items = mergeItems([aboutTicker(live, ticker, name), fromLog], 400)
+      .filter((n) => n.time && n.time >= since)
+      .slice(0, MAX_HEADLINES)
+      .map((n) => ({ time: n.time, source: n.source, title: n.title, url: n.link }));
+    return { ticker, items };
+  }
+
+  return { getTickerNews, getTickerHeadlines };
 }
 
-export const { getTickerNews } = makeTickerNews();
+export const { getTickerNews, getTickerHeadlines } = makeTickerNews({ log: newsLog });
