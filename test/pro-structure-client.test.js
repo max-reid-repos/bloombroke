@@ -38,14 +38,17 @@ test('PRO: free is what you look at, Pro is your own stuff; every row says LIVE 
   assert.ok(FREE_ROWS.every(([, s]) => s === LIVE), 'everything free is live');
   const pro = Object.fromEntries(PRO_ROWS.map(([n, s]) => [n, s]));
   for (const n of ['Sync across devices', 'Saved DESK layouts', 'Your own ticker tape', 'A seat number', 'No sponsor line']) assert.equal(pro[n], LIVE, n);
-  for (const n of ['CHAT', 'Alerts when the tab is closed', 'WHATIF with your own purchase']) assert.equal(pro[n], COMING, n);
+  for (const n of ['CHAT', 'Alerts when the tab is closed']) assert.equal(pro[n], COMING, n);
+  // WHATIF with your own purchase is free for everyone (owner, 27 Sep 2026).
+  assert.equal(pro['WHATIF with your own purchase'], undefined);
+  assert.ok(FREE_ROWS.some(([n, s]) => n === 'WHATIF with your own purchase' && s === LIVE));
   assert.equal(COMING, 'COMING WHEN PRO LAUNCHES');
   const html = offerHtml();
   assert.match(html, />FREE</);
   assert.match(html, />PRO</);
   assert.match(html, /\$4\.20<\/span><span class="hero-unit">A MONTH/);
   assert.match(html, /\$42<\/span><span class="hero-unit">A YEAR/);
-  assert.equal((html.match(/COMING WHEN PRO LAUNCHES/g) || []).length, 3);
+  assert.equal((html.match(/COMING WHEN PRO LAUNCHES/g) || []).length, 2);
   assert.equal(PRICE_BOTH, '$4.20 a month or $42 a year');
   // A row for a command this site does not have is left out, never shown as live.
   const guess = FREE_ROWS.find(([n]) => n === 'GUESS');
