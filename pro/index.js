@@ -17,6 +17,7 @@ import { createStore } from './store.js';
 import { revealKeyFrom } from './licence.js';
 import { createStripe, stripeEnv, DEFAULT_TERMS_VERSION } from './billing.js';
 import { mountPro } from './routes.js';
+import { createFeedbackStore, mountFeedback } from './feedback.js';
 
 export function startPro(app, { dir, env = process.env, log = console }) {
   try {
@@ -41,6 +42,9 @@ export function startPro(app, { dir, env = process.env, log = console }) {
         termsVersion: (env.TERMS_VERSION || '').trim() || DEFAULT_TERMS_VERSION,
       },
     });
+    // FEEDBACK lives in the same database: POST /api/feedback, for everyone.
+    const feedback = createFeedbackStore(db);
+    mountFeedback(app, { store: feedback, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', log });
     const clean = () => {
       try { store.purgeReveals(); store.pruneEvents(); } catch (err) { log.error('[pro] clean-up', err.message); }
     };
@@ -52,11 +56,15 @@ export function startPro(app, { dir, env = process.env, log = console }) {
         const n = store.purgeEnded();
         log.log(`[pro] purge: ${n.docs} synced documents, ${n.reveals} reveal copies`);
       } catch (err) { log.error('[pro] purge', err.message); }
+      // Privacy Policy: feedback is kept up to 12 months.
+      try {
+        log.log(`[pro] purge: ${feedback.prune()} feedback notes over 12 months old`);
+      } catch (err) { log.error('[pro] feedback purge', err.message); }
     };
     purge();
     setInterval(purge, 24 * 60 * 60 * 1000).unref();
     log.log(`[pro] ${se.mode} mode, ${ready ? 'ready' : 'not configured: checkout is closed'}`);
-    return { db, store, ready };
+    return { db, store, feedback, ready };
   } catch (err) {
     log.error('[pro] could not start:', err.message);
     return null;

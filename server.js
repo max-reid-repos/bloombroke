@@ -29,6 +29,7 @@ import { mountCommandRoutes } from './command-routes.js';
 import { mountLegal } from './lib/legal.js';
 import { securityHeaders, isEmbedQuery, embedHtml } from './lib/embed.js';
 import { startPro } from './pro/index.js';
+import { mountSponsors } from './lib/sponsors.js';
 import { getWeird, getGauge, startWeirdPrewarm, FAST_WAIT } from './data/weird/index.js';
 import { makeWeirdCards, weirdCommand } from './lib/og-weird.js'; // WEIRD share cards
 
@@ -296,6 +297,9 @@ mountCommandRoutes(app);
 import { mountTrending } from './data/trending.js';
 mountTrending(app, { getQuoteList });
 // --- end TRENDING ---
+
+// Sponsors (lib/sponsors.js): GET /api/sponsors from data/sponsors.json, empty by default.
+mountSponsors(app);
 
 startPro(app, { dir });
 
