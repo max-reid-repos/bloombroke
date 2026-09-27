@@ -1,5 +1,4 @@
-# IPO IT word list (lib/og-nosuch.js). One word per line, A-Z. A '*' in front blocks
-# the letters anywhere inside a word. '#' starts a comment.
-#
-# Fails closed: while this file has no words, IPO IT draws no certificate at all.
-# The owner fills it in (slurs and profanity, 1 to 5 letters) before IPO IT goes live.
+# IPO IT extra word list (lib/og-nosuch.js). The obscenity library (MIT) already refuses
+# profanity and slurs; add any other word the certificate should never show here.
+# One word per line, A-Z. A '*' in front blocks the letters anywhere inside a word.
+# '#' starts a comment.

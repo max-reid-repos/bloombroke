@@ -35,3 +35,39 @@
   .ns-table .ns-what, .ns-table .ns-srccol { display: none; }
   .ns-table .ns-cell { width: 100%; }
 }
+
+/* The not-found page: the text on the left, the certificate preview on the right (desk);
+   one column on a phone. */
+.ns-page > * { grid-column: 1; min-width: 0; }
+@media (min-width: 900px) {
+  .ns-page { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 440px); column-gap: 32px; align-content: start; }
+  .ns-page > .ns-mini { grid-column: 2; grid-row: 1 / span 8; align-self: start; margin-top: 4px; }
+}
+.ns-quote { margin-top: 8px; }
+.ns-quote .code { color: var(--dim); }
+
+.ns-mini {
+  --paper-ink: #2A1A10; --paper-red: #C23B2A;
+  position: relative; display: block; container-type: inline-size; width: 100%; max-width: 440px; margin: 14px 0 0;
+}
+.ns-mini img { display: block; width: 100%; height: auto; }
+.ns-mini:hover { text-decoration: none; filter: brightness(1.06); }
+.ns-mini-big, .ns-mini-stamp { position: absolute; white-space: nowrap; line-height: 1; pointer-events: none; }
+.ns-mini-big { left: 49%; top: 43.5%; transform: translate(-50%, -50%) rotate(-1.5deg); font-size: 11cqw; font-weight: 800; letter-spacing: -.04em; color: var(--paper-ink); }
+.ns-mini-stamp {
+  left: 4%; top: 55%; transform: rotate(-10deg); padding: .5cqw 1.4cqw;
+  border: .5cqw solid var(--paper-red); border-radius: 1cqw; font-size: 2.1cqw; font-weight: 800; letter-spacing: .15cqw; color: var(--paper-red); opacity: .88;
+}
+
+.ns-yard { margin-top: 18px; }
+.ns-yard-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.ns-mini-stone {
+  width: 84px; height: 100px; display: flex; align-items: center; justify-content: center; padding-top: 18px;
+  background: var(--stone); color: var(--stone-ink); border: 3px solid var(--stone-ink); border-radius: 42px 42px 4px 4px;
+  font-weight: 800; font-size: 18px; letter-spacing: -.02em;
+}
+.ns-mini-stone:hover { text-decoration: none; background: var(--text); }
+@media (max-width: 639px) {
+  .ns-yard-row { gap: 8px; }
+  .ns-mini-stone { width: calc((100% - 24px) / 4); height: 88px; font-size: 16px; }
+}

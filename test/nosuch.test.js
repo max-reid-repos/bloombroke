@@ -7,12 +7,12 @@ import express from 'express';
 import sharp from 'sharp';
 import { parseCommand, didYouMeanHtml, urlFor } from '../public/app.js';
 import { findCommand } from '../public/registry.js';
-import { dymRows, ipoShape, matchNoSuch, findGrave, tombstoneLine, dayText, ipoLinks, graveLinks, FEEDBACK_PREFILL, MAX_ROWS } from '../public/nosuch.js';
-import { noSuchExtra, graveyardTable, tombstoneHtml, ipoHtml, TITLE_YET } from '../public/screens/nosuch.js';
+import { dymRows, graveBeatsQuote, pickGraves, ipoShape, matchNoSuch, findGrave, tombstoneLine, dayText, ipoLinks, graveLinks, FEEDBACK_PREFILL, MAX_ROWS } from '../public/nosuch.js';
+import { noSuchExtra, graveyardTable, tombstoneHtml, ipoHtml, ipoPreviewHtml, yardHtml, TITLE_YET } from '../public/screens/nosuch.js';
 import { setPrefill, takePrefill } from '../public/screens/feedback.js';
 import { GOALS, GOAL_PROPS, cleanProps } from '../public/goal.js';
 import {
-  loadGraveyard, parseBlocklist, loadBlocklist, ipoAllowed, makeNoSuchCards, mountNoSuch, nosuchMeta, tombstoneTree, ipoTree, IPO_MAX_AGE, TOMB_MAX_AGE,
+  loadGraveyard, parseBlocklist, loadBlocklist, ipoAllowed, flagged, makeNoSuchCards, mountNoSuch, nosuchMeta, tombstoneTree, ipoTree, IPO_MAX_AGE, TOMB_MAX_AGE,
 } from '../lib/og-nosuch.js';
 import { W, H } from '../lib/og.js';
 
@@ -100,19 +100,26 @@ test('GRAVEYARD and IPO IT: the router, never a pro-terminal code as a command',
   assert.equal(findCommand('IPOIT'), null, 'IPO IT is not listed');
 });
 
-test('IPO IT guard: A-Z, 1 to 5 letters, never a live ticker or a listed word; empty list refuses all', () => {
+test('IPO IT guard: A-Z, 1 to 5 letters, never a live ticker, a word the library flags or an extra listed word', () => {
   assert.equal(ipoShape('maxx'), 'MAXX');
   for (const bad of ['', 'TOOLNG', 'M4X', 'BRK.B', 'A B', '<b>', 'MAX$', 'ÅBC', 'AAPL', 'NVDA']) assert.equal(ipoShape(bad), null, bad);
   assert.equal(ipoAllowed('maxx', BLOCK), 'MAXX');
   assert.equal(ipoAllowed('ZZTOP', BLOCK), null, 'whole word');
   assert.equal(ipoAllowed('AQQQX', BLOCK), null, 'root inside a word');
   assert.equal(ipoAllowed('QQX', BLOCK), 'QQX', 'a root blocks only where it appears');
-  assert.equal(ipoAllowed('MAXX', parseBlocklist('')), null, 'no list: fails closed');
-  assert.equal(ipoAllowed('MAXX', parseBlocklist('# only comments\n')), null);
+  // The obscenity library: mild words from its own dataset, built so no word sits in the repo.
+  for (const w of ['A' + 'SS', 'SE' + 'X', 'SH' + 'IT']) {
+    assert.equal(flagged(w), true, 'the library flags it');
+    assert.equal(ipoAllowed(w, parseBlocklist('')), null, 'refused with no extra list');
+  }
+  for (const w of ['MAXX', 'CLASS', 'BASS', 'HELLO']) assert.equal(flagged(w), false, w);
+  assert.equal(ipoAllowed('MAXX', parseBlocklist('')), 'MAXX', 'the library is the base list: an empty extra list is fine');
+  assert.equal(ipoAllowed('MAXX'), 'MAXX');
   assert.deepEqual([...BLOCK.words], ['ZZTOP'], 'bad lines are dropped');
   const shipped = loadBlocklist();
   assert.ok(shipped.words instanceof Set && Array.isArray(shipped.roots));
-  assert.equal(ipoAllowed('MAXX', loadBlocklist('/nonexistent/file')), null, 'a missing file fails closed');
+  assert.equal(ipoAllowed('MAXX', loadBlocklist('/nonexistent/file')), 'MAXX', 'a missing extra list: the library still guards');
+  assert.equal(ipoAllowed('A' + 'SS', loadBlocklist('/nonexistent/file')), null);
   // The screen: IPO IT only when the server said yes, and only for a ticker.
   assert.match(noSuchExtra('MAXX', { grave: null, ipo: true }, { ticker: 'MAXX', next: 2 }), /data-cmd="IPO IT MAXX" data-ipo data-key="2">IPO IT</);
   assert.doesNotMatch(noSuchExtra('MAXX', { grave: null, ipo: false }, { ticker: 'MAXX' }), /IPO IT/);
@@ -154,7 +161,7 @@ test('share meta: GRAVEYARD <ticker> and IPO IT <word> only', () => {
   assert.equal(nosuchMeta('GRAVEYARD MAXX', deps), null);
   assert.match(nosuchMeta('ipo it maxx', deps).image, /\/og\/ipo\.png\?t=MAXX$/);
   assert.equal(nosuchMeta('IPO IT ZZTOP', deps), null);
-  assert.equal(nosuchMeta('IPO IT MAXX', { graveyard: GRAVE, block: parseBlocklist('') }), null);
+  assert.equal(nosuchMeta(`IPO IT ${'SE' + 'X'}`, { graveyard: GRAVE, block: parseBlocklist('') }), null, 'the library refuses it');
   assert.equal(nosuchMeta('AAPL', deps), null);
   for (const v of Object.values(nosuchMeta('IPO IT MAXX', deps))) assert.doesNotMatch(v, /—/);
 });
@@ -207,8 +214,9 @@ test('OG routes: render once, then serve from memory; anything refused gets the 
     const info = await (await fetch(`${base}/api/nosuch?t=leh`)).json();
     assert.equal(info.grave.ticker, 'LEH');
     assert.equal(info.ipo, false);
-    assert.deepEqual(await (await fetch(`${base}/api/nosuch?t=MAXX`)).json(), { grave: null, ipo: true });
-    assert.deepEqual(await (await fetch(`${base}/api/nosuch?t=ZZTOP`)).json(), { grave: null, ipo: false });
+    assert.deepEqual(await (await fetch(`${base}/api/nosuch?t=MAXX`)).json(), { grave: null, ipo: true, wins: false });
+    assert.deepEqual(await (await fetch(`${base}/api/nosuch?t=ZZTOP`)).json(), { grave: null, ipo: false, wins: false });
+    assert.equal((await (await fetch(`${base}/api/nosuch?t=${'SE' + 'X'}`)).json()).ipo, false);
     const all = await (await fetch(`${base}/api/graveyard`)).json();
     assert.equal(all.entries.length, GRAVE.length);
   } finally {
@@ -223,4 +231,45 @@ test('the screens say it short: no banned words, no em dashes, no advice', () =>
   assert.doesNotMatch(src, /—/);
   assert.doesNotMatch(src, /\bbuy\b/i);
   assert.doesNotMatch(src, /amber|orange|#F[0-9A-F]A[0-9A-F]{3}\b/i);
+});
+
+test('graveyard beats a non-US quote; a US listing wins', async () => {
+  assert.equal(graveBeatsQuote({ name: 'Lampetia AG', currency: 'EUR', exchange: 'Frankfurt Stock Exchange' }), true);
+  assert.equal(graveBeatsQuote({ name: 'Twitter (delisted)', currency: 'USD' }), true);
+  assert.equal(graveBeatsQuote(null), true);
+  assert.equal(graveBeatsQuote({ name: 'Waste Management Inc', currency: 'USD', exchange: 'NYSE' }), false);
+  const quotes = { LEH: { name: 'Lampetia AG', currency: 'EUR' }, WM: { name: 'Waste Management Inc', currency: 'USD' } };
+  const app = express();
+  mountNoSuch(app, { graveyard: GRAVE, block: BLOCK, getQuote: async (t) => quotes[t] || null, render: async () => Buffer.from('x'), fallback: async () => Buffer.from('y') });
+  const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const ask = async (t) => (await fetch(`${base}/api/nosuch?t=${t}`)).json();
+    assert.equal((await ask('LEH')).wins, true, 'LEH on Frankfurt: the tombstone');
+    assert.equal((await ask('WM')).wins, false, 'WM on the NYSE: the quote');
+    assert.equal((await ask('ENE')).wins, true, 'no quote at all');
+    assert.equal((await ask('LEHMAN')).wins, false, 'a name word is not a ticker to beat');
+  } finally {
+    server.close();
+  }
+  const html = noSuchExtra('LEH', { grave: findGrave(GRAVE, 'LEH'), ipo: false, wins: true }, { ticker: 'LEH', quote: true });
+  assert.match(html, /Quote: <a class="code dim" href="\?c=%24LEH" data-cmd="\$LEH">\$LEH<\/a>/);
+  assert.doesNotMatch(noSuchExtra('LEH', { grave: findGrave(GRAVE, 'LEH') }, { ticker: 'LEH' }), /Quote:/);
+});
+
+test('the unknown-word page: certificate preview and THE GRAVEYARD row', () => {
+  let i = 0;
+  const seq = [0.1, 0.9, 0.5, 0.3, 0.7];
+  const four = pickGraves(GRAVE, 4, () => seq[i++ % seq.length]);
+  assert.equal(four.length, 4);
+  assert.equal(new Set(four.map((e) => e.ticker)).size, 4, 'no repeats');
+  assert.equal(pickGraves([], 4).length, 0);
+  const html = noSuchExtra('MAXX', { grave: null, ipo: true }, { ticker: 'MAXX', next: 1, yard: four });
+  assert.match(html, /class="ns-mini"[^>]*data-cmd="IPO IT MAXX" data-ipo/);
+  assert.match(html, /\$MAXX<\/span><span class="ns-mini-stamp">NOT A REAL SECURITY/);
+  assert.equal((html.match(/class="ns-mini-stone"/g) || []).length, 4);
+  for (const e of four) assert.match(html, new RegExp(`data-cmd="GRAVEYARD ${e.ticker}"`));
+  assert.doesNotMatch(noSuchExtra('MAXX', { grave: null, ipo: false }, { ticker: 'MAXX', yard: four }), /ns-mini"/, 'no IPO, no preview');
+  assert.equal(yardHtml([]), '');
+  assert.match(ipoPreviewHtml('MAXX'), /certificate\.webp/);
 });

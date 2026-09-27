@@ -354,7 +354,7 @@ mountProvenanceRoutes(app, {
 
 // --- NO SUCH TICKER. YET. (lib/og-nosuch.js): GRAVEYARD, IPO IT and their share cards ---
 import { mountNoSuch } from './lib/og-nosuch.js';
-const noSuch = mountNoSuch(app);
+const noSuch = mountNoSuch(app, { getQuote }); // getQuote: a graveyard ticker's live US listing wins
 // --- end NO SUCH TICKER ---
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));

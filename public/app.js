@@ -44,7 +44,7 @@ import { COMPANY_SCREENS, COMPANY_TAKES_ARGS, matchCompany } from './company.js'
 import { MARKETS_SCREENS, MARKETS_TAKES_ARGS, matchMarkets } from './commands-markets.js';
 import { WEIRD_SCREENS, matchWeird } from './commands-weird.js';
 import { matchNoSuch, dymRows } from './nosuch.js'; // NO SUCH TICKER. YET.: GRAVEYARD, IPO IT
-import { NOSUCH_SCREENS, noSuchInfo, noSuchExtra, wireNoSuch, TITLE_YET, TITLE_GONE, HELP_LINE } from './screens/nosuch.js';
+import { NOSUCH_SCREENS, noSuchInfo, noSuchExtra, wireNoSuch, yardPick, TITLE_YET, TITLE_GONE, HELP_LINE } from './screens/nosuch.js';
 import { LISTED, ALIASES, FUNCTION_BAR, TICKER_FUNCTIONS, findCommand } from './registry.js';
 import { tapeOn, setTapeOn, mountTape, tapeItems } from './tape.js';
 import { createMenu } from './menu.js';
@@ -1196,8 +1196,10 @@ function boot() {
     try {
       // A ticker with a quote shows as it is (APPLE is Apple's name, not a ticker to ask about).
       if (ticker && !tickerForName(ticker)) {
-        const ok = await checkTicker(ticker, signal);
+        // A famous dead ticker beats a non-US quote of the same letters (LEH on Frankfurt).
+        const [ok, info] = await Promise.all([checkTicker(ticker, signal), embed ? null : noSuchInfo(ticker, { signal })]);
         if (signal.aborted) return;
+        if (ok !== false && info?.grave && info.wins) { await showDidYouMean(view, typed, {}, ticker, signal, { quote: true }); return; }
         if (ok !== false) { render(raw, { fromUrl, checked: true }); return; }
       }
       const found = await resolveInput(raw, {
@@ -1220,16 +1222,18 @@ function boot() {
   }
   // NO SUCH TICKER. YET.: the rows, then a tombstone for a famous dead ticker, or IPO IT
   // and "Tell us." for any other word (screens/nosuch.js).
-  async function showDidYouMean(view, typed, found, ticker, signal) {
+  async function showDidYouMean(view, typed, found, ticker, signal, { quote = false } = {}) {
     const toks = tokenize(typed);
     const word = ticker || (toks.length === 1 ? toks[0] : null);
-    const info = word && !embed ? await noSuchInfo(word, { signal }) : { grave: null, ipo: false };
+    const [info, yard] = word && !embed
+      ? await Promise.all([noSuchInfo(word, { signal }), yardPick(signal)])
+      : [{ grave: null, ipo: false }, []];
     if (signal?.aborted) return;
     neutralHead(ticker || info.grave ? typed : 'Unknown command');
     const rows = dymRows(found, typed, ticker).length;
     const title = info.grave ? TITLE_GONE : ticker ? TITLE_YET : 'Unknown command';
-    const extra = embed ? '' : noSuchExtra(word, info, { ticker, next: rows + 1 });
-    view.innerHTML = panel('1', title, didYouMeanHtml(typed, found, ticker, { extra }), { cls: 'panel-solo' });
+    const extra = embed ? '' : noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : yard });
+    view.innerHTML = panel('1', title, didYouMeanHtml(typed, found, ticker, { extra }), { cls: 'panel-solo', bodyCls: 'ns-page' });
     if (!embed) cleanups.push(wireNoSuch(view, word, info));
     if (info.grave) setStatus(`${info.grave.ticker}: ${info.grave.what.toUpperCase()}`, 'warn');
     else setStatus(rows ? 'NOT FOUND. PICK ONE BELOW, OR TYPE HELP' : ticker ? 'NO SUCH TICKER. TYPE HELP' : 'UNKNOWN COMMAND. TYPE HELP', 'warn');

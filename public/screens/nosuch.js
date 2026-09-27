@@ -10,7 +10,7 @@
 import { esc, q, panel, metaNote } from './markets.js';
 import { goal } from '../goal.js';
 import { setPrefill } from './feedback.js';
-import { findGrave, dayText, tombstoneLine, srcHost, graveLinks, ipoLinks, FEEDBACK_PREFILL } from '../nosuch.js';
+import { findGrave, dayText, tombstoneLine, srcHost, graveLinks, ipoLinks, pickGraves, IPO_STAMP, FEEDBACK_PREFILL } from '../nosuch.js';
 
 export const TITLE_YET = 'No such ticker. Yet.';
 export const TITLE_GONE = 'No such ticker. Not anymore.';
@@ -22,18 +22,19 @@ const code = (c, label = c, extra = '') => `<a class="code" href="${esc(q(c))}" 
 // ---- Data from the server -----------------------------------------------------------------
 
 const infoCache = new Map();
-// { grave, ipo } for one word. Offline or slow: nothing special (no tombstone, no IPO IT).
+// { grave, ipo, wins } for one word (wins: the tombstone beats a non-US quote). Offline
+// or slow: nothing special (no tombstone, no IPO IT).
 export async function noSuchInfo(word, { signal, fetchImpl = globalThis.fetch, wait = 2500 } = {}) {
   const w = String(word || '').toUpperCase();
   if (!/^[A-Z]{1,12}$/.test(w)) return { grave: null, ipo: false };
   if (infoCache.has(w)) return infoCache.get(w);
-  const none = { grave: null, ipo: false };
+  const none = { grave: null, ipo: false, wins: false };
   try {
     const ask = fetchImpl(`/api/nosuch?${new URLSearchParams({ t: w })}`, { signal, headers: { Accept: 'application/json' } })
       .then((r) => (r.ok ? r.json() : null));
     const d = await Promise.race([ask, new Promise((r) => { setTimeout(r, wait, null); })]);
     if (!d) return none;
-    const out = { grave: d.grave && d.grave.ticker ? d.grave : null, ipo: d.ipo === true };
+    const out = { grave: d.grave && d.grave.ticker ? d.grave : null, ipo: d.ipo === true, wins: d.wins === true };
     infoCache.set(w, out);
     return out;
   } catch {
@@ -42,7 +43,7 @@ export async function noSuchInfo(word, { signal, fetchImpl = globalThis.fetch, w
 }
 
 let graveyard = null;
-async function loadGraveyard(signal) {
+export async function loadGraveyard(signal) {
   if (!graveyard) {
     graveyard = fetch('/api/graveyard', { signal, headers: { Accept: 'application/json' } })
       .then((r) => { if (!r.ok) throw new Error('Could not load the graveyard. Try again.'); return r.json(); })
@@ -78,20 +79,50 @@ function shareRow(links, kind) {
     </div>`;
 }
 
+// A small live preview of the IPO IT certificate: the same paper, the word, the stamp.
+// A link: clicking it is IPO IT.
+export function ipoPreviewHtml(word) {
+  const paper = '/img/whatif/certificate.webp';
+  return `<a class="ns-mini" href="${esc(q(`IPO IT ${word}`))}" data-cmd="${esc(`IPO IT ${word}`)}" data-ipo aria-label="${esc(`IPO IT ${word}: make the listing certificate`)}">
+      <img src="${paper}" width="1536" height="1024" alt="">
+      <span class="ns-mini-big">$${esc(word)}</span><span class="ns-mini-stamp">${esc(IPO_STAMP)}</span>
+    </a>`;
+}
+
+// THE GRAVEYARD: a row of small tombstones, each opening its GRAVEYARD entry.
+export function yardHtml(list) {
+  if (!list?.length) return '';
+  return `<section class="ns-yard"><h3 class="hs-h">The graveyard</h3><div class="ns-yard-row">${list.map((e) => `<a class="ns-mini-stone" href="${esc(q(`GRAVEYARD ${e.ticker}`))}" data-cmd="${esc(`GRAVEYARD ${e.ticker}`)}" title="${esc(tombstoneLine(e))}" aria-label="${esc(tombstoneLine(e))}">${esc(e.ticker)}</a>`).join('')}</div></section>`;
+}
+
 // What goes under the "Did you mean" rows on the not-found screen. word: the one word
-// typed (or null); info: noSuchInfo's answer; next: the key number for IPO IT.
-export function noSuchExtra(word, info, { ticker = null, next = 1 } = {}) {
+// typed (or null); info: noSuchInfo's answer; next: the key number for IPO IT; quote: a
+// tombstone that beat a non-US quote links the quote ($LEH); yard: entries for THE
+// GRAVEYARD row.
+export function noSuchExtra(word, info, { ticker = null, next = 1, quote = false, yard = [] } = {}) {
   if (info?.grave) {
     const e = info.grave;
-    return `${tombstoneHtml(e)}${shareRow(graveLinks(e, origin()), 'grave')}${sourcesHtml(e)}`;
+    const hint = quote ? `<p class="muted ns-quote">Quote: <a class="code dim" href="?c=${encodeURIComponent(`$${e.ticker}`)}" data-cmd="${esc(`$${e.ticker}`)}">$${esc(e.ticker)}</a></p>` : '';
+    return `${tombstoneHtml(e)}${shareRow(graveLinks(e, origin()), 'grave')}${hint}${sourcesHtml(e)}`;
   }
   if (!word) return '';
   const w = esc(word);
-  const ipo = ticker && info?.ipo
+  const canIpo = Boolean(ticker && info?.ipo);
+  const ipo = canIpo
     ? `<p class="ns-ipo"><span>Nobody has listed <span class="ns-tag">$${w}</span>. Be the first.</span> <button type="button" class="wi-btn ns-ipo-btn" data-cmd="${esc(`IPO IT ${word}`)}" data-ipo${next <= 9 ? ` data-key="${next}"` : ''}>IPO IT</button></p>`
     : '';
   const ask = `<p class="ns-ask">Want it on Bloombroke? <a href="${esc(q('FEEDBACK'))}" data-cmd="FEEDBACK" data-prefill="${esc(FEEDBACK_PREFILL(word))}">Tell us.</a></p>`;
-  return ipo + ask;
+  return ipo + ask + (canIpo ? ipoPreviewHtml(word) : '') + yardHtml(yard);
+}
+
+// n random entries for THE GRAVEYARD row; none when the list does not load in time.
+export async function yardPick(signal, n = 4, wait = 1500) {
+  try {
+    const list = await Promise.race([loadGraveyard(signal), new Promise((r) => { setTimeout(r, wait, []); })]);
+    return pickGraves(list, n);
+  } catch {
+    return [];
+  }
 }
 
 // Clicks on the not-found screen: FEEDBACK gets its prefill, IPO IT and shares count.
