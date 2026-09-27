@@ -23,8 +23,9 @@ test('quote list: named instruments from the batch, stocks in one shared call, u
   assert.deepEqual(r.quotes.map((x) => x.ticker), ['AAPL', 'GOLD', 'MSFT', 'BTC']);
   assert.deepEqual(r.missing, ['ZZZZ']);
   const stockCalls = calls.filter((c) => c.length <= 5);
-  assert.equal(stockCalls.length, 1, 'the uncached stocks share one upstream call');
+  assert.equal(stockCalls.length, 2, 'the uncached stocks share one upstream call, and the unknown one is asked once more');
   assert.deepEqual(stockCalls[0], ['AAPL', 'MSFT', 'ZZZZ']);
+  assert.deepEqual(stockCalls[1], ['ZZZZ']);
   assert.equal(r.quotes[0].last, 200);
   assert.equal(r.quotes[1].kind, 'spot', 'GOLD is spot gold');
   assert.ok(INSTRUMENTS.length > 10);

@@ -34,6 +34,7 @@ import { giftCommand, redeemCommand, parseRedeem } from './screens/pro.js';
 import * as chatScreen from './screens/chat.js';
 import * as sponsorScreen from './screens/sponsor.js';
 import { stripItems, mountStrip } from './sponsor-strip.js';
+import { countOnly, stripShownBatch } from './goal.js'; // BBRK: sponsor strip shown and clicked
 import * as feedbackScreen from './screens/feedback.js';
 // --- end Pro structure ---
 import { ensureConsent, consentNeeded } from './consent.js';
@@ -888,6 +889,7 @@ function boot() {
   const sponsorEl = $('status-sponsor');
   let sponsorCfg = null;
   let strip = null; // the rotating sponsor strip (sponsor-strip.js)
+  let shown = null; // BBRK: lines shown, sent in batches
   let stripKey = '';
   function paintPro() {
     const seat = embed ? null : getSeat();
@@ -898,7 +900,8 @@ function boot() {
     if (key === stripKey) return;
     stripKey = key;
     strip?.stop();
-    strip = items.length ? mountStrip(sponsorEl, items, { reduceMotion: reduceMotion.matches, isHidden: () => document.hidden }) : null;
+    if (items.length) shown ||= stripShownBatch();
+    strip = items.length ? mountStrip(sponsorEl, items, { reduceMotion: reduceMotion.matches, isHidden: () => document.hidden, onShow: () => shown.add(), onAnyClick: () => countOnly('strip_click') }) : null;
     if (!items.length) sponsorEl.innerHTML = '';
     sponsorEl.hidden = !items.length;
   }
@@ -1200,7 +1203,9 @@ function boot() {
       if (signal.aborted) return;
       if (found.confident) {
         replaceUrl(found.command);
-        render(found.command, { fromUrl, checked: true, note: resolvedNote(found.command, found.from) });
+        // The typed ticker itself (the symbol list vouched for it): no "Showing XLY (from 'xly')".
+        const same = found.command === typed;
+        render(found.command, { fromUrl, checked: true, note: same ? '' : resolvedNote(found.command, found.from) });
         return;
       }
       showDidYouMean(view, typed, found, ticker);

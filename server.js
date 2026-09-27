@@ -43,6 +43,8 @@ import { startEdgarWatch } from './data/edgarwatch.js';
 // --- end Provenance ---
 import { siteCounters, mountCounters, makeCountGate } from './lib/counters.js'; // BBRK site numbers
 const countGate = makeCountGate(); // BBRK: a few counts per IP a minute, no repeats
+const embedGate = makeCountGate({ max: 10 }); // BBRK: an embed page once per IP a minute
+import { makeDataFast } from './lib/datafast.js'; // BBRK audience: DataFast totals, DATAFAST_API_KEY
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
@@ -332,7 +334,7 @@ mountGuessCard(app, { todayPuzzle: () => guessGame.todayPuzzle() });
 
 // BBRK (lib/counters.js): the site's own daily totals, in the Pro database.
 const pro = startPro(app, { dir, counters: siteCounters });
-mountCounters(app, { counters: siteCounters, mode: pro?.mode || null, publicUrl: process.env.PUBLIC_URL || 'https://bloombroke.com' });
+mountCounters(app, { counters: siteCounters, mode: pro?.mode || null, publicUrl: process.env.PUBLIC_URL || 'https://bloombroke.com', audience: makeDataFast() });
 
 // --- MCP (lib/mcp/): POST /mcp, public-domain data only, and /llms.txt ---
 import { mountMcp } from './lib/mcp/server.js';
@@ -407,7 +409,7 @@ const HOME = withCanonical(INDEX, `${SITE}/`);
 // /terms, /privacy, /disclaimer: plain server-rendered pages, text in legal/*.md.
 mountLegal(app, { build: BUILD });
 // /embed/*: the only pages other sites may frame (lib/embed-pages.js).
-mountEmbeds(app, { build: BUILD, getCert: (c) => getCert(c, ogDeps), catalog });
+mountEmbeds(app, { build: BUILD, getCert: (c) => getCert(c, ogDeps), catalog, onLoad: (req) => embedGate.allow(req, `embed:${req.originalUrl}`) && siteCounters.bump('embed_load') });
 function sendIndex(res, status = 200, html = INDEX) {
   res.status(status).set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }).send(html);
 }

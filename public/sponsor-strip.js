@@ -39,14 +39,17 @@ export function itemHtml(item) {
 
 // Rotate items in host. Returns { stop, next, index, paused }. isHidden: whether the tab
 // is hidden (skips a turn). reduceMotion: swap without the slide. onPaidClick: a click on
-// a paid line (the sponsor_click goal; our own AD lines send nothing).
-export function mountStrip(host, items, { reduceMotion = false, isHidden = () => false, rotateMs = ROTATE_MS, onPaidClick = () => goal('sponsor_click') } = {}) {
+// a paid line (the sponsor_click goal; our own AD lines send nothing). onShow: a line
+// was shown while the tab is visible; onAnyClick: a click on any line (BBRK's strip
+// inventory; the status bar counts, the SPONSOR screen preview does not).
+export function mountStrip(host, items, { reduceMotion = false, isHidden = () => false, rotateMs = ROTATE_MS, onPaidClick = () => goal('sponsor_click'), onShow = () => {}, onAnyClick = () => {} } = {}) {
   let i = 0;
   let hover = false;
   let focus = false;
   let slide = null;
   const show = (animate) => {
     host.innerHTML = itemHtml(items[i]);
+    if (!isHidden()) { try { onShow(items[i]); } catch { /* a count never stops the strip */ } }
     if (!animate || reduceMotion) return;
     host.classList.remove('is-sliding');
     void host.offsetWidth; // restart the animation
@@ -75,7 +78,10 @@ export function mountStrip(host, items, { reduceMotion = false, isHidden = () =>
     ['mouseleave', () => { hover = false; }],
     ['focusin', () => { focus = true; }],
     ['focusout', () => { focus = false; }],
-    ['click', (e) => { if (e?.target?.closest?.('a.spon-item[rel~="sponsored"]')) onPaidClick(); }],
+    ['click', (e) => {
+      if (e?.target?.closest?.('a.spon-item[rel~="sponsored"]')) onPaidClick();
+      if (e?.target?.closest?.('a.spon-item')) { try { onAnyClick(); } catch { /* never blocks the link */ } }
+    }],
   ];
   for (const [t, f] of on) host.addEventListener(t, f);
   show(false);

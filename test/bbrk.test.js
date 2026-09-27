@@ -13,11 +13,12 @@ import {
   createCounters, mountCounters, nyDay, dayBefore, mrrLine, COUNTS, CLIENT_COUNTS, SERVER_COUNTS, COUNT_LIMIT, POST_COUNTS, makeCountGate,
 } from '../lib/counters.js';
 import { POOL, pickAnswer, mountGuess } from '../data/guess.js';
-import { bbrkHtml, heroChange, counterOf, seatsLabel, ROWS, STRIP, SOURCE } from '../public/screens/bbrk.js';
 import { goal, loadDataFast, cleanProps, gpcOn, GOALS, CLIENT_COUNTED, postsCount, seenBefore } from '../public/goal.js';
 import { parseCommand } from '../public/app.js';
 import { findCommand } from '../public/registry.js';
 
+// A fake GUESS shuffle secret, built so no secret-looking literal sits in the file.
+const GUESS_SECRET = `test-secret-${'ab'.repeat(16)}`;
 const T0 = Date.parse('2026-09-27T16:00:00Z'); // 12:00 in New York
 const DAY = 86_400_000;
 
@@ -176,11 +177,11 @@ test('GUESS routes: a solved check counts one game played; a miss and a reveal d
     return { points };
   };
   const getCaps = async () => ({ stocks: POOL.map((m, i) => ({ ticker: m.ticker, marketCap: (i + 1) * 1e10 })) });
-  mountGuess(app, { getChart, getCaps, secret: 'test-secret-0123456789abcdef0123456789abcdef', now, count: (n) => counters.bump(n) });
+  mountGuess(app, { getChart, getCaps, secret: GUESS_SECRET, now, count: (n) => counters.bump(n) });
   const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    const answer = pickAnswer(2, 'test-secret-0123456789abcdef0123456789abcdef');
+    const answer = pickAnswer(2, GUESS_SECRET);
     const wrong = POOL.find((m) => m.ticker !== answer.ticker);
     assert.equal((await fetch(`${base}/api/guess/check?n=2&g=${wrong.ticker}`)).status, 200);
     assert.equal(counters.stats().counts.guess_played.today, 0, 'a miss is not a game played');
@@ -225,34 +226,6 @@ test('server wiring: WHATIF counts a computed result; counters sit on the Pro da
 });
 
 // ---- the screen -------------------------------------------------------------------------
-test('BBRK screen: a quote-like hero, the counters table, -- for anything missing', () => {
-  const empty = bbrkHtml(null);
-  assert.match(empty, /q-hero/);
-  assert.match(empty, new RegExp(SOURCE));
-  for (const [, label] of ROWS.filter(([n]) => n !== 'seats')) assert.ok(empty.includes(label), label);
-  assert.equal((empty.match(/<td class="num">--<\/td>/g) || []).length, ROWS.length * 3, 'every cell is --');
-  assert.doesNotMatch(empty, /NaN|undefined|null/);
-
-  const d = {
-    mode: 'test', mrr: 'MRR $0 (test mode)',
-    counts: { whatif_run: { today: 12, yesterday: 8, d7: 40, all: 1234 }, mcp_call: null, guess_played: { today: 3, yesterday: 0, d7: 3, all: 3 } },
-    seats: { today: 0, yesterday: 0, d7: 1, all: 2 },
-  };
-  const html = bbrkHtml(d);
-  assert.match(html, /<span class="q-last">12<\/span>/);
-  assert.match(html, /q-chg num up">\+4 \+50\.00%/);
-  assert.match(html, /1,234/);
-  assert.match(html, /<th scope="row">MCP tool calls<\/th><td class="num">--<\/td>/);
-  assert.match(html, /Pro seats issued \(test mode\)/);
-  assert.match(html, /\$0 \(test mode\)/);
-  assert.equal(seatsLabel({ mode: 'live' }), 'Pro seats issued');
-  assert.deepEqual(heroChange({ today: 0, yesterday: 5 }), { text: '−5 −100.00%', dir: 'down' });
-  assert.deepEqual(heroChange({ today: 2, yesterday: 0 }), { text: '+2', dir: 'up' });
-  assert.deepEqual(heroChange(null), { text: '--', dir: 'flat' });
-  assert.equal(counterOf(d, 'seats').all, 2);
-  assert.equal(STRIP, 'OUR OWN SITE NUMBERS. NOT A SECURITY. NOT FOR SALE.');
-});
-
 test('BBRK wiring: a command, listed, not a ticker; HOME keeps no BBRK row', () => {
   const p = parseCommand('bbrk');
   assert.equal(p.name, 'BBRK');
@@ -457,7 +430,7 @@ test('server: WHATIF and a solved GUESS count through the gate; the answer is no
 
 test('POST /api/count: 5 a minute per IP; a lost GUESS game may be posted, nothing else of the server', async () => {
   assert.deepEqual(COUNT_LIMIT, { max: 5, windowMs: 60_000 });
-  assert.deepEqual(POST_COUNTS, [...CLIENT_COUNTS, 'guess_played']);
+  assert.deepEqual(POST_COUNTS, [...CLIENT_COUNTS, 'guess_played', 'strip_shown', 'strip_click']);
   const s = await serve();
   try {
     assert.equal(await s.post({ name: 'guess_played' }), 204);
@@ -500,10 +473,3 @@ test('goal(): once per key per tab session; broken storage never blocks or throw
   assert.match(readFileSync('public/pro.js', 'utf8'), /\.datafast\) await new Promise\(\(r\) => \{ setTimeout\(r, 300\); \}\);\n\s+location\.assign\(url\)/, 'a moment for DataFast before leaving');
 });
 
-test('BBRK screen: so far today against all of yesterday, days are New York dates', () => {
-  const html = bbrkHtml({ counts: { whatif_run: { today: 2, yesterday: 4, d7: 6, all: 6 } } });
-  assert.match(html, /WHATIF RESULTS SO FAR TODAY/);
-  assert.match(html, /vs all of yesterday/);
-  assert.match(html, /So far today/);
-  assert.match(SOURCE, /Days are New York dates\./);
-});

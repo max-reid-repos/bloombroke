@@ -18,7 +18,7 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { resolveInstrument } from '../public/instruments.js';
 import { LISTED_TICKERS, nameForTicker } from '../public/known-tickers.js';
 import { createLimiter, clientIp } from '../pro/ratelimit.js';
-import { fetchCnbcRows, parseQuoteRow } from './quotes.js';
+import { fetchStockRows, parseQuoteRow } from './quotes.js';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -189,7 +189,7 @@ export function createTracker({ now = () => Date.now(), secret = randomBytes(32)
 // shared quote cache, so junk words never land there. Answers are kept here, bounded, and
 // new lookups are capped at a few a minute so junk words cannot drive upstream calls.
 export async function uncachedQuote(ticker, fetchImpl = globalThis.fetch) {
-  const rows = await fetchCnbcRows(fetchImpl, [ticker]);
+  const rows = await fetchStockRows(fetchImpl, [ticker]);
   return parseQuoteRow(rows[0], ticker);
 }
 
