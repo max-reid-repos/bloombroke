@@ -1,7 +1,7 @@
 // NEWS <ticker>: headlines about one company. Plain NEWS stays the market-wide screen.
 
 import { esc, panel, LOADING } from './markets.js';
-import { safeHref, newsTimeHtml } from './news.js';
+import { safeHref, newsTimeHtml, NEWS_POLL_MS } from './news.js';
 import { toolbar, segmented } from '../kit.js';
 import { errorHtml } from './profile.js';
 
@@ -101,5 +101,5 @@ export function render(el, cmd, ctx) {
   }
 
   load();
-  ctx.every(load, 5 * 60_000);
+  ctx.live(load, NEWS_POLL_MS); // every minute while on show, like the NEWS tabs
 }

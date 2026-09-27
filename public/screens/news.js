@@ -1,4 +1,4 @@
-// NEWS: finance headlines from a few public feeds, newest first.
+// NEWS: finance headlines from a few public feeds, newest first, refreshed every minute.
 
 import { esc, panel, LOADING } from './markets.js';
 import { toolbar, segmented } from '../kit.js';
@@ -77,13 +77,157 @@ function filingCell(n, href) {
   return `<span class="news-title news-filing">${tk}<a class="news-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(n.title)}</a></span>`;
 }
 
+// ---- Live refresh ----------------------------------------------------------------
+// NEWS and the HOME news box ask again every minute while the page is on show (ctx.live
+// pauses while it is hidden). Stories that were not there before slide in at the top and
+// glow for a moment; the title strip says "N NEW" until the reader does something, or
+// for 30 seconds.
+
+export const NEWS_POLL_MS = 60_000;
+export const NEW_BADGE_MS = 30_000;
+export const GLOW_MS = 2000;
+
+// One key per story: its link, so a headline edited in place is still the same story.
+// A story with no link falls back to its words.
+const titleWords = (n) => String(n?.title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+export function newsKey(n) {
+  const link = safeHref(n?.link);
+  return link ? `l:${link}` : `t:${titleWords(n)}`;
+}
+
+// One copy of each story, first one kept (the list comes newest first): a repeat link,
+// or the same words under another link (one story on two feeds), is dropped, and so is
+// a story with no words.
+export function dedupeNews(items) {
+  const links = new Set();
+  const words = new Set();
+  return (items || []).filter((n) => {
+    const k = newsKey(n);
+    const w = titleWords(n);
+    if (!w || links.has(k) || words.has(w)) return false;
+    links.add(k);
+    words.add(w);
+    return true;
+  });
+}
+
+// Which stories are new since the last look. The first look has none (everything on
+// screen is simply the news). A story seen once never counts as new again, even if it
+// drops off the list and comes back.
+export function newsTracker({ maxSeen = 3000 } = {}) {
+  let seen = null;
+  return {
+    // items -> Set of the new keys.
+    track(items) {
+      const keys = (items || []).map(newsKey);
+      const first = !seen;
+      if (first) seen = new Set();
+      const fresh = new Set();
+      for (const k of keys) {
+        if (!first && !seen.has(k)) fresh.add(k);
+        seen.add(k);
+      }
+      while (seen.size > maxSeen) seen.delete(seen.values().next().value);
+      return fresh;
+    },
+    get started() { return seen !== null; },
+  };
+}
+
+// The "N NEW" count: grows with each look that brings new stories, back to 0 when the
+// reader does something or NEW_BADGE_MS pass.
+export function newCounter() {
+  let n = 0;
+  return { add: (k) => { n += k; return n; }, clear: () => { n = 0; }, get count() { return n; } };
+}
+
+export const newBadge = (n) => (n > 0 ? `<span class="news-new" role="status">${n} NEW</span>` : '');
+
+// The first row still on screen in the scroller, and where it sits, so a repaint that
+// adds rows above it can put it back in the same place.
+function scrollerOf(el) {
+  const box = el.closest('.panel-body');
+  if (box && box.scrollHeight > box.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(box).overflowY)) return box;
+  return null; // the page itself scrolls (phones)
+}
+function anchorOf(el) {
+  const box = scrollerOf(el);
+  const scrolled = box ? box.scrollTop > 0 : window.scrollY > 0 && el.getBoundingClientRect().top < 0;
+  if (!scrolled) return null;
+  const top = box ? box.getBoundingClientRect().top : 0;
+  for (const row of el.querySelectorAll('.news-row[data-k]')) {
+    const r = row.getBoundingClientRect();
+    if (r.bottom > top) return { box, key: row.dataset.k, y: r.top };
+  }
+  return null;
+}
+function restoreAnchor(el, a) {
+  if (!a) return;
+  const row = [...el.querySelectorAll('.news-row[data-k]')].find((r) => r.dataset.k === a.key);
+  if (!row) return;
+  const dy = row.getBoundingClientRect().top - a.y;
+  if (!dy) return;
+  if (a.box) a.box.scrollTop += dy; else window.scrollBy(0, dy);
+}
+
+// One live news list: body gets the rows, meta (the title strip) the "N NEW" badge in
+// front of metaHtml(). show(items, html) paints; items are the rows html shows.
+export function liveNews({ body, meta = null, metaHtml = () => '', ctx }) {
+  const tracker = newsTracker();
+  const counter = newCounter();
+  const glow = new Set();
+  let timer = null;
+  const EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
+  let listening = false;
+  const paintMeta = () => { if (meta) meta.innerHTML = `${newBadge(counter.count)}${metaHtml()}`; };
+  function clear() {
+    if (!counter.count) return;
+    counter.clear();
+    clearTimeout(timer);
+    stopListening();
+    paintMeta();
+  }
+  function stopListening() {
+    if (!listening) return;
+    listening = false;
+    for (const e of EVENTS) document.removeEventListener(e, clear, true);
+  }
+  ctx.onCleanup?.(() => { clearTimeout(timer); stopListening(); });
+
+  function show(allItems, shownItems, html) {
+    const fresh = tracker.track(allItems);
+    const shownFresh = shownItems.map(newsKey).filter((k) => fresh.has(k));
+    if (shownFresh.length) {
+      counter.add(shownFresh.length);
+      for (const k of shownFresh) glow.add(k);
+      setTimeout(() => {
+        for (const k of shownFresh) glow.delete(k);
+        for (const row of body.querySelectorAll('.news-row.is-new')) if (!glow.has(row.dataset.k)) row.classList.remove('is-new');
+      }, GLOW_MS);
+      clearTimeout(timer);
+      timer = setTimeout(clear, NEW_BADGE_MS);
+      if (!listening) {
+        listening = true;
+        // Only a move made after the stories arrived clears the badge.
+        setTimeout(() => { if (listening) for (const e of EVENTS) document.addEventListener(e, clear, { capture: true, passive: true }); }, 0);
+      }
+    }
+    const anchor = anchorOf(body);
+    body.innerHTML = html;
+    if (glow.size) for (const row of body.querySelectorAll('.news-row[data-k]')) if (glow.has(row.dataset.k)) row.classList.add('is-new');
+    restoreAnchor(body, anchor);
+    paintMeta();
+  }
+  return { show, paintMeta, clear };
+}
+
 export function newsList(items) {
-  const rows = items.map((n) => {
+  const rows = dedupeNews(items).map((n) => {
     const href = safeHref(n.link);
     if (!href) return '';
     const src = shortSource(n.source);
     const filing = 'ticker' in n;
-    return `<li class="news-row${filing && !n.ticker ? ' is-dim' : ''}">
+    return `<li class="news-row${filing && !n.ticker ? ' is-dim' : ''}" data-k="${esc(newsKey(n))}">
       ${newsTimeHtml(n.time)}
       <span class="news-src" title="${esc(n.source || '')}">${esc(src)}</span>
       ${filing ? filingCell(n, href) : `<a class="news-title" href="${esc(href)}" target="_blank" rel="noopener noreferrer" title="${esc(n.title)}">${esc(n.title)}</a>`}
@@ -97,6 +241,7 @@ export function render(el, cmd, ctx) {
   el.innerHTML = panel('1', 'News', `<div class="news-bar">${LOADING}</div><div class="news-body"></div>`, { cls: 'panel-solo', metaId: 'news-meta', bodyCls: 'flush', meta: esc(TAB_SOURCES[tab]) });
   const bar = el.querySelector('.news-bar');
   const body = el.querySelector('.news-body');
+  const live = liveNews({ body, meta: el.querySelector('#news-meta'), metaHtml: () => esc(TAB_SOURCES[tab]), ctx });
   let data = null;
   let src = 'ALL';
   const tabs = segmented(NEWS_TABS.map((t) => ({ label: t, cmd: tabCommand(t) })), tab, { label: 'News tab' });
@@ -105,10 +250,10 @@ export function render(el, cmd, ctx) {
     if (!data) return;
     const sources = [...new Set(data.sources.map(shortSource))];
     if (!sources.includes(src)) src = 'ALL';
-    const items = filterNews(data.items, src);
+    const items = dedupeNews(filterNews(data.items, src));
     const pick = sources.length > 1 ? segmented([{ label: 'ALL', value: 'ALL' }, ...sources.map((x) => ({ label: x, value: x }))], src, { label: 'Source' }) : '';
     bar.innerHTML = toolbar({ left: tabs, right: pick, label: 'News' });
-    body.innerHTML = items.length ? newsList(items) : '<p class="panel-msg">NO DATA</p>';
+    live.show(data.items, items, items.length ? newsList(items) : '<p class="panel-msg">NO DATA</p>');
   }
 
   bar.addEventListener('click', (e) => {
@@ -131,5 +276,5 @@ export function render(el, cmd, ctx) {
   }
 
   load();
-  ctx.every(load, 5 * 60_000);
+  ctx.live(load, NEWS_POLL_MS);
 }

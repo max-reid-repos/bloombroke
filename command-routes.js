@@ -15,7 +15,7 @@ import { getCalendar } from './data/calendar.js';
 import { getProfile, ProfileError } from './data/profile.js';
 import { getHistory, HistoryError } from './data/history.js';
 import { getDividends, DividendsError } from './data/dividends.js';
-import { getTickerNews, TickerNewsError } from './data/tickernews.js';
+import { getTickerNews, getTickerHeadlines, TickerNewsError } from './data/tickernews.js';
 import { CompanyDataError } from './data/company-kit.js';
 import { getInsiders } from './data/insiders.js';
 import { getOwners } from './data/owners.js';
@@ -29,11 +29,12 @@ import { getOptions, OptionsError } from './data/options.js';
 import { getEconomy, getEconomySeries, EconomyError } from './data/economy.js';
 import { getFedPath } from './data/fedpath.js';
 import { getBreadth } from './data/breadth.js';
+import { getWhy, WhyError } from './data/why.js'; // WHY
 
 const BREAK = 'Data is taking a break. Try again in a minute.';
 const str = (v) => (typeof v === 'string' ? v.slice(0, 200) : undefined);
 const STATUS = { unavailable: 503, not_found: 404, no_data: 404, no_expiry: 404 };
-const KNOWN = [CompareError, EarningsError, ProfileError, HistoryError, DividendsError, TickerNewsError, CompanyDataError, OptionsError, EconomyError];
+const KNOWN = [CompareError, EarningsError, ProfileError, HistoryError, DividendsError, TickerNewsError, CompanyDataError, OptionsError, EconomyError, WhyError];
 
 // route(app, '/api/x', maxAgeSeconds, (req) => promise)
 function route(app, path, maxAge, load) {
@@ -73,6 +74,10 @@ export function mountCommandRoutes(app) {
   route(app, '/api/history', 300, (req) => getHistory({ ticker: str(req.query.s), from: str(req.query.from), to: str(req.query.to) }));
   route(app, '/api/dividends', 3600, (req) => getDividends(str(req.query.s)));
   route(app, '/api/tickernews', 120, (req) => getTickerNews(str(req.query.s)));
+  // WHY: the biggest daily moves of the last year and what came out each day.
+  route(app, '/api/why', 300, (req) => getWhy(str(req.query.s)));
+  // Chart N flags on 1D and 5D: the company's headlines of the last few days.
+  route(app, '/api/chart-news', 120, (req) => getTickerHeadlines(str(req.query.s)));
   // Company data: filings and holdings change daily at most, calendars hourly.
   route(app, '/api/insiders', 900, (req) => getInsiders(str(req.query.s)));
   route(app, '/api/owners', 900, (req) => getOwners(str(req.query.s)));
