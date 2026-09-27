@@ -4,6 +4,7 @@
 // leaves the others; all three failing is an error. Headlines about the company also go
 // in the per-ticker news log (data/newslog.js), for WHY and the chart's N flags.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { normalizeTicker, stockSymbol, UA } from './quotes.js';
 import { parseRss, cleanText } from './news.js';
@@ -114,8 +115,8 @@ const MAX_HEADLINES = 100;
 // getFilings: data/filings.js, the one SEC queue (one request at a time, SEC's
 // User-Agent, cached a day). A test's own fetchImpl gets its own queue.
 export function makeTickerNews({
-  fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 600 }), secTickers = secTickersFor(fetchImpl), secBudgetMs = FEED_TIMEOUT_MS, log = null, now = () => Date.now(),
-  getFilings = fetchImpl === globalThis.fetch ? defaultGetFilings : makeFilings({ fetchImpl }).getFilings,
+  fetchImpl = cappedFetch, cache = createCache({ maxEntries: 600 }), secTickers = secTickersFor(fetchImpl), secBudgetMs = FEED_TIMEOUT_MS, log = null, now = () => Date.now(),
+  getFilings = fetchImpl === cappedFetch ? defaultGetFilings : makeFilings({ fetchImpl }).getFilings,
 } = {}) {
   // Nasdaq resets connections from non-browser User-Agents, so this one keeps the browser UA.
   function nasdaq(ticker) {

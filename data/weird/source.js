@@ -1,6 +1,8 @@
 // Shared fetch helpers for the WEIRD gauges. Every request names us in the
 // User-Agent (some sources refuse anonymous ones) and gives up after a timeout.
 
+import { cappedFetch } from '../http.js';
+
 export const UA = 'Bloombroke/1.0 (hello@bloombroke.com)';
 export const TIMEOUT = 8000;
 
@@ -51,7 +53,7 @@ export async function readCapped(res, cap = MAX_BYTES, abort = null) {
 
 // fetchImpl -> { text(url, opts), json(url, opts) }. opts: { timeout, headers, accept,
 // maxBytes, method, body } (method and body: for the few sources that take a POST, BLS).
-export function sourceClient(fetchImpl = globalThis.fetch) {
+export function sourceClient(fetchImpl = cappedFetch) {
   async function get(url, { timeout = TIMEOUT, headers = {}, accept = '*/*', maxBytes = MAX_BYTES, method, body } = {}) {
     const abort = new AbortController();
     const res = await fetchImpl(url, {

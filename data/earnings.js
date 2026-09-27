@@ -1,5 +1,6 @@
 // EARNINGS: the earnings calendar from the Nasdaq API (no key).
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { getNasdaq, money, usDay, isIsoDay, addDays, iso } from './lists.js';
 
@@ -40,7 +41,7 @@ export function weekDays(day) {
   return [0, 1, 2, 3, 4].map((i) => addDays(monday, i));
 }
 
-export function makeEarnings({ fetchImpl = globalThis.fetch, cache = createCache() } = {}) {
+export function makeEarnings({ fetchImpl = cappedFetch, cache = createCache() } = {}) {
   const one = (day) => cache.cached(`earnings:${day}`, TTL, async () => parseEarnings(await getNasdaq(fetchImpl, `calendar/earnings?date=${day}`)));
 
   // { date } for one day, or { date, week: true } for Monday to Friday of that week.

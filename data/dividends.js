@@ -11,6 +11,7 @@
 // call as the split history). A year where the two disagree (a payment missing from
 // one of them, or a different amount) gets no total, with a note, never a guess.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { normalizeTicker, fetchStockRows, tickerSource, stockSymbol } from './quotes.js';
 import { getNasdaq, money, usDay, iso } from './lists.js';
@@ -108,7 +109,7 @@ export function parseCnbcDividend(r) {
   return { yield: money(r.dividendyield), annual: money(r.dividend) };
 }
 
-export function makeDividends({ fetchImpl = globalThis.fetch, cache = createCache(), now = () => Date.now(), splitHistory = fetchImpl === globalThis.fetch ? getSplitHistory : async () => null } = {}) {
+export function makeDividends({ fetchImpl = cappedFetch, cache = createCache(), now = () => Date.now(), splitHistory = fetchImpl === cappedFetch ? getSplitHistory : async () => null } = {}) {
   async function getDividends(raw) {
     const ticker = normalizeTicker(raw);
     if (!ticker) throw new DividendsError('bad_symbol', 'That does not look like a ticker.');

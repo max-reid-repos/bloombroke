@@ -1,6 +1,7 @@
 // PROFILE: what a company does. Description, sector, industry and website from the
 // Nasdaq API; headquarters and fiscal year end from SEC EDGAR (both no key).
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { companyTicker } from './quotes.js';
 import { getNasdaq, money, iso } from './lists.js';
@@ -83,7 +84,7 @@ export function parseSecTickers(body) {
   return map;
 }
 
-export function makeProfile({ fetchImpl = globalThis.fetch, cache = createCache() } = {}) {
+export function makeProfile({ fetchImpl = cappedFetch, cache = createCache() } = {}) {
   async function sec(url) {
     const res = await fetchImpl(url, { headers: SEC_HEADERS, signal: AbortSignal.timeout(10_000) });
     if (!res.ok) throw new Error(`sec source HTTP ${res.status}`);

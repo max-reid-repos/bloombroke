@@ -7,6 +7,7 @@
 //   holds real networks (Chainlink, Stellar), so it cannot be used whole.
 // The markets call asks for 100 coins so 20 remain after the exclusions.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { UA } from './quotes.js';
 import { iso } from './lists.js';
@@ -68,7 +69,7 @@ export function excludeCoins(coins, stableIds, n = TOP_N) {
   return { coins: out, excluded };
 }
 
-export function makeCrypto({ fetchImpl = globalThis.fetch, cache = createCache() } = {}) {
+export function makeCrypto({ fetchImpl = cappedFetch, cache = createCache() } = {}) {
   const get = async (url) => {
     const res = await fetchImpl(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
     if (!res.ok) throw new Error(`crypto source HTTP ${res.status}`);

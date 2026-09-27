@@ -1,6 +1,7 @@
 // Finance headlines from public RSS feeds (no key). Each feed is cached on its own,
 // so one dead feed does not take the others down.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { UA } from './quotes.js';
 
@@ -84,7 +85,7 @@ export function mergeNews(lists, limit = MAX_ITEMS) {
   return out;
 }
 
-export function makeNews({ fetchImpl = globalThis.fetch, cache = createCache() } = {}) {
+export function makeNews({ fetchImpl = cappedFetch, cache = createCache() } = {}) {
   async function feed(f) {
     return cache.cached(`news:${f.id}`, NEWS_TTL, async () => {
       const res = await fetchImpl(f.url, { headers: { 'User-Agent': UA, Accept: 'application/rss+xml, application/xml, text/xml' }, signal: AbortSignal.timeout(8000) });

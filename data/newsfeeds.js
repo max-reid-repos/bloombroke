@@ -6,6 +6,7 @@
 // past it), each feed cached on its own: 1 minute for WIRES and SEC, 3 for the rest. One
 // dead feed never takes a tab down; a tab with no feed left answers with no items.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { cleanText, safeLink, titleKey } from './news.js';
 import { parseTickerMap } from './financials.js';
@@ -316,7 +317,7 @@ export const TAB_FEEDS = {
   ],
 };
 
-export function makeNewsFeeds({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: 60_000 }), feeds = TAB_FEEDS, secTickers = secTickersFor(fetchImpl) } = {}) {
+export function makeNewsFeeds({ fetchImpl = cappedFetch, cache = createCache({ retryMs: 60_000 }), feeds = TAB_FEEDS, secTickers = secTickersFor(fetchImpl) } = {}) {
   function load(f) {
     return cache.cached(`newsfeed:${f.id}`, f.ttl || FEED_TTL, async () => {
       const xml = await fetchCapped(fetchImpl, f.url);

@@ -1,7 +1,9 @@
 // HISTORY: daily open, high, low, close and volume from the CNBC bars service (no key).
 // Split-adjusted, the same series the charts use.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
+import { makeGate } from './gate.js';
 import { tickerSource, normalizeTicker, UA } from './quotes.js';
 import { isIsoDay, nyDay, addDays, iso } from './lists.js';
 
@@ -42,7 +44,12 @@ export function withChanges(rows) {
   });
 }
 
-export function makeHistory({ fetchImpl = globalThis.fetch, cache = createCache(), now = () => Date.now() } = {}) {
+// Every FROM/TO pair is its own key, so the cache is capped (least recently used out) and
+// at most a few loads go upstream at once, with a short queue.
+export const HISTORY_CACHE = { maxEntries: 300, maxBytes: 24 * 1024 * 1024, lru: true, staleMs: 6 * 3600_000 };
+export const HISTORY_GATE = { concurrency: 4, maxQueue: 24 };
+
+export function makeHistory({ fetchImpl = cappedFetch, cache = createCache(HISTORY_CACHE), gate = makeGate(HISTORY_GATE), now = () => Date.now() } = {}) {
   async function getHistory({ ticker: raw, from, to }) {
     const ticker = normalizeTicker(raw);
     if (!ticker) throw new HistoryError('bad_symbol', 'That does not look like a ticker.');
@@ -59,14 +66,14 @@ export function makeHistory({ fetchImpl = globalThis.fetch, cache = createCache(
     const qEnd = addDays(end, 1).replace(/-/g, '');
     let got;
     try {
-      got = await cache.cached(`history:${ticker}:${start}:${end}`, TTL, async () => {
+      got = await cache.cached(`history:${ticker}:${start}:${end}`, TTL, () => gate(async () => {
         const url = `${BARS_URL}/${encodeURIComponent(tickerSource(ticker))}/1D/${qStart}000000/${qEnd}000000/adjusted/EST5EDT.json`;
         const res = await fetchImpl(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(12_000) });
         if (!res.ok) throw new Error(`history source HTTP ${res.status}`);
         const body = await res.json();
         if (body?.status === 'ERROR' || !body?.barData) return { notFound: true, rows: [] };
         return { notFound: false, rows: parseOhlcv(body.barData.priceBars) };
-      });
+      }));
     } catch {
       throw new HistoryError('unavailable', 'Price history is taking a break. Try again in a minute.');
     }

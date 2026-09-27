@@ -3,6 +3,7 @@
 // - Fed funds target range: New York Fed Markets API (EFFR), no key.
 // - Mortgage rates: Freddie Mac Primary Mortgage Market Survey CSV, no key.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { makeQuotes, sharedQuotes, UA } from './quotes.js';
 
@@ -54,7 +55,7 @@ export function parsePmms(csv) {
 
 // Live: the shared quote batch (the same yields as MARKETS, the tape and CURVE). Tests
 // pass their own fetch and get their own batch.
-export function makeRates({ fetchImpl = globalThis.fetch, cache = createCache(), quotes = fetchImpl === globalThis.fetch ? sharedQuotes : makeQuotes({ fetchImpl, cache }) } = {}) {
+export function makeRates({ fetchImpl = cappedFetch, cache = createCache(), quotes = fetchImpl === cappedFetch ? sharedQuotes : makeQuotes({ fetchImpl, cache }) } = {}) {
   async function get(url, as) {
     const res = await fetchImpl(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10_000) });
     if (!res.ok) throw new Error(`rates source HTTP ${res.status}`);

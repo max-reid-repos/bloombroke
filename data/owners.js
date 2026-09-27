@@ -1,6 +1,7 @@
 // OWNERS <ticker>: the biggest institutional holders and the ownership summary, from the
 // Nasdaq institutional holdings API (13F filings; no key). Cached a day.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { money, usDay } from './lists.js';
 import { CompanyDataError, DAY_MS, nasdaqData, tickerOrThrow, cachedOrThrow, text } from './company-kit.js';
@@ -124,7 +125,7 @@ export function parseOwners(d) {
   };
 }
 
-export function makeOwners({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 500, retryMs: 60_000 }) } = {}) {
+export function makeOwners({ fetchImpl = cappedFetch, cache = createCache({ maxEntries: 500, retryMs: 60_000 }) } = {}) {
   async function getOwners(raw) {
     const ticker = tickerOrThrow(raw);
     const path = `company/${encodeURIComponent(ticker)}/institutional-holdings?limit=${FETCH_LIMIT}&type=TOTAL&sortColumn=marketValue&sortOrder=DESC`;

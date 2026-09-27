@@ -8,6 +8,7 @@
 // missing between two listed months, stays in the list as a gap (price null), so the
 // chart and the table never close up around it.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 import { fetchCnbcRows, parseNum, parseChange } from './quotes.js';
 import { getRates } from './rates.js';
@@ -83,7 +84,7 @@ export function withGaps(priced, raw) {
   return out;
 }
 
-export function makeFedPath({ fetchImpl = globalThis.fetch, cache = createCache(), rates = getRates } = {}) {
+export function makeFedPath({ fetchImpl = cappedFetch, cache = createCache(), rates = getRates } = {}) {
   async function getFedPath() {
     const [fut, rt] = await Promise.allSettled([
       cache.cached('fedpath', TTL, async () => {

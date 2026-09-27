@@ -6,6 +6,7 @@
 //   level: the value as published.   mom: % change on the month before.
 //   yoy: % change on the same month a year before.   diff: change on the month before.
 
+import { cappedFetch } from './http.js';
 import { createCache } from './cache.js';
 
 const TTL = 12 * 60 * 60_000;
@@ -97,7 +98,7 @@ export function sliceRange(points, range, today = new Date().toISOString().slice
   return points.filter((p) => p.date >= cutoff);
 }
 
-export function makeEconomy({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: 5 * 60_000 }), today = () => new Date().toISOString().slice(0, 10) } = {}) {
+export function makeEconomy({ fetchImpl = cappedFetch, cache = createCache({ retryMs: 5 * 60_000 }), today = () => new Date().toISOString().slice(0, 10) } = {}) {
   async function fetchCsv(fredId) {
     let lastErr;
     // FRED now and then drops a connection; one retry covers it.
