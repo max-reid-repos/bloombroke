@@ -1,0 +1,34 @@
+/* data.js's own styles, loaded with it (public/lazy.js) the first time DATA opens; the
+   page's always-on styles are in the stylesheets public/index.html links. */
+
+/* ---- DATA: eight group rows that open to their datasets (screens/data.js) ---- */
+.dg-scroll { overflow-y: auto; max-height: 100%; }
+.dg-table { width: 100%; max-width: 760px; table-layout: fixed; }
+.dg-table .c-name { width: 20ch; }
+.dg-table .c-upd { width: 20ch; }
+.dg-table .c-fresh { width: 10ch; }
+.dg-table td, .dg-table th { overflow: hidden; text-overflow: ellipsis; }
+.dg-table tr[data-k]:focus { outline: 0; background: var(--panel-3); box-shadow: inset 2px 0 0 var(--accent); }
+.dg-table tbody tr.dg-group { cursor: pointer; }
+.dg-group .dg-name { font-weight: 600; letter-spacing: .08em; color: var(--text); }
+.dg-group.is-open { background: var(--panel-2); }
+.dg-group .dg-what { color: var(--text-2); }
+.dg-caret { display: inline-block; width: 14px; color: var(--dim); font-weight: 400; }
+.dg-upd { color: var(--dim); }
+.dg-fresh { color: var(--text-2); }
+.dg-fresh .sx-dot { margin-right: 5px; }
+.dg-mem .dg-name { padding-left: 24px; font-weight: 400; color: var(--text-2); }
+.dg-mem { font-size: 12px; }
+.dg-table tr.is-lit > * { background: var(--accent-tint); }
+/* A known gap: a small hollow ring by the name; the words are its tooltip. */
+.dg-gap { display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--dim); vertical-align: 1px; cursor: help; }
+
+@media (max-width: 639px) {
+  .dg-table .c-name { width: 13ch; }
+  .dg-table .c-upd { width: 11ch; }
+  .dg-table .c-fresh { width: 7ch; }
+  .dg-table th, .dg-table td { padding: 0 5px; }
+  .dg-table td.dg-what, .dg-table td.dg-upd { white-space: normal; line-height: 1.25; padding-top: 3px; padding-bottom: 3px; }
+  .dg-group .dg-name { letter-spacing: .04em; white-space: normal; line-height: 1.25; }
+  .dg-mem .dg-name { padding-left: 12px; white-space: normal; line-height: 1.25; }
+}

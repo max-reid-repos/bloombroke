@@ -14,7 +14,7 @@ import { GAUGES } from '../data/weird/index.js';
 import { makeCpi, CPI_GAPS } from '../data/cpi.js';
 import { cpiLoader, cpiGapNote } from '../data/whatif.js';
 import { bls } from '../data/whatif-service.js';
-import { dataTable, secLine, parse as parseData, ageTitle } from '../public/screens/data.js';
+import { dataGrid, groupRows, secLine, parse as parseData, ageTitle } from '../public/screens/data.js';
 import { statusGrid, proOnlyHtml, stateHtml, PRO_ONLY_LINE } from '../public/screens/status.js';
 import { changesTable } from '../public/screens/changes.js';
 import { parseCommand, FKEYS } from '../public/app.js';
@@ -221,9 +221,11 @@ test('DATA rows: every field filled, a source class, no licence column, no vendo
     if (r.url) assert.match(r.url, GOV_URL, `${r.id}: a link only for a named public source`);
   }
   assert.doesNotMatch(JSON.stringify(rows), VENDORS, 'no vendor name in DATA');
-  const html = dataTable(rows);
+  const groups = groupRows(rows);
+  const html = dataGrid(groups, { open: new Set(groups.map((g) => g.id)) });
   assert.doesNotMatch(html, VENDORS);
   assert.doesNotMatch(html, /Licence|third-party terms|public domain/, 'no licence column');
+  assert.doesNotMatch(html, /market data provider|public web data|news publishers|exchange calendars|our own counters|Economist|Natural Earth/, 'no source class and no non-government name on screen');
   const src = (id) => rows.find((r) => r.id === id).source;
   assert.deepEqual(['quotes', 'fx', 'calendar', 'news', 'weird-pizza', 'bbrk', 'sec-facts', 'cpi', 'treasury', 'news-macro', 'weird-beige', 'weird-sick', 'weird-bigmac', 'weird-waffle'].map(src),
     [MDP, 'reference FX rates (ECB)', 'exchange calendars', 'news publishers', 'public web data', 'our own counters', 'SEC EDGAR', 'BLS', 'US Treasury', 'Federal Reserve Board, BLS', 'Federal Reserve Board', 'CDC', 'The Economist (CC BY 4.0)', 'National Hurricane Center; stores © OpenStreetMap contributors (ODbL)'],
@@ -252,9 +254,9 @@ test('DATA rows: data age from the last answer, checked age from the caches, WEI
   assert.equal(c.as_of, '2026-09-20T00:00:00.000Z');
   const f = rows.find((r) => r.id === 'sec-feed');
   assert.deepEqual([f.age_seconds, f.checked_seconds], [40, 3]);
-  const html = dataTable(rows, { lit: 'quotes' });
-  assert.match(html, /<tr id="data-quotes" class="is-lit">/);
-  assert.match(html, /title="Checked 12s ago · last update [^"]+">2h</);
+  const html = dataGrid(groupRows(rows), { open: new Set(['prices']), lit: 'quotes' });
+  assert.match(html, /<tr id="data-quotes" class="dg-mem is-lit"/);
+  assert.match(html, /title="[^"]*Checked 12s ago · last update [^"]+"[^>]*>[\s\S]*?<\/span>2h<\/td>/);
   assert.equal(ageTitle({ checked_seconds: null, as_of: null }), 'Not checked since the server started');
   assert.equal(secLine({ seen_within_seconds: 42 }), 'SEC filings: seen within ~42s of acceptance');
   assert.equal(secLine(null), 'SEC filings: seen within -- of acceptance');

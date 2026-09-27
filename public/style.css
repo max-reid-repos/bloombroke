@@ -139,15 +139,6 @@ kbd {
 /* Tiny tags: PRE, MKT, AH, WKD (EDGAR acceptance time), 8-K or 10-Q (earnings). */
 .tod { margin-left: 1px; font-size: 9px; letter-spacing: 0; font-weight: 400; color: var(--faint); vertical-align: 1px; }
 /* The derived marker hangs past the number, so the digits stay aligned with the column. */
-/* DATA: every column on one desktop screen, small type, cells wrap. */
-.dt-scroll { overflow-x: auto; }
-.data-table { table-layout: fixed; width: 100%; font-size: 11px; }
-.grid-table.data-table th, .grid-table.data-table td { white-space: normal; overflow-wrap: break-word; max-width: none; text-overflow: clip; height: auto; line-height: 1.35; padding-top: 3px; padding-bottom: 3px; vertical-align: top; }
-.data-table .dt-name { width: 17%; } .data-table .dt-src { width: 15%; }
-.data-table .dt-cov { width: 15%; } .data-table .dt-hist { width: 11%; } .data-table .dt-upd { width: 11%; }
-.data-table .dt-age { width: 5%; } .data-table .dt-delay { width: 7%; } .data-table .dt-gaps { width: 16%; }
-.data-table tr.is-lit > * { background: var(--accent-tint); }
-@media (max-width: 639px) { .data-table .hide-m, .status-table .hide-m { display: none; } .data-table .dt-name { width: 38%; } .data-table .dt-src { width: 30%; } .data-table .dt-age { width: 13%; } .data-table .dt-delay { width: 19%; } }
 /* STATUS: the HOME markets grid, four columns on desktop, one on phones. */
 .mk-cols.st-cols { columns: 4 260px; }
 @media (max-width: 639px) { .mk-cols.st-cols { columns: 1; } }

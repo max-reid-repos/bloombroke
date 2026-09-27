@@ -73,7 +73,7 @@ export const DETAIL = {
   'PRIVACY': { source: 'Built in', delay: 'None' },
   'DISCLAIMER': { source: 'Built in', delay: 'None' },
   'FEEDBACK': { source: 'Built in', delay: 'None' },
-  'DATA': { options: [['<dataset>', 'Opens the table on that row (the dot by the clock links there)']], source: 'Built in; ages from the server caches', delay: 'Live' },
+  'DATA': { options: [['<dataset>', 'Opens its group with that row lit (the dot by the clock links there)'], ['<group>', 'Opens one group, like DATA MACRO']], source: 'Built in; ages from the server caches', delay: 'Live' },
   'STATUS': { source: 'Built in; from the server caches', delay: 'Live' },
   'CHANGES': { source: 'Built in', delay: 'None' },
   'SPONSOR': { source: 'Built in', delay: 'None' },

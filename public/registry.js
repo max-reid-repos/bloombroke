@@ -362,7 +362,7 @@ export const REGISTRY = [
   },
   // --- Provenance (screens/data.js, status.js, changes.js) ---
   {
-    name: 'DATA', aliases: ['SOURCES'], category: 'Legal', summary: 'Every data source: licence, delay, age right now, known gaps',
+    name: 'DATA', aliases: ['SOURCES'], category: 'Legal', summary: 'Where the data comes from, in eight groups: how often it updates, how fresh it is',
     syntax: 'DATA [<dataset>]', examples: ['DATA', 'DATA CPI'], keywords: ['sources', 'data sources', 'licence', 'license', 'delay', 'provenance', 'where from', 'attribution'],
   },
   {
