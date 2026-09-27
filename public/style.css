@@ -125,6 +125,33 @@ kbd {
 .fresh-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); cursor: help; }
 .fresh-dot[data-state="stale"] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--down); }
 .fresh-dot[data-state="none"] { visibility: hidden; }
+/* Provenance: the dot opens a small list of this screen's sources (public/provenance.js). */
+.fresh-dot { cursor: pointer; padding: 0; border: 0; }
+.fresh-dot:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
+.prov-pop { position: fixed; z-index: 60; max-width: min(360px, calc(100vw - 16px)); padding: 6px 8px; background: var(--panel-2); border: 1px solid var(--rule-strong); font-size: 11px; line-height: 1.5; }
+.prov-pop[hidden] { display: none; }
+.pv-list { list-style: none; margin: 0 0 4px; padding: 0; }
+.pv-list li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-list a, .pv-all { color: var(--text-2); text-decoration: none; }
+.pv-list a:hover .pv-src, .pv-all:hover { color: var(--accent); }
+.pv-dim { color: var(--dim); }
+.pv-all { color: var(--accent); }
+/* Tiny tags: PRE, MKT, AH, WKD (EDGAR acceptance time), 8-K or 10-Q (earnings). */
+.tod { margin-left: 1px; font-size: 9px; letter-spacing: 0; font-weight: 400; color: var(--faint); vertical-align: 1px; }
+.fin-v, .fin-nv { position: relative; color: inherit; text-decoration: none; }
+.fin-v:hover, .fin-v:focus-visible { color: var(--accent); }
+/* The derived marker hangs past the number, so the digits stay aligned with the column. */
+/* DATA: every column on one desktop screen, small type, cells wrap. */
+.dt-scroll { overflow-x: auto; }
+.data-table { table-layout: fixed; width: 100%; font-size: 11px; }
+.grid-table.data-table th, .grid-table.data-table td { white-space: normal; overflow-wrap: break-word; max-width: none; text-overflow: clip; height: auto; line-height: 1.35; padding-top: 3px; padding-bottom: 3px; vertical-align: top; }
+.data-table .dt-name { width: 15%; } .data-table .dt-src { width: 15%; } .data-table .dt-lic { width: 9%; }
+.data-table .dt-cov { width: 13%; } .data-table .dt-hist { width: 10%; } .data-table .dt-upd { width: 10%; }
+.data-table .dt-age { width: 5%; } .data-table .dt-delay { width: 7%; } .data-table .dt-gaps { width: 16%; }
+.data-table tr.is-lit > * { background: var(--accent-tint); }
+@media (max-width: 639px) { .data-table .hide-m, .status-table .hide-m { display: none; } .data-table .dt-name { width: 29%; } .data-table .dt-src { width: 27%; } .data-table .dt-lic { width: 18%; } .data-table .dt-age { width: 10%; } .data-table .dt-delay { width: 16%; } }
+.status-table .st-ok { color: var(--accent); }
+.fin-d { position: absolute; left: 100%; top: -3px; padding-left: 1px; font-size: 8px; line-height: 1; color: var(--dim); }
 .status[data-open="true"] { color: var(--up); }
 .status[data-open="true"] .status-dot { background: var(--up); }
 
@@ -757,6 +784,9 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .wi-actions { display: flex; gap: 16px; margin-top: 10px; font-size: 11px; letter-spacing: .06em; }
 .wi-actions .code { color: var(--dim); }
 .wi-actions .code:hover { color: var(--accent); }
+/* EMBED (public/embed-snippet.js): a button that looks like the links beside it. */
+.wi-actions button.code { padding: 0; border: 0; background: none; font: inherit; letter-spacing: inherit; cursor: pointer; }
+.gs-share .gs-embed { cursor: pointer; }
 .wi-note-name { color: var(--text); }
 .how-list a { color: var(--accent); }
 .how-h { margin-top: 12px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
@@ -1105,7 +1135,6 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .fin-end { color: var(--faint); font-size: 10px; letter-spacing: .04em; }
 .fin-table td.num { min-width: 84px; }
 .fin-table .group-row td, .fin-table .group-row th:first-child { background: var(--panel); border-bottom: 1px solid var(--rule); }
-.fin-table td.is-derived { text-decoration: underline dotted var(--dim); text-underline-offset: 3px; }
 .fin-table .fin-ratio .name, .fin-table .fin-ratio td:not(.up):not(.down) { color: var(--dim); }
 .fin-msg { padding: 8px 10px; }
 
@@ -1890,6 +1919,32 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .status-sponsor .sponsor-k { margin-right: 2ch; color: var(--faint); letter-spacing: .12em; }
 .status-sponsor a { color: var(--text-2); }
 .status-sponsor a:hover { color: var(--text); text-decoration: none; }
+/* The rotating strip (sponsor-strip.js): one line, cut with an ellipsis, a short slide up
+   on each change. The status bar and the SPONSOR preview share it. */
+.spon-strip { overflow: hidden; }
+.spon-strip .sponsor-k { margin-right: 2ch; color: var(--faint); letter-spacing: .12em; }
+.spon-strip .spon-item { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.spon-strip a.spon-item:hover, .spon-strip a.spon-item:focus-visible { color: var(--text); text-decoration: none; }
+.spon-strip a.spon-item:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.spon-strip.is-sliding .spon-item { animation: spon-in 180ms linear; }
+@keyframes spon-in { from { transform: translateY(100%); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .spon-strip.is-sliding .spon-item { animation: none; } }
+.spon-preview { display: flex; align-items: center; height: 26px; margin: 2px 0 12px; padding: 0 10px; border: 1px solid var(--rule-strong); background: var(--panel); font-size: 11px; letter-spacing: .06em; }
+.spon-preview .spon-strip { flex: 1 1 auto; min-width: 0; }
+.spon-facts { margin: 0 0 12px; border-top: 1px solid var(--rule); }
+.spon-facts li { min-height: var(--row-h); padding: 3px 0; border-bottom: 1px solid var(--rule); color: var(--text-2); }
+.spon-facts li.is-no { color: var(--dim); }
+.spon-proofs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; margin: 0 0 12px; max-width: 900px; }
+.spon-h { display: flex; gap: 12px; margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .14em; color: var(--dim); }
+.spon-nums { width: 100%; border-collapse: collapse; }
+.spon-nums th, .spon-nums td { height: var(--row-h); padding: 0 8px 0 0; border-bottom: 1px solid var(--rule); text-align: left; font-weight: 400; color: var(--text-2); white-space: nowrap; }
+.spon-nums thead th { font-size: 11px; letter-spacing: .08em; color: var(--dim); }
+.spon-nums .num { text-align: right; color: var(--text); }
+.spon-tile .wd-line { display: none; }
+.spon-tile .panel-body { min-height: 0; }
+@media (max-width: 639px) { .spon-proofs { grid-template-columns: minmax(0, 1fr); } }
+.spon-proof { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 12px; }
+.spon-proof li { white-space: nowrap; color: var(--dim); }
 .panel-head > .wd-sponsor { margin-left: auto; padding-right: 0; }
 .pro-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; margin: 8px 0 12px; }
 .pro-col-h { margin: 0 0 4px; font-size: 11px; font-weight: 600; letter-spacing: .14em; color: var(--dim); }

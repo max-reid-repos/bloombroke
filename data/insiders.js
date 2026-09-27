@@ -74,7 +74,9 @@ export function makeInsiders({ fetchImpl = globalThis.fetch, cache = createCache
     });
     return { ticker, ...got.value, stale: got.stale, updated: got.updated, source: INSIDERS_SOURCE };
   }
-  return { getInsiders };
+  // A new Form 4 for this company (data/edgarwatch.js): the next view asks Nasdaq again.
+  const forget = (ticker) => cache.forget(`insiders:${ticker}`);
+  return { getInsiders, forget };
 }
 
-export const { getInsiders } = makeInsiders();
+export const { getInsiders, forget: forgetInsiders } = makeInsiders();

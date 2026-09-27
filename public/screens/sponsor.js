@@ -1,28 +1,56 @@
-// SPONSOR: how sponsors work on Bloombroke, on one short screen. Also the browser side of
-// the sponsor config (/api/sponsors, from data/sponsors.json via lib/sponsors.js): the
-// line in the status strip, hidden for Pro, and the "SPONSORED BY" note on a WEIRD gauge.
-// Plain text and one plain link: no pixels, no third-party scripts, no tracking code.
+// SPONSOR: how sponsors work on Bloombroke, on one short screen: a live preview of the
+// strip, four facts, links that show what a sponsor gets, and the contact. Also the
+// browser side of the sponsor config (/api/sponsors, from data/sponsors.json via
+// lib/sponsors.js), and the "SPONSORED BY" note on a WEIRD gauge. The strip itself is
+// public/sponsor-strip.js. Plain text and plain links: no pixels, no scripts, no tracking.
 
-import { esc, panel, metaNote } from './markets.js';
+import { esc, panel, metaNote, q } from './markets.js';
+import { findCommand } from '../registry.js';
+import { stripItems, mountStrip, ROTATE_MS, MAX_SPONSOR_LINES } from '../sponsor-strip.js';
+import { tileBody, WEIRD_GAUGES } from './weird.js';
 
 export const CONTACT = 'hello@bloombroke.com';
-export const SPONSOR_LINES = [
-  'One plain line in the status strip, one sponsor at a time. Pro users never see it.',
-  'No tracking: no pixels, no third-party scripts, no tracking code on the link.',
-  'We do not take brokers, exchanges, crypto, funds or tip sellers, or anyone who sells or promotes investment products.',
-  'Sponsors have no say over data or content.',
+export const FACTS = [
+  'Every screen, every visitor who is not Pro.',
+  `Lines rotate every ${ROTATE_MS / 1000} s. Up to ${MAX_SPONSOR_LINES} sponsors.`,
+  'No tracking, no pixels, no scripts.',
 ];
+export const NOT_FOR = 'Not for brokers, exchanges, crypto, funds or tip sellers.';
+// What a sponsor can look at first. A link shows only when its command exists here.
+export const PROOF = [
+  ['BBRK', 'site numbers'],
+  ['CHANGES', 'what is new'],
+  ['DATA', 'sources'],
+  ['MCP', 'AI access'],
+  ['WEIRD', 'gauges'],
+];
+// SITE NUMBERS: a few rows from /api/bbrk, today so far and the last 7 days.
+export const NUMBERS = [['whatif_run', 'WHATIF results'], ['guess_played', 'GUESS games'], ['mcp_call', 'MCP calls']];
+// The gauge shown as a sponsorship preview. Never saved to the sponsor config.
+export const PREVIEW_GAUGE = 'canal';
+export const PREVIEW_SPONSOR = 'SPONSORED BY YOUR NAME';
 
-// The status strip: SPONSOR  <name>: <text>. '' when there is no line, or for Pro.
-export function sponsorLineHtml(cfg, { pro = false } = {}) {
-  const line = cfg?.line;
-  if (pro || !line?.name || !line?.text) return '';
-  const words = `${esc(line.name)}: ${esc(line.text)}`;
-  const body = /^https:\/\//.test(line.url || '')
-    ? `<a href="${esc(line.url)}" rel="sponsored noopener" referrerpolicy="no-referrer" target="_blank">${words}</a>`
-    : `<span>${words}</span>`;
-  return `<span class="sponsor-k">SPONSOR</span>${body}`;
+const fmtN = (v) => (Number.isFinite(v) ? v.toLocaleString('en-US') : '--');
+
+// The rows, from /api/bbrk (null while it loads or fails: every number is --).
+export function numbersHtml(bbrk) {
+  const rows = NUMBERS.map(([k, label]) => {
+    const c = bbrk?.counts?.[k];
+    return `<tr><th scope="row">${esc(label)}</th><td class="num">${fmtN(c?.today)}</td><td class="num">${fmtN(c?.d7)}</td></tr>`;
+  }).join('');
+  return `<table class="spon-nums"><thead><tr><th></th><th class="num">TODAY</th><th class="num">7 DAYS</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
+
+// A real WEIRD tile with a made-up sponsor, marked as a preview. d: /api/weird/<id>.
+export function gaugePreviewHtml(d) {
+  const g = WEIRD_GAUGES.find((x) => x.id === PREVIEW_GAUGE);
+  if (!g) return '';
+  return `<div class="wd-tile spon-tile" data-cmd="${esc(g.command)}" tabindex="0"><section class="panel">
+    <header class="panel-head"><h2 class="panel-label">${esc(g.command)}</h2><span class="panel-meta">${metaNote(PREVIEW_SPONSOR, 'A preview: no gauge is sponsored yet')}</span></header>
+    <div class="panel-body">${tileBody(g, d)}</div></section></div>`;
+}
+
+export const proofLinks = (has = (c) => Boolean(findCommand(c))) => PROOF.filter(([c]) => has(c));
 
 // A WEIRD gauge's title strip: SPONSORED BY <name>, or '' when the gauge has no sponsor.
 export function gaugeSponsorHtml(cfg, id) {
@@ -33,11 +61,14 @@ export function gaugeSponsorHtml(cfg, id) {
 // The config, asked once per page load. Anything wrong: no sponsors.
 let loading = null;
 export function loadSponsors() {
-  if (typeof fetch !== 'function') return Promise.resolve({ line: null, gauges: {} });
+  const none = { lines: [], house: [], gauges: {}, line: null };
+  if (typeof fetch !== 'function') return Promise.resolve(none);
   loading ||= fetch('/api/sponsors', { headers: { Accept: 'application/json' } })
     .then((r) => (r.ok ? r.json() : null))
-    .then((d) => (d && typeof d === 'object' ? { line: d.line || null, gauges: d.gauges || {} } : { line: null, gauges: {} }))
-    .catch(() => { loading = null; return { line: null, gauges: {} }; });
+    .then((d) => (d && typeof d === 'object'
+      ? { lines: Array.isArray(d.lines) ? d.lines : [], house: Array.isArray(d.house) ? d.house : [], gauges: d.gauges || {}, line: d.line || null }
+      : none))
+    .catch(() => { loading = null; return none; });
   return loading;
 }
 
@@ -52,14 +83,36 @@ export function markGaugeSponsor(metaEl, id) {
   });
 }
 
-export function sponsorHtml(cfg) {
-  const now = cfg?.line?.name ? `Now: ${esc(cfg.line.name)}.` : 'Now: no sponsor.';
-  return panel('1', 'Sponsor', `${SPONSOR_LINES.map((t) => `<p class="muted">${esc(t)}</p>`).join('')}
-    <p class="notice">To sponsor Bloombroke: <a href="mailto:${CONTACT}">${CONTACT}</a></p>`, { cls: 'panel-solo', meta: metaNote(now.toUpperCase()) });
+export function sponsorHtml({ has, bbrk = null, gauge = null } = {}) {
+  const link = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
+  const hasBbrk = (has || ((c) => Boolean(findCommand(c))))('BBRK');
+  // BBRK already heads the numbers block, so it is not listed twice.
+  const proof = proofLinks(has).filter(([c]) => !(hasBbrk && c === 'BBRK'));
+  const numbers = hasBbrk
+    ? `<section class="spon-box"><h3 class="spon-h">SITE NUMBERS ${link('BBRK')}</h3><div id="spon-nums">${numbersHtml(bbrk)}</div></section>` : '';
+  return panel('1', 'Sponsor', `<div class="spon-preview" aria-label="Preview of the sponsor strip"><span class="spon-strip" id="spon-demo"></span></div>
+    <ul class="spon-facts">${FACTS.map((t) => `<li>${esc(t)}</li>`).join('')}<li class="is-no">${esc(NOT_FOR)}</li></ul>
+    <div class="spon-proofs">${numbers}<section class="spon-box"><h3 class="spon-h">PREVIEW</h3><div id="spon-gauge">${gaugePreviewHtml(gauge)}</div></section></div>
+    ${proof.length ? `<ul class="spon-proof">${proof.map(([c, what]) => `<li>${link(c)} ${esc(what)}</li>`).join('')}</ul>` : ''}
+    <p class="notice">Email for rates: <a href="mailto:${CONTACT}">${CONTACT}</a></p>`, { cls: 'panel-solo' });
 }
 
 export function render(el, cmd, ctx) {
-  el.innerHTML = sponsorHtml(null);
-  ctx.status('SPONSOR: ONE LINE, NO TRACKING');
-  loadSponsors().then((cfg) => { if (el.isConnected) el.innerHTML = sponsorHtml(cfg); });
+  el.innerHTML = sponsorHtml();
+  ctx.status('SPONSOR: EMAIL FOR RATES');
+  const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let demo = null;
+  ctx.onCleanup(() => demo?.stop());
+  loadSponsors().then((cfg) => {
+    const host = el.querySelector('#spon-demo');
+    if (!host || !el.isConnected) return;
+    // The real strip, as a visitor who is not Pro sees it.
+    const items = stripItems(cfg, { pro: false });
+    if (items.length) demo = mountStrip(host, items, { reduceMotion, isHidden: () => document.hidden });
+  });
+  // Proof: the site numbers and a live gauge, each filled in when it comes.
+  const get = (url) => (ctx.fetchJSON ? ctx.fetchJSON(url, { signal: ctx.signal }) : Promise.reject(new Error('no fetch')));
+  get('/api/bbrk').then((d) => { const h = el.querySelector('#spon-nums'); if (h) h.innerHTML = numbersHtml(d); }).catch(() => {});
+  get(`/api/weird/${PREVIEW_GAUGE}`).then((d) => { const h = el.querySelector('#spon-gauge'); if (h) h.innerHTML = gaugePreviewHtml(d); })
+    .catch(() => { const h = el.querySelector('#spon-gauge'); if (h) h.innerHTML = gaugePreviewHtml({ ok: false }); });
 }

@@ -13,6 +13,7 @@ import { toolbar, segmented } from '../kit.js';
 import { createReplay, fmtCounter, isBehind } from '../whatif-replay.js';
 import { videoSupport, makeVideo, downloadBlob, VIDEO_NEEDS } from '../whatif-video.js';
 import { parseMine, formWords, mineLabel, fmtAmount, MINE_DOODLE, MINE_EXAMPLES } from '../whatif-mine.js';
+import { whatifEmbedSnippet } from '../embed-snippet.js'; // EMBED: the iframe line
 import { goal } from '../goal.js'; // GOALS
 
 let catalogCache = null;
@@ -634,6 +635,7 @@ function resultHtml(d, key, links, cat, mine) {
   const actions = `<div class="wi-actions">
       <a class="code" href="${esc(q(editCmd))}" data-cmd="${esc(editCmd)}">CHANGE PICKS</a>
       <a class="code" href="${esc(q('WHATIF'))}" data-cmd="WHATIF">START OVER</a>
+      ${d.cert && !d.mine ? `<button type="button" class="code wi-embed" data-embed="${esc(d.cert.command)}" title="Copy one line of HTML that shows this result on your site">EMBED</button>` : ''}
     </div>`;
   const hero = heroParts(d, mine);
   const kind = quipKind(d, cat);
@@ -645,6 +647,7 @@ function resultHtml(d, key, links, cat, mine) {
     `Prices: close on purchase date, split-adjusted, price return only. Live price as of ${asOf}${d.stale ? ' (last known)' : ''}. Source: ${d.source}.`,
     d.rows.some((r) => r.kind === 'monthly') ? HABIT_LONG : '',
     d.replay?.cpi?.last ? jarLong(d.replay.cpi.last) : '',
+    d.replay?.cpi?.gap || '', // a month BLS never published (Oct 2025), carried forward
   ].filter(Boolean);
   return `
     <div class="wi-layout${d.cert ? '' : ' no-cert'}">
@@ -837,6 +840,14 @@ export function render(el, cmd, ctx) {
         const ok = await copyText(e.currentTarget.dataset.copy);
         ctx.status(ok ? 'LINK COPIED' : 'COPY THE LINK FROM THE ADDRESS BAR', ok ? '' : 'warn');
         if (ok) goal('whatif_share', { via: 'link' }, { once: key });
+      });
+      // EMBED: copies the iframe line (public/embed-snippet.js), says so on the button.
+      el.querySelector('[data-embed]')?.addEventListener('click', async (e) => {
+        const b = e.currentTarget;
+        const ok = await copyText(whatifEmbedSnippet(b.dataset.embed));
+        if (ok) { b.textContent = 'COPIED'; setTimeout(() => { b.textContent = 'EMBED'; }, 2000); }
+        ctx.status(ok ? 'EMBED CODE COPIED' : 'COULD NOT COPY', ok ? '' : 'warn');
+        if (ok) goal('whatif_embed', { kind: 'whatif' }, { once: b.dataset.embed });
       });
       ctx.status(`WHATIF: ${fmtX(d.total.multiple)}${d.stale ? ' (LAST KNOWN PRICES)' : ''}`, d.stale ? 'warn' : '');
       goal('whatif_run', undefined, { once: key });

@@ -16,6 +16,7 @@ export const GOALS = [
   'guess_played', 'guess_shared',
   'news_why_opened', 'weird_gauge_opened', 'mcp_screen_opened',
   'feedback_sent', 'pro_checkout_started', 'desk_opened',
+  'sponsor_click', // a paid sponsor line clicked (never our own AD lines)
 ];
 
 // Counted on our server by the route itself (lib/counters.js SERVER_COUNTS), so not here:
@@ -131,6 +132,40 @@ export function goal(name, props, { once, win = globalThis.window, nav = globalT
     } catch { /* offline: nothing */ }
   }
   return sent;
+}
+
+// A plain count for BBRK's sponsor inventory (no DataFast goal): POST /api/count
+// { name, n }. Only the names the server allows; n is 1 unless batched (strip_shown).
+export function countOnly(name, n = 1, { fetchImpl = globalThis.fetch } = {}) {
+  if (!['strip_shown', 'strip_click'].includes(name) || !Number.isInteger(n) || n < 1 || n > 20 || typeof fetchImpl !== 'function') return false;
+  try {
+    const r = fetchImpl('/api/count', {
+      method: 'POST', keepalive: true, credentials: 'same-origin', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(n === 1 ? { name } : { name, n }),
+    });
+    r?.catch?.(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Sponsor strip lines shown, sent in batches: at 20, every minute, or when the tab is
+// hidden or closed. { add(), flush(), pending }.
+export function stripShownBatch({ send = (n) => countOnly('strip_shown', n), max = 20, everyMs = 60_000, doc = globalThis.document, win = globalThis.window } = {}) {
+  let pending = 0;
+  const flush = () => { if (pending > 0) { const n = Math.min(pending, max); pending -= n; send(n); } };
+  const timer = typeof setInterval === 'function' ? setInterval(flush, everyMs) : null;
+  timer?.unref?.();
+  try {
+    doc?.addEventListener?.('visibilitychange', () => { if (doc.visibilityState === 'hidden') flush(); });
+    win?.addEventListener?.('pagehide', flush);
+  } catch { /* no page: timer only */ }
+  return {
+    add() { pending += 1; if (pending >= max) flush(); },
+    flush,
+    get pending() { return pending; },
+  };
 }
 
 // In a page (the terminal and the legal pages), load DataFast unless GPC says no.

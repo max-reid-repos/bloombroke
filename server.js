@@ -15,11 +15,13 @@ import { getCatalog, getWhatif, getFunding, catalog } from './data/whatif-servic
 import { WhatifError } from './data/whatif.js';
 import { whatifTokens, normalizeWhatif, certModel } from './data/whatif-cert.js';
 import {
-  getCert, whatifPng, defaultPng, withMeta, certMeta, DEFAULT_META,
+  getCert, whatifCard, defaultPng, withMeta, certMeta, DEFAULT_META,
   getQuoteCard, quotePng, quoteMeta, affordModel, affordPng, affordMeta,
   withCanonical, quoteTicker, SITE,
 } from './lib/og.js';
 import { commandMeta, mountSiteFiles } from './lib/seo.js';
+import { whatifItemMeta } from './lib/whatif-seo.js'; // WHATIF item pages: plain title and description
+import { mountEmbeds } from './lib/embed-pages.js'; // /embed/whatif and /embed/guess
 import { parseCommand } from './public/app.js';
 import { getFinancials, FinancialsError } from './data/financials.js';
 import { getScreen, ScreenError, startScreenPrewarm } from './data/screen.js';
@@ -34,8 +36,15 @@ import { getWeird, getGauge, startWeirdPrewarm, FAST_WAIT } from './data/weird/i
 import { makeWeirdCards, weirdCommand } from './lib/og-weird.js'; // WEIRD share cards
 import { mountWhyCards } from './lib/og-why.js'; // WHY share cards
 import { getWhy } from './data/why.js'; // WHY share cards
+// --- Provenance: the envelope on every /api answer, DATA, STATUS, CHANGES, the EDGAR watcher ---
+import { provenanceJson, mountProvenanceRoutes } from './lib/provenance.js';
+import { GAUGES } from './data/weird/index.js';
+import { startEdgarWatch } from './data/edgarwatch.js';
+// --- end Provenance ---
 import { siteCounters, mountCounters, makeCountGate } from './lib/counters.js'; // BBRK site numbers
 const countGate = makeCountGate(); // BBRK: a few counts per IP a minute, no repeats
+const embedGate = makeCountGate({ max: 10 }); // BBRK: an embed page once per IP a minute
+import { makeDataFast } from './lib/datafast.js'; // BBRK audience: DataFast totals, DATAFAST_API_KEY
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
@@ -52,6 +61,7 @@ app.use((req, res, next) => {
   res.set(HEADERS);
   next();
 });
+app.use('/api', provenanceJson()); // Provenance: { source, as_of, age_seconds, delay, ... } on every JSON answer
 
 app.get('/api/markets', async (req, res) => {
   try {
@@ -315,13 +325,16 @@ mountSponsors(app);
 
 // --- GUESS (data/guess.js): one mystery stock a day ---
 import { mountGuess } from './data/guess.js';
+import { mountGuessCard } from './lib/og-guess.js';
 import { getFishtank } from './data/sp100.js';
-mountGuess(app, { getChart, getCaps: getFishtank, count: (n, req, key) => countGate.allow(req, key) && siteCounters.bump(n) });
+const guessGame = mountGuess(app, { getChart, getCaps: getFishtank, count: (n, req, key) => countGate.allow(req, key) && siteCounters.bump(n) });
+// The GUESS share card, /og/guess.png: today's chart, never the answer (lib/og-guess.js).
+mountGuessCard(app, { todayPuzzle: () => guessGame.todayPuzzle() });
 // --- end GUESS ---
 
 // BBRK (lib/counters.js): the site's own daily totals, in the Pro database.
 const pro = startPro(app, { dir, counters: siteCounters });
-mountCounters(app, { counters: siteCounters, mode: pro?.mode || null, publicUrl: process.env.PUBLIC_URL || 'https://bloombroke.com' });
+mountCounters(app, { counters: siteCounters, mode: pro?.mode || null, publicUrl: process.env.PUBLIC_URL || 'https://bloombroke.com', audience: makeDataFast() });
 
 // --- MCP (lib/mcp/): POST /mcp, public-domain data only, and /llms.txt ---
 import { mountMcp } from './lib/mcp/server.js';
@@ -330,6 +343,14 @@ siteCounters.enable('mcp_call'); // BBRK: MCP tool calls, a count only
 mountMcp(app, { count: (n) => siteCounters.bump(n) });
 mountLlmsTxt(app);
 // --- end MCP ---
+
+// Provenance: /api/data (DATA), /api/status (STATUS), /api/changes (CHANGES).
+let edgarWatch = null;
+mountProvenanceRoutes(app, {
+  gauges: GAUGES.map((g) => ({ id: g.id, source: g.source })),
+  weird: async () => (await getWeird({ wait: 0 })).gauges,
+  edgar: () => edgarWatch?.stats() || null,
+});
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));
 
@@ -341,7 +362,10 @@ function sendPng(res, png, maxAge) {
 }
 app.get('/og/whatif.png', async (req, res) => {
   try {
-    sendPng(res, await whatifPng(str(req.query.c) || '', ogDeps, { ip: req.ip }), 86400);
+    // The result's own card on live prices: a week, as long as it is kept on disk, stable
+    // enough for a newsletter image. The site card or last-known prices: 5 minutes.
+    const card = await whatifCard(str(req.query.c) || '', ogDeps, { ip: req.ip });
+    sendPng(res, card.png, card.real ? 604800 : 300);
   } catch (err) {
     console.error('[og]', err.message);
     try { sendPng(res, await defaultPng(), 300); } catch { res.status(503).end(); }
@@ -384,6 +408,8 @@ const INDEX = withMeta(PAGE, DEFAULT_META);
 const HOME = withCanonical(INDEX, `${SITE}/`);
 // /terms, /privacy, /disclaimer: plain server-rendered pages, text in legal/*.md.
 mountLegal(app, { build: BUILD });
+// /embed/*: the only pages other sites may frame (lib/embed-pages.js).
+mountEmbeds(app, { build: BUILD, getCert: (c) => getCert(c, ogDeps), catalog, onLoad: (req) => embedGate.allow(req, `embed:${req.originalUrl}`) && siteCounters.bump('embed_load') });
 function sendIndex(res, status = 200, html = INDEX) {
   res.status(status).set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }).send(html);
 }
@@ -437,8 +463,12 @@ async function shareIndex(c) {
   const timeout = new Promise((resolve) => { setTimeout(resolve, 2500, LATE).unref(); });
   try {
     if (whatif) {
-      const model = await Promise.race([getCert(c, ogDeps), timeout]);
-      return model && model !== LATE ? withMeta(PAGE, certMeta(model)) : INDEX;
+      const got = await Promise.race([getCert(c, ogDeps).catch(() => null), timeout]);
+      const model = got && got !== LATE ? got : null;
+      // One catalogue item: a plain title and description, numbers when they are in.
+      const item = whatifItemMeta(c, model, { catalog });
+      if (item) return withMeta(PAGE, item);
+      return model ? withMeta(PAGE, certMeta(model)) : INDEX;
     }
     const model = await Promise.race([getQuoteCard(c, quoteDeps), timeout]);
     if (model === LATE) return tickerIndex(c);
@@ -485,4 +515,6 @@ app.listen(PORT, HOST, () => {
   // SCREEN's P/E and dividend numbers: loaded in the background, so no one waits on a cold cache.
   startScreenPrewarm();
   startWeirdPrewarm(); // WEIRD: refresh gauges with no value or an old one, staggered
+  // New SEC filings drop that company's cached SEC data (EDGAR_WATCH=0 turns it off).
+  if (process.env.EDGAR_WATCH !== '0') edgarWatch = startEdgarWatch();
 });

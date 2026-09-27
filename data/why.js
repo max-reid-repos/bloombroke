@@ -84,7 +84,7 @@ export function eightKs(rows) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(r.filed || '')) continue;
     const time = r.accepted ? Date.parse(r.accepted) : NaN;
     const items = Array.isArray(r.items) ? r.items : [];
-    out.push({ form, date: r.filed, time, items, text: filingText(items, form), url: r.url || null });
+    out.push({ form, date: r.filed, time, items, text: filingText(items, form), url: r.url || null, ...(r.session ? { session: r.session } : {}) });
   }
   return out.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 }
@@ -104,7 +104,8 @@ export function whatCameOut(move, { filings = [], earnings = [], headlines = [] 
   const out = [];
   const fil = filings.filter((f) => (Number.isFinite(f.time) ? inWindow(f.time) : inDays(f.date)))
     .sort((x, y) => (x.time || 0) - (y.time || 0));
-  for (const f of fil) out.push({ kind: 'FILING', time: Number.isFinite(f.time) ? new Date(f.time).toISOString() : null, date: f.date, text: f.text, url: f.url || null, source: 'SEC EDGAR' });
+  // session: PRE, MKT, AH or WKD from EDGAR's acceptance time, when the row has one.
+  for (const f of fil) out.push({ kind: 'FILING', time: Number.isFinite(f.time) ? new Date(f.time).toISOString() : null, date: f.date, text: f.text, url: f.url || null, source: 'SEC EDGAR', ...(f.session ? { session: f.session } : {}) });
   const results = fil.some((f) => f.items?.includes('2.02'));
   if (!results) {
     const e = earnings.find((x) => x?.date && inDays(x.date));
@@ -163,6 +164,8 @@ export function makeWhy({
       secOk: fil.ok,
       earningsOk: Boolean(events),
       logSince: oldest,
+      // The last daily close in the series (its day, New York): how old the prices are.
+      asOf: chart.points?.length ? nyDay(chart.points[chart.points.length - 1].t) : null,
       sources: ['CNBC daily bars', 'SEC EDGAR', ...(headlines.length ? ['Bloombroke news log'] : [])],
       stale: Boolean(chart.stale || (fil.ok && fil.v.stale)),
       updated: new Date(t).toISOString(),
