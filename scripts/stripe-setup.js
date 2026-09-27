@@ -7,10 +7,10 @@
 // Uses the key set STRIPE_MODE picks (live: STRIPE_SECRET_KEY, test: STRIPE_SECRET_KEY_TEST)
 // and writes the matching names (with _TEST in test mode). Makes, or finds:
 //   - the product "Bloombroke Pro"
-//   - its price: $4.20 USD a month
+//   - its prices: $4.20 USD a month, and $42 USD a year
 //   - a Billing Portal configuration (card, invoices, cancel; no plan switching)
 //   - the webhook endpoint <PUBLIC_URL>/api/stripe/webhook with the four Pro events
-// and writes STRIPE_PRICE_ID, STRIPE_PORTAL_CONFIG_ID, STRIPE_WEBHOOK_SECRET (only when the
+// and writes STRIPE_PRICE_ID, STRIPE_PRICE_ID_YEARLY, STRIPE_PORTAL_CONFIG_ID, STRIPE_WEBHOOK_SECRET (only when the
 // endpoint is created, the one time Stripe shows it) and PRO_SECRET (if missing) into the
 // .env. It never prints a secret or the values it writes. A live key needs --live.
 
@@ -23,9 +23,10 @@ import { createStripe, stripeEnv, PRO_METADATA, WEBHOOK_EVENTS } from '../pro/bi
 
 export const PRODUCT = {
   name: 'Bloombroke Pro',
-  description: 'Bloombroke Pro, monthly subscription: watchlist and portfolio sync across devices and your own ticker tape.',
+  description: 'Bloombroke Pro, monthly or yearly subscription: sync across devices, your own ticker tape and a seat number.',
 };
 export const PRICE = { unit_amount: 420, currency: 'usd', interval: 'month' };
+export const PRICE_YEARLY = { unit_amount: 4200, currency: 'usd', interval: 'year' };
 
 const isOurs = (o) => o?.metadata?.site === PRO_METADATA.site && o?.metadata?.product === PRO_METADATA.product;
 
@@ -55,19 +56,24 @@ export async function setup({ stripe, env = {}, publicUrl = 'https://bloombroke.
     report.push('product: created');
   }
 
-  // Price
+  // Prices: monthly and yearly, each found by amount, currency and interval, or made.
   const prices = await all(stripe.prices.list({ product: product.id, active: true, type: 'recurring', limit: 100 }));
-  let price = prices.find((p) => isOurs(p) && p.unit_amount === PRICE.unit_amount && p.currency === PRICE.currency
-    && p.recurring?.interval === PRICE.interval && (p.recurring?.interval_count ?? 1) === 1);
-  if (price) report.push('price: found');
-  else {
-    price = await stripe.prices.create({
-      product: product.id, unit_amount: PRICE.unit_amount, currency: PRICE.currency,
-      recurring: { interval: PRICE.interval, interval_count: 1 }, metadata: { ...PRO_METADATA },
-    });
-    report.push('price: created');
-  }
-  values.STRIPE_PRICE_ID = price.id;
+  const ensurePrice = async (spec, label) => {
+    let price = prices.find((p) => isOurs(p) && p.unit_amount === spec.unit_amount && p.currency === spec.currency
+      && p.recurring?.interval === spec.interval && (p.recurring?.interval_count ?? 1) === 1);
+    if (price) report.push(`${label}: found`);
+    else {
+      price = await stripe.prices.create({
+        product: product.id, unit_amount: spec.unit_amount, currency: spec.currency,
+        recurring: { interval: spec.interval, interval_count: 1 }, metadata: { ...PRO_METADATA },
+      });
+      prices.push(price);
+      report.push(`${label}: created`);
+    }
+    return price;
+  };
+  values.STRIPE_PRICE_ID = (await ensurePrice(PRICE, 'price')).id;
+  values.STRIPE_PRICE_ID_YEARLY = (await ensurePrice(PRICE_YEARLY, 'yearly price')).id;
 
   // Billing Portal configuration: its own, so a Pro customer cannot switch to another
   // product sold from the same Stripe account.
@@ -156,7 +162,7 @@ async function main(argv) {
     publicUrl: env.PUBLIC_URL || 'https://bloombroke.com',
   });
   const { report } = out;
-  const rename = { STRIPE_PRICE_ID: se.names.priceId, STRIPE_WEBHOOK_SECRET: se.names.webhookSecret, STRIPE_PORTAL_CONFIG_ID: se.names.portalConfigId };
+  const rename = { STRIPE_PRICE_ID: se.names.priceId, STRIPE_PRICE_ID_YEARLY: se.names.priceIdYearly, STRIPE_WEBHOOK_SECRET: se.names.webhookSecret, STRIPE_PORTAL_CONFIG_ID: se.names.portalConfigId };
   const values = Object.fromEntries(Object.entries(out.values).map(([k, v]) => [rename[k] || k, v]));
   const tmp = `${envPath}.tmp-${process.pid}`;
   writeFileSync(tmp, upsertEnv(content, values), { mode: 0o600 });

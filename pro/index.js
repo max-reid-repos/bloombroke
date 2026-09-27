@@ -4,6 +4,7 @@
 // Environment (all in .env, never committed):
 //   STRIPE_MODE               live (default) or test; test reads the *_TEST names below
 //   STRIPE_SECRET_KEY, STRIPE_PRICE_ID, STRIPE_WEBHOOK_SECRET   Stripe
+//   STRIPE_PRICE_ID_YEARLY    optional: the $42 a year price; without it yearly says not yet
 //   TERMS_VERSION             the Terms buyers accept (default 2026-09-25)
 //   STRIPE_PORTAL_CONFIG_ID   optional Billing Portal configuration (scripts/stripe-setup.js)
 //   PRO_SECRET                32+ characters; encrypts the 24 hour key reveal
@@ -32,6 +33,7 @@ export function startPro(app, { dir, env = process.env, log = console }) {
       config: {
         mode: se.mode,
         priceId: se.priceId,
+        priceIdYearly: se.priceIdYearly,
         webhookSecret: se.webhookSecret,
         portalConfigId: se.portalConfigId,
         publicUrl: env.PUBLIC_URL || 'https://bloombroke.com',

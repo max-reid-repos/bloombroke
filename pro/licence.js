@@ -11,6 +11,42 @@ export const GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 export const REVEAL_MS = 24 * 60 * 60 * 1000;
 export const ACTIVE_STATUSES = new Set(['active', 'trialing']);
 
+// ---- gift codes ----------------------------------------------------------------------
+// A gift code looks like GIFT-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX: 28 characters from the
+// same 32 letter alphabet, so 140 random bits. GIFT cannot be part of the body (there is
+// no I in the alphabet), and the body is longer than a licence key's, so the two never
+// mix. Only the SHA-256 hash and the last 4 characters are stored, like licence keys.
+export const GIFT_LEN = 28;
+export const GIFT_RE = /^GIFT(-[A-HJ-NP-Z2-9]{4}){7}$/;
+export const GIFT_DAYS = 30;
+export const GIFT_MS = GIFT_DAYS * 24 * 60 * 60 * 1000;
+export const GIFT_CODE_DAYS = 90;
+export const GIFT_CODE_MS = GIFT_CODE_DAYS * 24 * 60 * 60 * 1000;
+export const MAX_GIFTS = 3;
+
+export function generateGiftCode(rand = randomBytes) {
+  const bytes = rand(GIFT_LEN);
+  let body = '';
+  for (let i = 0; i < GIFT_LEN; i++) body += ALPHABET[bytes[i] & 31];
+  return formatGift(body);
+}
+
+const formatGift = (body) => `GIFT-${body.match(/.{4}/g).join('-')}`;
+
+// Whatever the user pasted -> the canonical code, or null. Case, spaces and dashes do not
+// matter, and GIFT in front is optional.
+export function normalizeGiftCode(input) {
+  if (typeof input !== 'string' || input.length > 80) return null;
+  let s = input.toUpperCase().replace(/[\s-]/g, '');
+  if (s.length === GIFT_LEN + 4 && s.startsWith('GIFT')) s = s.slice(4);
+  if (s.length !== GIFT_LEN) return null;
+  for (const ch of s) if (!ALPHABET.includes(ch)) return null;
+  return formatGift(s);
+}
+
+// A licence made from a gift code: free Pro until gift_expires_at, no subscription.
+export const isGiftLicence = (lic) => Boolean(lic) && Number.isFinite(lic.gift_expires_at) && !lic.stripe_subscription_id;
+
 export function generateKey(rand = randomBytes) {
   const bytes = rand(16);
   let body = '';
@@ -38,10 +74,16 @@ export function last4(key) {
 }
 
 // Pro access from a stored licence row. past_due keeps access for 7 days from when it
-// started; canceled, unpaid, incomplete and anything else means no Pro.
+// started; canceled, unpaid, incomplete and anything else means no Pro. A gift licence
+// is Pro until its 30 days end.
 export function proAccess(lic, now = Date.now()) {
   if (!lic) return { active: false, status: null };
   const base = { status: lic.status, last4: lic.last4 };
+  // A gift month: Pro until it ends, then off. There is nothing to renew.
+  if (isGiftLicence(lic)) {
+    const on = now < lic.gift_expires_at;
+    return { ...base, status: on ? 'gift' : 'gift_ended', active: on, giftUntil: lic.gift_expires_at };
+  }
   if (ACTIVE_STATUSES.has(lic.status)) return { ...base, active: true };
   if (lic.status === 'past_due') {
     const since = Number.isFinite(lic.past_due_since) ? lic.past_due_since : lic.updated_at;

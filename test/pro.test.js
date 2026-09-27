@@ -231,7 +231,9 @@ test('migrations: applied once per database file', () => {
     assert.equal(a.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
     a.close();
     const b = openDb(file);
-    assert.equal(b.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 6);
+    const files = readdirSync(new URL('../migrations', import.meta.url)).filter((f) => /^\d+_[\w-]+\.sql$/.test(f));
+    assert.ok(files.length >= 7);
+    assert.equal(b.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, files.length);
     assert.ok(b.prepare('PRAGMA table_info(licences)').all().some((c) => c.name === 'terms_accepted_at'));
     b.close();
   } finally {
@@ -449,7 +451,7 @@ test('login: a good key returns status, a bad one 401, then rate limited', async
     const ok = await s.req('POST', '/api/pro/login', { body: { key: key.toLowerCase() } });
     assert.ok(Date.now() - t >= 35, 'login waits a little');
     assert.equal(ok.status, 200);
-    assert.deepEqual(ok.body, { ok: true, active: true, status: 'active', last4: key.slice(-4) });
+    assert.deepEqual(ok.body, { ok: true, active: true, status: 'active', last4: key.slice(-4), seat: 1, canGift: true });
     assert.equal((await s.req('GET', '/api/pro/status', { headers: { 'X-Pro-Key': key } })).body.active, true);
     const bad = await s.req('POST', '/api/pro/login', { body: { key: 'BB-AAAA-AAAA-AAAA-AAAA' } });
     assert.equal(bad.status, 401);
@@ -669,7 +671,7 @@ test('terms version is stored with the acceptance; config tells the page the mod
     s.stripe.subs.sub_13 = { id: 'sub_13', status: 'active' };
     await s.sendEvent(evt('evt_13', 'checkout.session.completed', paidSession(13, { consent: null })));
     assert.equal(s.store.findBySubscription('sub_13').terms_version, null, 'no consent, no version');
-    assert.deepEqual((await s.req('GET', '/api/pro/config')).body, { mode: 'live', open: true, price: 420, currency: 'usd' });
+    assert.deepEqual((await s.req('GET', '/api/pro/config')).body, { mode: 'live', open: true, price: 420, currency: 'usd', yearly: false, yearPrice: 4200 });
   } finally { await s.close(); }
 });
 
@@ -876,6 +878,6 @@ test('renewal: cancel_at_period_end and the period end follow Stripe into /statu
     assert.equal(back.cancelAtPeriodEnd, false);
     assert.equal(back.cancelAt, undefined);
     // Older payload shape: the period end on the subscription itself.
-    assert.deepEqual(billingOf({ cancel_at_period_end: true, current_period_end: END }), { cancelAtPeriodEnd: true, currentPeriodEnd: END * 1000, cancelAt: null });
+    assert.deepEqual(billingOf({ cancel_at_period_end: true, current_period_end: END }), { cancelAtPeriodEnd: true, currentPeriodEnd: END * 1000, cancelAt: null, interval: null });
   } finally { await s.close(); }
 });

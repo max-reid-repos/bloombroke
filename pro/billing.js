@@ -1,5 +1,6 @@
 // Stripe side of Pro: the pinned client, checkout sessions, and the webhook events.
-// Every amount and price comes from the server (STRIPE_PRICE_ID), never from the client.
+// Every amount and price comes from the server (STRIPE_PRICE_ID for monthly,
+// STRIPE_PRICE_ID_YEARLY for yearly), never from the client. The client only picks the plan.
 
 import Stripe from 'stripe';
 
@@ -12,8 +13,8 @@ export const PRO_METADATA = { site: 'bloombroke', product: 'pro' };
 export const DEFAULT_TERMS_VERSION = '2026-09-25';
 
 // STRIPE_MODE=test|live (default live) picks the key set: STRIPE_SECRET_KEY,
-// STRIPE_PRICE_ID, STRIPE_WEBHOOK_SECRET, STRIPE_PORTAL_CONFIG_ID, or the same names with
-// _TEST. A key of the other mode is refused, so a demo can never charge real money and a
+// STRIPE_PRICE_ID, STRIPE_PRICE_ID_YEARLY (optional), STRIPE_WEBHOOK_SECRET,
+// STRIPE_PORTAL_CONFIG_ID, or the same names with _TEST. A key of the other mode is refused, so a demo can never charge real money and a
 // live site never runs on a test key.
 export function stripeEnv(env = process.env) {
   const mode = String(env.STRIPE_MODE || '').trim().toLowerCase() === 'test' ? 'test' : 'live';
@@ -28,9 +29,13 @@ export function stripeEnv(env = process.env) {
   return {
     mode, error, secretKey,
     priceId: get('STRIPE_PRICE_ID'),
+    priceIdYearly: get('STRIPE_PRICE_ID_YEARLY'),
     webhookSecret: get('STRIPE_WEBHOOK_SECRET'),
     portalConfigId: get('STRIPE_PORTAL_CONFIG_ID'),
-    names: { secretKey: `STRIPE_SECRET_KEY${sfx}`, priceId: `STRIPE_PRICE_ID${sfx}`, webhookSecret: `STRIPE_WEBHOOK_SECRET${sfx}`, portalConfigId: `STRIPE_PORTAL_CONFIG_ID${sfx}` },
+    names: {
+      secretKey: `STRIPE_SECRET_KEY${sfx}`, priceId: `STRIPE_PRICE_ID${sfx}`, priceIdYearly: `STRIPE_PRICE_ID_YEARLY${sfx}`,
+      webhookSecret: `STRIPE_WEBHOOK_SECRET${sfx}`, portalConfigId: `STRIPE_PORTAL_CONFIG_ID${sfx}`,
+    },
   };
 }
 
@@ -59,10 +64,15 @@ export function isPaidSession(s) {
 
 export const TERMS_MESSAGE = 'I agree to the [Terms](https://bloombroke.com/terms) and understand Bloombroke gives information only, not investment advice.';
 export const SUBMIT_MESSAGE = 'Auto-renews monthly at $4.20 USD. Cancel any time in MANAGE; access continues to the end of the paid month.';
+export const SUBMIT_MESSAGE_YEARLY = 'Auto-renews yearly at $42 USD. Cancel any time in MANAGE; access continues to the end of the paid year.';
+
+// The plans a buyer can pick. The price id for each comes from the environment.
+export const PLANS = { month: { cents: 420 }, year: { cents: 4200 } };
 
 // licence: set for REACTIVATE, so the new subscription lands on the same licence and
-// the same Stripe customer.
-export function checkoutParams({ priceId, publicUrl, licence = null }) {
+// the same Stripe customer. interval: 'month' (default) or 'year'; priceId must be the
+// price for that interval.
+export function checkoutParams({ priceId, publicUrl, licence = null, interval = 'month' }) {
   const base = publicUrl.replace(/\/+$/, '');
   const metadata = licence ? { ...PRO_METADATA, licence_id: String(licence.id) } : { ...PRO_METADATA };
   const params = {
@@ -79,7 +89,7 @@ export function checkoutParams({ priceId, publicUrl, licence = null }) {
     consent_collection: { terms_of_service: 'required' },
     custom_text: {
       terms_of_service_acceptance: { message: TERMS_MESSAGE },
-      submit: { message: SUBMIT_MESSAGE },
+      submit: { message: interval === 'year' ? SUBMIT_MESSAGE_YEARLY : SUBMIT_MESSAGE },
     },
     metadata,
     subscription_data: { metadata: { ...metadata } },
@@ -153,14 +163,18 @@ export async function licenceFromSession(session, { store, stripe, log = console
 }
 
 // Renewal facts of a subscription, times in ms. The period end sits on the items in
-// current API versions and on the subscription in older ones.
+// current API versions and on the subscription in older ones. interval: 'month' or
+// 'year' from the item's price (or its legacy plan), null when it is something else.
 export function billingOf(sub) {
   const item = sub?.items?.data?.[0];
   const end = item?.current_period_end ?? sub?.current_period_end;
+  const every = item?.price?.recurring?.interval ?? item?.plan?.interval ?? null;
+  const count = item?.price?.recurring?.interval_count ?? item?.plan?.interval_count ?? 1;
   return {
     cancelAtPeriodEnd: Boolean(sub?.cancel_at_period_end),
     currentPeriodEnd: Number.isFinite(end) ? end * 1000 : null,
     cancelAt: Number.isFinite(sub?.cancel_at) ? sub.cancel_at * 1000 : null,
+    interval: (every === 'month' || every === 'year') && count === 1 ? every : null,
   };
 }
 

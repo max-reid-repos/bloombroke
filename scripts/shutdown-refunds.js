@@ -6,7 +6,8 @@
 //   node scripts/shutdown-refunds.js <path/to/.env> --execute [--live]   really do it
 //
 // Only subscriptions carrying the Pro metadata (site=bloombroke, product=pro) are touched,
-// and only on STRIPE_PRICE_ID when that is set, because the Stripe account is shared.
+// and only on STRIPE_PRICE_ID or STRIPE_PRICE_ID_YEARLY when those are set, because the
+// Stripe account is shared. Monthly and yearly subscriptions are both refunded.
 // The dry run prints counts and amounts only: no keys, ids, names or emails.
 // Refunds use idempotency keys and skip anything already refunded by this script, so a
 // run that stops half way can be run again.
@@ -42,10 +43,12 @@ export function periodOf(sub) {
   return Number.isFinite(start) && Number.isFinite(end) ? { start, end } : null;
 }
 
+// priceId: one price id or a list of them (monthly and yearly); empty means any.
 export function isProSubscription(sub, priceId) {
   if (sub?.metadata?.site !== PRO_METADATA.site || sub?.metadata?.product !== PRO_METADATA.product) return false;
-  if (!priceId) return true;
-  return (sub.items?.data || []).some((it) => idOf(it.price) === priceId);
+  const ids = (Array.isArray(priceId) ? priceId : [priceId]).filter(Boolean);
+  if (!ids.length) return true;
+  return (sub.items?.data || []).some((it) => ids.includes(idOf(it.price)));
 }
 
 export const fmtMoney = (cents, currency = 'usd') => `${(cents / 100).toFixed(2)} ${String(currency).toUpperCase()}`;
@@ -127,7 +130,7 @@ async function main(argv) {
   console.log(`stripe mode: ${mode}. ${execute ? 'EXECUTE: cancelling and refunding.' : 'Dry run: nothing is changed.'}`);
   if (mode === 'live' && execute && !argv.includes('--live')) { console.error('This is a live key. Add --live to really cancel and refund.'); return 1; }
 
-  const s = await run({ stripe: createStripe(se.secretKey), execute, priceId: se.priceId });
+  const s = await run({ stripe: createStripe(se.secretKey), execute, priceId: [se.priceId, se.priceIdYearly].filter(Boolean) });
   const by = Object.entries(s.byStatus).map(([k, v]) => `${k} ${v}`).join(', ') || 'none';
   console.log(`subscriptions: ${s.subscriptions} (${by})`);
   console.log(`refunds: ${s.refunds}, total ${fmtMoney(s.refundTotal, s.currency)}${execute ? '' : ' (not sent)'}`);

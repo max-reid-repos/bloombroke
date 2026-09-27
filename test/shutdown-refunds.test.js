@@ -99,3 +99,16 @@ test('shutdown: execute refunds with idempotency keys, then cancels now', async 
   assert.equal(s.canceled, 3);
   assert.equal(s.errors, 0);
 });
+
+test('shutdown: yearly subscriptions are refunded too (monthly and yearly price ids)', () => {
+  const meta = { site: 'bloombroke', product: 'pro' };
+  const yearly = { metadata: meta, items: { data: [{ price: { id: 'price_year' } }] } };
+  const monthly = { metadata: meta, items: { data: [{ price: 'price_month' }] } };
+  const ids = ['price_month', 'price_year'];
+  assert.equal(isProSubscription(yearly, ids), true);
+  assert.equal(isProSubscription(monthly, ids), true);
+  assert.equal(isProSubscription({ metadata: meta, items: { data: [{ price: { id: 'price_x' } }] } }, ids), false);
+  assert.equal(isProSubscription(yearly, []), true, 'no ids: any Pro subscription');
+  // A year paid, a quarter used: three quarters back.
+  assert.equal(unusedRefund({ amountPaid: 4200, periodStart: 0, periodEnd: 400, now: 100 }), 3150);
+});
