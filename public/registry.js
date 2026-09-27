@@ -351,8 +351,8 @@ export const REGISTRY = [
   },
   {
     name: 'WHATIF', category: 'Money tools', summary: "In hindsight: the maker's stock instead of what you bought",
-    syntax: 'WHATIF [<item> ...]', examples: ['WHATIF', 'WHATIF IPHONE6 LATTE:3Y'], keywords: ['regret', 'instead', 'what if', 'opportunity cost'],
-    options: [['<item>', 'A thing you bought, like IPHONE6'], ['<habit>:<years>', 'A habit over years, like LATTE:3Y']],
+    syntax: 'WHATIF [<item> ...] [MY <amount> <ticker> <date>]', examples: ['WHATIF', 'WHATIF IPHONE6 LATTE:3Y', 'WHATIF MY 1200 AAPL 2015', 'WHATIF MY 5 A DAY SBUX SINCE 2018'], keywords: ['regret', 'instead', 'what if', 'opportunity cost', 'my own purchase'],
+    options: [['<item>', 'A thing you bought, like IPHONE6'], ['<habit>:<years>', 'A habit over years, like LATTE:3Y'], ['MY <amount> <ticker> <date>', 'Your own purchase: MY 1200 AAPL 2015-03'], ['MY <amount> A DAY|WEEK|MONTH <ticker> SINCE <date> [TO <date>]', 'Your own habit: MY 5 A DAY SBUX SINCE 2018']],
     source: 'Built-in prices; CNBC stock history', delay: 'Daily closes',
   },
   {

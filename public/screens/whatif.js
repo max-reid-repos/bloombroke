@@ -6,11 +6,13 @@
 // WHATIF IPHONE               the picker, with every iPhone picked
 // WHATIF EDIT IPHONE6 LATTE   the picker, with these picked
 // WHATIF IPHONE6 LATTE:3Y     the result, with the REPLAY race and SAVE VIDEO
+// WHATIF MY 1200 AAPL 2015    your own purchase (free for everyone)
 
 import { esc, q, fmtNum, panel, metaNote, LOADING, nyTime } from './markets.js';
 import { toolbar, segmented } from '../kit.js';
 import { createReplay, fmtCounter, isBehind } from '../whatif-replay.js';
 import { videoSupport, makeVideo, downloadBlob, VIDEO_NEEDS } from '../whatif-video.js';
+import { parseMine, formWords, mineLabel, MINE_DOODLE, MINE_EXAMPLES } from '../whatif-mine.js';
 
 let catalogCache = null;
 async function loadCatalog(ctx) {
@@ -45,18 +47,26 @@ export function shelvesOf(p) {
 }
 export const shelfItems = (cat, shelf) => allItems(cat).filter((p) => shelvesOf(p).includes(shelf));
 
-// Tokens -> { mode: 'picker' | 'result', picks: Map(id -> spec), shelf }
+// Tokens -> { mode: 'picker' | 'result' | 'error', picks: Map(id -> spec), mine: [MY items],
+// shelf, words: the words to send (your own purchases written the canonical way) }
 export function planWhatif(tokens, cat) {
   const ids = new Map(allItems(cat).map((p) => [p.id.toUpperCase(), p]));
   const edit = tokens[0] === 'EDIT';
-  const toks = edit ? tokens.slice(1) : tokens;
+  let toks = edit ? tokens.slice(1) : tokens;
   const picks = new Map();
+  let mine = [];
   let families = 0;
   let shelf = null;
   const firstShelf = () => {
     const first = allItems(cat).find((p) => p.id === [...picks.keys()][0]);
     return shelf || (first ? shelvesOf(first)[0] : SHELVES[0]);
   };
+  try {
+    ({ mine, rest: toks } = parseMine(toks));
+  } catch (err) {
+    return { mode: 'error', message: err.message, picks, mine: [], shelf: SHELVES[0], words: tokens };
+  }
+  const words = [...toks, ...mine.flatMap((m) => m.words)];
   for (const t of toks) {
     const [head, spec = ''] = t.split(':');
     const item = ids.get(head);
@@ -64,10 +74,10 @@ export function planWhatif(tokens, cat) {
     if (SHELF_WORDS.includes(head) && !spec) { families += 1; shelf ||= head; continue; }
     const fam = familyIds(cat, head);
     if (fam.length && !spec) { families += 1; fam.forEach((id) => { if (!picks.has(id)) picks.set(id, ''); }); continue; }
-    return { mode: 'result', picks, shelf: firstShelf() }; // unknown word: the server explains it
+    return { mode: 'result', picks, mine, shelf: firstShelf(), words }; // unknown word: the server explains it
   }
-  const mode = edit || !toks.length || families === toks.length ? 'picker' : 'result';
-  return { mode, picks, shelf: firstShelf() };
+  const mode = edit || (!toks.length && !mine.length) || (families === toks.length && !mine.length) ? 'picker' : 'result';
+  return { mode, picks, mine, shelf: firstShelf(), words };
 }
 
 // Years box -> spec. "5" and "5Y" -> "5Y"; "2015" and "2015-2024" stay.
@@ -78,15 +88,18 @@ export function normalizeSpec(v, fallbackYears) {
   return `${fallbackYears}Y`;
 }
 
-export function commandFor(picks, cat) {
+// mine: your own purchases (MY items), after the catalogue picks.
+export function commandFor(picks, cat, mine = []) {
   const out = ['WHATIF'];
   for (const p of allItems(cat)) {
     if (!picks.has(p.id)) continue;
     const spec = p.kind === 'monthly' ? normalizeSpec(picks.get(p.id), p.defaultYears) : '';
     out.push((spec ? `${p.id}:${spec}` : p.id).toUpperCase());
   }
+  for (const m of mine) out.push(...m.words);
   return out.join(' ');
 }
+
 
 export function fmtUsd(n) {
   if (!Number.isFinite(n)) return '--';
@@ -200,7 +213,7 @@ export function quipFor(multiple, key) {
 // A shelf of doodle cards per tab. Keys: arrows move, Space picks, Enter runs, [ and ]
 // change the shelf. On a habit card, typing a number goes into its years box.
 
-const EXAMPLES = ['WHATIF IPHONE6 IPHONE8 LATTE:3Y', 'WHATIF MODEL3 RTX3080', 'WHATIF BEER:10Y BETTING', 'WHATIF PELOTON GOPRO BLACKBERRY'];
+const EXAMPLES = ['WHATIF IPHONE6 IPHONE8 LATTE:3Y', 'WHATIF MODEL3 RTX3080', 'WHATIF BEER:10Y BETTING', MINE_EXAMPLES[0]];
 const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
 export const PICKER_KEYS = 'ARROWS MOVE · SPACE PICKS · ENTER RUNS · [ ] SHELF';
 
@@ -216,12 +229,39 @@ export function cardHtml(p, picks) {
   </li>`;
 }
 
-function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0]) {
+// The YOUR OWN card (first on every shelf) and a card per purchase of your own.
+export function ownCardHtml() {
+  return `<li class="wi-card wi-own" role="option" aria-selected="false" tabindex="-1" data-own title="Your own purchase: any stock or ETF, any date">
+    <img class="wi-doodle" src="${esc(art(`doodle-${MINE_DOODLE}.webp`))}" width="384" height="384" alt="" loading="lazy" decoding="async"><span class="wi-box" aria-hidden="true">[+]</span><span class="wi-cname">YOUR OWN</span><span class="wi-cmeta">Any stock, any date</span>
+  </li>`;
+}
+export function mineCardHtml(m) {
+  return `<li class="wi-card is-on" role="option" aria-selected="true" tabindex="-1" data-mine="${esc(m.id)}" title="${esc(mineLabel(m))}">
+    <img class="wi-doodle" src="${esc(art(`doodle-${MINE_DOODLE}.webp`))}" width="384" height="384" alt="" loading="lazy" decoding="async"><span class="wi-box" aria-hidden="true">[x]</span><span class="wi-cname">${esc(mineLabel(m))}</span><span class="wi-cmeta dim">YOUR OWN</span>
+  </li>`;
+}
+// The inline form: amount, stock, date, how often (and TO for a habit).
+export function ownFormHtml() {
+  const field = (name, label, attrs) => `<label class="wo-field"><span>${label}</span><input ${attrs} data-f="${name}" spellcheck="false" autocomplete="off"></label>`;
+  return `<div class="wi-ownform" hidden>
+      ${field('amount', 'AMOUNT $', 'type="text" inputmode="decimal" maxlength="11" placeholder="1200"')}
+      ${field('ticker', 'STOCK', 'type="text" maxlength="8" placeholder="AAPL"')}
+      <label class="wo-field"><span>HOW OFTEN</span><select data-f="how"><option value="ONCE">ONCE</option><option value="DAY">A DAY</option><option value="WEEK">A WEEK</option><option value="MONTH">A MONTH</option></select></label>
+      ${field('date', '<span data-wo="date">DATE</span>', 'type="text" maxlength="10" placeholder="2015-03"')}
+      <span class="wo-to" hidden>${field('to', 'TO (OPTIONAL)', 'type="text" maxlength="7" placeholder="2022"')}</span>
+      <button type="button" class="wi-btn wo-add" data-wo="add">ADD</button>
+      <button type="button" class="wi-btn wo-close" data-wo="close">CLOSE</button>
+      <span class="wo-msg" data-wo="msg" role="status"></span>
+    </div>`;
+}
+
+function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
   let shelf = SHELVES.includes(startShelf) ? startShelf : SHELVES[0];
   const tabs = () => segmented(SHELVES.map((x) => ({ label: x, value: x })), shelf, { label: 'Shelves' });
   el.innerHTML = panel('1', WHATIF_TITLE, `
     <p class="wi-intro">Pick the things you bought. See what that money would be worth today in the maker's stock. Or type it: ${code(EXAMPLES[0])}</p>
     <div class="wi-tabs">${toolbar({ left: tabs(), label: 'Shelves' })}</div>
+    ${ownFormHtml()}
     <ul class="wi-shelf" role="listbox" aria-multiselectable="true" aria-label="Things you bought" data-own-focus></ul>
     <div class="wi-bar">
       <span class="wi-count" id="wi-count"></span>
@@ -239,10 +279,12 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0]) {
 
   function refresh() {
     const once = [...picks.keys()].map((id) => byId.get(id)).filter((p) => p.kind === 'once');
-    const spent = once.reduce((n, p) => n + p.price, 0);
-    countEl.textContent = picks.size ? `${picks.size} PICKED${once.length ? `, ${fmtUsd(spent)} ONE-OFF` : ''}` : 'NOTHING PICKED';
-    cmdEl.textContent = picks.size ? commandFor(picks, cat) : 'WHATIF ...';
-    ctx.status(picks.size ? `WHATIF: ${picks.size} PICKED` : '');
+    const spent = once.reduce((n, p) => n + p.price, 0) + mine.filter((m) => m.kind === 'once').reduce((n, m) => n + m.amount, 0);
+    const n = picks.size + mine.length;
+    const onceN = once.length + mine.filter((m) => m.kind === 'once').length;
+    countEl.textContent = n ? `${n} PICKED${onceN ? `, ${fmtUsd(spent)} ONE-OFF` : ''}` : 'NOTHING PICKED';
+    cmdEl.textContent = n ? commandFor(picks, cat, mine) : 'WHATIF ...';
+    ctx.status(n ? `WHATIF: ${n} PICKED` : '');
   }
 
   function cols() {
@@ -266,16 +308,71 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0]) {
     for (const inp of list.querySelectorAll('input[data-spec]')) if (picks.has(inp.dataset.spec)) picks.set(inp.dataset.spec, inp.value);
     shelf = name;
     tabBox.innerHTML = toolbar({ left: tabs(), label: 'Shelves' });
-    list.innerHTML = shelfItems(cat, shelf).map((p) => cardHtml(p, picks)).join('');
+    list.innerHTML = ownCardHtml() + mine.map(mineCardHtml).join('') + shelfItems(cat, shelf).map((p) => cardHtml(p, picks)).join('');
     list.setAttribute('aria-label', `${shelf}: things you bought`);
     rows = [...list.querySelectorAll('.wi-card')];
-    const first = Math.max(0, rows.findIndex((r) => picks.has(r.dataset.id)));
+    const first = Math.max(0, rows.findIndex((r) => picks.has(r.dataset.id) || r.dataset.mine));
     if (rows[first]) rows[first].tabIndex = 0;
     if (focus && !window.matchMedia('(pointer: coarse)').matches) focusRow(first, { scroll: false });
   }
   const moveShelf = (dir) => showShelf(SHELVES[(SHELVES.indexOf(shelf) + dir + SHELVES.length) % SHELVES.length]);
 
+  // YOUR OWN: the form. A purchase of your own: remove it.
+  const form = el.querySelector('.wi-ownform');
+  const f = (name) => form.querySelector(`[data-f="${name}"]`);
+  const wo = (name) => form.querySelector(`[data-wo="${name}"]`);
+  function syncForm() {
+    const habit = f('how').value !== 'ONCE';
+    form.querySelector('.wo-to').hidden = !habit;
+    wo('date').textContent = habit ? 'SINCE' : 'DATE';
+    f('date').placeholder = habit ? '2018' : '2015-03';
+  }
+  function openForm() {
+    form.hidden = false;
+    syncForm();
+    f('amount').focus();
+  }
+  function closeForm() {
+    form.hidden = true;
+    const own = list.querySelector('[data-own]');
+    if (own) focusRow(rows.indexOf(own));
+  }
+  // Adds the purchase in the form; true when it was added.
+  function addOwn() {
+    try {
+      const words = formWords({ amount: f('amount').value, ticker: f('ticker').value, date: f('date').value, how: f('how').value, to: f('to').value });
+      const [item] = parseMine(words).mine;
+      if (!mine.some((m) => m.id === item.id)) mine.push(item);
+      wo('msg').textContent = '';
+      ['amount', 'ticker', 'date', 'to'].forEach((k) => { f(k).value = ''; });
+      showShelf(shelf, { focus: false });
+      refresh();
+      return true;
+    } catch (err) {
+      wo('msg').textContent = err.message;
+      return false;
+    }
+  }
+  form.addEventListener('change', syncForm);
+  wo('add').addEventListener('click', () => { if (addOwn()) closeForm(); });
+  wo('close').addEventListener('click', closeForm);
+  form.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.matches('input, select')) {
+      e.preventDefault(); e.stopPropagation();
+      // Enter adds it and runs, like the years box.
+      const empty = !f('amount').value && !f('ticker').value && !f('date').value;
+      if (empty || addOwn()) runPicks();
+    } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeForm(); }
+  });
+
   function toggle(row) {
+    if (row.dataset.own !== undefined) { openForm(); return; }
+    if (row.dataset.mine) {
+      mine = mine.filter((m) => m.id !== row.dataset.mine);
+      showShelf(shelf);
+      refresh();
+      return;
+    }
     const id = row.dataset.id;
     if (picks.has(id)) picks.delete(id);
     else picks.set(id, row.querySelector('input')?.value || '');
@@ -290,8 +387,8 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0]) {
     for (const inp of el.querySelectorAll('input[data-spec]')) {
       if (picks.has(inp.dataset.spec)) picks.set(inp.dataset.spec, inp.value);
     }
-    if (!picks.size) { ctx.status('PICK AT LEAST ONE THING', 'warn'); return; }
-    ctx.run(commandFor(picks, cat));
+    if (!picks.size && !mine.length) { ctx.status('PICK AT LEAST ONE THING', 'warn'); return; }
+    ctx.run(commandFor(picks, cat, mine));
   }
 
   list.addEventListener('keydown', (e) => {
@@ -499,6 +596,7 @@ function resultHtml(d, key, links) {
 
 // ---- REPLAY ------------------------------------------------------------------------
 
+export const MINE_NOTE = 'YOUR OWN: CNBC DAILY CLOSES, SPLIT-ADJUSTED, PRICE ONLY';
 export const JAR_NOTE = 'JAR: CASH DEFLATED BY CPI-U (BLS)';
 const money = (n) => (n > 0 ? `−${fmtUsd(n)}` : fmtUsd(0));
 
@@ -630,15 +728,16 @@ export function render(el, cmd, ctx) {
   el.innerHTML = panel('1', 'WHATIF', LOADING, { cls: 'panel-solo' });
   loadCatalog(ctx).then((cat) => {
     const plan = planWhatif(tokens, cat);
-    if (plan.mode === 'picker') { renderPicker(el, ctx, cat, plan.picks, plan.shelf); return null; }
+    if (plan.mode === 'error') { errorView(el, plan.message); ctx.status('WHATIF: CHECK THE WORDS', 'warn'); return null; }
+    if (plan.mode === 'picker') { renderPicker(el, ctx, cat, plan.picks, plan.shelf, plan.mine); return null; }
     ctx.status('WHATIF: DOING THE MATHS');
     const key = cmd.input;
-    return ctx.fetchJSON(`/api/whatif?${new URLSearchParams({ c: tokens.join(' ') })}`, { signal: ctx.signal }).then((d) => {
-      if (d.picker) { renderPicker(el, ctx, cat, plan.picks, plan.shelf); return; }
+    return ctx.fetchJSON(`/api/whatif?${new URLSearchParams({ c: plan.words.join(' ') })}`, { signal: ctx.signal }).then((d) => {
+      if (d.picker) { renderPicker(el, ctx, cat, plan.picks, plan.shelf, plan.mine); return; }
       const links = d.cert ? shareLinks(d.cert, location.origin) : null;
       const jar = d.replay?.cpi?.last ? `${metaNote(JAR_NOTE, `CPI-U from the BLS, to ${fmtMonth(d.replay.cpi.last)}. Later months use the latest value.`)}<span class="wi-hint">${metaNote('SPACE REPLAYS')}</span>` : '';
       el.innerHTML = panel('1', WHATIF_TITLE, resultHtml(d, key, links), {
-        cls: 'panel-solo wi-panel', meta: `<span>${d.rows.length} ${d.rows.length === 1 ? 'ITEM' : 'ITEMS'}</span>${metaNote(HINDSIGHT_NOTE)}${jar}`,
+        cls: 'panel-solo wi-panel', meta: `<span>${d.rows.length} ${d.rows.length === 1 ? 'ITEM' : 'ITEMS'}</span>${metaNote(HINDSIGHT_NOTE)}${d.mine ? metaNote(MINE_NOTE) : ''}${jar}`,
       });
       sizeCert(el);
       setupReplay(el, d, ctx);

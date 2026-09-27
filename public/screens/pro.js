@@ -15,6 +15,7 @@ export const FREE_ROWS = [
   ['NEWS', LIVE, 'NEWS'],
   ['WEIRD', LIVE, 'WEIRD'],
   ['The WHATIF catalogue', LIVE, 'WHATIF'],
+  ['WHATIF with your own purchase', LIVE, 'WHATIF'],
   ['GUESS', LIVE, 'GUESS'],
   ['Alerts while the tab is open', LIVE, 'ALERTS'],
 ];
@@ -26,7 +27,6 @@ export const PRO_ROWS = [
   ['No sponsor line', LIVE, 'SPONSOR'],
   ['CHAT', COMING, 'CHAT'],
   ['Alerts when the tab is closed', COMING, ''],
-  ['WHATIF with your own purchase', COMING, ''],
 ];
 // A row for a command that is not on this site (yet) is left out, never shown as live.
 export const shownRows = (rows) => rows.filter(([, , cmd]) => !cmd || findCommand(cmd));
