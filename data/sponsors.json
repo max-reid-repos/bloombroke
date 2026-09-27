@@ -1,1 +1,9 @@
-{"line": null, "gauges": {}}
+{
+  "lines": [],
+  "house": [
+    { "text": "YOUR COMPANY HERE. On every screen, all day.", "cmd": "SPONSOR" },
+    { "text": "This line is for rent. No tracking, no pop-ups.", "cmd": "SPONSOR" },
+    { "text": "Sponsor a gauge: your name by the Hormuz ship count.", "cmd": "SPONSOR" }
+  ],
+  "gauges": {}
+}
