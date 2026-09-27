@@ -42,11 +42,22 @@ export function unusableRange(q) {
   return q.kind === 'spot' || !Number.isFinite(q.high52) || !Number.isFinite(q.low52);
 }
 
-export async function precise52(q, { chart = getChart, now = () => Date.now() } = {}) {
+// The quote never waits on the chart for long: past waitMs (a busy chart queue, a slow
+// source) it answers with the fallback below. The chart load goes on and fills the cache.
+export const RANGE52_WAIT_MS = 2500;
+const within = (p, ms) => {
+  let timer;
+  const late = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('chart too slow')), ms); timer.unref?.(); });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+};
+
+export async function precise52(q, { chart = getChart, now = () => Date.now(), waitMs = RANGE52_WAIT_MS } = {}) {
   const unusable = unusableRange(q);
   if (!q || !(roundedRange(q) || unusable)) return q;
   try {
-    const c = await chart(q.ticker, '1Y');
+    const load = Promise.resolve().then(() => chart(q.ticker, '1Y'));
+    load.catch(() => {});
+    const c = await within(load, waitMs);
     const r = c?.bar === '1D' ? closesRange(c.points, now()) : null;
     if (!r) throw new Error('no daily closes');
     return { ...q, high52: r.high, low52: r.low, range52Basis: 'daily closes', source52: { high: q.high52, low: q.low52, decimals: q.range52Dp } };

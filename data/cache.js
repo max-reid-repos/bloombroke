@@ -156,6 +156,9 @@ export function createCache({
     weight -= w(old);
     entries.delete(key);
     entry.w = weigh ? weigh(entry.value) || 0 : 0;
+    // The end of the stale window, fixed when the value was loaded (fetchedAt + ttl +
+    // staleMs). Serving the value stale moves expiresAt (the next retry), never this.
+    entry.dropAt = entry.expiresAt + staleMs;
     weight += entry.w;
     entries.set(key, entry);
     while (entries.size > maxEntries || (weight > maxWeight && entries.size > 1)) {
@@ -176,7 +179,7 @@ export function createCache({
     const t = now();
     let entry = entries.get(key);
     // Past its TTL and its stale window too: gone.
-    if (entry && t >= entry.expiresAt + staleMs) { drop(key); entry = undefined; }
+    if (entry && t >= entry.dropAt) { drop(key); entry = undefined; }
     if (entry && t < entry.expiresAt) {
       if (lru) { entries.delete(key); entries.set(key, entry); }
       return { value: entry.value, stale: entry.stale, fetchedAt: entry.fetchedAt };
@@ -235,7 +238,7 @@ export function createCache({
   // Drop entries past their stale window and failures past their retry time.
   function sweep() {
     const t = now();
-    for (const [k, e] of entries) if (t >= e.expiresAt + staleMs) drop(k);
+    for (const [k, e] of entries) if (t >= e.dropAt) drop(k);
     for (const [k, f] of failures) if (t >= f.until) failures.delete(k);
   }
 

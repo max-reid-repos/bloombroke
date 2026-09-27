@@ -4,7 +4,9 @@
 //
 // gate(fn): runs fn now when fewer than `concurrency` are running, else queues it. With
 // `maxQueue` already waiting it fails at once with a GateBusy error (busy: true), which
-// the cache does not remember as a failure (data/cache.js).
+// the cache does not remember as a failure (data/cache.js). A queued job still waiting
+// after `maxWaitMs` fails the same way, so a slow source cannot hold a request past
+// Cloudflare's 100 s (a 524).
 
 export class GateBusy extends Error {
   constructor(message = 'too many loads waiting') {
@@ -14,7 +16,9 @@ export class GateBusy extends Error {
   }
 }
 
-export function makeGate({ concurrency = 4, maxQueue = 32 } = {}) {
+export const GATE_MAX_WAIT_MS = 10_000;
+
+export function makeGate({ concurrency = 4, maxQueue = 32, maxWaitMs = GATE_MAX_WAIT_MS } = {}) {
   let running = 0;
   const queue = [];
   function next() {
@@ -26,7 +30,9 @@ export function makeGate({ concurrency = 4, maxQueue = 32 } = {}) {
   function gate(fn) {
     if (running >= concurrency && queue.length >= maxQueue) return Promise.reject(new GateBusy());
     return new Promise((resolve, reject) => {
+      let timer = null;
       const start = () => {
+        if (timer) clearTimeout(timer);
         Promise.resolve()
           .then(fn)
           .then(resolve, reject)
@@ -34,6 +40,15 @@ export function makeGate({ concurrency = 4, maxQueue = 32 } = {}) {
       };
       queue.push(start);
       next();
+      if (queue.includes(start) && maxWaitMs > 0 && Number.isFinite(maxWaitMs)) {
+        timer = setTimeout(() => {
+          const i = queue.indexOf(start);
+          if (i === -1) return;
+          queue.splice(i, 1);
+          reject(new GateBusy('waited too long for a load slot'));
+        }, maxWaitMs);
+        timer.unref?.();
+      }
     });
   }
   gate.stats = () => ({ running, waiting: queue.length });

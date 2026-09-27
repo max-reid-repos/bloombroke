@@ -10,8 +10,10 @@
 // Blocked, missing or broken DataFast: goal() does nothing there and never throws.
 // Pro: a browser holding a licence key (localStorage 'bb.pro.key') never loads DataFast,
 // and neither does the checkout return page that fetches the key (?session_id=, or a
-// pending session in this tab): no third-party script runs next to the key. goal() then
-// sends only our own totals.
+// pending session in this tab). goal() then sends only our own totals. A key that lands
+// after the page loaded (LOGIN, REDEEM) finds DataFast already running: the page reloads
+// (reloadAfterKey) so it stops at once. Cloudflare may still inject its own analytics
+// beacon; that is outside this code.
 // once: a key (the result, the puzzle number). The same goal with the same key is sent
 // once per browser tab session (sessionStorage 'bb.goals'); without storage, every time.
 
@@ -89,6 +91,36 @@ export function proKeyPresent({ local, session, loc } = {}) {
     if (/[?&]session_id=/.test(search)) return true;
   } catch { /* no location */ }
   return false;
+}
+
+// A key just landed (LOGIN or REDEEM succeeded). If DataFast or a Cloudflare beacon runs
+// in this page, reload to PRO so it stops now; the new page does not load DataFast.
+// showKey: the PRO screen shows the key once after the reload (a REDEEM's new key).
+// True when it reloads. Never throws.
+export const SHOW_KEY_ONCE = 'bb.pro.showkey';
+const THIRD_PARTY = 'script[src^="https://datafa.st/"], script[src*="cloudflareinsights.com"]';
+export function reloadAfterKey({ doc = globalThis.document, loc = globalThis.location, session, showKey = false } = {}) {
+  try {
+    if (!doc?.querySelector?.(THIRD_PARTY) || !loc?.replace) return false;
+    if (showKey) {
+      try { (session === undefined ? globalThis.sessionStorage : session)?.setItem(SHOW_KEY_ONCE, '1'); } catch { /* the key stays under SHOW KEY */ }
+    }
+    loc.replace('/?c=PRO');
+    return true;
+  } catch {
+    return false;
+  }
+}
+// Read and clear the show-the-key-once flag.
+export function takeShowKeyOnce(session) {
+  try {
+    const s = session === undefined ? globalThis.sessionStorage : session;
+    if (!s?.getItem(SHOW_KEY_ONCE)) return false;
+    s.removeItem(SHOW_KEY_ONCE);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Global Privacy Control: the browser says "do not sell or share".

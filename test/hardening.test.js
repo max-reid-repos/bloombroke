@@ -394,3 +394,60 @@ test('DataFast: not loaded when a Pro key is in storage or on its way; goal() co
   assert.equal(calls.length, 1);
   assert.deepEqual(goal('pro_checkout_started', { plan: 'month' }, { win: w, nav: {}, fetchImpl: f, pro: () => false }).datafast, true, 'the checkout goal still reaches DataFast for non-Pro');
 });
+
+// ---- follow-ups ----------------------------------------------------------------------
+
+test('cache: steady traffic on a dead source does not stretch the stale window', async () => {
+  let t = 0;
+  const cache = createCache({ now: () => t, staleMs: 1000, retryMs: 50 });
+  await cache.cached('k', 100, async () => 'v');
+  const down = async () => { throw new Error('down'); };
+  // Every 60 ms a request finds the source down and gets the stale value...
+  for (t = 100; t < 1100; t += 60) {
+    const got = await cache.cached('k', 100, down);
+    assert.equal(got.stale, true, `at ${t}`);
+  }
+  // ...until fetchedAt + ttl + staleMs (0 + 100 + 1000): then the old value is gone.
+  t = 1100;
+  await assert.rejects(cache.cached('k', 100, down), /down/);
+  assert.equal(cache.has('k'), false);
+});
+
+test('gate: a job queued longer than maxWaitMs fails busy', async () => {
+  const gate = makeGate({ concurrency: 1, maxQueue: 5, maxWaitMs: 30 });
+  let release;
+  const first = gate(() => new Promise((r) => { release = r; }));
+  const queued = gate(async () => 'late');
+  await assert.rejects(queued, (e) => e instanceof GateBusy);
+  assert.deepEqual(gate.stats(), { running: 1, waiting: 0 });
+  release('done');
+  assert.equal(await first, 'done');
+  assert.equal(await gate(async () => 'next'), 'next', 'a slot frees as usual');
+});
+
+test('precise52: a slow or busy chart never holds the quote', async () => {
+  const { precise52 } = await import('../data/range52.js');
+  const gold = { ticker: 'XAU=', label: 'GOLD', kind: 'spot', decimals: 2, range52Dp: 2, high52: 10, low52: 0 };
+  const t0 = Date.now();
+  const slow = await precise52(gold, { chart: () => new Promise(() => {}), waitMs: 40 });
+  assert.ok(Date.now() - t0 < 1000);
+  assert.equal(slow.high52, null, 'an unusable range shows as --');
+  const busy = await precise52(gold, { chart: async () => { throw new GateBusy(); } });
+  assert.equal(busy.low52, null);
+});
+
+test('reloadAfterKey: reloads to PRO only when DataFast or a beacon runs in the page', async () => {
+  const { reloadAfterKey, takeShowKeyOnce, SHOW_KEY_ONCE } = await import('../public/goal.js');
+  const map = {};
+  const session = { getItem: (k) => map[k] ?? null, setItem: (k, v) => { map[k] = v; }, removeItem: (k) => { delete map[k]; } };
+  const went = [];
+  const loc = { replace: (u) => went.push(u) };
+  assert.equal(reloadAfterKey({ doc: { querySelector: () => null }, loc, session }), false);
+  assert.equal(went.length, 0);
+  assert.equal(reloadAfterKey({ doc: { querySelector: (s) => (s.includes('datafa.st') ? {} : null) }, loc, session, showKey: true }), true);
+  assert.deepEqual(went, ['/?c=PRO']);
+  assert.equal(map[SHOW_KEY_ONCE], '1');
+  assert.equal(takeShowKeyOnce(session), true);
+  assert.equal(takeShowKeyOnce(session), false, 'once');
+  assert.equal(reloadAfterKey({ doc: { querySelector() { throw new Error('x'); } }, loc, session }), false, 'never throws');
+});
