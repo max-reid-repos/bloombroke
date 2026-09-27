@@ -14,7 +14,10 @@ import { normalizeWhatif, certModel, DOODLES } from '../data/whatif-cert.js';
 import { getCert, whatifPng } from '../lib/og.js';
 import {
   planWhatif, shelvesOf, shelfItems, SHELVES, SHELF_WORDS, dropRange, riskLine, dropList, replayHtml, cardHtml, commandFor,
+  videoHtml, certHtml, shareLinks, heroLine, quipKind, quipFor, QUIPS, GADGET_QUIPS, HABIT_QUIPS, niceMonth, niceDay, shortCompany,
+  resultMeta, HINDSIGHT_NOTE, PICKER_INTRO, PICKER_KEYS,
 } from '../public/screens/whatif.js';
+import { parseMine } from '../public/whatif-mine.js';
 import { frameAt, durationMs, scaleOf, isBehind, fmtCounter } from '../public/whatif-replay.js';
 import {
   videoSupport, recorderType, encoderConfig, videoFilename, timeline, fmtMoney, RACE_FRAMES, HOLD_FRAMES, FPS, VIDEO_NEEDS, CODECS,
@@ -450,18 +453,78 @@ test('worst drop: the high and the low month, so a past drop never reads as now'
     'Worst drop along the way, by holding, month-end prices: iPhone 6 −31% (AUG 2018 TO DEC 2018).');
 });
 
-test('replay block: SAVE VIDEO where the browser can, one plain line where it cannot', async () => {
+test('replay block: the three lines named, a small REPLAY; SAVE VIDEO on the share row', async () => {
   const d = await screen(['BIGMAC:10Y']);
   d.cert = certModel(d, liveCatalog, 'WHATIF BIGMAC:10Y');
-  const yes = replayHtml(d, 'webcodecs');
-  assert.match(yes, /data-replay/);
-  assert.match(yes, /data-video>SAVE VIDEO</);
-  assert.match(yes, /CASH IN A JAR/);
-  assert.match(yes, /SPENT <span class="num" data-wr="spent">−\$/);
-  const no = replayHtml(d, null);
-  assert.doesNotMatch(no, /data-video/);
-  assert.match(no, /Saving a video needs Chrome, Edge or Safari\./);
-  assert.equal(replayHtml({ ...d, replay: null }, 'webcodecs'), '');
+  const r = replayHtml(d);
+  assert.match(r, /data-replay title="Replay \(Space\)">REPLAY</);
+  assert.match(r, /CASH IN A JAR/);
+  assert.match(r, /SPENT <span class="num" data-wr="spent">−\$/);
+  assert.doesNotMatch(r, /data-video|<kbd>/, 'no video button or key hint on the chart');
+  assert.equal(replayHtml({ ...d, replay: null }), '');
+  // SAVE VIDEO where the browser can, one plain line where it cannot.
+  assert.equal(videoHtml(d, 'webcodecs'), '<button type="button" class="wi-btn" data-video>SAVE VIDEO</button>');
+  assert.match(videoHtml(d, null), /Saving a video needs Chrome, Edge or Safari\./);
+  assert.equal(videoHtml({ ...d, cert: null }, 'webcodecs'), '');
+  // One primary row: SHARE ON X, SAVE VIDEO, DOWNLOAD IMAGE, COPY LINK; the quiet row after it.
+  const links = shareLinks(d.cert, 'https://bloombroke.com');
+  const html = certHtml(d.cert, links, '<div class="wi-actions">CHANGE PICKS</div>', videoHtml(d, 'webcodecs'));
+  const order = ['SHARE ON X', 'SAVE VIDEO', 'DOWNLOAD IMAGE', 'COPY LINK', 'CHANGE PICKS'].map((w) => html.indexOf(`>${w}<`));
+  assert.ok(order.every((i, k) => i > 0 && (k === 0 || i > order[k - 1])), String(order));
+  assert.match(html, /<\/div>\s*<p class="wi-vmsg" data-vmsg role="status"><\/p>\s*<div class="wi-actions">/);
+});
+
+test('WHATIF result: one hero line, quips only where they fit, small print behind Details', async () => {
+  assert.equal(niceMonth('2015-01'), 'Jan 2015');
+  assert.equal(niceDay('2015-01-02'), '2 Jan 2015');
+  assert.equal(shortCompany('Apple Inc.'), 'Apple');
+  assert.equal(shortCompany("McDonald's"), "McDonald's");
+  const total = { paid: 9159.4, value: 48864, multiple: 5.33 };
+  // Your own habit: "$15 a week in Apple since Jan 2015. You paid $9,159."
+  const mine = parseMine(['MY', '15', 'A', 'WEEK', 'AAPL', 'SINCE', '2015'], NOW).mine;
+  const habit = { rows: [{ id: mine[0].id, kind: 'monthly', mine: {}, company: 'Apple Inc.', ticker: 'AAPL', from: '2015-01', to: '2026-09' }], total, cert: { ribbon: '141 months of $15 a week in AAPL' } };
+  assert.equal(heroLine(habit, mine), '$15 a week in Apple since Jan 2015. You paid $9,159.');
+  // Your own one-off: the amount is in the line already.
+  const once = parseMine(['MY', '1200', 'AAPL', '2015'], NOW).mine;
+  assert.equal(heroLine({ rows: [{ id: once[0].id, kind: 'once', mine: {}, company: 'Apple Inc.', ticker: 'AAPL', bought: '2015-01-02' }], total }, once), '$1,200 in Apple on 2 Jan 2015.');
+  // Catalogue items use the certificate's ribbon.
+  const phone = await screen(['IPHONE6']);
+  phone.cert = certModel(phone, liveCatalog, 'WHATIF IPHONE6');
+  assert.match(heroLine(phone), /^iPhone 6, Sep 2014, as Apple stock\. You paid \$649\.00\.$/);
+  const mac = await screen(['BIGMAC:10Y']);
+  mac.cert = certModel(mac, liveCatalog, 'WHATIF BIGMAC:10Y');
+  assert.match(heroLine(mac), /^10 years of Big Macs, as McDonald's stock\. You paid \$[\d,]+\.$/);
+  const mix = await screen(['IPHONE6', 'LATTE:3Y']);
+  mix.cert = certModel(mix, liveCatalog, 'WHATIF IPHONE6 LATTE:3Y');
+  assert.match(heroLine(mix), /^2 things you bought, as stock in 2 companies\. You paid \$[\d,]+\.$/);
+  // Quips: the gadget line only for gadgets, habit lines for habits, none for your own or a mix.
+  const cat = { products: liveCatalog.products.map((p) => ({ ...p, kind: 'once' })), recurring: liveCatalog.recurring.map((p) => ({ ...p, kind: 'monthly' })) };
+  assert.equal(quipKind(phone, cat), 'gadget');
+  assert.equal(quipKind(mac, cat), 'habit');
+  assert.equal(quipKind(mix, cat), '');
+  assert.equal(quipKind(habit, cat), '');
+  assert.equal(quipKind(await screen(['MODELS']), cat), 'thing');
+  const gadgetLine = GADGET_QUIPS.big[0];
+  assert.ok(!Object.values(QUIPS).flat().includes(gadgetLine), 'the gadget line is not a general line');
+  assert.ok(!Object.values(HABIT_QUIPS).flat().some((l) => /gadget|product|stuff/i.test(l)));
+  for (const m of [0.3, 2, 30]) {
+    assert.ok(Object.values(HABIT_QUIPS).flat().includes(quipFor(m, 'WHATIF BIGMAC:10Y', 'habit')));
+    assert.ok(Object.values(QUIPS).flat().includes(quipFor(m, 'WHATIF MODELS', 'thing')));
+  }
+  for (const l of [...Object.values(QUIPS), ...Object.values(GADGET_QUIPS), ...Object.values(HABIT_QUIPS)].flat()) {
+    assert.doesNotMatch(l, /\u2014|\bshould\b|\b(buy|sell) (it|now)\b/i, l);
+    assert.ok(l.length <= 60, l);
+  }
+  // The title strip: the short line, with the exact small print as its tooltip.
+  assert.equal(resultMeta(), `<span class="meta-note" title="${HINDSIGHT_NOTE}">Hindsight. Past returns do not predict future ones. Not a recommendation.</span>`);
+  // The picker: one short line, two key hints.
+  assert.equal(PICKER_INTRO, 'Pick what you bought. See what the stock would be worth now.');
+  assert.equal(PICKER_KEYS, 'SPACE PICK · ENTER RUN');
+  // The result screen: one Details toggle, no second one, no hero duplicates.
+  const src = readFileSync('public/screens/whatif.js', 'utf8');
+  assert.equal((src.match(/<details/g) || []).length, 1);
+  assert.match(src, /<summary>Details<\/summary>/);
+  assert.doesNotMatch(src, /In the stock, that is|hero-unit">TODAY|How is this calculated\?|Notes and sources<\/summary>/);
 });
 
 // ---- The share image still renders ------------------------------------------------------

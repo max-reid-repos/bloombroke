@@ -10,7 +10,7 @@ import {
 } from '../data/guess.js';
 import {
   shareText, shareOnX, guessStats, readState, recordResult, msToNextPuzzle, fmtCountdown,
-  matchPool, exactPick, chartSvg, rowsHtml, SQUARES, LEGEND, legendHtml, dirText,
+  matchPool, exactPick, chartSvg, rowsHtml, SQUARES, LEGEND, legendHtml, dirText, dirArrow, endLine, statsHtml,
 } from '../public/screens/guess.js';
 import { parseCommand } from '../public/app.js';
 import { findCommand } from '../public/registry.js';
@@ -225,16 +225,34 @@ test('GUESS screen parts: the chart has % and months only, rows show every try',
   const html = rowsHtml([{ ticker: 'AAPL', name: 'Apple', cells: hintCells({ ticker: 'NVDA', sector: 'TECH', move: 1, cap: 1 }, { ticker: 'AAPL', sector: 'TECH', move: 2, cap: 2 }), solved: false }]);
   assert.equal((html.match(/class="gs-row/g) || []).length, 6);
   assert.match(html, /g-hit/);
-  // A row saved before the words changed reads the new way.
+  assert.match(html, /<th scope="col">SECTOR<\/th><th scope="col">1Y MOVE<\/th><th scope="col">SIZE<\/th><th scope="col">FIRST LETTER<\/th>/);
+  // A cell: the guess's value and one arrow to the answer. The words are only a tooltip.
+  const cells = hintCells({ ticker: 'MSFT', sector: 'TECH', move: 30, cap: 100 }, { ticker: 'AAPL', sector: 'HEALTH', move: 10, cap: 400 });
+  const row = rowsHtml([{ ticker: 'AAPL', name: 'Apple', cells, solved: false }]);
+  assert.doesNotMatch(row.replace(/title="[^"]*"|<span class="offscreen">[^<]*<\/span>/g, ''), /ANSWER|Answer|DIFFERENT|SAME|CLOSE/, 'no words in the cells');
+  assert.match(row, /<span class="gs-v">\+10\.0%<\/span><span class="gs-d" aria-hidden="true">\u2191<\/span>/, 'answer higher: up');
+  assert.match(row, /<span class="gs-v">A<\/span><span class="gs-d" aria-hidden="true">\u2191<\/span>/, 'answer later in A to Z: up');
+  assert.match(row, /title="Answer smaller"><span class="gs-v">[^<]*<\/span><span class="gs-d" aria-hidden="true">\u2193</, 'answer smaller: down');
+  assert.match(row, /title="Different"><span class="gs-v">HEALTH<\/span><span class="offscreen">/, 'a sector has no arrow');
+  // Every direction the server sends, and the words of rows saved before.
+  const arrows = { 'ANSWER HIGHER': '\u2191', 'ANSWER BIGGER': '\u2191', 'ANSWER AFTER': '\u2191', 'ANSWER LOWER': '\u2193', 'ANSWER SMALLER': '\u2193', 'ANSWER BEFORE': '\u2193',
+    LATER: '\u2191', HIGHER: '\u2191', BIGGER: '\u2191', EARLIER: '\u2193', LOWER: '\u2193', SMALLER: '\u2193', SAME: '', CLOSE: '', DIFFERENT: '', OTHER: '', '--': '' };
+  for (const [d, a] of Object.entries(arrows)) assert.equal(dirArrow(d), a, d);
   const old = rowsHtml([{ ticker: 'AAPL', name: 'Apple', cells: [{ grade: 'miss', value: 'A', dir: 'LATER' }, { grade: 'miss', value: 'X', dir: 'SMALLER' }] }]);
-  assert.match(old, />ANSWER AFTER</);
-  assert.match(old, />ANSWER SMALLER</);
+  assert.match(old, /title="Answer after"><span class="gs-v">A<\/span><span class="gs-d" aria-hidden="true">\u2191</);
+  assert.match(old, /title="Answer smaller"><span class="gs-v">X<\/span><span class="gs-d" aria-hidden="true">\u2193</);
   assert.equal(dirText('SAME'), 'SAME');
-  // The legend: a few plain lines, outside the table.
-  assert.ok(LEGEND.length <= 3);
-  for (const l of LEGEND) assert.doesNotMatch(l, /\u2014|\p{Extended_Pictographic}/u);
-  assert.match(legendHtml(), /^<div class="gs-legend"><p class="gs-lh">HOW TO READ<\/p>/);
-  assert.doesNotMatch(rowsHtml([]), /HOW TO READ/);
+  // The legend: one plain line, outside the table.
+  assert.equal(LEGEND, 'Arrows point to the answer. Green: same or close. Blue: near.');
+  assert.doesNotMatch(LEGEND, /\u2014|\p{Extended_Pictographic}/u);
+  assert.equal(legendHtml(), `<p class="gs-legend">${LEGEND}</p>`);
+  assert.doesNotMatch(rowsHtml([]), /gs-legend/);
+  // The end: one line, one stats line.
+  assert.equal(endLine(3, null), 'Got it in 3.');
+  assert.equal(endLine(0, { ticker: 'UPS', name: 'United Parcel Service' }), 'It was UPS (United Parcel Service).');
+  const stats = statsHtml({ played: 4, wins: 3, winPct: 75, current: 2, max: 3 });
+  assert.match(stats, /PLAYED<\/span> <b>4<[\s\S]*WIN %<\/span> <b>75<[\s\S]*STREAK<\/span> <b>2</);
+  assert.doesNotMatch(stats, /MAX STREAK/);
 });
 
 test('GUESS copy: no emoji in the screen, no banned words, no em dashes', () => {

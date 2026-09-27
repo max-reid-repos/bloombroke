@@ -98,6 +98,15 @@ test('parser: bad input gets a plain message', () => {
   assert.deepEqual(formWords({ amount: '1,200', ticker: 'aapl', date: '2015-03', how: 'ONCE' }, NOW), ['MY', '1200', 'AAPL', '2015-03']);
   assert.deepEqual(formWords({ amount: '5', ticker: 'sbux', date: '2018', how: 'DAY', to: '2022' }, NOW), ['MY', '5', 'A', 'DAY', 'SBUX', 'SINCE', '2018', 'TO', '2022']);
   assert.throws(() => formWords({ amount: '', ticker: 'X', date: '2015' }, NOW), MineError);
+  // An empty or odd field gets a plain line about that field, never the command syntax.
+  const said = (f) => { try { formWords(f, NOW); return ''; } catch (e) { return e.message; } };
+  assert.equal(said({ amount: '', ticker: 'AAPL', date: '2015' }), 'Type an amount, like 15.');
+  assert.equal(said({ amount: 'ten', ticker: 'AAPL', date: '2015' }), 'Type the amount in whole dollars, like 15.');
+  assert.equal(said({ amount: '15', ticker: '', date: '2015', how: 'WEEK' }), 'Type a stock ticker, like AAPL.');
+  assert.equal(said({ amount: '15', ticker: 'toolong', date: '2015' }), 'TOOLONG is not a ticker. Try one like AAPL.');
+  assert.equal(said({ amount: '15', ticker: 'AAPL', date: '', how: 'WEEK' }), 'Type a year, like 2015.');
+  assert.equal(said({ amount: '15', ticker: 'AAPL', date: '' }), 'Type a date, like 2015 or 2015-03.');
+  for (const f of [{ amount: '', ticker: 'AAPL', date: '2015' }, { amount: '15', ticker: 'AAPL', date: 'x', how: 'WEEK' }]) assert.doesNotMatch(said(f), /WHATIF MY/);
 });
 
 test('labels are made from numbers, tickers and dates only: no typed words reach a card', () => {
@@ -260,7 +269,9 @@ test('free for everyone: no Pro gate, the FREE list says so', async () => {
   assert.doesNotMatch(src, /isPro|Pro feature/);
   // The YOUR OWN card and its form show for a free user.
   assert.match(ownCardHtml(), /YOUR OWN[\s\S]*Any stock</);
-  assert.match(ownFormHtml(), /data-f="amount"[\s\S]*data-f="ticker"[\s\S]*data-f="how"[\s\S]*data-f="date"/);
+  // One sentence: [$ amount] [how often] in [ticker] since [date].
+  assert.match(ownFormHtml(), /data-f="amount"[\s\S]*data-f="how"[\s\S]*>in<[\s\S]*data-f="ticker"[\s\S]*>since<[\s\S]*data-f="date"/);
+  assert.doesNotMatch(ownFormHtml(), /data-f="to"/, 'TO lives in the command only');
   // The server never gates: a free visitor (no key) gets the result.
   const d = await getWhatif(['MY', '649', 'AAPL', '2014-09-19'], { quoteImpl: quote(341.07), dailyImpl: bakedAapl, now: NOW });
   assert.equal(d.mine, true);

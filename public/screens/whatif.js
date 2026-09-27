@@ -12,7 +12,7 @@ import { esc, q, fmtNum, panel, metaNote, LOADING, nyTime } from './markets.js';
 import { toolbar, segmented } from '../kit.js';
 import { createReplay, fmtCounter, isBehind } from '../whatif-replay.js';
 import { videoSupport, makeVideo, downloadBlob, VIDEO_NEEDS } from '../whatif-video.js';
-import { parseMine, formWords, mineLabel, MINE_DOODLE, MINE_EXAMPLES } from '../whatif-mine.js';
+import { parseMine, formWords, mineLabel, fmtAmount, MINE_DOODLE, MINE_EXAMPLES } from '../whatif-mine.js';
 
 let catalogCache = null;
 async function loadCatalog(ctx) {
@@ -135,27 +135,32 @@ export function fmtMonth(key) {
   return `${MONTHS[m - 1]} ${y}`;
 }
 
-// One dry line, picked by outcome. The same command always gets the same line.
-// Hindsight only: the lines describe what happened, never what anyone should do.
+// One dry line, picked by outcome and by what was bought. The same command always gets
+// the same line. Hindsight only: the lines describe what happened, never what anyone
+// should do. QUIPS: things bought once. GADGET_QUIPS join them for gadgets only.
 export const QUIPS = {
   big: [
     'In hindsight, the company did better than the product.',
-    'The gadget is in a drawer somewhere. The stock is not.',
     'Somewhere, a shareholder thanks you for your purchase.',
-    'The receipt says you spent it. Hindsight says it grew.',
   ],
   gain: [
-    'Not bad. In hindsight, the stock did better than the gadget.',
     'This time, the stock beat the stuff.',
     'The money grew. You just were not holding it.',
-    'A decent return, on money you already spent.',
   ],
   loss: [
     'Good news: you dodged this one.',
-    'For once, spending it was the smart move.',
-    'You lost less by buying the thing.',
     'The product held up better than the stock.',
   ],
+};
+export const GADGET_QUIPS = {
+  big: ['The gadget is in a drawer somewhere. The stock is not.'],
+  gain: ['The stock did better than the gadget.'],
+  loss: ['For once, the gadget was the better buy.'],
+};
+export const HABIT_QUIPS = {
+  big: ['The habit is long gone. The shares would not be.', 'All those small buys, in hindsight, added up.'],
+  gain: ['In hindsight, the habit money grew.'],
+  loss: ['For once, spending it was the smart move.'],
 };
 export const WHATIF_TITLE = 'WHATIF: what if you had bought the stock?';
 export const HINDSIGHT_NOTE = 'Hindsight only. Past returns do not predict future returns. Not a recommendation.';
@@ -203,9 +208,10 @@ export function hashText(s) {
   for (const c of String(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
   return h >>> 0;
 }
-export function quipFor(multiple, key) {
+// kind: 'thing' | 'gadget' | 'habit' (see quipKind).
+export function quipFor(multiple, key, kind = 'thing') {
   const bucket = multiple > 5 ? 'big' : multiple >= 1 ? 'gain' : 'loss';
-  const list = QUIPS[bucket];
+  const list = kind === 'habit' ? HABIT_QUIPS[bucket] : kind === 'gadget' ? [...GADGET_QUIPS[bucket], ...QUIPS[bucket]] : QUIPS[bucket];
   return list[hashText(key) % list.length];
 }
 
@@ -215,7 +221,9 @@ export function quipFor(multiple, key) {
 
 const EXAMPLES = ['WHATIF IPHONE6 IPHONE8 LATTE:3Y', 'WHATIF MODEL3 RTX3080', 'WHATIF BEER:10Y BETTING', MINE_EXAMPLES[0]];
 const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
-export const PICKER_KEYS = 'ARROWS MOVE · SPACE PICKS · ENTER RUNS · [ ] SHELF';
+export const PICKER_KEYS = 'SPACE PICK · ENTER RUN';
+export const PICKER_KEYS_LONG = 'Arrows move. Space picks. Enter runs. [ and ] change the shelf.';
+export const PICKER_INTRO = 'Pick what you bought. See what the stock would be worth now.';
 
 export function cardHtml(p, picks) {
   const on = picks.has(p.id);
@@ -240,18 +248,30 @@ export function mineCardHtml(m) {
     <img class="wi-doodle" src="${esc(art(`doodle-${MINE_DOODLE}.webp`))}" width="384" height="384" alt="" loading="lazy" decoding="async"><span class="wi-box" aria-hidden="true">[x]</span><span class="wi-cname">${esc(mineLabel(m))}</span><span class="wi-cmeta dim">YOUR OWN</span>
   </li>`;
 }
-// The inline form: amount, stock, date, how often (and TO for a habit).
+// The inline form, one sentence: [$ 15] [a week] in [AAPL] since [2015]  ADD.
+// "once" turns "since" into "on". TO stays in the command only.
+export const FORM_HOW = [['ONCE', 'once'], ['DAY', 'a day'], ['WEEK', 'a week'], ['MONTH', 'a month']];
+export const FORM_START = 'WEEK';
+export function formHints(how) {
+  return how === 'ONCE'
+    ? { word: 'on', amount: '1200', date: '2015-03', dateTitle: 'A year, a month or a day: 2015, 2015-03 or 2015-03-02' }
+    : { word: 'since', amount: '15', date: '2015', dateTitle: 'A year or a month: 2015 or 2015-03' };
+}
 export function ownFormHtml() {
-  const field = (name, label, attrs) => `<label class="wo-field"><span>${label}</span><input ${attrs} data-f="${name}" spellcheck="false" autocomplete="off"></label>`;
+  const h = formHints(FORM_START);
+  const input = (name, label, attrs) => `<input ${attrs} data-f="${name}" aria-label="${label}" spellcheck="false" autocomplete="off">`;
   return `<div class="wi-ownform" hidden>
-      ${field('amount', 'AMOUNT $', 'type="text" inputmode="decimal" maxlength="11" placeholder="1200"')}
-      ${field('ticker', 'STOCK', 'type="text" maxlength="8" placeholder="AAPL"')}
-      <label class="wo-field"><span>HOW OFTEN</span><select data-f="how"><option value="ONCE">ONCE</option><option value="DAY">A DAY</option><option value="WEEK">A WEEK</option><option value="MONTH">A MONTH</option></select></label>
-      ${field('date', '<span data-wo="date">DATE</span>', 'type="text" maxlength="10" placeholder="2015-03"')}
-      <span class="wo-to" hidden>${field('to', 'TO (OPTIONAL)', 'type="text" maxlength="7" placeholder="2022"')}</span>
-      <button type="button" class="wi-btn wo-add" data-wo="add">ADD</button>
-      <button type="button" class="wi-btn wo-close" data-wo="close">CLOSE</button>
-      <span class="wo-msg" data-wo="msg" role="status"></span>
+      <div class="wo-line">
+        <span class="wo-amt"><span class="wo-cur" aria-hidden="true">$</span>${input('amount', 'Amount in dollars', `type="text" inputmode="numeric" maxlength="11" placeholder="${h.amount}"`)}</span>
+        <select data-f="how" aria-label="How often">${FORM_HOW.map(([v, t]) => `<option value="${v}"${v === FORM_START ? ' selected' : ''}>${t}</option>`).join('')}</select>
+        <span class="wo-w">in</span>
+        ${input('ticker', 'Stock ticker', 'type="text" class="wo-tk" maxlength="8" placeholder="AAPL" autocapitalize="characters"')}
+        <span class="wo-w" data-wo="date">${h.word}</span>
+        ${input('date', 'Date', `type="text" class="wo-dt" maxlength="10" placeholder="${h.date}" title="${h.dateTitle}"`)}
+        <button type="button" class="wi-btn wo-add" data-wo="add">ADD</button>
+        <button type="button" class="wo-close" data-wo="close" aria-label="Close" title="Close (Esc)">&times;</button>
+      </div>
+      <p class="wo-msg" data-wo="msg" role="status"></p>
     </div>`;
 }
 
@@ -259,16 +279,15 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
   let shelf = SHELVES.includes(startShelf) ? startShelf : SHELVES[0];
   const tabs = () => segmented(SHELVES.map((x) => ({ label: x, value: x })), shelf, { label: 'Shelves' });
   el.innerHTML = panel('1', WHATIF_TITLE, `
-    <p class="wi-intro">Pick the things you bought. See what that money would be worth today in the maker's stock. Or type it: ${code(EXAMPLES[0])}</p>
+    <p class="wi-intro" title="${esc(`Or type it: ${EXAMPLES[0]}`)}">${esc(PICKER_INTRO)}</p>
     <div class="wi-tabs">${toolbar({ left: tabs(), label: 'Shelves' })}</div>
     ${ownFormHtml()}
     <ul class="wi-shelf" role="listbox" aria-multiselectable="true" aria-label="Things you bought" data-own-focus></ul>
     <div class="wi-bar">
       <span class="wi-count" id="wi-count"></span>
       <span class="wi-cmd code" id="wi-cmd"></span>
-      <span class="wi-keys dim"><kbd>Space</kbd> pick <kbd>Enter</kbd> run</span>
       <button type="button" class="wi-run" id="wi-run">RUN</button>
-    </div>`, { cls: 'panel-solo wi-panel', meta: `<span class="wi-hint">${metaNote(PICKER_KEYS)}</span>` });
+    </div>`, { cls: 'panel-solo wi-panel', meta: `<span class="wi-hint">${metaNote(PICKER_KEYS, PICKER_KEYS_LONG)}</span>` });
 
   const list = el.querySelector('.wi-shelf');
   const tabBox = el.querySelector('.wi-tabs');
@@ -283,7 +302,7 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
     const n = picks.size + mine.length;
     const onceN = once.length + mine.filter((m) => m.kind === 'once').length;
     countEl.textContent = n ? `${n} PICKED${onceN ? `, ${fmtUsd(spent)} ONE-OFF` : ''}` : 'NOTHING PICKED';
-    cmdEl.textContent = n ? commandFor(picks, cat, mine) : 'WHATIF ...';
+    cmdEl.textContent = n ? commandFor(picks, cat, mine) : '';
     ctx.status(n ? `WHATIF: ${n} PICKED` : '');
   }
 
@@ -322,10 +341,11 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
   const f = (name) => form.querySelector(`[data-f="${name}"]`);
   const wo = (name) => form.querySelector(`[data-wo="${name}"]`);
   function syncForm() {
-    const habit = f('how').value !== 'ONCE';
-    form.querySelector('.wo-to').hidden = !habit;
-    wo('date').textContent = habit ? 'SINCE' : 'DATE';
-    f('date').placeholder = habit ? '2018' : '2015-03';
+    const h = formHints(f('how').value);
+    wo('date').textContent = h.word;
+    f('amount').placeholder = h.amount;
+    f('date').placeholder = h.date;
+    f('date').title = h.dateTitle;
   }
   function openForm() {
     form.hidden = false;
@@ -340,11 +360,11 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
   // Adds the purchase in the form; true when it was added.
   function addOwn() {
     try {
-      const words = formWords({ amount: f('amount').value, ticker: f('ticker').value, date: f('date').value, how: f('how').value, to: f('to').value });
+      const words = formWords({ amount: f('amount').value, ticker: f('ticker').value, date: f('date').value, how: f('how').value });
       const [item] = parseMine(words).mine;
       if (!mine.some((m) => m.id === item.id)) mine.push(item);
       wo('msg').textContent = '';
-      ['amount', 'ticker', 'date', 'to'].forEach((k) => { f(k).value = ''; });
+      ['amount', 'ticker', 'date'].forEach((k) => { f(k).value = ''; });
       showShelf(shelf, { focus: false });
       refresh();
       return true;
@@ -354,6 +374,7 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
     }
   }
   form.addEventListener('change', syncForm);
+  form.addEventListener('input', () => { wo('msg').textContent = ''; });
   wo('add').addEventListener('click', () => { if (addOwn()) closeForm(); });
   wo('close').addEventListener('click', closeForm);
   form.addEventListener('keydown', (e) => {
@@ -479,7 +500,8 @@ export function shareLinks(m, origin) {
 
 // Type sizes arrive as % of the certificate width; the CSP allows no inline styles, so
 // they are set through the DOM after render (see sizeCert).
-export function certHtml(m, links, actions = '') {
+// actions: the quiet row under the buttons. video: the SAVE VIDEO button (videoHtml).
+export function certHtml(m, links, actions = '', video = '') {
   const alt = `A certificate: ${m.ribbon}, worth ${m.big} today. ${m.spent}. ${m.holding}. ${m.multiple}.`;
   return `<figure class="wi-cert${m.loss ? ' is-loss' : ''}">
       <img class="wc-paper" src="${esc(art('certificate.webp'))}" width="1536" height="1024" alt="${esc(alt)}">
@@ -497,10 +519,12 @@ export function certHtml(m, links, actions = '') {
     </figure>
     <div class="wi-share">
       <a class="wi-btn" href="${esc(links.x)}" target="_blank" rel="noopener noreferrer">SHARE ON X</a>
+      ${video}
       <a class="wi-btn" href="${esc(links.image)}" download="bloombroke-whatif.png">DOWNLOAD IMAGE</a>
       <button type="button" class="wi-btn" data-copy="${esc(links.url)}">COPY LINK</button>
-      ${actions}
-    </div>`;
+    </div>
+    ${video ? '<p class="wi-vmsg" data-vmsg role="status"></p>' : ''}
+    ${actions}`;
 }
 
 function sizeCert(el) {
@@ -522,11 +546,69 @@ async function copyText(text) {
 }
 
 // ---- Result ---------------------------------------------------------------------
+// One hero: the number, the multiple beside it, one line of what it is. Everything else
+// (small print, worst drop, sources, the maths) sits behind one + Details toggle.
 
-function resultHtml(d, key, links) {
+const NICE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+// '2015-01' -> 'Jan 2015'; '2015-01-02' -> '2 Jan 2015'.
+export function niceMonth(key) {
+  const [y, m] = String(key || '').split('-').map(Number);
+  return y && m ? `${NICE_MONTHS[m - 1]} ${y}` : '--';
+}
+export function niceDay(iso) {
+  const [y, m, d] = String(iso || '').split('-').map(Number);
+  return y && m && d ? `${d} ${NICE_MONTHS[m - 1]} ${y}` : '--';
+}
+// "Apple Inc." -> "Apple": the company as people say it.
+export const shortCompany = (c) => String(c || '').replace(/,?\s+(Inc\.?|Corp\.?|Corporation|Ltd\.?|plc)$/i, '').trim();
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+// The one line under the big number: what was bought, when, and what was paid.
+// mine: the parsed MY items of the command (whatif-mine.js), matched to rows by id.
+// Catalogue items use the certificate's ribbon ("iPhone 6", "10 years of Big Macs",
+// "3 iPhones"), made on the server from the catalogue's short names.
+// { lead, paid }: paid is false where the lead already says the amount.
+export function heroParts(d, mine = []) {
+  const rows = d.rows || [];
+  const ribbon = d.cert?.ribbon;
+  const co = (r) => shortCompany(r.company) || r.ticker;
+  if (rows.length === 1) {
+    const r = rows[0];
+    const item = mine.find((m) => m.id === r.id);
+    if (item?.kind === 'once') return { lead: `${fmtAmount(item.amount)} in ${co(r)} on ${niceDay(r.bought)}.`, paid: false };
+    if (item) {
+      const when = item.to ? `from ${niceMonth(r.from)} to ${niceMonth(r.to)}` : `since ${niceMonth(r.from)}`;
+      return { lead: `${fmtAmount(item.amount)} a ${item.per} in ${co(r)} ${when}.`, paid: true };
+    }
+    if (r.kind === 'once') return { lead: `${ribbon || r.name}, ${niceMonth(String(r.bought).slice(0, 7))}, as ${co(r)} stock.`, paid: true };
+    return { lead: `${cap(ribbon || r.name)}, as ${co(r)} stock.`, paid: true };
+  }
+  const tickers = new Set(rows.map((r) => r.ticker));
+  const where = tickers.size === 1 ? `${co(rows[0])} stock` : `stock in ${tickers.size} companies`;
+  return { lead: `${cap(ribbon || `${rows.length} things`)}, as ${where}.`, paid: true };
+}
+
+export function heroLine(d, mine = []) {
+  const { lead, paid } = heroParts(d, mine);
+  return paid ? `${lead} You paid ${fmtUsd(d.total.paid)}.` : lead;
+}
+
+// Which quips fit: gadgets, other things bought once, habits. None for your own
+// purchases or a mix of one-offs and habits.
+export function quipKind(d, cat) {
+  const rows = d.rows || [];
+  if (!rows.length || rows.some((r) => r.mine)) return '';
+  const byId = new Map(allItems(cat).map((p) => [p.id, p]));
+  const items = rows.map((r) => byId.get(r.id));
+  if (items.some((p) => !p)) return '';
+  if (rows.every((r) => r.kind === 'monthly')) return 'habit';
+  if (rows.every((r) => r.kind === 'once')) return items.every((p) => shelvesOf(p).includes('GADGETS')) ? 'gadget' : 'thing';
+  return '';
+}
+
+function resultHtml(d, key, links, cat, mine) {
   const t = d.total;
   const dir = t.multiple >= 1 ? 'up' : 'down';
-  const pct = `${t.pct >= 0 ? '+' : '−'}${fmtNum(Math.abs(t.pct), 0)}%`;
   const rows = d.rows.map((r) => {
     const loss = r.multiple < 1;
     const bought = r.kind === 'once'
@@ -547,22 +629,31 @@ function resultHtml(d, key, links) {
   const asOf = d.asOf ? (/^\d{4}-\d{2}-\d{2}$/.test(d.asOf) ? `the ${fmtDay(d.asOf)} close` : `${nyTime(d.asOf)} ET`) : 'now';
   const notes = d.rows.map((r) => `<li><span class="wi-note-name">${esc(r.name)}</span> ${esc(r.note || '')}${r.clamped ? ` ${esc(r.startNote || 'Starts when the shares began trading.')}` : ''} <a href="${esc(r.src)}" target="_blank" rel="noopener noreferrer">source</a></li>`).join('');
   const editCmd = `WHATIF EDIT ${key.replace(/^WHATIF\s*/, '')}`;
-  // CHANGE PICKS and START OVER sit on the share row when there is a certificate.
-  const actions = `<span class="wi-actions">
+  // CHANGE PICKS and START OVER: a quiet second row under the share buttons.
+  const actions = `<div class="wi-actions">
       <a class="code" href="${esc(q(editCmd))}" data-cmd="${esc(editCmd)}">CHANGE PICKS</a>
       <a class="code" href="${esc(q('WHATIF'))}" data-cmd="WHATIF">START OVER</a>
-    </span>`;
+    </div>`;
+  const hero = heroParts(d, mine);
+  const kind = quipKind(d, cat);
+  const quip = kind ? quipFor(t.multiple, key, kind) : '';
+  const small = [
+    HINDSIGHT_NOTE,
+    riskLine(d),
+    d.rows.length > 1 ? dropList(d.rows) : '',
+    `Prices: close on purchase date, split-adjusted, price return only. Live price as of ${asOf}${d.stale ? ' (last known)' : ''}. Source: ${d.source}.`,
+    d.rows.some((r) => r.kind === 'monthly') ? HABIT_LONG : '',
+    d.replay?.cpi?.last ? jarLong(d.replay.cpi.last) : '',
+  ].filter(Boolean);
   return `
     <div class="wi-layout${d.cert ? '' : ' no-cert'}">
     <div class="wi-head">
-    <p class="wi-sentence">You spent <span class="num">${esc(fmtUsd(t.paid))}</span>. In the stock, that is <span class="num ${dir}">${esc(fmtUsd(t.value))}</span>.</p>
-    <p class="hero num"><span class="hero-value ${dir}">${esc(fmtUsd(t.value))}</span><span class="hero-unit">TODAY</span></p>
-    <p class="wi-mult num"><span class="${dir}">${esc(fmtX(t.multiple))}</span> <span class="${dir}">${esc(pct)}</span></p>
-    <p class="wi-quip">${esc(quipFor(t.multiple, key))}</p>
-    <p class="wi-risk">${esc(riskLine(d))}</p>
+    <p class="hero num wi-hero"><span class="hero-value ${dir}">${esc(fmtUsd(t.value))}</span><span class="wi-x ${dir}">${esc(fmtX(t.multiple))}</span></p>
+    <p class="wi-sentence">${esc(hero.lead)}${hero.paid ? ` You paid <span class="num wi-paid">${esc(fmtUsd(t.paid))}</span>.` : ''}</p>
+    ${quip ? `<p class="wi-quip">${esc(quip)}</p>` : ''}
     </div>
     ${replayHtml(d)}
-    ${d.cert ? `<div class="wi-certcol">${certHtml(d.cert, links, actions)}</div>` : ''}
+    ${d.cert ? `<div class="wi-certcol">${certHtml(d.cert, links, actions, videoHtml(d))}</div>` : ''}
     <div class="wi-body">
     <div class="wi-receipt">
       <table class="grid-table wi-table">
@@ -571,13 +662,11 @@ function resultHtml(d, key, links) {
         <tfoot><tr><th scope="row" class="name">Total</th><td class="wi-when"></td><td class="num">${esc(fmtUsd(t.paid))}</td><td class="wi-sh"></td><td class="num last ${dir}">${esc(fmtUsd(t.value))}</td><td class="num ${dir}">${esc(fmtX(t.multiple))}</td></tr></tfoot>
       </table>
     </div>
-    ${d.rows.length > 1 ? `<p class="wi-risk-list">${esc(dropList(d.rows))}</p>` : ''}
-    <p class="wi-source">Prices: close on purchase date, split-adjusted, price return only. Live price as of ${esc(asOf)}${d.stale ? ' (last known)' : ''}. Source: ${esc(d.source)}.</p>
     ${d.cert ? '' : actions}
-    </div>
-    </div>
-    <details class="how">
-      <summary>How is this calculated?</summary>
+    <details class="how wi-details">
+      <summary>Details</summary>
+      <ul class="how-list">${small.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+      <p class="how-h">How it is calculated</p>
       <ul class="how-list">
         <li>Shares: the price you paid, divided by the stock's split-adjusted close on the day you bought it (or the last trading day before).</li>
         <li>Worth now: those shares times today's price.</li>
@@ -587,51 +676,50 @@ function resultHtml(d, key, links) {
         <li>REPLAY: STOCK is the shares bought so far at each first-of-month close (and on each purchase day). CASH IN A JAR is the same dollars kept as cash, each deflated by CPI-U (BLS) from the month it was spent. SPENT is the running total paid.</li>
         <li>Hindsight: the list is picked after the fact. Nobody knew these results when the money was spent. Costs, taxes and currency moves are left out.</li>
       </ul>
-    </details>
-    <details class="how">
-      <summary>Notes and sources</summary>
+      <p class="how-h">Notes and sources</p>
       <ul class="how-list">${notes}</ul>
-    </details>`;
+    </details>
+    </div>
+    </div>`;
 }
 
 // ---- REPLAY ------------------------------------------------------------------------
 
-// The title strip: short notes, each with its long form as the tooltip, so it stays one
-// line at 1536 wide. The Space key hint sits on the REPLAY row.
-export const MINE_NOTE = 'YOURS: CNBC, PRICE ONLY';
-export const HABIT_NOTE = 'HABITS BUY MONTHLY';
-export const JAR_NOTE = 'JAR: CPI-U';
-export function resultMeta(d) {
-  const parts = [metaNote(HINDSIGHT_NOTE)];
-  if (d.mine) parts.push(metaNote(MINE_NOTE, 'Your own purchase: CNBC daily closes, split-adjusted, price only. Not checked against a second source.'));
-  if (d.rows.some((r) => r.kind === 'monthly')) parts.push(metaNote(HABIT_NOTE, 'Habits are bought once a month, on the first trading day. The month still running counts only the days so far.'));
-  if (d.replay?.cpi?.last) parts.push(metaNote(JAR_NOTE, `CASH IN A JAR: the same cash, deflated by CPI-U from the BLS, to ${fmtMonth(d.replay.cpi.last)}. Later months use the latest value.`));
-  return parts.join('');
+// The title strip: the small print only, short, with its exact long form as the tooltip.
+// The rest of what used to sit there is in + Details.
+export const HINDSIGHT_STRIP = 'Hindsight. Past returns do not predict future ones. Not a recommendation.';
+export const HABIT_LONG = 'Habits are bought once a month, on the first trading day. The month still running counts only the days so far.';
+export const jarLong = (last) => `CASH IN A JAR: the same cash, deflated by CPI-U from the BLS, to ${fmtMonth(last)}. Later months use the latest value.`;
+export function resultMeta() {
+  return metaNote(HINDSIGHT_STRIP, HINDSIGHT_NOTE);
 }
 const money = (n) => (n > 0 ? `−${fmtUsd(n)}` : fmtUsd(0));
 
-export function replayHtml(d, support = videoSupport()) {
+// SAVE VIDEO sits on the share row, second after SHARE ON X. Where the browser cannot
+// make one, a plain line says why instead.
+export function videoHtml(d, support = videoSupport()) {
+  if (!d.cert || !d.replay?.points?.length) return '';
+  return support
+    ? '<button type="button" class="wi-btn" data-video>SAVE VIDEO</button>'
+    : `<span class="wi-vneeds">${esc(VIDEO_NEEDS)}</span>`;
+}
+
+// The race: a date, the three lines' names and values in their colours, and a small
+// REPLAY control, over the chart.
+export function replayHtml(d) {
   const pts = d.replay?.points;
   if (!pts?.length) return '';
   const last = pts[pts.length - 1];
   const label = `Replay from ${fmtDay(pts[0].d)} to today: stock ${fmtUsd(last.stock)}, cash in a jar ${fmtUsd(last.jar)}, spent ${fmtUsd(last.spent)}.`;
-  const video = !d.cert ? '' : support
-    ? '<button type="button" class="wi-btn wr-btn" data-video>SAVE VIDEO</button>'
-    : `<span class="wr-msg">${esc(VIDEO_NEEDS)}</span>`;
   return `<section class="wi-replay" aria-label="Replay">
       <div class="wr-head">
         <span class="wr-date num" data-wr="date">${esc(fmtDay(last.d))}</span>
         <span class="wr-key wr-stock">STOCK <span class="num" data-wr="stock">${esc(fmtUsd(last.stock))}</span></span>
         <span class="wr-key wr-jar">CASH IN A JAR <span class="num" data-wr="jar">${esc(fmtUsd(last.jar))}</span></span>
         <span class="wr-key wr-spent">SPENT <span class="num" data-wr="spent">${esc(money(last.spent))}</span></span>
-        <span class="wr-actions">
-          <span class="wi-hint dim"><kbd>Space</kbd> replay</span>
-          <button type="button" class="wi-btn wr-btn" data-replay>REPLAY</button>
-          ${video}
-        </span>
+        <button type="button" class="wr-play" data-replay title="Replay (Space)">REPLAY</button>
       </div>
       <canvas class="wr-canvas" role="img" aria-label="${esc(label)}"></canvas>
-      <p class="wr-msg" data-wr="msg" role="status"></p>
     </section>`;
 }
 
@@ -642,17 +730,15 @@ function setupReplay(el, d, ctx) {
   const last = pts[pts.length - 1];
   const $ = (k) => box.querySelector(`[data-wr="${k}"]`);
   const hero = el.querySelector('.hero-value');
-  const unit = el.querySelector('.hero-unit');
+  const mult = el.querySelector('.wi-x');
+  const paid = el.querySelector('.wi-paid');
   const cert = el.querySelector('.wi-cert');
   const certBig = cert?.querySelector('.wc-big');
   const certSpent = cert?.querySelector('.wc-l1');
-  const [sPaid, sValue] = el.querySelectorAll('.wi-sentence .num');
-  const [mMult, mPct] = el.querySelectorAll('.wi-mult span');
   // Everything that rolls, with its final text and classes, put back exactly at the end.
-  const rolling = [hero, sPaid, sValue, mMult, mPct, certBig, certSpent].filter(Boolean);
+  const rolling = [hero, mult, paid, certBig, certSpent].filter(Boolean);
   const finals = rolling.map((n) => [n, n.textContent, n.className]);
   const setDir = (n, dir) => { n.classList.toggle('up', dir === 'up'); n.classList.toggle('down', dir === 'down'); };
-  const pctText = (x) => `${x >= 1 ? '+' : '−'}${fmtNum(Math.abs((x - 1) * 100), 0)}%`;
   const show = (f) => {
     $('date').textContent = f.done ? fmtDay(last.d) : fmtCounter(f.t);
     $('stock').textContent = fmtUsd(f.stock);
@@ -660,17 +746,13 @@ function setupReplay(el, d, ctx) {
     $('spent').textContent = money(f.spent);
     if (f.done) {
       for (const [n, text, cls] of finals) { n.textContent = text; n.className = cls; }
-      if (unit) unit.hidden = false;
       return;
     }
     const dir = isBehind(f) ? 'down' : 'up';
     const x = f.spent > 0 ? f.stock / f.spent : NaN;
     if (hero) { hero.textContent = fmtUsd(f.stock); setDir(hero, dir); }
-    if (unit) unit.hidden = true; // TODAY only once the race is at today
-    if (sPaid) sPaid.textContent = fmtUsd(f.spent);
-    if (sValue) { sValue.textContent = fmtUsd(f.stock); setDir(sValue, dir); }
-    if (mMult) { mMult.textContent = fmtX(x); setDir(mMult, dir); }
-    if (mPct) { mPct.textContent = Number.isFinite(x) ? pctText(x) : '--'; setDir(mPct, dir); }
+    if (mult) { mult.textContent = fmtX(x); setDir(mult, dir); }
+    if (paid) paid.textContent = fmtUsd(f.spent);
     if (certBig) certBig.textContent = fmtUsd(f.stock);
     if (certSpent) certSpent.textContent = `You spent ${fmtUsd(f.spent)}`;
     cert?.classList.toggle('is-behind', dir === 'down');
@@ -701,9 +783,9 @@ function setupReplay(el, d, ctx) {
   document.addEventListener('keydown', onKey, true);
   ctx.onCleanup?.(() => { document.removeEventListener('keydown', onKey, true); player.destroy(); });
 
-  const vbtn = box.querySelector('[data-video]');
+  const vbtn = el.querySelector('[data-video]');
   vbtn?.addEventListener('click', async () => {
-    const msg = $('msg');
+    const msg = el.querySelector('[data-vmsg]');
     vbtn.disabled = true;
     msg.textContent = 'MAKING VIDEO';
     try {
@@ -746,7 +828,7 @@ export function render(el, cmd, ctx) {
     return ctx.fetchJSON(`/api/whatif?${new URLSearchParams({ c: plan.words.join(' ') })}`, { signal: ctx.signal }).then((d) => {
       if (d.picker) { renderPicker(el, ctx, cat, plan.picks, plan.shelf, plan.mine); return; }
       const links = d.cert ? shareLinks(d.cert, location.origin) : null;
-      el.innerHTML = panel('1', WHATIF_TITLE, resultHtml(d, key, links), { cls: 'panel-solo wi-panel', meta: resultMeta(d) });
+      el.innerHTML = panel('1', WHATIF_TITLE, resultHtml(d, key, links, cat, plan.mine), { cls: 'panel-solo wi-panel', meta: resultMeta(d) });
       sizeCert(el);
       setupReplay(el, d, ctx);
       el.querySelector('[data-copy]')?.addEventListener('click', async (e) => {

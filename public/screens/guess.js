@@ -177,25 +177,36 @@ export function chartSvg(series, w, h) {
   </svg>`;
 }
 
-const HEADS = ['SECTOR', '1Y MOVE', 'SIZE', 'LETTER'];
+const HEADS = ['SECTOR', '1Y MOVE', 'SIZE', 'FIRST LETTER'];
 
 // Rows saved before the hints said "answer ..." (games still open on the day it changed).
 const OLD_DIRS = { OTHER: 'DIFFERENT', HIGHER: 'ANSWER HIGHER', LOWER: 'ANSWER LOWER', BIGGER: 'ANSWER BIGGER', SMALLER: 'ANSWER SMALLER', LATER: 'ANSWER AFTER', EARLIER: 'ANSWER BEFORE' };
 export const dirText = (d) => OLD_DIRS[d] || d;
 
-// How to read the rows: under the table, never in it.
-export const LEGEND = [
-  'Each row is your guess against the answer.',
-  'Green: same as the answer, or close.',
-  'Answer smaller: the mystery stock is smaller than your guess.',
-];
+// One arrow per cell, pointing to the answer: up when the answer is higher, bigger or
+// later in A to Z, down when it is lower, smaller or earlier. No arrow when it is the
+// same, close, or has no direction (a sector). The words stay as the tooltip.
+const UP = new Set(['ANSWER HIGHER', 'ANSWER BIGGER', 'ANSWER AFTER']);
+const DOWN = new Set(['ANSWER LOWER', 'ANSWER SMALLER', 'ANSWER BEFORE']);
+export function dirArrow(d) {
+  const t = dirText(d);
+  return UP.has(t) ? '\u2191' : DOWN.has(t) ? '\u2193' : '';
+}
+const sayDir = (d) => { const t = dirText(d); return t && t !== '--' ? t.charAt(0) + t.slice(1).toLowerCase() : ''; };
+
+// How to read the rows: one line under the table, never in it.
+export const LEGEND = 'Arrows point to the answer. Green: same or close. Blue: near.';
 export function legendHtml() {
-  return `<div class="gs-legend"><p class="gs-lh">HOW TO READ</p>${LEGEND.map((l) => `<p>${esc(l)}</p>`).join('')}</div>`;
+  return `<p class="gs-legend">${esc(LEGEND)}</p>`;
 }
 
 // The guess rows, then the tries still open as blank rows.
 export function rowsHtml(rows, tries = TRIES) {
-  const cell = (c) => `<td class="gs-cell g-${esc(c.grade)}"><span class="gs-v">${esc(c.value)}</span><span class="gs-d">${esc(dirText(c.dir))}</span></td>`;
+  const cell = (c) => {
+    const arrow = dirArrow(c.dir);
+    const say = sayDir(c.dir);
+    return `<td class="gs-cell g-${esc(c.grade)}"${say ? ` title="${esc(say)}"` : ''}><span class="gs-v">${esc(c.value)}</span>${arrow ? `<span class="gs-d" aria-hidden="true">${arrow}</span>` : ''}${say ? `<span class="offscreen">${esc(say)}</span>` : ''}</td>`;
+  };
   const done = rows.map((r, i) => `<tr class="gs-row${r.solved ? ' is-solved' : ''}">
       <td class="num gs-i">${i + 1}</td>
       <th scope="row" class="gs-g"><span class="gs-tk">${esc(r.ticker)}</span><span class="gs-nm">${esc(r.name)}</span></th>
@@ -211,13 +222,19 @@ export function rowsHtml(rows, tries = TRIES) {
 
 export function statsHtml(s) {
   const item = (k, v) => `<span class="gs-stat"><span class="gs-sk">${k}</span> <b>${esc(v)}</b></span>`;
-  return `<div class="gs-stats">${item('PLAYED', String(s.played))}${item('WIN %', s.winPct === null ? '--' : String(s.winPct))}${item('STREAK', String(s.current))}${item('MAX STREAK', String(s.max))}</div>`;
+  return `<p class="gs-stats">${item('PLAYED', String(s.played))}${item('WIN %', s.winPct === null ? '--' : String(s.winPct))}${item('STREAK', String(s.current))}</p>`;
+}
+
+// The end line: "Got it in 3." or "It was UPS (United Parcel Service)."
+export function endLine(solvedIn, answer) {
+  if (solvedIn) return `Got it in ${solvedIn}.`;
+  return answer ? `It was ${answer.ticker} (${answer.name}).` : '';
 }
 
 export function render(el, cmd, ctx) {
   const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
   el.innerHTML = `<div class="grid grid-guess">
-    ${panel('1', 'Guess', LOADING, { metaId: 'gs-meta', meta: metaNote('PAST PRICES ONLY · 1 YEAR · % CHANGE', 'The mystery stock: its daily closes over the last year (CNBC), as percent change from the first close.'), bodyCls: 'flush', cls: 'gs-chart-panel' })}
+    ${panel('1', 'Guess', LOADING, { metaId: 'gs-meta', meta: metaNote('MYSTERY STOCK · 1 YEAR · % CHANGE', 'Past prices only: its daily closes over the last year (CNBC), as percent change from the first close.'), bodyCls: 'flush', cls: 'gs-chart-panel' })}
     ${panel('2', 'Your guesses', LOADING, { metaId: 'gs-left', cls: 'gs-play', bodyCls: 'flush' })}
   </div>`;
   const [chartBody, playBody] = el.querySelectorAll('.panel-body');
@@ -247,7 +264,7 @@ export function render(el, cmd, ctx) {
     return `<form class="gs-form add-form" data-own-focus autocomplete="off">
       <div class="gs-field">
         <input class="add-in gs-in" name="g" type="text" maxlength="40" spellcheck="false" autocapitalize="characters" autocorrect="off"
-          placeholder="Ticker or company" aria-label="Your guess: an S&P 100 ticker or company" role="combobox" aria-autocomplete="list" aria-controls="gs-sug" aria-expanded="false">
+          placeholder="Type a company or ticker" aria-label="Your guess: an S&P 100 ticker or company" role="combobox" aria-autocomplete="list" aria-controls="gs-sug" aria-expanded="false">
         <ul id="gs-sug" class="gs-sug" role="listbox" hidden></ul>
       </div>
       <button type="submit" class="chip gs-go">GUESS</button>
@@ -256,26 +273,26 @@ export function render(el, cmd, ctx) {
 
   function endHtml() {
     const s = guessStats(state.results, game.n);
-    const who = answer
-      ? `<p class="gs-answer"><span class="gs-ak">ANSWER</span> <a class="gs-tk" href="${esc(q(answer.ticker))}" data-cmd="${esc(answer.ticker)}">${esc(answer.ticker)}</a> <span class="gs-nm">${esc(answer.name)}</span></p>
-         <p class="gs-hint">Type <a class="code" href="${esc(q(answer.ticker))}" data-cmd="${esc(answer.ticker)}">${esc(answer.ticker)}</a> for its real chart.</p>`
-      : '<p class="gs-answer loading">LOADING...</p>';
+    const who = solved()
+      ? `<p class="gs-result">${esc(endLine(game.rows.length, answer))}</p>`
+      : answer
+        ? `<p class="gs-result">It was <a class="gs-tk" href="${esc(q(answer.ticker))}" data-cmd="${esc(answer.ticker)}" title="Open its real chart">${esc(answer.ticker)}</a> (${esc(answer.name)}).</p>`
+        : '<p class="gs-result loading">LOADING...</p>';
     return `<div class="gs-end">
-      <p class="gs-result">${solved() ? `SOLVED IN ${game.rows.length}/${TRIES}` : `NOT THIS TIME X/${TRIES}`}</p>
       ${who}
-      <p class="gs-next">NEXT PUZZLE #${game.n + 1} IN <span class="gs-cd">${fmtCountdown(msToNextPuzzle(Date.now()))}</span></p>
       ${statsHtml(s)}
       <div class="gs-share">
         <button type="button" class="pf-btn gs-copy">COPY RESULT</button>
         <a class="chip gs-x" href="${esc(shareOnX(shareText(game.n, game.rows, solved())))}" target="_blank" rel="noopener">SHARE ON X</a>
+        <span class="gs-next">NEXT IN <span class="gs-cd">${fmtCountdown(msToNextPuzzle(Date.now()))}</span></span>
       </div>
     </div>`;
   }
 
   function paint() {
     const done = isDone();
-    left.textContent = done ? (solved() ? 'SOLVED' : 'OUT OF TRIES') : `${TRIES - game.rows.length} OF ${TRIES} TRIES LEFT`;
-    playBody.innerHTML = `${done ? '' : formHtml()}${rowsHtml(game.rows)}${done ? endHtml() : ''}${legendHtml()}`;
+    left.textContent = done ? '' : `GUESS ${game.rows.length + 1} OF ${TRIES}`;
+    playBody.innerHTML = `${done ? '' : formHtml()}${rowsHtml(game.rows)}${legendHtml()}${done ? endHtml() : ''}`;
     if (!done && !coarse) playBody.querySelector('.gs-in')?.focus();
   }
 
