@@ -36,8 +36,15 @@ import { getWeird, getGauge, startWeirdPrewarm, FAST_WAIT } from './data/weird/i
 import { makeWeirdCards, weirdCommand } from './lib/og-weird.js'; // WEIRD share cards
 import { mountWhyCards } from './lib/og-why.js'; // WHY share cards
 import { getWhy } from './data/why.js'; // WHY share cards
+// --- Provenance: the envelope on every /api answer, DATA, STATUS, CHANGES, the EDGAR watcher ---
+import { provenanceJson, mountProvenanceRoutes } from './lib/provenance.js';
+import { GAUGES } from './data/weird/index.js';
+import { startEdgarWatch } from './data/edgarwatch.js';
+// --- end Provenance ---
 import { siteCounters, mountCounters, makeCountGate } from './lib/counters.js'; // BBRK site numbers
 const countGate = makeCountGate(); // BBRK: a few counts per IP a minute, no repeats
+const embedGate = makeCountGate({ max: 10 }); // BBRK: an embed page once per IP a minute
+import { makeDataFast } from './lib/datafast.js'; // BBRK audience: DataFast totals, DATAFAST_API_KEY
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
@@ -54,6 +61,7 @@ app.use((req, res, next) => {
   res.set(HEADERS);
   next();
 });
+app.use('/api', provenanceJson()); // Provenance: { source, as_of, age_seconds, delay, ... } on every JSON answer
 
 app.get('/api/markets', async (req, res) => {
   try {
@@ -326,7 +334,7 @@ mountGuessCard(app, { todayPuzzle: () => guessGame.todayPuzzle() });
 
 // BBRK (lib/counters.js): the site's own daily totals, in the Pro database.
 const pro = startPro(app, { dir, counters: siteCounters });
-mountCounters(app, { counters: siteCounters, mode: pro?.mode || null, publicUrl: process.env.PUBLIC_URL || 'https://bloombroke.com' });
+mountCounters(app, { counters: siteCounters, mode: pro?.mode || null, publicUrl: process.env.PUBLIC_URL || 'https://bloombroke.com', audience: makeDataFast() });
 
 // --- MCP (lib/mcp/): POST /mcp, public-domain data only, and /llms.txt ---
 import { mountMcp } from './lib/mcp/server.js';
@@ -335,6 +343,14 @@ siteCounters.enable('mcp_call'); // BBRK: MCP tool calls, a count only
 mountMcp(app, { count: (n) => siteCounters.bump(n) });
 mountLlmsTxt(app);
 // --- end MCP ---
+
+// Provenance: /api/data (DATA), /api/status (STATUS), /api/changes (CHANGES).
+let edgarWatch = null;
+mountProvenanceRoutes(app, {
+  gauges: GAUGES.map((g) => ({ id: g.id, source: g.source })),
+  weird: async () => (await getWeird({ wait: 0 })).gauges,
+  edgar: () => edgarWatch?.stats() || null,
+});
 
 // --- NO SUCH TICKER. YET. (lib/og-nosuch.js): GRAVEYARD, IPO IT and their share cards ---
 import { mountNoSuch } from './lib/og-nosuch.js';
@@ -398,7 +414,7 @@ const HOME = withCanonical(INDEX, `${SITE}/`);
 // /terms, /privacy, /disclaimer: plain server-rendered pages, text in legal/*.md.
 mountLegal(app, { build: BUILD });
 // /embed/*: the only pages other sites may frame (lib/embed-pages.js).
-mountEmbeds(app, { build: BUILD, getCert: (c) => getCert(c, ogDeps), catalog });
+mountEmbeds(app, { build: BUILD, getCert: (c) => getCert(c, ogDeps), catalog, onLoad: (req) => embedGate.allow(req, `embed:${req.originalUrl}`) && siteCounters.bump('embed_load') });
 function sendIndex(res, status = 200, html = INDEX) {
   res.status(status).set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }).send(html);
 }
@@ -506,4 +522,6 @@ app.listen(PORT, HOST, () => {
   // SCREEN's P/E and dividend numbers: loaded in the background, so no one waits on a cold cache.
   startScreenPrewarm();
   startWeirdPrewarm(); // WEIRD: refresh gauges with no value or an old one, staggered
+  // New SEC filings drop that company's cached SEC data (EDGAR_WATCH=0 turns it off).
+  if (process.env.EDGAR_WATCH !== '0') edgarWatch = startEdgarWatch();
 });

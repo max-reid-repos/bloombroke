@@ -461,6 +461,24 @@ export const REGISTRY = [
     syntax: 'FEEDBACK', examples: ['FEEDBACK'], keywords: ['feedback', 'idea', 'suggestion', 'bug', 'contact', 'report'],
     source: 'Built in', delay: 'None',
   },
+  // --- Provenance (screens/data.js, status.js, changes.js) ---
+  {
+    name: 'DATA', aliases: ['SOURCES'], category: 'Legal', summary: 'Every data source: licence, delay, age right now, known gaps',
+    syntax: 'DATA [<dataset>]', examples: ['DATA', 'DATA CPI'], keywords: ['sources', 'data sources', 'licence', 'license', 'delay', 'provenance', 'where from', 'attribution'],
+    options: [['<dataset>', 'Opens the table on that row (the dot by the clock links there)']],
+    source: 'Built in; ages from the server caches', delay: 'Live',
+  },
+  {
+    name: 'STATUS', category: 'Legal', summary: 'Is each data source up right now',
+    syntax: 'STATUS', examples: ['STATUS'], keywords: ['status', 'uptime', 'down', 'outage', 'health', 'broken'],
+    source: 'Built in; from the server caches', delay: 'Live',
+  },
+  {
+    name: 'CHANGES', aliases: ['CHANGELOG'], category: 'Legal', summary: 'What changed on Bloombroke, by day',
+    syntax: 'CHANGES', examples: ['CHANGES'], keywords: ['changelog', 'release notes', 'new features', 'updates', 'what is new'],
+    source: 'Built in', delay: 'None',
+  },
+  // --- end Provenance ---
   {
     name: 'SPONSOR', category: 'Legal', summary: 'Sponsors: lines that rotate in the status bar, no tracking, and who we do not take',
     syntax: 'SPONSOR', examples: ['SPONSOR'], keywords: ['sponsor', 'sponsored', 'advertise', 'ads'],

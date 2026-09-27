@@ -647,6 +647,7 @@ function resultHtml(d, key, links, cat, mine) {
     `Prices: close on purchase date, split-adjusted, price return only. Live price as of ${asOf}${d.stale ? ' (last known)' : ''}. Source: ${d.source}.`,
     d.rows.some((r) => r.kind === 'monthly') ? HABIT_LONG : '',
     d.replay?.cpi?.last ? jarLong(d.replay.cpi.last) : '',
+    d.replay?.cpi?.gap || '', // a month BLS never published (Oct 2025), carried forward
   ].filter(Boolean);
   return `
     <div class="wi-layout${d.cert ? '' : ' no-cert'}">

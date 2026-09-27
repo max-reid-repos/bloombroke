@@ -109,11 +109,12 @@ test('getQuote: unknown ticker is null; registry names come from the shared batc
   };
   const qs = makeQuotes({ fetchImpl });
   assert.equal(await qs.getQuote('zzzzz'), null);
+  assert.equal(urls.length, 2, 'an unknown symbol is asked twice before it is unknown');
   const spx = await qs.getQuote('SPX');
   assert.equal(spx.ticker, 'SPX');
   assert.equal(spx.kind, 'index');
   assert.equal(spx.realTime, true);
-  assert.ok(new URL(urls[1]).searchParams.get('symbols').split('|').includes('.SPX'));
+  assert.ok(new URL(urls[2]).searchParams.get('symbols').split('|').includes('.SPX'));
   const gold = await qs.getQuote('gold');
   assert.deepEqual([gold.ticker, gold.kind, gold.realTime, gold.label], ['GOLD', 'spot', true, 'Spot gold (XAU)']);
   const fut = await qs.getQuote('goldfutures');
@@ -121,11 +122,11 @@ test('getQuote: unknown ticker is null; registry names come from the shared batc
   await qs.getQuote('EUR/USD');
   await qs.getQuotes();
   await qs.getFxMajors();
-  assert.equal(urls.length, 2, 'one batch call serves every registry screen');
+  assert.equal(urls.length, 3, 'one batch call serves every registry screen');
   const aapl = await qs.getQuote('aapl');
   assert.equal(aapl.kind, 'stock');
   assert.equal(await qs.getQuote('bad|sym'), null);
-  assert.equal(urls.length, 3, 'bad shapes never reach the source');
+  assert.equal(urls.length, 4, 'bad shapes never reach the source');
 });
 
 test('GOLD and SILVER are spot (real time); the COMEX futures keep their own names (real CNBC rows)', async () => {

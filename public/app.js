@@ -26,6 +26,7 @@ import { matchInstrument, searchInstruments, instrumentById } from './instrument
 import { edgeFade } from './kit.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { updatedTitle } from './freshness.js';
+import { dotTitle, popoverHtml } from './provenance.js'; // Provenance: the dot's tooltip and list
 import { EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra, urlCommand, isSecret } from './commands.js';
 import { getTape, loadTapeRows, bareKey, looksLikeKey, bareGift, getSeat, isPro } from './pro.js';
 // --- Pro structure: GIFT, REDEEM, CHAT, SPONSOR, FEEDBACK ---
@@ -33,6 +34,7 @@ import { giftCommand, redeemCommand, parseRedeem } from './screens/pro.js';
 import * as chatScreen from './screens/chat.js';
 import * as sponsorScreen from './screens/sponsor.js';
 import { stripItems, mountStrip } from './sponsor-strip.js';
+import { countOnly, stripShownBatch } from './goal.js'; // BBRK: sponsor strip shown and clicked
 import * as feedbackScreen from './screens/feedback.js';
 // --- end Pro structure ---
 import { ensureConsent, consentNeeded } from './consent.js';
@@ -728,11 +730,55 @@ function boot() {
     freshEl.setAttribute('aria-label', title || 'No data on this screen');
   }
   let fresh = null; // { iso, stale, at, every } for the screen on show
-  function paintFresh(now = Date.now()) {
-    if (!fresh) return;
-    const dot = freshDot(fresh.iso, fresh.stale || freshOverdue(fresh, now));
-    setFresh(dot.state, dot.title);
+  // --- Provenance: the envelopes of this screen's answers (lib/provenance.js), one per
+  // URL, newest kept. The dot's tooltip names the worst; a click lists them all.
+  const provs = new Map();
+  let provGen = 0;
+  function noteProv(url, body) {
+    if (!body?.provenance) return;
+    provs.set(String(url).split('&_=')[0], { ...body.provenance, receivedAt: Date.now(), stale: Boolean(body.stale) });
+    if (provs.size > 40) provs.delete(provs.keys().next().value);
+    paintFresh();
   }
+  function paintFresh(now = Date.now()) {
+    const list = [...provs.values()];
+    if (!fresh && !list.length) return;
+    const stale = fresh ? fresh.stale || freshOverdue(fresh, now) : list.some((p) => p.stale);
+    const dot = freshDot(fresh?.iso, stale);
+    setFresh(dot.state, list.length ? dotTitle(list, { stale, now }) : dot.title);
+    if (!provPop.hidden) provPop.innerHTML = popoverHtml(list, { now, toQuery });
+  }
+  // The dot is a button: a click (or Enter) opens the list of sources, Esc or a click
+  // elsewhere closes it.
+  const provPop = document.createElement('div');
+  provPop.id = 'prov-pop';
+  provPop.className = 'prov-pop';
+  provPop.hidden = true;
+  provPop.setAttribute('role', 'dialog');
+  provPop.setAttribute('aria-label', 'Where this screen\'s data comes from');
+  document.body.appendChild(provPop);
+  freshEl.setAttribute('role', 'button');
+  freshEl.tabIndex = 0;
+  freshEl.setAttribute('aria-haspopup', 'dialog');
+  function closeProv() { provPop.hidden = true; freshEl.setAttribute('aria-expanded', 'false'); }
+  function toggleProv() {
+    if (!provPop.hidden) { closeProv(); return; }
+    const list = [...provs.values()];
+    provPop.innerHTML = list.length ? popoverHtml(list, { toQuery }) : `<a class="pv-all" href="${toQuery('DATA')}" data-cmd="DATA">All sources: DATA</a>`;
+    const r = freshEl.getBoundingClientRect();
+    provPop.style.top = `${Math.round(r.bottom + 6)}px`;
+    provPop.hidden = false;
+    // Right edge by the dot, but always whole on screen (a phone is narrow).
+    const w = provPop.offsetWidth;
+    provPop.style.left = `${Math.round(Math.max(8, Math.min(window.innerWidth - w - 8, r.right + 8 - w)))}px`;
+    freshEl.setAttribute('aria-expanded', 'true');
+  }
+  freshEl.addEventListener('click', (e) => { e.stopPropagation(); toggleProv(); });
+  freshEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleProv(); } });
+  document.addEventListener('click', (e) => { if (!provPop.hidden && !provPop.contains(e.target) && !freshEl.contains(e.target)) closeProv(); }, true);
+  provPop.addEventListener('click', () => setTimeout(closeProv, 0));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !provPop.hidden) { closeProv(); freshEl.focus(); } });
+  // --- end Provenance ---
   function setUpdated(iso, stale) {
     const now = Date.now();
     const gap = fresh?.at ? now - fresh.at : 0;
@@ -847,6 +893,7 @@ function boot() {
   const sponsorEl = $('status-sponsor');
   let sponsorCfg = null;
   let strip = null; // the rotating sponsor strip (sponsor-strip.js)
+  let shown = null; // BBRK: lines shown, sent in batches
   let stripKey = '';
   function paintPro() {
     const seat = embed ? null : getSeat();
@@ -857,7 +904,8 @@ function boot() {
     if (key === stripKey) return;
     stripKey = key;
     strip?.stop();
-    strip = items.length ? mountStrip(sponsorEl, items, { reduceMotion: reduceMotion.matches, isHidden: () => document.hidden }) : null;
+    if (items.length) shown ||= stripShownBatch();
+    strip = items.length ? mountStrip(sponsorEl, items, { reduceMotion: reduceMotion.matches, isHidden: () => document.hidden, onShow: () => shown.add(), onAnyClick: () => countOnly('strip_click') }) : null;
     if (!items.length) sponsorEl.innerHTML = '';
     sponsorEl.hidden = !items.length;
   }
@@ -989,6 +1037,7 @@ function boot() {
     maxPanel = null;
     document.body.classList.remove('has-max-panel');
     fresh = null;
+    provs.clear(); provGen += 1; closeProv(); // Provenance: a new screen starts a new list
     setFresh('none');
     if (screenAbort) screenAbort.abort();
     screenAbort = new AbortController();
@@ -1023,8 +1072,11 @@ function boot() {
     if (starTicker) paintStar();
     if (cmd.name === 'MENU' && fromUrl) setTimeout(() => menu?.open(), 0);
 
+    const gen = provGen;
     const ctx = {
-      run, fetchJSON, signal, escapeHtml, toQuery, store, copy: copyText, previous,
+      run, signal,
+      // Provenance: every answer's envelope goes on this screen's list for the dot.
+      fetchJSON: (url, opts) => fetchJSON(url, opts).then((body) => { if (gen === provGen) noteProv(url, body); return body; }), escapeHtml, toQuery, store, copy: copyText, previous,
       tickerFunctions: (t) => tickerFunctions(t),
       commands: COMMANDS, soon: SOON, fkeys: FKEYS,
       status: setStatus, updated: setUpdated,
@@ -1155,7 +1207,9 @@ function boot() {
       if (signal.aborted) return;
       if (found.confident) {
         replaceUrl(found.command);
-        render(found.command, { fromUrl, checked: true, note: resolvedNote(found.command, found.from) });
+        // The typed ticker itself (the symbol list vouched for it): no "Showing XLY (from 'xly')".
+        const same = found.command === typed;
+        render(found.command, { fromUrl, checked: true, note: same ? '' : resolvedNote(found.command, found.from) });
         return;
       }
       await showDidYouMean(view, typed, found, ticker, signal);

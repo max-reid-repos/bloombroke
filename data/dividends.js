@@ -12,7 +12,7 @@
 // one of them, or a different amount) gets no total, with a note, never a guess.
 
 import { createCache } from './cache.js';
-import { normalizeTicker, fetchCnbcRows, tickerSource } from './quotes.js';
+import { normalizeTicker, fetchStockRows, tickerSource } from './quotes.js';
 import { getNasdaq, money, usDay, iso } from './lists.js';
 import { getSplitHistory, factorAfter } from './split-history.js';
 
@@ -117,7 +117,7 @@ export function makeDividends({ fetchImpl = globalThis.fetch, cache = createCach
       got = await cache.cached(`dividends:${ticker}`, TTL, async () => {
         const d = parseDividends(await getNasdaq(fetchImpl, `quote/${encodeURIComponent(ticker)}/dividends?assetclass=stocks`));
         if (d && d.rows.length) return { ...d, history: true };
-        const rows = await fetchCnbcRows(fetchImpl, [tickerSource(ticker)]);
+        const rows = await fetchStockRows(fetchImpl, [tickerSource(ticker)]);
         const c = parseCnbcDividend(rows[0]);
         if (!c && !d) return null;
         return { yield: c?.yield ?? d?.yield ?? null, annual: c?.annual ?? d?.annual ?? null, exDate: d?.exDate || null, payDate: d?.payDate || null, rows: [], history: false };

@@ -269,12 +269,24 @@
   .co-table .name { max-width: 0; }
 }
 
-/* ---- BBRK: our own site numbers, drawn like a quote (screens/bbrk.js) ---- */
+/* ---- BBRK: our own site numbers for sponsors, drawn like a quote (screens/bbrk.js) ---- */
 .bb-panel > .panel-body { padding: 10px 12px; }
-.bb-panel .bb-table { margin-top: 16px; max-width: 760px; }
+.bb-grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 20px; align-items: start; }
+.bb-globe { margin: 0; text-align: center; font-size: 11px; }
+.bb-globe canvas { display: block; width: 100%; aspect-ratio: 1; --globe-land: hsla(201, 100%, 71%, .38); --globe-hot: var(--text); --globe-rim: hsla(201, 100%, 71%, .22); }
+.bb-globe figcaption { margin-top: 4px; letter-spacing: .04em; }
+@media (max-width: 900px) { .bb-grid { grid-template-columns: minmax(0, 1fr); } .bb-globe { width: min(240px, 100%); margin: 0 auto; } }
+.bb-spark { display: flex; align-items: flex-end; gap: 8px; margin-top: 8px; font-size: 11px; }
+.bb-tops { display: grid; gap: 4px; margin-top: 14px; max-width: 760px; }
+.bb-tops > div { display: grid; grid-template-columns: 11ch minmax(0, 1fr); gap: 12px; }
+.bb-tops dt { color: var(--dim); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.bb-tops dd { color: var(--text-2); overflow-wrap: anywhere; }
+.bb-panel .bb-table { margin-top: 12px; max-width: 760px; }
 .bb-table th[scope="row"] { text-align: left; font-weight: 400; color: var(--text-2); }
+.bb-src { margin-top: 10px; }
 @media (max-width: 639px) {
+  .bb-spark .spark { width: 160px; }
   .bb-panel .bb-table { table-layout: fixed; }
-  .bb-table th, .bb-table td { padding-left: 4px; padding-right: 4px; font-size: 11px; white-space: normal; }
-  .bb-table thead th:first-child { width: 50%; }
+  .bb-table th, .bb-table td { padding-left: 4px; padding-right: 4px; font-size: 11px; }
+  .bb-table thead th:first-child { width: 55%; }
 }

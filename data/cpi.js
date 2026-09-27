@@ -16,6 +16,10 @@ const BLS_URL = 'https://api.bls.gov/publicAPI/v1/timeseries/data/CUUR0000SA0';
 const CPI_TTL = 24 * 60 * 60_000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const CPI_EXAMPLES = ['CPI 100 2015', 'CPI 1000 1990', 'CPI 20 1970'];
+// Months BLS never published. The screen shows them as -- with the reason; nothing fills them in.
+export const CPI_GAPS = [
+  { month: '2025-10', label: 'Oct 2025', reason: 'Not published: the US government shutdown stopped BLS price collection, and BLS never produced an October 2025 CPI.' },
+];
 
 export class CpiError extends Error {
   constructor(code, message) {
@@ -96,6 +100,7 @@ export function makeCpi({ fetchImpl = globalThis.fetch, cache = createCache({ re
       base: calc.base,
       latest: { value: now.value, year: now.year, month: now.month, label: labelOf(now), source: now.source },
       series,
+      gaps: CPI_GAPS.filter((g) => Number(g.month.slice(0, 4)) >= year),
       stale: now.stale,
       updated: new Date(now.fetchedAt).toISOString(),
     };

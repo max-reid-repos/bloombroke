@@ -381,8 +381,8 @@ test('events: earnings from 8-K item 2.02, ex-dividend days, the next date', () 
   ];
   assert.deepEqual(earningsFrom8K(rows), [
     { date: '2026-01-29', url: null },
-    { date: '2026-07-30', url: 'https://www.sec.gov/Archives/edgar/data/320193/1/a.htm' },
-  ]);
+    { date: '2026-07-30', url: 'https://www.sec.gov/Archives/edgar/data/320193/1/a.htm', form: '10-Q' },
+  ], 'the July results are final (10-Q filed after); January is older than the list of reports');
   assert.deepEqual(exDivFromRows([{ exDate: '2026-08-10', amount: 0.27 }, { exDate: '2026-05-11', amount: null }, { exDate: 'bad' }]), [
     { date: '2026-05-11', amount: null }, { date: '2026-08-10', amount: 0.27 },
   ]);
@@ -403,7 +403,7 @@ test('events: a stock gets flags from each source that answers; others get none'
     fetchImpl: async () => ({ ok: true, json: async () => ({ FormattedQuoteResult: { FormattedQuote: [{ EventData: { next_earnings_date: '10/28/2026(est)', div_ex_date: '08/10/2026', div_amount: '0.27' } }] } }) }),
   });
   const d = await getChartEvents('aapl');
-  assert.deepEqual(d.earnings, [{ date: '2026-07-30', url: 'https://www.sec.gov/a' }]);
+  assert.deepEqual(d.earnings, [{ date: '2026-07-30', url: 'https://www.sec.gov/a' }], 'no 10-Q or 10-K in the list: not known final or preliminary');
   assert.deepEqual(d.next, { date: '2026-10-28', est: true });
   assert.deepEqual(d.dividends, [{ date: '2026-08-10', amount: 0.27 }], 'no history: the last ex-dividend day from the quote');
   const gold = await getChartEvents('GOLD');
