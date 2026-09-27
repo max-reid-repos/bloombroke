@@ -45,7 +45,7 @@ If you subscribe to Pro, we also process:
 
 ### Sponsors
 
-When a sponsor runs, the status line shows one plain line of text with a plain link, and a WEIRD gauge may show the name of its sponsor. We add no tracking code to the link, we load no sponsor pixels or scripts, and sponsors get no data from us. Our analytics tool, DataFast, counts link clicks, including clicks on sponsor links, as part of its normal site analytics described above. The link asks your browser not to tell the sponsor which page you came from. If you click it, the sponsor's own site and its privacy policy apply.
+When sponsors run, sponsor lines rotate in the status line, and each is marked SPONSOR and is one plain line of text with a plain link; a WEIRD gauge may show the name of its sponsor. We add no tracking code to the link, we load no sponsor pixels or scripts, and sponsors get no data from us. Our analytics tool, DataFast, counts link clicks, including clicks on sponsor links, as part of its normal site analytics described above. The link asks your browser not to tell the sponsor which page you came from. If you click it, the sponsor's own site and its privacy policy apply.
 
 ### Feedback
 
