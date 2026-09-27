@@ -7,7 +7,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import express from 'express';
 import { cleanSponsors, cleanUrl, loadSponsors, mountSponsors, SPONSORS_FILE, MAX_LINES, MAX_HOUSE } from '../lib/sponsors.js';
-import { stripItems, itemHtml, mountStrip, createStripCounter, ROTATE_MS, SLIDE_MS, MAX_SPONSOR_LINES, FLUSH_MS, MAX_BATCH } from '../public/sponsor-strip.js';
+import { stripItems, itemHtml, mountStrip, ROTATE_MS, SLIDE_MS, MAX_SPONSOR_LINES } from '../public/sponsor-strip.js';
+import { stripShownBatch } from '../public/goal.js';
 import { sponsorHtml, FACTS, NOT_FOR, PROOF, proofLinks, numbersHtml, gaugePreviewHtml, PREVIEW_SPONSOR, bottomMockHtml, fmtDur, topCountry, spotlightStrip, SPOT_MS } from '../public/screens/sponsor.js';
 import { findCommand } from '../public/registry.js';
 import { parseCommand } from '../public/app.js';
@@ -266,43 +267,36 @@ test('SPONSOR opens: the real strip is outlined for 2 s; reduced motion keeps a 
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.status-sponsor\.is-spot \{ animation: none; \} \}/);
 });
 
-test('counting: lines shown in a visible tab, sent in batches of 1 to 20 a minute; clicks at once', () => {
+test('counting: one strip_shown per line shown in a visible tab, batched; clicks at once', () => {
   mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
   try {
     const sent = [];
-    const counter = createStripCounter({ post: (b) => sent.push(b) });
+    const clicks = [];
+    const batch = stripShownBatch({ send: (n) => sent.push(n), doc: null, win: null });
     let hidden = false;
     const host = fakeHost();
-    const s = mountStrip(host, stripItems(cleanSponsors({ house: house(3) })), { isHidden: () => hidden, onShow: () => counter.shown(), onClick: () => counter.click(), onPaidClick: () => {} });
-    assert.equal(counter.pending, 1, 'the first line, shown');
+    const s = mountStrip(host, stripItems(cleanSponsors({ house: house(3) })), { isHidden: () => hidden, onShow: () => batch.add(), onAnyClick: () => clicks.push(1), onPaidClick: () => {} });
+    assert.equal(batch.pending, 1, 'the first line, once');
     mock.timers.tick(ROTATE_MS * 3);
-    assert.equal(counter.pending, 4);
+    assert.equal(batch.pending, 4, 'one per rotation, never two');
     hidden = true;
     mock.timers.tick(ROTATE_MS * 3);
-    assert.equal(counter.pending, 4, 'a hidden tab shows nothing, counts nothing');
+    assert.equal(batch.pending, 4, 'a hidden tab shows nothing, counts nothing');
     hidden = false;
-    mock.timers.tick(FLUSH_MS - ROTATE_MS * 6);
-    assert.deepEqual(sent.filter((b) => b.name === 'strip_shown'), [{ name: 'strip_shown', n: counter.pending === 0 ? sent[0].n : sent[0].n }]);
-    assert.ok(sent[0].n >= 1 && sent[0].n <= MAX_BATCH);
-    // A click on any line, paid or AD.
-    const click = (paid) => ({ target: { closest: (q) => (q === '.spon-item' || (paid && q.includes('sponsored')) ? {} : null) } });
+    mock.timers.tick(60_000 - ROTATE_MS * 6);
+    assert.equal(sent.reduce((a, n) => a + n, 0) + batch.pending, 4 + Math.floor((60_000 - ROTATE_MS * 6) / ROTATE_MS), 'every line shown counted once, nothing lost');
+    assert.ok(sent.length >= 1 && sent.every((n) => n >= 1 && n <= 20));
+    const click = (paid) => ({ target: { closest: (q) => (q.startsWith('a.spon-item') && (paid || !q.includes('sponsored')) ? {} : null) } });
     for (const f of host.listeners.click) f(click(false));
-    assert.deepEqual(sent.at(-1), { name: 'strip_click' });
-    // Never more than 20 in one post; the rest waits for the next minute.
-    for (let i = 0; i < 25; i++) counter.shown();
-    const before = counter.pending;
-    counter.flush();
-    assert.equal(sent.at(-1).n, MAX_BATCH);
-    assert.equal(counter.pending, before - MAX_BATCH);
-    assert.equal(counter.flush() > 0, true);
-    assert.equal(counter.flush(), 0, 'nothing to send: no post');
+    assert.equal(clicks.length, 1);
     s.stop();
-    counter.stop();
   } finally { mock.timers.reset(); }
-  // Pro: no lines, so no strip and nothing counted (app.js creates the counter with the strip).
-  assert.deepEqual(stripItems(cleanSponsors({ house: house(3) }), { pro: true }), []);
+  // The status bar wires it once; the SPONSOR preview never counts.
   const app = readFileSync('public/app.js', 'utf8');
-  assert.match(app, /onShow: \(\) => stripCount\?\.shown\(\), onClick: \(\) => stripCount\?\.click\(\)/);
+  assert.equal((app.match(/onShow: \(\) => shown\.add\(\)/g) || []).length, 1);
+  assert.equal((app.match(/stripShownBatch\(\)/g) || []).length, 1);
+  assert.doesNotMatch(readFileSync('public/screens/sponsor.js', 'utf8'), /onShow|stripShownBatch|countOnly/);
+  assert.deepEqual(stripItems(cleanSponsors({ house: house(3) }), { pro: true }), [], 'Pro: no strip, nothing counted');
 });
 
 test('sponsor_click: sent for a paid line, never for an AD line', () => {
@@ -319,5 +313,5 @@ test('sponsor_click: sent for a paid line, never for an AD line', () => {
   } finally { mock.timers.reset(); }
   const src = readFileSync('public/sponsor-strip.js', 'utf8');
   assert.match(src, /goal\('sponsor_click'\)/);
-  assert.match(src, /closest\('a\.spon-item\[rel~="sponsored"\]'\)/);
+  assert.match(src, /closest\?\.\('a\.spon-item\[rel~="sponsored"\]'\)/);
 });

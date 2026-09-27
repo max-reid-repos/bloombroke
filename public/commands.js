@@ -33,6 +33,9 @@ import * as legal from './screens/legal.js';
 import * as alerts from './screens/alerts.js'; // ALERTS
 import * as trending from './screens/trending.js'; // TRENDING
 import * as guess from './screens/guess.js'; // GUESS
+import * as dataScreen from './screens/data.js'; // Provenance: DATA
+import * as statusScreen from './screens/status.js'; // Provenance: STATUS
+import * as changesScreen from './screens/changes.js'; // Provenance: CHANGES
 import * as bbrk from './screens/bbrk.js'; // BBRK
 import * as mcp from './screens/mcp.js'; // MCP
 
@@ -68,6 +71,10 @@ export const EXTRA = [
   // ALERTS: changes the saved alerts, so a link only ever opens the list.
   { name: 'ALERTS', screen: alerts, takesArgs: true, url: 'ALERTS' },
   { name: 'GUESS', screen: guess }, // GUESS: one mystery stock a day
+  // Provenance: every source in one table, each upstream's state, the change log.
+  { name: 'DATA', screen: dataScreen, takesArgs: true },
+  { name: 'STATUS', screen: statusScreen },
+  { name: 'CHANGES', screen: changesScreen },
   { name: 'BBRK', screen: bbrk }, // BBRK: our own site numbers, not a security
   { name: 'MCP', screen: mcp }, // MCP: hook an AI app up to Bloombroke (lib/mcp/)
 ];

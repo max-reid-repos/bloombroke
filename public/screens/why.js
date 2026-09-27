@@ -8,6 +8,7 @@ import { esc, fmtNum, fmtPct, dirOf, panel, LOADING, metaNote, nyTime } from './
 import { errorHtml, tickerUsage, fmtDay, dash } from './company-kit.js';
 import { dataTable } from '../kit.js';
 import { safeHref, shortSource } from './news.js';
+import { sessionHtml } from '../provenance.js';
 import { goal } from '../goal.js'; // GOALS
 
 export { parseTicker as parse } from './company-kit.js';
@@ -28,7 +29,8 @@ export function itemHtml(it) {
   const text = href
     ? `<a class="why-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(it.text)}</a>`
     : `<span class="why-link">${esc(it.text)}</span>`;
-  return `<span class="why-it why-${esc(String(it.kind || '').toLowerCase())}" title="${esc(tip)}"><span class="why-tag">${esc(tag)}</span>${text}</span>`;
+  // A filing's PRE, MKT, AH or WKD (EDGAR acceptance time) follows its tag.
+  return `<span class="why-it why-${esc(String(it.kind || '').toLowerCase())}" title="${esc(tip)}"><span class="why-tag">${esc(tag)}</span>${sessionHtml(it.session)}${text}</span>`;
 }
 
 // The column for one move: up to SHOWN_ITEMS lines and "+N MORE", or -- when nothing

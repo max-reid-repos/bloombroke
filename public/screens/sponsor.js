@@ -16,7 +16,8 @@ export const FACTS = [
   'No tracking, no pixels, no scripts.',
 ];
 export const NOT_FOR = 'Not for brokers, exchanges, crypto, funds or tip sellers.';
-// What a sponsor can look at first. A link shows only when its command exists here.
+// What a sponsor can look at first. A link shows only when its command exists here; its
+// words are the tooltip, so the page stays short.
 export const PROOF = [
   ['BBRK', 'site numbers'],
   ['CHANGES', 'what is new'],
@@ -116,7 +117,7 @@ export function sponsorHtml({ has, bbrk = null, gauge = null } = {}) {
   return panel('1', 'Sponsor', `${bottomMockHtml()}
     <ul class="spon-facts">${FACTS.map((t) => `<li>${esc(t)}</li>`).join('')}<li class="is-no">${esc(NOT_FOR)}</li></ul>
     <div class="spon-proofs">${numbers}<section class="spon-box"><div id="spon-gauge">${gaugePreviewHtml(gauge)}</div></section></div>
-    ${proof.length ? `<ul class="spon-proof">${proof.map(([c, what]) => `<li>${link(c)} ${esc(what)}</li>`).join('')}</ul>` : ''}
+    ${proof.length ? `<ul class="spon-proof">${proof.map(([c, what]) => `<li title="${esc(what)}">${link(c)}</li>`).join('')}</ul>` : ''}
     <p class="notice">Email for rates: <a href="mailto:${CONTACT}">${CONTACT}</a></p>`, { cls: 'panel-solo' });
 }
 

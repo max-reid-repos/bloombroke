@@ -98,7 +98,22 @@ export function cpiLoader(bls) {
   const series = bls?.series?.[CPI_SERIES];
   if (!series?.values || !Object.keys(series.values).length) throw new Error('CPI data missing');
   const keys = Object.keys(series.values).sort();
-  return { at: (key) => seriesAt(series, key), first: keys[0], last: keys[keys.length - 1] };
+  // Months inside the series that BLS never published (Oct 2025: the shutdown). at()
+  // carries the month before forward for them; `missing` says so, never silently.
+  const missing = monthsBetween(keys[0], keys[keys.length - 1]).filter((k) => !(k in series.values));
+  return { at: (key) => seriesAt(series, key), first: keys[0], last: keys[keys.length - 1], missing };
+}
+
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monthName = (key) => `${MONTH_NAMES[Number(key.slice(5, 7)) - 1]} ${key.slice(0, 4)}`;
+const monthBefore = (key) => { const d = new Date(Date.UTC(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 2, 1)); return d.toISOString().slice(0, 7); };
+
+// One sentence for WHATIF Details when a replay spans a month BLS never published, or ''.
+export function cpiGapNote(missing, from, to) {
+  const hit = (missing || []).filter((k) => k >= from && k <= to);
+  if (!hit.length) return '';
+  const names = hit.map(monthName).join(', ');
+  return `BLS never published CPI-U or average prices for ${names} (US government shutdown), so ${hit.map((k) => monthName(monthBefore(k))).join(', ')} is carried forward for that month.`;
 }
 
 // What one month of this habit costs. bls: data/bls-monthly.json, for items priced by a
@@ -368,7 +383,8 @@ export function replaySeries(result, { catalog, prices, bls, now = new Date(), a
   let jar = 0;
   for (const { buys } of plans) for (const b of buys) jar += b.spend * (cpi.at(b.key) / cpiNow);
   out.push({ d: today > out[out.length - 1].d ? today : out[out.length - 1].d, stock: result.total.value, jar, spent: result.total.paid, now: true });
-  return { points: out, cpi: { series: CPI_SERIES, last: cpi.last } };
+  const gap = cpiGapNote(cpi.missing, start, current);
+  return { points: out, cpi: { series: CPI_SERIES, last: cpi.last, ...(gap ? { gap } : {}) } };
 }
 const cents = (v) => Math.round(v * 100) / 100;
 
