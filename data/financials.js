@@ -244,7 +244,10 @@ function buildMode(gaap, periods, mode, count) {
   values.freeCashFlow = periods.map((_, i) => {
     const o = values.operatingCashFlow[i];
     const c = values.capex[i];
-    return o && c ? { v: o.v - c.v, derived: !!(o.derived || c.derived), calc: 'OCF - capex', form: o.form, filed: o.filed, accn: o.accn } : null;
+    if (!o || !c) return null;
+    // Linked to the operating cash flow filing; capex's own filing too when it differs.
+    const capex = c.accn && c.accn !== o.accn ? { capex: { form: c.form, filed: c.filed, accn: c.accn } } : {};
+    return { v: o.v - c.v, derived: !!(o.derived || c.derived), calc: 'OCF - capex', form: o.form, filed: o.filed, accn: o.accn, ...capex };
   });
   const ratios = {
     grossMargin: periods.map((_, i) => pct(values.grossProfit[i]?.v, values.revenue[i]?.v)),

@@ -1135,7 +1135,6 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .fin-end { color: var(--faint); font-size: 10px; letter-spacing: .04em; }
 .fin-table td.num { min-width: 84px; }
 .fin-table .group-row td, .fin-table .group-row th:first-child { background: var(--panel); border-bottom: 1px solid var(--rule); }
-.fin-table td.is-derived { text-decoration: underline dotted var(--dim); text-underline-offset: 3px; }
 .fin-table .fin-ratio .name, .fin-table .fin-ratio td:not(.up):not(.down) { color: var(--dim); }
 .fin-msg { padding: 8px 10px; }
 

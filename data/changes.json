@@ -2,7 +2,7 @@
   "note": "Kept by hand: one plain line per shipped feature, newest first. CHANGES shows it.",
   "items": [
     { "date": "2026-09-27", "text": "DATA, STATUS and CHANGES: every source, its licence and age in one table; the dot by the clock lists a screen's sources" },
-    { "date": "2026-09-27", "text": "SEC filings refetch within about a minute of EDGAR; FINANCIALS numbers link to their filing" },
+    { "date": "2026-09-27", "text": "SEC data is refetched when EDGAR shows a new filing; FINANCIALS numbers link to their filing" },
     { "date": "2026-09-27", "text": "WHATIF: your own purchase of any stock, on a card of its own" },
     { "date": "2026-09-27", "text": "WHATIF REPLAY: the race from the first buy to today, and SAVE VIDEO" },
     { "date": "2026-09-27", "text": "WHATIF vices: beer, soda and chips priced from BLS average prices" },

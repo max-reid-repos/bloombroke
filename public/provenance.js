@@ -54,9 +54,13 @@ export function asOfWords(asOf, now = Date.now()) {
   return nyDay(t) === nyDay(now) ? time : `${monDay(nyDay(t))} ${time}`;
 }
 
-// A captured envelope's age now: the server's age plus the time since it arrived.
+// A captured envelope's fetch age now: from fetched_at (the answer can come back as a
+// 304 with its first body, so the server's age_seconds may be old); else the server's
+// age plus the time since it arrived.
 export function ageNow(env, now = Date.now()) {
   if (!env) return NaN;
+  const f = Date.parse(env.fetched_at || '');
+  if (Number.isFinite(f)) return Math.max(0, (now - f) / 1000);
   const at = Number(env.receivedAt) || now;
   return (Number(env.age_seconds) || 0) + Math.max(0, (now - at) / 1000);
 }
@@ -70,7 +74,9 @@ export function flatten(list, now = Date.now()) {
   const out = new Map();
   for (const env of list || []) {
     if (!env || typeof env !== 'object') continue;
-    const pieces = Array.isArray(env.parts) && env.parts.length && env.parts.length <= MAX_PARTS ? env.parts.map((p) => ({ ...p, receivedAt: env.receivedAt, stale: env.stale })) : [env];
+    // A part without its own times (WEIRD's compact parts) takes the answer's.
+    const pieces = Array.isArray(env.parts) && env.parts.length && env.parts.length <= MAX_PARTS
+      ? env.parts.map((p) => ({ as_of: env.as_of, fetched_at: env.fetched_at, source: env.source, ...p, receivedAt: env.receivedAt, stale: env.stale })) : [env];
     for (const p of pieces) {
       if (!p?.source) continue;
       const key = `${p.source}|${p.delay}`;

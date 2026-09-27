@@ -108,7 +108,11 @@ export function cellTitle(c) {
   if (!c) return 'Not in the filings';
   const from = filedFrom(c);
   const tag = c.tag ? `, us-gaap:${c.tag}` : '';
-  if (c.calc) return `Worked out: operating cash flow minus capex${c.derived ? ' (quarters from year-to-date totals)' : ''}.${from ? ` Operating cash flow: ${from.charAt(0).toLowerCase()}${from.slice(1)}.` : ''}`;
+  const lower = (t) => `${t.charAt(0).toLowerCase()}${t.slice(1)}`;
+  if (c.calc) {
+    const capex = c.capex ? filedFrom(c.capex) : '';
+    return `Worked out: operating cash flow minus capex${c.derived ? ' (quarters from year-to-date totals)' : ''}.${from ? ` Operating cash flow: ${lower(from)}.` : ''}${capex ? ` Capex: ${lower(capex)}.` : ''}`;
+  }
   const how = c.derived
     ? (/^10-K/.test(c.form || '') ? 'Worked out: the full year minus Q1 to Q3. ' : 'Worked out: the year-to-date total minus the earlier quarters. ')
     : '';

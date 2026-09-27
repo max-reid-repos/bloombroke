@@ -164,6 +164,8 @@ export function makeWhy({
       secOk: fil.ok,
       earningsOk: Boolean(events),
       logSince: oldest,
+      // The last daily close in the series (its day, New York): how old the prices are.
+      asOf: chart.points?.length ? nyDay(chart.points[chart.points.length - 1].t) : null,
       sources: ['CNBC daily bars', 'SEC EDGAR', ...(headlines.length ? ['Bloombroke news log'] : [])],
       stale: Boolean(chart.stale || (fil.ok && fil.v.stale)),
       updated: new Date(t).toISOString(),

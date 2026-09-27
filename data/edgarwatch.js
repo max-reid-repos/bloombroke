@@ -41,12 +41,15 @@ const clean = (s) => String(s || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1'
 
 // getcurrent Atom -> [{ form, cik, role, accession, accepted }], company entries only
 // (the filer or the issuer, not the reporting person of a Form 4). form: as filed, /A too.
+// The array's `entries` is how many entries the page had (100 is a full page).
 export function parseCurrentFeed(xml, want) {
   const out = [];
   const re = /<entry\b[^>]*>([\s\S]*?)<\/entry>/gi;
   const w = String(want || '').toUpperCase();
   let m;
+  let entries = 0;
   while ((m = re.exec(String(xml ?? ''))) && out.length < 400) {
+    entries += 1;
     const b = m[1];
     const t = /^(.+?)\s+-\s+(.+?)\s+\((\d{10})\)\s+\(([^)]+)\)$/.exec(clean(tag(b, 'title')));
     if (!t) continue;
@@ -58,7 +61,20 @@ export function parseCurrentFeed(xml, want) {
     if (!accession) continue;
     out.push({ form, cik: Number(t[3]), role: t[4].trim(), accession, accepted: Number.isFinite(at) ? new Date(at).toISOString() : null });
   }
+  out.entries = entries;
   return out;
+}
+
+// EDGAR accepts filings 06:00 to 22:00 New York time on weekdays; outside that the
+// watcher does not ask (federal holidays are not known here: those polls find nothing).
+export const OPEN_FROM_H = 6;
+export const OPEN_TO_H = 22;
+export const CLOSED_CHECK_MS = 5 * 60_000;
+export function edgarOpen(t = Date.now()) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', hourCycle: 'h23' })
+    .formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+  const h = Number(p.hour) % 24;
+  return p.weekday !== 'Sat' && p.weekday !== 'Sun' && h >= OPEN_FROM_H && h < OPEN_TO_H;
 }
 
 export function median(xs) {
@@ -71,7 +87,8 @@ export function median(xs) {
 const realTimers = { setTimeout: (fn, ms) => { const t = setTimeout(fn, ms); t.unref?.(); return t; }, clearTimeout: (t) => clearTimeout(t) };
 
 // Drops a company's caches for one filing, now and again at each of `repeat` ms.
-// tickerOf(cik) -> Promise<ticker | null>. forget: { financials(cik), filings(cik),
+// tickerOf(cik) -> Promise<ticker | [tickers] | null>: every ticker of the company (GOOG
+// and GOOGL, BRK.A and BRK.B). forget: { financials(cik), filings(cik),
 // insiders(ticker), chartEvents(ticker) }.
 export function makeInvalidator({
   tickerOf, forget = { financials: forgetFinancials, filings: forgetFilings, insiders: forgetInsiders, chartEvents: forgetChartEvents },
@@ -82,13 +99,13 @@ export function makeInvalidator({
     const base = String(form).toUpperCase().replace(/\/A$/, '');
     forget.filings?.(cik);
     if (FACTS_FORMS.has(base)) forget.financials?.(cik);
-    let ticker = null;
-    try { ticker = await tickerOf(cik); } catch { ticker = null; }
-    if (ticker) {
+    let tickers = [];
+    try { const t = await tickerOf(cik); tickers = Array.isArray(t) ? t : t ? [t] : []; } catch { tickers = []; }
+    for (const ticker of tickers) {
       if (base === '4') forget.insiders?.(ticker);
       else forget.chartEvents?.(ticker);
     }
-    return ticker;
+    return tickers;
   }
   return function invalidate(filing) {
     const kind = String(filing.form).toUpperCase().replace(/\/A$/, '');
@@ -106,7 +123,11 @@ export function makeInvalidator({
 export function makeEdgarWatch({
   fetchImpl = globalThis.fetch, secQueue = secQueued, forms = WATCH_FORMS, every = EVERY_MS,
   onFiling = () => {}, now = () => Date.now(), timers = realTimers, log = (m) => console.error(m), maxBackoff = MAX_BACKOFF_MS,
+  isOpen = edgarOpen,
 } = {}) {
+  // SEC says slow down (403 or 429): every form waits, not only the one that was told.
+  let pauseUntil = 0;
+  let sharedGap = every;
   const states = forms.map((form) => ({ form, etag: null, lastModified: null, gap: every, fails: 0, baselined: false, timer: null, okAt: 0, failAt: 0 }));
   const seen = new Set();
   const samples = [];
@@ -119,10 +140,14 @@ export function makeEdgarWatch({
     if (seen.size > SEEN_MAX) seen.delete(seen.values().next().value);
   }
 
+  // false when nothing was asked (EDGAR closed, or the shared pause).
   async function poll(st) {
     const t0 = now();
+    s.paused = !isOpen(t0);
+    if (s.paused || t0 < pauseUntil) return false;
     try {
-      const r = await secQueue(() => fetchFeed(fetchImpl, currentUrl(st.form), { etag: st.etag, lastModified: st.lastModified, ua: SEC_UA, accept: 'application/atom+xml, application/xml, text/xml' }));
+      // The low lane: the site's own SEC requests go first.
+      const r = await secQueue(() => fetchFeed(fetchImpl, currentUrl(st.form), { etag: st.etag, lastModified: st.lastModified, ua: SEC_UA, accept: 'application/atom+xml, application/xml, text/xml' }), { low: true });
       s.polls += 1;
       if (!r.notModified) {
         st.etag = r.etag || null;
@@ -130,7 +155,8 @@ export function makeEdgarWatch({
         const rows = parseCurrentFeed(r.text, st.form);
         for (const x of rows) { const a = Date.parse(x.accepted || ''); if (a > s.newestAt) s.newestAt = a; }
         const fresh = rows.filter((x) => !seen.has(`${x.accession}|${x.cik}`));
-        if (st.baselined && rows.length >= 50 && fresh.length === rows.length) s.overflow += 1; // more than one page came in
+        // A full page of entries, none seen before: more came in than one page holds.
+        if (st.baselined && rows.entries >= 100 && rows.length && fresh.length === rows.length) s.overflow += 1;
         const seenAt = now();
         for (const x of fresh) {
           remember(`${x.accession}|${x.cik}`);
@@ -148,10 +174,16 @@ export function makeEdgarWatch({
       }
       st.fails = 0;
       st.gap = every;
+      sharedGap = every;
       st.okAt = now();
       s.okAt = st.okAt;
       s.ms = st.okAt - t0;
     } catch (err) {
+      if (err?.code === 'busy') return false; // the low lane is full: try on the next turn
+      if (err?.status === 403 || err?.status === 429) {
+        sharedGap = Math.max(Math.min(maxBackoff, sharedGap * 2), Math.min(err.retryAfterMs || 0, 60 * 60_000));
+        pauseUntil = now() + sharedGap;
+      }
       st.fails += 1;
       st.gap = Math.max(Math.min(maxBackoff, st.gap * 2), Math.min(err.retryAfterMs || 0, 60 * 60_000));
       st.failAt = now();
@@ -159,12 +191,21 @@ export function makeEdgarWatch({
       s.ms = st.failAt - t0;
       if (st.fails === 1 || st.gap >= maxBackoff) log(`[edgarwatch ${st.form}] ${err.message}; next try in ${Math.round(st.gap / 1000)} s`);
     }
+    return true;
+  }
+
+  // The wait before a form's next poll: its own gap, the shared pause, or (EDGAR closed)
+  // a look every CLOSED_CHECK_MS.
+  function nextWait(st) {
+    const t = now();
+    if (!isOpen(t)) return CLOSED_CHECK_MS;
+    return Math.max(st.gap, pauseUntil - t);
   }
 
   function loop(st) {
     if (!running) return;
     poll(st).finally(() => {
-      if (running) st.timer = timers.setTimeout(() => loop(st), st.gap);
+      if (running) st.timer = timers.setTimeout(() => loop(st), nextWait(st));
     });
   }
 
@@ -179,11 +220,13 @@ export function makeEdgarWatch({
       running = false;
       for (const st of states) timers.clearTimeout(st.timer);
     },
-    pollAll: () => Promise.all(states.map(poll)),
+    // Every form once, one after another (as the SEC queue runs them).
+    async pollAll() { for (const st of states) await poll(st); },
     stats: () => ({
       ...s,
       samples: samples.length,
       medianDelay: samples.length ? Math.round(median(samples)) : null,
+      pausedUntil: pauseUntil > now() ? pauseUntil : 0,
       forms: Object.fromEntries(states.map((st) => [st.form, { gap: st.gap, okAt: st.okAt, failAt: st.failAt }])),
     }),
   };
@@ -192,7 +235,18 @@ export function makeEdgarWatch({
 // The server's watcher: invalidates the shared caches, tickers from the SEC map.
 export function startEdgarWatch({ fetchImpl = globalThis.fetch, log = (m) => console.error(m) } = {}) {
   const secMap = secTickersFor(fetchImpl);
-  const tickerOf = async (cik) => (await secMap()).value.byCik.get(cik) || null;
+  // Every ticker of a CIK (the SEC map lists each class share), built once per map.
+  let built = null;
+  const byCik = new Map();
+  const tickerOf = async (cik) => {
+    const map = (await secMap()).value;
+    if (built !== map) {
+      byCik.clear();
+      for (const [t, v] of map.byTicker) byCik.set(v.cik, [...(byCik.get(v.cik) || []), t.replace('-', '.')]);
+      built = map;
+    }
+    return byCik.get(cik) || [];
+  };
   const invalidate = makeInvalidator({ tickerOf, log });
   const watch = makeEdgarWatch({ fetchImpl, onFiling: invalidate, log });
   watch.start();

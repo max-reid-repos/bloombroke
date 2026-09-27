@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  SEEN_AS_OF, envelope, isoOf, combine, provenanceFor, provenanceJson, ROUTES, DATASETS, DELAYS, LICENCES, dataRows,
+  SEEN_AS_OF, nyCloseIso, etagOf, envelope, isoOf, combine, provenanceFor, provenanceJson, ROUTES, DATASETS, DELAYS, LICENCES, dataRows,
   weirdDataset, statusRows, upstreamState, UPSTREAMS, gaugeEnvelope, weirdEnvelope, liveDelay,
 } from '../lib/provenance.js';
 import { dotTitle, popoverHtml, worstOf, ageWords, asOfWords, delayWord, flatten, MAX_PARTS, lastUpdateWords } from '../public/provenance.js';
@@ -170,7 +170,7 @@ test('dot tooltip: "SOURCE · as of HH:MM:SS ET · checked Ns ago · class", the
   assert.equal(dotTitle([env({})], { now: NOW }), 'CNBC quote service · as of 15:59:50 ET · checked 30s ago · real-time');
   // Market closed: checked seconds ago, but the data is Friday's close. Two ages, never mixed.
   const sunday = Date.parse('2026-09-27T07:00:00.000Z');
-  const closed = env({ as_of: '2026-09-25T20:00:00.000Z', receivedAt: sunday, age_seconds: 6 });
+  const closed = env({ as_of: '2026-09-25T20:00:00.000Z', fetched_at: new Date(sunday - 6000).toISOString(), receivedAt: sunday, age_seconds: 6 });
   assert.equal(dotTitle([closed], { now: sunday }), 'CNBC quote service · last update Sep 25 16:00 ET · checked 6s ago · real-time');
   assert.match(popoverHtml([closed], { now: sunday }), /real-time · checked 6s ago · last update Sep 25 16:00 ET/);
   assert.doesNotMatch(popoverHtml([env({})], { now: NOW }), /last update/, 'fresh data: no second age');
@@ -219,7 +219,7 @@ test('DATA rows: every field filled, a known licence and class, every WEIRD gaug
   assert.doesNotMatch(JSON.stringify(rows), /display only|open with credit|restricted/, 'no right we have not checked');
   const lic = (id) => rows.find((r) => r.id === id).licence;
   assert.deepEqual(['sec-facts', 'cpi', 'treasury', 'nyfed', 'fx', 'crypto', 'economy', 'mortgage', 'quotes', 'geo', 'weird-waffle', 'weird-bigmac', 'weird-panic', 'weird-canal'].map(lic),
-    ['public domain', 'public domain', 'public domain', 'public domain', 'credit required', 'third-party terms', 'third-party terms', 'third-party terms', 'third-party terms', 'public domain', 'share-alike', 'credit required', 'public domain', 'third-party terms']);
+    ['public domain', 'public domain', 'public domain', 'third-party terms', 'credit required', 'third-party terms', 'third-party terms', 'third-party terms', 'third-party terms', 'public domain', 'share-alike', 'credit required', 'public domain', 'third-party terms']);
   assert.equal(new Set(rows.map((r) => r.id)).size, rows.length, 'ids are unique');
   assert.match(rows.find((r) => r.id === 'cpi').gaps, /Oct 2025 not published/);
   assert.match(rows.find((r) => r.id === 'whatif').gaps, /carry Sep 2025 forward/);
@@ -344,4 +344,73 @@ test('provenance files: no banned brand word, no em dash, no emoji, no amber', (
   }
   const words = JSON.stringify(DATASETS).toLowerCase();
   assert.doesNotMatch(words, /\b(buy|sell|hold) (it|now|this)\b|\brecommend/);
+});
+
+// ---- review fixes: weekend data age, bar closes, ETag, WEIRD size ------------------------------
+
+// A Sunday answer as CNBC sends it: stocks and indexes dated Friday, a coin a minute ago,
+// SILVER stamped in the future.
+const SUNDAY = Date.parse('2026-09-27T07:00:00.000Z');
+const SUN_UPD = new Date(SUNDAY).toISOString();
+const sundayMarkets = {
+  instruments: [
+    { id: 'SPX', kind: 'index', us: true, realTime: true, asOf: '2026-09-25' },
+    { id: 'EURUSD', kind: 'fx', realTime: true, asOf: '2026-09-25T16:59:00.000-0400' },
+    { id: 'BTC', kind: 'crypto', realTime: true, asOf: '2026-09-27T06:59:00.000Z' },
+    { id: 'SILVER', kind: 'spot', realTime: true, asOf: '2026-09-27T23:59:00.000Z' },
+  ],
+  updated: SUN_UPD,
+};
+
+test('weekend: the real-time part is as old as its oldest row, never dated after the fetch', () => {
+  const p = provenanceFor('/api/markets', sundayMarkets, { now: SUNDAY + 6000 });
+  assert.equal(p.as_of, '2026-09-25T00:00:00.000Z', 'Friday: the coin and the future-dated SILVER hide nothing');
+  assert.equal(p.age_seconds, 6);
+  assert.match(dotTitle([{ ...p, receivedAt: SUNDAY + 6000 }], { now: SUNDAY + 6000 }), /last update Sep 25 · checked 6s ago · real-time/);
+  // A lone future-dated quote is capped at the fetch time.
+  const silver = provenanceFor('/api/quote', { ...sundayMarkets.instruments[3], updated: SUN_UPD }, { now: SUNDAY });
+  assert.equal(silver.as_of, SUN_UPD);
+  assert.equal(envelope({ source: 's', source_url: 'u', as_of: '2030-01-01', fetched_at: SUN_UPD, delay: 'real-time', now: SUNDAY }).as_of, SUN_UPD);
+});
+
+test('end-of-day bars: as_of is the last bar\'s 16:00 New York close (daylight saving too)', () => {
+  const bar = (day, hh) => Date.parse(`${day}T${hh}:00:00.000Z`); // New York midnight
+  assert.equal(nyCloseIso('2026-09-25'), '2026-09-25T20:00:00.000Z', 'EDT');
+  assert.equal(nyCloseIso('2026-01-29'), '2026-01-29T21:00:00.000Z', 'EST');
+  assert.equal(provenanceFor('/api/chart', { ticker: 'AAPL', bar: '1D', points: [{ t: bar('2026-09-25', '04') }], updated: SUN_UPD }, { now: SUNDAY }).as_of, '2026-09-25T20:00:00.000Z');
+  const cmp = { series: [{ points: [{ t: bar('2026-09-24', '04') }, { t: bar('2026-09-25', '04') }] }, { points: [{ t: bar('2026-09-25', '04') }] }], updated: SUN_UPD };
+  assert.equal(provenanceFor('/api/compare', cmp, { now: SUNDAY }).as_of, '2026-09-25T20:00:00.000Z');
+  const why = provenanceFor('/api/why', { asOf: '2026-09-25', secOk: true, updated: SUN_UPD }, { now: SUNDAY });
+  assert.equal(why.parts.find((x) => x.dataset === 'bars').as_of, '2026-09-25T20:00:00.000Z', 'not the fetch time');
+  assert.equal(provenanceFor('/api/history', { rows: [{ date: '2026-09-25' }], updated: SUN_UPD }, { now: SUNDAY }).as_of, '2026-09-25T20:00:00.000Z');
+  // A bar for today, before the close: capped at the fetch.
+  const midday = Date.parse('2026-09-25T15:00:00.000Z');
+  assert.equal(provenanceFor('/api/chart', { ticker: 'AAPL', bar: '1D', points: [{ t: bar('2026-09-25', '04') }], updated: new Date(midday).toISOString() }, { now: midday }).as_of, new Date(midday).toISOString());
+});
+
+test('ETag: the same answer a second later has the same tag (ages left out), so 304s work', () => {
+  const tagAt = (t) => {
+    let headers = {};
+    const res = { statusCode: 200, get: (h) => headers[h], set: (h, v) => { headers[h] = v; }, json: (b) => b };
+    provenanceJson({ now: () => t })({ method: 'GET', originalUrl: '/api/quote', query: {} }, res, () => {});
+    const body = res.json({ ...sundayMarkets.instruments[0], updated: SUN_UPD });
+    return { tag: headers.ETag, age: body.provenance.age_seconds };
+  };
+  const a = tagAt(SUNDAY + 1000);
+  const b = tagAt(SUNDAY + 9000);
+  assert.notEqual(a.age, b.age, 'the body still carries age_seconds');
+  assert.equal(a.tag, b.tag);
+  assert.match(a.tag, /^W\/"/);
+  assert.notEqual(etagOf({ a: 1 }), etagOf({ a: 2 }));
+});
+
+test('WEIRD: the envelope adds little (compact per-gauge parts)', () => {
+  const gauges = GAUGES.map((g) => ({ id: g.id, ok: true, source: g.source, asOf: '2026-09-20', updated: SUN_UPD }));
+  const p = weirdEnvelope(gauges, SUNDAY);
+  assert.equal(p.parts.length, GAUGES.length);
+  for (const x of p.parts) assert.deepEqual(Object.keys(x).filter((k) => k !== 'note'), ['dataset', 'source_url', 'delay']);
+  assert.ok(JSON.stringify(p).length < 3500, `about ${JSON.stringify(p).length} bytes for ${GAUGES.length} gauges`);
+  // The dot's list still works from a compact part: it takes the answer's times.
+  const flat = flatten([{ ...p, parts: p.parts.slice(0, 2), receivedAt: SUNDAY }]);
+  assert.ok(flat.every((x) => x.as_of && x.fetched_at && x.source));
 });

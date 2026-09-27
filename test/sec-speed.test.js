@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseCurrentFeed, makeEdgarWatch, makeInvalidator, median, currentUrl, WATCH_FORMS } from '../data/edgarwatch.js';
+import { parseCurrentFeed, makeEdgarWatch, makeInvalidator, median, currentUrl, WATCH_FORMS, edgarOpen, CLOSED_CHECK_MS } from '../data/edgarwatch.js';
 import { SEC_UA, buildFinancials } from '../data/financials.js';
 import { parseSubmissions } from '../data/filings.js';
 import { earningsFrom8K, finalReport } from '../data/chart-events.js';
@@ -29,7 +29,7 @@ test('feed: company entries only (the filer or the issuer), with the acceptance 
     entry('4', 'Cook Timothy D', 1214156, 'Reporting', '0001140361-26-037584', '2026-09-24T18:30:07-04:00'),
     entry('8-K', 'Other Co', 99, 'Filer', '0000000099-26-000001', '2026-09-24T16:30:00-04:00'),
   ), '4');
-  assert.deepEqual(rows, [{ form: '4', cik: 320193, role: 'Issuer', accession: '0001140361-26-037584', accepted: '2026-09-24T22:30:07.000Z' }]);
+  assert.deepEqual([...rows], [{ form: '4', cik: 320193, role: 'Issuer', accession: '0001140361-26-037584', accepted: '2026-09-24T22:30:07.000Z' }]);
   assert.equal(parseCurrentFeed('<feed>junk</feed>', '8-K').length, 0);
   assert.match(currentUrl('10-Q'), /type=10-Q&.*owner=include&count=100&output=atom$/);
   assert.deepEqual(WATCH_FORMS, ['8-K', '10-Q', '10-K', '20-F', '6-K', '4']);
@@ -62,7 +62,8 @@ test('watcher: the first answer is a baseline; a new filing after it invalidates
   const { fetchImpl, calls } = mockFetch({ '10-Q': [first, second] });
   const seen = [];
   let queued = 0;
-  const w = makeEdgarWatch({ fetchImpl, forms: ['10-Q'], secQueue: (fn) => { queued += 1; return fn(); }, now: () => t, onFiling: (f) => seen.push(f), log: () => {} });
+  const lanes = [];
+  const w = makeEdgarWatch({ fetchImpl, forms: ['10-Q'], secQueue: (fn, opts) => { queued += 1; lanes.push(opts?.low); return fn(); }, now: () => t, onFiling: (f) => seen.push(f), log: () => {} });
   await w.pollAll();
   assert.equal(seen.length, 0, 'baseline: nothing invalidated');
   t = Date.parse('2026-09-24T20:30:57.000Z');
@@ -74,13 +75,16 @@ test('watcher: the first answer is a baseline; a new filing after it invalidates
   assert.equal(w.stats().medianDelay, 42);
   assert.equal(w.stats().samples, 1);
   assert.equal(queued, 2, 'every request through the SEC queue');
+  assert.deepEqual(lanes, [true, true], 'in its low lane, behind the site');
   assert.equal(calls[0].headers['User-Agent'], SEC_UA);
   assert.equal(calls[1].headers['If-None-Match'], '"v1"', 'conditional after the first answer');
 });
 
+const THURSDAY = Date.parse('2026-09-24T15:00:00.000Z'); // 11:00 ET, EDGAR open
+
 test('watcher: a failing feed backs off and is counted; a 304 costs nothing', async () => {
   const { fetchImpl } = mockFetch({ '8-K': ['fail', 304] });
-  const w = makeEdgarWatch({ fetchImpl, forms: ['8-K'], secQueue: (fn) => fn(), every: 30_000, log: () => {} });
+  const w = makeEdgarWatch({ fetchImpl, forms: ['8-K'], secQueue: (fn) => fn(), every: 30_000, now: () => THURSDAY, log: () => {} });
   await w.pollAll();
   assert.equal(w.stats().forms['8-K'].gap, 60_000);
   assert.ok(w.stats().failAt > 0);
@@ -233,4 +237,63 @@ test('financials: a restated figure names the restating filing (the latest filin
   const c = r.annual.values.revenue[r.annual.periods.length - 1];
   assert.equal(c.v, 105);
   assert.match(cellTitle(c), /filed 2026-10-30 \(accession 0000000001-26-000020\)/);
+});
+
+test('watcher: a 429 on one form pauses every form; EDGAR closed hours ask nothing', async () => {
+  let t = THURSDAY;
+  const answers = { '8-K': [feed()], '10-Q': [feed()] };
+  const calls = [];
+  const fetchImpl = async (url) => {
+    const form = new URL(url).searchParams.get('type');
+    calls.push(form);
+    if (form === '8-K' && calls.length === 1) return { ok: false, status: 429, headers: { get: (h) => (h === 'retry-after' ? '120' : null) } };
+    return { ok: true, status: 200, headers: { get: () => null }, text: async () => answers[form][0] };
+  };
+  const w = makeEdgarWatch({ fetchImpl, forms: ['8-K', '10-Q'], secQueue: (fn) => fn(), now: () => t, log: () => {} });
+  await w.pollAll();
+  assert.deepEqual(calls, ['8-K'], 'the 10-Q loop did not ask after SEC said slow down');
+  assert.ok(w.stats().pausedUntil >= THURSDAY + 120_000, 'Retry-After honoured for all forms');
+  t = THURSDAY + 121_000;
+  await w.pollAll();
+  assert.deepEqual(calls, ['8-K', '8-K', '10-Q'], 'after the pause both ask again');
+  // Hours: 06:00 to 22:00 New York, weekdays only.
+  assert.equal(edgarOpen(Date.parse('2026-09-24T09:59:00.000Z')), false, '05:59 ET');
+  assert.equal(edgarOpen(Date.parse('2026-09-24T10:00:00.000Z')), true, '06:00 ET');
+  assert.equal(edgarOpen(Date.parse('2026-09-25T01:59:00.000Z')), true, '21:59 ET Thursday');
+  assert.equal(edgarOpen(Date.parse('2026-09-25T02:00:00.000Z')), false, '22:00 ET');
+  assert.equal(edgarOpen(Date.parse('2026-09-27T15:00:00.000Z')), false, 'Sunday');
+  assert.equal(edgarOpen(Date.parse('2026-01-29T11:00:00.000Z')), true, '06:00 EST in winter');
+  t = Date.parse('2026-09-27T15:00:00.000Z');
+  await w.pollAll();
+  assert.equal(calls.length, 3, 'nothing asked on a Sunday');
+  assert.equal(w.stats().paused, true);
+  assert.equal(CLOSED_CHECK_MS, 300_000);
+});
+
+test('watcher: overflow counts a full page of entries (100), not company rows', async () => {
+  let t = THURSDAY;
+  const page = (start) => feed(...Array.from({ length: 100 }, (_, i) => entry('4', i % 2 ? 'Person' : 'Co', 1000 + start + i, i % 2 ? 'Reporting' : 'Issuer', `00000000${String(start + i).padStart(2, '0')}-26-000001`.slice(-20), '2026-09-24T10:59:00-04:00')));
+  const { fetchImpl } = mockFetch({ 4: [page(0), page(100)] });
+  const w = makeEdgarWatch({ fetchImpl, forms: ['4'], secQueue: (fn) => fn(), now: () => t, log: () => {} });
+  const rows = parseCurrentFeed(page(0), '4');
+  assert.equal(rows.entries, 100);
+  assert.equal(rows.length, 50, 'half the entries are reporting persons');
+  await w.pollAll();
+  t += 30_000;
+  await w.pollAll();
+  assert.equal(w.stats().overflow, 1, 'a full page with nothing seen before: some filings may have been missed');
+});
+
+test('invalidation: every ticker of the company (class shares)', async () => {
+  const dropped = [];
+  const forget = { filings: () => {}, financials: () => {}, insiders: (t) => dropped.push(`ins:${t}`), chartEvents: (t) => dropped.push(`ev:${t}`) };
+  const inv = makeInvalidator({ tickerOf: async () => ['GOOGL', 'GOOG'], forget, timers: { setTimeout: () => 0, clearTimeout: () => {} } });
+  await inv({ form: '10-Q', cik: 1652044 });
+  await inv({ form: '4', cik: 1652044 });
+  assert.deepEqual(dropped, ['ev:GOOGL', 'ev:GOOG', 'ins:GOOGL', 'ins:GOOG']);
+});
+
+test('free cash flow names both filings when capex came from another one', () => {
+  const c = { v: 30e6, calc: 'OCF - capex', form: '10-K', filed: '2025-10-31', accn: '0000000001-25-000010', capex: { form: '10-K/A', filed: '2025-12-01', accn: '0000000001-25-000099' } };
+  assert.equal(cellTitle(c), 'Worked out: operating cash flow minus capex. Operating cash flow: from 10-K filed 2025-10-31 (accession 0000000001-25-000010). Capex: from 10-K/A filed 2025-12-01 (accession 0000000001-25-000099).');
 });
