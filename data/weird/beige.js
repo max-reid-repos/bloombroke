@@ -8,12 +8,19 @@
 // ("tariffs" counts as tariff); "AI" counts only in capitals, plus "artificial
 // intelligence". Past editions never change, so their counts are kept in memory.
 
+// History: only the 8 editions the gauge reads (about a year). Each older edition is 13
+// more pages, so going further back is not cheap and is not done.
+
 import { NoData, pool, decodeEntities } from './source.js';
+import { histFrom } from './history.js';
 
 export const id = 'beige';
 export const source = 'Federal Reserve';
 export const ttl = 24 * 60 * 60_000;
 export const retryMs = 60 * 60_000;
+export const defaultPeriod = 'MAX';
+// Eight editions are too few for a record line.
+export const record = false;
 
 const BASE = 'https://www.federalreserve.gov/monetarypolicy/';
 const INDEX = `${BASE}publications/beige-book-default.htm`;
@@ -93,6 +100,7 @@ export function build(editions) {
     top: top.key,
     words: WORDS.map((w) => ({ key: w.key, label: w.label })),
     editions: editions.map((e) => ({ edition: e.edition, released: e.released, ...e.counts })),
+    hist: histFrom(editions.map((e) => ({ d: e.released, ...e.counts })), WORDS.map((w) => ({ key: w.key, label: w.label })), { step: 'edition', lead: top.key }),
   };
 }
 

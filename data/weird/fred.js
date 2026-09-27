@@ -3,6 +3,7 @@
 // and each gauge keeps its result about 12 hours.
 
 import { parseFredCsv } from '../economy.js';
+import { histFrom } from './history.js';
 
 export const FRED_TTL = 12 * 60 * 60_000;
 export const FRED_RETRY = 30 * 60_000;
@@ -43,4 +44,21 @@ export function recentRows(rows, count = 13) {
   const out = [];
   for (let i = rows.length - 1; i >= start; i -= 1) out.push({ ...rows[i], yoy: changeAt(rows, i, 12) });
   return out;
+}
+
+// Several monthly series -> one hist on a shared month axis. parts: [{ key, label, rows,
+// yoy? }]: yoy: true draws each month's change on a year before instead of the level.
+export function monthlyHist(parts, lead = parts[0]?.key) {
+  const rows = new Map();
+  for (const p of parts) {
+    (p.rows || []).forEach((r, i) => {
+      const v = p.yoy ? changeAt(p.rows, i, 12) : r.value;
+      if (v === null || !Number.isFinite(v)) return;
+      const d = `${r.month}-01`;
+      const row = rows.get(d) || { d };
+      row[p.key] = v;
+      rows.set(d, row);
+    });
+  }
+  return histFrom([...rows.values()], parts.map((p) => ({ key: p.key, label: p.label })), { step: 'month', lead });
 }

@@ -7,16 +7,38 @@
 //   title    the panel title
 //   period   'day' (default), 'month' or 'time': how the as-of date is written
 //   method   paragraphs for the "How is this measured?" toggle
-//   detail(d) -> { html, mount?(el, ctx) }: the detail screen body for one response
+//   detail(d) -> { html }: the table or figures beside the chart, for one response
+//   chart    how the big chart draws the gauge's history (d.hist, one period of it):
+//            { label, fmtY, zero?, pick?, keys?(hist) }. pick: a table row with
+//            data-key draws that series alone; keys: the series drawn first (default:
+//            the lead one when pick, else every series that is not hidden)
 //
 // To add a gauge: add an entry here, a data module on the server, a registry entry.
 
 import { esc, q, fmtNum, nyTime } from './markets.js';
-import { sparkSvg } from './economy.js';
-import { legend } from './lines.js';
 import { fmtDate } from '../kit.js';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+// ---- Periods (the row of 3M 1Y 5Y 10Y MAX on every WEIRD screen) ---------------------
+// Shared by the browser (the row, the command words) and the server (data/weird/history.js
+// slices each gauge's history to one of these). AUTO is the grid's own start: each tile
+// as the gauge draws it by default.
+export const WEIRD_PERIODS = ['3M', '1Y', '5Y', '10Y', 'MAX'];
+export const PERIOD_DAYS = { '3M': 91, '1Y': 365, '5Y': 1826, '10Y': 3652, MAX: Infinity };
+export const AUTO = 'AUTO';
+
+// One typed word -> '5Y' (any case), or null when it is not a period.
+export function periodWord(tok) {
+  const t = String(tok ?? '').trim().toUpperCase();
+  return WEIRD_PERIODS.includes(t) ? t : null;
+}
+
+// '2026-09-27' -> '27 SEP 2026'.
+export function dayLabel(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || ''));
+  return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]} ${m[1]}` : '--';
+}
 
 // +12% / −12%, a true minus sign; '--' for no number.
 export function signed(v, decimals = 1, unit = '%') {
@@ -64,21 +86,24 @@ export function sourceHtml(g, d) {
 const stats = (rows) => `<dl class="stats wd-stats">${rows.map(([k, v]) => `<div class="stat"><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
 const table = (head, rows) => `<table class="grid-table wd-table"><thead><tr>${head.map(([h, cls]) => `<th scope="col"${cls ? ` class="${cls}"` : ''}>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
 const n0 = (v) => fmtNum(v, 0);
-const chartHost = (id) => `<div class="chart-host wd-chart" id="${id}"></div>`;
-const dayMs = (s) => Date.parse(`${s}T00:00:00Z`);
+const fmt1 = (v) => fmtNum(v, 1);
+const fmt2 = (v) => fmtNum(v, 2);
+const usd2 = (v) => `$${fmtNum(v, 2)}`;
+const pctY = (v) => signed(v, 0);
+const pct1 = (v) => signed(v, 1);
 
 // ---- CANAL -------------------------------------------------------------------------
 function canalDetail(d) {
   const num = (v, dp = 0) => (Number.isFinite(v) ? fmtNum(v, dp) : '--');
-  const rows = d.rows.map((r) => `<tr><th scope="row" class="name">${esc(r.name)}</th>
+  // Each row picks its chokepoint for the chart (data-key: the history's series key).
+  const rows = d.rows.map((r) => `<tr data-key="${esc(r.name.toLowerCase().replace(/[^a-z]+/g, '-'))}"><th scope="row" class="name">${esc(r.name)}</th>
     <td class="num">${num(r.total)}</td>
     <td class="num last">${num(r.week)}</td>
     <td class="num dim wd-hide-sm">${num(r.avgTotal)}</td>
     <td class="num ${dirCls(r.vsAvg)}">${signed(r.vsAvg, 0)}</td>
     <td class="num wd-hide-sm">${num(r.tanker)}</td>
-    <td class="num dim wd-hide-sm">${num(r.avgTanker)}</td>
-    <td class="wd-spark-cell wd-hide-sm">${sparkSvg(r.spark)}</td></tr>`);
-  return { html: table([['Chokepoint'], [asOfLabel(d.asOf), 'num'], ['7-day avg', 'num'], ['1Y avg', 'num wd-hide-sm'], ['vs avg', 'num'], ['Tankers', 'num wd-hide-sm'], ['1Y avg', 'num wd-hide-sm'], ['90 days', 'wd-hide-sm']], rows) };
+    <td class="num dim wd-hide-sm">${num(r.avgTanker)}</td></tr>`);
+  return { html: table([['Chokepoint'], [asOfLabel(d.asOf), 'num'], ['7-day avg', 'num'], ['1Y avg', 'num wd-hide-sm'], ['vs avg', 'num'], ['Tankers', 'num wd-hide-sm'], ['1Y avg', 'num wd-hide-sm']], rows) };
 }
 
 // ---- PIZZA -------------------------------------------------------------------------
@@ -125,42 +150,31 @@ function waffleDetail(d) {
 
 // ---- PANIC -------------------------------------------------------------------------
 function panicDetail(d) {
-  const rows = d.articles.map((a) => `<tr><th scope="row" class="name">${esc(a.label)}</th>
+  const rows = d.articles.map((a) => `<tr data-key="${esc(a.page)}"><th scope="row" class="name">${esc(a.label)}</th>
     <td class="num last">${n0(a.last)}</td><td class="num dim">${n0(a.avg30)}</td>
     <td class="num ${dirCls(a.pct)}">${signed(a.pct, 0)}</td></tr>`);
-  const total = `<tr><th scope="row" class="name">All four</th><td class="num last">${n0(d.total)}</td><td class="num dim">${n0(d.avg30)}</td><td class="num ${dirCls(d.pct)}">${signed(d.pct, 0)}</td></tr>`;
-  const series = d.articles.map((a, i) => ({ id: a.page, cls: `ln-${i}`, label: a.label, points: a.points.map((p) => ({ x: dayMs(p.date), y: p.views })) }));
-  return {
-    html: table([['Article'], [asOfLabel(d.asOf), 'num'], ['30d avg', 'num'], ['vs avg', 'num']], [...rows, total])
-      + `<div class="wd-chart-head">${legend(series)}</div>${chartHost('wd-chart')}`,
-    chart: { series, fmtY: (v) => n0(v), fmtX: (x) => fmtDate(x, 'axis'), label: 'Daily views, 90 days' },
-  };
+  const total = `<tr data-key="total"><th scope="row" class="name">All four</th><td class="num last">${n0(d.total)}</td><td class="num dim">${n0(d.avg30)}</td><td class="num ${dirCls(d.pct)}">${signed(d.pct, 0)}</td></tr>`;
+  return { html: table([['Article'], [asOfLabel(d.asOf), 'num'], ['30d avg', 'num'], ['vs avg', 'num']], [...rows, total]) };
 }
 
 // ---- HIRING ------------------------------------------------------------------------
 function hiringDetail(d) {
   const rows = d.months.map((m) => `<tr><th scope="row" class="name">${esc(monthLabel(m.month))}</th>
     <td class="num">${n0(m.hiring)}</td><td class="num">${n0(m.seeking)}</td><td class="num last">${fmtNum(m.ratio, 2)}</td></tr>`);
-  const pts = d.months.slice().reverse().map((m) => ({ x: dayMs(`${m.month}-01`), y: m.ratio }));
-  return {
-    html: `${chartHost('wd-chart')}${table([['Month'], ['Hiring posts', 'num'], ['Seekers', 'num'], ['Per job', 'num']], rows)}`,
-    chart: { series: [{ id: 'r', cls: 'ln-0', label: 'Seekers per job post', points: pts }], fmtY: (v) => fmtNum(v, 2), fmtX: (x) => fmtDate(x, 'axis'), label: 'Seekers per job post' },
-  };
+  return { html: table([['Month'], ['Hiring posts', 'num'], ['Seekers', 'num'], ['Per job', 'num']], rows) };
 }
 
 // ---- HOTDOG ------------------------------------------------------------------------
 function hotdogDetail(d) {
   const pick = d.series.filter((s, i) => i === 0 || i === d.series.length - 1 || Number(s.date) % 10 === 5);
   const rows = pick.reverse().map((s) => `<tr><th scope="row" class="name">${esc(s.date.length > 4 ? monthLabel(s.date) : s.date)}</th><td class="num last">$${fmtNum(s.price, 2)}</td></tr>`);
-  const pts = d.series.map((s) => ({ x: s.date.length > 4 ? dayMs(`${s.date}-01`) : Date.UTC(Number(s.date), 6, 1), y: s.price }));
   return {
     html: stats([
       ['Costco price', `$${fmtNum(d.price1985, 2)} <span class="dim">since 1985</span>`],
       ['Adjusted for CPI', `$${fmtNum(d.price, 2)}`],
       ['CPI 1985 average', fmtNum(d.cpiBase, 1)],
       [`CPI ${monthLabel(d.cpiDate)}`, fmtNum(d.cpiNow, 1)],
-    ]) + chartHost('wd-chart') + table([['Year'], ['$1.50 of 1985 money', 'num']], rows),
-    chart: { series: [{ id: 'p', cls: 'ln-0', label: 'Adjusted price', points: pts }], fmtY: (v) => `$${fmtNum(v, 2)}`, fmtX: (x) => String(new Date(x).getUTCFullYear()), label: 'Hot dog price adjusted for CPI' },
+    ]) + table([['Year'], ['$1.50 of 1985 money', 'num']], rows),
   };
 }
 
@@ -173,7 +187,6 @@ function omensDetail(d) {
   const sun = d.sunspots
     ? `${fmtNum(d.sunspots.ssn, 1)} <span class="dim">${esc(monthLabel(d.sunspots.month))}</span>`
     : '<span class="dim">NO DATA · NOAA SWPC</span>';
-  const pts = (d.sunspots?.series || []).map((r) => ({ x: dayMs(`${r.month}-01`), y: r.ssn }));
   return {
     html: stats([
       ['Moon', esc(m.name)],
@@ -182,8 +195,7 @@ function omensDetail(d) {
       ['Next new moon', esc(fmtDate(m.nextNew, 'prose'))],
       ['Sky, Central Park', sky],
       ['Sunspot number', sun],
-    ]) + (pts.length > 1 ? `<p class="wd-sub">Sunspot number, monthly, 10 years</p>${chartHost('wd-chart')}` : ''),
-    chart: pts.length > 1 ? { series: [{ id: 's', cls: 'ln-0', label: 'Sunspots', points: pts }], fmtY: (v) => fmtNum(v, 0), fmtX: (x) => String(new Date(x).getUTCFullYear()), label: 'Sunspot number' } : null,
+    ]),
   };
 }
 
@@ -218,7 +230,7 @@ export function localBigMac(rows, lang = globalThis.navigator?.language) {
 }
 
 function bigmacDetail(d) {
-  const row = (r) => `<tr><th scope="row" class="name">${esc(r.name)}</th><td class="num">$${fmtNum(r.dollarPrice, 2)}</td><td class="num last ${dirCls(r.usdRaw)}">${signed(r.usdRaw, 0)}</td></tr>`;
+  const row = (r) => `<tr data-key="${esc(r.iso3)}"><th scope="row" class="name">${esc(r.name)}</th><td class="num">$${fmtNum(r.dollarPrice, 2)}</td><td class="num last ${dirCls(r.usdRaw)}">${signed(r.usdRaw, 0)}</td></tr>`;
   const head = [['Country'], ['Price in $', 'num'], ['vs US', 'num']];
   const mine = localBigMac(d.rows);
   return {
@@ -295,15 +307,13 @@ function boxrateDetail(d) {
 function eggsDetail(d) {
   const rows = d.rows.map((r) => `<tr><th scope="row" class="name">${esc(monthLabel(r.month))}</th>
     <td class="num last">$${fmtNum(r.value, 2)}</td><td class="num ${dirCls(r.yoy)}">${signed(r.yoy, 0)}</td></tr>`);
-  const pts = d.points.map((p) => ({ x: dayMs(`${p.month}-01`), y: p.price }));
   return {
     html: stats([
       [`Price ${monthLabel(d.month)}`, `$${fmtNum(d.price, 2)}`],
       ['Change on a year', `<span class="${dirCls(d.yoy)}">${signed(d.yoy, 0)}</span>`],
       [`Peak ${monthLabel(d.peak.month)}`, `$${fmtNum(d.peak.price, 2)}`],
       ['From peak', `<span class="${dirCls(d.fromPeak)}">${signed(d.fromPeak, 0)}</span>`],
-    ]) + chartHost('wd-chart') + table([['Month'], ['Dozen', 'num'], ['vs year before', 'num']], rows),
-    chart: { series: [{ id: 'e', cls: 'ln-0', label: 'Price of a dozen eggs', points: pts }], fmtY: (v) => `$${fmtNum(v, 2)}`, fmtX: (x) => String(new Date(x).getUTCFullYear()), label: 'Price of a dozen eggs, monthly' },
+    ]) + table([['Month'], ['Dozen', 'num'], ['vs year before', 'num']], rows),
   };
 }
 
@@ -326,41 +336,28 @@ function buzzDetail(d) {
   const cell = (r, k) => `${n0(r[k])}${(r.capped || []).includes(k) ? '+' : ''}`;
   const rows = d.rows.map((r) => `<tr><th scope="row" class="name">${esc(r.label)}${r.partial ? ' <span class="dim">so far</span>' : ''}</th>
     ${BUZZ_WORDS.map(([k], i) => `<td class="num${i === 0 ? ' last' : ''}">${cell(r, k)}</td>`).join('')}</tr>`);
-  const ordered = d.rows.slice().reverse();
-  const series = BUZZ_WORDS.map(([k, label], i) => ({ id: k, cls: `ln-${i}`, label, points: ordered.map((r) => ({ x: dayMs(r.start), y: r[k] })) }));
-  return {
-    html: `<div class="wd-chart-head">${legend(series)}</div>${chartHost('wd-chart')}`
-      + table([['Filed in'], ['AI', 'num'], ['Tariff', 'num'], ['Recession', 'num']], rows),
-    chart: { series, fmtY: (v) => n0(v), fmtX: (x) => { const t = new Date(x); return `Q${Math.floor(t.getUTCMonth() / 3) + 1} '${String(t.getUTCFullYear()).slice(-2)}`; }, label: '10-Q filings using each phrase, by quarter' },
-  };
+  return { html: table([['Filed in'], ['AI', 'num'], ['Tariff', 'num'], ['Recession', 'num']], rows) };
 }
 
 // ---- BEIGE -------------------------------------------------------------------------
 function beigeDetail(d) {
   const rows = d.editions.map((e) => `<tr><th scope="row" class="name">${esc(fmtDate(e.released, 'prose'))}</th>
     ${d.words.map((w) => `<td class="num${w.key === d.top ? ' last' : ''}">${n0(e[w.key])}</td>`).join('')}</tr>`);
-  const ordered = d.editions.slice().reverse();
-  const series = d.words.map((w, i) => ({ id: w.key, cls: `ln-${i}`, label: w.label, points: ordered.map((e) => ({ x: dayMs(e.released), y: e[w.key] })) }));
-  return {
-    html: `<div class="wd-chart-head">${legend(series)}</div>${chartHost('wd-chart')}`
-      + table([['Released'], ...d.words.map((w) => [w.label, 'num'])], rows),
-    chart: { series, fmtY: (v) => n0(v), fmtX: (x) => fmtDate(x, 'axis'), label: 'Word counts per Beige Book edition' },
-  };
+  return { html: table([['Released'], ...d.words.map((w) => [w.label, 'num'])], rows) };
 }
 
 // ---- TRUCKS ------------------------------------------------------------------------
 function trucksDetail(d) {
-  const rows = d.rows.map((r) => `<tr><th scope="row" class="name">${esc(r.label)}</th>
+  const rows = d.rows.map((r) => `<tr data-key="${esc(r.key)}"><th scope="row" class="name">${esc(r.label)}</th>
     <td class="dim">${esc(monthLabel(r.month))}</td>
     <td class="num">${Number.isFinite(r.value) ? fmtNum(r.value, r.dp) : '--'}</td>
-    <td class="num last ${dirCls(r.yoy)}">${signed(r.yoy, 1)}</td>
-    <td class="wd-spark-cell wd-hide-sm">${sparkSvg(r.spark)}</td></tr>`);
-  return { html: table([['Series'], ['Latest'], ['Value', 'num'], ['vs year before', 'num'], ['3 years', 'wd-hide-sm']], rows) };
+    <td class="num last ${dirCls(r.yoy)}">${signed(r.yoy, 1)}</td></tr>`);
+  return { html: table([['Series'], ['Latest'], ['Value', 'num'], ['vs year before', 'num']], rows) };
 }
 
 // ---- BOXES -------------------------------------------------------------------------
 function boxesDetail(d) {
-  const summary = d.series.map((s) => `<tr><th scope="row" class="name">${esc(s.full)}</th>
+  const summary = d.series.map((s) => `<tr data-key="${esc(s.key)}"><th scope="row" class="name">${esc(s.full)}</th>
     <td class="dim">${esc(monthLabel(s.month))}</td>
     <td class="num">${Number.isFinite(s.value) ? fmtNum(s.value, 1) : '--'}</td>
     <td class="num last ${dirCls(s.yoy)}">${signed(s.yoy, 1)}</td></tr>`);
@@ -388,17 +385,12 @@ function lipstickDetail(d) {
 // ---- SICK --------------------------------------------------------------------------
 function sickDetail(d) {
   const lvl = (v) => (Number.isFinite(v) ? fmtNum(v, 1) : '--');
-  const rows = d.rows.map((r) => `<tr><th scope="row" class="name">${esc(r.label)}</th>
+  const rows = d.rows.map((r) => `<tr data-key="${esc(r.label.toLowerCase().replace(/[^a-z]+/g, '-'))}"><th scope="row" class="name">${esc(r.label)}</th>
     <td class="num last">${lvl(r.level)}</td>
     <td class="num dim">${lvl(r.level4w)}</td>
     <td class="num ${dirCls(r.change4w)}">${signed(r.change4w, 1, '')}</td>
     <td class="num dim wd-hide-sm">${Number.isFinite(r.sites) ? n0(r.sites) : '--'}</td></tr>`);
-  const series = d.rows.map((r, i) => ({ id: r.key, cls: `ln-${i}`, label: r.label, points: r.points.map((p) => ({ x: dayMs(p.week), y: p.level })) }));
-  return {
-    html: table([['Virus'], [`Week to ${fmtDate(d.asOf, 'table')}`, 'num'], ['4 weeks before', 'num'], ['Change', 'num'], ['Sites', 'num wd-hide-sm']], rows)
-      + `<div class="wd-chart-head">${legend(series)}</div>${chartHost('wd-chart')}`,
-    chart: { series, fmtY: (v) => fmtNum(v, 1), fmtX: (x) => fmtDate(x, 'axis'), label: 'Wastewater viral activity level, national median, weekly' },
-  };
+  return { html: table([['Virus'], [`Week to ${fmtDate(d.asOf, 'table')}`, 'num'], ['4 weeks before', 'num'], ['Change', 'num'], ['Sites', 'num wd-hide-sm']], rows) };
 }
 
 // ---- MACAU -------------------------------------------------------------------------
@@ -418,14 +410,14 @@ function macauDetail(d) {
 
 export const WEIRD_GAUGES = [
   {
-    id: 'canal', command: 'CANAL', title: 'Canal', detail: canalDetail,
+    id: 'canal', command: 'CANAL', title: 'Canal', detail: canalDetail, chart: { label: 'Daily transits', fmtY: n0, pick: true },
     method: [
       'Ships that crossed each chokepoint in one day, from IMF PortWatch, which counts them from ship position (AIS) signals. Tankers are one ship type inside the total.',
       'The headline is the mean daily count for Hormuz over the last 7 days on file. The 1-year average is the mean over the 365 days to the latest day, and "vs avg" compares the two. PortWatch runs about 6 days behind.',
     ],
   },
   {
-    id: 'pizza', command: 'PIZZA', title: 'Pizza', period: 'time', detail: pizzaDetail,
+    id: 'pizza', command: 'PIZZA', title: 'Pizza', period: 'time', detail: pizzaDetail, chart: { label: 'DEFCON level, one reading a day', fmtY: n0 },
     method: [
       'pizzint.watch, an unofficial site, reads how busy pizza places near the Pentagon are against their usual level, and turns that into a level from 5 (quiet) to 1 that it calls DEFCON.',
       'The idea is old folklore: late-night orders jump when something big is going on. It is shown for fun, with no claim either way.',
@@ -433,14 +425,14 @@ export const WEIRD_GAUGES = [
     ],
   },
   {
-    id: 'degen', command: 'DEGEN', title: 'Degen', period: 'time', detail: degenDetail,
+    id: 'degen', command: 'DEGEN', title: 'Degen', period: 'time', detail: degenDetail, chart: { label: 'Best rank of the five, one reading a day (1 is top)', fmtY: (v) => `#${n0(v)}` },
     method: [
       "Where each app sits in Apple's US top 100 free iPhone apps, from Apple's public chart feed, updated about daily.",
       'Not in the top 100 means it ranks lower than 100. Apps are matched by App Store id, then by name.',
     ],
   },
   {
-    id: 'waffle', command: 'WAFFLE', title: 'Waffle', period: 'time', detail: waffleDetail,
+    id: 'waffle', command: 'WAFFLE', title: 'Waffle', period: 'time', detail: waffleDetail, chart: { label: 'Stores inside storm winds, one reading a day', fmtY: n0 },
     method: [
       'Active storms come from the National Hurricane Center. For each storm, a store counts when it is inside the tropical-storm-force wind radius (34 knots) in the latest forecast advisory. The advisory gives one radius per quadrant: NE, SE, SW, NW.',
       'A storm whose advisory has no 34-knot radius (a depression) counts zero. A storm more than 800 miles from every store counts zero. If a nearby storm\'s advisory will not load, its row shows -- and the count is marked partial; if no nearby storm could be counted, the gauge shows its last reading or NO DATA.',
@@ -449,28 +441,28 @@ export const WEIRD_GAUGES = [
     ],
   },
   {
-    id: 'panic', command: 'PANIC', title: 'Panic', detail: panicDetail,
+    id: 'panic', command: 'PANIC', title: 'Panic', detail: panicDetail, chart: { label: 'Daily views', fmtY: n0, pick: true, keys: (h) => h.series.filter((x) => x.key !== 'total').map((x) => x.key) },
     method: [
       'Daily views by people (bots left out) of four English Wikipedia articles: Recession, Stock market crash, Stagflation and Bank run. Source: the Wikimedia pageviews API.',
       "The headline is the latest full day's total for all four, against the average of the 30 days before it.",
     ],
   },
   {
-    id: 'hiring', command: 'HIRING', title: 'Hiring', period: 'month', detail: hiringDetail,
+    id: 'hiring', command: 'HIRING', title: 'Hiring', period: 'month', detail: hiringDetail, chart: { label: 'Seekers per job post, monthly', fmtY: fmt2 },
     method: [
       'Each month Hacker News posts two threads: "Who is hiring?" (one comment per job ad) and "Who wants to be hired?" (one per person). This divides the comments on the second by the comments on the first.',
       'Counts include replies, so they are rough. Threads keep growing for a few weeks, so the headline uses the newest month whose threads are at least 7 days old. Source: the HN Algolia search API.',
     ],
   },
   {
-    id: 'hotdog', command: 'HOTDOG', title: 'Hot dog', period: 'month', detail: hotdogDetail,
+    id: 'hotdog', command: 'HOTDOG', title: 'Hot dog', period: 'month', detail: hotdogDetail, chart: { label: 'The $1.50 hot dog in each month\'s money', fmtY: usd2 },
     method: [
       'Costco has charged $1.50 for its hot dog and soda since 1985. That $1.50 is the one fixed number on this screen.',
       'Adjusted price = $1.50 x (latest monthly CPI / 1985 average CPI). CPI is for all urban consumers, seasonally adjusted, FRED series CPIAUCSL.',
     ],
   },
   {
-    id: 'omens', command: 'OMENS', title: 'Omens', period: 'time', detail: omensDetail,
+    id: 'omens', command: 'OMENS', title: 'Omens', period: 'time', detail: omensDetail, chart: { label: 'Sunspot number, monthly', fmtY: n0 },
     method: [
       'Moon: worked out on our server with the method in Jean Meeus, Astronomical Algorithms, chapter 49. New and full moon times are good to a few minutes.',
       'Sky: the latest National Weather Service observation from Central Park, New York (station KNYC). Sunspots: the monthly sunspot number from the NOAA Space Weather Prediction Center.',
@@ -478,14 +470,14 @@ export const WEIRD_GAUGES = [
     ],
   },
   {
-    id: 'undies', command: 'UNDIES', title: 'Undies', period: 'month', detail: undiesDetail,
+    id: 'undies', command: 'UNDIES', title: 'Undies', period: 'month', detail: undiesDetail, chart: { label: 'Change on a year before, monthly', fmtY: pct1, zero: true },
     method: [
       "The BLS consumer price index for men's underwear, nightwear, swimwear and accessories (series CUUR0000SEAA02), US city average, not seasonally adjusted. So the month-on-month change includes seasonal swings.",
       'Alan Greenspan is said to have watched men\'s underwear sales, on the idea that men put off new pairs when money is tight. That is folklore, not a tested rule.',
     ],
   },
   {
-    id: 'bigmac', command: 'BIGMAC', title: 'Big Mac', period: 'month', detail: bigmacDetail,
+    id: 'bigmac', command: 'BIGMAC', title: 'Big Mac', period: 'month', detail: bigmacDetail, chart: { label: 'Big Mac vs the US, in dollars', fmtY: pctY, zero: true, pick: true },
     method: [
       "The Economist's Big Mac index: the price of a Big Mac in each country, turned into dollars at the market exchange rate, against the US price.",
       '+45% means a Big Mac costs 45% more in dollars there than in the US, a rough hint that the currency is dear against the dollar. This is the raw index, not the GDP-adjusted one. Updated twice a year.',
@@ -493,21 +485,21 @@ export const WEIRD_GAUGES = [
     ],
   },
   {
-    id: 'billions', command: 'BILLIONS', title: 'Billions', period: 'time', detail: billionsDetail,
+    id: 'billions', command: 'BILLIONS', title: 'Billions', period: 'time', detail: billionsDetail, chart: { label: 'Biggest one-day change, one reading a day', fmtY: signedBn, zero: true },
     method: [
       "The Forbes real-time billionaires list. Forbes estimates each person's net worth through the day from share prices, and keeps the estimate from the previous close. Today's change is the live estimate minus that previous estimate.",
       'The headline is the person with the biggest change in dollars, up or down, of everyone on the list. The feed is unofficial and can lag or pause; weekends show the last trading day.',
     ],
   },
   {
-    id: 'wsb', command: 'WSB', title: 'WallStreetBets', period: 'time', detail: wsbDetail,
+    id: 'wsb', command: 'WSB', title: 'WallStreetBets', period: 'time', detail: wsbDetail, chart: { label: 'Mentions of the top ticker, one reading a day', fmtY: n0 },
     method: [
       "ApeWisdom counts how often each ticker is named in posts and comments on Reddit's WallStreetBets over the last 24 hours, and where it ranked 24 hours before.",
       'A ticker here is talked about, which says nothing about whether it is a good or bad idea. Click a ticker to open its quote screen here.',
     ],
   },
   {
-    id: 'odds', command: 'CHANCES', title: 'Chances', period: 'time', detail: oddsDetail,
+    id: 'odds', command: 'CHANCES', title: 'Chances', period: 'time', detail: oddsDetail, chart: { label: 'US recession chance, one reading a day', fmtY: (v) => `${fmtNum(v, 1)}%` },
     method: [
       'Prices on Polymarket, a prediction market, read from its public Gamma API. A "Yes" price of 10 cents on the dollar is shown as a 10% chance. These are traders\' prices, not forecasts by us.',
       'Recession: the US recession market for this year, or the soonest one if there is none for this year. Fed: every outcome of the market on the next Fed meeting. Questions are shown in the market\'s own words.',
@@ -515,21 +507,21 @@ export const WEIRD_GAUGES = [
     ],
   },
   {
-    id: 'boxrate', command: 'BOXRATE', title: 'Box rate', detail: boxrateDetail,
+    id: 'boxrate', command: 'BOXRATE', title: 'Box rate', detail: boxrateDetail, chart: { label: '40ft container, one reading a day', fmtY: (v) => `$${n0(v)}` },
     method: [
       "The Drewry World Container Index: the average spot price to ship one 40-foot container on eight main routes between Asia, Europe and the US. Drewry publishes it every Thursday.",
       "Only the headline figure and its date are read from Drewry's page. If they cannot be read, this shows NO DATA.",
     ],
   },
   {
-    id: 'eggs', command: 'EGGPRICE', title: 'Egg price', period: 'month', detail: eggsDetail,
+    id: 'eggs', command: 'EGGPRICE', title: 'Egg price', period: 'month', detail: eggsDetail, chart: { label: 'Price of a dozen eggs, monthly', fmtY: usd2 },
     method: [
       'The average price of a dozen grade A large eggs in US cities, from the BLS average price survey (FRED series APU0000708111), monthly.',
       'The peak is the highest monthly price in the series, which starts in 1980. "From peak" compares the latest month with it.',
     ],
   },
   {
-    id: 'rides', command: 'RIDES', title: 'Rides', period: 'time', detail: ridesDetail,
+    id: 'rides', command: 'RIDES', title: 'Rides', period: 'time', detail: ridesDetail, chart: { label: 'Average posted wait, one reading a day', fmtY: (v) => `${n0(v)} min` },
     creditLink: { text: 'Queue-Times.com', href: 'https://queue-times.com/', title: 'Powered by Queue-Times.com' },
     method: [
       "Posted wait times from Queue-Times.com for Walt Disney World's four parks (Magic Kingdom, Epcot, Hollywood Studios, Animal Kingdom) and Disneyland.",
@@ -538,14 +530,14 @@ export const WEIRD_GAUGES = [
     ],
   },
   {
-    id: 'buzz', command: 'BUZZWORD', title: 'Buzzword', detail: buzzDetail,
+    id: 'buzz', command: 'BUZZWORD', title: 'Buzzword', detail: buzzDetail, chart: { label: '10-Q filings using each phrase, by quarter', fmtY: n0 },
     method: [
       'SEC EDGAR full-text search: the number of 10-Q quarterly reports that use the exact phrase "artificial intelligence", "tariff" or "recession", by the calendar quarter they were filed in. One filing counts once, however often it uses the phrase.',
       'Few 10-Qs are filed from January to March, when most companies file their annual 10-K instead, so those quarters are always low. The newest quarter is counted so far; the headline uses it in its last week, and the quarter before it until then.',
     ],
   },
   {
-    id: 'beige', command: 'BEIGE', title: 'Beige Book', detail: beigeDetail,
+    id: 'beige', command: 'BEIGE', title: 'Beige Book', detail: beigeDetail, chart: { label: 'Word counts per edition', fmtY: n0 },
     method: [
       "The Fed's Beige Book gathers what businesses tell the 12 Federal Reserve Banks, eight times a year. Each edition here is its national summary plus the 12 District reports, from federalreserve.gov.",
       'Words are counted as whole words in any case, with their plain forms: uncertain counts uncertainty; tariff counts tariffs; slow counts slowed, slowing, slower, slowly and slowdown; recession counts recessions. AI counts only in capitals, plus "artificial intelligence".',
@@ -553,35 +545,35 @@ export const WEIRD_GAUGES = [
     ],
   },
   {
-    id: 'trucks', command: 'TRUCKS', title: 'Trucks', period: 'month', detail: trucksDetail,
+    id: 'trucks', command: 'TRUCKS', title: 'Trucks', period: 'month', detail: trucksDetail, chart: { label: 'Change on a year before, monthly', fmtY: pct1, zero: true, pick: true },
     method: [
       'Three monthly freight series from FRED, each against the same month a year before: the Cass Freight Index for shipments (FRGSHPUSM649NCIS), the ATA truck tonnage index (TRUCKD11) and rail freight carloads (RAILFRTCARLOADSD11).',
       'They come out at different times, so each row has its own latest month.',
     ],
   },
   {
-    id: 'boxes', command: 'BOXES', title: 'Boxes', period: 'month', detail: boxesDetail,
+    id: 'boxes', command: 'BOXES', title: 'Boxes', period: 'month', detail: boxesDetail, chart: { label: 'Change on a year before, monthly', fmtY: pct1, zero: true, pick: true },
     method: [
       'Cardboard boxes carry most goods, so box demand is watched as an early read on shipping. Output: the Fed industrial production index for paperboard containers (FRED IPN32221S). Prices: the producer price index for corrugated and solid fiber boxes (FRED PCU322211322211).',
       'Each is compared with the same month a year before, and each has its own latest month.',
     ],
   },
   {
-    id: 'lipstick', command: 'LIPSTICK', title: 'Lipstick', period: 'month', detail: lipstickDetail,
+    id: 'lipstick', command: 'LIPSTICK', title: 'Lipstick', period: 'month', detail: lipstickDetail, chart: { label: 'Change on a year before, monthly', fmtY: pct1, zero: true },
     method: [
       'The BLS consumer price index for cosmetics, perfume, bath and nail products (FRED series CUUR0000SEGB02), US city average, not seasonally adjusted. It measures prices, not sales.',
       'The "lipstick index" is folklore: Leonard Lauder said lipstick sells better when money is tight. Shown for fun, with no claim either way.',
     ],
   },
   {
-    id: 'sick', command: 'SICK', title: 'Sick', detail: sickDetail,
+    id: 'sick', command: 'SICK', title: 'Sick', detail: sickDetail, chart: { label: 'Viral activity level, national median, weekly', fmtY: fmt1, pick: true },
     method: [
       "CDC wastewater data (National Wastewater Surveillance System, dataset atcp-73re). Each sewage site gets a weekly viral activity level that compares it with that site's own baseline; 1 is the lowest the scale goes.",
       'CDC publishes this per site. The national figure here is our summary: the median level of all sites reporting that week, for COVID (SARS-CoV-2), flu A and RSV. Sites report late, so the newest week or two have fewer sites and move a lot. This shows the newest week with at least 90% as many sites as a full week (the most sites any of the last 8 weeks had).',
     ],
   },
   {
-    id: 'macau', command: 'MACAU', title: 'Macau', period: 'month', detail: macauDetail,
+    id: 'macau', command: 'MACAU', title: 'Macau', period: 'month', detail: macauDetail, chart: { label: 'Gross gaming revenue, monthly', fmtY: mop },
     method: [
       "Macau casinos' gross gaming revenue per month, from DICJ, Macau's gaming regulator, in millions of patacas (MOP).",
       'The change compares each month with the same month a year before.',

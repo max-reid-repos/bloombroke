@@ -49,11 +49,14 @@ export async function readCapped(res, cap = MAX_BYTES, abort = null) {
   return Buffer.concat(chunks.map((c) => Buffer.from(c.buffer, c.byteOffset, c.byteLength))).toString('utf8');
 }
 
-// fetchImpl -> { text(url, opts), json(url, opts) }. opts: { timeout, headers, accept, maxBytes }.
+// fetchImpl -> { text(url, opts), json(url, opts) }. opts: { timeout, headers, accept,
+// maxBytes, method, body } (method and body: for the few sources that take a POST, BLS).
 export function sourceClient(fetchImpl = globalThis.fetch) {
-  async function get(url, { timeout = TIMEOUT, headers = {}, accept = '*/*', maxBytes = MAX_BYTES } = {}) {
+  async function get(url, { timeout = TIMEOUT, headers = {}, accept = '*/*', maxBytes = MAX_BYTES, method, body } = {}) {
     const abort = new AbortController();
     const res = await fetchImpl(url, {
+      ...(method ? { method } : {}),
+      ...(body !== undefined ? { body } : {}),
       headers: { 'User-Agent': UA, Accept: accept, ...headers },
       signal: AbortSignal.any([AbortSignal.timeout(timeout), abort.signal]),
       redirect: 'follow',

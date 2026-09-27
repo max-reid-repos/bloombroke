@@ -285,7 +285,7 @@ export function parseCommand(raw, depth = 0) {
   }
   const company = matchCompany(head, rest); if (company) return company;
   const markets = matchMarkets(head, rest); if (markets) return markets;
-  const weird = matchWeird(head); if (weird) return weird;
+  const weird = matchWeird(head, rest); if (weird) return weird;
   // Add new commands above this line: commands win over symbols of the same name.
   const quote = parseSymbolCommand(toks);
   if (quote) return quote;
