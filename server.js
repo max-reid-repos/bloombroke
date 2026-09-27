@@ -322,6 +322,13 @@ mountGuess(app, { getChart, getCaps: getFishtank, count: (n) => siteCounters.bum
 const pro = startPro(app, { dir, counters: siteCounters });
 mountCounters(app, { counters: siteCounters, mode: pro?.mode || null, publicUrl: process.env.PUBLIC_URL || 'https://bloombroke.com' });
 
+// --- MCP (lib/mcp/): POST /mcp, public-domain data only, and /llms.txt ---
+import { mountMcp } from './lib/mcp/server.js';
+import { mountLlmsTxt } from './lib/mcp/llms.js';
+mountMcp(app);
+mountLlmsTxt(app);
+// --- end MCP ---
+
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));
 
 // Share images. A bad or unknown command gets the site card, never an error.
