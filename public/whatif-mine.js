@@ -149,10 +149,16 @@ export function mineShort(item) {
 
 // The inline form's fields -> the command words, or throws MineError.
 // how: 'ONCE' | 'DAY' | 'WEEK' | 'MONTH'.
+// An empty or odd field gets a plain line about that field, not the command syntax.
 export function formWords({ amount, ticker, date, how = 'ONCE', to = '' }, now = new Date()) {
   const a = String(amount || '').trim();
   const t = String(ticker || '').trim().toUpperCase();
   const d = String(date || '').trim();
+  if (!a) throw new MineError('Type an amount, like 15.');
+  if (!Number.isFinite(parseAmount(a))) throw new MineError('Type the amount in whole dollars, like 15.');
+  if (!t) throw new MineError('Type a stock ticker, like AAPL.');
+  if (!TICKER_RE.test(t)) throw new MineError(`${t} is not a ticker. Try one like AAPL.`);
+  if (!d) throw new MineError(how === 'ONCE' ? 'Type a date, like 2015 or 2015-03.' : 'Type a year, like 2015.');
   const words = how === 'ONCE' ? ['MY', a, t, d] : ['MY', a, 'A', how, t, 'SINCE', d, ...(String(to || '').trim() ? ['TO', String(to).trim()] : [])];
   const { mine } = parseMine(words, now);
   return mine[0].words;
