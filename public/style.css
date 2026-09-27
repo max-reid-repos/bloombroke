@@ -1925,7 +1925,15 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .seat:hover { text-decoration: none; color: var(--text); }
 .seat[hidden] { display: none; }
 /* The sponsor line gives way first (ellipsis); the legal line and its links never do. */
-.status-sponsor { flex: 0 1 auto; min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
+/* It takes the free space between the status text and the legal block, and sits centred
+   in it: clear of the legal links on every screen. */
+.status-sponsor { flex: 1 1 0; min-width: 0; display: flex; justify-content: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
+.status-sponsor > .spon-item { max-width: 100%; min-width: 0; }
+@media (max-width: 639px) { .status-sponsor { flex: 0 1 auto; justify-content: flex-start; } }
+/* SPONSOR opens: the real strip is outlined for 2 s, so it is clear where it runs. */
+.status-sponsor.is-spot { outline: 1px solid var(--accent); outline-offset: -1px; animation: spon-spot 2s ease-out; }
+@keyframes spon-spot { from { box-shadow: 0 0 0 3px var(--accent-tint); } to { box-shadow: none; } }
+@media (prefers-reduced-motion: reduce) { .status-sponsor.is-spot { animation: none; } }
 .status-sponsor[hidden] { display: none; }
 .status-sponsor .sponsor-k { margin-right: 2ch; color: var(--faint); letter-spacing: .12em; }
 .status-sponsor a { color: var(--text-2); }
@@ -1940,8 +1948,6 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .spon-strip.is-sliding .spon-item { animation: spon-in 180ms linear; }
 @keyframes spon-in { from { transform: translateY(100%); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .spon-strip.is-sliding .spon-item { animation: none; } }
-.spon-preview { display: flex; align-items: center; height: 26px; margin: 2px 0 12px; padding: 0 10px; border: 1px solid var(--rule-strong); background: var(--panel); font-size: 11px; letter-spacing: .06em; }
-.spon-preview .spon-strip { flex: 1 1 auto; min-width: 0; }
 .spon-facts { margin: 0 0 12px; border-top: 1px solid var(--rule); }
 .spon-facts li { min-height: var(--row-h); padding: 3px 0; border-bottom: 1px solid var(--rule); color: var(--text-2); }
 .spon-facts li.is-no { color: var(--dim); }
@@ -1951,7 +1957,18 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .spon-nums th, .spon-nums td { height: var(--row-h); padding: 0 8px 0 0; border-bottom: 1px solid var(--rule); text-align: left; font-weight: 400; color: var(--text-2); white-space: nowrap; }
 .spon-nums thead th { font-size: 11px; letter-spacing: .08em; color: var(--dim); }
 .spon-nums .num { text-align: right; color: var(--text); }
-.spon-tile .wd-line { display: none; }
+.spon-tile .wd-line, .spon-tile .wd-src { display: none; }
+/* The bottom-row mock on SPONSOR: the status row and the key bar, small. */
+.spon-mock { overflow: hidden; margin: 0 0 12px; border: 1px solid var(--rule-strong); background: var(--bg); font-size: 11px; letter-spacing: .06em; }
+.spon-mock-row { display: flex; align-items: center; gap: 12px; height: 22px; padding: 0 10px; background: var(--panel); white-space: nowrap; }
+.spon-mock-msg { flex: 0 0 8ch; height: 6px; background: var(--rule-strong); }
+.spon-mock-strip { flex: 1 1 0; min-width: 0; display: flex; justify-content: center; outline: 1px solid var(--accent); outline-offset: 2px; }
+.spon-mock-legal { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+.spon-mock-keys { display: flex; align-items: center; gap: 16px; height: 22px; padding: 0 10px; border-top: 1px solid var(--rule); color: var(--dim); }
+.spon-mock-key { width: 7ch; height: 6px; background: var(--rule-strong); }
+.spon-mock-more { flex: 1 1 auto; height: 6px; background: linear-gradient(90deg, var(--rule-strong) 0 30%, transparent 30%); }
+/* A phone has less room: the mock keeps the ad line readable and the links short. */
+@media (max-width: 639px) { .spon-mock-msg, .spon-mock-nfa { display: none; } .spon-mock-row { gap: 8px; } }
 .spon-tile .panel-body { min-height: 0; }
 @media (max-width: 639px) { .spon-proofs { grid-template-columns: minmax(0, 1fr); } }
 .spon-proof { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 12px; }

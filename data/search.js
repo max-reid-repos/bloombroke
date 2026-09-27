@@ -15,6 +15,8 @@ export function cleanQuery(raw) {
   return QUERY_RE.test(q) ? q : null;
 }
 
+const LISTED_TYPES = new Set(['STOCK', 'ETF', 'ETN', 'CF']);
+
 // CNBC lookup rows -> [{ id, name, kind }], US listed stocks and ETFs our router can open.
 export function parseLookup(body) {
   const rows = Array.isArray(body) ? body.slice(1) : [];
@@ -24,9 +26,11 @@ export function parseLookup(body) {
     const id = String(r?.symbolName || '').toUpperCase();
     // A stock whose symbol is one of our names (GOLD, BTC) would open the wrong screen.
     if (!TICKER_RE.test(id) || seen.has(id) || resolveInstrument(id)) continue;
-    if (r.countryCode !== 'US' || !['STOCK', 'ETF'].includes(r.issueType)) continue;
+    // Exchange-traded notes (VXX) and closed-end funds (PDI) trade like ETFs and stocks,
+    // and the quote source has them.
+    if (r.countryCode !== 'US' || !LISTED_TYPES.has(r.issueType)) continue;
     seen.add(id);
-    out.push({ id, name: String(r.companyName || id).slice(0, 80), kind: r.issueType === 'ETF' ? 'etf' : 'stock' });
+    out.push({ id, name: String(r.companyName || id).slice(0, 80), kind: r.issueType === 'ETF' || r.issueType === 'ETN' ? 'etf' : 'stock' });
   }
   return out;
 }

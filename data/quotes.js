@@ -337,6 +337,32 @@ export function parseQuoteRow(r, ticker = r?.symbol, fill = null) {
   };
 }
 
+// Stock rows for these symbols. The source now and then answers code 1 ("no such
+// symbol") for a real one (XLY, seen live), and its cache in front keeps that answer for
+// about 10 seconds. So a symbol that comes back unknown is asked once more, in one call,
+// past that cache (an extra query field), before it counts as unknown.
+export async function fetchStockRows(fetchImpl, symbols, now = Date.now) {
+  const rows = await fetchCnbcRows(fetchImpl, symbols);
+  const symOf = (r) => String(r?.symbol || '').toUpperCase();
+  const again = [...new Set(rows.filter((r) => r && Number(r.code) !== 0).map(symOf))].filter((sym) => symbols.includes(sym));
+  if (!again.length) return rows;
+  let retry = [];
+  try { retry = await fetchCnbcRows(fetchImpl, again, { recheck: String(now()) }); } catch { return rows; }
+  const known = new Map(retry.filter((r) => r && Number(r.code) === 0).map((r) => [symOf(r), r]));
+  return rows.map((r) => (r && Number(r.code) !== 0 && known.get(symOf(r))) || r);
+}
+
+// A stock row -> its quote, null when the source knows no such symbol (it answers
+// code 1 or 3 for one, twice), or a throw when the row is missing from the answer or has no
+// price: that is a gap in the data, not an unknown ticker, so it must never be cached
+// as one (a 404 would say "No ticker called XLY" about a real ETF).
+export function stockQuoteOrGap(r, ticker) {
+  if (r && Number(r.code) !== 0) return null;
+  const quote = parseQuoteRow(r, ticker);
+  if (!quote) throw Object.assign(new Error(`quotes source: ${r ? 'no price' : 'no row'} for ${ticker}`), { gap: true });
+  return quote;
+}
+
 // Rows with no day's move (weekends, holidays) or a rolled previous close (needsFill) get
 // it from the daily closes of the CNBC bars service: one call per symbol, kept 10 minutes
 // (a failure too, so a dead source is not asked again, and it keeps the last good fill), at most 4 at a time. A batch refresh waits for them at
@@ -444,8 +470,8 @@ export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache()
         return quote ? { ...quote, stale, updated: new Date(fetchedAt).toISOString() } : null;
       }
       const { value, stale, fetchedAt } = await cache.cached(`quote:${ticker}`, QUOTES_TTL, async () => {
-        const rows = await fetchCnbcRows(fetchImpl, [ticker]);
-        return { quote: parseQuoteRow(rows[0], ticker) };
+        const rows = await fetchStockRows(fetchImpl, [ticker]);
+        return { quote: stockQuoteOrGap(rows[0], ticker) };
       });
       if (!value.quote) return null;
       return { ...value.quote, stale, updated: new Date(fetchedAt).toISOString() };
@@ -459,7 +485,7 @@ export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache()
       let shared = null;
       let failed = null;
       const fetchStocks = () => {
-        shared ||= fetchCnbcRows(fetchImpl, stocks).then((rows) => {
+        shared ||= fetchStockRows(fetchImpl, stocks).then((rows) => {
           const bySym = new Map(rows.map((r) => [String(r.symbol || '').toUpperCase(), r]));
           // One symbol asked, one row back: the same rule as getQuote. Otherwise match by
           // symbol only, so a row can never land on the wrong ticker.
@@ -472,11 +498,12 @@ export function makeQuotes({ fetchImpl = globalThis.fetch, cache = createCache()
           if (instrumentById(t)) return await api.getQuote(t);
           const { value, stale, fetchedAt } = await cache.cached(`quote:${t}`, QUOTES_TTL, async () => {
             const pick = await fetchStocks();
-            return { quote: parseQuoteRow(pick(t), t) };
+            return { quote: stockQuoteOrGap(pick(t), t) };
           });
           return value.quote ? { ...value.quote, stale, updated: new Date(fetchedAt).toISOString() } : null;
         } catch (err) {
-          failed = err;
+          // A gap in one row lists that symbol as missing; only a failed call is an outage.
+          if (!err.gap) failed = err;
           return null;
         }
       };

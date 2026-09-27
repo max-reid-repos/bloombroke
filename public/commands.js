@@ -91,8 +91,9 @@ export function matchExtra(head, rest) {
     if (c.name !== head) continue;
     const args = c.screen.parse ? c.screen.parse(rest) : {};
     if (args === null) continue;
-    const input = c.secret ? head : [head, ...(c.screen.parse ? rest : [])].join(' ');
-    return { name: c.id || c.name, args, error: args.error, input };
+    // toInput(args): a screen that writes its own clean command (SECTORS drops unknown words).
+    const input = c.secret ? head : c.screen.toInput ? c.screen.toInput(args) : [head, ...(c.screen.parse ? rest : [])].join(' ');
+    return { name: c.id || c.name, args, error: args.error, input, ...(c.screen.toInput ? { url: input } : {}) };
   }
   return null;
 }

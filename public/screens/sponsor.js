@@ -11,12 +11,13 @@ import { tileBody, WEIRD_GAUGES } from './weird.js';
 
 export const CONTACT = 'hello@bloombroke.com';
 export const FACTS = [
-  'Every screen, every visitor who is not Pro.',
-  `Lines rotate every ${ROTATE_MS / 1000} s. Up to ${MAX_SPONSOR_LINES} sponsors.`,
+  'Not shown to Pro users.',
+  `Rotates every ${ROTATE_MS / 1000} s, up to ${MAX_SPONSOR_LINES} sponsors.`,
   'No tracking, no pixels, no scripts.',
 ];
 export const NOT_FOR = 'Not for brokers, exchanges, crypto, funds or tip sellers.';
-// What a sponsor can look at first. A link shows only when its command exists here.
+// What a sponsor can look at first. A link shows only when its command exists here; its
+// words are the tooltip, so the page stays short.
 export const PROOF = [
   ['BBRK', 'site numbers'],
   ['CHANGES', 'what is new'],
@@ -25,20 +26,43 @@ export const PROOF = [
   ['WEIRD', 'gauges'],
 ];
 // SITE NUMBERS: a few rows from /api/bbrk, today so far and the last 7 days.
-export const NUMBERS = [['whatif_run', 'WHATIF results'], ['guess_played', 'GUESS games'], ['mcp_call', 'MCP calls']];
+// Four rows from /api/bbrk audience and inventory; BBRK has the rest.
+export const NUMBERS = [
+  ['Visitors (7d)', (b) => fmtN(b?.audience?.visitors?.d7)],
+  ['Avg visit', (b) => fmtDur(b?.audience?.avgVisitSec)],
+  ['Strip shown (7d)', (b) => fmtN(b?.inventory?.stripShown?.d7)],
+  ['Top country', (b) => topCountry(b?.audience?.countries)],
+];
 // The gauge shown as a sponsorship preview. Never saved to the sponsor config.
 export const PREVIEW_GAUGE = 'canal';
 export const PREVIEW_SPONSOR = 'SPONSORED BY YOUR NAME';
 
-const fmtN = (v) => (Number.isFinite(v) ? v.toLocaleString('en-US') : '--');
+function fmtN(v) { return Number.isFinite(v) ? v.toLocaleString('en-US') : '--'; }
+// 102 -> "1m 42s", 40 -> "40s". Unknown: --.
+export function fmtDur(sec) {
+  if (!Number.isFinite(sec) || sec < 0) return '--';
+  const s = Math.round(sec);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+}
+export function topCountry(list) {
+  const c = Array.isArray(list) ? list[0] : null;
+  return c?.name && Number.isFinite(c.pct) ? `${c.name} ${Math.round(c.pct)}%` : '--';
+}
 
-// The rows, from /api/bbrk (null while it loads or fails: every number is --).
+// The rows, from /api/bbrk (null while it loads, or a field missing: --).
 export function numbersHtml(bbrk) {
-  const rows = NUMBERS.map(([k, label]) => {
-    const c = bbrk?.counts?.[k];
-    return `<tr><th scope="row">${esc(label)}</th><td class="num">${fmtN(c?.today)}</td><td class="num">${fmtN(c?.d7)}</td></tr>`;
-  }).join('');
-  return `<table class="spon-nums"><thead><tr><th></th><th class="num">TODAY</th><th class="num">7 DAYS</th></tr></thead><tbody>${rows}</tbody></table>`;
+  const rows = NUMBERS.map(([label, value]) => `<tr><th scope="row">${esc(label)}</th><td class="num">${esc(value(bbrk))}</td></tr>`).join('');
+  return `<table class="spon-nums"><tbody>${rows}</tbody></table>`;
+}
+
+// The terminal's bottom two rows in small: the status row with the ad line where it
+// really runs, and the key bar under it.
+export function bottomMockHtml() {
+  return `<p class="spon-h">BOTTOM ROW, EVERY SCREEN</p>
+    <div class="spon-mock" role="img" aria-label="The status row at the bottom of every screen, with the sponsor line in it">
+      <div class="spon-mock-row"><span class="spon-mock-msg"></span><span class="spon-strip spon-mock-strip" id="spon-demo"></span><span class="spon-mock-legal"><span class="spon-mock-nfa">Not financial advice · </span>Terms · Feedback</span></div>
+      <div class="spon-mock-keys"><span>F1 HELP</span><span class="spon-mock-key"></span><span class="spon-mock-key"></span><span class="spon-mock-more"></span></div>
+    </div>`;
 }
 
 // A real WEIRD tile with a made-up sponsor, marked as a preview. d: /api/weird/<id>.
@@ -90,16 +114,31 @@ export function sponsorHtml({ has, bbrk = null, gauge = null } = {}) {
   const proof = proofLinks(has).filter(([c]) => !(hasBbrk && c === 'BBRK'));
   const numbers = hasBbrk
     ? `<section class="spon-box"><h3 class="spon-h">SITE NUMBERS ${link('BBRK')}</h3><div id="spon-nums">${numbersHtml(bbrk)}</div></section>` : '';
-  return panel('1', 'Sponsor', `<div class="spon-preview" aria-label="Preview of the sponsor strip"><span class="spon-strip" id="spon-demo"></span></div>
+  return panel('1', 'Sponsor', `${bottomMockHtml()}
     <ul class="spon-facts">${FACTS.map((t) => `<li>${esc(t)}</li>`).join('')}<li class="is-no">${esc(NOT_FOR)}</li></ul>
-    <div class="spon-proofs">${numbers}<section class="spon-box"><h3 class="spon-h">PREVIEW</h3><div id="spon-gauge">${gaugePreviewHtml(gauge)}</div></section></div>
-    ${proof.length ? `<ul class="spon-proof">${proof.map(([c, what]) => `<li>${link(c)} ${esc(what)}</li>`).join('')}</ul>` : ''}
+    <div class="spon-proofs">${numbers}<section class="spon-box"><div id="spon-gauge">${gaugePreviewHtml(gauge)}</div></section></div>
+    ${proof.length ? `<ul class="spon-proof">${proof.map(([c, what]) => `<li title="${esc(what)}">${link(c)}</li>`).join('')}</ul>` : ''}
     <p class="notice">Email for rates: <a href="mailto:${CONTACT}">${CONTACT}</a></p>`, { cls: 'panel-solo' });
+}
+
+// The real strip at the bottom: outlined for 2 s when SPONSOR opens (static with reduced
+// motion; the CSS drops the animation), so it is clear where the line runs.
+export const SPOT_MS = 2000;
+export function spotlightStrip(doc = globalThis.document) {
+  const real = doc?.getElementById?.('status-sponsor');
+  if (!real || real.hidden) return null;
+  real.classList.add('is-spot');
+  return setTimeout(() => real.classList.remove('is-spot'), SPOT_MS);
 }
 
 export function render(el, cmd, ctx) {
   el.innerHTML = sponsorHtml();
   ctx.status('SPONSOR: EMAIL FOR RATES');
+  // After the sponsor config arrives (the status bar paints its strip from the same
+  // request first), outline the real strip.
+  let spot = null;
+  loadSponsors().then(() => { if (el.isConnected) spot = spotlightStrip(); });
+  ctx.onCleanup(() => { clearTimeout(spot); document.getElementById('status-sponsor')?.classList.remove('is-spot'); });
   const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   let demo = null;
   ctx.onCleanup(() => demo?.stop());

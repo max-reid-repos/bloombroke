@@ -1203,7 +1203,9 @@ function boot() {
       if (signal.aborted) return;
       if (found.confident) {
         replaceUrl(found.command);
-        render(found.command, { fromUrl, checked: true, note: resolvedNote(found.command, found.from) });
+        // The typed ticker itself (the symbol list vouched for it): no "Showing XLY (from 'xly')".
+        const same = found.command === typed;
+        render(found.command, { fromUrl, checked: true, note: same ? '' : resolvedNote(found.command, found.from) });
         return;
       }
       showDidYouMean(view, typed, found, ticker);
