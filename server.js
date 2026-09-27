@@ -325,7 +325,8 @@ mountCounters(app, { counters: siteCounters, mode: pro?.mode || null, publicUrl:
 // --- MCP (lib/mcp/): POST /mcp, public-domain data only, and /llms.txt ---
 import { mountMcp } from './lib/mcp/server.js';
 import { mountLlmsTxt } from './lib/mcp/llms.js';
-mountMcp(app);
+siteCounters.enable('mcp_call'); // BBRK: MCP tool calls, a count only
+mountMcp(app, { count: (n) => siteCounters.bump(n) });
 mountLlmsTxt(app);
 // --- end MCP ---
 

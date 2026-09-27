@@ -294,6 +294,7 @@ test('goal(): the twelve goals, each once in the code', () => {
     'public/screens/feedback.js': ['feedback_sent'],
     'public/pro.js': ['pro_checkout_started'],
     'public/screens/desk.js': ['desk_opened'],
+    'public/screens/mcp.js': ['mcp_screen_opened'],
   };
   for (const [f, names] of Object.entries(wired)) {
     const s = readFileSync(f, 'utf8');
@@ -382,4 +383,40 @@ test('DataFast loads only through goal.js: no fixed script tag in the page or th
   const legal = readFileSync('lib/legal.js', 'utf8');
   assert.doesNotMatch(legal, /src="https:\/\/datafa\.st/);
   assert.match(legal, /asset\('goal\.js'\)/);
+});
+
+// ---- MCP ---------------------------------------------------------------------------------
+test('MCP: one count per accepted tools/call, nothing else; the count has no args or IP', async () => {
+  const { mountMcp } = await import('../lib/mcp/server.js');
+  const { makeMcpLimits, makeStats } = await import('../lib/mcp/limits.js');
+  const db = openDb(':memory:');
+  const counters = createCounters({ now: () => T0 }).attach(db);
+  counters.enable('mcp_call');
+  const app = express();
+  const tools = { handlers: { cpi: async () => { throw new Error('offline'); } } };
+  mountMcp(app, { tools, limits: makeMcpLimits(), stats: makeStats({ every: 0, log: () => {} }), log: () => {}, count: (n) => counters.bump(n) });
+  const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  let id = 0;
+  const rpc = (method, params) => fetch(`${base}/mcp`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'MCP-Protocol-Version': '2025-11-25' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params }),
+  });
+  try {
+    await rpc('tools/list', {});
+    await rpc('tools/call', { name: 'nope', arguments: {} });
+    assert.equal(counters.stats().counts.mcp_call.today, 0, 'a list or an unknown tool is not a call');
+    assert.equal((await rpc('tools/call', { name: 'cpi', arguments: { secret_arg: 'x' } })).status, 200);
+    assert.equal(counters.stats().counts.mcp_call.today, 1, 'counted once, even when the tool fails');
+    const dump = JSON.stringify(db.prepare('SELECT * FROM daily_counts').all());
+    assert.doesNotMatch(dump, /secret_arg|cpi|127\.0\.0\.1/);
+  } finally { await new Promise((r) => server.close(r)); }
+});
+
+test('MCP wiring: the server enables and counts mcp_call, so BBRK shows it instead of --', () => {
+  const src = readFileSync('server.js', 'utf8');
+  assert.match(src, /siteCounters\.enable\('mcp_call'\)/);
+  assert.match(src, /mountMcp\(app, \{ count: \(n\) => siteCounters\.bump\(n\) \}\)/);
+  const mcp = readFileSync('lib/mcp/server.js', 'utf8');
+  assert.equal((mcp.match(/count\('mcp_call'\)/g) || []).length, 1, 'one place counts');
 });
