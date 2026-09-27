@@ -93,7 +93,7 @@ export function sameOrigin(req, publicUrl) {
 }
 
 export function mountFeedback(app, {
-  store, publicUrl = 'https://bloombroke.com', now = () => Date.now(), limiter = createLimiter({ max: 5, windowMs: HOUR, now }), log = console,
+  store, publicUrl = 'https://bloombroke.com', now = () => Date.now(), limiter = createLimiter({ max: 5, windowMs: HOUR, now }), log = console, onSaved = () => {},
 }) {
   const fail = (res, status, error, message) => res.status(status).json({ error, message });
   app.post('/api/feedback', express.json({ limit: '8kb' }), (req, res) => {
@@ -119,6 +119,7 @@ export function mountFeedback(app, {
       log.error('[feedback]', err.message);
       return fail(res, 503, 'unavailable', 'Could not save that. Try again in a minute, or email hello@bloombroke.com.');
     }
+    try { onSaved(); } catch { /* a counter never fails a saved note */ }
     res.json({ ok: true });
   });
   app.use('/api/feedback', (err, req, res, next) => {

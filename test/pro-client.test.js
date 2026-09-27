@@ -136,12 +136,12 @@ test('PRO screen copy: the save line, the key file, the mask, the free-user line
   assert.ok(txt.includes('BB-7KQ2-M9XD-HT4P-WZ3C') && txt.includes(SAVE_LINE));
   assert.equal(maskKey('WZ3C'), 'BB-XXXX-XXXX-XXXX-WZ3C');
   assert.deepEqual(parseLogin(['BB', '7KQ2', 'M9XD', 'HT4P', 'WZ3C']), { key: 'BB-7KQ2-M9XD-HT4P-WZ3C' });
-  assert.match(PRO_ONLY, /\$4\.20 a month/);
+  assert.match(PRO_ONLY, /\$42 a month/);
   // Before SUBSCRIBE: price, monthly renewal, how to cancel, the shutdown promise.
   const terms = BUY_TERMS.join(' ');
-  assert.match(terms, /\$4\.20 USD a month/);
+  assert.match(terms, /\$42 USD a month/);
   assert.match(terms, /renews automatically every month or every year/);
-  assert.match(terms, /\$42 USD a year/);
+  assert.match(terms, /\$420 USD a year/);
   assert.match(terms, /Cancel any time: type PRO and press MANAGE/);
   assert.ok(BUY_TERMS.includes('If we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month or year.'));
   assert.equal(OPERATOR, 'Run by Bloombroke.');

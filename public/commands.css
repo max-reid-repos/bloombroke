@@ -268,3 +268,13 @@
   .co-when { display: none; }
   .co-table .name { max-width: 0; }
 }
+
+/* ---- BBRK: our own site numbers, drawn like a quote (screens/bbrk.js) ---- */
+.bb-panel > .panel-body { padding: 10px 12px; }
+.bb-panel .bb-table { margin-top: 16px; max-width: 760px; }
+.bb-table th[scope="row"] { text-align: left; font-weight: 400; color: var(--text-2); }
+@media (max-width: 639px) {
+  .bb-panel .bb-table { table-layout: fixed; }
+  .bb-table th, .bb-table td { padding-left: 4px; padding-right: 4px; font-size: 11px; white-space: normal; }
+  .bb-table thead th:first-child { width: 50%; }
+}

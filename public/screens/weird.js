@@ -15,6 +15,7 @@ import {
   WEIRD_GAUGES, WEIRD_PERIODS, AUTO, gaugeByCommand, sourceHtml, dayLabel, monthLabel,
 } from './weird-gauges.js';
 import { markGaugeSponsor } from './sponsor.js'; // Sponsor hook
+import { goal } from '../goal.js'; // GOALS
 
 export { WEIRD_GAUGES };
 
@@ -273,6 +274,7 @@ function detail(el, g, ctx, asked) {
 export function render(el, cmd, ctx) {
   const g = gaugeByCommand(cmd.name);
   const period = cmd.args?.period || null;
+  if (g) goal('weird_gauge_opened', { gauge: g.command });
   if (g) detail(el, g, ctx, period);
   else grid(el, ctx, period);
 }

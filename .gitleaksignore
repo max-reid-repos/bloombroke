@@ -3,3 +3,5 @@
 76837554c1a72605ab04d2afcf44572580abbdc0:test/pro-client.test.js:generic-api-key:126
 # Fake GUESS shuffle secret used in unit tests (test/guess.test.js), not a secret.
 4d65d980ba8390386cfde099593582b3536ab5eb:test/guess.test.js:generic-api-key:19
+# Fake GUESS secret used in the BBRK counter test (test/bbrk.test.js), not a secret.
+ecb3a00eb3791ebb14afede399807c2b4df49db5:test/bbrk.test.js:generic-api-key:179

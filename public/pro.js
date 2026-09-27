@@ -6,11 +6,12 @@ import { INSTRUMENTS, resolveInstrument } from './instruments.js';
 import { WATCH_KEY } from './watchlist.js';
 import { PF_KEY } from './portfolio.js';
 import { DESK_KEY } from './desk-layout.js';
+import { goal } from './goal.js'; // GOALS
 
-export const PRICE = '$4.20';
-export const PRICE_LINE = '$4.20 a month';
-export const PRICE_YEAR = '$42';
-export const PRICE_BOTH = '$4.20 a month or $42 a year';
+export const PRICE = '$42';
+export const PRICE_LINE = '$42 a month';
+export const PRICE_YEAR = '$420';
+export const PRICE_BOTH = '$42 a month or $420 a year';
 export const PRO_ONLY = `Your own ticker tape is a Pro feature, ${PRICE_LINE}.`;
 export const KEY_RE = /^BB-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/;
 export const HEADER = 'X-Pro-Key';
@@ -288,6 +289,8 @@ export function getConfig() {
 export async function startCheckout(plan = 'month') {
   const { url } = await call('/api/pro/checkout', { method: 'POST', body: { plan: plan === 'year' ? 'year' : 'month' } });
   if (!/^https:\/\/checkout\.stripe\.com\//.test(url)) throw new Error('Checkout did not open. Try again in a minute.');
+  // DataFast sends by XHR, which leaving the page can cut off: give it a moment first.
+  if (goal('pro_checkout_started', { plan: plan === 'year' ? 'year' : 'month' }).datafast) await new Promise((r) => { setTimeout(r, 300); });
   location.assign(url);
 }
 

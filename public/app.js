@@ -49,6 +49,7 @@ import { parseAffordArgs } from './afford.js';
 import { resolveInput } from './resolve.js';
 import { tickerForName, LISTED_TICKERS } from './known-tickers.js';
 import { sendSeen, countsAsOpen } from './trending.js'; // TRENDING
+import './goal.js'; // GOALS: loads DataFast unless Global Privacy Control is on
 
 export { FUNCTION_BAR, TICKER_FUNCTIONS };
 
@@ -633,7 +634,7 @@ export function linkPlan(raw) {
   const plain = cmd.view || LINK_SCREEN[cmd.name];
   return { url: plain, show: plain, ask: { run: clean, url: plain, ...linkQuestion(cmd) } };
 }
-export const DEFAULT_TITLE = 'Bloombroke: a free market terminal. Pro $4.20/mo.';
+export const DEFAULT_TITLE = 'Bloombroke: a free market terminal. Pro $420 a year.';
 
 // A ticker screen whose ticker is not known yet: check it has a quote before showing
 // the screen (TESLA is not a ticker; the resolver makes it TSLA). null when no check.
@@ -1614,7 +1615,7 @@ export const BOOT_LINES = [
   ['connecting to markets ....... ', 'ok'],
   ['loading ticker tape ......... ', 'ok'],
   ['syncing New York clock ...... ', 'ok'],
-  ['cost: free. Pro $4.20/mo', ''],
+  ['cost: free. Pro $420 a year', ''],
   ['ready.', ''],
 ];
 

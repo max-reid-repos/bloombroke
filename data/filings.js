@@ -118,21 +118,49 @@ export function filterFilings(rows, form = 'ALL', max = MAX_ROWS) {
 // they pass it as maxAgeMs so a new 8-K shows within minutes. FILINGS keeps the day.
 export const NEWS_MAX_AGE_MS = 15 * 60_000;
 
-export function makeFilings({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 300, retryMs: 60_000 }), gapMs = 350, now = () => Date.now() } = {}) {
-  let chain = Promise.resolve();
-  let lastAt = 0;
-  // Run task() in the SEC queue: one at a time, gapMs apart. Every SEC request here (and
-  // the news hub's SEC feed, through secQueued) goes through it.
-  function queued(task) {
-    const run = chain.then(async () => {
-      const wait = lastAt + gapMs - Date.now();
-      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-      lastAt = Date.now();
-      return task();
-    });
-    chain = run.catch(() => {});
-    return run;
+// MCP work waits in the low lane of the SEC queue; past this many waiting there, a new
+// low task is refused at once (code 'busy'), so MCP bursts never hold up the site.
+export const SEC_LOW_MAX_WAITING = 50;
+
+export class SecBusyError extends Error {
+  constructor() {
+    super('SEC queue busy');
+    this.code = 'busy';
   }
+}
+
+export function makeFilings({ fetchImpl = globalThis.fetch, cache = createCache({ maxEntries: 300, retryMs: 60_000 }), gapMs = 350, now = () => Date.now(), lowMaxWaiting = SEC_LOW_MAX_WAITING } = {}) {
+  let lastAt = 0;
+  let running = false;
+  const high = [];
+  const low = [];
+  // Run task() in the SEC queue: one at a time, gapMs apart. Every SEC request here (and
+  // the news hub's SEC feed, through secQueued) goes through it. The site's own requests
+  // go first; { low: true } (the MCP tools) waits behind them, at most lowMaxWaiting deep.
+  function pump() {
+    if (running) return;
+    const job = high.shift() || low.shift();
+    if (!job) return;
+    running = true;
+    const go = async () => {
+      lastAt = Date.now();
+      try { job.resolve(await job.task()); } catch (err) { job.reject(err); }
+      running = false;
+      pump();
+    };
+    const wait = lastAt + gapMs - Date.now();
+    if (wait > 0) setTimeout(go, wait);
+    else Promise.resolve().then(go);
+  }
+  function queued(task, { low: isLow = false } = {}) {
+    if (isLow && low.length >= lowMaxWaiting) return Promise.reject(new SecBusyError());
+    return new Promise((resolve, reject) => {
+      (isLow ? low : high).push({ task, resolve, reject });
+      pump();
+    });
+  }
+  // How many requests wait (not counting the one running).
+  const waiting = () => ({ high: high.length, low: low.length });
   function secGet(url) {
     return queued(async () => {
       const res = await fetchImpl(url, { headers: { 'User-Agent': SEC_UA, Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
@@ -176,10 +204,12 @@ export function makeFilings({ fetchImpl = globalThis.fetch, cache = createCache(
   }
   // A new filing for this company (data/edgarwatch.js): the next view refetches.
   const forget = (cik) => cache.forget(`filings:${Number(cik)}`);
-  return { getFilings, queued, forget };
+  return { getFilings, queued, waiting, forget };
 }
 
 const shared = makeFilings();
 export const { getFilings, forget: forgetFilings } = shared;
-// The shared SEC queue, for other SEC requests (the news hub's current 8-K feed).
+// The shared SEC queue, for other SEC requests (the news hub's current 8-K feed, and
+// the MCP tools in its low lane).
 export const secQueued = shared.queued;
+export const secWaiting = shared.waiting;

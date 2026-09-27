@@ -97,6 +97,7 @@ const SAMPLES = {
   '/api/economy': { series: [{ date: '2026-08-01' }], updated: UPD },
   '/api/search': { results: [] },
   '/api/trending': { updated: UPD, rows: [] },
+  '/api/bbrk': { updated: UPD, day: '2026-09-25', counts: {} },
   '/api/guess/today': { n: 1 },
   '/api/guess/check': { ok: true },
   '/api/guess/reveal': { ticker: 'AAPL' },

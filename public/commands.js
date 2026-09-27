@@ -36,6 +36,8 @@ import * as guess from './screens/guess.js'; // GUESS
 import * as dataScreen from './screens/data.js'; // Provenance: DATA
 import * as statusScreen from './screens/status.js'; // Provenance: STATUS
 import * as changesScreen from './screens/changes.js'; // Provenance: CHANGES
+import * as bbrk from './screens/bbrk.js'; // BBRK
+import * as mcp from './screens/mcp.js'; // MCP
 
 export const EXTRA = [
   { name: 'WORLD', screen: world },
@@ -73,6 +75,8 @@ export const EXTRA = [
   { name: 'DATA', screen: dataScreen, takesArgs: true },
   { name: 'STATUS', screen: statusScreen },
   { name: 'CHANGES', screen: changesScreen },
+  { name: 'BBRK', screen: bbrk }, // BBRK: our own site numbers, not a security
+  { name: 'MCP', screen: mcp }, // MCP: hook an AI app up to Bloombroke (lib/mcp/)
 ];
 
 // Screen modules by internal name.
