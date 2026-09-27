@@ -3,8 +3,8 @@
 // sources for NEWS <ticker>: Seeking Alpha and the company's own 8-Ks.
 //
 // Every feed is fetched here, on the server: 8 s timeout, 5 MB cap (the download stops
-// past it), each feed cached on its own for a few minutes. One dead feed never takes a
-// tab down; a tab with no feed left answers with no items.
+// past it), each feed cached on its own: 1 minute for WIRES and SEC, 3 for the rest. One
+// dead feed never takes a tab down; a tab with no feed left answers with no items.
 
 import { createCache } from './cache.js';
 import { cleanText, safeLink, titleKey } from './news.js';
@@ -12,6 +12,9 @@ import { parseTickerMap } from './financials.js';
 
 export const FEED_UA = 'Bloombroke/1.0 (hello@bloombroke.com)';
 export const FEED_TTL = 3 * 60_000;
+// WIRES and SEC move fastest: each of their feeds is fetched at most once a minute (the
+// server cache is shared, so that holds however many people have the screen open).
+export const FAST_FEED_TTL = 60_000;
 export const FEED_TIMEOUT_MS = 8000;
 export const FEED_MAX_BYTES = 5_000_000;
 const MAX_ITEMS = 50;
@@ -298,15 +301,15 @@ export const TAB_FEEDS = {
     { id: 'bls-jolts', name: 'BLS', url: 'https://www.bls.gov/feed/jolts.rss' },
   ],
   SEC: [
-    { id: 'sec-8k', name: 'SEC EDGAR', url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&count=40&output=atom', parse: parseSec8k },
+    { id: 'sec-8k', name: 'SEC EDGAR', url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&count=40&output=atom', parse: parseSec8k, ttl: FAST_FEED_TTL },
   ],
   WIRES: [
     // The all-releases lists are mostly law firm notices; the earnings and deals lists are not.
-    { id: 'prn-earnings', name: 'PR Newswire', url: 'https://www.prnewswire.com/rss/financial-services-latest-news/earnings-list.rss', keep: notLawFirm },
-    { id: 'prn-deals', name: 'PR Newswire', url: 'https://www.prnewswire.com/rss/financial-services-latest-news/acquisitions-mergers-and-takeovers-list.rss', keep: notLawFirm },
-    { id: 'gnw', name: 'GlobeNewswire', url: 'https://rss.globenewswire.com/RssFeed/orgclass/1/feedTitle/GlobeNewswire%20-%20News%20about%20Public%20Companies', keep: english },
-    { id: 'bw-earnings', name: 'Business Wire', url: 'https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeEF9YXA==', keep: english },
-    { id: 'bw-deals', name: 'Business Wire', url: 'https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeEFtRWA==', keep: english },
+    { id: 'prn-earnings', name: 'PR Newswire', url: 'https://www.prnewswire.com/rss/financial-services-latest-news/earnings-list.rss', keep: notLawFirm, ttl: FAST_FEED_TTL },
+    { id: 'prn-deals', name: 'PR Newswire', url: 'https://www.prnewswire.com/rss/financial-services-latest-news/acquisitions-mergers-and-takeovers-list.rss', keep: notLawFirm, ttl: FAST_FEED_TTL },
+    { id: 'gnw', name: 'GlobeNewswire', url: 'https://rss.globenewswire.com/RssFeed/orgclass/1/feedTitle/GlobeNewswire%20-%20News%20about%20Public%20Companies', keep: english, ttl: FAST_FEED_TTL },
+    { id: 'bw-earnings', name: 'Business Wire', url: 'https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeEF9YXA==', keep: english, ttl: FAST_FEED_TTL },
+    { id: 'bw-deals', name: 'Business Wire', url: 'https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeEFtRWA==', keep: english, ttl: FAST_FEED_TTL },
   ],
   WSB: [
     { id: 'wsb', name: 'r/wallstreetbets', url: 'https://www.reddit.com/r/wallstreetbets/hot/.rss', parse: parseWsb },
@@ -315,7 +318,7 @@ export const TAB_FEEDS = {
 
 export function makeNewsFeeds({ fetchImpl = globalThis.fetch, cache = createCache({ retryMs: 60_000 }), feeds = TAB_FEEDS, secTickers = secTickersFor(fetchImpl) } = {}) {
   function load(f) {
-    return cache.cached(`newsfeed:${f.id}`, FEED_TTL, async () => {
+    return cache.cached(`newsfeed:${f.id}`, f.ttl || FEED_TTL, async () => {
       const xml = await fetchCapped(fetchImpl, f.url);
       const items = f.parse ? f.parse(xml) : parseFeed(xml, f.name, { keep: f.keep });
       // A feed whose rows were all filtered out is fine; one with no rows at all is broken.
