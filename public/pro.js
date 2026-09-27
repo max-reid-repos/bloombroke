@@ -289,7 +289,8 @@ export function getConfig() {
 export async function startCheckout(plan = 'month') {
   const { url } = await call('/api/pro/checkout', { method: 'POST', body: { plan: plan === 'year' ? 'year' : 'month' } });
   if (!/^https:\/\/checkout\.stripe\.com\//.test(url)) throw new Error('Checkout did not open. Try again in a minute.');
-  goal('pro_checkout_started', { plan: plan === 'year' ? 'year' : 'month' });
+  // DataFast sends by XHR, which leaving the page can cut off: give it a moment first.
+  if (goal('pro_checkout_started', { plan: plan === 'year' ? 'year' : 'month' }).datafast) await new Promise((r) => { setTimeout(r, 300); });
   location.assign(url);
 }
 

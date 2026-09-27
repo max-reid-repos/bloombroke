@@ -1,4 +1,4 @@
-// Goals: one per feature, so a feature nobody uses can be dropped. goal(name, props)
+// Goals: one per feature, so a feature nobody uses can be dropped. goal(name, props, { once })
 //  - sends a DataFast custom goal: window.datafast(name, props) (datafa.st docs, custom
 //    goals). Calls made before the script arrives wait in window.datafast.q, which the
 //    script replays when it loads.
@@ -8,6 +8,8 @@
 // (anything else is dropped). With Global Privacy Control on, DataFast is never loaded
 // and goal() skips it; our own totals (a name and a count, nothing else) still count.
 // Blocked, missing or broken DataFast: goal() does nothing there and never throws.
+// once: a key (the result, the puzzle number). The same goal with the same key is sent
+// once per browser tab session (sessionStorage 'bb.goals'); without storage, every time.
 
 export const GOALS = [
   'whatif_run', 'whatif_video', 'whatif_embed', 'whatif_share',
@@ -17,8 +19,30 @@ export const GOALS = [
 ];
 
 // Counted on our server by the route itself (lib/counters.js SERVER_COUNTS), so not here:
-// whatif_run, guess_played, feedback_sent. These are the client-only ones.
+// whatif_run, feedback_sent, mcp_call, and guess_played for a solved game. These are the
+// client-only ones, and guess_played is posted only for a game lost (result: 'missed').
 export const CLIENT_COUNTED = ['whatif_video', 'whatif_embed', 'whatif_share', 'guess_shared'];
+export function postsCount(name, props) {
+  return CLIENT_COUNTED.includes(name) || (name === 'guess_played' && props?.result === 'missed');
+}
+const SEEN_KEY = 'bb.goals';
+const SEEN_MAX = 200;
+
+// Was this goal with this key sent in this tab session? Marks it sent. No storage: false.
+export function seenBefore(name, once, storage) {
+  if (once === undefined || once === null) return false;
+  try {
+    const store = storage === undefined ? globalThis.sessionStorage : storage; // the getter can throw
+    const k = `${name}:${String(once).slice(0, 120)}`;
+    const list = JSON.parse(store.getItem(SEEN_KEY) || '[]');
+    const seen = Array.isArray(list) ? list : [];
+    if (seen.includes(k)) return true;
+    store.setItem(SEEN_KEY, JSON.stringify([...seen, k].slice(-SEEN_MAX)));
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 // The props each goal may carry. Values must be short lower-case words.
 export const GOAL_PROPS = {
@@ -82,9 +106,10 @@ export function loadDataFast({ doc = globalThis.document, nav = globalThis.navig
 }
 
 // { datafast, counted }: what was sent. Never throws, never waits.
-export function goal(name, props, { win = globalThis.window, nav = globalThis.navigator, fetchImpl = globalThis.fetch } = {}) {
+export function goal(name, props, { once, win = globalThis.window, nav = globalThis.navigator, fetchImpl = globalThis.fetch, store } = {}) {
   const sent = { datafast: false, counted: false };
   if (!GOALS.includes(name)) return sent;
+  if (seenBefore(name, once, store)) return sent;
   if (!gpcOn(nav)) {
     try {
       const df = win?.datafast;
@@ -95,7 +120,7 @@ export function goal(name, props, { win = globalThis.window, nav = globalThis.na
       }
     } catch { /* DataFast broken or blocked: nothing */ }
   }
-  if (CLIENT_COUNTED.includes(name) && typeof fetchImpl === 'function') {
+  if (postsCount(name, props) && typeof fetchImpl === 'function') {
     try {
       const r = fetchImpl('/api/count', {
         method: 'POST', keepalive: true, credentials: 'same-origin', cache: 'no-store',

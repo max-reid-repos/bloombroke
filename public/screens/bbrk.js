@@ -9,7 +9,7 @@ import { esc, fmtSigned, fmtPct, dirOf, panel, metaNote, LOADING } from './marke
 
 export const BBRK = 'BBRK';
 export const STRIP = 'OUR OWN SITE NUMBERS. NOT A SECURITY. NOT FOR SALE.';
-export const SOURCE = 'Bloombroke server counters, updated live';
+export const SOURCE = 'Bloombroke server counters, updated live. Days are New York dates.';
 export const HERO = 'whatif_run';
 
 // [counter, label]. seats is the Pro seats row (licences in the current Stripe mode).
@@ -37,7 +37,8 @@ export function seatsLabel(d) {
   return d?.mode === 'test' ? 'Pro seats issued (test mode)' : 'Pro seats issued';
 }
 
-// Today against yesterday: { text, dir }. "+3 +33.33%"; no yesterday: the change only.
+// So far today against all of yesterday (labelled so: today is not over yet): { text,
+// dir }. "+3 +33.33%"; no yesterday: the change only.
 export function heroChange(c) {
   if (!c) return { text: '--', dir: 'flat' };
   const ch = c.today - c.yesterday;
@@ -57,8 +58,8 @@ export function bbrkHtml(d) {
   return `<div class="q-top bb-top">
     <div class="q-main">
       <p class="q-name">${BBRK} <span class="dim">Bloombroke site numbers</span></p>
-      <p class="q-hero num"><span class="q-last">${count(hero?.today)}</span><span class="q-ccy">WHATIF RESULTS TODAY</span></p>
-      <p class="q-chg num ${chg.dir}">${esc(chg.text)} <span class="dim">vs yesterday</span></p>
+      <p class="q-hero num"><span class="q-last">${count(hero?.today)}</span><span class="q-ccy">WHATIF RESULTS SO FAR TODAY</span></p>
+      <p class="q-chg num ${chg.dir}">${esc(chg.text)} <span class="dim">vs all of yesterday</span></p>
       <p class="q-asof dim">Source: ${esc(SOURCE)}</p>
     </div>
     <dl class="stats">
@@ -69,7 +70,7 @@ export function bbrkHtml(d) {
     </dl>
   </div>
   <table class="grid-table bb-table">
-    <thead><tr><th scope="col">Counter</th><th scope="col" class="num">Today</th><th scope="col" class="num">7 days</th><th scope="col" class="num">All time</th></tr></thead>
+    <thead><tr><th scope="col">Counter</th><th scope="col" class="num">So far today</th><th scope="col" class="num">7 days</th><th scope="col" class="num">All time</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }

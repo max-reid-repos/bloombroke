@@ -34,7 +34,8 @@ import { getWeird, getGauge, startWeirdPrewarm, FAST_WAIT } from './data/weird/i
 import { makeWeirdCards, weirdCommand } from './lib/og-weird.js'; // WEIRD share cards
 import { mountWhyCards } from './lib/og-why.js'; // WHY share cards
 import { getWhy } from './data/why.js'; // WHY share cards
-import { siteCounters, mountCounters } from './lib/counters.js'; // BBRK site numbers
+import { siteCounters, mountCounters, makeCountGate } from './lib/counters.js'; // BBRK site numbers
+const countGate = makeCountGate(); // BBRK: a few counts per IP a minute, no repeats
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(dir, '.env')); } catch { /* .env is optional */ }
@@ -233,7 +234,7 @@ app.get('/api/whatif', async (req, res) => {
     // The certificate: the same words and numbers as the share image.
     const norm = data.rows ? normalizeWhatif(tokens.join(' '), catalog) : null;
     if (norm) data.cert = certModel(data, catalog, norm.command);
-    if (data.rows) siteCounters.bump('whatif_run'); // BBRK: a WHATIF result was computed
+    if (data.rows && countGate.allow(req, `whatif:${tokens.join(' ')}`)) siteCounters.bump('whatif_run'); // BBRK: a WHATIF result
     res.set('Cache-Control', 'public, max-age=60');
     res.json(data);
   } catch (err) {
@@ -315,7 +316,7 @@ mountSponsors(app);
 // --- GUESS (data/guess.js): one mystery stock a day ---
 import { mountGuess } from './data/guess.js';
 import { getFishtank } from './data/sp100.js';
-mountGuess(app, { getChart, getCaps: getFishtank, count: (n) => siteCounters.bump(n) });
+mountGuess(app, { getChart, getCaps: getFishtank, count: (n, req, key) => countGate.allow(req, key) && siteCounters.bump(n) });
 // --- end GUESS ---
 
 // BBRK (lib/counters.js): the site's own daily totals, in the Pro database.

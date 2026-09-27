@@ -10,11 +10,11 @@ import { openDb, migrate } from '../pro/db.js';
 import { createLimiter } from '../pro/ratelimit.js';
 import { createFeedbackStore, mountFeedback } from '../pro/feedback.js';
 import {
-  createCounters, mountCounters, nyDay, dayBefore, mrrLine, COUNTS, CLIENT_COUNTS, SERVER_COUNTS, COUNT_LIMIT,
+  createCounters, mountCounters, nyDay, dayBefore, mrrLine, COUNTS, CLIENT_COUNTS, SERVER_COUNTS, COUNT_LIMIT, POST_COUNTS, makeCountGate,
 } from '../lib/counters.js';
 import { POOL, pickAnswer, mountGuess } from '../data/guess.js';
 import { bbrkHtml, heroChange, counterOf, seatsLabel, ROWS, STRIP, SOURCE } from '../public/screens/bbrk.js';
-import { goal, loadDataFast, cleanProps, gpcOn, GOALS, CLIENT_COUNTED } from '../public/goal.js';
+import { goal, loadDataFast, cleanProps, gpcOn, GOALS, CLIENT_COUNTED, postsCount, seenBefore } from '../public/goal.js';
 import { parseCommand } from '../public/app.js';
 import { findCommand } from '../public/registry.js';
 
@@ -121,7 +121,7 @@ test('POST /api/count: allow-listed client names only, one count each', async ()
     for (const n of CLIENT_COUNTS) assert.equal(await s.post({ name: n }), 204, n);
     for (const n of CLIENT_COUNTS) assert.equal(s.counters.stats().counts[n].today, 1, `${n} counted once`);
     // Server-counted names cannot be pushed from a browser.
-    for (const n of SERVER_COUNTS) assert.equal(await s.post({ name: n }), 400, n);
+    for (const n of SERVER_COUNTS) if (n !== 'guess_played') assert.equal(await s.post({ name: n }), 400, n);
     assert.equal(s.counters.stats().counts.whatif_run.today, 0);
     for (const b of [{ name: 'drop table' }, {}, { name: 5 }, [], 'nope']) assert.equal(await s.post(b), 400, JSON.stringify(b));
     assert.equal(await s.post({ name: 'x'.repeat(2000) }), 400, 'too big');
@@ -163,7 +163,7 @@ test('GET /api/bbrk: every counter, seats, MRR; -- data where missing', async ()
   } finally { await s.close(); }
 });
 
-test('GUESS routes: a solved check and a reveal each count one game played; a miss does not', async () => {
+test('GUESS routes: a solved check counts one game played; a miss and a reveal do not', async () => {
   const db = openDb(':memory:');
   const counters = createCounters({ now: () => T0 }).attach(db);
   const app = express();
@@ -187,9 +187,10 @@ test('GUESS routes: a solved check and a reveal each count one game played; a mi
     assert.equal((await (await fetch(`${base}/api/guess/check?n=2&g=${answer.ticker}`)).json()).solved, true);
     assert.equal(counters.stats().counts.guess_played.today, 1);
     assert.equal((await fetch(`${base}/api/guess/reveal?n=2`)).status, 200);
-    assert.equal(counters.stats().counts.guess_played.today, 2);
+    assert.equal((await fetch(`${base}/api/guess/reveal?n=1`)).status, 200, 'an old puzzle');
+    assert.equal(counters.stats().counts.guess_played.today, 1, 'a reveal never counts (a lost game is counted by the page)');
     assert.equal((await fetch(`${base}/api/guess/reveal?n=99`)).status, 400);
-    assert.equal(counters.stats().counts.guess_played.today, 2, 'an error counts nothing');
+    assert.equal(counters.stats().counts.guess_played.today, 1, 'an error counts nothing');
   } finally { await new Promise((r) => server.close(r)); }
 });
 
@@ -213,11 +214,11 @@ test('FEEDBACK route: a saved note counts once; a refused or honeypot note does 
 test('server wiring: WHATIF counts a computed result; counters sit on the Pro database', () => {
   const src = readFileSync('server.js', 'utf8');
   const route = src.slice(src.indexOf("app.get('/api/whatif',"), src.indexOf("app.get('/api/funding'"));
-  assert.match(route, /if \(data\.rows\) siteCounters\.bump\('whatif_run'\)/);
+  assert.match(route, /if \(data\.rows && countGate\.allow\(req, .*?\)\) siteCounters\.bump\('whatif_run'\)/);
   assert.equal((route.match(/siteCounters\.bump/g) || []).length, 1, 'one count per result');
   assert.match(src, /startPro\(app, \{ dir, counters: siteCounters \}\)/);
   assert.match(src, /mountCounters\(app,/);
-  assert.match(src, /count: \(n\) => siteCounters\.bump\(n\)/);
+  assert.match(src, /count: \(n, req, key\) => countGate\.allow\(req, key\) && siteCounters\.bump\(n\)/);
   const pro = readFileSync('pro/index.js', 'utf8');
   assert.match(pro, /counters\?\.attach\(db\)/);
   assert.match(pro, /onSaved: \(\) => counters\?\.bump\('feedback_sent'\)/);
@@ -386,14 +387,15 @@ test('DataFast loads only through goal.js: no fixed script tag in the page or th
 });
 
 // ---- MCP ---------------------------------------------------------------------------------
-test('MCP: one count per accepted tools/call, nothing else; the count has no args or IP', async () => {
+test('MCP: one count per tools/call that answered, nothing else; the count has no args or IP', async () => {
   const { mountMcp } = await import('../lib/mcp/server.js');
   const { makeMcpLimits, makeStats } = await import('../lib/mcp/limits.js');
   const db = openDb(':memory:');
   const counters = createCounters({ now: () => T0 }).attach(db);
   counters.enable('mcp_call');
   const app = express();
-  const tools = { handlers: { cpi: async () => { throw new Error('offline'); } } };
+  const { makeTools } = await import('../lib/mcp/tools.js');
+  const tools = makeTools({ now: () => T0 });
   mountMcp(app, { tools, limits: makeMcpLimits(), stats: makeStats({ every: 0, log: () => {} }), log: () => {}, count: (n) => counters.bump(n) });
   const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -406,8 +408,11 @@ test('MCP: one count per accepted tools/call, nothing else; the count has no arg
     await rpc('tools/list', {});
     await rpc('tools/call', { name: 'nope', arguments: {} });
     assert.equal(counters.stats().counts.mcp_call.today, 0, 'a list or an unknown tool is not a call');
-    assert.equal((await rpc('tools/call', { name: 'cpi', arguments: { secret_arg: 'x' } })).status, 200);
-    assert.equal(counters.stats().counts.mcp_call.today, 1, 'counted once, even when the tool fails');
+    await rpc('tools/call', { name: 'cpi', arguments: { from: 'nope', secret_arg: 'x' } });
+    assert.equal(counters.stats().counts.mcp_call.today, 0, 'bad arguments are not a call');
+    const ok = await (await rpc('tools/call', { name: 'cpi', arguments: {} })).json();
+    assert.ok(ok.result && !ok.result.isError, JSON.stringify(ok).slice(0, 300));
+    assert.equal(counters.stats().counts.mcp_call.today, 1, 'one answered call, one count');
     const dump = JSON.stringify(db.prepare('SELECT * FROM daily_counts').all());
     assert.doesNotMatch(dump, /secret_arg|cpi|127\.0\.0\.1/);
   } finally { await new Promise((r) => server.close(r)); }
@@ -419,4 +424,85 @@ test('MCP wiring: the server enables and counts mcp_call, so BBRK shows it inste
   assert.match(src, /mountMcp\(app, \{ count: \(n\) => siteCounters\.bump\(n\) \}\)/);
   const mcp = readFileSync('lib/mcp/server.js', 'utf8');
   assert.equal((mcp.match(/count\('mcp_call'\)/g) || []).length, 1, 'one place counts');
+});
+
+// ---- review fixes: honest numbers ------------------------------------------------------
+test('count gate: a few counts per IP a minute, the same thing once a minute, IPv6 by /64', () => {
+  let t = T0;
+  const gate = makeCountGate({ now: () => t, max: 3 });
+  const req = (ip) => ({ ip, socket: { remoteAddress: ip }, get: () => undefined });
+  assert.equal(gate.allow(req('1.2.3.4'), 'whatif:PELOTON'), true);
+  assert.equal(gate.allow(req('1.2.3.4'), 'whatif:PELOTON'), false, 'the same command again: not counted');
+  assert.equal(gate.allow(req('1.2.3.4'), 'whatif:LATTE'), true);
+  assert.equal(gate.allow(req('1.2.3.4'), 'whatif:IPHONE6'), true);
+  assert.equal(gate.allow(req('1.2.3.4'), 'whatif:BIGMAC'), false, 'over the per-IP limit');
+  assert.equal(gate.allow(req('5.6.7.8'), 'whatif:PELOTON'), true, 'another visitor');
+  assert.equal(gate.allow(req('2001:db8::1'), 'a'), true);
+  assert.equal(gate.allow(req('2001:db8::2'), 'a'), false, 'same /64, same thing');
+  t += 61_000;
+  assert.equal(gate.allow(req('1.2.3.4'), 'whatif:PELOTON'), true, 'a minute later it counts again');
+  assert.equal(gate.allow({}, 'x'), true, 'no address still works');
+});
+
+test('server: WHATIF and a solved GUESS count through the gate; the answer is not touched', () => {
+  const src = readFileSync('server.js', 'utf8');
+  const route = src.slice(src.indexOf("app.get('/api/whatif',"), src.indexOf("app.get('/api/funding'"));
+  assert.match(route, /if \(data\.rows && countGate\.allow\(req, `whatif:\$\{tokens\.join\(' '\)\}`\)\) siteCounters\.bump\('whatif_run'\)/);
+  assert.match(route, /res\.json\(data\)/);
+  assert.match(src, /count: \(n, req, key\) => countGate\.allow\(req, key\) && siteCounters\.bump\(n\)/);
+  const guess = readFileSync('data/guess.js', 'utf8');
+  assert.match(guess, /app\.get\('\/api\/guess\/reveal', handle\(300, \(req\) => game\.reveal\(str\(req\.query\.n\)\)\)\)/, 'reveal counts nothing');
+});
+
+test('POST /api/count: 5 a minute per IP; a lost GUESS game may be posted, nothing else of the server', async () => {
+  assert.deepEqual(COUNT_LIMIT, { max: 5, windowMs: 60_000 });
+  assert.deepEqual(POST_COUNTS, [...CLIENT_COUNTS, 'guess_played']);
+  const s = await serve();
+  try {
+    assert.equal(await s.post({ name: 'guess_played' }), 204);
+    assert.equal(s.counters.stats().counts.guess_played.today, 1);
+    for (const n of ['whatif_run', 'feedback_sent', 'mcp_call']) assert.equal(await s.post({ name: n }), 400, n);
+    for (let i = 0; i < 4; i += 1) assert.equal(await s.post({ name: 'whatif_share' }), 204);
+    assert.equal(await s.post({ name: 'whatif_share' }), 429, 'the sixth in a minute');
+  } finally { await s.close(); }
+});
+
+test('goal(): a lost game posts one count, a solved one none (the server has it)', () => {
+  assert.equal(postsCount('guess_played', { result: 'missed' }), true);
+  assert.equal(postsCount('guess_played', { result: 'solved' }), false);
+  assert.equal(postsCount('whatif_run'), false);
+  const f = fakeFetch();
+  goal('guess_played', { result: 'solved' }, { win: {}, nav: {}, fetchImpl: f, store: null });
+  goal('guess_played', { result: 'missed' }, { win: {}, nav: {}, fetchImpl: f, store: null });
+  assert.equal(f.calls.length, 1);
+  assert.deepEqual(JSON.parse(f.calls[0].init.body), { name: 'guess_played' });
+});
+
+test('goal(): once per key per tab session; broken storage never blocks or throws', () => {
+  const mem = new Map();
+  const store = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v) };
+  const f = fakeFetch();
+  const seen = [];
+  const win = { datafast: (...a) => seen.push(a) };
+  for (let i = 0; i < 3; i += 1) goal('whatif_share', { via: 'x' }, { once: 'WHATIF PELOTON', win, nav: {}, fetchImpl: f, store });
+  goal('whatif_share', { via: 'x' }, { once: 'WHATIF LATTE', win, nav: {}, fetchImpl: f, store });
+  assert.equal(f.calls.length, 2, 'one per result');
+  assert.equal(seen.length, 2);
+  assert.equal(seenBefore('x', 'k', { getItem() { throw new Error('blocked'); }, setItem() {} }), false);
+  assert.equal(seenBefore('x', undefined, store), false, 'no key: no dedupe');
+  for (let i = 0; i < 300; i += 1) seenBefore('g', i, store);
+  assert.ok(JSON.parse(mem.get('bb.goals')).length <= 200, 'bounded');
+  const wired = readFileSync('public/screens/whatif.js', 'utf8');
+  assert.match(wired, /if \(ok\) goal\('whatif_share', \{ via: 'link' \}, \{ once: key \}\)/, 'COPY LINK counts only a copy that worked');
+  assert.doesNotMatch(wired, /closest\('a, \[data-copy\]'\)/);
+  assert.match(readFileSync('public/screens/guess.js', 'utf8'), /goal\('guess_played', \{ result: solved\(\) \? 'solved' : 'missed' \}, \{ once: game\.n \}\)/);
+  assert.match(readFileSync('public/pro.js', 'utf8'), /\.datafast\) await new Promise\(\(r\) => \{ setTimeout\(r, 300\); \}\);\n\s+location\.assign\(url\)/, 'a moment for DataFast before leaving');
+});
+
+test('BBRK screen: so far today against all of yesterday, days are New York dates', () => {
+  const html = bbrkHtml({ counts: { whatif_run: { today: 2, yesterday: 4, d7: 6, all: 6 } } });
+  assert.match(html, /WHATIF RESULTS SO FAR TODAY/);
+  assert.match(html, /vs all of yesterday/);
+  assert.match(html, /So far today/);
+  assert.match(SOURCE, /Days are New York dates\./);
 });
