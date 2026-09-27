@@ -33,10 +33,18 @@ export function whatifTokens(c) {
 export function normalizeWhatif(c, catalog) {
   const tokens = whatifTokens(c);
   if (!tokens || !tokens.length) return null;
-  const { picks, families, unknown } = resolveTokens(tokens, catalog);
+  let resolved;
+  try {
+    resolved = resolveTokens(tokens, catalog);
+  } catch {
+    return null; // a MY item that does not parse
+  }
+  const { picks, families, unknown } = resolved;
   if (unknown.length || families.length || !picks.length || picks.length > 30) return null;
+  // Catalogue items in catalogue order, then your own purchases in the order typed.
   const order = new Map([...catalog.products, ...catalog.recurring].map((p, i) => [p.id, i]));
-  const sorted = [...picks].sort((a, b) => order.get(a.id) - order.get(b.id));
+  const rank = (p, i) => (p.mine ? order.size + i : order.get(p.id));
+  const sorted = picks.map((p, i) => [p, rank(p, i)]).sort((a, b) => a[1] - b[1]).map(([p]) => p);
   return { command: whatifCommand(sorted), tokens: whatifCommand(sorted).split(' ').slice(1) };
 }
 
@@ -90,7 +98,8 @@ export function certModel(result, catalog, command) {
   const items = new Map([...catalog.products, ...catalog.recurring].map((p) => [p.id, p]));
   const rows = result.rows;
   const t = result.total;
-  const item = (r) => items.get(r.id) || {};
+  // Your own purchase (MY) carries its generated words on the row (row.mine).
+  const item = (r) => items.get(r.id) || r.mine || {};
   const shortOf = (r) => item(r).short || r.name;
   const once = rows.every((r) => r.kind === 'once');
   const sameFamily = rows.every((r) => item(r).family && item(r).family === item(rows[0]).family);

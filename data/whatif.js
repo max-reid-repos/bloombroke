@@ -19,6 +19,8 @@ export class WhatifError extends Error {
   }
 }
 
+import { parseMine, mineLabel, mineShort, MineError, MINE_DOODLE } from '../public/whatif-mine.js';
+
 // ---- Months ----------------------------------------------------------------------
 
 export const monthKey = (date) => date.toISOString().slice(0, 7);
@@ -174,7 +176,16 @@ export function familyWords(catalog) {
 export const SHELF_WORDS = ['GADGETS', 'GAMES', 'HABITS', 'VICES'];
 
 // "IPHONE6 LATTE:3Y APPLE" -> { picks: [{ id, spec }], families: ['APPLE'], unknown: [] }
-export function resolveTokens(tokens, catalog) {
+// MY items (your own purchase, public/whatif-mine.js) come out as picks with `mine`.
+export function resolveTokens(tokens, catalog, now = new Date()) {
+  let parsed;
+  try {
+    parsed = parseMine(tokens, now);
+  } catch (err) {
+    if (err instanceof MineError) throw new WhatifError('bad_mine', err.message);
+    throw err;
+  }
+  tokens = parsed.rest;
   const ids = new Map([...catalog.products, ...catalog.recurring].map((p) => [p.id.toUpperCase(), p]));
   const families = familyWords(catalog);
   const picks = [];
@@ -192,14 +203,48 @@ export function resolveTokens(tokens, catalog) {
     if (fam && !spec) { if (!fams.includes(fam)) fams.push(fam); continue; }
     unknown.push(raw);
   }
+  for (const item of parsed.mine) picks.push({ id: item.id, spec: '', mine: item });
   return { picks, families: fams, unknown };
 }
 
+// ---- Your own purchase (MY) -----------------------------------------------------------
+
+// The catalogue-like item behind a MY habit: a fixed amount a day, week or month.
+export function mineHabit(item, company) {
+  return { id: item.id, name: mineLabel(item), company, ticker: item.ticker, per: item.per, prices: [{ from: item.start, usd: item.amount }] };
+}
+const MINE_NOTE = 'Your own purchase: CNBC daily closes, split-adjusted, price only (not cross-checked with a second source).';
+// Words the certificate needs (short name, plural, doodle), all generated.
+export function mineMeta(item) {
+  return {
+    short: mineShort(item),
+    plural: item.kind === 'once' ? `buys of ${item.ticker}` : mineShort(item),
+    family: `MY-${item.ticker}`,
+    doodle: MINE_DOODLE,
+  };
+}
+
+// mineData: what data/whatif-mine.js loadMine returns.
+export function mineRow(item, mineData, quotes, bls = null) {
+  const company = mineData.company[item.ticker] || item.ticker;
+  const current = quotes[item.ticker];
+  const src = `https://www.cnbc.com/quotes/${encodeURIComponent(item.ticker)}`;
+  const extra = { mine: mineMeta(item), monthlyKey: `MY:${item.ticker}`, note: MINE_NOTE, src };
+  if (item.kind === 'once') {
+    const product = { id: item.id, name: mineLabel(item), company, ticker: item.ticker, date: item.date.day, price: item.amount };
+    return { ...oneOffRow(product, mineData.buys[item.id], current), ...extra };
+  }
+  const habit = mineHabit(item, company);
+  const row = recurringRow(habit, { start: item.start, end: item.end, clamped: false }, mineData.monthly[`MY:${item.ticker}`] || {}, current, { recurring: [] }, bls);
+  return { ...row, ...extra, habit };
+}
+
 // Everything needed for the result screen. quotes: { TICKER: price now }.
-export function computeWhatif(picks, { catalog, prices, quotes, now = new Date(), bls = null }) {
+export function computeWhatif(picks, { catalog, prices, quotes, now = new Date(), bls = null, mineData = null }) {
   if (!picks.length) throw new WhatifError('empty', 'Pick at least one thing you bought.');
   if (picks.length > 30) throw new WhatifError('too_many', 'Pick 30 things or fewer.');
-  const rows = picks.map(({ id, spec }) => {
+  const rows = picks.map(({ id, spec, mine }) => {
+    if (mine) return mineRow(mine, mineData, quotes, bls);
     const product = catalog.products.find((p) => p.id === id);
     if (product) {
       if (spec) throw new WhatifError('bad_spec', `${id.toUpperCase()} was a one-off buy, so it takes no dates.`);
@@ -248,7 +293,7 @@ export function holdingPath({ date, close }, bars, current) {
 
 // Canonical command text for a set of picks.
 export function whatifCommand(picks) {
-  return ['WHATIF', ...picks.map((p) => (p.spec ? `${p.id}:${p.spec}` : p.id).toUpperCase())].join(' ');
+  return ['WHATIF', ...picks.map((p) => (p.mine ? p.mine.words.join(' ') : (p.spec ? `${p.id}:${p.spec}` : p.id).toUpperCase()))].join(' ');
 }
 
 // ---- REPLAY: the race from the first buy to today --------------------------------------
@@ -271,8 +316,8 @@ export function replaySeries(result, { catalog, prices, bls, now = new Date(), a
     if (r.kind === 'once') {
       return { r, buys: [{ key: r.bought.slice(0, 7), date: r.bought, spend: r.paid, shares: r.shares, once: true }] };
     }
-    const item = catalog.recurring.find((x) => x.id === r.id);
-    const m = monthly(r.ticker);
+    const item = r.habit || catalog.recurring.find((x) => x.id === r.id);
+    const m = monthly(r.monthlyKey || r.ticker);
     const buys = monthsBetween(r.from, r.to).map((key) => {
       const spend = monthlyCost(item, key, catalog, bls);
       const close = m[key]?.close ?? r.price;
@@ -296,7 +341,7 @@ export function replaySeries(result, { catalog, prices, bls, now = new Date(), a
     const cpiThen = cpi.at(pt.key);
     for (const { r, buys } of plans) {
       let close;
-      if (pt.kind === 'month') close = monthly(r.ticker)[pt.key]?.close ?? (pt.key > (prices.built || '').slice(0, 7) ? r.price : last.get(r.ticker));
+      if (pt.kind === 'month') close = monthly(r.monthlyKey || r.ticker)[pt.key]?.close ?? (r.monthlyKey || pt.key > (prices.built || '').slice(0, 7) ? r.price : last.get(r.ticker));
       else if (pt.row === r) close = r.close;
       else close = last.get(r.ticker);
       if (Number.isFinite(close)) last.set(r.ticker, close);

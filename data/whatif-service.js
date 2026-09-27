@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { getQuote } from './quotes.js';
 import { getChart } from './charts.js';
 import { computeWhatif, resolveTokens, WhatifError, maxDrawdown, holdingPath, replaySeries } from './whatif.js';
+import { loadMine, dailyCloses, MINE_SOURCE } from './whatif-mine.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const load = (f) => JSON.parse(readFileSync(path.join(dir, f), 'utf8'));
@@ -54,7 +55,7 @@ async function monthlyBars(tickers, chartImpl, waitMs) {
 export function attachRisk(result, bars, { prices: p = prices } = {}) {
   for (const row of result.rows) {
     const series = bars[row.ticker];
-    const first = row.kind === 'once' ? { date: row.bought, close: row.close } : p.monthly[row.ticker]?.[row.from];
+    const first = row.kind === 'once' ? { date: row.bought, close: row.close } : p.monthly[row.monthlyKey || row.ticker]?.[row.from];
     const dd = series && first ? maxDrawdown(holdingPath(first, series, row.price)) : null;
     row.worstDrop = dd ? { pct: dd.pct, peakMonth: dd.peakMonth, month: dd.month } : null;
   }
@@ -82,26 +83,38 @@ export function getCatalog() {
 // tokens: ['IPHONE6', 'LATTE:3Y'].
 // risk: also work out each holding's worst drop along the way (the WHATIF screen asks
 // for it; the share image does not need it and stays fast).
-export async function getWhatif(tokens, { quoteImpl = getQuote, now = new Date(), risk = false, chartImpl = getChart, riskWaitMs = RISK_WAIT_MS } = {}) {
-  const { picks, families, unknown } = resolveTokens(tokens, catalog);
+// mineImpl: loads the prices for your own purchase (MY items), injected for tests.
+export async function getWhatif(tokens, { quoteImpl = getQuote, now = new Date(), risk = false, chartImpl = getChart, riskWaitMs = RISK_WAIT_MS, dailyImpl = dailyCloses } = {}) {
+  const { picks, families, unknown } = resolveTokens(tokens, catalog, now);
   if (unknown.length) {
     throw new WhatifError('unknown', `Not on the list: ${unknown.join(' ')}. Type WHATIF to pick from the list.`, { unknown });
   }
   if (!picks.length) return { picker: true, families };
-  const tickers = [...new Set(picks.map(({ id }) => [...catalog.products, ...catalog.recurring].find((p) => p.id === id).ticker))];
-  const [live, bars] = await Promise.all([quotesFor(tickers, quoteImpl), risk ? monthlyBars(tickers, chartImpl, riskWaitMs) : null]);
-  const quotes = Object.fromEntries(Object.entries(live).map(([t, q]) => [t, q.price]));
-  const result = computeWhatif(picks, { catalog, prices, quotes, now, bls });
-  if (risk) attachRisk(result, bars);
-  const asOf = Object.values(live).map((q) => q.asOf).filter(Boolean).sort().pop() || null;
+  if (picks.length > 30) throw new WhatifError('too_many', 'Pick 30 things or fewer.');
+  const mineItems = picks.filter((p) => p.mine).map((p) => p.mine);
+  const catTickers = [...new Set(picks.filter((p) => !p.mine).map(({ id }) => [...catalog.products, ...catalog.recurring].find((p) => p.id === id).ticker))];
+  const mineTickers = [...new Set(mineItems.map((i) => i.ticker))];
+  const [live, mineData, bars] = await Promise.all([
+    quotesFor(catTickers, quoteImpl),
+    mineItems.length ? loadMine(mineItems, { quoteImpl, dailyImpl }) : null,
+    risk ? monthlyBars([...new Set([...catTickers, ...mineTickers])], chartImpl, riskWaitMs) : null,
+  ]);
+  const allLive = { ...(mineData?.quotes || {}), ...live };
+  const quotes = Object.fromEntries(Object.entries(allLive).map(([t, q]) => [t, q.price]));
+  // The MY closes sit beside the baked ones, under their own keys (MY:TICKER).
+  const allPrices = mineData ? { ...prices, monthly: { ...prices.monthly, ...mineData.monthly } } : prices;
+  const result = computeWhatif(picks, { catalog, prices: allPrices, quotes, now, bls, mineData });
+  if (risk) attachRisk(result, bars, { prices: allPrices });
+  const asOf = Object.values(allLive).map((q) => q.asOf).filter(Boolean).sort().pop() || null;
   // REPLAY: the race month by month; the screen asks for it (with risk), the share image does not.
-  if (risk) result.replay = replaySeries(result, { catalog, prices, bls, now, asOf });
+  if (risk) result.replay = replaySeries(result, { catalog, prices: allPrices, bls, now, asOf });
   return {
     ...result,
     picks,
     asOf,
-    source: SOURCE,
-    stale: Object.values(live).some((q) => q.stale),
+    source: mineItems.length ? (catTickers.length ? `${SOURCE}; your own purchase: ${MINE_SOURCE}` : MINE_SOURCE) : SOURCE,
+    mine: mineItems.length > 0,
+    stale: Object.values(allLive).some((q) => q.stale),
     method: METHOD,
     built: prices.built,
     updated: new Date().toISOString(),
