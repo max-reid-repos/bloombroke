@@ -650,7 +650,7 @@ a.ch-flag { cursor: pointer; }
 .stamp-worth { color: var(--up); }
 .stamp-sleep { color: var(--accent); }
 .stamp-skip { color: var(--down); }
-@keyframes stamp-in { from { transform: rotate(-4deg) scale(1.25); opacity: 0; } to { transform: rotate(-4deg) scale(1); opacity: 1; } }
+@keyframes stamp-in { from { transform: rotate(var(--stamp-rot, -4deg)) scale(1.25); opacity: 0; } to { transform: rotate(var(--stamp-rot, -4deg)) scale(1); opacity: 1; } }
 .stamp-line { margin-top: 14px; color: var(--text-2); text-align: center; }
 .how { align-self: stretch; margin-top: 16px; border-top: 1px solid var(--rule); padding-top: 8px; }
 .how summary { cursor: pointer; color: var(--accent); font-size: 12px; list-style: none; }
@@ -661,38 +661,47 @@ a.ch-flag { cursor: pointer; }
 
 /* ---- WHATIF ----------------------------------------------------------- */
 .wi-intro { color: var(--text-2); margin-bottom: 10px; }
-.wi-groups { columns: 4 250px; column-gap: 12px; outline: 0; }
-.wi-group { break-inside: avoid; margin-bottom: 12px; border: 1px solid var(--rule); background: var(--bg); }
-.wi-co { margin: 0; padding: 0 8px; height: 22px; display: flex; align-items: center; gap: 8px; background: var(--panel); border-bottom: 1px solid var(--rule); font-size: 11px; font-weight: 600; letter-spacing: .1em; color: var(--accent); }
-.wi-item {
-  display: grid; grid-template-columns: 3ch minmax(0, 1fr) auto; align-items: center; gap: 8px;
-  min-height: var(--row-h); padding: 0 8px;
-  cursor: pointer; user-select: none; color: var(--text-2);
+.wi-tabs { margin-bottom: 8px; }
+/* The shelf: doodle cards in a grid. */
+.wi-shelf {
+  --wi-bar-h: 40px;
+  list-style: none; margin: 0; padding: 0; outline: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 6px;
 }
-.wi-item:hover { background: var(--panel-2); }
-.wi-item:focus { outline: 0; background: var(--panel-3); box-shadow: inset 2px 0 0 var(--accent); }
-.wi-item.is-on { color: var(--text); }
-.wi-box { color: var(--faint); }
-.wi-item.is-on .wi-box { color: var(--accent); font-weight: 600; }
-.wi-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wi-meta { color: var(--dim); font-size: 12px; white-space: nowrap; }
+.wi-card {
+  position: relative;
+  display: grid; grid-template-columns: 50px minmax(0, 1fr); grid-template-rows: 1fr auto; column-gap: 8px;
+  min-height: 64px; padding: 5px 8px 5px 4px;
+  border: 1px solid var(--rule); background: var(--bg);
+  cursor: pointer; user-select: none; color: var(--text-2);
+  scroll-margin-bottom: calc(var(--wi-bar-h) + 8px);
+}
+.wi-card:hover { background: var(--panel-2); }
+.wi-card:focus { outline: 0; border-color: var(--accent); background: var(--panel-3); }
+.wi-card.is-on { color: var(--text); background: var(--accent-tint); border-color: var(--rule-strong); }
+.wi-doodle { grid-row: 1 / span 2; align-self: center; width: 50px; height: 50px; object-fit: contain; }
+.wi-box { position: absolute; top: 3px; right: 6px; font-size: 11px; color: var(--faint); }
+.wi-card.is-on .wi-box { color: var(--accent); font-weight: 600; }
+.wi-cname {
+  align-self: end; padding-right: 24px; font-size: 12px; line-height: 15px;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.wi-cmeta { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 11px; white-space: nowrap; }
 .wi-years input {
-  width: 10ch; height: 20px; padding: 0 4px;
+  width: 8ch; height: 20px; padding: 0 4px;
   border: 1px solid var(--rule-strong); background: var(--panel);
   color: var(--text); font-family: var(--font); font-size: 12px; text-transform: uppercase; text-align: right;
 }
 .wi-years input:focus { outline: 1px solid var(--accent); outline-offset: 0; }
-/* The RUN bar sticks right on the dock (no gap for rows to show through), and the
-   list keeps the bar's height clear below it: a row moved to by keys or by the last
-   scroll is never under the bar. */
-.wi-groups { --wi-bar-h: 40px; padding-bottom: var(--wi-bar-h); }
-.wi-groups .wi-item { scroll-margin-bottom: calc(var(--wi-bar-h) + 8px); }
-@media (max-width: 639px) { .wi-groups { --wi-bar-h: 64px; } }
+/* The RUN bar sticks right on the dock (no gap for cards to show through); a card moved
+   to by keys is never left under it (scroll-margin), and the card behind it fades. */
+@media (max-width: 639px) { .wi-shelf { --wi-bar-h: 40px; } }
 .wi-bar {
   position: sticky; bottom: var(--dock-h);
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
   margin-top: 10px; padding: 6px 8px;
   background: var(--panel-2); border: 1px solid var(--rule-strong);
+  box-shadow: 0 -8px 10px -4px var(--bg);
   font-size: 12px;
 }
 .wi-count { color: var(--text); font-weight: 600; letter-spacing: .06em; white-space: nowrap; }
@@ -727,14 +736,38 @@ a.ch-flag { cursor: pointer; }
 
 /* WHATIF certificate: text over the art, placed in % of the image (the same numbers as
    POS in lib/og.js), sized in cqw so it scales with the paper. */
-.wi-layout { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "cert" "body"; gap: 14px 28px; }
+.wi-layout { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "replay" "cert" "body"; gap: 14px 28px; }
 .wi-head { grid-area: head; min-width: 0; }
 .wi-certcol { grid-area: cert; min-width: 0; }
 .wi-body { grid-area: body; min-width: 0; }
 .wi-body > .wi-receipt:first-child { margin-top: 0; }
 @media (min-width: 1100px) {
-  .wi-layout:not(.no-cert) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "cert head" "cert body"; grid-template-rows: auto 1fr; align-items: start; }
+  .wi-layout:not(.no-cert) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "cert head" "cert replay" "cert body"; grid-template-rows: auto auto 1fr; align-items: start; }
 }
+/* REPLAY: the race in thin terminal lines, in the right column under the number (on
+   phones too), so it is in view while it plays however long the table is. The
+   certificate waits, then stamps in when the race ends. */
+.wi-replay { grid-area: replay; min-width: 0; border-top: 1px solid var(--rule-strong); padding-top: 8px; }
+.wr-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 16px; font-size: 11px; letter-spacing: .06em; }
+.wr-date { min-width: 11ch; color: var(--text); font-weight: 600; }
+.wr-key .num { margin-left: 4px; color: var(--text); font-weight: 600; letter-spacing: 0; }
+.wr-stock { color: var(--accent); }
+.wr-jar { color: var(--cmp-3); }
+.wr-spent { color: var(--down); }
+.wr-canvas { display: block; width: 100%; height: 130px; margin-top: 6px; }
+.wr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+.wr-actions .wi-btn { height: 22px; padding: 0 8px; font-size: 10px; }
+.wr-msg:empty { display: none; }
+.wr-actions .wr-btn:first-child { background: transparent; border-color: var(--rule-strong); color: var(--text); }
+.wr-actions .wr-btn:hover { background: var(--text); border-color: var(--text); color: var(--ink); }
+.wr-btn:disabled { opacity: .5; cursor: progress; }
+.wr-msg { margin-top: 4px; font-size: 11px; color: var(--dim); letter-spacing: .04em; }
+.wr-actions .wr-msg { margin: 0; }
+/* Title strip parts, split by a dot (on phones they wrap, one per line, no dots). */
+.wi-panel .panel-meta > * + *::before { content: '· '; }
+.wi-certcol { overflow: clip; }
+.wi-cert.is-waiting { visibility: hidden; }
+.wi-cert.is-stamped { --stamp-rot: 0deg; animation: stamp-in 260ms cubic-bezier(.2, .8, .2, 1) both; }
 .wi-cert {
   --paper-ink: #2A1A10; --paper-soft: #5A4330; --paper-red: #C23B2A;
   position: relative; container-type: inline-size;
@@ -943,11 +976,17 @@ a.ch-flag { cursor: pointer; }
   .hero.is-xlong { font-size: 22px; }
   .hero-unit { font-size: 14px; }
   .buy { grid-template-columns: minmax(0, 1fr); gap: 16px; }
-  .wi-groups { columns: 1; }
-  .wi-keys { display: none; }
-  .wi-bar { gap: 8px; }
-  .wi-cmd { flex-basis: 100%; order: 3; }
+  .wi-shelf { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wi-keys, .wi-hint, .wi-cmd { display: none; }
+  .wi-bar { gap: 8px; flex-wrap: nowrap; }
   .wi-run { margin-left: auto; }
+  .wr-canvas { height: 150px; }
+  .wr-actions { margin-left: 0; flex-basis: 100%; }
+  .wi-panel .panel-head { flex-wrap: wrap; }
+  .wi-panel .panel-label { flex: 1 1 100%; max-width: none; }
+  .wi-panel .panel-meta { flex: 1 1 100%; justify-content: flex-start; text-align: left; padding-left: 8px; }
+  .wi-panel .panel-meta > * + *::before { content: none; }
+  .wi-panel .panel-meta:has(> .wi-hint:only-child) { display: none; }
   .wi-sh, .wi-table .wi-sh, .wi-table .wi-when { display: none; }
   .wi-table tbody .name { white-space: normal; padding-top: 4px; padding-bottom: 4px; }
   .wi-when-m { display: block; font-size: 11px; }
@@ -982,6 +1021,7 @@ a.ch-flag { cursor: pointer; }
   .cmd-focused .cursor.blink { animation: none; opacity: .9; }
   .boot-cursor { animation: none; }
   .stamp { animation: none; }
+  .wi-cert.is-stamped { animation: none; }
   .tick-up { background: none; color: var(--up) !important; }
   .tick-down { background: none; color: var(--down) !important; }
 }
