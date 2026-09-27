@@ -103,7 +103,7 @@ test('symbol search: our names first, then US stocks and ETFs', async () => {
     { issueType: 'ETF', countryCode: 'US', symbolName: 'SPY', companyName: 'SPDR S&P 500 ETF Trust' },
     { issueType: 'STOCK', countryCode: 'US', symbolName: 'GOLD', companyName: 'Old Barrick ticker' },
     { issueType: 'STOCK', countryCode: 'US', symbolName: 'TOO-LONG1', companyName: 'x' }];
-  assert.deepEqual(parseLookup(body).map((r) => r.id), ['AAPL', 'SPY']);
+  assert.deepEqual(parseLookup(body).map((r) => r.id), ['AAPL', 'SPY', '$GOLD'], 'a stock named like one of our instruments is the $ stock');
   let calls = 0;
   const s = makeSearch({ fetchImpl: async () => { calls += 1; return { ok: true, json: async () => body }; } });
   const r = await s.search('s&p');

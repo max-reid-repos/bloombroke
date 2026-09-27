@@ -6,7 +6,7 @@
 import { esc, q, fmtNum, dirOf, panel, metaNote, LOADING } from './markets.js';
 import { niceTicks } from './chart.js';
 
-export const FIN_TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
+export const FIN_TICKER_RE = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 const STATEMENT_WORDS = {
   INCOME: 'income', IS: 'income', EARNINGS: 'income',
   BALANCE: 'balance', BS: 'balance', SHEET: 'balance',

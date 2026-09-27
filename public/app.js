@@ -22,7 +22,7 @@ import * as portfolioScreen from './screens/portfolio.js';
 import { parseWatchArgs, watchInput, WATCH_SUBCOMMANDS, loadWatchlist, saveWatchlist, toggleId } from './watchlist.js';
 import { parsePfArgs, pfInput } from './portfolio.js';
 import { panel } from './screens/markets.js';
-import { matchInstrument, searchInstruments, instrumentById } from './instruments.js';
+import { matchInstrument, searchInstruments, instrumentById, resolveInstrument, STOCK_RE, stockSymbol } from './instruments.js';
 import { edgeFade } from './kit.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { updatedTitle } from './freshness.js';
@@ -49,7 +49,7 @@ import { createMenu } from './menu.js';
 import { compactEmbed } from './embed.js';
 import { parseAffordArgs } from './afford.js';
 import { resolveInput } from './resolve.js';
-import { tickerForName, LISTED_TICKERS } from './known-tickers.js';
+import { tickerForName, LISTED_TICKERS, SHADOWED_TICKERS } from './known-tickers.js';
 import { sendSeen, countsAsOpen } from './trending.js'; // TRENDING
 import './goal.js'; // GOALS: loads DataFast unless Global Privacy Control is on
 
@@ -183,13 +183,45 @@ export function isTicker(tok) {
   return TICKER_RE.test(tok);
 }
 
+// A ticker or a stock id ($GOLD, $M): what a ticker screen takes.
+export const TICKER_ID_RE = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
+
+// "$" + ticker always means the stock. The stock's id: the plain ticker when the plain
+// word already opens that stock (AAPL, BRK.B), else the ticker with its $ kept (GOLD is
+// spot gold, M is MARKETS, HELP is HELP: $GOLD, $M, $HELP are the stocks).
+export function stockId(sym) {
+  const t = String(sym ?? '').toUpperCase().replace(/^\$/, '');
+  if (!TICKER_RE.test(t)) return null;
+  if (resolveInstrument(t)) return `$${t}`;
+  const plain = parseCommand(t, 1);
+  return plain.name === 'QUOTE' && plain.args?.ticker === t ? t : `$${t}`;
+}
+
+// Every $TICKER word in its id form: $AAPL -> AAPL, $gold -> $GOLD. Amounts ($1200) stay.
+function stockWords(toks) {
+  return toks.map((w) => (STOCK_RE.test(w) ? stockId(w) : w));
+}
+
+// The dim "Stock: $GOLD" hint for a plain word that is also a listed stock (GOLD opens
+// spot gold, M opens MARKETS): the $ command that opens the stock, or null.
+// raw: the words as typed; cmd: what they parsed to.
+export function stockHintFor(raw, cmd) {
+  const toks = tokenize(raw);
+  const head = toks[0];
+  if (!head || !SHADOWED_TICKERS.has(head) || !cmd || cmd.name === 'UNKNOWN') return null;
+  // The word alone, or a named instrument's chart with its period (GOLD 5Y).
+  if (toks.length > 1 && !(cmd.name === 'QUOTE' && !cmd.error)) return null;
+  return [`$${head}`, ...toks.slice(1)].join(' ');
+}
+
 // <symbol> [range]: a named instrument (GOLD, EUR/USD, S&P 500) or a ticker, then a
 // preset (5Y), two dates, or FROM <date> [TO <date>]. Bad dates still open the screen,
 // which explains; words that are not a range make the whole input UNKNOWN.
 export function parseSymbolCommand(toks) {
-  const m = matchInstrument(toks);
-  if (!m && !isTicker(toks[0])) return null;
-  const ticker = m ? m.inst.id : toks[0];
+  const stock = STOCK_RE.test(toks[0]) ? stockId(toks[0]) : null; // $GOLD: never spot gold
+  const m = stock ? null : matchInstrument(toks);
+  if (!stock && !m && !isTicker(toks[0])) return null;
+  const ticker = stock || (m ? m.inst.id : toks[0]);
   const range = parseRangeArgs(toks.slice(m ? m.used : 1));
   if (range.error === 'usage') return null;
   if (range.error) return { name: 'QUOTE', args: { ticker, error: range.error }, error: range.error, input: toks.join(' ') };
@@ -198,6 +230,7 @@ export function parseSymbolCommand(toks) {
 
 // The symbol at the start of the words: { id, used }, or null.
 function leadingSymbol(toks) {
+  if (STOCK_RE.test(toks[0])) return { id: stockId(toks[0]), used: 1 };
   const m = matchInstrument(toks);
   if (m) return { id: m.inst.id, used: m.used };
   return isTicker(toks[0]) ? { id: toks[0], used: 1 } : null;
@@ -230,9 +263,14 @@ export function tickerFunctions(ticker, current = 'CHART') {
 // Commands that change saved lists (WATCH ADD, PF SELL) carry mutates: true and the
 // screen to show in the URL instead (view), so a reload never runs them twice.
 export function parseCommand(raw, depth = 0) {
-  const toks = tokenize(raw);
+  const toks = stockWords(tokenize(raw));
   if (!toks.length) return { name: DEFAULT_COMMAND, input: DEFAULT_COMMAND };
   const rest = toks.slice(1);
+  // $GOLD 1Y, $M, $CHAT FINANCIALS: the stock, past every command, alias and instrument.
+  if (STOCK_RE.test(toks[0])) {
+    const fn = depth === 0 ? parseTickerFunction(toks) : null;
+    return fn || parseSymbolCommand(toks) || { name: 'UNKNOWN', input: toks.join(' ') };
+  }
   // W is also a ticker (Wayfair): it means WATCH only alone or before a WATCH word.
   const head = toks[0] === 'W' && (!rest.length || WATCH_SUBCOMMANDS.includes(rest[0])) ? 'WATCH' : (ALIASES[toks[0]] || toks[0]);
   // A pasted Pro key on its own is LOGIN <key>: the key never reaches the URL or history.
@@ -326,7 +364,8 @@ export function urlFor(clean) {
 // URL state: ?c=FX+500+USD+THB
 export function toQuery(input) {
   const c = tokenize(input).join(' ');
-  return '?' + new URLSearchParams({ c }).toString();
+  // $ is fine in a query: ?c=$M, not ?c=%24M.
+  return '?' + new URLSearchParams({ c }).toString().replace(/%24/g, '$');
 }
 
 export function fromQuery(search) {
@@ -360,6 +399,8 @@ export function suggest(raw) {
   if (!toks.length) return COMMANDS.map((c) => ({ name: c.name, hint: c.hint, value: c.example }));
   const head = toks[0];
   const typingHead = toks.length === 1 && !/\s$/.test(text);
+  // $ + ticker is a stock: no commands, aliases or instruments (the server's symbols come in app.js).
+  if (head.startsWith('$')) return [];
   if (typingHead) {
     const cmds = COMMANDS
       .filter((c) => c.name.startsWith(head) || (head.length >= 2 && c.aliases?.some((a) => a.startsWith(head))))
@@ -387,6 +428,16 @@ export function stepActive(active, count, dir) {
 }
 
 const KIND_LABEL = { index: 'index', future: 'futures', crypto: 'crypto', fx: 'currency pair', yield: 'yield', stock: 'stock', etf: 'ETF' };
+
+// Search rows (/api/search) with each stock under the id that opens it: M (Macy's) is $M,
+// since M alone is MARKETS. dollar: the words started with $, so stocks only, each as
+// $ + ticker ($GO + Tab -> $GOLD, never spot gold).
+export function stockRows(results, dollar = false) {
+  const isStock = (r) => r?.kind === 'stock' || r?.kind === 'etf';
+  return (results || [])
+    .filter((r) => r?.id && (!dollar || isStock(r)))
+    .map((r) => (isStock(r) ? { ...r, id: dollar ? `$${stockSymbol(r.id)}` : stockId(stockSymbol(r.id)) || r.id } : r));
+}
 
 // Symbol rows for the suggestion list, skipping any value already listed.
 export function symbolSuggestions(results, existing = []) {
@@ -512,7 +563,7 @@ const SCREENS = {
 const FN_OF_SCREEN = { QUOTE: 'CHART', TICKERNEWS: 'NEWS' };
 export function tickerStripFor(cmd) {
   const ticker = cmd?.args?.ticker;
-  if (!ticker || !TICKER_RE.test(ticker) || instrumentById(ticker)) return null;
+  if (!ticker || !TICKER_ID_RE.test(ticker) || instrumentById(ticker)) return null;
   if (cmd.error && cmd.name !== 'QUOTE') return null;
   const current = FN_OF_SCREEN[cmd.name] || cmd.name;
   return FUNCTION_BAR.includes(current) ? { ticker, current } : null;
@@ -643,7 +694,9 @@ export const DEFAULT_TITLE = 'Bloombroke: a free market terminal. Pro $420 a yea
 export function tickerToCheck(cmd) {
   if (!cmd || cmd.mutates || cmd.error) return null;
   const t = cmd.args?.ticker;
-  if (!t || !TICKER_RE.test(t) || instrumentById(t) || LISTED_TICKERS.has(t)) return null;
+  // A $ stock ($GOLD, $XXXXX) is always checked: it may be no ticker at all.
+  const stock = STOCK_RE.test(t);
+  if (!t || (!stock && (!TICKER_RE.test(t) || instrumentById(t) || LISTED_TICKERS.has(t)))) return null;
   return cmd.name === 'QUOTE' || tickerStripFor(cmd) ? t : null;
 }
 
@@ -930,7 +983,7 @@ function boot() {
   let remoteTimer = 0;
   let remoteAbort = null;
   function remoteQuery(text) {
-    const t = text.replace(/^\s+/, '').toUpperCase();
+    const t = text.replace(/^\s+/, '').toUpperCase().replace(/^\$/, ''); // $GO searches GO
     if (looksLikeKey(t)) return null; // a Pro key being typed never goes to search
     return /^[A-Z0-9.&/-]{2,12}$/.test(t) ? t : null;
   }
@@ -952,7 +1005,8 @@ function boot() {
     let out = suggest(text);
     const qText = remoteQuery(text);
     if (qText && out.every((it) => !it.usage)) {
-      if (remote.has(qText)) out = [...out, ...symbolSuggestions(remote.get(qText), out)].slice(0, 10);
+      const dollar = /^\s*\$/.test(text);
+      if (remote.has(qText)) out = [...out, ...symbolSuggestions(stockRows(remote.get(qText), dollar), out)].slice(0, 10);
       else fetchRemote(qText);
     }
     return out;
@@ -1111,6 +1165,9 @@ function boot() {
       setStatus('LOADING...');
       const fn = mod.render(view, cmd, ctx);
       if (typeof fn === 'function') cleanups.push(fn);
+      // A plain word that is also a stock (GOLD, M, HELP): "Stock: $GOLD" in the title strip.
+      const hint = embed ? null : stockHintFor(raw, cmd);
+      if (hint) cleanups.push(showStockHint(view, hint));
       // --- TRENDING: count this ticker screen (public/trending.js); not in DESK panels, not before the notice ---
       if (countsAsOpen(cmd, { embed, consentPending: consentNeeded() })) sendSeen(cmd.args.ticker);
       // --- end TRENDING ---
@@ -1142,6 +1199,27 @@ function boot() {
     }
   }
 
+  // The dim "Stock: $GOLD" link in the first panel's title strip, nothing more. Screens
+  // redraw their panels, so it goes back in whenever it is gone.
+  function showStockHint(view, command) {
+    const place = () => {
+      // The first title strip: a panel's, or HELP's search bar, or the DESK bar.
+      const head = view.querySelector('.panel-head, .help-search, .desk-bar');
+      if (!head || head.querySelector('.stock-hint')) return;
+      const a = document.createElement('a');
+      a.className = 'stock-hint';
+      a.href = toQuery(command);
+      a.dataset.cmd = command;
+      a.textContent = `Stock: ${command.split(' ')[0]}`;
+      const label = head.querySelector('.panel-label');
+      if (label) label.after(a); else head.append(a);
+    };
+    place();
+    const watch = new MutationObserver(place);
+    watch.observe(view, { childList: true, subtree: true });
+    return () => watch.disconnect();
+  }
+
   // --- the resolver: company names, plain words, several tickers --------------------
   const tickerOk = new Map(); // ticker -> true or false, for this page load
   async function checkTicker(t, signal) {
@@ -1160,10 +1238,11 @@ function boot() {
   async function searchSymbols(text, signal) {
     const q = String(text).toUpperCase().replace(/[^A-Z0-9 .&/-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 24);
     if (!q) return [];
-    if (remote.has(q)) return remote.get(q);
-    const d = await fetchJSON(`/api/search?q=${encodeURIComponent(q)}`, { signal });
-    remote.set(q, d.results || []);
-    return d.results || [];
+    if (!remote.has(q)) {
+      const d = await fetchJSON(`/api/search?q=${encodeURIComponent(q)}`, { signal });
+      remote.set(q, d.results || []);
+    }
+    return stockRows(remote.get(q));
   }
   function neutralHead(title) {
     setKeys('');
@@ -1199,6 +1278,7 @@ function boot() {
       const found = await resolveInput(raw, {
         search: (text) => searchSymbols(text, signal),
         checkTicker: (t) => checkTicker(t, signal),
+        stockId,
       });
       if (signal.aborted) return;
       if (found.confident) {

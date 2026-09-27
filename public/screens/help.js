@@ -66,7 +66,8 @@ function rows(list, opts) {
 export function startHere() {
   const items = START_HERE.map(([c, what]) => `<li class="hs-row"><a class="hs-cmd" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a><span class="hs-what">${esc(what)}</span></li>`).join('');
   return `<ul class="hs-list">${items}</ul>
-    <p class="hs-keys">${START_KEYS.map(([k, what]) => `<kbd>${esc(k)}</kbd> ${esc(what)}`).join(' <span class="hs-sep" aria-hidden="true">&middot;</span> ')}</p>`;
+    <p class="hs-keys">${START_KEYS.map(([k, what]) => `<kbd>${esc(k)}</kbd> ${esc(what)}`).join(' <span class="hs-sep" aria-hidden="true">&middot;</span> ')}</p>
+    <p class="help-tip dim">$ + ticker always means the stock, e.g. <a class="code" href="${esc(q('$GOLD'))}" data-cmd="$GOLD">$GOLD</a>.</p>`;
 }
 
 function detail(entry, ticker) {

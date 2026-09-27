@@ -3,7 +3,7 @@
 // and a cached loader that turns source failures into a friendly error.
 
 import { getNasdaq, iso } from './lists.js';
-import { normalizeTicker } from './quotes.js';
+import { companyTicker } from './quotes.js';
 
 export const DAY_MS = 24 * 60 * 60_000;
 export const HOUR_MS = 60 * 60_000;
@@ -24,9 +24,9 @@ export async function nasdaqData(fetchImpl, path) {
   return body.data && typeof body.data === 'object' ? body.data : null;
 }
 
-// A ticker from the words, or a bad_symbol error.
+// A ticker from the words, or a bad_symbol error. "$DOW" (the stock) is DOW.
 export function tickerOrThrow(raw) {
-  const t = normalizeTicker(raw);
+  const t = companyTicker(raw);
   if (!t) throw new CompanyDataError('bad_symbol', 'That does not look like a ticker.');
   return t;
 }

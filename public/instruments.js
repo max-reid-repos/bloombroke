@@ -179,6 +179,14 @@ export function instrumentById(id) {
   return INSTRUMENTS.find((i) => i.id === id) || null;
 }
 
+// A leading $ always means the stock: "$GOLD" is Gold.com (NYSE: GOLD), never spot
+// gold, and "$M" is Macy's, never MARKETS. STOCK_RE matches the typed word and captures
+// the exchange symbol; stockSymbol(id) turns a stock id back into that symbol.
+export const STOCK_RE = /^\$([A-Z]{1,5}(?:\.[A-Z]{1,2})?)$/;
+export function stockSymbol(id) {
+  return String(id ?? '').replace(/^\$/, '');
+}
+
 // "gold", "EUR/USD", "S&P500" -> the instrument, or null.
 export function resolveInstrument(word) {
   return BY_KEY.get(String(word ?? '').trim().toUpperCase()) || null;

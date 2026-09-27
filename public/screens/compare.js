@@ -8,7 +8,7 @@ import { toolbar, rangePills } from '../kit.js';
 
 // The standard daily range set (1M to MAX); intraday ranges are not compared.
 export const RANGES = PRESETS.filter((r) => r !== '1D' && r !== '5D');
-const TICKER = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
+const TICKER = /^\$?[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 export const MAX_TICKERS = 5;
 
 // COMPARE AAPL MSFT NVDA [1Y]

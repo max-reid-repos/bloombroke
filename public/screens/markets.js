@@ -10,7 +10,7 @@ export function esc(s) {
 }
 
 export function q(c) {
-  return '?' + new URLSearchParams({ c }).toString();
+  return '?' + new URLSearchParams({ c }).toString().replace(/%24/g, '$'); // ?c=$GOLD
 }
 
 export function fmtNum(n, decimals = 2) {

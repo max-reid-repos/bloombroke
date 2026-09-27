@@ -68,3 +68,12 @@ export function nameForTicker(id) {
   const row = [...SP100_NAMES, ...OTHER_NAMES].find(([t]) => t === id);
   return row ? row[1] : null;
 }
+
+// Listed US stocks and ETFs whose plain ticker opens something else here: an alias (M is
+// MARKETS, H is HELP), a command (HELP, DESK, CHAT) or an instrument (GOLD is spot gold,
+// DOW is the Dow). $ + the ticker opens the stock; the plain word shows a "Stock: $GOLD"
+// hint. Checked against the quote source (NYSE, Nasdaq, NYSE Arca), Sep 2026.
+export const SHADOWED_TICKERS = new Set([
+  'M', 'H', 'DOW', 'GOLD', 'WTI', 'BTC', 'ETH', 'CORN', 'DAX', 'ASX', 'USDX', 'XPT', 'TRON',
+  'HELP', 'DESK', 'CHAT', 'IPOS', 'LOAN', 'GIFT',
+]);
