@@ -3,7 +3,7 @@
 import { esc, fmtNum, fmtSigned, fmtPct, dirOf, panel, LOADING, marketsColumns, nameCell, rowAttrs, rerender, tick, settleTicks } from './markets.js';
 import { rangeChart } from './chart.js';
 import { freshTag } from '../freshness.js';
-import { newsList, liveNews, dedupeNews, NEWS_POLL_MS } from './news.js';
+import { newsList, liveNews, dedupeNews, mergePushed, newsStream, NEWS_POLL_MS } from './news.js';
 import { startSince } from '../since.js'; // SINCE line
 
 export function fxTable(pairs) {
@@ -103,13 +103,28 @@ export function render(el, cmd, ctx) {
     }
   }
 
-  // The news box: asked again every minute, new stories glow in at the top (news.js).
-  const liveBox = liveNews({ body: newsBody, meta: el.querySelector('#h-news-meta'), ctx });
+  // The news box: new stories are pushed and glow in at the top (news.js); while the
+  // stream is down it is asked again every minute.
+  const liveBox = liveNews({ body: newsBody, meta: el.querySelector('#h-news-meta'), ctx, marker: true });
+  let newsItems = null;
+  let pendingNews = [];
+  const showNews = () => liveBox.show(newsItems, newsItems, newsList(newsItems));
+  const newsFeed = newsStream({
+    tabs: ['MARKETS'], ctx,
+    onState: (on) => liveBox.setLive(on),
+    onItems: (t, items) => {
+      if (t !== 'MARKETS') return;
+      if (!newsItems) { pendingNews = mergePushed(pendingNews, items); return; }
+      newsItems = mergePushed(newsItems, items, HOME_NEWS_ROWS);
+      showNews();
+    },
+  });
   async function loadNews() {
     try {
       const d = await ctx.fetchJSON('/api/news', { signal: ctx.signal });
-      const items = dedupeNews(d.items).slice(0, HOME_NEWS_ROWS);
-      liveBox.show(items, items, newsList(items));
+      newsItems = mergePushed(dedupeNews(d.items), pendingNews, HOME_NEWS_ROWS);
+      pendingNews = [];
+      showNews();
     } catch (err) {
       fail(newsBody, err, '.news');
     }
@@ -118,5 +133,5 @@ export function render(el, cmd, ctx) {
   loadMarkets();
   loadNews();
   ctx.live(loadMarkets, 15_000);
-  ctx.live(loadNews, NEWS_POLL_MS);
+  ctx.live(() => { if (!newsFeed.live) loadNews(); }, NEWS_POLL_MS);
 }
