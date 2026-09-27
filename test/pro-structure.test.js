@@ -31,10 +31,11 @@ function fakeStripe() {
   const calls = [];
   const invoices = {};
   const refunds = [];
+  const sessions = {};
   let failRefunds = 0;
   const missing = () => Object.assign(new Error('No such object'), { statusCode: 404, code: 'resource_missing' });
   const api = {
-    subs, calls, invoiceData: invoices, refundData: refunds,
+    subs, calls, invoiceData: invoices, refundData: refunds, sessions,
     failRefundsOnce() { failRefunds = 1; },
     invoices: {
       async retrieve(id) { calls.push(['invoice.retrieve', id]); if (!invoices[id]) throw missing(); return invoices[id]; },
@@ -55,7 +56,7 @@ function fakeStripe() {
     checkout: {
       sessions: {
         async create(p) { calls.push(['checkout.create', p]); return { id: 'cs_test_created0001', url: 'https://checkout.stripe.com/c/pay/cs_test_created0001' }; },
-        async retrieve() { throw missing(); },
+        async retrieve(id) { calls.push(['checkout.retrieve', id]); if (!sessions[id]) throw missing(); return sessions[id]; },
         list() { return []; },
         async expire() {},
       },
@@ -151,7 +152,7 @@ test('migration 007: existing licences get seats in created order, nothing else 
     assert.deepEqual(Object.fromEntries(rows.map((r) => [r.id, r.seat])), { 1: 4, 2: 1, 4: 2, 5: 3 }, 'created_at, then id');
     // No data loss: every old column is as it was; the new ones are empty.
     for (const [i, r] of rows.entries()) {
-      const { seat, billing_interval: bi, gift_expires_at: ge, ...old } = r;
+      const { seat, billing_interval: bi, gift_expires_at: ge, gifts_redeemed_purged: gp, ...old } = r;
       assert.deepEqual(old, before[i]);
       assert.equal(bi, null);
       assert.equal(ge, null);
@@ -585,6 +586,10 @@ test('records purge: licences 5 years after they end, gift codes 12 months after
     s.store.setStatus(recent.licence.id, 'unpaid');
     assert.deepEqual(s.store.purgeRecords(), { gifts: 2, licences: 0 });
     assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM gift_codes').get().n, 0);
+    // The redeemed one still counts toward the giver's 3, for life.
+    const list = s.store.listGifts(giver.licence.id);
+    assert.equal(list.older, 1);
+    assert.equal(list.left, 2);
     // 5 years after the old one ended (and the gift month): those rows and their data go.
     s.advance(RECORD_KEEP_MS - GIFT_RECORD_KEEP_MS - 91 * DAY + 30 * DAY);
     const r = s.store.purgeRecords();
@@ -592,7 +597,7 @@ test('records purge: licences 5 years after they end, gift codes 12 months after
     assert.equal(s.store.findByKey(old.key), null);
     assert.equal(s.store.findByKey(gifted.key), null);
     assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM sync_docs WHERE licence_id = ?').get(old.licence.id).n, 0, 'its synced data with it');
-    assert.ok(s.store.findByKey(recent.key), 'ended less than 5 years ago: kept');
+    assert.ok(s.store.findByKey(recent.key), 'unpaid (could still charge): kept');
     assert.ok(s.store.findByKey(live.key), 'live: kept');
     assert.ok(s.store.findByKey(giver.key), 'live giver: kept');
     // Deleting the highest seat never hands it out again.
@@ -670,6 +675,8 @@ test('two tabs, two checkouts for one gift-ended licence: the earlier subscripti
     assert.equal((await s.sendEvent(evt('evt_72', 'checkout.session.completed', session(72)))).status, 200);
     assert.deepEqual(s.stripe.refundData.map((r) => [r.payment_intent, r.amount, r.reason, r.key]), [['pi_in_71', 420, 'duplicate', 'bb-duplicate-refund-sub_71-in_71']]);
     assert.equal(s.stripe.subs.sub_71.status, 'canceled');
+    assert.equal((await s.sendEvent(evt('evt_71c', 'checkout.session.async_payment_succeeded', session(71)))).status, 200, 'A again, as a new event');
+    assert.equal(s.store.findByKey(key).stripe_subscription_id, 'sub_72', 'the earlier session never takes the licence back');
     assert.equal(s.stripe.subs.sub_72.status, 'active');
     const moved = s.store.findByKey(key);
     assert.equal(moved.stripe_subscription_id, 'sub_72');
@@ -691,5 +698,106 @@ test('checkout: an oversize body gets its own plain error, not the sync one', as
     const big = await s.req('PUT', '/api/pro/sync', { key: giver.key, body: { docs: { watch: { data: 'x'.repeat(70 * 1024), updatedAt: T0 } } } });
     assert.equal(big.status, 413);
     assert.equal(big.body.message, 'Synced data is capped at 64 KB.');
+  } finally { await s.close(); }
+});
+
+// ---- Second review: the backstop never undoes the kept subscription ---------------------------
+
+async function twoTabs() {
+  const s = await setup({ mode: 'test' }); // the sessions are test-mode ones
+  const giver = s.paid();
+  const { code } = (await s.req('POST', '/api/pro/gifts', { key: giver.key })).body;
+  const { key } = (await s.req('POST', '/api/pro/redeem', { body: { code } })).body;
+  s.advance(GIFT_MS);
+  const lic = s.store.findByKey(key);
+  const session = (n) => ({ ...paidSession(n), client_reference_id: String(lic.id), metadata: { site: 'bloombroke', product: 'pro', licence_id: String(lic.id) } });
+  const created = Math.floor(T0 / 1000);
+  s.stripe.subs.sub_71 = { ...sub(71, 'month'), latest_invoice: 'in_71', created: created + 30 * 86400 };
+  s.stripe.subs.sub_72 = { ...sub(72, 'month'), latest_invoice: 'in_72', created: created + 30 * 86400 + 5 };
+  s.stripe.invoiceData.in_71 = { id: 'in_71', status: 'paid', amount_paid: 420, currency: 'usd' };
+  s.stripe.invoiceData.in_72 = { id: 'in_72', status: 'paid', amount_paid: 420, currency: 'usd' };
+  s.stripe.sessions[session(71).id] = session(71);
+  s.stripe.sessions[session(72).id] = session(72);
+  const effects = () => ({
+    refunds: s.stripe.refundData.map((r) => r.payment_intent),
+    cancels: s.stripe.calls.filter((c) => c[0] === 'sub.cancel').map((c) => c[1]),
+  });
+  return { s, key, lic, session, effects };
+}
+
+test('two tabs, then tab A reloads its success page: /claim changes nothing, the later subscription stays', async () => {
+  const { s, key, session, effects } = await twoTabs();
+  try {
+    await s.sendEvent(evt('evt_a', 'checkout.session.completed', session(71)));
+    await s.sendEvent(evt('evt_b', 'checkout.session.completed', session(72)));
+    assert.deepEqual(effects(), { refunds: ['pi_in_71'], cancels: ['sub_71'] });
+    // Tab A's success page, and B's, reloaded.
+    const a = await s.req('POST', '/api/pro/claim', { body: { session_id: session(71).id } });
+    assert.equal(a.status, 200);
+    assert.equal(a.body.reactivated, true);
+    assert.equal(a.body.active, true);
+    assert.equal(a.body.key, undefined, 'no key shown again');
+    const b = await s.req('POST', '/api/pro/claim', { body: { session_id: session(72).id } });
+    assert.equal(b.status, 200);
+    assert.deepEqual(effects(), { refunds: ['pi_in_71'], cancels: ['sub_71'] }, 'no new refund or cancel');
+    const lic = s.store.findByKey(key);
+    assert.equal(lic.stripe_subscription_id, 'sub_72');
+    assert.equal(lic.status, 'active');
+    assert.equal(s.stripe.subs.sub_72.status, 'active');
+  } finally { await s.close(); }
+});
+
+test('two tabs, webhooks out of order: the later subscription is kept, the earlier one refunded and cancelled', async () => {
+  const { s, key, session, effects } = await twoTabs();
+  try {
+    await s.sendEvent(evt('evt_b', 'checkout.session.completed', session(72)));
+    assert.equal(s.store.findByKey(key).stripe_subscription_id, 'sub_72');
+    await s.sendEvent(evt('evt_a', 'checkout.session.completed', session(71)));
+    assert.deepEqual(effects(), { refunds: ['pi_in_71'], cancels: ['sub_71'] });
+    assert.equal(s.store.findByKey(key).stripe_subscription_id, 'sub_72', 'the licence never moves to the earlier one');
+    assert.equal(s.stripe.subs.sub_72.status, 'active');
+    // Redelivery of both, same ids and new ids, and both success pages: nothing more.
+    await s.sendEvent(evt('evt_a', 'checkout.session.completed', session(71)));
+    await s.sendEvent(evt('evt_b', 'checkout.session.completed', session(72)));
+    await s.sendEvent(evt('evt_a2', 'checkout.session.completed', session(71)));
+    await s.sendEvent(evt('evt_b2', 'checkout.session.completed', session(72)));
+    await s.req('POST', '/api/pro/claim', { body: { session_id: session(71).id } });
+    await s.req('POST', '/api/pro/claim', { body: { session_id: session(72).id } });
+    assert.deepEqual(effects(), { refunds: ['pi_in_71'], cancels: ['sub_71'] });
+    assert.equal(s.store.findByKey(key).stripe_subscription_id, 'sub_72');
+  } finally { await s.close(); }
+});
+
+test('gifts: the 3-code limit is for life, even after old code records are deleted', async () => {
+  const s = await setup();
+  try {
+    const giver = s.paid();
+    for (let i = 0; i < 3; i++) {
+      const { code } = (await s.req('POST', '/api/pro/gifts', { key: giver.key })).body;
+      assert.equal((await s.req('POST', '/api/pro/redeem', { body: { code } })).status, 200);
+    }
+    s.advance(GIFT_RECORD_KEEP_MS + DAY);
+    assert.equal(s.store.purgeRecords().gifts, 3);
+    const list = (await s.req('GET', '/api/pro/gifts', { key: giver.key })).body;
+    assert.deepEqual([list.gifts.length, list.older, list.left], [0, 3, 0]);
+    assert.equal((await s.req('POST', '/api/pro/gifts', { key: giver.key })).status, 409);
+  } finally { await s.close(); }
+});
+
+test('records purge: only cancelled and gift-ended licences go; unpaid, past_due and incomplete stay', async () => {
+  const s = await setup();
+  try {
+    const rows = {};
+    for (const st of ['canceled', 'unpaid', 'past_due', 'incomplete']) {
+      const l = s.paid();
+      s.store.setStatus(l.licence.id, st);
+      // Mark each as ended long ago, whatever its status, to test the status rule alone.
+      s.db.prepare('UPDATE licences SET ended_at = ? WHERE id = ?').run(T0, l.licence.id);
+      rows[st] = l.key;
+    }
+    s.advance(RECORD_KEEP_MS + DAY);
+    assert.equal(s.store.purgeRecords().licences, 1);
+    assert.equal(s.store.findByKey(rows.canceled), null);
+    for (const st of ['unpaid', 'past_due', 'incomplete']) assert.ok(s.store.findByKey(rows[st]), st);
   } finally { await s.close(); }
 });

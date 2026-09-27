@@ -75,18 +75,26 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
       VALUES (?, ?, 'gift', ?, ?, ?, ?, ${NEXT_SEAT})`),
     giftByHash: db.prepare('SELECT * FROM gift_codes WHERE code_hash = ?'),
     giftsOf: db.prepare('SELECT * FROM gift_codes WHERE giver_licence_id = ? ORDER BY created_at DESC, id DESC'),
-    // Codes that use up one of the 3: redeemed, or not yet expired.
-    giftsHeld: db.prepare('SELECT COUNT(*) AS n FROM gift_codes WHERE giver_licence_id = ? AND (redeemed_at IS NOT NULL OR expires_at > ?)'),
+    // Codes that use up one of the 3, for life: redeemed (listed, or counted on the
+    // licence once their rows were deleted), or not yet expired.
+    giftsHeld: db.prepare(`SELECT
+      (SELECT COUNT(*) FROM gift_codes WHERE giver_licence_id = @lic AND (redeemed_at IS NOT NULL OR expires_at > @t))
+      + COALESCE((SELECT gifts_redeemed_purged FROM licences WHERE id = @lic), 0) AS n`),
+    giftsPurgedOf: db.prepare('SELECT gifts_redeemed_purged AS n FROM licences WHERE id = ?'),
     giftInsert: db.prepare('INSERT INTO gift_codes (code_hash, last4, giver_licence_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)'),
     giftById: db.prepare('SELECT * FROM gift_codes WHERE id = ?'),
     // The one write that uses a code: only while it is unused and not expired.
     giftUse: db.prepare('UPDATE gift_codes SET redeemed_at = ?, redeemed_licence_id = ? WHERE id = ? AND redeemed_at IS NULL AND expires_at > ?'),
+    countPurgedGifts: db.prepare(`UPDATE licences SET gifts_redeemed_purged = gifts_redeemed_purged +
+      (SELECT COUNT(*) FROM gift_codes g WHERE g.giver_licence_id = licences.id AND g.redeemed_at IS NOT NULL AND g.redeemed_at <= @before)
+      WHERE id IN (SELECT giver_licence_id FROM gift_codes WHERE redeemed_at IS NOT NULL AND redeemed_at <= @before)`),
     oldGifts: db.prepare(`DELETE FROM gift_codes WHERE
       (redeemed_at IS NOT NULL AND redeemed_at <= ?) OR (redeemed_at IS NULL AND expires_at <= ?)`),
-    // A licence goes once it ended over 5 years ago: a paid one cancelled or unpaid, a gift
-    // one whose month ran out. Never while a gift code row still points at it.
+    // A licence goes once it ended over 5 years ago: a paid one cancelled (never one whose
+    // last status could still charge: unpaid, past_due, incomplete), a gift one whose
+    // month ran out. Never while a gift code row still points at it.
     oldLicences: db.prepare(`DELETE FROM licences WHERE (
-        (status IN ${ENDED_SQL} AND ended_at IS NOT NULL AND ended_at <= ?)
+        (status = 'canceled' AND ended_at IS NOT NULL AND ended_at <= ?)
         OR (gift_expires_at IS NOT NULL AND stripe_subscription_id IS NULL AND gift_expires_at <= ?)
       ) AND NOT EXISTS (SELECT 1 FROM gift_codes g WHERE g.giver_licence_id = licences.id OR g.redeemed_licence_id = licences.id)`),
     endedGiftDocs: db.prepare(`DELETE FROM sync_docs WHERE licence_id IN
@@ -202,6 +210,7 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
       const t = now();
       return tx(db, () => {
         const g = t - GIFT_RECORD_KEEP_MS;
+        q.countPurgedGifts.run({ before: g });
         const gifts = Number(q.oldGifts.run(g, g).changes);
         const l = t - RECORD_KEEP_MS;
         const licences = Number(q.oldLicences.run(l, l).changes);
@@ -212,13 +221,15 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
     // ---- gifts ------------------------------------------------------------------------
     // The route checks the giver may make gifts (a paid, active licence); this counts.
 
-    // { gifts: [{ last4, createdAt, expiresAt, redeemedAt, state }], held, left }
+    // { gifts: [{ last4, createdAt, expiresAt, redeemedAt, state }], older, held, left }
+    // older: redeemed codes whose rows were deleted after 12 months; they still count.
     listGifts(licenceId) {
       const t = now();
       const rows = q.giftsOf.all(licenceId);
-      const held = Number(q.giftsHeld.get(licenceId, t).n);
+      const held = Number(q.giftsHeld.get({ lic: licenceId, t }).n);
       return {
         gifts: rows.map((g) => ({ last4: g.last4, createdAt: g.created_at, expiresAt: g.expires_at, redeemedAt: g.redeemed_at ?? null, state: giftState(g, t) })),
+        older: Number(q.giftsPurgedOf.get(licenceId)?.n || 0),
         held,
         left: Math.max(0, MAX_GIFTS - held),
       };
@@ -230,7 +241,7 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
       return tx(db, () => {
         if (!q.byId.get(licenceId)) throw new Error('no such licence');
         const t = now();
-        if (Number(q.giftsHeld.get(licenceId, t).n) >= MAX_GIFTS) throw new GiftError('limit', `You have made ${MAX_GIFTS} gift codes. A code that expires unused frees its place.`);
+        if (Number(q.giftsHeld.get({ lic: licenceId, t }).n) >= MAX_GIFTS) throw new GiftError('limit', `You have made ${MAX_GIFTS} gift codes. A code that expires unused frees its place.`);
         let code;
         let hash;
         do { code = generateGiftCode(rand); hash = hashKey(code); } while (q.giftByHash.get(hash));

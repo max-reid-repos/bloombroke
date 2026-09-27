@@ -468,7 +468,7 @@ test('legal: terms s9, disclaimer and privacy say what the code does', () => {
   for (const must of ['We add no tracking code to the link', 'one-way hash of the code and its last four characters', 'your seat number', 'We keep feedback for up to 12 months', 'We do not store your IP address with it', 'your email address only to reply to you',
     'at most 15 minutes, or one hour for feedback, and forgets it within one minute after the window ends', 'DESK layouts',
     'sponsors get no data from us', 'DataFast, counts link clicks, including clicks on sponsor links',
-    'kept while your licence exists and for 5 years after your subscription ends', 'Gift code records:** deleted 12 months after the code was used or expired',
+    'kept while your licence exists and for 5 years after your subscription is cancelled', 'unpaid or overdue is kept until the subscription is cancelled', 'keeps only a count of the redeemed codes', 'Gift code records:** deleted 12 months after the code was used or expired',
     'the licence record is kept for 5 years after the gift month ends']) {
     assert.ok(privacy.includes(must), `privacy: ${must}`);
   }
@@ -478,7 +478,8 @@ test('legal: terms s9, disclaimer and privacy say what the code does', () => {
   assert.ok(!privacy.includes('Gift code records are kept for as long as the licence'));
   assert.ok(!privacy.includes('Pro licence record and synced data:** deleted within 30 days'));
   assert.ok(s9.includes('only while the paid subscription that made it is active'));
-  assert.ok(s9.includes('we cancel the earlier one and refund its latest payment in full'));
+  assert.ok(s9.includes('we keep the one that started last, cancel the other one and refund its latest payment in full'));
+  assert.ok(s9.includes('up to 3 gift codes with the GIFT command over the life of your licence'));
   // What the text promises, checked against the code.
   assert.equal(GIFT_RULES.includes('90 days'), true);
   assert.equal(KEEP_MS, 365 * 24 * 60 * 60 * 1000);

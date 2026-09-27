@@ -96,11 +96,11 @@ Our server and several providers are outside Singapore, so your personal data is
 - **Ticker counter:** a coded copy of your browser tab's random number and of your IP address, with the tickers opened, for one hour; after that only the count per ticker, for 24 hours. All in memory, never on disk.
 - **Error logs** on our server: we aim to delete them within 14 days.
 - **Cloudflare and DataFast** keep their own records for the periods in their own policies.
-- **Pro licence record:** the hash and last four characters of your key, your seat number, your Stripe IDs and the dates are kept while your licence exists and for 5 years after your subscription ends (it is cancelled or unpaid), for payment and refund records, and then deleted.
+- **Pro licence record:** the hash and last four characters of your key, your seat number, your Stripe IDs and the dates are kept while your licence exists and for 5 years after your subscription is cancelled, for payment and refund records, and then deleted. A licence whose subscription is unpaid or overdue is kept until the subscription is cancelled.
 - **Synced data:** deleted 30 days after your subscription ends, or sooner if you ask. The encrypted copy of your key is deleted as soon as your browser has saved the key, and at the latest 25 hours after checkout.
 - **Payment records:** records of payments that tax and company law require us to keep, such as invoices, are kept for as long as that law requires, normally five years, and are held mainly in Stripe.
 - **Gift licences:** the licence record is kept for 5 years after the gift month ends, and then deleted. Synced data is deleted 30 days after the gift month ends.
-- **Gift code records:** deleted 12 months after the code was used or expired.
+- **Gift code records:** deleted 12 months after the code was used or expired. Your licence record keeps only a count of the redeemed codes that were deleted, so the limit of 3 still applies.
 - **Feedback:** up to 12 months, then deleted.
 - **Emails:** for as long as we need them to deal with your message, and then deleted, unless we need to keep them for a legal reason.
 - **Your browser storage:** until you clear it. We have no control over it.

@@ -128,16 +128,33 @@ export async function licenceFromSession(session, { store, stripe, log = console
   const subId = idOf(session.subscription);
   const sub = await stripe.subscriptions.retrieve(subId);
   const accepted = termsAcceptedAt(session, at);
-  // REACTIVATE: the licence's old subscription must not keep billing next to the new one.
-  // Checkout already refuses while one is live; this is the backstop. Done before the
-  // licence moves, so a failure here makes Stripe (or the success page) try again.
   const licenceId = reactivateLicenceId(session);
   const target = licenceId ? store.findById(licenceId) : null;
-  const prev = target?.stripe_subscription_id;
-  // Two tabs can each finish a checkout for one licence (a gift or demo licence has no
-  // customer to check against yet). The earlier subscription is the duplicate: its
-  // latest payment is refunded in full, then it is cancelled.
-  if (prev && prev !== subId) await cancelIfLive(stripe, prev, { refund: true });
+  // Already known (a resent event, a reloaded success page): only the status is read
+  // again below. Nothing is cancelled or refunded, and no licence moves.
+  const known = Boolean(store.findBySubscription(subId) || store.findBySession(session.id));
+  if (!known && target) {
+    // A REACTIVATE session whose own subscription has ended (it lost a two-tab race, or
+    // was cancelled): the licence stays where it is. No Stripe calls.
+    if (ENDED.has(sub.status)) return { licence: target, created: false, reactivated: true, stale: true };
+    // REACTIVATE: the licence's old subscription must not keep billing next to the new
+    // one. Checkout already refuses while one is live; this is the backstop, for two
+    // tabs that each finished a checkout (a gift or demo licence has no customer to
+    // check against yet). The subscription started last is kept; the other one's
+    // latest payment is refunded in full, then it is cancelled. Done before the licence
+    // moves, so a failure here makes Stripe (or the success page) try again.
+    const prevId = target.stripe_subscription_id;
+    const prevSub = prevId && prevId !== subId ? await retrieveOrNull(stripe, prevId) : null;
+    if (prevSub && !ENDED.has(prevSub.status)) {
+      if (startedAfter(prevSub, sub)) {
+        // The licence already has the later one (events came out of order): this
+        // session's subscription is the duplicate.
+        await refundAndCancel(stripe, sub);
+        return { licence: target, created: false, reactivated: true, duplicate: true };
+      }
+      await refundAndCancel(stripe, prevSub);
+    }
+  }
   const out = store.ensureLicence({
     sessionId: session.id,
     customerId: idOf(session.customer) || idOf(sub.customer),
@@ -217,6 +234,25 @@ export async function refundLatestInvoice(stripe, sub) {
 // refund: also refund the subscription's latest payment before cancelling it (the
 // duplicate of a two-tab checkout). Refund first, so a failure leaves it live and the
 // retry does both.
+// a started strictly after b (Stripe's created, in seconds). Equal or unknown: no.
+export const startedAfter = (a, b) => Number.isFinite(a?.created) && Number.isFinite(b?.created) && a.created > b.created;
+
+async function retrieveOrNull(stripe, subId) {
+  try {
+    return await stripe.subscriptions.retrieve(subId);
+  } catch (err) {
+    if (err?.statusCode === 404 || err?.code === 'resource_missing') return null;
+    throw err;
+  }
+}
+
+// The duplicate of a two-tab checkout: refund its latest payment, then cancel it. Refund
+// first, so a failure leaves it live and the retry does both. Both calls are idempotent.
+export async function refundAndCancel(stripe, sub) {
+  await refundLatestInvoice(stripe, sub);
+  await stripe.subscriptions.cancel(sub.id, {}, { idempotencyKey: `bb-reactivate-cancel-${sub.id}` });
+}
+
 export async function cancelIfLive(stripe, subId, { refund = false } = {}) {
   let sub;
   try {

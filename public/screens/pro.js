@@ -409,12 +409,14 @@ export const redeemCommand = {
 
 const GIFT_STATE = { unused: 'UNUSED', redeemed: 'REDEEMED', expired: 'EXPIRED' };
 
-export function giftRowsHtml(gifts, fmt = dayYear) {
-  if (!gifts.length) return '<p class="muted">No gift codes yet.</p>';
+// older: redeemed codes whose records were deleted after 12 months, shown as a count.
+export function giftRowsHtml(gifts, fmt = dayYear, older = 0) {
+  const note = older > 0 ? `<p class="muted">${older === 1 ? '1 older redeemed code is' : `${older} older redeemed codes are`} no longer listed. ${older === 1 ? 'It still counts' : 'They still count'} toward the 3.</p>` : '';
+  if (!gifts.length) return note || '<p class="muted">No gift codes yet.</p>';
   return `<ul class="pro-list">${gifts.map((g) => {
     const when = g.state === 'redeemed' ? `on ${fmt(g.redeemedAt)}` : g.state === 'unused' ? `until ${fmt(g.expiresAt)}` : `on ${fmt(g.expiresAt)}`;
     return `<li class="pro-row"><span class="pro-feat num">${esc(pro.maskGift(g.last4))}</span><span class="pro-tag${g.state === 'unused' ? ' is-live' : ''}">${esc(`${GIFT_STATE[g.state] || '--'} ${when}`)}</span></li>`;
-  }).join('')}</ul>`;
+  }).join('')}</ul>${note}`;
 }
 
 function giftPage(el, ctx, shown = null) {
@@ -428,7 +430,7 @@ function giftPage(el, ctx, shown = null) {
     else if (!d.left) why = 'You have made 3 gift codes. A code that expires unused frees its place.';
     host.innerHTML = `${shown ? `<div class="pro-key-box"><p class="pro-key num" id="gift-code">${esc(shown)}</p>
         <p class="pro-actions"><button type="button" class="btn" id="gift-copy">COPY</button></p><p class="notice">${esc(GIFT_SHOWN_ONCE)}</p></div>` : ''}
-      ${giftRowsHtml(d.gifts)}
+      ${giftRowsHtml(d.gifts, dayYear, d.older || 0)}
       ${canMake ? `<p class="pro-actions"><button type="button" class="btn btn-solid" id="gift-make">MAKE A GIFT CODE</button></p>` : `<p class="muted">${esc(why)}</p>`}`;
     const meta = el.querySelector('#gift-meta');
     if (meta) meta.innerHTML = metaNote(`${d.left} OF 3 LEFT`);
