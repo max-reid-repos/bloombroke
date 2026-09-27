@@ -13,6 +13,7 @@ Our Data Protection Officer can be reached at {{CONTACT}}. Write to this address
 - You can use the free terminal without an account, a name or an email address.
 - Your watchlist, portfolio, saved wage, command history and screen layouts are stored in your own browser, not on our servers, unless you turn on Pro sync.
 - We use one analytics service, DataFast, to count visits.
+- Sponsor links carry no tracking, and we tell sponsors nothing about you.
 - Pro payments go through Stripe. We never see your full card number.
 - We do not sell your personal data, and we do not send marketing messages.
 
@@ -21,7 +22,7 @@ Our Data Protection Officer can be reached at {{CONTACT}}. Write to this address
 ### Using the free terminal
 
 - **Requests to our server.** When you open a screen, your browser asks our server for data, such as the symbols on your watchlist. Our server passes the symbols to the data source and sends back the result. We use these requests only to answer them. When you open a ticker screen, your browser sends its symbol and a random number made for that browser tab. To count each tab once and to stop abuse, our server keeps a coded copy of that number and of your IP address, with the tickers opened, in memory for one hour, then only the count per ticker for 24 hours. Nothing is written to disk. Apart from this count, we do not keep a record of which symbols a person asked for.
-- **Your IP address.** Every connection reveals your IP address. Our network provider, Cloudflare, uses it to deliver the site and block attacks. Our application does not write IP addresses to its logs. It holds an IP address in memory for up to 15 minutes to limit how often the Pro routes and the ticker counter can be called, to stop abuse and guessing of licence keys.
+- **Your IP address.** Every connection reveals your IP address. Our network provider, Cloudflare, uses it to deliver the site and block attacks. Our application does not write IP addresses to its logs. It holds an IP address in memory for up to 15 minutes to limit how often the Pro routes and the ticker counter can be called, to stop abuse and guessing of licence keys and gift codes, and for up to one hour to limit how often feedback can be sent.
 - **Error logs.** When something breaks, our server writes an error message to its logs. These messages do not contain your IP address, and we aim to delete them within 14 days.
 - **Your browser storage.** The terminal saves some things in your browser's local storage so they are there next time: your watchlist, portfolio, saved wage, recent commands, screen layouts, your acceptance of these terms (with its version and time) and, for Pro, your licence key. This data stays on your device. We cannot see it unless you use Pro sync. You can delete it at any time by clearing this site's data in your browser.
 
@@ -33,9 +34,22 @@ We use DataFast (datafa.st) to understand how many people visit and which screen
 
 If you subscribe to Pro, we also process:
 
-- **Your licence record.** A one-way hash of your licence key and its last four characters (never the key in plain text), your Stripe customer ID, subscription ID and checkout session ID, your subscription status and its dates, and the time you accepted the Terms at checkout. For 24 hours after checkout we also keep an encrypted copy of your key so the success page can show it to you; after that it is deleted.
-- **Synced data.** If you use sync, the watchlist, portfolio, ticker tape and screen layouts you choose to sync are stored on our server, linked to your licence, so they can appear on your other devices.
+- **Your licence record.** A one-way hash of your licence key and its last four characters (never the key in plain text), your Stripe customer ID, subscription ID and checkout session ID, your subscription status and its dates, whether you pay monthly or yearly, your seat number, and the time you accepted the Terms at checkout. We show your seat number to you on your own screen. For 24 hours after checkout we also keep an encrypted copy of your key so the success page can show it to you; after that it is deleted.
+- **Synced data.** If you use sync, the watchlist, portfolio, ticker tape and DESK layouts in your browser are stored on our server, linked to your licence, so they can appear on your other devices.
 - **Payment data.** Stripe collects your name, email address, billing address and card details. Stripe tells us your email address, name, billing country, the brand and last four digits of your card and your payment history, which we use to run your subscription, send receipts and deal with problems. We do not receive your full card number.
+
+### Gift codes
+
+- **Making a code.** If you make a gift code, we store a one-way hash of the code and its last four characters (never the code in plain text), which licence made it, when it was made and when it expires, and, once it is used, when it was used and which licence it made.
+- **Redeeming a code.** If you redeem a gift code, we make a licence record for you with a one-way hash of your new key and its last four characters, your seat number and the date your gift month ends. It has no Stripe IDs and no payment data, and we do not ask for your name or email address.
+
+### Sponsors
+
+When a sponsor runs, the status line shows one plain line of text with a plain link, and a WEIRD gauge may show the name of its sponsor. We add no tracking code to the link, we load no sponsor pixels or scripts, and we do not count or record who sees or clicks it. The link asks your browser not to tell the sponsor which page you came from. If you click it, the sponsor's own site and its privacy policy apply.
+
+### Feedback
+
+If you send feedback with the FEEDBACK command, we store your message, your email address if you give one, the screen you were on before FEEDBACK, the time, and which version of our terms was current. We use it to improve the service, and your email address only to reply to you. We do not store your IP address with it. We keep feedback for up to 12 months, then delete it.
 
 ### When you contact us
 
@@ -49,7 +63,7 @@ We use personal data only to:
 - run Pro: take payments, give access, sync your data and handle cancellations and refunds;
 - keep the service secure, prevent abuse and fraud, and enforce our [Terms of Use](/terms);
 - understand how the service is used, in totals, so we can improve it;
-- answer your messages and requests;
+- answer your messages and requests, and read your feedback;
 - meet our legal, tax and accounting duties.
 
 ## 5. Consent
@@ -70,7 +84,7 @@ We share personal data only with service providers that help us run Bloombroke, 
 
 We may also disclose personal data when the law requires it, to a regulator or court, to protect our rights or someone's safety, or to a buyer if the service is sold, in which case this policy continues to apply.
 
-We do not sell personal data. We do not share it with advertisers or data brokers.
+We do not sell personal data. We do not share it with advertisers or data brokers. We share nothing about you with sponsors.
 
 ## 7. Transfers outside Singapore
 
@@ -78,11 +92,13 @@ Our server and several providers are outside Singapore, so your personal data is
 
 ## 8. How long we keep it
 
-- **IP addresses** in our rate limiter: up to 15 minutes.
+- **IP addresses** in our rate limiter: up to 15 minutes, or up to one hour for feedback. They are held in memory, never on disk.
 - **Ticker counter:** a coded copy of your browser tab's random number and of your IP address, with the tickers opened, for one hour; after that only the count per ticker, for 24 hours. All in memory, never on disk.
 - **Error logs** on our server: we aim to delete them within 14 days.
 - **Cloudflare and DataFast** keep their own records for the periods in their own policies.
 - **Pro licence record and synced data:** deleted within 30 days after your subscription ends, or sooner if you ask. Records of payments that tax and company law require us to keep, such as invoices, are kept for as long as that law requires, normally five years, and are held mainly in Stripe.
+- **Gift licences:** synced data is deleted 30 days after the gift month ends. Gift code records are kept for as long as the licence that made them.
+- **Feedback:** up to 12 months, then deleted.
 - **Emails:** for as long as we need them to deal with your message, and then deleted, unless we need to keep them for a legal reason.
 - **Your browser storage:** until you clear it. We have no control over it.
 

@@ -16,6 +16,8 @@ Nothing on Bloombroke is an offer, a solicitation or a recommendation to buy, se
 
 We do not take orders, hold money or assets for anyone, or arrange deals. Bloombroke has no links to buy or sell any investment, and we are not paid by any broker, exchange or product issuer for anything shown on the site.
 
+Bloombroke may show one sponsor at a time. A sponsor is marked SPONSOR in the status line, or SPONSORED BY on a WEIRD gauge. We do not accept sponsors that sell or promote investment products, brokers, exchanges, crypto, funds or tips. Sponsors have no say over the data or content on Bloombroke, and a sponsor being shown is not an endorsement of anything on the site.
+
 Using Bloombroke does not create an adviser and client relationship, a fiduciary relationship or any duty of care about your investment decisions.
 
 ## 3. Bloombroke is experimental
