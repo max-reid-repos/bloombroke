@@ -238,3 +238,36 @@ test('house rules on the new PRO copy: no brand word, no em dash, no emoji, no a
   // No amber or orange in the new styles.
   assert.doesNotMatch(readFileSync('public/screens/pro.css', 'utf8'), /amber|orange|hsl\((2\d|3\d|4\d),/i);
 });
+
+// ---- "No ads." stays true for Pro --------------------------------------------------------------
+
+test('no ads for Pro: no SPONSORED BY on a gauge screen, no AD or SPONSOR line in the strip', async () => {
+  const { gaugeSponsorHtml, markGaugeSponsor } = await import('../public/screens/sponsor.js');
+  const { stripItems } = await import('../public/sponsor-strip.js');
+  const cfg = { lines: [], house: [{ text: 'YOUR COMPANY HERE.', cmd: 'SPONSOR' }], gauges: { pizza: { name: 'Acme Pizza' } }, line: null };
+  assert.equal(gaugeSponsorHtml(cfg, 'pizza'), '<span class="meta-note">SPONSORED BY ACME PIZZA</span>');
+  assert.equal(gaugeSponsorHtml(cfg, 'pizza', { pro: true }), '');
+  // The gauge screen's hook, with the config from /api/sponsors.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => cfg });
+  try {
+    const meta = () => { const calls = []; return { calls, isConnected: true, insertAdjacentHTML(pos, html) { calls.push(html); } }; };
+    const free = meta();
+    const paid = meta();
+    markGaugeSponsor(free, 'pizza', { pro: () => false });
+    markGaugeSponsor(paid, 'pizza', { pro: () => true });
+    await new Promise((r) => { setTimeout(r, 20); });
+    assert.equal(free.calls.length, 1);
+    assert.match(free.calls[0], /SPONSORED BY ACME PIZZA/);
+    assert.deepEqual(paid.calls, [], 'Pro sees no sponsor label');
+  } finally { globalThis.fetch = realFetch; }
+  // The status strip: house AD lines and paid SPONSOR lines, none for Pro.
+  assert.equal(stripItems(cfg)[0].label, 'AD');
+  assert.deepEqual(stripItems(cfg, { pro: true }), []);
+  assert.deepEqual(stripItems({ ...cfg, lines: [{ name: 'Acme', text: 'Pizza', url: 'https://acme.example' }] }, { pro: true }), []);
+  // The share card is public: it keeps SPONSORED BY (lib/og-weird.js has no Pro switch).
+  assert.match(readFileSync('lib/og-weird.js', 'utf8'), /SPONSORED BY \$\{m\.sponsor\}/);
+  // The gauge screen still calls the hook, which checks Pro itself.
+  assert.match(readFileSync('public/screens/weird.js', 'utf8'), /markGaugeSponsor\(el\.querySelector\('#wd-meta'\), g\.id\)/);
+  assert.match(readFileSync('public/screens/sponsor.js', 'utf8'), /export function markGaugeSponsor\(metaEl, id, \{ pro = isPro \} = \{\}\)/);
+});
