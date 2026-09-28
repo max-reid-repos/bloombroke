@@ -12,7 +12,8 @@
 import { esc, q, panel, nyTime } from './markets.js';
 import { goal } from '../goal.js'; // GOALS
 import * as L from '../desk-layout.js';
-import { cardGauge, cardHtml, cardBody, weirdPickItems, mergeCardRows, nextCardFetch, confirmKey, CARD_RETRY_MS } from './desk-cards.js';
+import { cardGauge, cardHtml, cardBody, cardHidden, weirdPickItems, mergeCardRows, nextCardFetch, confirmKey, CARD_RETRY_MS } from './desk-cards.js';
+import { showTile } from './weird.js';
 
 const MOBILE = '(max-width: 699px)';
 const ROWS_FIT = 16; // desk 1 is 16 rows tall: it fills the window
@@ -204,7 +205,7 @@ export function render(el, cmd, ctx) {
     focusLine();
   }
   function cycle(dir) {
-    const list = order();
+    const list = order().filter((p) => !frames.get(p.id)?.node.hidden); // not a left-out card
     if (!list.length) return;
     const i = list.findIndex((p) => p.id === focusedId);
     const j = i < 0 ? (dir > 0 ? 0 : list.length - 1) : (i + dir + list.length) % list.length;
@@ -591,6 +592,7 @@ export function render(el, cmd, ctx) {
   let cardError = false;
   const cardIds = () => [...new Set(panels.map((p) => (p.card ? cardGauge(p.cmd)?.id : null)).filter(Boolean))];
   function fillCard(f) {
+    showTile(f.node, !cardHidden(cardRows, f.card.id));
     const d = cardRows.get(f.card.id) || (cardError ? { ok: false } : null);
     const html = cardBody(f.card, d);
     if (html === f.html) return; // the same reading: nothing is redrawn

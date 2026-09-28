@@ -5,7 +5,7 @@
 
 import { esc } from './markets.js';
 import { tileBody } from './weird.js';
-import { WEIRD_GAUGES, gaugeByCommand } from './weird-gauges.js';
+import { WEIRD_GAUGES, gaugeByCommand, emptyGauge } from './weird-gauges.js';
 import { findCommand } from '../registry.js';
 
 export const CARD_MIN_MS = 60_000; // /api/weird is cached for 60 seconds anyway
@@ -52,6 +52,11 @@ export const cardBody = (g, d) => tileBody(g, d);
 export function cardHtml(g, d) {
   return `<div class="wd-tile dp-card" data-card="${esc(g.command)}" tabindex="0" title="Open ${esc(g.command)}"><section class="panel"><div class="panel-body">${cardBody(g, d)}</div></section></div>`;
 }
+
+// A card whose gauge has nothing to show (NO DATA, no last good reading) is left out of
+// the desk until the gauge reports again. rows: mergeCardRows' map. A failed fetch puts
+// no row there, so it hides nothing.
+export const cardHidden = (rows, id) => emptyGauge(rows.get(id));
 
 // A new summary over the last one: a gauge that came back pending keeps the value it had.
 export function mergeCardRows(prev, rows) {

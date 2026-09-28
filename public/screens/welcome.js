@@ -14,19 +14,41 @@ export const WELCOME_CHIPS = [
 
 // SURPRISE ME: only these, ever. { cmd, kind }: kind is the goal's short fixed label.
 export const SURPRISE_PICKS = [
-  ...['PIZZA', 'WAFFLE', 'HOTDOG', 'UNDIES', 'BIGMAC', 'LIPSTICK', 'EGGPRICE', 'CANAL'].map((g) => ({ cmd: g, kind: 'weird' })),
+  // id: the gauge's /api/weird id, so a gauge with nothing to show can be skipped.
+  ...[['PIZZA', 'pizza'], ['WAFFLE', 'waffle'], ['HOTDOG', 'hotdog'], ['UNDIES', 'undies'], ['BIGMAC', 'bigmac'], ['LIPSTICK', 'lipstick'], ['EGGPRICE', 'eggs'], ['CANAL', 'canal']]
+    .map(([g, id]) => ({ cmd: g, kind: 'weird', id })),
   ...['LEH', 'ENE', 'IPET', 'BBI', 'NSCP', 'RSH', 'TOY', 'WE'].map((t) => ({ cmd: `GRAVEYARD ${t}`, kind: 'graveyard' })),
   ...['PS4', 'MODEL3', 'RTX3080', 'BLACKBERRY', 'SWITCH', 'GTX1080'].map((w) => ({ cmd: `WHATIF ${w}`, kind: 'whatif' })),
   { cmd: 'SECTORS MAP', kind: 'sectors' },
 ];
 
+// WEIRD gauges with nothing to show (NO DATA and no last good reading, as emptyGauge in
+// weird-gauges.js): SURPRISE ME skips them until they report again. Filled from
+// /api/weird once, when this module loads in the browser; until then nothing is skipped.
+const emptyWeird = new Set();
+export function noteWeird(rows) {
+  emptyWeird.clear();
+  for (const r of Array.isArray(rows) ? rows : []) {
+    if (r && typeof r.id === 'string' && r.ok === false && !r.pending) emptyWeird.add(r.id);
+  }
+  return emptyWeird;
+}
+if (typeof document !== 'undefined' && typeof fetch === 'function') {
+  fetch('/api/weird', { headers: { Accept: 'application/json' } })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((d) => { if (d) noteWeird(d.gauges); })
+    .catch(() => {});
+}
+
 // One pick: a kind first (so the one SECTORS MAP comes up as often as a gauge), then one
-// of its commands. rand: () => [0, 1). Always an item of SURPRISE_PICKS.
-export function pickSurprise(rand = Math.random) {
+// of its commands. rand: () => [0, 1). skip: gauge ids to leave out (a kind left with
+// none is left out too). Always an item of SURPRISE_PICKS.
+export function pickSurprise(rand = Math.random, skip = emptyWeird) {
   const r = () => { const x = Number(rand()); return Number.isFinite(x) && x >= 0 && x < 1 ? x : 0; };
-  const kinds = [...new Set(SURPRISE_PICKS.map((p) => p.kind))];
+  const picks = SURPRISE_PICKS.filter((p) => !p.id || !skip.has(p.id));
+  const kinds = [...new Set(picks.map((p) => p.kind))];
   const kind = kinds[Math.floor(r() * kinds.length)];
-  const list = SURPRISE_PICKS.filter((p) => p.kind === kind);
+  const list = picks.filter((p) => p.kind === kind);
   return list[Math.floor(r() * list.length)];
 }
 

@@ -12,7 +12,7 @@ import { sparkSvg } from './economy.js';
 import { mountLines, legend } from './lines.js';
 import { fmtDate } from '../kit.js';
 import {
-  WEIRD_GAUGES, WEIRD_PERIODS, AUTO, gaugeByCommand, sourceHtml, dayLabel, monthLabel,
+  WEIRD_GAUGES, WEIRD_PERIODS, AUTO, gaugeByCommand, sourceHtml, dayLabel, monthLabel, emptyGauge,
 } from './weird-gauges.js';
 import { markGaugeSponsor } from './sponsor.js'; // Sponsor hook
 import { goal } from '../goal.js'; // GOALS
@@ -42,6 +42,13 @@ export function tileBody(g, d, { rec = false } = {}) {
     <p class="wd-line">${esc(bad ? '' : d.line || '')}</p>${record}
     <div class="wd-spark"${d.sparkFrom ? ` title="Since ${esc(monthLabel(d.sparkFrom))}, all there is"` : ''}>${!bad && Array.isArray(d.spark) && d.spark.length > 1 ? sparkSvg(d.spark, 120, 18) : ''}</div>
     <p class="wd-src">${sourceHtml(g, d)}</p>`;
+}
+
+// Show or leave out a tile (or a DESK card): the tile CSS sets display, so hidden alone
+// would not hide it.
+export function showTile(node, on) {
+  node.hidden = !on;
+  node.style.display = on ? '' : 'none';
 }
 
 // data-num: a number and Enter in the command bar opens this tile's own screen (not the
@@ -104,10 +111,14 @@ function grid(el, ctx, period) {
   el.querySelector('.wd-grid').addEventListener('click', (e) => {
     if (e.target.closest('a[href^="https://"]')) e.stopPropagation();
   });
+  // A gauge with nothing to show (emptyGauge) is left out until it reports again. The
+  // other tiles keep their numbers, so a typed number still opens the same gauge.
   const fill = (d) => {
     const g = WEIRD_GAUGES.find((x) => x.id === d.id);
-    const body = g && el.querySelector(`#wd-t-${g.id} .panel-body`);
+    const t = g && el.querySelector(`#wd-t-${g.id}`);
+    const body = t && t.querySelector('.panel-body');
     if (body) body.innerHTML = tileBody(g, d, { rec: true });
+    if (t) showTile(t, !emptyGauge(d));
   };
   // Type a tile's number and press Enter to open it. The command bar finds the tile by
   // data-num; this hook covers a DESK panel, where that lookup is off.
