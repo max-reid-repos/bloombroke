@@ -36,6 +36,22 @@ export function startLon(countries, centres) {
   return c ? c[0] : -40;
 }
 
+const fin = (n) => typeof n === 'number' && Number.isFinite(n);
+const count = (n) => Math.round(n).toLocaleString('en-US');
+
+// The globe's caption: '7D by country · 4 live now'.
+export function globeCaption(d) {
+  const live = d?.audience?.live;
+  return `7D by country${fin(live) ? ` · ${count(live)} live now` : ''}`;
+}
+
+// The canvas's words for a screen reader: the countries and their visitors.
+export function globeLabel(d) {
+  const g = d?.audience?.globe;
+  const list = (g?.countries || []).slice(0, 8).map((c) => `${c.cc} ${count(c.visitors)}`).join(', ');
+  return `Globe of visitors by country, last 7 days${list ? `: ${list}` : ''}${fin(g?.other) && g.other > 0 ? `, other ${count(g.other)}` : ''}.`;
+}
+
 let dotsPromise = null;
 export function loadDots(fetchImpl = globalThis.fetch) {
   dotsPromise ||= fetchImpl(DOTS_URL).then((r) => (r.ok ? r.json() : Promise.reject(new Error('no globe')))).catch((e) => { dotsPromise = null; throw e; });

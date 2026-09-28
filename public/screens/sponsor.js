@@ -1,6 +1,8 @@
 // SPONSOR: three things, big. YOUR AD HERE, with the real strip at the bottom outlined and
-// a small label above it; one live line of our own numbers (/api/bbrk: DataFast audience
-// and the strip inventory) and what one line would get a week; one action, the email.
+// a small label above it, and BBRK's globe of visitor countries beside it; one live line
+// of our own numbers (/api/bbrk: DataFast audience and the strip inventory) and what one
+// line would get a week; the email, and BBRK for all the numbers. The numbers and the
+// globe's dots come again every minute while the tab is visible (the shell's ctx.live).
 // Also the browser side of the sponsor config (/api/sponsors, from data/sponsors.json via
 // lib/sponsors.js), and the "SPONSORED BY" note on a WEIRD gauge. The strip itself is
 // public/sponsor-strip.js. Plain text and plain links: no pixels, no scripts, no tracking.
@@ -8,6 +10,7 @@
 import { esc, metaNote, q } from './markets.js';
 import { findCommand } from '../registry.js';
 import { stripItems, loadSponsors } from '../sponsor-strip.js';
+import { loadDots, mountGlobe, globeCaption, globeLabel } from '../globe.js';
 
 export { loadSponsors }; // the config, asked once per page load: the status line needs it at startup
 
@@ -16,6 +19,7 @@ export const SUBJECT = 'Sponsor Bloombroke';
 export const MAILTO = `mailto:${CONTACT}?subject=${encodeURIComponent(SUBJECT)}`;
 export const HERO = 'YOUR AD HERE';
 export const POINT = '↓ this line, every screen';
+export const REFRESH_MS = 60_000;
 export const FINE = 'One rotating line. No tracking. No finance products. Hidden for Pro.';
 
 const fin = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -29,14 +33,13 @@ export function visitLen(sec) {
   return sec < 60 ? `${Math.round(sec)} s` : `${Math.round(sec / 60)} min`;
 }
 
-// The live line, as parts: '7 here now', '173 visitors this week', '8 min visits', '60% US'. Here
-// now only when DataFast knows it and it is above 0; every other part is -- when missing.
+// The live line, as parts: '243 page views this week', '8 min visits', '60% US'. Each is
+// -- when missing. Visitors right now are in the globe's caption, above 0 only.
 export function proofParts(b) {
   const a = b?.audience || {};
   const parts = [];
-  if (Number.isInteger(a.live) && a.live > 0) parts.push(`${count(a.live)} here now`);
-  const d7 = a.visitors?.d7;
-  parts.push(`${fin(d7) && d7 >= 0 ? count(d7) : '--'} visitors this week`);
+  const d7 = a.pageviews?.d7;
+  parts.push(`${fin(d7) && d7 >= 0 ? count(d7) : '--'} page views this week`);
   parts.push(`${visitLen(a.avgVisitSec)} visits`);
   const top = Array.isArray(a.countries) ? a.countries[0] : null;
   parts.push(top?.name && fin(top.pct) ? `${Math.round(top.pct)}% ${SHORT[top.name] || top.name}` : '-- top country');
@@ -94,13 +97,23 @@ export function markGaugeSponsor(metaEl, id) {
 }
 
 // b: /api/bbrk (null while it loads: --). cfg: /api/sponsors. has: whether a command exists.
+// The globe's caption on SPONSOR: live now only above 0, like N HERE NOW in the top bar.
+export function sponCaption(b) {
+  const live = b?.audience?.live;
+  return globeCaption(Number.isInteger(live) && live > 0 ? b : null);
+}
+
 export function sponsorHtml({ has, bbrk = null, cfg = null } = {}) {
-  const weird = (has || ((c) => Boolean(findCommand(c))))('WEIRD')
+  const exists = has || ((c) => Boolean(findCommand(c)));
+  const bbrkBtn = exists('BBRK') ? `<a class="spon-mail spon-bbrk" href="${esc(q('BBRK'))}" data-cmd="BBRK">BBRK NUMBERS</a>` : '';
+  const weird = exists('WEIRD')
     ? ` <a class="spon-weird" href="${esc(q('WEIRD'))}" data-cmd="WEIRD">Or a WEIRD gauge</a>` : '';
   return `<section class="spon-page" aria-label="Sponsor">
-    <h2 class="spon-hero">${esc(HERO)}</h2>
+    <div class="spon-top"><h2 class="spon-hero">${esc(HERO)}</h2>
+      <figure class="spon-globe"><canvas role="img" aria-label="${esc(globeLabel(bbrk))}"></canvas><figcaption class="dim">${esc(sponCaption(bbrk))}</figcaption></figure></div>
     <div id="spon-proof" class="spon-proof">${proofHtml(bbrk, cfg)}</div>
-    <p class="spon-act"><a class="spon-mail" href="${esc(MAILTO)}">EMAIL ${esc(CONTACT)}</a>${weird}</p>
+    <p class="spon-act"><a class="spon-mail" href="${esc(MAILTO)}">EMAIL ${esc(CONTACT)}</a>${bbrkBtn}</p>
+    ${weird ? `<p class="spon-more">${weird.trim()}</p>` : ''}
     <p class="spon-fine">${esc(FINE)}</p>
   </section>`;
 }
@@ -140,23 +153,39 @@ export function render(el, cmd, ctx) {
   let bbrk = null;
   el.innerHTML = sponsorHtml();
   ctx.status('SPONSOR: EMAIL US');
-  const paint = () => { const h = el.querySelector('#spon-proof'); if (h) h.innerHTML = proofHtml(bbrk, cfg); };
+  let globe = null;
+  const canvas = el.querySelector('.spon-globe canvas');
+  const caption = el.querySelector('.spon-globe figcaption');
+  const paint = () => {
+    const h = el.querySelector('#spon-proof');
+    if (h) h.innerHTML = proofHtml(bbrk, cfg);
+    if (caption) caption.textContent = sponCaption(bbrk);
+    canvas?.setAttribute('aria-label', globeLabel(bbrk));
+    globe?.update(bbrk?.audience?.globe?.countries || []);
+  };
   // After the sponsor config arrives (the status bar paints its strip from the same
   // request first), point at the real strip.
   let unpoint = () => {};
   let open = true;
-  ctx.onCleanup(() => { open = false; unpoint(); });
+  ctx.onCleanup(() => { open = false; unpoint(); globe?.stop(); });
+  // BBRK's globe: country totals only (the server folds countries under 3 visitors).
+  const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  loadDots().then((geo) => {
+    if (!open || !canvas?.isConnected) return;
+    globe = mountGlobe(canvas, geo, bbrk?.audience?.globe?.countries || [], { reduceMotion });
+  }).catch(() => { const f = el.querySelector('.spon-globe'); if (open && f) f.hidden = true; });
   loadSponsors().then((c) => {
     if (!open || !el.isConnected) return;
     cfg = c;
     unpoint = pointAtStrip();
     paint();
   });
-  // Our own numbers, again every minute while the screen is open.
+  // Our own numbers and the globe's dots, again every minute while the tab is visible
+  // (ctx.live skips a hidden tab and catches up when it is shown).
   const load = () => {
     if (!ctx.fetchJSON) return;
     ctx.fetchJSON('/api/bbrk', { signal: ctx.signal }).then((d) => { if (open) { bbrk = d; paint(); } }).catch(() => {});
   };
   load();
-  ctx.live?.(load, 60_000);
+  ctx.live(load, REFRESH_MS);
 }
