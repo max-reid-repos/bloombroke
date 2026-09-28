@@ -12,14 +12,14 @@ import {
 import { parseCommand } from '../public/app.js';
 import {
   layoutFor, gridSparkSvg, placeLabel, marksFor, tileHtml, tileFace, openCmd, starterButton, rangeChips,
+  saveLastBoard, boardKeyAction, sceneKeys, LAST_KEY,
   shareLinks, stepIndex, cleanBoard, LABEL_CHAR_W, toInput,
 } from '../public/screens/grid.js';
 import {
   makeGrid, mountGrid, downsample, seriesStats, loadCpiMonthly, cpiTile, ripTile, weirdTile, marketTile, periodStart, GRID_POINTS, GRID_PARALLEL,
 } from '../lib/grid.js';
 import { makeGridCards, gridCardModel, cardBoard, gridMeta, gridTree, mountGridCards } from '../lib/og-grid.js';
-import { makeRateLimit, W, H } from '../lib/og.js';
-import { GateBusy } from '../data/gate.js';
+import { makeRateLimit, withMeta, W, H } from '../lib/og.js';
 import { ChartError } from '../data/charts.js';
 import { loadGraveyardData } from '../lib/graveyard.js';
 
@@ -36,7 +36,8 @@ test('GRID parser: tokens, prefixes, the range, $ stocks, aliases', () => {
   assert.deepEqual(p.tokens, ['NVDA', 'W:EGGPRICE', 'W:PIZZA', 'RIP:LEH', 'CPI', 'BBRK', '$GOLD', 'WTI', 'BTC', 'AAPL', 'GOLD']);
   assert.deepEqual(p.items.map((i) => i.kind), ['market', 'weird', 'weird', 'rip', 'cpi', 'bbrk', 'market', 'market', 'market', 'market', 'market']);
   assert.equal(parseGrid(['NVDA']).range, '1Y', '1Y by default');
-  assert.equal(parseGrid(['5Y', 'NVDA']).items[0].kind, 'unknown', 'the range only counts at the end');
+  const r = parseGrid(['5Y', 'NVDA', 'MAX', 'AMD']);
+  assert.deepEqual([r.tokens, r.range, r.rangeGiven], [['NVDA', 'AMD'], 'MAX', true], 'a range word anywhere sets the range, the last wins, never a tile');
   assert.equal(gaugeCommand('PIZZINT'), 'PIZZA', 'a registry alias');
   assert.equal(gaugeCommand('BUZZ'), 'BUZZWORD');
   assert.equal(gridItem('BUZZ').kind, 'market', 'BUZZ alone is the ETF: W: is needed for the gauge');
@@ -60,14 +61,15 @@ test('GRID parser: duplicates drop, 16 at most, unknown words become NO SUCH TIC
 
 test('GRID STARTER: bare GRID falls back to it, STARTER alone names it, $ still forces a stock', () => {
   assert.equal(GRID_STARTER.length, 16);
-  assert.deepEqual(GRID_STARTER, ['SPX', 'NDX', 'NVDA', 'TSLA', 'AAPL', 'BTC', 'ETH', 'GOLD', 'WTI', 'US10Y', 'VIX', 'CPI', 'W:PIZZA', 'W:EGGPRICE', 'RIP:LEH', 'BBRK']);
+  assert.deepEqual(GRID_STARTER, ['SPX', 'NDX', 'NVDA', 'TSLA', 'AAPL', 'BTC', 'ETH', 'GOLD', 'WTI', 'US10Y', 'VIX', 'CPI', 'W:CANAL', 'W:EGGPRICE', 'RIP:LEH', 'BBRK']);
   assert.deepEqual(parseGrid(GRID_STARTER).tokens, GRID_STARTER, 'every starter token is already canonical');
   assert.ok(parseGrid(GRID_STARTER).items.every((i) => i.kind !== 'unknown'));
   assert.ok(!GRID_STARTER.includes('W:WAFFLE'), 'no waffle gauge');
   assert.ok(GRID_STARTER.includes('CPI'), 'US CPI from BLS is on hand, so no DXY stand-in');
   const s = parseGrid(['STARTER', '5Y']);
   assert.deepEqual([s.starter, s.range, s.tokens.length], [true, '5Y', 16]);
-  assert.equal(parseGrid(['STARTER', 'NVDA']).items[0].kind, 'unknown', 'with other words it is just a word');
+  assert.deepEqual(parseGrid(['STARTER', 'NVDA']).tokens, ['NVDA'], 'with other words STARTER is dropped');
+  assert.ok(!GRID_STARTER.includes('W:PIZZA'), 'PIZZA is often NO DATA: CANAL stands in');
   assert.equal(isGridStarter(GRID_STARTER), true);
   assert.equal(gridCmd({ tokens: GRID_STARTER }), 'GRID STARTER');
   assert.equal(parseCommand('grid starter').input, 'GRID STARTER');
@@ -175,7 +177,7 @@ test('GRID tiles: numbers first, and one-line phone rows that open in place', ()
   assert.match(phone, /html:not\(\.is-embed\) \.gr-board \{ grid-template-columns: minmax\(0, 1fr\)/, 'a phone shows rows, not 2 columns');
   assert.match(phone, /\.gr-tile:not\(\.is-open\) \.gr-full \{ display: none; \}/);
   assert.match(phone, /\.gr-chips \{[^}]*overflow-x: auto/, 'the chips scroll sideways inside the bar');
-  assert.match(css, /\.gr-panel\.is-embed \.gr-bar, \.gr-panel\.is-embed \.gr-foot, \.gr-panel\.is-embed \.gr-x \{ display: none; \}/, 'a DESK panel: the board alone');
+  assert.match(css, /\.gr-panel\.is-embed \.gr-bar, \.gr-panel\.is-embed \.gr-foot, \.gr-panel\.is-embed \.gr-x, \.gr-panel\.is-embed \.gr-dym \{ display: none; \}/, 'a DESK panel: the board alone');
   // Faces for every kind.
   assert.deepEqual(tileFace(gridItem('NVIDIA'), { error: 'not_found', suggest: 'NVDA' }), { msg: 'NO SUCH TICKER', suggest: 'NVDA' });
   assert.match(tileHtml(gridItem('NVIDIA'), { token: 'NVIDIA', error: 'not_found', suggest: 'NVDA' }), /Did you mean <button type="button" class="gr-swapto" data-swap="NVDA">NVDA<\/button>\?/);
@@ -250,7 +252,7 @@ function fakeDeps() {
     peak = Math.max(peak, running);
     await new Promise((r) => setTimeout(r, 5));
     running -= 1;
-    if (sym === 'BUSY') throw new GateBusy();
+    if (sym === 'BUSY') throw new ChartError('unavailable', 'x'); // what getChart makes of a busy gate
     if (sym === 'DOWN') throw new ChartError('unavailable', 'x');
     if (sym === 'APPL' || sym === 'LEH') throw new ChartError('not_found', 'x');
     return { points: series(300), stale: false };
@@ -279,7 +281,7 @@ test('/api/grid: every tile in one answer, 4 charts at a time, a busy one to try
     const ok = by.AA;
     assert.deepEqual(Object.keys(ok).filter((k) => ['token', 'kind', 'label', 'points', 'last', 'changePct', 'hi', 'lo', 'asOf'].includes(k)).length, 9);
     assert.equal(ok.points.length, GRID_POINTS);
-    assert.deepEqual(by.BUSY, { token: 'BUSY', kind: 'market', label: 'BUSY', error: 'busy' });
+    assert.deepEqual(by.BUSY, { token: 'BUSY', kind: 'market', label: 'BUSY', error: 'unavailable' });
     assert.equal(by.DOWN.error, 'unavailable');
     assert.deepEqual([by.APPL.error, by.APPL.suggest], ['not_found', 'AAPL']);
     assert.deepEqual([by.LEH.error, by.LEH.suggest], ['not_found', 'RIP:LEH'], 'a dead ticker points to its stone');
@@ -407,4 +409,93 @@ test('GRID copy: no banned brand word, no vendor names, no em dashes, no amber, 
   assert.doesNotMatch(src, /amber|orange|#ffb|#f90|hsla?\((2\d|3\d|4\d|5\d),/i, 'no amber');
   assert.doesNotMatch(src, /\b(CNBC|FRED|St\. Louis|Yahoo Finance|Refinitiv)\b/, 'no data vendors named');
   assert.doesNotMatch(src, /\b(buy now|sell now|strong buy|recommend|should buy|buy signal|sell signal|rating)\b/i, 'no advice');
+});
+
+// ---- review fixes: DESK panels, hostile words, keys, CPI's own range -------------------------
+
+test('GRID in a DESK panel: view only, never writes the last board', () => {
+  const writes = [];
+  const store = { get: () => null, set: (k, v) => writes.push([k, v]) };
+  assert.equal(saveLastBoard(store, { tokens: ['NVDA'], range: '1Y' }, { embed: true }), false);
+  assert.deepEqual(writes, [], 'nothing writes bb.grid from a panel');
+  assert.equal(saveLastBoard(store, { tokens: ['NVDA'], range: '1Y' }), true);
+  assert.deepEqual(writes, [[LAST_KEY, { tokens: ['NVDA'], range: '1Y' }]]);
+  assert.equal(LAST_KEY, 'bb.grid');
+  for (const key of ['Delete', 'Backspace', '/']) assert.equal(boardKeyAction(key, { inScene: true, tileAt: 0, embed: true }), null, key);
+  assert.equal(boardKeyAction('Delete', { inScene: true, tileAt: 0 }), 'remove');
+  assert.equal(boardKeyAction('/', { inScene: true, tileAt: 0 }), 'swap');
+  assert.equal(boardKeyAction('Enter', { inScene: true, tileAt: 0, embed: true }), 'open', 'a tile still opens its screen');
+  const src = readFileSync('public/screens/grid.js', 'utf8');
+  assert.match(src, /function saveLast\(\) \{ saveLastBoard\(store, \{ tokens: tokens\(\), range \}, \{ embed: ctx\.embed \}\); \}/);
+  assert.match(src, /function commit\(\) \{\n    if \(ctx\.embed\) return;/);
+  for (const f of ['add', 'swap']) assert.match(src, new RegExp(`function ${f}\\([^)]*\\) \\{\\n    if \\(ctx\\.embed\\) return false;`), f);
+  assert.match(src, /function remove\(i\) \{\n    if \(ctx\.embed \|\| !items\[i\]\) return;/);
+  assert.match(src, /if \(ctx\.embed && e\.target\.closest\('\[data-x\], \[data-swap\]'\)\)/, 'x and did you mean do nothing in a panel');
+  assert.match(readFileSync('public/screens/grid.css', 'utf8'), /\.gr-panel\.is-embed \.gr-dym/);
+});
+
+test('GRID keys: only with the focus inside the board; never in the command bar or an input', () => {
+  assert.equal(boardKeyAction('ArrowDown', { inScene: false }), null, 'focus on the page: arrows scroll it');
+  assert.equal(boardKeyAction('ArrowDown', { inScene: true }), 'move');
+  assert.equal(boardKeyAction('ArrowDown', { inScene: true, shift: true }), null);
+  assert.equal(boardKeyAction('c', { inScene: false }), null);
+  assert.equal(boardKeyAction('c', { inScene: true }), 'copy');
+  assert.equal(boardKeyAction('c', { inScene: true, phone: true }), null);
+  assert.equal(boardKeyAction('x', { inScene: true, tileAt: 0 }), null);
+  // sceneKeys: keys typed in #cmd, .gr-in or .gr-swap-in never reach the board.
+  const listeners = [];
+  const doc = { addEventListener: (t, fn) => listeners.push(fn), removeEventListener() {}, getElementById: () => null };
+  const scene = { dataset: {}, focus() {}, isConnected: true };
+  const seen = [];
+  sceneKeys(scene, (e) => { seen.push(e.key); return true; }, { doc });
+  const input = (cls) => ({ id: '', className: cls, closest: (sel) => (sel.includes('input') ? {} : null) });
+  const cmd = { id: 'cmd', value: 'AAP', closest: () => null };
+  for (const target of [cmd, input('gr-in'), input('gr-in gr-swap-in')]) {
+    for (const key of ['c', '/', 'Delete', 'Backspace', 'ArrowDown', 'Enter']) {
+      let stopped = false;
+      listeners[0]({ key, target, preventDefault() { stopped = true; }, stopPropagation() { stopped = true; } });
+      assert.equal(stopped, false, `${key} in ${target.id || target.className} is left alone`);
+    }
+  }
+  assert.deepEqual(seen, []);
+  const tile = { id: '', closest: () => null };
+  listeners[0]({ key: 'c', target: tile, preventDefault() {}, stopPropagation() {} });
+  assert.deepEqual(seen, ['c'], 'on the board the key is handled');
+});
+
+test('GRID hostile words: escaped on the page, never on the card or in the meta tags', async () => {
+  const bad = 'FREE-CASH-AT-XYZ.COM';
+  const it = gridItem(bad);
+  assert.equal(it.kind, 'unknown');
+  const html = tileHtml(it, { token: it.token, error: 'not_found', suggest: null });
+  assert.match(html, /NO SUCH TICKER/);
+  assert.equal(gridItem('<IMG SRC=X ONERROR=ALERT(1)>'), null, 'characters no tile has: no tile at all');
+  assert.equal(gridItem('"><SCRIPT>'), null);
+  assert.doesNotMatch(tileHtml(gridItem('A&B'), { error: 'not_found' }), /A&B/, 'escaped');
+  // The meta tags: only real tiles.
+  const m = gridMeta(`GRID NVDA ${bad} AMD`, parseCommand);
+  for (const v of Object.values(m)) assert.doesNotMatch(v, /CASH|XYZ/i, v);
+  assert.equal(m.title, 'GRID: NVDA, AMD (1Y) | Bloombroke');
+  assert.equal(gridMeta(`GRID ${bad}`, parseCommand), null, 'nothing real: the plain page');
+  const page = withMeta('<html><head><title>x</title><meta name="description" content="y"></head></html>', m);
+  assert.doesNotMatch(page, /CASH|XYZ/i);
+  // The card: drawn as ?.
+  const grid = makeGrid(fakeDeps().deps);
+  const card = gridCardModel(cardBoard(`NVDA,${bad}`, '1Y'), grid);
+  assert.deepEqual(card.tiles.map((t) => t.sym), ['NVDA', '?']);
+  assert.equal(card.command, 'GRID NVDA ?');
+  assert.doesNotMatch(JSON.stringify(gridTree(card)), /CASH|XYZ/i);
+  // The last board and the share link.
+  assert.deepEqual(cleanBoard({ tokens: ['nvda', '<script>', 'x'.repeat(40), bad], range: '1Y' }).tokens, ['NVDA', 'X'.repeat(24), bad]);
+  const links = shareLinks(['NVDA', bad], '1Y', 'https://bloombroke.com');
+  assert.equal(links.url, `https://bloombroke.com/?c=GRID+NVDA+${bad}`, 'the link keeps the board as typed');
+  assert.doesNotMatch(new URL(links.x).searchParams.get('text'), /CASH|XYZ/i, 'the post text names real tiles only');
+});
+
+test('GRID CPI: a small 1Y chip when its range is not the board range', () => {
+  const cpi = loadCpiMonthly();
+  const one = tileHtml(gridItem('CPI'), cpiTile('1M', cpi), { range: '1M' });
+  assert.match(one, /<span class="gr-rng">1Y<\/span>/);
+  assert.doesNotMatch(tileHtml(gridItem('CPI'), cpiTile('5Y', cpi), { range: '5Y' }), /gr-rng/);
+  assert.doesNotMatch(tileHtml(gridItem('NVDA'), marketTile('NVDA', { points: series(20) }), { range: '1M' }), /gr-rng/);
 });

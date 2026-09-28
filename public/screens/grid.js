@@ -33,7 +33,7 @@ export const RETRY_MS = 3000;
 export const PHONE_MQ = '(max-width: 639px)';
 export const NOTE_LINE = 'Prices may be delayed.';
 // Errors the server asks us to try again once (lib/grid.js RETRY_ERRORS).
-const RETRY = ['busy', 'unavailable', 'pending'];
+const RETRY = ['unavailable', 'pending'];
 
 // ---- Layout ---------------------------------------------------------------------------
 
@@ -168,10 +168,12 @@ export function tileHtml(item, tile, { i = 0, open = false, range = GRID_RANGE }
   const name = tile?.name || '';
   const cmd = openCmd(item, range);
   const pill = f.pill ? `<span class="gr-pill num ${esc(f.pillDir || 'flat')}">${esc(f.pill)}</span>` : '';
+  // CPI is monthly: under a year it shows a year, and says so.
+  const own = tile?.kind === 'cpi' && !tile.error && tile.range && tile.range !== range ? `<span class="gr-rng">${esc(tile.range)}</span>` : '';
   const dym = f.suggest ? `<p class="gr-dym">Did you mean <button type="button" class="gr-swapto" data-swap="${esc(f.suggest)}">${esc(f.suggest)}</button>?</p>` : '';
   const hero = f.msg
     ? `<div class="gr-hero"><span class="gr-msg">${esc(f.msg)}</span></div>${dym}`
-    : `<div class="gr-hero"><span class="gr-big num${f.text ? ' is-text' : ''}${f.stale ? ' is-stale' : ''}">${esc(f.big)}</span>${pill}</div>${f.sub ? `<p class="gr-sub">${esc(f.sub)}</p>` : ''}`;
+    : `<div class="gr-hero"><span class="gr-big num${f.text ? ' is-text' : ''}${f.stale ? ' is-stale' : ''}">${esc(f.big)}</span>${pill}${own}</div>${f.sub ? `<p class="gr-sub">${esc(f.sub)}</p>` : ''}`;
   const rowVal = f.msg ? `<span class="gr-val gr-msg">${esc(f.msg)}</span>` : `<span class="gr-val num${f.text ? ' is-text' : ''}">${esc(f.big)}</span>`;
   const rowChg = f.msg ? '' : f.rowPill ? `<span class="gr-chg num flat">${esc(f.rowPill)}</span>` : f.pill ? `<span class="gr-chg num ${esc(f.pillDir || 'flat')}">${esc(f.pill)}</span>` : '<span class="gr-chg"></span>';
   const openLink = cmd && !f.msg ? `<a class="gr-open code" href="${esc(q(cmd))}" data-cmd="${esc(cmd)}">OPEN</a>` : '';
@@ -201,15 +203,24 @@ export function starterButton(tokens) {
 }
 
 // SHARE: the board's link, and a post on X that carries it.
+// The post's text names only real tiles: a word that is no tile is left out of it.
 export function shareLinks(tokens, range, origin) {
   const c = gridCmd({ tokens, range });
   const url = `${origin}/${q(c)}`;
-  const words = c.replace(/^GRID ?/, '') || 'STARTER';
+  const real = tokens.filter((t) => gridItem(t)?.kind && gridItem(t).kind !== 'unknown');
+  const words = gridCmd({ tokens: real, range }).replace(/^GRID ?/, '') || 'STARTER';
   const text = `My GRID on Bloombroke: ${words.length > 90 ? `${words.slice(0, 87)}...` : words}`;
   return { url, x: `https://x.com/intent/post?${new URLSearchParams({ text, url })}` };
 }
 
 // ---- The last board ------------------------------------------------------------------------
+
+// Keep the board as this browser's last one; never from a DESK panel (it only shows).
+export function saveLastBoard(store, board, { embed = false } = {}) {
+  if (embed || !store) return false;
+  store.set(LAST_KEY, { tokens: board.tokens, range: board.range });
+  return true;
+}
 
 // A stored board, checked: { tokens, range } or null.
 export function cleanBoard(b) {
@@ -241,6 +252,19 @@ export function sceneKeys(scene, onKey, { doc = globalThis.document } = {}) {
   };
   doc.addEventListener('keydown', handler, true);
   return () => doc.removeEventListener('keydown', handler, true);
+}
+
+// A key on the board -> what it does: move, open, remove, swap, copy, or null (not ours).
+// inScene: the focus is inside the board; tileAt: the focused tile's place (-1: none).
+// A DESK panel (embed) only shows its board: no remove, no swap.
+export function boardKeyAction(key, { inScene = false, tileAt = -1, embed = false, phone = false, shift = false } = {}) {
+  if (!inScene) return null;
+  if (key.startsWith('Arrow')) return shift ? null : 'move';
+  if (key === 'Enter' && tileAt >= 0) return phone ? 'toggle' : 'open';
+  if ((key === 'Delete' || key === 'Backspace') && tileAt >= 0) return embed ? null : 'remove';
+  if (key === '/' && tileAt >= 0) return embed ? null : 'swap';
+  if ((key === 'c' || key === 'C') && !phone) return 'copy';
+  return null;
 }
 
 // Arrow key -> the next index in a board of `cols` columns and n tiles.
@@ -349,8 +373,9 @@ export function render(el, cmd, ctx) {
   ctx.onCleanup(() => clearTimeout(toastTimer));
 
   // ---- the URL and the last board ----
-  function saveLast() { store?.set(LAST_KEY, { tokens: tokens(), range }); }
+  function saveLast() { saveLastBoard(store, { tokens: tokens(), range }, { embed: ctx.embed }); }
   function commit() {
+    if (ctx.embed) return; // a DESK panel only shows its board
     const c = gridCmd({ tokens: tokens(), range });
     if (!ctx.embed) {
       try { window.history.replaceState({ ...(window.history.state || {}), c }, '', ctx.toQuery(c)); } catch { /* the URL stays as it was */ }
@@ -399,6 +424,7 @@ export function render(el, cmd, ctx) {
     return true;
   }
   function add(text) {
+    if (ctx.embed) return false;
     const words = String(text).trim().toUpperCase().split(/[\s,]+/).filter(Boolean);
     const added = [];
     for (const w of words) {
@@ -416,6 +442,7 @@ export function render(el, cmd, ctx) {
     return true;
   }
   function swap(i, text) {
+    if (ctx.embed) return false;
     const it = gridItem(String(text).trim().split(/[\s,]+/)[0]);
     if (!it || !items[i]) return false;
     if (it.token === items[i].token) return true;
@@ -427,7 +454,7 @@ export function render(el, cmd, ctx) {
     return true;
   }
   function remove(i) {
-    if (!items[i]) return;
+    if (ctx.embed || !items[i]) return;
     items.splice(i, 1);
     if (openAt === i) openAt = -1; else if (openAt > i) openAt -= 1;
     commit();
@@ -512,6 +539,7 @@ export function render(el, cmd, ctx) {
     if (!node) return;
     if (node.classList.contains('gr-add')) { node.querySelector('.gr-in')?.focus(); return; }
     const i = Number(node.dataset.i);
+    if (ctx.embed && e.target.closest('[data-x], [data-swap]')) { e.preventDefault(); e.stopPropagation(); return; }
     if (e.target.closest('[data-x]')) { e.preventDefault(); e.stopPropagation(); remove(i); return; }
     const to = e.target.closest('[data-swap]');
     if (to) { e.preventDefault(); e.stopPropagation(); swap(i, to.dataset.swap); return; }
@@ -529,26 +557,25 @@ export function render(el, cmd, ctx) {
   });
 
   const stopKeys = sceneKeys(scene, (e) => {
+    // Only with the focus inside the board: on the page itself the keys scroll as usual.
     const active = document.activeElement;
-    const inScene = active && scene.contains(active);
-    if (!inScene && active !== document.body) return false;
+    const inScene = Boolean(active && scene.contains(active));
     const nodes = [...board.querySelectorAll('.gr-tile')];
     const cur = inScene ? nodes.indexOf(active.closest('.gr-tile')) : -1;
     const tileAt = cur >= 0 && nodes[cur].dataset.i !== undefined ? Number(nodes[cur].dataset.i) : -1;
-    if (e.key.startsWith('Arrow')) {
-      if (e.shiftKey) return false;
+    const act = boardKeyAction(e.key, { inScene, tileAt, embed: ctx.embed, phone: phone(), shift: e.shiftKey });
+    if (act === 'move') {
       const cols = phone() ? 1 : (getComputedStyle(board).gridTemplateColumns.split(' ').filter(Boolean).length || 1);
       const next = nodes[stepIndex(cur, e.key, cols, nodes.length)];
       if (next?.classList.contains('gr-add')) next.querySelector('.gr-in')?.focus(); else next?.focus();
       return Boolean(next);
     }
-    if (!inScene) return false;
-    if (e.key === 'Enter' && tileAt >= 0) { if (phone()) toggleRow(tileAt); else openTile(tileAt); return true; }
-    // A DESK panel shows its board; the board is changed from the desk's own command.
-    if ((e.key === 'Delete' || e.key === 'Backspace') && tileAt >= 0 && !ctx.embed) { remove(tileAt); return true; }
-    if (e.key === '/' && tileAt >= 0 && !ctx.embed) { startSwap(tileAt); return true; }
-    if ((e.key === 'c' || e.key === 'C') && !phone()) { copyLink(); return true; }
-    return false;
+    if (act === 'open') openTile(tileAt);
+    else if (act === 'toggle') toggleRow(tileAt);
+    else if (act === 'remove') remove(tileAt);
+    else if (act === 'swap') startSwap(tileAt);
+    else if (act === 'copy') copyLink();
+    return Boolean(act);
   });
   ctx.onCleanup(stopKeys);
 

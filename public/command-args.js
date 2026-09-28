@@ -462,7 +462,7 @@ export const GRID_RANGE = '1Y';
 // The range chips on the board; any preset can still be typed.
 export const GRID_RANGE_CHIPS = ['1M', '1Y', '5Y', 'MAX'];
 // What a first visit sees, and what STARTER brings back.
-export const GRID_STARTER = ['SPX', 'NDX', 'NVDA', 'TSLA', 'AAPL', 'BTC', 'ETH', 'GOLD', 'WTI', 'US10Y', 'VIX', 'CPI', 'W:PIZZA', 'W:EGGPRICE', 'RIP:LEH', 'BBRK'];
+export const GRID_STARTER = ['SPX', 'NDX', 'NVDA', 'TSLA', 'AAPL', 'BTC', 'ETH', 'GOLD', 'WTI', 'US10Y', 'VIX', 'CPI', 'W:CANAL', 'W:EGGPRICE', 'RIP:LEH', 'BBRK'];
 export const GRID_STARTER_WORD = 'STARTER';
 
 // A gauge's API id, where it is not its command in lower case (W:EGGS is EGGPRICE).
@@ -494,12 +494,16 @@ export function gridSuggest(word) {
   return null;
 }
 
-// One word -> { token, kind, ... } or null (an empty word). token is the canonical form:
+// The characters a GRID word may have; anything else (<, quotes, spaces) is no tile.
+const GRID_WORD = /^[A-Z0-9$:.&\/-]+$/;
+
+// One word -> { token, kind, ... } or null (an empty word, or one with characters no
+// tile has). token is the canonical form:
 // the same tile always has the same token, so duplicates drop and the URL stays clean.
 // kind: market | cpi | weird | rip | bbrk | unknown (with suggest, a guess or null).
 export function gridItem(raw) {
   const t = String(raw ?? '').trim().toUpperCase().slice(0, 24);
-  if (!t) return null;
+  if (!t || !GRID_WORD.test(t)) return null;
   const unknown = () => ({ token: t, kind: 'unknown', suggest: gridSuggest(t) });
   let m = /^(?:W|WEIRD):(.*)$/.exec(t);
   if (m) {
@@ -521,16 +525,23 @@ export function gridItem(raw) {
 }
 
 // The words after GRID -> { items, tokens, range, rangeGiven, starter, dropped, bare }.
-// starter: STARTER was the only word. bare: no words at all but maybe a range (the screen
-// then opens the last board, else the starter). dropped: how many past GRID_MAX were
-// left out. Never an error: a word that is no tile becomes a NO SUCH TICKER tile.
+// A range word anywhere sets the range (the last one wins) and is never a tile.
+// starter: STARTER was the only other word; with other words STARTER is dropped. bare:
+// no words at all but maybe a range (the screen then opens the last board, else the
+// starter). dropped: how many past GRID_MAX were left out. Never an error: a word that is
+// no tile becomes a NO SUCH TICKER tile.
 export function parseGrid(args = []) {
-  const toks = args.flatMap((a) => String(a).split(',')).map((a) => a.trim().toUpperCase()).filter(Boolean);
+  const all = args.flatMap((a) => String(a).split(',')).map((a) => a.trim().toUpperCase()).filter(Boolean);
   let range = GRID_RANGE;
   let rangeGiven = false;
-  if (toks.length && PRESETS.includes(toks[toks.length - 1])) { range = toks.pop(); rangeGiven = true; }
+  const toks = all.filter((w) => {
+    if (!PRESETS.includes(w)) return true;
+    range = w;
+    rangeGiven = true;
+    return false;
+  });
   const starter = toks.length === 1 && toks[0] === GRID_STARTER_WORD;
-  const words = starter ? GRID_STARTER : toks;
+  const words = starter ? GRID_STARTER : toks.filter((w) => w !== GRID_STARTER_WORD);
   const items = [];
   const seen = new Set();
   let dropped = 0;

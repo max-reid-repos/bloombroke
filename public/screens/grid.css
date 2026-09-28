@@ -59,6 +59,8 @@
 .gr-pill.up { color: var(--up); }
 .gr-pill.down { color: var(--down); }
 .gr-pill.flat, .gr-pill.rip { color: var(--dim); }
+/* CPI's own range, when it is not the board's (monthly: a year at least). */
+.gr-rng { flex: 0 0 auto; font-size: 10px; letter-spacing: .06em; color: var(--dim); background: var(--panel-2); padding: 0 4px; line-height: 16px; }
 .gr-msg { font-size: 12px; font-weight: 600; letter-spacing: .08em; color: var(--dim); }
 .gr-sub { font-size: 11px; color: var(--dim); margin-top: 2px; }
 .gr-dym { font-size: 11px; color: var(--text-2); margin-top: 4px; }
@@ -169,7 +171,7 @@
 /* In a DESK panel (embed): the board alone, filling the panel, no chips, no note. */
 .gr-panel.is-embed { height: 100vh; }
 .gr-panel.is-embed > .gr-body { overflow: hidden; }
-.gr-panel.is-embed .gr-bar, .gr-panel.is-embed .gr-foot, .gr-panel.is-embed .gr-x { display: none; }
+.gr-panel.is-embed .gr-bar, .gr-panel.is-embed .gr-foot, .gr-panel.is-embed .gr-x, .gr-panel.is-embed .gr-dym { display: none; }
 .gr-panel.is-embed .gr-scene { flex: 1 1 auto; min-height: 0; }
 .gr-panel.is-embed .gr-board { flex: 1 1 auto; min-height: 0; grid-auto-rows: minmax(56px, 1fr); }
 .gr-panel.is-embed .gr-r1 { grid-template-rows: repeat(1, minmax(56px, 1fr)); }
