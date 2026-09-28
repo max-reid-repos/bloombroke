@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { parseCommand, urlFor, linkPlan, linkChanges, screenFor } from '../public/app.js';
 import {
   chipHtml, textHtml, cardHtml, attachFor, listHtml, messagesHtml, headHtml, composerHtml, countText, notProHtml, emptyHtml, shellHtml,
-  emptyText, dayLabel, whoHtml, isEmpty, NOT_PRO, KEEP_NOTE, CLOSED,
+  emptyText, dayLabel, whoHtml, isEmpty, NOT_PRO, KEEP_NOTE, CLOSED, mergeMessages, waitPause, WAIT_PAUSE_MS,
 } from '../public/screens/chat.js';
 import { badgeText, paintBadge, mountChatBadge } from '../public/chat-badge.js';
 import { findCommand } from '../public/registry.js';
@@ -100,8 +100,8 @@ const ROOMS = [
   { id: 9, kind: 'group', title: 'Ann 88, SEAT 105', members: [{ seat: 42, name: 'Tom' }, { seat: 88, name: 'Ann' }, { seat: 105, name: null }], readOnly: false, unread: 0, last: { at: 1, preview: 'ok', own: true } },
 ];
 
-test('list: YOU and NAME, requests with ACCEPT IGNORE BLOCK, rooms with previews and unread, sent requests', () => {
-  const html = listHtml({ me: ME, requests: { in: [{ seat: 7, name: null, at: 1 }], out: [{ seat: 300, at: 1 }] }, rooms: ROOMS }, 9);
+test('list: YOU and NAME, requests with ACCEPT IGNORE BLOCK, rooms with previews and unread; sent requests are not listed', () => {
+  const html = listHtml({ me: ME, requests: { in: [{ seat: 7, name: null, at: 1 }] }, rooms: ROOMS }, 9);
   assert.match(html, /<span class="cl-k">YOU<\/span><span class="cm-who is-own">Tom <span class="cm-seat">42<\/span><\/span><button type="button" class="chip cl-name" data-act="name">NAME<\/button>/);
   assert.match(html, /SEAT <span class="cm-seat">7<\/span>.*data-req="7" data-do="accept">ACCEPT<.*data-do="ignore">IGNORE<.*data-do="block">BLOCK</s);
   assert.match(html, /class="cl-room is-unread" data-room="5">/);
@@ -109,7 +109,7 @@ test('list: YOU and NAME, requests with ACCEPT IGNORE BLOCK, rooms with previews
   assert.match(html, /<span class="cl-n num">2<\/span>/);
   assert.doesNotMatch(listHtml({ me: ME, rooms: ROOMS }, 5), /cl-n num/, 'the open chat shows no unread count');
   assert.match(html, /You: ok/);
-  assert.match(html, /SEAT <span class="cm-seat">300<\/span><\/span><span class="cl-k">SENT<\/span>/);
+  assert.doesNotMatch(html, /SENT/, 'a list of sent requests would tell which seats have Pro');
   assert.ok(html.indexOf('ACCEPT') < html.indexOf('data-room'), 'requests first');
   assert.equal(whoHtml(88, 'SEAT 1'), '<span class="cm-who">SEAT 1 <span class="cm-seat">88</span></span>', 'the real seat always shows');
 });
@@ -147,8 +147,8 @@ test('few words: not Pro is one line and PRO; the empty Pro screen is one senten
   const w = words(empty);
   assert.deepEqual(w.slice(0, 6), ['1)', 'CHAT', ...KEEP_NOTE.split(' ')]);
   assert.ok(w.length <= 35, `${w.length} words: ${w.join(' ')}`);
-  assert.equal(isEmpty({ rooms: [], requests: { in: [], out: [] } }), true);
-  assert.equal(isEmpty({ rooms: [], requests: { in: [], out: [{ seat: 1 }] } }), false);
+  assert.equal(isEmpty({ rooms: [], requests: { in: [] } }), true);
+  assert.equal(isEmpty({ rooms: [], requests: { in: [{ seat: 1 }] } }), false);
 });
 
 // ---- the badge ---------------------------------------------------------------------------------
@@ -202,4 +202,31 @@ test('copy rules: no brand word, no em dash, no emoji, no amber, no advice words
     assert.doesNotMatch(src, /\b(buy now|sell now|strong buy|should buy|buy signal|sell signal|price target)\b/i, `${f}: advice`);
     assert.doesNotMatch(src, /\bMSG\b|\bIB\b/, `${f}: a real terminal function code`);
   }
+});
+
+// ---- review fixes -----------------------------------------------------------------------------
+
+test('fix 1: a message from someone else just before yours is never skipped', () => {
+  const m = (id, t) => ({ id, text: t });
+  // You sent 101 (it came back from SEND first); 100 arrived just before it.
+  let list = mergeMessages([m(99, 'a')], [m(101, 'mine')]);
+  list = mergeMessages(list, [m(100, 'theirs'), m(101, 'mine')]);
+  assert.deepEqual(list.map((x) => x.id), [99, 100, 101]);
+  assert.deepEqual(mergeMessages([m(5, 'x')], [m(5, 'x2')]).map((x) => x.text), ['x2'], 'each id once');
+  // newer() asks after the last id this view loaded, never after the newest in the list.
+  const src = readFileSync('public/screens/chat.js', 'utf8');
+  assert.match(src, /messages\?after=\$\{st\.loadedId\}/);
+  assert.doesNotMatch(src, /st\.msgs\.push/);
+  assert.match(src, /for \(let page = 0; page < 10; page\+\+\)/, 'fix 6: follows more, 10 pages at most');
+  assert.match(src, /if \(!d\.more\) break;/);
+});
+
+test('fix 2: an evicted or early empty answer pauses before the next wait; a hidden tab stops asking', () => {
+  assert.equal(waitPause({ events: [], evicted: true, elapsed: 5 }), WAIT_PAUSE_MS);
+  assert.equal(waitPause({ events: [], elapsed: 300 }), WAIT_PAUSE_MS, 'empty and early');
+  assert.equal(waitPause({ events: [], elapsed: 25_000 }), 0, 'a full hold');
+  assert.equal(waitPause({ events: [{ id: 1 }], elapsed: 10 }), 0, 'events: at once');
+  const src = readFileSync('public/screens/chat.js', 'utf8');
+  assert.match(src, /if \(document\.hidden\) \{\s+await shown\(\);/);
+  assert.match(src, /document\.hidden \? '&read=0' : ''/, 'fix 7: a hidden tab does not mark read');
 });

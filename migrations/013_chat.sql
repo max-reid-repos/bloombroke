@@ -51,6 +51,7 @@ CREATE TABLE chat_messages (
 );
 CREATE INDEX chat_messages_room ON chat_messages(room_id, id);
 CREATE INDEX chat_messages_created ON chat_messages(created_at);
+CREATE INDEX chat_messages_licence ON chat_messages(licence_id);
 
 -- A request to chat, addressed to a seat number (it may not exist: the sender is never
 -- told). closed_at: ignored or blocked, hidden from the recipient until it expires.
@@ -69,6 +70,7 @@ CREATE TABLE chat_blocks (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (licence_id, blocked_licence)
 );
+CREATE INDEX chat_blocks_blocked ON chat_blocks(blocked_licence);
 
 -- A report: who reported, the room, the reported seats and a copy of the last 20
 -- messages. Plain numbers, no foreign keys: a report outlives the room it came from.

@@ -16,6 +16,7 @@ export const MAX_MEMBERS = 8;
 export const MAX_TICKERS = 3;
 export const MAX_CARD = 60;
 export const MAX_OUT = 30; // open outgoing requests
+export const MAX_GROUPS_DAY = 20; // new groups a licence may make in 24 hours
 export const PAGE = 50;
 export const DAY_MS = 24 * 60 * 60 * 1000;
 export const KEEP_MS = 30 * DAY_MS; // messages and requests
@@ -51,19 +52,29 @@ export function cleanText(v) {
   return cleanMessage(v).replace(/[ \t]+\n/g, '\n').replace(/\n{4,}/g, '\n\n\n').trim();
 }
 
-const TLDS = ['com', 'net', 'org', 'io', 'co', 'ai', 'app', 'xyz', 'me', 'gg', 'ly', 'to', 'be', 'info', 'biz', 'us', 'uk', 'sg', 'link', 'site', 'online', 'club', 'top', 'shop', 'so'];
-const URL_RE = /\b(?:https?|ftp):\/\/|\bwww\s*[.\u3002\uff0e]\s*\w/i;
-// A word, dots, then a known ending: t.me, bit.ly, example.com, x.co/abc. Not after a $
-// ($SHOP.TO is a ticker), and a capital first letter after a dot is a sentence (cheap.So).
-const DOMAIN_RE = new RegExp(`(^|[^$\\w])[a-z0-9-]+(?:[.\\u3002\\uff0e][a-z0-9-]+)*[.\\u3002\\uff0e](${TLDS.join('|')})(?![a-z0-9])`, 'gi');
+// Endings a link can have. A broad list, but not the short ones that are everyday words
+// (in, it, is, no, my, at, am, as, do, go, on, or, if, an, id), which only a full URL catches.
+export const TLDS = [
+  'com', 'net', 'org', 'io', 'co', 'ai', 'app', 'xyz', 'me', 'gg', 'ly', 'to', 'be', 'info', 'biz', 'us', 'uk', 'sg', 'link', 'site', 'online', 'club', 'top', 'shop', 'so',
+  'ru', 'su', 'dev', 'tv', 'de', 'cc', 'pro', 'vip', 'cn', 'tk', 'ml', 'ga', 'cf', 'gq', 'pw', 'ws', 'cx', 'ch', 'fr', 'nl', 'eu', 'ca', 'au', 'jp', 'kr', 'br', 'mx',
+  'es', 'pl', 'cz', 'ph', 'vn', 'hk', 'tw', 'nz', 'za', 'ae', 'ir', 'ua', 'gl', 'gd', 'im', 'la', 'ms', 'nu', 'sh', 'st', 'sx', 'tl', 'vc', 'vg', 'sc', 'mn', 'fm',
+  'lol', 'fun', 'live', 'news', 'tech', 'store', 'space', 'website', 'click', 'today', 'world', 'life', 'cash', 'money', 'finance', 'trade', 'exchange', 'capital',
+  'fund', 'bet', 'win', 'casino', 'games', 'game', 'chat', 'email', 'zone', 'digital', 'media', 'agency', 'network', 'cloud', 'host', 'page', 'blog', 'wiki', 'one',
+  'art', 'mobi', 'name', 'bid', 'loan', 'cam', 'icu', 'bond', 'sbs', 'cyou', 'rest', 'bar', 'best', 'pics', 'pub', 'rip', 'mom', 'lat', 'ink', 'run', 'fyi', 'gay',
+  'tokens', 'crypto', 'eth', 'nft', 'dao', 'coin', 'markets', 'global', 'group', 'plus', 'team', 'social', 'buzz', 'work', 'works', 'services', 'solutions',
+];
+// Any scheme (https://, ftp://, tg://), a defanged hxxp, or www.
+const URL_RE = /\b[a-z][a-z0-9+.-]{1,15}:\/\/|\bhxxps?\b|\bwww\s*[.\u3002\uff0e]\s*\w/i;
+// A word, dots, then a known ending, in any case: t.me, bit.ly, pump.Com, x.co/abc. Not
+// after a $ ($SHOP.TO is a ticker).
+const DOMAIN_RE = new RegExp(`(^|[^$\\w])[a-z0-9-]+(?:[.\\u3002\\uff0e][a-z0-9-]+)*[.\\u3002\\uff0e](?:${TLDS.join('|')})(?![a-z0-9])`, 'i');
+// Spelled-out dots in brackets: example[.]com, example(.)com, example (dot) com. A bare
+// "dot com" stays text (the dot com bubble).
+const DOT_WORDS = /\s*[[({]\s*(?:\.|dot)\s*[\])}]\s*/gi;
 
 export function hasLink(text) {
-  const s = String(text ?? '');
-  if (URL_RE.test(s)) return true;
-  for (const m of s.matchAll(DOMAIN_RE)) {
-    if (!/^[A-Z][a-z]+$/.test(m[2])) return true;
-  }
-  return false;
+  const s = String(text ?? '').replace(DOT_WORDS, '.');
+  return URL_RE.test(s) || DOMAIN_RE.test(s);
 }
 
 // The $TICKERs in a message, in order, each once, at most 3: ['NVDA', 'AAPL'].
@@ -115,19 +126,23 @@ export function cleanSeats(list, { max = MAX_MEMBERS - 1 } = {}) {
 // A card: { cmd, title } for a screen of the terminal, or null. parse is the terminal's
 // own parser (public/app.js parseCommand); linkChanges says whether a link to it would
 // change something saved. Throws ChatError.
-export function cleanCard(card, { parse, linkChanges }) {
+// titleOf(parsed): the terminal's own title for the screen; what the client sends as a
+// title is ignored.
+export function cleanCard(card, { parse, linkChanges, titleOf = null }) {
   if (card === undefined || card === null) return null;
   if (typeof card !== 'object' || Array.isArray(card)) throw new ChatError('bad_card', 'That screen cannot be attached.');
   const cmd = typeof card.cmd === 'string' ? card.cmd.replace(/\s+/g, ' ').trim().toUpperCase() : '';
-  if (!CARD_RE.test(cmd)) throw new ChatError('bad_card', 'That screen cannot be attached.');
+  if (!CARD_RE.test(cmd) || hasLink(cmd)) throw new ChatError('bad_card', 'That screen cannot be attached.');
   const head = cmd.split(' ')[0];
   const c = parse(cmd);
   if (!c || c.name === 'UNKNOWN' || c.secret || c.mutates || c.error || linkChanges(c) || CARD_DENY.includes(head) || CARD_DENY.includes(c.name)) {
     throw new ChatError('bad_card', 'That screen cannot be attached.');
   }
-  let title = typeof card.title === 'string' ? cleanMessage(card.title).replace(/\s+/g, ' ').trim() : '';
-  if (title.length > MAX_CARD) title = title.slice(0, MAX_CARD).trim();
-  return { cmd, title: title || cmd };
+  let title = '';
+  try { title = titleOf ? String(titleOf(c) || '') : ''; } catch { title = ''; }
+  title = cleanMessage(title).replace(/\s+/g, ' ').trim().slice(0, MAX_CARD).trim();
+  if (!title || hasLink(title)) title = cmd;
+  return { cmd, title };
 }
 
 // ---- the long-poll hub -----------------------------------------------------------------
@@ -194,16 +209,16 @@ export function createHub({ now = () => Date.now(), waitMs = WAIT_MS, perLicence
       if (open >= total) return null;
       const list = waiting.get(lic) || [];
       // A fourth tab: the oldest wait answers empty, so a licence holds at most 3.
-      while (list.length >= perLicence) list[0].finish(true);
+      while (list.length >= perLicence) list[0].finish(true, true);
       let done = false;
       const w = {
-        finish(empty = false) {
+        finish(empty = false, evicted = false) {
           if (done) return;
           done = true;
           clearTimeout(w.timer);
           drop(lic, w);
           const events = empty ? [] : since(lic, after);
-          answer(events, Math.max(after, events.length ? recent.get(lic).last : after));
+          answer(events, Math.max(after, events.length ? recent.get(lic).last : after), evicted);
         },
       };
       w.timer = setTimeout(() => w.finish(true), waitMs);

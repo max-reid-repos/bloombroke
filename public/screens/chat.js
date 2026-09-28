@@ -149,9 +149,28 @@ export function composerHtml(room, attach = null, on = false) {
 
 export const countText = (n) => (n > COUNT_FROM ? `${n}/${MAX_TEXT}` : '');
 
+// Messages merged by id: each once, in id order. Your own message can come back from
+// SEND before one from someone else that was sent just before it.
+export function mergeMessages(list, add) {
+  const by = new Map(list.map((m) => [m.id, m]));
+  for (const m of add) by.set(m.id, m);
+  return [...by.values()].sort((a, b) => a.id - b.id);
+}
+
+// How long to wait before the next long-poll: at once after events or a full hold; a
+// pause when a newer view took this one's place (evicted) or an empty answer came back
+// early, so several open views can never loop at network speed.
+export const WAIT_HOLD_MS = 20_000;
+export const WAIT_PAUSE_MS = 5_000;
+export function waitPause({ events = [], evicted = false, elapsed = 0 } = {}) {
+  if (evicted) return WAIT_PAUSE_MS;
+  if (!events.length && elapsed < WAIT_HOLD_MS) return WAIT_PAUSE_MS;
+  return 0;
+}
+
 // ---- the list ---------------------------------------------------------------------------
 
-export function listHtml({ me, requests = { in: [], out: [] }, rooms = [] }, open = null) {
+export function listHtml({ me, requests = { in: [] }, rooms = [] }, open = null) {
   const you = `<div class="cl-me"><span class="cl-k">YOU</span>${whoHtml(me.seat, me.name, true)}<button type="button" class="chip cl-name" data-act="name">NAME</button></div>`;
   const reqs = requests.in.map((r) => `<div class="cl-req"><span class="cl-title">${whoHtml(r.seat, r.name)}</span><span class="cl-acts">${['accept', 'ignore', 'block'].map((a) => `<button type="button" class="chip" data-req="${Number(r.seat)}" data-do="${a}">${a.toUpperCase()}</button>`).join('')}</span></div>`).join('');
   const row = (r) => {
@@ -160,11 +179,10 @@ export function listHtml({ me, requests = { in: [], out: [] }, rooms = [] }, ope
       <span class="cl-title">${esc(r.title)}</span>${n ? `<span class="cl-n num">${n}</span>` : ''}
       <span class="cl-prev">${r.last ? esc(`${r.last.own ? 'You: ' : ''}${r.last.preview}`) : ''}</span></button></li>`;
   };
-  const out = requests.out.map((r) => `<div class="cl-out">${whoHtml(r.seat, null)}<span class="cl-k">SENT</span></div>`).join('');
-  return `${you}${reqs}<ul class="cl-rooms">${rooms.map(row).join('')}</ul>${out}`;
+  return `${you}${reqs}<ul class="cl-rooms">${rooms.map(row).join('')}</ul>`;
 }
 
-export const isEmpty = (s) => !s.rooms.length && !s.requests.in.length && !s.requests.out.length;
+export const isEmpty = (s) => !s.rooms.length && !s.requests.in.length;
 
 export function chatInnerHtml() {
   return `<div class="chat" data-own-focus>
@@ -218,7 +236,7 @@ export function render(el, cmd, ctx) {
   const { signal } = ctx;
   const wide = () => typeof matchMedia !== 'function' || matchMedia('(min-width: 700px)').matches;
   const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-  const st = { me: null, requests: { in: [], out: [] }, rooms: [], cursor: 0, open: null, msgs: [], more: false, quotes: {}, attach: attachFor(ctx.previous), attachOn: false, loadingOlder: false };
+  const st = { me: null, requests: { in: [] }, rooms: [], cursor: 0, open: null, msgs: [], loadedId: 0, more: false, quotes: {}, attach: attachFor(ctx.previous), attachOn: false, loadingOlder: false };
   el.innerHTML = shellHtml();
   const body = () => el.querySelector('.chat-body');
   const alive = () => !signal.aborted && el.isConnected;
@@ -277,9 +295,10 @@ export function render(el, cmd, ctx) {
     st.msgs = [];
     st.more = false;
     paint();
-    const d = await api(`/api/chat/rooms/${id}/messages`, { signal });
+    const d = await api(`/api/chat/rooms/${id}/messages${document.hidden ? '?read=0' : ''}`, { signal });
     if (!alive() || st.open !== id) return;
-    st.msgs = d.messages;
+    st.msgs = mergeMessages([], d.messages);
+    st.loadedId = st.msgs.length ? st.msgs[st.msgs.length - 1].id : 0;
     st.more = d.more;
     const r = room();
     if (r) r.unread = 0;
@@ -292,16 +311,24 @@ export function render(el, cmd, ctx) {
     ctx.status(`CHAT: ${r ? r.title.toUpperCase() : ''}`);
   }
 
+  // Everything after the last message this view loaded (st.loadedId: only openRoom and
+  // newer move it, never SEND), page by page. A hidden tab reads without marking read.
   async function newer() {
     if (!st.open) return;
     const id = st.open;
-    const last = st.msgs.length ? st.msgs[st.msgs.length - 1].id : 0;
-    const d = await api(`/api/chat/rooms/${id}/messages${last ? `?after=${last}` : ''}`, { signal });
-    if (!alive() || st.open !== id) return;
-    const have = new Set(st.msgs.map((m) => m.id));
-    const add = d.messages.filter((m) => !have.has(m.id));
-    if (!add.length) return;
-    st.msgs.push(...add);
+    let added = false;
+    for (let page = 0; page < 10; page++) {
+      const read = document.hidden ? '&read=0' : '';
+      const d = await api(`/api/chat/rooms/${id}/messages?after=${st.loadedId}${read}`, { signal });
+      if (!alive() || st.open !== id) return;
+      if (d.messages.length) {
+        st.msgs = mergeMessages(st.msgs, d.messages);
+        st.loadedId = Math.max(st.loadedId, d.messages[d.messages.length - 1].id);
+        added = true;
+      }
+      if (!d.more) break;
+    }
+    if (!added) return;
     paintMessages();
     loadQuotes();
   }
@@ -315,7 +342,7 @@ export function render(el, cmd, ctx) {
       const d = await api(`/api/chat/rooms/${id}/messages?before=${st.msgs[0].id}`, { signal });
       if (!alive() || st.open !== id) return;
       const h = box.scrollHeight;
-      st.msgs.unshift(...d.messages);
+      st.msgs = mergeMessages(st.msgs, d.messages);
       st.more = d.more;
       paintMessages();
       box.scrollTop = box.scrollHeight - h;
@@ -350,7 +377,7 @@ export function render(el, cmd, ctx) {
       st.attachOn = false;
       $('.cc-attach')?.classList.remove('is-on');
       $('.cc-attach')?.setAttribute('aria-pressed', 'false');
-      if (!st.msgs.some((m) => m.id === d.message.id)) st.msgs.push(d.message);
+      st.msgs = mergeMessages(st.msgs, [d.message]);
       paintMessages(true);
       counter(input);
       loadQuotes();
@@ -520,10 +547,25 @@ export function render(el, cmd, ctx) {
   }, true);
 
   // ---- the long-poll: only while this screen is open ----
+  // A hidden tab stops asking; it catches up when it is shown again.
+  const shown = () => new Promise((resolve) => {
+    if (!document.hidden) { resolve(); return; }
+    const done = () => { document.removeEventListener('visibilitychange', on); resolve(); };
+    const on = () => { if (!document.hidden) done(); };
+    document.addEventListener('visibilitychange', on);
+    signal.addEventListener('abort', done, { once: true });
+  });
   async function loop() {
     let backoff = 5000;
     while (alive()) {
       try {
+        if (document.hidden) {
+          await shown();
+          if (!alive()) return;
+          await newer();
+          await loadList();
+        }
+        const t0 = Date.now();
         const d = await api(`/api/chat/wait?after=${st.cursor}`, { signal });
         if (!alive()) return;
         backoff = 5000;
@@ -532,6 +574,8 @@ export function render(el, cmd, ctx) {
           await newer(); // first, so the open chat is read before the list counts it
           await loadList();
         }
+        const pause = waitPause({ events: d.events || [], evicted: Boolean(d.evicted), elapsed: Date.now() - t0 });
+        if (pause) await sleep(pause, signal);
       } catch (err) {
         if (!alive() || err.name === 'AbortError') return;
         if (err.status === 401 || err.status === 402) { el.innerHTML = notProHtml(); ctx.status('PRO IS NOT ACTIVE ON THIS KEY', 'warn'); return; }

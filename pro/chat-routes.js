@@ -38,6 +38,8 @@ export function chatLimits(now = () => Date.now()) {
     request: createLimiter({ max: 10, windowMs: DAY_MS, now }),
     name: createLimiter({ max: 10, windowMs: DAY_MS, now }),
     report: createLimiter({ max: 10, windowMs: DAY_MS, now }),
+    // Every write but a message (open, requests, room actions, report, name) per licence.
+    write: createLimiter({ max: 60, windowMs: 60 * MIN, now }),
     // Reads (list, messages, unread, wait) per licence: plenty for a few open tabs.
     read: createLimiter({ max: 3000, windowMs: 10 * MIN, now }),
   };
@@ -48,7 +50,7 @@ export function chatLimits(now = () => Date.now()) {
 // (the server's quote function), parse + linkChanges (the terminal's parser, for cards).
 export function mountChat(app, {
   db, store, guess = createLimiter({ max: 20, windowMs: 15 * MIN }), mode = 'live', publicUrl = 'https://bloombroke.com',
-  getQuote = async () => null, parse, linkChanges, now = () => Date.now(), limits = chatLimits(now),
+  getQuote = async () => null, parse, linkChanges, titleOf = null, now = () => Date.now(), limits = chatLimits(now),
   hub = createHub({ now }), stampMs = STAMP_MS, log = console,
 }) {
   if (!parse || !linkChanges) throw new Error('mountChat needs the terminal parser');
@@ -84,7 +86,12 @@ export function mountChat(app, {
       try {
         const late = new Promise((resolve) => { timer = setTimeout(resolve, stampMs, null); timer.unref?.(); });
         const q = await Promise.race([Promise.resolve().then(() => getQuote(`$${sym}`)), late]);
-        if (q && Number.isFinite(q.last) && q.last > 0) return { sym, price: q.last, at: now() };
+        // A stale quote is no price at send time: the symbol only. The time is the
+        // quote's own, when it has one.
+        if (q && !q.stale && Number.isFinite(q.last) && q.last > 0) {
+          const own = Date.parse(q.asOf || '');
+          return { sym, price: q.last, at: Number.isFinite(own) ? own : now() };
+        }
       } catch { /* no price */ } finally { clearTimeout(timer); }
       return { sym };
     }));
@@ -103,8 +110,10 @@ export function mountChat(app, {
     const lic = auth(req, res);
     if (!lic) return;
     req.lic = lic;
-    if (req.method === 'GET') {
-      const hit = limits.read.hit(`lic:${lic.id}`);
+    // Messages have their own limit (30 a minute); every other write shares 60 an hour.
+    const sending = req.method === 'POST' && /^\/rooms\/\d+\/messages$/.test(req.path);
+    if (!sending) {
+      const hit = (req.method === 'GET' ? limits.read : limits.write).hit(`lic:${lic.id}`);
       if (!hit.ok) return limited(res, hit);
     }
     next();
@@ -122,10 +131,12 @@ export function mountChat(app, {
   r.get('/wait', (req, res) => {
     const after = Number(req.query.after);
     let sent = false;
-    const answer = (events, last) => {
+    // evicted: a newer wait of the same licence took this one's place (3 at most); the
+    // client waits a little before asking again.
+    const answer = (events, last, evicted = false) => {
       if (sent || res.writableEnded || res.destroyed) return;
       sent = true;
-      res.json({ events, last });
+      res.json(evicted ? { events, last, evicted: true } : { events, last });
     };
     req.socket?.setTimeout?.(0);
     const cancel = hub.wait(req.lic.id, Number.isFinite(after) && after > 0 ? after : 0, answer);
@@ -139,7 +150,8 @@ export function mountChat(app, {
   r.get('/rooms/:id/messages', (req, res) => {
     const id = roomId(req);
     const num = (v) => (ID_RE.test(String(v ?? '')) ? Number(v) : null);
-    const out = id === null ? null : chat.messages(id, req.lic.id, { before: num(req.query.before), after: num(req.query.after), limit: num(req.query.limit) || undefined });
+    // read=0: a tab in the background asks without marking anything read.
+    const out = id === null ? null : chat.messages(id, req.lic.id, { before: num(req.query.before), after: num(req.query.after), limit: num(req.query.limit) || undefined, read: req.query.read !== '0' });
     if (!out) return fail(res, 404, 'not_found', 'No such chat.');
     res.json(out);
   });
@@ -147,7 +159,8 @@ export function mountChat(app, {
   r.post('/open', body, (req, res) => {
     const lic = req.lic;
     const seats = cleanSeats(req.body?.seats);
-    const out = chat.open(lic.id, seats, { allowRequest: () => limits.request.hit(`lic:${lic.id}`).ok });
+    const isActive = (id) => { const l = store.findById(id); return Boolean(l && publicStatus(l, now(), mode).active); };
+    const out = chat.open(lic.id, seats, { allowRequest: () => limits.request.hit(`lic:${lic.id}`).ok, isActive });
     if (out.sent) {
       nudge(out, 'requests');
       return res.json({ sent: true, seat: out.seat, message: `Request sent to SEAT ${out.seat}.` });
@@ -161,7 +174,7 @@ export function mountChat(app, {
       const id = roomId(req);
       const lic = req.lic;
       if (id === null || !chat.room(id, lic.id)) return fail(res, 404, 'not_found', 'No such chat.');
-      const card = cleanCard(req.body?.card, { parse, linkChanges });
+      const card = cleanCard(req.body?.card, { parse, linkChanges, titleOf });
       const text = checkText(req.body?.text, { hasCard: Boolean(card) });
       const hit = limits.send.hit(`lic:${lic.id}`);
       if (!hit.ok) return limited(res, hit, 'That is a lot of messages for one minute. Slow down a little.');

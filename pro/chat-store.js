@@ -8,11 +8,14 @@
 
 import { tx } from './db.js';
 import {
-  ChatError, label, KEEP_MS, REPORT_KEEP_MS, MAX_MEMBERS, MAX_OUT, PAGE, SNAPSHOT,
+  ChatError, label, KEEP_MS, REPORT_KEEP_MS, MAX_MEMBERS, MAX_OUT, PAGE, SNAPSHOT, DAY_MS, MAX_GROUPS_DAY,
 } from './chat.js';
 import { ENDED_KEEP_MS } from './store.js';
 
 const PREVIEW = 60;
+// In a group, messages from someone you blocked are hidden for you (@filter = 1 in a
+// group, 0 in a DM, which turns read-only instead). @me is the reader.
+const HIDDEN = '(@filter = 0 OR c.licence_id IS NULL OR c.licence_id NOT IN (SELECT blocked_licence FROM chat_blocks WHERE licence_id = @me))';
 const MAX_ROOMS = 100;
 const dmKey = (a, b) => (a < b ? `${a}:${b}` : `${b}:${a}`);
 const otherOf = (key, me) => key.split(':').map(Number).find((n) => n !== me) ?? me;
@@ -62,16 +65,21 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     groupsOf: db.prepare(`SELECT r.id FROM chat_rooms r JOIN chat_members m ON m.room_id = r.id
       WHERE r.kind = 'group' AND m.licence_id = ? AND m.left_at IS NULL`),
     maxId: db.prepare('SELECT COALESCE(MAX(id), 0) AS n FROM chat_messages WHERE room_id = ?'),
-    lastMsg: db.prepare('SELECT * FROM chat_messages WHERE room_id = ? AND id > ? ORDER BY id DESC LIMIT 1'),
-    unreadIn: db.prepare('SELECT COUNT(*) AS n FROM chat_messages WHERE room_id = @room AND id > @mark AND (licence_id IS NULL OR licence_id != @lic)'),
+    lastMsg: db.prepare(`SELECT * FROM chat_messages c WHERE room_id = @room AND id > @from AND ${HIDDEN} ORDER BY id DESC LIMIT 1`),
+    unreadIn: db.prepare(`SELECT COUNT(*) AS n FROM chat_messages c WHERE room_id = @room AND id > @mark AND (licence_id IS NULL OR licence_id != @lic) AND ${HIDDEN}`),
     unreadAll: db.prepare(`SELECT COUNT(*) AS n FROM chat_messages c JOIN chat_members m ON m.room_id = c.room_id AND m.licence_id = @lic AND m.left_at IS NULL
-      WHERE c.id > MAX(m.last_read_id, m.from_id) AND (c.licence_id IS NULL OR c.licence_id != @lic)`),
+      JOIN chat_rooms r ON r.id = c.room_id
+      WHERE c.id > MAX(m.last_read_id, m.from_id) AND (c.licence_id IS NULL OR c.licence_id != @lic)
+        AND (r.kind = 'dm' OR c.licence_id IS NULL OR c.licence_id NOT IN (SELECT blocked_licence FROM chat_blocks WHERE licence_id = @lic))`),
     page: db.prepare(`SELECT c.*, l.seat, p.name FROM chat_messages c LEFT JOIN licences l ON l.id = c.licence_id
       LEFT JOIN chat_profiles p ON p.licence_id = c.licence_id
-      WHERE c.room_id = @room AND c.id > @from AND c.id < @before ORDER BY c.id DESC LIMIT @limit`),
+      WHERE c.room_id = @room AND c.id > @from AND c.id < @before AND ${HIDDEN} ORDER BY c.id DESC LIMIT @limit`),
     after: db.prepare(`SELECT c.*, l.seat, p.name FROM chat_messages c LEFT JOIN licences l ON l.id = c.licence_id
       LEFT JOIN chat_profiles p ON p.licence_id = c.licence_id
-      WHERE c.room_id = @room AND c.id > MAX(@from, @after) ORDER BY c.id ASC LIMIT @limit`),
+      WHERE c.room_id = @room AND c.id > MAX(@from, @after) AND ${HIDDEN} ORDER BY c.id ASC LIMIT @limit`),
+    snapshot: db.prepare(`SELECT c.*, l.seat, p.name FROM chat_messages c LEFT JOIN licences l ON l.id = c.licence_id
+      LEFT JOIN chat_profiles p ON p.licence_id = c.licence_id
+      WHERE c.room_id = @room AND c.id > @from ORDER BY c.id DESC LIMIT @limit`),
     read: db.prepare('UPDATE chat_members SET last_read_id = MAX(last_read_id, ?) WHERE room_id = ? AND licence_id = ?'),
     send: db.prepare('INSERT INTO chat_messages (room_id, licence_id, body, card_cmd, card_title, tickers_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'),
     msg: db.prepare(`SELECT c.*, l.seat, p.name FROM chat_messages c LEFT JOIN licences l ON l.id = c.licence_id
@@ -82,7 +90,6 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     closeRequest: db.prepare('UPDATE chat_requests SET closed_at = ? WHERE from_licence = ? AND to_seat = ? AND closed_at IS NULL'),
     dropRequest: db.prepare('DELETE FROM chat_requests WHERE from_licence = ? AND to_seat = ?'),
     outCount: db.prepare('SELECT COUNT(*) AS n FROM chat_requests WHERE from_licence = ? AND created_at > ?'),
-    out: db.prepare('SELECT to_seat, created_at FROM chat_requests WHERE from_licence = ? AND created_at > ? ORDER BY created_at DESC LIMIT 50'),
     in: db.prepare(`SELECT r.from_licence, r.created_at, l.seat, p.name FROM chat_requests r JOIN licences l ON l.id = r.from_licence
       LEFT JOIN chat_profiles p ON p.licence_id = r.from_licence
       WHERE r.to_seat = @seat AND r.closed_at IS NULL AND r.created_at > @since
@@ -100,6 +107,11 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     oldMessages: db.prepare('DELETE FROM chat_messages WHERE created_at <= ?'),
     oldRequests: db.prepare('DELETE FROM chat_requests WHERE created_at <= ?'),
     oldReports: db.prepare('DELETE FROM chat_reports WHERE created_at <= ?'),
+    // Groups everyone has left, and DMs with a licence whose chat rows are purged.
+    leftGroups: db.prepare("DELETE FROM chat_rooms WHERE kind = 'group' AND NOT EXISTS (SELECT 1 FROM chat_members m WHERE m.room_id = chat_rooms.id AND m.left_at IS NULL)"),
+    dmsOf: db.prepare("DELETE FROM chat_rooms WHERE kind = 'dm' AND (dm_key LIKE @id || ':%' OR dm_key LIKE '%:' || @id)"),
+    dropRoom: db.prepare('DELETE FROM chat_rooms WHERE id = ?'),
+    groupsToday: db.prepare("SELECT COUNT(*) AS n FROM chat_rooms WHERE kind = 'group' AND created_by = ? AND created_at > ?"),
     endedIds: db.prepare(`SELECT id, seat FROM licences WHERE ${ENDED}`),
     emptyRooms: db.prepare('DELETE FROM chat_rooms WHERE NOT EXISTS (SELECT 1 FROM chat_members m WHERE m.room_id = chat_rooms.id)'),
   };
@@ -119,7 +131,22 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
   const isBlocked = (a, b) => Boolean(q.blocked.get(a, b));
   const eitherBlocked = (a, b) => isBlocked(a, b) || isBlocked(b, a);
   const dmOf = (a, b) => q.dm.get(dmKey(a, b)) || null;
-  const isContact = (a, b) => a !== b && Boolean(dmOf(a, b)) && !eitherBlocked(a, b);
+  // The DM of two licences when both are still in it. A DM left behind by a purged
+  // licence is dropped, so the two can start again with a request.
+  function liveDm(a, b) {
+    const dm = dmOf(a, b);
+    if (!dm) return null;
+    if (q.active.get(dm.id, a) && q.active.get(dm.id, b)) return dm;
+    q.dropRoom.run(dm.id);
+    return null;
+  }
+  // No block in either direction between any two of these licences.
+  const noBlocks = (ids) => ids.every((a, i) => ids.slice(i + 1).every((b) => !eitherBlocked(a, b)));
+  const isContact = (a, b) => {
+    if (a === b || eitherBlocked(a, b)) return false;
+    const dm = dmOf(a, b);
+    return Boolean(dm && q.active.get(dm.id, a) && q.active.get(dm.id, b));
+  };
   const activeIds = (roomId) => q.members.all(roomId).map((m) => m.licence_id);
   const requestSince = () => now() - KEEP_MS;
 
@@ -150,14 +177,15 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
       blockedByMe = isBlocked(lic, other);
     } else title = others.length ? groupTitle(others) : 'Just you';
     const mark = Math.max(m.last_read_id, m.from_id);
-    const last = q.lastMsg.get(room.id, m.from_id);
+    const f = { filter: room.kind === 'group' ? 1 : 0, me: lic };
+    const last = q.lastMsg.get({ room: room.id, from: m.from_id, ...f });
     const out = {
       id: room.id,
       kind: room.kind,
       title,
       members: people,
       readOnly: readOnly(room, lic, members),
-      unread: Number(q.unreadIn.get({ room: room.id, mark, lic }).n),
+      unread: Number(q.unreadIn.get({ room: room.id, mark, lic, ...f }).n),
       lastAt: room.last_at,
       last: last ? { at: last.created_at, preview: preview(last), own: last.licence_id === lic } : null,
     };
@@ -205,7 +233,9 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     // CHAT 42 88 (more): a group of you and your contacts.
     // allowRequest(): the route's daily request limit, asked only when a new request row
     // would be made. Returns { room, notify } or { sent, seat, notify }.
-    open(lic, seats, { allowRequest = () => true } = {}) {
+    // isActive(licId): the route's check that a licence has Pro now. allowGroup(): the
+    // daily cap on new groups.
+    open(lic, seats, { allowRequest = () => true, allowGroup = () => true, isActive = () => true } = {}) {
       const me = person(lic);
       const list = seats.filter((s) => s !== me.seat);
       if (!list.length) throw new ChatError('self', 'That is your own seat.');
@@ -214,19 +244,22 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
         return tx(db, () => {
           const target = q.licBySeat.get(seat);
           if (target) {
-            const dm = dmOf(lic, target.id);
+            const dm = liveDm(lic, target.id);
             if (dm) return { room: dm.id, notify: [] };
             // Asking for a seat you blocked is taking the block back.
             q.unblock.run(lic, target.id);
+            // Their request to you: only a live one (not ignored, under 30 days old).
             const theirs = q.request.get(target.id, me.seat);
-            if (theirs && !isBlocked(target.id, lic)) {
+            if (theirs && !theirs.closed_at && theirs.created_at > requestSince() && !isBlocked(target.id, lic)) {
               const room = makeDm(lic, target.id);
               q.dropRequest.run(target.id, me.seat);
               q.dropRequest.run(lic, seat);
               return { room: room.id, accepted: true, notify: [lic, target.id] };
             }
           }
-          // The same neutral answer whether or not the seat exists or has Pro.
+          // The same neutral answer whether or not the seat exists or has Pro, but a
+          // request is only kept for a seat that has Pro now.
+          if (!target || !isActive(target.id)) return { sent: true, seat, notify: [] };
           const existing = q.request.get(lic, seat);
           if (existing && existing.created_at > requestSince()) return { sent: true, seat, notify: [] };
           if (existing) q.dropRequest.run(lic, seat); // expired: start again
@@ -235,7 +268,7 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
           }
           if (!allowRequest()) throw new ChatError('rate_limited', 'That is a lot of requests for one day. Try again tomorrow.', 429);
           q.addRequest.run(lic, seat, now());
-          const notify = target && !isBlocked(target.id, lic) ? [target.id] : [];
+          const notify = isBlocked(target.id, lic) ? [] : [target.id];
           return { sent: true, seat, notify };
         });
       }
@@ -251,12 +284,17 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
         if (not.length) {
           throw new ChatError('not_contacts', `Not your contacts yet: ${not.map((s) => `SEAT ${s}`).join(', ')}. Send each one CHAT and their seat first.`);
         }
+        // Nobody in a group with someone who blocked them, or whom they blocked.
+        if (!noBlocks([lic, ...ids])) throw new ChatError('not_contacts', 'Some of these seats cannot be in one group. Try fewer people.');
         // The same people again: the group you already have.
         const want = [lic, ...ids].sort((a, b) => a - b).join(',');
         for (const g of q.groupsOf.all(lic)) {
           if (activeIds(g.id).sort((a, b) => a - b).join(',') === want) return { room: g.id, notify: [] };
         }
         const t = now();
+        if (Number(q.groupsToday.get(lic, t - DAY_MS).n) >= MAX_GROUPS_DAY || !allowGroup()) {
+          throw new ChatError('rate_limited', `That is ${MAX_GROUPS_DAY} new groups today. Try again tomorrow.`, 429);
+        }
         const r = q.newRoom.run('group', null, lic, t, t);
         const room = Number(r.lastInsertRowid);
         for (const id of [lic, ...ids]) q.join.run({ room, lic: id, t, from: 0 });
@@ -264,14 +302,11 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
       });
     },
 
-    // { in: [{ seat, name, at }], out: [{ seat, at }] }
+    // { in: [{ seat, name, at }] }. Requests you sent are not listed: a request to a seat
+    // without Pro is not kept, so a list would tell you which seats have Pro.
     requests(lic) {
       const me = person(lic);
-      const since = requestSince();
-      return {
-        in: q.in.all({ seat: me.seat, lic, since }).map((r) => ({ seat: r.seat, name: r.name || null, at: r.created_at })),
-        out: q.out.all(lic, since).map((r) => ({ seat: r.to_seat, at: r.created_at })),
-      };
+      return { in: q.in.all({ seat: me.seat, lic, since: requestSince() }).map((r) => ({ seat: r.seat, name: r.name || null, at: r.created_at })) };
     },
 
     // ACCEPT, IGNORE or BLOCK the request from this seat.
@@ -306,22 +341,23 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
 
     // Messages, oldest first. Without before/after: the newest page. Marks the room read
     // unless it is an older page. Returns null when the licence is not in the room.
-    messages(roomId, lic, { before = null, after = null, limit = PAGE } = {}) {
+    messages(roomId, lic, { before = null, after = null, limit = PAGE, read = true } = {}) {
       const x = memberOf(roomId, lic);
       if (!x) return null;
       const n = Math.max(1, Math.min(PAGE * 2, Number(limit) || PAGE));
       let rows;
       let more = false;
+      const f = { filter: x.room.kind === 'group' ? 1 : 0, me: lic };
       if (after !== null) {
-        rows = q.after.all({ room: x.room.id, from: x.m.from_id, after, limit: n + 1 });
+        rows = q.after.all({ room: x.room.id, from: x.m.from_id, after, limit: n + 1, ...f });
         more = rows.length > n;
         rows = rows.slice(0, n);
       } else {
-        rows = q.page.all({ room: x.room.id, from: x.m.from_id, before: before ?? Number.MAX_SAFE_INTEGER, limit: n + 1 });
+        rows = q.page.all({ room: x.room.id, from: x.m.from_id, before: before ?? Number.MAX_SAFE_INTEGER, limit: n + 1, ...f });
         more = rows.length > n;
         rows = rows.slice(0, n).reverse();
       }
-      if (before === null && rows.length) q.read.run(rows[rows.length - 1].id, x.room.id, lic);
+      if (read && before === null && rows.length) q.read.run(rows[rows.length - 1].id, x.room.id, lic);
       return { messages: rows.map((c) => messageView(c, lic)), more };
     },
 
@@ -336,7 +372,9 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
         const r = q.send.run(x.room.id, lic, text, card?.cmd || null, card?.title || null, tickers.length ? JSON.stringify(tickers) : null, t);
         q.touch.run(t, x.room.id);
         q.read.run(r.lastInsertRowid, x.room.id, lic);
-        return { message: messageView(q.msg.get(r.lastInsertRowid), lic), notify: members.map((m) => m.licence_id) };
+        // In a group, someone who blocked the sender is not nudged (they do not see it).
+        const notify = members.map((m) => m.licence_id).filter((id) => x.room.kind === 'dm' || !isBlocked(id, lic));
+        return { message: messageView(q.msg.get(r.lastInsertRowid), lic), notify };
       });
     },
 
@@ -365,6 +403,7 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
         if (!t || !isContact(lic, t.id)) throw new ChatError('not_contacts', `Not your contact yet: SEAT ${seat}. Send CHAT ${seat} first.`);
         if (ids.includes(t.id)) throw new ChatError('already', `SEAT ${seat} is in this group.`, 409);
         if (ids.length >= MAX_MEMBERS) throw new ChatError('too_many', `A group has ${MAX_MEMBERS} people at most.`, 409);
+        if (!noBlocks([...ids, t.id])) throw new ChatError('not_contacts', `SEAT ${seat} cannot join this group.`);
         const at = now();
         q.join.run({ room: room.id, lic: t.id, t: at, from: Number(q.maxId.get(room.id).n) });
         q.touch.run(at, room.id);
@@ -378,7 +417,7 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
       const x = memberOf(roomId, lic);
       if (!x) throw new ChatError('not_found', 'No such chat.', 404);
       const me = person(lic);
-      const rows = q.page.all({ room: x.room.id, from: x.m.from_id, before: Number.MAX_SAFE_INTEGER, limit: SNAPSHOT }).reverse();
+      const rows = q.snapshot.all({ room: x.room.id, from: x.m.from_id, limit: SNAPSHOT }).reverse();
       const snapshot = rows.map((c) => ({ id: c.id, seat: c.seat ?? null, name: c.name || null, text: c.body, card: c.card_cmd || null, at: c.created_at }));
       let reported = q.members.all(x.room.id).filter((m) => m.licence_id !== lic).map((m) => ({ licence: m.licence_id, seat: m.seat }));
       if (x.room.kind === 'dm' && !reported.length) {
@@ -411,8 +450,9 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
           rows += Number(del.profile.run(l.id).changes) + Number(del.members.run(l.id).changes) + Number(del.messages.run(l.id).changes)
             + Number(del.requestsFrom.run(l.id).changes) + Number(del.blocks.run(l.id, l.id).changes)
             + (Number.isInteger(l.seat) ? Number(del.requestsTo.run(l.seat).changes) : 0);
+          rows += Number(q.dmsOf.run({ id: String(l.id) }).changes); // their DMs, with the messages (cascade)
         }
-        const rooms = Number(q.emptyRooms.run().changes);
+        const rooms = Number(q.emptyRooms.run().changes) + Number(q.leftGroups.run().changes);
         return { messages, requests, reports, ended: rows, rooms };
       });
     },

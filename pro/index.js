@@ -20,7 +20,7 @@ import { mountPro, defaultLimits } from './routes.js';
 import { createFeedbackStore, mountFeedback } from './feedback.js';
 import { mountChat } from './chat-routes.js'; // CHAT: private chat between Pro seats
 import { getQuote } from '../data/quotes.js'; // CHAT: the price stamp on a $TICKER
-import { parseCommand, linkChanges } from '../public/app.js'; // CHAT: what a card may open
+import { parseCommand, linkChanges, screenTitle } from '../public/app.js'; // CHAT: what a card may open, and its title
 
 export function startPro(app, { dir, env = process.env, log = console, counters = null }) {
   try {
@@ -54,7 +54,7 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
     mountFeedback(app, { store: feedback, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', log, onSaved: () => counters?.bump('feedback_sent') });
     // CHAT: /api/chat, active Pro keys only (pro/chat-routes.js).
     const chat = mountChat(app, {
-      db, store, guess: limits.guess, mode: se.mode, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', getQuote, parse: parseCommand, linkChanges, log,
+      db, store, guess: limits.guess, mode: se.mode, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', getQuote, parse: parseCommand, linkChanges, titleOf: (c) => screenTitle(c).title, log,
     });
     const clean = () => {
       try { store.purgeReveals(); store.pruneEvents(); } catch (err) { log.error('[pro] clean-up', err.message); }

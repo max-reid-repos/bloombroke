@@ -15,7 +15,7 @@ import {
   KEEP_MS, REPORT_KEEP_MS, MAX_TEXT,
 } from '../pro/chat.js';
 import { groupTitle } from '../pro/chat-store.js';
-import { parseCommand, linkChanges } from '../public/app.js';
+import { parseCommand, linkChanges, screenTitle } from '../public/app.js';
 
 const AES = revealKeyFrom('y'.repeat(40));
 const T0 = Date.UTC(2026, 8, 28, 12);
@@ -147,7 +147,7 @@ test('requests: A asks B, B sees it at the top and accepts, both get the same DM
     const r = await a.open(b.seat);
     assert.equal(r.status, 200);
     assert.deepEqual(r.body, { sent: true, seat: b.seat, message: `Request sent to SEAT ${b.seat}.` });
-    assert.deepEqual((await a.list()).body.requests.out.map((x) => x.seat), [b.seat]);
+    assert.deepEqual(Object.keys((await a.list()).body.requests), ['in'], 'sent requests are not listed');
     const inbox = (await b.list()).body.requests.in;
     assert.deepEqual(inbox.map((x) => [x.seat, x.name]), [[a.seat, null]]);
     assert.equal((await b.get('/api/chat/unread')).body.count, 1, 'a request counts as unread');
@@ -159,7 +159,6 @@ test('requests: A asks B, B sees it at the top and accepts, both get the same DM
     assert.equal(la.rooms.length, 1);
     assert.equal(la.rooms[0].id, ok.body.room.id);
     assert.equal(la.rooms[0].title, `SEAT ${b.seat}`);
-    assert.deepEqual(la.requests.out, []);
     assert.deepEqual((await b.list()).body.requests.in, []);
     // CHAT 42 again: the same room, never a second DM.
     const again = await a.open(b.seat);
@@ -178,7 +177,7 @@ test('requests: two people asking each other are connected at once', async () =>
     const r = await b.open(a.seat);
     assert.equal(r.body.accepted, true);
     assert.equal(r.body.room.kind, 'dm');
-    assert.deepEqual((await a.list()).body.requests, { in: [], out: [] });
+    assert.deepEqual((await a.list()).body.requests, { in: [] });
     assert.equal((await a.list()).body.rooms[0].id, r.body.room.id);
   } finally { await s.close(); }
 });
@@ -193,8 +192,12 @@ test('requests: the same neutral answer for a seat that does not exist or has no
     assert.deepEqual(none.body, { sent: true, seat: 987654, message: 'Request sent to SEAT 987654.' });
     assert.deepEqual(inactive.body, { sent: true, seat: off.seat, message: `Request sent to SEAT ${off.seat}.` });
     assert.equal(none.status, inactive.status);
-    const out = (await a.list()).body.requests.out.map((x) => x.seat).sort((x, y) => x - y);
-    assert.deepEqual(out, [off.seat, 987654].sort((x, y) => x - y), 'both listed the same way');
+    // Fix 14: nothing is kept for a seat that does not exist or has no Pro.
+    assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM chat_requests').get().n, 0);
+    const b = s.person();
+    const real = await a.open(b.seat);
+    assert.deepEqual(Object.keys(real.body), Object.keys(none.body), 'the same answer for a real seat');
+    assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM chat_requests').get().n, 1);
     const self = await a.open(a.seat);
     assert.equal(self.status, 400);
     assert.equal(self.body.error, 'self');
@@ -211,7 +214,7 @@ test('requests: IGNORE hides it quietly; BLOCK hides it and drops the next ones'
     assert.deepEqual(ig.body, { ok: true });
     assert.deepEqual((await b.list()).body.requests.in, []);
     assert.equal((await b.get('/api/chat/unread')).body.count, 0);
-    assert.deepEqual((await a.list()).body.requests.out.map((x) => x.seat), [b.seat], 'the sender is not told');
+    assert.deepEqual((await a.open(b.seat)).body.sent, true, 'the sender is not told');
     // BLOCK from the request: hidden, and a new request from C after a block by B is dropped.
     await c.open(b.seat);
     await b.post(`/api/chat/requests/${c.seat}`, { action: 'block' });
@@ -228,19 +231,20 @@ test('requests: IGNORE hides it quietly; BLOCK hides it and drops the next ones'
 test('requests: 10 new ones a day, 30 waiting at most', async () => {
   const s = await setup({ limits: { ...chatLimits(() => T0), request: createLimiter({ max: 3, windowMs: DAY, now: () => T0 }) } });
   try {
-    const a = s.person();
-    for (const seat of [1001, 1002, 1003]) assert.equal((await a.open(seat)).status, 200);
-    assert.equal((await a.open(1001)).status, 200, 'the same seat again is not a new request');
-    const r = await a.open(1004);
+    const [a, ...to] = Array.from({ length: 5 }, () => s.person());
+    for (const p of to.slice(0, 3)) assert.equal((await a.open(p.seat)).status, 200);
+    assert.equal((await a.open(to[0].seat)).status, 200, 'the same seat again is not a new request');
+    const r = await a.open(to[3].seat);
     assert.equal(r.status, 429);
   } finally { await s.close(); }
   const s2 = await setup();
   try {
     const a = s2.person();
+    const target = s2.person();
     const now = s2.now();
     const ins = s2.db.prepare('INSERT INTO chat_requests (from_licence, to_seat, created_at) VALUES (?, ?, ?)');
     for (let i = 0; i < 30; i++) ins.run(a.id, 5000 + i, now);
-    const r = await a.open(9999);
+    const r = await a.open(target.seat);
     assert.equal(r.status, 429);
     assert.equal(r.body.error, 'too_many_requests');
   } finally { await s2.close(); }
@@ -340,10 +344,12 @@ test('groups: someone added later sees only what comes after', async () => {
 // ---- messages ------------------------------------------------------------------------------
 
 test('messages: no links (t.me, bare domains, www, http), but 3.5x, e.g. and $SHOP.TO are fine', async () => {
-  for (const bad of ['see https://x.io/a', 'http://evil', 'www.example', 'join t.me/pumpgroup', 'bit.ly/abc', 'go to example.com', 'EXAMPLE.COM', 'discord.gg/x', 'site.xyz', 'a.b.co', 'foo.ai', 'x\u3002com']) {
+  // Fix 8: any case, a broad list of endings, defanged forms.
+  for (const bad of ['see https://x.io/a', 'http://evil', 'www.example', 'join t.me/pumpgroup', 'bit.ly/abc', 'go to example.com', 'EXAMPLE.COM', 'discord.gg/x', 'site.xyz', 'a.b.co', 'foo.ai', 'x\u3002com',
+    'pump.Com', 'evil.Io', 'x.ru', 'moon.dev', 'pump.tv', 'shop.de', 'x.cc', 'join.pro', 'vip.vip', 'hxxp://x', 'hxxps x', 'tg://join', 'google[.]com', 'google(.)com', 'google (dot) com', 'x{.}ru']) {
     assert.equal(hasLink(bad), true, bad);
   }
-  for (const ok of ['up 3.5x since June', 'e.g. rates', 'i.e. no', 'U.S. jobs', '$SHOP.TO is up', '$BRK.B', 'cheap.So I bought', 'fell hard.To be fair', 'pe 12.5 vs 13.1', 'v1.2']) {
+  for (const ok of ['up 3.5x since June', 'e.g. rates', 'i.e. no', 'U.S. jobs', '$SHOP.TO is up', '$BRK.B', 'pe 12.5 vs 13.1', 'v1.2', 'the dot com bubble', 'it is 3 p.m. in N.Y.']) {
     assert.equal(hasLink(ok), false, ok);
   }
   assert.throws(() => checkText('look at t.me/x'), { code: 'no_links', message: NO_LINKS });
@@ -410,7 +416,12 @@ test('cards: a screen of the terminal only; never HOME, CHAT, PRO, LOGIN, a key,
   const deps = { parse: parseCommand, linkChanges };
   assert.deepEqual(cleanCard({ cmd: 'aapl 1y', title: 'AAPL 1Y' }, deps), { cmd: 'AAPL 1Y', title: 'AAPL 1Y' });
   assert.deepEqual(cleanCard({ cmd: 'WEIRD' }, deps), { cmd: 'WEIRD', title: 'WEIRD' });
-  assert.deepEqual(cleanCard({ cmd: 'FX 500 USD THB', title: 'x'.repeat(80) }, deps).title.length, 60);
+  // Fix 8: the title comes from the terminal, never from the client.
+  const titled = { ...deps, titleOf: (c) => screenTitle(c).title };
+  assert.deepEqual(cleanCard({ cmd: 'AAPL 1Y', title: 'join t.me/pump' }, titled), { cmd: 'AAPL 1Y', title: screenTitle(parseCommand('AAPL 1Y')).title });
+  assert.equal(cleanCard({ cmd: 'WEIRD', title: 'x'.repeat(80) }, titled).title, screenTitle(parseCommand('WEIRD')).title);
+  assert.equal(cleanCard({ cmd: 'WEIRD' }, { ...deps, titleOf: () => 'see evil.ru' }).title, 'WEIRD', 'a title with a link falls back to the command');
+  assert.throws(() => cleanCard({ cmd: 'X.RU' }, deps), { code: 'bad_card' });
   assert.equal(cleanCard(null, deps), null);
   for (const cmd of ['HOME', 'CHAT', 'CHAT 42', 'PRO', 'LOGIN', 'LOGOUT', 'REDEEM', 'GIFT', 'FEEDBACK', 'IDEA', 'WATCH ADD AAPL', 'PF ADD AAPL 1 @ 100', 'DESK RESET', 'ALERTS AAPL > 300', 'TAPE ADD AAPL',
     'BB-AAAA-BBBB-CCCC-DDDD', 'NOT A COMMAND AT ALL', 'AAPL<script>', 'https://x.co', 'x'.repeat(61), '']) {
@@ -615,8 +626,9 @@ test('purge: messages and requests after 30 days, reports after 12 months, ended
     assert.ok(n.ended >= 2, `ended rows: ${n.ended}`);
     assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM chat_profiles WHERE licence_id = ?').get(b.id).n, 0);
     assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM chat_members WHERE licence_id = ?').get(b.id).n, 0);
-    const left = s.chat.chat.list(a.id);
-    assert.equal(left[0].readOnly, true);
+    // Fix 4: their DMs go too, so a returning B can start again.
+    assert.deepEqual(s.chat.chat.list(a.id), []);
+    assert.equal(s.db.prepare("SELECT COUNT(*) AS n FROM chat_rooms WHERE kind = 'dm'").get().n, 0);
     // The licence record purge (5 years) is never blocked by a chat row.
     assert.doesNotThrow(() => s.db.prepare('DELETE FROM licences WHERE id = ?').run(a.id));
   } finally { await s.close(); }
@@ -632,4 +644,171 @@ test('client and server agree on the rules', async () => {
   assert.throws(() => cleanSeats([1, 2, 3, 4, 5, 6, 7, 8]), { code: 'too_many' });
   assert.throws(() => cleanSeats([]), { code: 'bad_seats' });
   assert.throws(() => cleanSeats(['4x']), { code: 'bad_seats' });
+});
+
+// ---- review fixes ------------------------------------------------------------------------------
+
+test('fix 2: a wait pushed out by a 4th view answers { evicted: true } at once', async () => {
+  const hub = createHub({ waitMs: 1000, perLicence: 3 });
+  const got = [];
+  const cancels = [1, 2, 3, 4].map((i) => hub.wait(7, 0, (ev, last, evicted) => got.push([i, ev.length, evicted])));
+  assert.deepEqual(got, [[1, 0, true]]);
+  cancels.forEach((c) => c());
+  const s = await setup({ waitMs: 3000, hubOpts: { perLicence: 1 } });
+  try {
+    const a = s.person();
+    const first = a.get('/api/chat/wait?after=0');
+    await new Promise((r) => setTimeout(r, 50));
+    const second = a.get('/api/chat/wait?after=0');
+    const r1 = await first;
+    assert.deepEqual(r1.body, { events: [], last: 0, evicted: true });
+    s.hub.emit([a.id], { type: 'rooms' });
+    const r2 = await second;
+    assert.equal(r2.body.events.length, 1);
+    assert.equal(r2.body.evicted, undefined);
+  } finally { await s.close(); }
+});
+
+test('fix 3: no group or ADD across a block; a blocked sender is hidden for you in groups', async () => {
+  const s = await setup();
+  try {
+    const [a, b, c, d] = [s.person(), s.person(), s.person(), s.person()];
+    await s.connect(a, b);
+    await s.connect(a, c);
+    await s.connect(b, c);
+    await s.connect(a, d);
+    // C blocked B in their DM: A cannot put B and C in one group.
+    const bc = (await b.list()).body.rooms.find((r) => r.kind === 'dm' && r.title === `SEAT ${c.seat}`).id;
+    await c.post(`/api/chat/rooms/${bc}`, { action: 'block' });
+    const no = await a.open(b.seat, c.seat);
+    assert.equal(no.status, 400);
+    assert.equal(no.body.error, 'not_contacts');
+    // A group of A, B and D; then ADD C is refused because C blocked B.
+    const g = (await a.open(b.seat, d.seat)).body.room.id;
+    const add = await a.post(`/api/chat/rooms/${g}`, { action: 'add', seat: c.seat });
+    assert.equal(add.status, 400);
+    assert.equal(add.body.error, 'not_contacts');
+    // D blocks B afterwards: B's group messages are hidden for D only, and not counted.
+    const bd = await s.connect(b, d);
+    await d.post(`/api/chat/rooms/${bd}`, { action: 'block' });
+    const cursor = (await d.list()).body.cursor;
+    await b.say(g, 'from B');
+    await a.say(g, 'from A');
+    const seenD = (await d.get(`/api/chat/rooms/${g}/messages`)).body.messages.map((m) => m.text);
+    assert.deepEqual(seenD, ['from A']);
+    assert.deepEqual((await a.get(`/api/chat/rooms/${g}/messages`)).body.messages.map((m) => m.text), ['from B', 'from A']);
+    const lastD = (await d.list()).body.rooms.find((r) => r.id === g).last.preview;
+    assert.equal(lastD, 'from A');
+    const w = await d.get(`/api/chat/wait?after=${cursor}`);
+    assert.equal(w.body.events.length, 1, 'only A\'s message nudged D');
+  } finally { await s.close(); }
+});
+
+test('fix 4: a returning Pro user can chat again after the purge; a DM left half-empty is dropped', async () => {
+  const s = await setup();
+  try {
+    const [d, e] = [s.person(), s.person()];
+    const room = await s.connect(d, e);
+    await d.say(room, 'before');
+    s.store.setStatus(d.id, 'canceled');
+    s.setNow(T0 + 31 * DAY);
+    s.chat.purge(s.now());
+    // D comes back.
+    s.store.setStatus(d.id, 'active');
+    const r = await d.open(e.seat);
+    assert.equal(r.body.sent, true, 'a new request, not a room D is not in');
+    const ok = await e.post(`/api/chat/requests/${d.seat}`, { action: 'accept' });
+    assert.equal(ok.status, 200);
+    assert.deepEqual((await d.get(`/api/chat/rooms/${ok.body.room.id}/messages`)).body.messages, []);
+    // A stale DM (one member gone) is treated as no room by open().
+    const [f, g] = [s.person(), s.person()];
+    const fg = await s.connect(f, g);
+    s.db.prepare('DELETE FROM chat_members WHERE room_id = ? AND licence_id = ?').run(fg, f.id);
+    const again = await f.open(g.seat);
+    assert.equal(again.body.sent, true);
+    assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM chat_rooms WHERE id = ?').get(fg).n, 0);
+  } finally { await s.close(); }
+});
+
+test('fix 5: 60 writes an hour per licence (messages apart), 20 new groups a day', async () => {
+  const now = () => T0;
+  const s = await setup({ limits: { ...chatLimits(now), write: createLimiter({ max: 3, windowMs: 60 * 60 * 1000, now }) } });
+  try {
+    const [a, b] = [s.person(), s.person()];
+    const room = await s.connect(a, b); // A: 1 write
+    await a.post(`/api/chat/rooms/${room}`, { action: 'block' });
+    await a.post(`/api/chat/rooms/${room}`, { action: 'unblock' });
+    const r = await a.post(`/api/chat/rooms/${room}`, { action: 'block' });
+    assert.equal(r.status, 429);
+    assert.equal((await a.say(room, 'still fine')).status, 200, 'a message is not counted in the write limit');
+  } finally { await s.close(); }
+  const s2 = await setup();
+  try {
+    const [a, b, c] = [s2.person(), s2.person(), s2.person()];
+    await s2.connect(a, b);
+    await s2.connect(a, c);
+    for (let i = 0; i < 20; i++) {
+      const g = await a.open(b.seat, c.seat);
+      assert.equal(g.status, 200, `group ${i}`);
+      await a.post(`/api/chat/rooms/${g.body.room.id}`, { action: 'leave' }); // create, leave, create again
+      s2.advance(1000);
+    }
+    const r = await a.open(b.seat, c.seat);
+    assert.equal(r.status, 429);
+    s2.advance(DAY);
+    assert.equal((await a.open(b.seat, c.seat)).status, 200, 'a day later');
+  } finally { await s2.close(); }
+});
+
+test('fix 7: read=0 fetches do not mark anything read', async () => {
+  const s = await setup();
+  try {
+    const [a, b] = [s.person(), s.person()];
+    const room = await s.connect(a, b);
+    await a.say(room, 'one');
+    const got = await b.get(`/api/chat/rooms/${room}/messages?after=0&read=0`);
+    assert.equal(got.body.messages.length, 1);
+    assert.equal((await b.get('/api/chat/unread')).body.count, 1);
+    await b.get(`/api/chat/rooms/${room}/messages?read=0`);
+    assert.equal((await b.get('/api/chat/unread')).body.count, 1);
+    await b.get(`/api/chat/rooms/${room}/messages?after=0`);
+    assert.equal((await b.get('/api/chat/unread')).body.count, 0);
+  } finally { await s.close(); }
+});
+
+test('fix 9, 12, 13: indexes; groups everyone left are purged; auto-accept only on a live request', async () => {
+  const s = await setup();
+  try {
+    const idx = s.db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all().map((r) => r.name);
+    for (const n of ['chat_messages_licence', 'chat_blocks_blocked']) assert.ok(idx.includes(n), n);
+    const [a, b, c] = [s.person(), s.person(), s.person()];
+    await s.connect(a, b);
+    await s.connect(a, c);
+    const g = (await a.open(b.seat, c.seat)).body.room.id;
+    for (const p of [a, b, c]) await p.post(`/api/chat/rooms/${g}`, { action: 'leave' });
+    assert.ok(s.chat.purge(s.now()).rooms >= 1);
+    assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM chat_rooms WHERE id = ?').get(g).n, 0);
+    // E asked F and F ignored it: F asking E later is a new request, not an instant DM.
+    const [e, f] = [s.person(), s.person()];
+    await e.open(f.seat);
+    await f.post(`/api/chat/requests/${e.seat}`, { action: 'ignore' });
+    assert.equal((await f.open(e.seat)).body.sent, true);
+    // H asked G over 30 days ago: G asking H is a new request too.
+    const [gg, h] = [s.person(), s.person()];
+    await h.open(gg.seat);
+    s.advance(31 * DAY);
+    assert.equal((await gg.open(h.seat)).body.sent, true);
+  } finally { await s.close(); }
+});
+
+test('fix 16: the stamp uses the quote\'s own time, and a stale quote gives the symbol only', async () => {
+  const at = '2026-09-28T11:59:00.000Z';
+  const quote = async (t) => (t === '$OLD' ? { last: 10, stale: true } : { last: 20, asOf: at });
+  const s = await setup({ quote });
+  try {
+    const [a, b] = [s.person(), s.person()];
+    const room = await s.connect(a, b);
+    const r = await a.say(room, '$NEW and $OLD');
+    assert.deepEqual(r.body.message.tickers, [{ sym: 'NEW', price: 20, at: Date.parse(at) }, { sym: 'OLD' }]);
+  } finally { await s.close(); }
 });
