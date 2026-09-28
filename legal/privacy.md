@@ -15,6 +15,7 @@ Our Data Protection Officer can be reached at {{CONTACT}}. Write to this address
 - We count visits with DataFast, and Cloudflare counts page views without cookies. If your browser sends Global Privacy Control, we do not load DataFast.
 - Sponsor links carry no tracking codes, and sponsors get no data from us.
 - Pro payments go through Stripe. We never see your full card number.
+- CHAT messages between Pro members are seen only by the people in that chat, unless a chat is reported, and are deleted after 30 days.
 - We do not use your data to train AI models, we do not sell it, and we do not send marketing messages.
 
 ## 3. What we collect and why
@@ -60,6 +61,10 @@ When sponsors run, sponsor lines rotate in the status line, and each is marked S
 
 If you send feedback with the FEEDBACK command, we store your message, your email address if you give one, the screen you were on before FEEDBACK, the time, and which version of our terms was current. We use it to improve the service, and your email address only to reply to you. We do not store your IP address with it. We keep feedback for up to 12 months, then delete it.
 
+### CHAT
+
+If you use CHAT, a Pro feature, we store your seat number, the display name you choose, which seats you asked to chat with and who asked you, who you chat with and who you blocked, the groups you are in, and your messages with the time they were sent. When a message names a $TICKER, we also store that ticker's price at the moment you sent it, so the chat can show the move since. A message is shown only to the people in that chat. We do not read messages or use them for anything else: our server only checks each one for links, which are not allowed, and for $TICKERs. The exception is a report: when you or someone else reports a chat, we store a copy of the last 20 messages of that chat, who reported it, the seats in it and the reason given, and we read that copy to deal with the report. We keep messages for 30 days, then delete them.
+
 ### When you contact us
 
 If you email us, we receive your email address and whatever you write, and we use them to reply and keep a record of the conversation.
@@ -69,7 +74,8 @@ If you email us, we receive your email address and whatever you write, and we us
 We use personal data only to:
 
 - provide the service and show you the data you ask for;
-- run Pro: take payments, give access, sync your data and handle cancellations and refunds;
+- run Pro: take payments, give access, sync your data, carry CHAT messages and handle cancellations and refunds;
+- deal with reports about CHAT messages;
 - keep the service secure, prevent abuse and fraud, and enforce our [Terms of Use](/terms);
 - understand how the service is used, in totals, so we can improve it;
 - answer your messages and requests, and read your feedback;
@@ -116,6 +122,9 @@ Our server and several providers are outside Singapore, so your personal data is
 | Gift licences | The licence record is kept for 5 years after the gift month ends, and then deleted. Synced data is deleted 30 days after the gift month ends. |
 | Gift code records | Deleted 12 months after the code was used or expired. Your licence record keeps only a count of the redeemed codes that were deleted, so the limit of 3 still applies. |
 | Feedback | Up to 12 months, then deleted. |
+| Chat messages | Deleted 30 days after they were sent. Chat requests are deleted after 30 days too. |
+| Chat reports | Up to 12 months, then deleted. |
+| Chat name, contacts and blocks | Deleted 30 days after your Pro ends, or sooner if you ask. |
 | Emails | For as long as we need them to deal with your message, and then deleted, unless we need to keep them for a legal reason. |
 | Our own counters | Daily totals only. They contain no personal data. |
 | Your browser storage | Until you clear it. We have no control over it. |

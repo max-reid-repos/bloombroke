@@ -73,27 +73,36 @@ The service, its software, design, text, the Bloombroke name and logo, and the s
 - **Licence key.** Pro is tied to a licence key. Keep it secret: anyone who has it can use your Pro access and your synced data. We may replace or revoke a key that has been shared, published or misused.
 - **Failed payments.** If a payment fails, Pro may stop working until the payment goes through.
 - **Gift months.** While your paid Pro subscription is active, you can make up to 3 gift codes with the GIFT command over the life of your licence. A code that expires unused no longer counts toward the 3. Each code gives one person Pro for 30 days, free, with no card and no charge, on a new licence key of their own. A code works only once, only while the paid subscription that made it is active, and expires if it is not used within 90 days after it was made. A gift month does not renew: it ends by itself after 30 days, and the person can then subscribe on the same key. A licence from a gift code cannot make gift codes. Gift codes have no cash value.
-- **Seat numbers.** Each licence has a seat number, shown as SEAT and five digits. Seat numbers are given in the order licences are made and are never reused. A seat number is for display only: it is not a login, it gives no access to Pro, and it cannot be chosen, changed or transferred.
+- **Seat numbers.** Each licence has a seat number, shown as SEAT and five digits. Seat numbers are given in the order licences are made and are never reused. A seat number is for display only: it is not a login, it gives no access to Pro, and it cannot be chosen, changed or transferred. Other Pro members can type it to send you a CHAT request (section 10).
 
 Nothing in this section limits any right you have under the law that cannot be limited, including under the Consumer Protection (Fair Trading) Act 2003.
 
-## 10. Changes to the service
+## 10. Messages
+
+CHAT carries private messages between Pro members who added each other by seat number. A private chat starts only when the other person accepts, and a group is made only from people you already chat with.
+
+- **Not from us.** We do not write, rank or recommend anything in a message, and nothing in a message is advice from us. What another member writes is their own view.
+- **Rules.** Do not use CHAT for paid tips or signals, pump schemes, spam, harassment or anything illegal. Links, images and files are not allowed. Section 6 applies to CHAT too.
+- **Reports.** You can report any chat you are in. If a chat is reported, we may read the reported messages. We may close CHAT or Pro access for anyone who breaks these rules, as section 12 describes.
+- **Deletion.** Messages are deleted after 30 days. Blocking someone closes your private chat with them.
+
+## 11. Changes to the service
 
 We may change, add, remove, suspend or stop any part of the service, including data sources, commands, features and Pro features, at any time and without notice, for example because a source stops or changes its terms. We are not responsible to you for doing so, except for the refund in section 9 if we discontinue the service.
 
-## 11. Suspension and termination
+## 12. Suspension and termination
 
 You may stop using the service at any time, and you may cancel Pro as section 9 describes.
 
 We may suspend or end your access, including Pro, at any time if we reasonably believe you have broken these terms, if the law requires it, or to protect the service, our sources or other users. If we end Pro because you broke these terms, no refund is due. If we end Pro for any other reason, we will refund the unused part of the current period.
 
-Sections 3, 6, 7, 8, 12, 13, 14, 15 and 17 continue after these terms end.
+Sections 3, 6, 7, 8, 13, 14, 15, 16 and 18 continue after these terms end.
 
-## 12. No warranties
+## 13. No warranties
 
 To the fullest extent the law allows, the service and everything on it are provided "as is" and "as available", with all faults. We give no promise, warranty, condition or guarantee of any kind, whether express, implied or from statute, including about accuracy, completeness, timeliness, reliability, availability, security, quality, fitness for a purpose or non-infringement. We do not promise that the service will be uninterrupted, error-free or free of harmful code.
 
-## 13. Limits on our responsibility
+## 14. Limits on our responsibility
 
 To the fullest extent the law allows:
 
@@ -104,21 +113,21 @@ To the fullest extent the law allows:
 
 Nothing in these terms excludes or limits any liability that cannot be excluded or limited by law, including liability for death or personal injury caused by negligence, or for fraud or fraudulent misrepresentation.
 
-## 14. Indemnity
+## 15. Indemnity
 
 You agree to indemnify us, and our directors, employees and agents, against any claim, loss, liability, cost or expense (including reasonable legal fees) that arises from your breach of these terms, your misuse of the service or your breach of any law or any third party's rights.
 
-## 15. Claims and governing law
+## 16. Claims and governing law
 
 These terms and any dispute or claim about them or the service, including non-contractual disputes, are governed by the laws of Singapore. The courts of Singapore have exclusive jurisdiction.
 
 Before you start any legal action, please write to us at {{CONTACT}} and give us 30 days to try to resolve the problem. To the extent the law allows, any claim must be brought within one year after the facts giving rise to it first arose.
 
-## 16. Changes to these terms
+## 17. Changes to these terms
 
 We may change these terms. The version number and the date at the top of this page show which terms apply. If a change is significant, we will ask you to accept the new terms on your next visit, and Pro subscribers may also be told by email. The new terms apply from the date shown. If you do not agree to them, stop using the service and cancel Pro. Continuing to use the service means you accept them.
 
-## 17. General
+## 18. General
 
 - **Entire agreement.** These terms, with the Disclaimer and the Privacy Policy, are the whole agreement between you and us about the service. You have not relied on any statement that is not in them.
 - **Severability.** If a court finds any part of these terms invalid or unenforceable, that part is changed as little as needed to make it enforceable, and the rest stays in force.
@@ -128,6 +137,6 @@ We may change these terms. The version number and the date at the top of this pa
 - **Third parties.** Only you and we have rights under these terms. No one else may enforce them under the Contracts (Rights of Third Parties) Act 2001.
 - **Language.** These terms are written in English. A translation is for convenience only.
 
-## 18. Contact
+## 19. Contact
 
 {{OPERATOR}}. Email: {{CONTACT}}.

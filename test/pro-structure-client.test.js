@@ -15,7 +15,7 @@ import { seatLabel, statusActive, bareGift, normalizeGiftCode as clientGift, mas
 import {
   offerHtml, shownRows, FREE_ROWS, PRO_ROWS, LIVE, COMING, RULE, parseLogin, parseRedeem, statusText, giftRowsHtml, GIFT_RULES, parse as parsePro,
 } from '../public/screens/pro.js';
-import { chatHtml, CHAT_SOON, CHAT_LINE } from '../public/screens/chat.js';
+import { notProHtml, NOT_PRO } from '../public/screens/chat.js';
 import { gaugeSponsorHtml } from '../public/screens/sponsor.js';
 import { feedbackPayload, feedbackHtml, counterText, THANKS, EMAIL_LABEL, MAX_FEEDBACK } from '../public/screens/feedback.js';
 import { cleanSponsors, loadSponsors } from '../lib/sponsors.js';
@@ -39,7 +39,8 @@ test('PRO: free is what you look at, Pro is your own stuff; every row says LIVE 
   const pro = Object.fromEntries(PRO_ROWS.map(([n, s]) => [n, s]));
   for (const n of ['Watchlist, portfolio, DESK and GRID on every device', 'Your own ticker tape', 'A seat number', 'No sponsor line']) assert.equal(pro[n], LIVE, n);
   assert.ok(FREE_ROWS.some(([n, s]) => n === 'DESK and GRID, saved on this device' && s === LIVE), 'DESK and GRID are free on this device');
-  for (const n of ['CHAT', 'Alerts when the tab is closed']) assert.equal(pro[n], COMING, n);
+  assert.equal(pro['Alerts when the tab is closed'], COMING);
+  assert.equal(pro['CHAT with friends who have Pro'], LIVE, 'CHAT is live for Pro');
   // WHATIF with your own purchase is free for everyone (owner, 27 Sep 2026).
   assert.equal(pro['WHATIF with your own purchase'], undefined);
   assert.ok(FREE_ROWS.some(([n, s]) => n === 'WHATIF with your own purchase' && s === LIVE));
@@ -49,7 +50,7 @@ test('PRO: free is what you look at, Pro is your own stuff; every row says LIVE 
   assert.match(html, />PRO</);
   assert.match(html, /\$42<\/span><span class="hero-unit">A MONTH/);
   assert.match(html, /\$420<\/span><span class="hero-unit">A YEAR/);
-  assert.equal((html.match(/COMING WHEN PRO LAUNCHES/g) || []).length, 2);
+  assert.equal((html.match(/COMING WHEN PRO LAUNCHES/g) || []).length, 1);
   assert.equal(PRICE_BOTH, '$42 a month or $420 a year');
   // A row for a command this site does not have is left out, never shown as live.
   const guess = FREE_ROWS.find(([n]) => n === 'GUESS');
@@ -155,7 +156,7 @@ test('GIFT screen: codes are listed masked with their state; the rules are plain
 
 // ---- CHAT --------------------------------------------------------------------------------
 
-test('CHAT: a small stub screen, in the registry, and not a real chat', () => {
+test('CHAT: in the registry, a Pro command, its own screen (test/chat-client.test.js has the rest)', () => {
   const c = parseCommand('CHAT');
   assert.equal(c.name, 'CHAT');
   assert.equal(c.input, 'CHAT');
@@ -163,13 +164,9 @@ test('CHAT: a small stub screen, in the registry, and not a real chat', () => {
   assert.equal(findCommand('CHAT').category, 'Pro');
   assert.ok(COMMANDS.some((x) => x.name === 'CHAT'));
   assert.ok(!SOON.some((x) => x.name === 'CHAT'), 'its own screen, not the generic soon line');
-  assert.equal(CHAT_SOON, 'Coming when Pro launches.');
-  assert.equal(CHAT_LINE, 'Private 1-to-1 chat between Pro seats.');
-  const html = chatHtml();
-  assert.match(html, /1\) CHAT/);
+  const html = notProHtml();
   const text = html.replace(/<[^>]+>/g, '\n').split('\n').map((l) => l.trim()).filter(Boolean);
-  assert.deepEqual(text, ['1) CHAT', 'Coming when Pro launches.', 'Private 1-to-1 chat between Pro seats.']);
-  assert.doesNotMatch(html, /<input|<textarea|<form/);
+  assert.deepEqual(text, ['1) CHAT', NOT_PRO, 'PRO']);
   assert.equal(screenTitle(c).title, 'CHAT');
 });
 
@@ -390,7 +387,7 @@ test('legal: version bumped, so everyone who accepted 1.0 is asked again', async
   const { LEGAL_UPDATED } = await import('../public/legal-version.js');
   const { needsConsent, acceptRecord } = await import('../public/consent.js');
   const { DEFAULT_TERMS_VERSION } = await import('../pro/billing.js');
-  assert.equal(TERMS_VERSION, '1.3', 'sources by class, sub-processors, retention table, GPC, counters');
+  assert.equal(TERMS_VERSION, '1.4', 'CHAT: the Messages section and what CHAT stores');
   assert.equal(LEGAL_UPDATED, '28 September 2026');
   assert.equal(needsConsent(acceptRecord('1.0')), true);
   assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
@@ -469,6 +466,7 @@ test('privacy names every IP-keyed limiter in the code, with its window', () => 
   const windows = {
     'pro/routes.js': [/windowMs: 10 \* MIN/, /windowMs: 15 \* MIN/],
     'pro/feedback.js': [/windowMs: HOUR/],
+    'pro/chat-routes.js': [/windowMs: 15 \* MIN/], // CHAT: wrong keys count in the Pro routes' own limiter
     'data/guess.js': [/windowMs: 60_000/],
     'data/trending.js': [/windowMs: MIN/],
     'lib/mcp/limits.js': [/shortWindowMs: 10 \* 60_000/, /dayWindowMs: 24 \* 60 \* 60_000/, /requestWindowMs: 60_000/],
@@ -481,5 +479,5 @@ test('privacy names every IP-keyed limiter in the code, with its window', () => 
   const users = [];
   const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = `${d}/${e.name}`; if (e.isDirectory()) walk(p); else if (p.endsWith('.js') && readFileSync(p, 'utf8').includes('clientIp(')) users.push(p); } };
   for (const d of ['data', 'lib', 'pro', 'public']) walk(d);
-  assert.deepEqual(users.sort(), ['data/guess.js', 'data/trending.js', 'lib/counters.js', 'lib/graveyard.js', 'lib/mcp/server.js', 'pro/feedback.js', 'pro/ratelimit.js', 'pro/routes.js']);
+  assert.deepEqual(users.sort(), ['data/guess.js', 'data/trending.js', 'lib/counters.js', 'lib/graveyard.js', 'lib/mcp/server.js', 'pro/chat-routes.js', 'pro/feedback.js', 'pro/ratelimit.js', 'pro/routes.js']);
 });
