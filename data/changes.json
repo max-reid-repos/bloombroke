@@ -1,7 +1,7 @@
 {
   "note": "Kept by hand: one plain line per shipped feature, newest first. CHANGES shows it.",
   "items": [
-    { "date": "2026-09-28", "text": "GRID: live, 1D and 5D, prices tick every 15 seconds" },
+    { "date": "2026-09-28", "text": "GRID: live 1D and 5D with minute bars; prices update every few seconds" },
     { "date": "2026-09-28", "text": "GRAVEYARD: bigger stones, and every ticker easy to read" },
     { "date": "2026-09-28", "text": "SPONSOR and BBRK: a big globe of visitors under the numbers" },
     { "date": "2026-09-28", "text": "GRID: your own board of up to 16 mini charts, with a share link and card" },

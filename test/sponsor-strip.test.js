@@ -347,7 +347,19 @@ test('SPONSOR open: the real strip is outlined with a label above it until the s
   assert.ok(!cls.has('is-spot'));
   assert.ok(tag.gone);
   assert.equal(ls.resize, undefined);
-  assert.equal(tag.hidden, false, 'wide screen: always shown');
+  assert.equal(tag.hidden, false, 'a page that does not scroll: always shown');
+  // A desktop whose #screen scrolls down to the big globe: only while scrolled to the bottom.
+  const scr = { scrollTop: 0, scrollHeight: 1500, clientHeight: 770 };
+  const ddoc = { ...doc, getElementById: (id) => (id === 'screen' ? scr : doc.getElementById(id)) };
+  const dls = {};
+  const dwin = { innerWidth: 1440, innerHeight: 900, addEventListener: (t, f) => { dls[t] = f; }, removeEventListener: (t) => { delete dls[t]; } };
+  const dstop = pointAtStrip(ddoc, dwin);
+  assert.equal(tag.hidden, true, 'at the top: hidden, it would sit on the globe');
+  scr.scrollTop = 1500 - 770;
+  dls.scroll();
+  assert.equal(tag.hidden, false, 'at the bottom: shown');
+  dstop();
+  assert.equal(dls.scroll, undefined);
   // A phone: only while the page is scrolled to the bottom.
   const se = { scrollTop: 0, scrollHeight: 1600 };
   const pdoc = { ...doc, scrollingElement: se };

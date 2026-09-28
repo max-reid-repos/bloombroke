@@ -147,24 +147,27 @@ export function pointAtStrip(doc = globalThis.document, win = globalThis.window)
     tag.style.left = `${Math.round(left)}px`;
     tag.style.top = `${Math.round(box.top - (tag.offsetHeight || 0) - 4)}px`;
   };
-  // On a phone the page scrolls and the label would sit on the buttons: there it shows
-  // only while the page is scrolled to the bottom, where the screen keeps room for it
-  // (sponsor.css).
-  const phone = () => Boolean(win?.matchMedia?.(PHONE_MQ)?.matches);
+  // When the page scrolls (a phone; a desktop too, down to the big globe), the label would
+  // sit on the buttons or the globe: then it shows only while the page is scrolled to the
+  // bottom, where the screen keeps room for it (sponsor.css). A page that does not scroll
+  // shows it all the time. The page is the document on a phone, #screen on a desktop.
   const show = () => {
-    const el = doc.scrollingElement || doc.documentElement;
-    const atEnd = !el || el.scrollTop + (win?.innerHeight || 0) >= el.scrollHeight - 4;
-    tag.hidden = phone() && !atEnd;
+    const boxes = [doc.scrollingElement || doc.documentElement, doc.getElementById?.('screen')]
+      .filter((el, i, a) => el && typeof el.scrollHeight === 'number' && a.indexOf(el) === i)
+      .map((el) => ({ el, view: el.clientHeight || win?.innerHeight || 0 }))
+      .filter(({ el, view }) => el.scrollHeight - view > 4);
+    tag.hidden = boxes.some(({ el, view }) => el.scrollTop + view < el.scrollHeight - 4);
   };
   const onScroll = () => show();
   const onResize = () => { place(); show(); };
   place();
   show();
   win?.addEventListener?.('resize', onResize);
-  win?.addEventListener?.('scroll', onScroll, { passive: true });
+  // Capture: #screen's own scroll does not bubble to the window.
+  win?.addEventListener?.('scroll', onScroll, { passive: true, capture: true });
   return () => {
     win?.removeEventListener?.('resize', onResize);
-    win?.removeEventListener?.('scroll', onScroll);
+    win?.removeEventListener?.('scroll', onScroll, { capture: true });
     tag.remove();
     real.classList.remove('is-spot');
   };
