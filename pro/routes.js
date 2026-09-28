@@ -15,6 +15,7 @@
 //   GET  /api/pro/gifts        X-Pro-Key -> { gifts, left, canGift }
 //   POST /api/pro/gifts        X-Pro-Key -> { code, gift }   (a paid, active licence; 3 at most)
 //   POST /api/pro/redeem       { code } -> a new 30 day licence: { key, ...status }, once
+//   GET  /api/pro/seat         -> { next }: the seat number the next licence gets (PRO's hero)
 //
 // A seat number goes out with the status, for display. It is never read back as a
 // credential: every route that needs a licence takes the key.
@@ -76,6 +77,10 @@ export function publicStatus(lic, now, mode = 'live') {
 function canGift(lic, access) {
   return Boolean(lic && access.active && !isGiftLicence(lic) && lic.stripe_subscription_id && ACTIVE_STATUSES.has(lic.status));
 }
+
+// GET /api/pro/seat: kept this long in memory and by browsers, so a busy PRO screen
+// reads the database at most once a minute.
+export const SEAT_CACHE_MS = 60 * 1000;
 
 export function mountPro(app, {
   store, stripe = null, config = {}, now = () => Date.now(), loginDelayMs = 300, limits = defaultLimits(now), log = console,
@@ -150,6 +155,22 @@ export function mountPro(app, {
   // ---- config: what the PRO screen needs to know (test mode shows a demo banner) ----
   pro.get('/config', (req, res) => {
     res.json({ mode, open: ready, price: PLANS.month.cents, currency: 'usd', yearly: Boolean(ready && priceIdYearly), yearPrice: PLANS.year.cents });
+  });
+
+  // ---- next seat: PRO's hero, SEAT 00043 --------------------------------------------
+  // Read only, one number, no key and no personal data. Seats are never reused, so it
+  // only ever goes up; a minute late is fine.
+  let seatCache = null;
+  pro.get('/seat', (req, res) => {
+    const t = now();
+    if (!seatCache || t - seatCache.at >= SEAT_CACHE_MS) {
+      let n = null;
+      try { n = store.nextSeat(); } catch (err) { log.error('[pro seat]', err.message); }
+      if (!Number.isInteger(n) || n < 1) return fail(res, 503, 'unavailable', 'The seat count is taking a break.');
+      seatCache = { at: t, next: n };
+    }
+    res.set('Cache-Control', `public, max-age=${SEAT_CACHE_MS / 1000}`);
+    res.json({ next: seatCache.next });
   });
 
   // ---- checkout ---------------------------------------------------------------

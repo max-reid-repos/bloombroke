@@ -62,7 +62,7 @@ export const DETAIL = {
   'WAGE': { options: [['<per hour>', 'Your pay per hour'], ['OFF', 'Forget it']], source: 'Saved in this browser', delay: 'None' },
   'LOAN': { options: [['<amount>', 'How much you borrow'], ['<years>', 'Like 30Y'], ['<rate>%', 'Your rate; today\'s mortgage rate if left out']], source: 'Public web data: a weekly national mortgage survey', delay: 'Weekly' },
   'COMPOUND': { options: [['<monthly>/MO', 'Saved every month'], ['<return>%', 'A yearly return you assume'], ['<years>Y', 'How long']], source: 'Built in', delay: 'None' },
-  'PRO': { options: [['YEARLY', 'Lead with the $420 a year plan']], source: 'Built in', delay: 'None' },
+  'PRO': { options: [['YEARLY', 'The $420 a year plan (the default)'], ['MONTHLY', 'Lead with the $42 a month plan']], source: 'Built in', delay: 'None' },
   'GIFT': { source: 'Built in', delay: 'None' },
   'REDEEM': { options: [['<code>', 'The gift code, GIFT-XXXX-.... It never goes in the address bar']], source: 'Built in', delay: 'None' },
   'CHAT': { source: 'Built in', delay: 'None' },

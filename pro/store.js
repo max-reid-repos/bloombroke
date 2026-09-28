@@ -116,6 +116,8 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
     eventPrune: db.prepare('DELETE FROM stripe_events WHERE processed_at < ?'),
     purge: db.prepare('UPDATE licences SET reveal_ciphertext = NULL WHERE reveal_ciphertext IS NOT NULL AND reveal_expires_at <= ?'),
     docs: db.prepare('SELECT name, data, updated_at FROM sync_docs WHERE licence_id = ? ORDER BY name'),
+    // PRO's hero: the seat the next licence would get. A number only, nothing else read.
+    nextSeat: db.prepare(`SELECT ${NEXT_SEAT} AS n`),
     docPut: db.prepare(`INSERT INTO sync_docs (licence_id, name, data, updated_at) VALUES (?, ?, ?, ?)
       ON CONFLICT (licence_id, name) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`),
   };
@@ -131,6 +133,8 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
     findBySession(id) { return q.bySession.get(id) || null; },
     findById(id) { return q.byId.get(id) || null; },
     findByCustomer(id) { return q.byCustomer.all(id); },
+    // The seat number the next licence gets (seats are never reused, see NEXT_SEAT).
+    nextSeat() { return q.nextSeat.get().n; },
 
     // The one way a licence is made, from the webhook or from the success page, whichever
     // comes first. Idempotent per subscription and per checkout session: a second call
