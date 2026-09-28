@@ -297,10 +297,13 @@ export const INTRADAY = ['1D', '5D'];
 export const isIntraday = (range) => INTRADAY.includes(range);
 const WEEK_MS = 7 * 86_400_000;
 
-// The time a quote is for: its own time (asOf), else now; never later than now.
+// The time a quote is for: its asOf read the way QUOTE reads it (screens/quote.js liveOf:
+// a date and time, with its offset, "2026-09-28T10:12:35.937-0400"), never later than
+// now; null when there is none or it does not read (unknown, never "now").
 export function quoteTime(quote, now = Date.now()) {
-  const t = Date.parse(quote?.asOf ?? '');
-  return Number.isFinite(t) ? Math.min(t, now) : now;
+  const s = typeof quote?.asOf === 'string' ? quote.asOf : '';
+  const t = Date.parse(s);
+  return Number.isFinite(t) && /T/.test(s) ? Math.min(t, now) : null;
 }
 
 // Where time t falls against the bar at lastT, for this range's bars: 1 a later bar, 0 the
@@ -320,6 +323,8 @@ export function barStep(lastT, t, range) {
 // changed (or the tile does not tick). The value is the quote's; the line's last point
 // takes it (a new point when the quote starts a new bar: a new minute on 1D, a new
 // 5-minute bucket on 5D, a new day on the daily ranges); the high and the low follow.
+// A quote older than the line's last bar is no news (null: the value never goes back);
+// one with no time it can read only ever updates the last point, never adds one.
 // The change: on 1D the quote's own day change (vs the previous close, as QUOTE shows);
 // on longer ranges vs the first point of the range.
 export function applyQuote(tile, quote, range, { now = Date.now() } = {}) {
@@ -329,7 +334,8 @@ export function applyQuote(tile, quote, range, { now = Date.now() } = {}) {
   if (!Number.isFinite(v) || pts.length < 2) return null;
   const t = quoteTime(quote, now);
   const end = pts[pts.length - 1];
-  const step = barStep(end.t, t, range);
+  const step = t === null ? 0 : barStep(end.t, t, range);
+  if (step < 0) return null;
   let points = pts;
   const bucket = BUCKET_MS[range];
   if (step > 0) points = [...pts, { t: bucket ? Math.floor(t / bucket) * bucket : t, v }];
@@ -377,10 +383,54 @@ export function guarded(fn) {
   };
 }
 
+// The refetch backs off while nothing moves (a weekend, a night): after a refetch where
+// every tile came back the same, the wait doubles, up to REFETCH_MAX_MS; anything new, or
+// anything the viewer does, brings it back to REFETCH_MS.
+export const REFETCH_MAX_MS = 10 * 60_000;
+export const nextRefetchWait = (wait, outcome) => (outcome === 'same' ? Math.min(wait * 2, REFETCH_MAX_MS) : outcome === 'changed' ? REFETCH_MS : wait);
+
+// The screen's timers, all through ctx.live (paused while hidden or off screen), set up
+// once: the quote tick, the 1D/5D refetch (with its back-off) and BBRK's here now.
+// refetch() -> 'changed' | 'same' | anything else (busy, skipped, error: the wait stays).
+// Returns { poke() }: the viewer did something, the refetch wait is back to REFETCH_MS.
+export function startLive(ctx, { tick, refetch, hereNow, intraday = () => false, hasBbrk = () => false }) {
+  let wait = REFETCH_MS;
+  let turns = 0; // REFETCH_MS turns since the last refetch
+  ctx.live(tick, TICK_MS);
+  ctx.live(async () => {
+    if (!intraday()) return;
+    turns += 1;
+    if (turns * REFETCH_MS < wait) return;
+    turns = 0;
+    wait = nextRefetchWait(wait, await refetch());
+  }, REFETCH_MS);
+  ctx.live(() => { if (hasBbrk()) hereNow(); }, HERE_MS);
+  return {
+    poke() { wait = REFETCH_MS; turns = 0; },
+    get wait() { return wait; },
+  };
+}
+
 // ---- The screen -----------------------------------------------------------------------------
 
-async function getJSON(url, { signal } = {}) {
-  const res = await fetch(url, { signal, headers: { Accept: 'application/json' } });
+export const FETCH_TIMEOUT_MS = 10_000;
+// One signal that aborts when any of these does (screens/chart.js anySignal).
+function anySignal(signals) {
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any(signals);
+  const c = new AbortController();
+  for (const s of signals) {
+    if (s.aborted) { c.abort(s.reason); break; }
+    s.addEventListener('abort', () => c.abort(s.reason), { once: true });
+  }
+  return c.signal;
+}
+
+// GET JSON, given up after timeoutMs (a hung request never holds a guard): the error has
+// the answer's status (429...).
+export async function getJSON(url, { signal, timeoutMs = FETCH_TIMEOUT_MS, fetchImpl = globalThis.fetch } = {}) {
+  const limit = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(timeoutMs) : null;
+  const sig = [signal, limit].filter(Boolean);
+  const res = await fetchImpl(url, { signal: sig.length > 1 ? anySignal(sig) : sig[0], headers: { Accept: 'application/json' } });
   let body = null;
   try { body = await res.json(); } catch { body = null; }
   if (!res.ok) throw Object.assign(new Error(body?.message || 'Data is taking a break.'), { status: res.status });
@@ -512,8 +562,10 @@ export function render(el, cmd, ctx) {
 
   // ---- the URL and the last board ----
   function saveLast() { saveLastBoard(store, { tokens: tokens(), range }, { embed: ctx.embed }); }
+  let liveCtl = null; // startLive, below
   function commit() {
     if (ctx.embed) return; // a DESK panel only shows its board
+    liveCtl?.poke(); // the viewer did something: the refetch is back to every minute
     const c = gridCmd({ tokens: tokens(), range });
     if (!ctx.embed) {
       try { window.history.replaceState({ ...(window.history.state || {}), c }, '', ctx.toQuery(c)); } catch { /* the URL stays as it was */ }
@@ -586,24 +638,29 @@ export function render(el, cmd, ctx) {
     const [a0, b0, a1, b1] = [pa[0], pb[0], pa[pa.length - 1], pb[pb.length - 1]];
     return a0.t === b0.t && a0.v === b0.v && a1.t === b1.t && a1.v === b1.v;
   };
-  // Every REFETCH_MS on 1D and 5D: the market tiles' real bars. A tile that fails
-  // now keeps what it had; only the tiles that changed are drawn again.
-  const refetch = guarded(async () => {
+  // On 1D and 5D (startLive: every REFETCH_MS, less often while nothing moves): the
+  // market tiles' real bars, on the live bucket (?live=1). A tile that fails now keeps
+  // what it had; only the tiles that changed are drawn again.
+  let moved = true; // the last refetch brought something new
+  const refetchOnce = guarded(async () => {
+    moved = true;
     const list = marketTokens();
     if (!list.length || !isIntraday(range)) return;
     const my = gen;
     const r = range;
-    const d = await getJSON(`/api/grid?${new URLSearchParams({ s: list.join(','), r })}`, { signal: ctx.signal });
+    const d = await getJSON(`/api/grid?${new URLSearchParams({ s: list.join(','), r, live: '1' })}`, { signal: ctx.signal });
     if (my !== gen) return;
+    moved = false;
     for (const t of d?.tiles || []) {
       if (t.error || indexOf(t.token) < 0) continue;
       const prev = data.get(t.token);
       const next = applyQuote(t, quotes.get(t.token), r) || t;
       data.set(t.token, next);
-      if (!sameTile(prev, next)) patchTile(indexOf(t.token), prev);
+      if (!sameTile(prev, next)) { moved = true; patchTile(indexOf(t.token), prev); }
     }
     if (d?.updated) ctx.updated?.(d.updated, false);
   });
+  const refetch = async () => { const r = await refetchOnce(); return r === 'ok' ? (moved ? 'changed' : 'same') : r; };
   // Every HERE_MS with a BBRK tile: its "here now" (/api/live, cached on the server).
   const hereNow = guarded(async () => {
     const had = data.get('BBRK');
@@ -791,8 +848,11 @@ export function render(el, cmd, ctx) {
   drawAll();
   if (note) ctx.status(note, 'warn');
   load(tokens());
-  // Live (ctx.live: paused while the tab is hidden or a DESK panel is off screen).
-  ctx.live(tick, TICK_MS);
-  ctx.live(() => { if (isIntraday(range)) refetch(); }, REFETCH_MS);
-  ctx.live(() => { if (items.some((it) => it.kind === 'bbrk')) hereNow(); }, HERE_MS);
+  // Live: set up once (ctx.live: paused while the tab is hidden or a DESK panel is off
+  // screen); edits and range switches only poke it.
+  liveCtl = startLive(ctx, {
+    tick, refetch, hereNow,
+    intraday: () => isIntraday(range),
+    hasBbrk: () => items.some((it) => it.kind === 'bbrk'),
+  });
 }

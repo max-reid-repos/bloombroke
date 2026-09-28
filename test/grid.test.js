@@ -15,10 +15,11 @@ import {
   saveLastBoard, boardKeyAction, sceneKeys, LAST_KEY,
   shareLinks, stepIndex, cleanBoard, LABEL_CHAR_W, toInput,
   applyQuote, barStep, flashClass, guarded, quoteTime, isIntraday, BUCKET_MS, TICK_MS, REFETCH_MS, FLASH_MS,
+  getJSON, startLive, nextRefetchWait, REFETCH_MAX_MS, HERE_MS,
 } from '../public/screens/grid.js';
 import {
   makeGrid, mountGrid, downsample, seriesStats, loadCpiMonthly, cpiTile, ripTile, weirdTile, marketTile, periodStart, GRID_POINTS, GRID_PARALLEL,
-  GRID_RATE, chartSpec, regularSession,
+  GRID_RATE, GRID_LIVE_RATE, chartSpec, regularSession, beforeOpen, withDayChange,
 } from '../lib/grid.js';
 import {
   makeGridCards, gridCardModel, cardBoard, gridMeta, gridTree, mountGridCards, GRID_CARD_MAX_AGE, INCOMPLETE_MAX_AGE,
@@ -273,7 +274,10 @@ function fakeDeps() {
   let weirdCalls = 0;
   const getWeird = async () => { weirdCalls += 1; return { gauges: [{ id: 'eggs', ok: true, headline: '$2.27 A DOZEN', spark: [3, 2, 6, 1] }, { id: 'pizza', ok: false, headline: 'NO DATA' }] }; };
   const audience = { get: async () => ({ pageviews: { d7: 4321 }, live: 5 }) };
-  return { calls, peak: () => peak, weirdCalls: () => weirdCalls, deps: { getChart, getWeird, stones: GRAVES.stones, zombies: GRAVES.zombies, audience } };
+  // A fixed clock in the New York session (11:00 on a Monday), so 1D asks for 1-minute bars.
+  const t0 = Date.now();
+  const now = () => Date.UTC(2026, 8, 28, 15) + (Date.now() - t0);
+  return { calls, peak: () => peak, weirdCalls: () => weirdCalls, deps: { getChart, getWeird, stones: GRAVES.stones, zombies: GRAVES.zombies, audience, now } };
 }
 
 test('/api/grid: every tile in one answer, 4 charts at a time, a busy one to try again', async () => {
@@ -724,12 +728,18 @@ test('GRID tick: a new minute (1D) or 5-minute bucket (5D) appends a point; an o
   assert.equal(applyQuote(five, { last: 103, asOf: at(end5 + 2 * M1) }, '5D', { now: end5 + 3 * M1 }).points.length, 3, '5D: the same 5-minute bar');
   const on5 = applyQuote(five, { last: 103, asOf: at(end5 + M5 + M1) }, '5D', { now: end5 + M5 + 2 * M1 });
   assert.deepEqual([on5.points.length, on5.points[3].t], [4, end5 + M5], '5D: a new 5-minute bar');
-  // No asOf: now's bucket.
-  assert.equal(applyQuote(tile, { last: 99 }, '1D', { now: lastT + M1 * 3 }).points.length, 4);
-  // A quote from before the last bar (a stock's close, while the line has after-hours bars).
-  const old = applyQuote(tile, { last: 101.9, changePct: 0.1, asOf: at(lastT - M1) }, '1D', { now: lastT + 30_000 });
-  assert.equal(old.points, tile.points, 'the line stays');
-  assert.equal(old.last, 101.9, 'the value is the quote\'s');
+  // No asOf, or one that does not read: unknown, never now. It never adds a point.
+  for (const asOf of [undefined, null, '', 'yesterday', '10:12:35', 12345]) {
+    const u = applyQuote(tile, { last: 99, asOf }, '1D', { now: lastT + M1 * 3 });
+    assert.equal(u.points.length, 3, `asOf ${asOf}: no new point`);
+    assert.deepEqual(u.points[2], { t: lastT, v: 99 }, 'only the last point takes the value');
+  }
+  assert.equal(quoteTime({ asOf: 'nonsense' }, OPEN), null);
+  assert.equal(quoteTime({}, OPEN), null);
+  // A quote from before the line's last bar: no news. The value never goes back.
+  assert.equal(applyQuote(tile, { last: 101.9, changePct: 0.1, asOf: at(lastT - M1) }, '1D', { now: lastT + 30_000 }), null, 'step < 0: ignored');
+  const month = marketTile('AAPL', { points: [22, 23, 24, 25].map((d, i) => ({ t: Date.UTC(2026, 8, d, 4), v: 100 + i })) });
+  assert.equal(applyQuote(month, { last: 90, asOf: '2026-09-24T15:59:00.000-0400' }, '1M', { now: Date.UTC(2026, 8, 28) }), null, 'a day older than the line: ignored');
   // A quote dated in the future counts as now.
   assert.equal(quoteTime({ asOf: at(OPEN + 3_600_000) }, OPEN), OPEN);
   assert.equal(quoteTime({ asOf: '2026-09-28T10:12:35.937-0400' }, Date.UTC(2026, 8, 29)), Date.UTC(2026, 8, 28, 14, 12, 35, 937), 'the quote source\'s time form');
@@ -796,13 +806,31 @@ test('GRID live: never two requests at once, and a failed one skips a turn', asy
   assert.equal(await r3(), 'aborted');
 });
 
-test('GRID live: the budget and the caches for a board that asks every minute', async () => {
-  // 10 refetches in 10 minutes, a board built tile by tile (16), six range switches with
-  // a retry each (12), and a second board open (10 more): well inside the limit.
-  const perWindow = (GRID_RATE.windowMs / REFETCH_MS);
-  assert.equal(perWindow, 10);
-  assert.ok(perWindow * 2 + 16 + 12 < GRID_RATE.renders, `${GRID_RATE.renders} per 10 minutes`);
-  assert.equal(GRID_RATE.renders, 90);
+test('GRID live: refetches (?live=1) have their own bucket; first loads keep theirs', async () => {
+  assert.equal(GRID_RATE.renders, 60, 'first loads, adds, range switches: as before');
+  assert.equal(GRID_LIVE_RATE.renders / (GRID_LIVE_RATE.windowMs / REFETCH_MS), 24, 'room for 24 boards left open on one address');
+  const f = fakeDeps();
+  const app = express();
+  mountGrid(app, { ...f.deps, allow: makeRateLimit({ renders: 2, windowMs: 60_000, addresses: 10 }), allowLive: makeRateLimit({ renders: 3, windowMs: 60_000, addresses: 10 }) });
+  const { server, base } = await listen(app);
+  try {
+    assert.equal((await fetch(`${base}/api/grid?s=AA&r=1D`)).status, 200, 'a first load');
+    for (let i = 0; i < 3; i += 1) assert.equal((await fetch(`${base}/api/grid?s=AA&r=1D&live=1`)).status, 200, 'a refetch');
+    assert.equal((await fetch(`${base}/api/grid?s=AA&r=1D&live=1`)).status, 429, 'the live bucket has its own end');
+    assert.equal((await fetch(`${base}/api/grid?s=BB&r=1D`)).status, 200, 'refetches never charged the first-load bucket');
+    assert.equal((await fetch(`${base}/api/grid?s=CC&r=1D`)).status, 429);
+    const f2 = fakeDeps();
+    const app2 = express();
+    mountGrid(app2, { ...f2.deps, allow: makeRateLimit({ renders: 1, windowMs: 60_000, addresses: 10 }), allowLive: () => true });
+    const two = await listen(app2);
+    try {
+      assert.equal((await fetch(`${two.base}/api/grid?s=AA&r=1Y&live=1`)).status, 200);
+      assert.equal((await fetch(`${two.base}/api/grid?s=AA&r=1Y&live=1`)).status, 429, 'live=1 counts only on 1D and 5D (the only ranges that refetch)');
+    } finally { two.server.close(); }
+  } finally { server.close(); }
+});
+
+test('GRID live: the caches for a board that asks every minute', async () => {
   const f = fakeDeps();
   const app = express();
   mountGrid(app, f.deps);
@@ -847,9 +875,148 @@ test('GRID 1D: 1-minute bars, the CHART screen\'s own 1D, and a stock keeps its 
   const early = all.filter((p) => p.t <= mins(9, 45));
   assert.equal(regularSession(early).length, 16, 'early in the session: every minute so far (16 < GRID_POINTS)');
   const pre = all.filter((p) => p.t < mins(9, 30));
-  assert.equal(regularSession(pre).length, pre.length, 'before the open: the pre-market bars stay');
+  assert.equal(regularSession(pre), null, 'before the open: no session on that day');
   const t1 = marketTile('AAPL', { range: '1D', ext: true, points: early });
   assert.deepEqual([t1.points.length, t1.points[0].t], [16, mins(9, 30)]);
   assert.equal(marketTile('BTC', { range: '1D', ext: false, points: early.slice(-50) }).points.length, 50, 'no extended hours (crypto, FX, indexes): as sent');
   assert.equal(marketTile('AAPL', { range: '1D', ext: true, points: all }).points.length, GRID_POINTS, 'a full day: thinned to 120');
+});
+
+test('GRID 1D before the open: a stock shows its last regular session, one chart call', async () => {
+  const day = Date.UTC(2026, 8, 28); // Monday; New York is UTC-4
+  const ny = (d, h, m = 0) => d + (h + 4) * 3600_000 + m * 60_000;
+  assert.deepEqual([beforeOpen(ny(day, 3, 59)), beforeOpen(ny(day, 4)), beforeOpen(ny(day, 9, 29)), beforeOpen(ny(day, 9, 30)), beforeOpen(ny(day - 86_400_000, 8))], [false, true, true, false, false], 'weekdays 4:00 to 9:30; not a Sunday');
+  // The source: 1-minute 1D = today's pre-market only; 5-minute 1D = Friday's session.
+  const premarket = [];
+  for (let t = ny(day, 4); t < ny(day, 8, 10); t += 60_000) premarket.push({ t, v: 50 + (t % 3) });
+  const friday = [];
+  for (let t = ny(day - 3 * 86_400_000, 9, 30); t < ny(day - 3 * 86_400_000, 16); t += 300_000) friday.push({ t, v: 40 + ((t / 300_000) % 5) });
+  const calls = [];
+  const getChart = async (sym, r) => {
+    calls.push(`${sym}:${rangeKey(r)}`);
+    if (typeof r === 'object') return { range: '1D', ext: sym === 'AAPL', points: premarket };
+    return { range: '1D', ext: false, points: friday };
+  };
+  let clock = ny(day, 8, 10);
+  const quotes = { AAPL: { ticker: 'AAPL', last: 42, changePct: -1.25, asOf: '2026-09-25T16:00:00.000-0400' }, SPX: { ticker: 'SPX', last: 7700, changePct: 0.4 } };
+  const grid = makeGrid({ getChart, now: () => clock, getQuotes: async (list) => ({ quotes: list.map((t) => quotes[t]).filter(Boolean) }) });
+  const [aapl] = await grid.board([gridItem('AAPL')], '1D');
+  assert.deepEqual(calls, ['AAPL:1D'], 'before the open: the 5-minute 1D only, one call');
+  assert.deepEqual([aapl.points[0].t, aapl.points.length], [friday[0].t, friday.length], 'Friday\'s session, not a pre-market stub');
+  assert.ok(aapl.last >= aapl.lo.v && aapl.last <= aapl.hi.v, 'the value sits inside its own H and L');
+  assert.equal(aapl.changePct, -1.25, 'the quote\'s day change');
+  // The quote (Friday's close) on that line: the value stays inside H/L, no NO DATA.
+  const next = applyQuote(aapl, quotes.AAPL, '1D', { now: clock });
+  assert.ok(next === null || (next.last >= next.lo.v && next.last <= next.hi.v));
+  // After the open the clock says 1-minute bars; a thin name with no session bars yet
+  // still falls back (two calls, only then).
+  clock = ny(day, 9, 31);
+  calls.length = 0;
+  const [thin] = await grid.board([gridItem('AAPL')], '1D');
+  assert.deepEqual(calls, ['AAPL:1D:1M', 'AAPL:1D']);
+  assert.equal(thin.error, undefined, 'never NO DATA for a thin name before its first trade');
+  assert.equal(thin.points.length, friday.length);
+  // Not a stock (an index): 1-minute bars as they are, one call.
+  calls.length = 0;
+  const [spx] = await grid.board([gridItem('SPX')], '1D');
+  assert.deepEqual(calls, ['SPX:1D:1M']);
+  assert.equal(spx.changePct, 0.4);
+});
+
+test('GRID 1D: the day change is the quote\'s on /api/grid and the card; the line\'s without one', async () => {
+  const f = fakeDeps();
+  let asked = 0;
+  const getQuotes = async (list) => { asked += 1; return { quotes: list.filter((t) => t !== 'BB').map((t) => ({ ticker: t, last: 1, changePct: 2.5 })) }; };
+  const grid = makeGrid({ ...f.deps, getQuotes });
+  const tiles = await grid.board(['AA', 'BB', 'CPI'].map(gridItem), '1D');
+  assert.equal(asked, 1, 'one quote call per board');
+  assert.equal(tiles[0].changePct, 2.5, 'the quote\'s day change');
+  const line = seriesStats(tiles[1].points).changePct;
+  assert.ok(Math.abs(tiles[1].changePct - line) < 1e-9 || tiles[1].points.length === GRID_POINTS, 'no quote: the line\'s change');
+  assert.equal(grid.cached(gridItem('AA'), '1D').changePct, 2.5, 'kept with it, so the card says the same');
+  const card = gridCardModel(cardBoard('AA', '1D'), grid);
+  assert.deepEqual([card.tiles[0].pill, card.tiles[0].line], ['+2.50%', 'up'], 'the card matches the board');
+  await grid.board(['AA'].map(gridItem), '1Y');
+  assert.equal(asked, 1, 'only 1D asks for quotes');
+  // A failed quote call never fails a board.
+  const broken = makeGrid({ ...f.deps, getQuotes: async () => { throw new Error('down'); } });
+  const [t] = await broken.board([gridItem('AA')], '1D');
+  assert.ok(Number.isFinite(t.changePct) && !t.error);
+  assert.equal(withDayChange({ kind: 'market', changePct: 1 }, { changePct: null }).changePct, 1);
+});
+
+test('GRID live: the refetch backs off while nothing moves, and comes back on a change or a poke', async () => {
+  assert.deepEqual([REFETCH_MS, REFETCH_MAX_MS], [60_000, 600_000]);
+  assert.deepEqual([60_000, 120_000, 240_000, 480_000, 600_000].map((w) => nextRefetchWait(w, 'same')), [120_000, 240_000, 480_000, 600_000, 600_000]);
+  assert.equal(nextRefetchWait(480_000, 'changed'), 60_000);
+  assert.equal(nextRefetchWait(240_000, 'error'), 240_000, 'an error: the guard skips a turn, the wait stays');
+  const lives = [];
+  const ctx = { live: (fn, ms) => lives.push({ fn, ms }) };
+  let outcome = 'same';
+  let refetches = 0;
+  let intraday = true;
+  const ctl = startLive(ctx, { tick: () => {}, refetch: async () => { refetches += 1; return outcome; }, hereNow: () => {}, intraday: () => intraday });
+  assert.deepEqual(lives.map((l) => l.ms), [TICK_MS, REFETCH_MS, HERE_MS], 'three timers, all through ctx.live');
+  const turn = () => lives[1].fn();
+  const run = async (n) => { const at = refetches; for (let i = 0; i < n; i += 1) await turn(); return refetches - at; };
+  assert.equal(await run(1), 1, 'the first minute');
+  assert.equal(ctl.wait, 120_000);
+  assert.equal(await run(2), 1, 'then every 2 minutes');
+  assert.equal(await run(4), 1, 'then every 4');
+  assert.equal(await run(8), 1, 'then every 8');
+  assert.equal(ctl.wait, 600_000);
+  assert.equal(await run(10), 1, 'at most every 10 minutes');
+  outcome = 'changed';
+  assert.equal(await run(10), 1);
+  assert.equal(ctl.wait, 60_000, 'something moved: every minute again');
+  outcome = 'same';
+  await run(1);
+  assert.equal(ctl.wait, 120_000);
+  ctl.poke();
+  assert.equal(ctl.wait, 60_000, 'the viewer did something');
+  assert.equal(await run(1), 1);
+  intraday = false;
+  assert.equal(await run(5), 0, '1M and longer: no refetch');
+});
+
+test('GRID live: a request that hangs times out and frees the guard', async () => {
+  let asked = 0;
+  // A fetch that answers only when its signal aborts.
+  const hang = (url, { signal }) => { asked += 1; return new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })); };
+  const run = guarded(() => getJSON('/api/quotes?s=AA', { timeoutMs: 30, fetchImpl: hang }));
+  const t0 = Date.now();
+  assert.equal(await run(), 'error', 'given up, not stuck');
+  assert.ok(Date.now() - t0 < 2000);
+  assert.equal(await run(), 'skipped', 'and it backs off a turn');
+  assert.equal(await run(), 'error', 'then asks again: the guard is free');
+  assert.equal(asked, 2);
+  // The screen's own signal still ends it (a closed screen): no back-off.
+  const c = new AbortController();
+  const r2 = guarded(() => getJSON('/x', { signal: c.signal, timeoutMs: 60_000, fetchImpl: hang }));
+  const p = r2();
+  c.abort();
+  assert.equal(await p, 'aborted');
+  // A good answer and an error answer.
+  const ok = async () => ({ ok: true, status: 200, json: async () => ({ a: 1 }) });
+  assert.deepEqual(await getJSON('/x', { fetchImpl: ok }), { a: 1 });
+  const busy = async () => ({ ok: false, status: 429, json: async () => ({ message: 'busy' }) });
+  await assert.rejects(getJSON('/x', { fetchImpl: busy }), (e) => e.status === 429);
+});
+
+test('GRID live: timers only through ctx.live (set up once) and later(); a range switch adds none', () => {
+  const js = readFileSync(new URL('../public/screens/grid.js', import.meta.url), 'utf8');
+  const body = js.slice(js.indexOf('export function render('));
+  assert.doesNotMatch(js, /setInterval\(/, 'no interval of its own');
+  assert.equal((body.match(/setTimeout\(/g) || []).length, 2, 'later() and the toast only, both cleared on cleanup');
+  assert.equal((body.match(/ctx\.live\(/g) || []).length, 0, 'render never calls ctx.live itself');
+  assert.equal((body.match(/startLive\(/g) || []).length, 1, 'startLive once');
+  const at = body.indexOf('startLive(');
+  const fn = (name) => { const i = body.indexOf(`function ${name}(`); return body.slice(i, body.indexOf('\n  }\n', i)); };
+  for (const name of ['setRange', 'add', 'swap', 'remove', 'setBoard', 'load', 'commit']) {
+    const f = fn(name);
+    assert.ok(f.length > 20, name);
+    assert.doesNotMatch(f, /ctx\.live|startLive|setInterval|setTimeout/, `${name} sets no timer of its own`);
+  }
+  assert.match(fn('commit'), /liveCtl\?\.poke\(\)/, 'an edit or a range switch pokes the refetch back to every minute');
+  assert.ok(at > body.indexOf('// ---- first draw ----'), 'set up with the first draw, once');
 });

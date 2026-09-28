@@ -369,7 +369,7 @@ const noSuch = mountNoSuch(app, { getQuote, graveyard: grave.data.stones, zombie
 // /og/grid.png (lib/og-grid.js) draws from the tiles kept there, never fetching ---
 import { mountGrid } from './lib/grid.js';
 import { mountGridCards } from './lib/og-grid.js';
-const grid = mountGrid(app, { getChart, getWeird, stones: grave.data.stones, zombies: grave.data.zombies, audience });
+const grid = mountGrid(app, { getChart, getWeird, getQuotes: getQuoteList, stones: grave.data.stones, zombies: grave.data.zombies, audience });
 const gridCards = mountGridCards(app, { grid });
 // --- end GRID ---
 
