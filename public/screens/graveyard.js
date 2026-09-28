@@ -14,6 +14,7 @@ import { esc, q, panel, metaNote } from './markets.js';
 import { goal } from '../goal.js';
 import {
   findGrave, dayText, tombstoneLine, srcHost, graveLinks, stoneYears, flowersFor, respectsText, onThisDayLine, ytEmbed,
+  SECTIONS, sectionOf, siteCaption, timelinePoints, cliffOf,
 } from '../nosuch.js';
 
 const origin = () => (typeof location !== 'undefined' ? location.origin : 'https://bloombroke.com');
@@ -79,7 +80,7 @@ export function flowersHtml(n) {
 export function stoneHtml(e, { n = 0, small = false } = {}) {
   const art = e.art || {};
   const face = small
-    ? `<span class="gv-rip">${e.zombie ? 'RETURNED' : 'R.I.P.'}</span><span class="gv-tk">${esc(e.ticker)}</span>`
+    ? `${e.zombie ? '<span class="gv-rip">RETURNED</span>' : ''}<span class="gv-tk">${esc(e.ticker)}</span>`
     : `<span class="gv-rip">${e.zombie ? 'RETURNED' : 'R.I.P.'}</span><span class="gv-tk">${esc(e.ticker)}</span><span class="gv-name">${esc(e.name)}</span><span class="gv-years">${esc(stoneYears(e))}</span>${e.epitaph ? `<span class="gv-epitaph">${esc(e.epitaph)}</span>` : ''}`;
   return `<figure class="gv-stone${small ? ' is-small' : ''}${e.zombie ? ' is-zombie' : ''}${art.stone ? ' has-art' : ''}" role="img" aria-label="${esc(tombstoneLine(e))}">
       ${art.stone ? `<img class="gv-art" src="${esc(art.stone)}" width="560" height="778" alt="">` : ''}
@@ -97,7 +98,7 @@ export function pageSources(e) {
   return [...new Set(all.filter((u) => srcHost(u)))];
 }
 
-export function sourcesHtml(e) {
+export function sourcesHtml(e, { linkSite = true } = {}) {
   const list = pageSources(e);
   const count = new Map();
   const items = list.map((u) => {
@@ -106,7 +107,7 @@ export function sourcesHtml(e) {
     count.set(h, k);
     return `<li>${ext(u, k > 1 ? `${h} ${k}` : h)}</li>`;
   }).join('');
-  return `<div class="muted ns-src gv-links">${e.wayback ? `${ext(e.wayback, 'LAST WEBSITE', 'gv-last')} · ` : ''}<details class="gv-sources"><summary>SOURCES (${list.length})</summary><ul>${items}</ul></details> · ${code('GRAVEYARD', 'See the graveyard')}</div>`;
+  return `<div class="muted ns-src gv-links">${e.wayback && linkSite ? `${ext(e.wayback, 'LAST WEBSITE', 'gv-last')} · ` : ''}<details class="gv-sources"><summary>SOURCES (${list.length})</summary><ul>${items}</ul></details> · ${code('GRAVEYARD', 'See the graveyard')}</div>`;
 }
 
 export function shareRow(links, kind) {
@@ -176,21 +177,54 @@ export function respectsHtml(e, n) {
 
 // The stone page's words and links beside the stone.
 export function factsHtml(e, n) {
-  const back = e.zombie ? `<p class="gv-fact gv-what">Came back ${esc(dayText(e.back.date))}.</p><p class="gv-cause">${esc(e.back.what)}.</p>` : '';
+  const back = e.zombie ? `<p class="gv-fact gv-what">Came back ${esc(dayText(e.back.date))}.</p>` : '';
   return `<div class="gv-facts">
       <p class="gv-fact gv-what">${esc(e.what)} ${esc(dayText(e.date))}.</p>${back}
       ${e.cause ? `<p class="gv-cause">${esc(e.cause)}</p>` : ''}
-      ${peakLineHtml(e)}
       ${respectsHtml(e, n)}
       ${shareRow(graveLinks(e, origin()), 'grave')}
-      ${sourcesHtml(e)}
+      ${sourcesHtml(e, { linkSite: !e.art?.site })}
     </div>`;
 }
 
-// Desk: the stone, the facts and the video side by side; a phone: one under the other.
+// LAST WEBSITE as a picture: the Internet Archive's copy of the homepage near the end, in
+// an old monitor, a link to the snapshot. Without a capture: nothing here (the Sources
+// line keeps the LAST WEBSITE text link).
+export function siteHtml(e) {
+  if (!e.wayback || !e.art?.site) return '';
+  const cap = siteCaption(e.wayback);
+  return `<a class="gv-site" href="${esc(e.wayback)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`${cap}: the last website`)}">
+      <span class="gv-screen"><img src="${esc(e.art.site)}" width="800" height="500" alt="" loading="lazy"></span>
+      <span class="gv-sitecap">${esc(cap)}</span>
+    </a>`;
+}
+
+// The timeline strip: only sourced dates, and the cliff for the RIP WHATIF line.
+export function timelineHtml(e) {
+  const pts = timelinePoints(e);
+  const cliff = cliffOf(e);
+  // The drop is drawn to scale: $1,000 at the top line, $0 at the bottom.
+  const worth = cliff ? Number(cliff.to.replace(/[$,]/g, '')) : NaN;
+  const end = Number.isFinite(worth) ? Math.max(6, Math.min(50, 14 + 36 * (1 - worth / 1000))) : 50;
+  const mid = (14 + end) / 2;
+  const svg = cliff ? `<figure class="gv-cliff${worth >= 1000 ? ' is-up' : ''}" title="${esc(e.peakLine)}" aria-label="${esc(e.peakLine)}">
+      <svg viewBox="0 0 120 54" width="120" height="54" aria-hidden="true"><path d="M2 14 H58 L66 ${mid.toFixed(1)} L72 ${end.toFixed(1)} H118" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><path d="M2 14 H58 L66 ${mid.toFixed(1)} L72 ${end.toFixed(1)} H118 V54 H2 Z" fill="currentColor" opacity=".12"/></svg>
+      <figcaption><span class="gv-cliff-a">${esc(cliff.from)}</span><span class="gv-cliff-b">${esc(cliff.to)}</span></figcaption>
+    </figure>` : '';
+  return `<div class="gv-tl"><ol>${pts.map((p) => `<li><span class="gv-tl-l">${esc(p.label)}</span><span class="gv-tl-d">${esc(p.when)}</span></li>`).join('')}</ol>${svg}</div>`;
+}
+
+// Desk: the big stone left, the facts and the last website in the middle, a large video
+// right, the timeline across the bottom. A phone: stone, facts, video, website, timeline.
 export function stonePageHtml(e, n) {
   const video = videoHtml(e);
-  return `<div class="gv-page${video ? ' has-video' : ''}">${stoneHtml(e, { n })}${factsHtml(e, n)}${video ? `<div class="gv-vcol">${video}</div>` : ''}</div>`;
+  return `<div class="gv-page3${video ? ' has-video' : ''}">
+      <div class="gv-a-stone">${stoneHtml(e, { n })}</div>
+      <div class="gv-a-facts">${factsHtml(e, n)}</div>
+      ${video ? `<div class="gv-a-video">${video}</div>` : ''}
+      ${siteHtml(e) ? `<div class="gv-a-site">${siteHtml(e)}</div>` : ''}
+      <div class="gv-a-tl">${timelineHtml(e)}</div>
+    </div>`;
 }
 
 // A scene (a stone page, the cemetery, the table) takes its keys (F, T, arrows, Enter) only
@@ -255,25 +289,99 @@ export function wireRespects(el, ticker, { status = () => {} } = {}) {
 
 // ---- The cemetery -----------------------------------------------------------------------------
 
-// Where each stone stands, in % of the scene: rows from the back (small, high) to the front
-// (big, low), oldest at the back. size: the stone's scale, by peak market value when known.
-export function layout(list, { rows = 4 } = {}) {
-  const sorted = [...list].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  const per = Math.max(1, Math.ceil(sorted.length / rows));
-  const caps = sorted.map((e) => e.peak?.cap).filter((v) => Number.isFinite(v) && v > 0).map(Math.log10);
-  const lo = caps.length ? Math.min(...caps) : 0;
-  const hi = caps.length ? Math.max(...caps) : 0;
-  const jitter = (t, k) => { let s = 0; for (const ch of t) s = (s * 31 + ch.charCodeAt(0)) % 1000; return (((s * (k + 7)) % 100) / 100 - 0.5); };
-  return sorted.map((e, i) => {
-    const r = Math.floor(i / per);
-    const inRow = Math.min(per, sorted.length - r * per);
-    const c = i - r * per;
-    const x = 6 + ((c + 0.5 + (r % 2 ? 0.25 : -0.25)) / inRow) * 88 + jitter(e.ticker, 1) * 3;
-    const y = 46 + (rows > 1 ? (r / (rows - 1)) * 44 : 22) + jitter(e.ticker, 2) * 3; // on the grass, below the hills
-    const cap = Number.isFinite(e.peak?.cap) && e.peak.cap > 0 && hi > lo ? (Math.log10(e.peak.cap) - lo) / (hi - lo) : null;
-    const size = (0.74 + r * 0.1) * (cap === null ? 1 : 0.82 + cap * 0.46);
-    return { e, row: r, x: Math.max(4, Math.min(96, x)), y, size };
+// GRAVEYARD v3: the stones stand on the empty cemetery's terraces, one section each, in
+// perspective (the back terrace small and high, the front one large and low), and the
+// bought-out ones on the small side plot. Everything is placed in % of the painting
+// (1536x1024, the stage), which covers the scene and is cropped to the terraces
+// (stageFor). An area runs x0..x1 along its path with the stones' feet at y, or lists its
+// own slots; sign: the centre of its wooden signpost's board.
+export const ART_W = 1536;
+export const ART_H = 1024;
+export const AREAS = {
+  DOTCOM: { x0: 42, x1: 78, y: 35.8, scale: 0.44, sign: { x: 37.7, y: 32.9 } },
+  CRISIS: { x0: 31, x1: 77, y: 52.6, scale: 0.62, sign: { x: 26.2, y: 45.6 } },
+  RECENT: { x0: 13.5, x1: 76, y: 75.8, scale: 0.86, sign: { x: 8.0, y: 65.1 } },
+  // The side plot is small: its own slots, around its signpost.
+  BOUGHT: { scale: 0.52, slots: [[2.4, 52.2], [5.4, 52.4], [11.4, 52.4], [14.4, 52.2], [3.9, 59.8], [8.4, 60.0], [12.9, 59.8]], sign: { x: 8.3, y: 44.9 } },
+};
+export const STONE_W = 4.4; // a stone's width at scale 1, in % of the painting's width
+export const STONE_RATIO = 778 / 560; // height / width of the stone art
+// Famous ones stand a little larger; so does a stone with many respects (capped).
+export const FAMOUS = new Set(['LEH', 'ENE', 'WCOM', 'BBI', 'TWTR', 'YHOO', 'SIVB', 'BBBY', 'WE', 'TOY', 'NSCP', 'SHLD', 'BSC']);
+const grow = (e, n) => (FAMOUS.has(e.ticker) ? 1.14 : 1) * (1 + Math.min(0.1, Math.log10(1 + (n[e.ticker] || 0)) * 0.04));
+
+// The painting's size and offset in a scene w x h: it covers the scene (never letterboxed)
+// and is shifted so the terraces (FOCUS, a height in the painting) sit in the middle.
+export const FOCUS = 0.575;
+export function stageFor(w, h) {
+  const sw = Math.max(w, h * (ART_W / ART_H));
+  const sh = sw * (ART_H / ART_W);
+  const top = Math.max(h - sh, Math.min(0, h / 2 - FOCUS * sh));
+  const left = (w - sw) / 2;
+  return { sw, sh, top, left };
+}
+
+// Where each stone stands: { e, sec, row (for the arrows, back to front), x, y (its foot),
+// size }, in % of the painting. Oldest first along each path.
+export function layout(list, { counts = {}, areas = AREAS } = {}) {
+  const bySec = new Map(SECTIONS.map((x) => [x.id, []]));
+  for (const e of list) bySec.get(sectionOf(e)).push(e);
+  const spots = [];
+  for (const [sec, stones] of bySec) {
+    const a = areas[sec];
+    stones.sort((p, r) => (p.date < r.date ? -1 : p.date > r.date ? 1 : 0));
+    if (a.slots) {
+      stones.forEach((e, i) => {
+        const [x, y] = a.slots[i % a.slots.length];
+        spots.push({ e, sec, x, y, size: a.scale * grow(e, counts) * (y < 56 ? 0.94 : 1) });
+      });
+      continue;
+    }
+    const spacing = (a.x1 - a.x0) / Math.max(1, stones.length);
+    const fit = (0.88 * spacing) / STONE_W; // never wider than the gap to the next stone
+    stones.forEach((e, i) => {
+      spots.push({ e, sec, x: a.x0 + spacing * (i + 0.5), y: a.y, size: Math.min(a.scale * grow(e, counts), fit) });
+    });
+  }
+  const ys = [...new Set(spots.map((s) => s.y.toFixed(1)))].sort((p, r) => p - r);
+  for (const s of spots) s.row = ys.indexOf(s.y.toFixed(1));
+  return spots;
+}
+
+// Each stone's box in px in a scene w x h: { left, top, right, bottom }, the foot at y.
+export function boxes(spots, w, h) {
+  const st = stageFor(w, h);
+  return spots.map((s) => {
+    const bw = (STONE_W / 100) * st.sw * s.size;
+    const bh = bw * STONE_RATIO;
+    const cx = st.left + (s.x / 100) * st.sw;
+    const bottom = st.top + (s.y / 100) * st.sh;
+    return { t: s.e.ticker, left: cx - bw / 2, right: cx + bw / 2, top: bottom - bh, bottom };
   });
+}
+// The signposts' label boxes (about 8 px a letter), in px: the stones must not cover them.
+export function signBoxes(w, h) {
+  const st = stageFor(w, h);
+  return SECTIONS.map((x) => {
+    const a = AREAS[x.id];
+    const cx = st.left + (a.sign.x / 100) * st.sw;
+    const cy = st.top + (a.sign.y / 100) * st.sh;
+    const bw = x.label.length * 7 + 10;
+    return { t: `sign:${x.id}`, left: cx - bw / 2, right: cx + bw / 2, top: cy - 9, bottom: cy + 9 };
+  });
+}
+// The pairs of boxes that overlap, and the boxes that leave the scene.
+export function clashes(list, w, h) {
+  const out = [];
+  for (let i = 0; i < list.length; i += 1) {
+    const a = list[i];
+    if (a.left < 0 || a.top < 0 || a.right > w || a.bottom > h) out.push([a.t, 'edge']);
+    for (let j = i + 1; j < list.length; j += 1) {
+      const b = list[j];
+      if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) out.push([a.t, b.t]);
+    }
+  }
+  return out;
 }
 
 // The next stone for an arrow key: along the row for left and right, the nearest in the next
@@ -289,47 +397,90 @@ export function stepStone(spots, i, key) {
     const next = row[at + dir];
     return next ? next.k : i;
   }
-  const want = cur.row + (key === 'ArrowUp' ? -1 : 1);
+  const rows = [...new Set(spots.map((s) => s.row))].sort((a, b) => a - b);
+  const want = rows[rows.indexOf(cur.row) + (key === 'ArrowUp' ? -1 : 1)];
+  if (want === undefined) return i;
   const row = spots.map((s, k) => ({ s, k })).filter(({ s }) => s.row === want);
-  if (!row.length) return i;
   return row.sort((a, b) => Math.abs(a.s.x - cur.x) - Math.abs(b.s.x - cur.x))[0].k;
 }
 
+// The hover and focus label: 'Lehman Brothers · 2008 · 3 respects'.
+export const tipText = (e, n = 0) => `${e.name} · ${e.date.slice(0, 4)} · ${respectsText(n)}`;
+
 function cemeteryHtml(spots, art) {
-  const stones = spots.map((s, i) => `<a class="gv-plot" href="${esc(q(`GRAVEYARD ${s.e.ticker}`))}" data-cmd="${esc(`GRAVEYARD ${s.e.ticker}`)}" data-i="${i}" aria-label="${esc(tombstoneLine(s.e))}">${stoneHtml({ ...s.e, art: { stone: art.stone } }, { small: true })}</a>`).join('');
-  return `<div class="gv-yard${art.cemetery ? ' has-art' : ''}">
-      ${art.cemetery ? `<img class="gv-bg" src="${esc(art.cemetery)}" width="1536" height="1024" alt="">` : ''}
-      <div class="gv-ground">${stones}</div>
-      <p class="gv-caption" aria-live="polite"></p>
+  const stones = spots.map((s, i) => `<a class="gv-plot${s.sec === 'BOUGHT' ? ' is-bought' : ''}" href="${esc(q(`GRAVEYARD ${s.e.ticker}`))}" data-cmd="${esc(`GRAVEYARD ${s.e.ticker}`)}" data-i="${i}" aria-label="${esc(tombstoneLine(s.e))}">${stoneHtml({ ...s.e, art: { stone: art.stone } }, { small: true })}</a>`).join('');
+  const signs = SECTIONS.map((x) => `<span class="gv-sign" data-sec="${x.id}">${esc(x.label)}</span>`).join('');
+  const bg = art.yard || art.cemetery;
+  return `<div class="gv-yard${bg ? ' has-art' : ''}">
+      <div class="gv-stage">
+        ${bg ? `<img class="gv-bg" src="${esc(bg)}" width="1536" height="1024" alt="">` : ''}
+        ${signs}${stones}
+        <p class="gv-tip" aria-live="polite" hidden></p>
+      </div>
       <p class="gv-corner">${code('GRAVEYARD ZOMBIES', 'ZOMBIES')}</p>
     </div>`;
 }
 
 function renderCemetery(el, data, ctx) {
-  const spots = layout(data.entries);
+  let n = counts || {};
+  const spots = layout(data.entries, { counts: n });
   el.innerHTML = panel('1', 'Graveyard', cemeteryHtml(spots, data.art), { cls: 'panel-solo gv-panel', meta: `${metaNote('ESC THEN ARROWS')} ${code('GRAVEYARD TABLE', 'TABLE')}` });
+  for (const sign of el.querySelectorAll('.gv-sign')) {
+    const a = AREAS[sign.dataset.sec];
+    sign.style.left = `${a.sign.x}%`;
+    sign.style.top = `${a.sign.y}%`;
+  }
+  // The painting covers the scene, cropped to the terraces; again on every resize.
+  const yard = el.querySelector('.gv-yard');
+  const stage = el.querySelector('.gv-stage');
+  const fitStage = () => {
+    const st = stageFor(yard.clientWidth, yard.clientHeight);
+    stage.style.width = `${st.sw}px`;
+    stage.style.height = `${st.sh}px`;
+    stage.style.left = `${st.left}px`;
+    stage.style.top = `${st.top}px`;
+  };
+  fitStage();
+  if (typeof ResizeObserver === 'function') {
+    const ro = new ResizeObserver(fitStage);
+    ro.observe(yard);
+    ctx.onCleanup(() => ro.disconnect());
+  }
   const plots = [...el.querySelectorAll('.gv-plot')];
-  plots.forEach((p, i) => {
+  const place = () => plots.forEach((p, i) => {
     const s = spots[i];
     p.style.left = `${s.x}%`;
     p.style.top = `${s.y}%`;
     p.style.setProperty('--s', String(s.size.toFixed(3)));
     p.style.zIndex = String(10 + s.row);
   });
-  const caption = el.querySelector('.gv-caption');
+  place();
+  const tip = el.querySelector('.gv-tip');
   let on = -1;
   const pick = (i) => {
     if (i < 0 || i >= plots.length) return;
     plots[on]?.classList.remove('is-on');
     on = i;
     plots[on].classList.add('is-on');
-    const e = spots[on].e;
-    caption.textContent = `${e.ticker} · ${e.name} · ${e.date.slice(0, 4)}`;
+    const s = spots[on];
+    tip.textContent = tipText(s.e, n[s.e.ticker] || 0);
+    tip.hidden = false;
+    const lift = (STONE_W / 100) * stage.clientWidth * s.size * STONE_RATIO + 14; // above the lifted stone
+    tip.style.left = `${Math.max(8, Math.min(92, s.x))}%`;
+    tip.style.top = `calc(${s.y}% - ${lift.toFixed(0)}px)`;
   };
-  pick(spots.length - 1);
-  plots.forEach((p, i) => p.addEventListener('mouseenter', () => pick(i)));
+  plots.forEach((p, i) => { p.addEventListener('mouseenter', () => pick(i)); p.addEventListener('focus', () => pick(i)); });
+
+  loadRespects(ctx.signal).then((fresh) => {
+    if (!el.isConnected) return;
+    n = fresh;
+    const again = layout(data.entries, { counts: n });
+    again.forEach((s, i) => { spots[i] = s; });
+    place();
+    if (on >= 0) pick(on);
+  });
   ctx.onCleanup(sceneKeys(el, (ev) => {
-    if (ev.key.startsWith('Arrow')) { pick(stepStone(spots, on, ev.key)); return true; }
+    if (ev.key.startsWith('Arrow')) { pick(stepStone(spots, on < 0 ? 0 : on, ev.key)); return true; }
     if (ev.key === 'Enter' && on >= 0 && !ev.target.closest?.('a, button')) { ctx.run(`GRAVEYARD ${spots[on].e.ticker}`); return true; }
     if (ev.key === 't' || ev.key === 'T') { ctx.run('GRAVEYARD TABLE'); return true; }
     return false;
@@ -339,27 +490,32 @@ function renderCemetery(el, data, ctx) {
 
 // ---- The table -------------------------------------------------------------------------------
 
-export function graveyardTable(list, n = {}, { mourned = false } = {}) {
-  const rows = [...list].sort(mourned
+// grouped: one block per cemetery section (the phone's cemetery), in the scene's order.
+export function graveyardTable(list, n = {}, { mourned = false, grouped = false } = {}) {
+  const order = mourned
     ? (a, b) => (n[b.ticker] || 0) - (n[a.ticker] || 0) || (a.date < b.date ? 1 : -1)
-    : (a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  return `<table class="grid-table ns-table">
-    <thead><tr><th scope="col">Ticker</th><th scope="col">Name</th><th scope="col" class="ns-what">What happened</th><th scope="col" class="num">Date</th><th scope="col" class="num ns-what">Respects</th><th scope="col" class="ns-srccol">Source</th></tr></thead>
-    <tbody>${rows.map((e) => `<tr>
+    : (a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+  const row = (e) => `<tr>
       <td>${code(`GRAVEYARD ${e.ticker}`, e.ticker)}</td>
       <td class="ns-cell">${esc(e.name)}</td>
       <td class="ns-what ns-cell dim">${esc(e.what)}</td>
       <td class="num">${esc(dayText(e.date))}</td>
       <td class="num ns-what">${esc((n[e.ticker] || 0).toLocaleString('en-US'))}</td>
       <td class="ns-srccol">${ext(e.src[0], srcHost(e.src[0]))}</td>
-    </tr>`).join('')}</tbody>
+    </tr>`;
+  const body = grouped
+    ? [...SECTIONS].reverse().map((x) => { const r = list.filter((e) => sectionOf(e) === x.id).sort(order); return r.length ? `<tr class="gv-sec"><th scope="rowgroup" colspan="6">${esc(x.label)}</th></tr>${r.map(row).join('')}` : ''; }).join('')
+    : [...list].sort(order).map(row).join('');
+  return `<table class="grid-table ns-table">
+    <thead><tr><th scope="col">Ticker</th><th scope="col">Name</th><th scope="col" class="ns-what">What happened</th><th scope="col" class="num">Date</th><th scope="col" class="num ns-what">Respects</th><th scope="col" class="ns-srccol">Source</th></tr></thead>
+    <tbody>${body}</tbody>
   </table>`;
 }
 
-function renderTable(el, data, ctx, { mourned = false, miss = '' } = {}) {
+function renderTable(el, data, ctx, { mourned = false, miss = '', grouped = false } = {}) {
   const draw = (n) => {
     const sort = mourned ? `${code('GRAVEYARD TABLE', 'NEWEST')} · MOST MOURNED` : `NEWEST · ${code('GRAVEYARD MOURNED', 'MOST MOURNED')}`;
-    el.innerHTML = panel('1', 'Graveyard', `${miss}${graveyardTable(data.entries, n, { mourned })}`, { cls: 'panel-solo', meta: `${sort} · ${code('GRAVEYARD', 'CEMETERY')}` });
+    el.innerHTML = panel('1', 'Graveyard', `${miss}${graveyardTable(data.entries, n, { mourned, grouped })}`, { cls: 'panel-solo', meta: `${sort} · ${code('GRAVEYARD', 'CEMETERY')}` });
   };
   draw(counts || {});
   loadRespects(ctx.signal).then((n) => { if (el.isConnected) draw(n); });
@@ -428,7 +584,7 @@ export function renderGraveyard(el, cmd, ctx) {
     const e = t ? findGrave(data.entries, t) || findGrave(data.zombies, t) : null;
     if (e) { renderStone(el, e, ctx); return; }
     const miss = t ? `<p class="notice">No ${esc(t)} in the graveyard.</p>` : '';
-    if (view === 'TABLE' || view === 'MOURNED' || t || phone()) { renderTable(el, data, ctx, { mourned: view === 'MOURNED', miss }); return; }
+    if (view === 'TABLE' || view === 'MOURNED' || t || phone()) { renderTable(el, data, ctx, { mourned: view === 'MOURNED', miss, grouped: !view && !t }); return; }
     renderCemetery(el, data, ctx);
   }).catch((err) => {
     if (err.name === 'AbortError' || !el.isConnected) return;

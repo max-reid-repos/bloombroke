@@ -109,6 +109,67 @@ export function onThisDayLine(e) {
 export const YT_ID = /^[A-Za-z0-9_-]{11}$/;
 export const ytEmbed = (id) => (YT_ID.test(id || '') ? `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0` : null);
 
+// ---- GRAVEYARD v3: the cemetery's sections, the timeline, the last website ----------------
+
+// Where a stone lies: a side plot for companies bought or taken private (not the 2008-2009
+// crisis rescues), else by the year it died: DOT-COM (to 2003), 2008 CRISIS (2004 to
+// 2012, the crisis and its tail) and RECENT (2013 on). Back to front, then the side plot.
+export const SECTIONS = [
+  { id: 'DOTCOM', label: 'DOT-COM' },
+  { id: 'CRISIS', label: '2008 CRISIS' },
+  { id: 'RECENT', label: 'RECENT' },
+  { id: 'BOUGHT', label: 'BOUGHT OUT' },
+];
+export function sectionOf(e) {
+  const year = Number(String(e.date).slice(0, 4));
+  if (/^(Bought by|Taken private|Core business sold)/.test(e.what) && !(year >= 2008 && year <= 2009)) return 'BOUGHT';
+  if (year <= 2003) return 'DOTCOM';
+  if (year <= 2012) return 'CRISIS';
+  return 'RECENT';
+}
+
+// The Internet Archive snapshot's caption: 'lehman.com, Sep 2008 · Internet Archive'.
+export function siteCaption(wayback) {
+  const m = /^https:\/\/web\.archive\.org\/web\/(\d{4})(\d{2})\d{8}(?:id_)?\/(?:https?:\/\/)?([^/:?]+)/.exec(String(wayback || ''));
+  if (!m) return '';
+  const host = m[3].split('.').slice(-2).join('.');
+  return `${host}, ${MON[Number(m[2]) - 1]} ${m[1]} · Internet Archive`;
+}
+
+// The sourced dates for the timeline strip, in order: FOUNDED, LISTED, PEAK, what happened
+// (FILED, ACQUIRED, SEIZED ...), DELISTED or SHARES CANCELLED, and a zombie's CAME BACK.
+// A point without its date and source is left out.
+export function eventLabel(what) {
+  const w = String(what || '');
+  if (/^Filed/.test(w)) return 'FILED';
+  if (/^Bought|sold/i.test(w)) return 'ACQUIRED';
+  if (/Seized|[Cc]losed by/.test(w)) return 'SEIZED';
+  if (/private/.test(w)) return 'TAKEN PRIVATE';
+  if (/[Ss]hut ?down|Announced shutdown/.test(w)) return 'SHUT DOWN';
+  if (/Delisted/.test(w)) return 'DELISTED';
+  return 'GONE';
+}
+export function timelinePoints(e) {
+  const pts = [];
+  if (Number.isInteger(e.founded) && e.foundedSrc?.length) pts.push({ label: 'FOUNDED', when: String(e.founded), at: `${e.founded}` });
+  if (Number.isInteger(e.listed) && (e.listedSrc?.length || e.src?.length)) pts.push({ label: 'LISTED', when: String(e.listed), at: `${e.listed}` });
+  if (e.peak?.date && e.peak.src?.length) pts.push({ label: 'PEAK', when: periodText(e.peak.date), at: e.peak.date });
+  pts.push({ label: eventLabel(e.what), when: dayText(e.date), at: e.date });
+  const k = e.final?.kind || '';
+  if (e.final?.date && e.final.src?.length && e.final.date > e.date) {
+    if (/delist|last close on exchange/.test(k)) pts.push({ label: 'DELISTED', when: periodText(e.final.date), at: e.final.date });
+    else if (/wiped out/.test(k)) pts.push({ label: 'SHARES CANCELLED', when: periodText(e.final.date), at: e.final.date });
+  }
+  if (e.zombie && e.back?.date) pts.push({ label: 'CAME BACK', when: dayText(e.back.date), at: e.back.date });
+  return pts.filter((p) => p.when).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+}
+
+// The cliff: '$1,000 at the peak (Feb 2007) was worth $0 by Mar 2012' -> { from, to }.
+export function cliffOf(e) {
+  const m = /^\$1,000 at the peak \(([^)]+)\) was worth (\$[\d,.]+) by (.+)$/.exec(e.peakLine || '');
+  return m ? { from: '$1,000', peak: m[1], to: m[2], by: m[3] } : null;
+}
+
 // "LEH. Lehman Brothers. Listed 1994. Filed for bankruptcy 15 Sep 2008."
 export function tombstoneLine(e) {
   const listed = Number.isInteger(e.listed) ? ` Listed ${e.listed}.` : '';

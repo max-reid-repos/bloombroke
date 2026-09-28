@@ -11,10 +11,10 @@ import { nosuchMeta, stoneDescription, tombstoneTree, makeNoSuchCards, parseBloc
 import { securityHeaders } from '../lib/embed.js';
 import { sitemapUrls, graveyardSitemapUrls } from '../lib/seo.js';
 import { parseCommand } from '../public/app.js';
-import { stoneYears, flowersFor, respectsText, onThisDayLine, ytEmbed, periodText, MAX_FLOWERS, GRAVEYARD_VIEWS } from '../public/nosuch.js';
+import { stoneYears, flowersFor, respectsText, onThisDayLine, ytEmbed, periodText, sectionOf, SECTIONS, siteCaption, timelinePoints, cliffOf, MAX_FLOWERS, GRAVEYARD_VIEWS } from '../public/nosuch.js';
 import {
   stoneHtml, stonePageHtml, peakLineHtml, videoHtml, flowersHtml, layout, stepStone, zombiesHtml, graveyardTable, onThisDayHtml, sourcesHtml, pageSources,
-  sceneKeys, respectStatus,
+  sceneKeys, respectStatus, boxes, signBoxes, clashes, stageFor, tipText, siteHtml, timelineHtml,
 } from '../public/screens/graveyard.js';
 
 const FIX = fileURLToPath(new URL('./fixtures/graveyard-v2.json', import.meta.url));
@@ -118,8 +118,8 @@ test('RIP WHATIF: the sourced peak line, hidden when null', () => {
   assert.ok(pageSources(LEH).includes('https://example.test/leh-final'), 'its sources are under SOURCES');
   assert.equal(peakLineHtml({ ...LEH, peakSrc: [] }), '', 'no source, no line');
   assert.equal(peakLineHtml(BBI), '');
-  assert.doesNotMatch(stonePageHtml(BBI, 0), /gv-whatif/);
-  assert.match(stonePageHtml(LEH, 0), /gv-whatif/);
+  assert.doesNotMatch(stonePageHtml(BBI, 0), /gv-cliff/, 'v3: the line is the cliff on the timeline');
+  assert.match(stonePageHtml(LEH, 0), /<figure class="gv-cliff" title="\$1,000 at the peak \(Feb 2007\) was worth \$2 by Sep 2008"/);
 });
 
 test('video: our own art and a play mark; nothing from YouTube or Google before a click', () => {
@@ -138,7 +138,7 @@ test('video: our own art and a play mark; nothing from YouTube or Google before 
   assert.equal(ytEmbed('<x>'), null);
   const src = readFileSync(new URL('../public/screens/graveyard.js', import.meta.url), 'utf8');
   assert.doesNotMatch(src, /ytimg|youtube\.com\/iframe_api|www\.youtube\.com\/embed/, 'no stills from YouTube, no YouTube script');
-  assert.match(page, /class="gv-page has-video"/, 'desk: the video in its own column');
+  assert.match(page, /class="gv-page3 has-video"/, 'desk: the video in its own column');
 });
 
 test('CSP: only the video still and the no-cookie player are added', () => {
@@ -247,22 +247,88 @@ test('respects route: same origin, known stones only, the day gate and a per-add
   }
 });
 
-test('cemetery: rows back to front, size by peak value, arrows walk, Enter and T in the screen', () => {
-  const list = [...DATA.stones, { ...BBI, ticker: 'AAA', date: '2011-01-01' }, { ...BBI, ticker: 'BBB', date: '2012-01-01' }, { ...BBI, ticker: 'CCC', date: '2013-01-01' }];
-  const spots = layout(list, { rows: 2 });
-  assert.equal(spots.length, 5);
-  assert.deepEqual(spots.map((s) => s.row), [0, 0, 0, 1, 1], 'oldest at the back');
-  for (const s of spots) assert.ok(s.x >= 4 && s.x <= 96 && s.y > 0 && s.y < 100);
-  assert.ok(spots[3].size > spots[1].size, 'the front row is bigger');
-  const right = stepStone(spots, 0, 'ArrowRight');
-  assert.equal(spots[right].row, 0);
-  assert.notEqual(right, 0);
-  assert.equal(spots[stepStone(spots, 0, 'ArrowDown')].row, 1);
-  assert.equal(stepStone(spots, 0, 'ArrowUp'), 0, 'no row above: stays');
+test('cemetery v3: every stone in one section, back to front; the mapping', () => {
+  const real = loadGraveyardData().stones;
+  const by = {};
+  for (const e of real) (by[sectionOf(e)] ||= []).push(e.ticker);
+  assert.deepEqual(Object.keys(by).sort(), ['BOUGHT', 'CRISIS', 'DOTCOM', 'RECENT']);
+  assert.equal(Object.values(by).flat().length, real.length, 'every stone once');
+  assert.equal(new Set(Object.values(by).flat()).size, real.length);
+  assert.deepEqual(by.BOUGHT.sort(), ['ATVI', 'LNKD', 'NSCP', 'TOY', 'TWTR', 'WFM', 'YHOO']);
+  assert.deepEqual(by.DOTCOM.sort(), ['ENE', 'IPET', 'WBVN', 'WCOM']);
+  assert.ok(by.CRISIS.includes('LEH') && by.CRISIS.includes('BSC'), 'crisis rescues stay in the crisis');
+  assert.ok(by.RECENT.includes('SIVB') && by.RECENT.includes('NKLA'));
+  const spots = layout(real);
+  assert.equal(spots.length, real.length);
+  const y = (sec) => Math.max(...spots.filter((sp) => sp.sec === sec).map((sp) => sp.y));
+  assert.ok(y('DOTCOM') < y('CRISIS') && y('CRISIS') < y('RECENT'), 'back terrace high, front low');
+  const size = (t) => spots.find((sp) => sp.e.ticker === t).size;
+  assert.ok(size('SIVB') > size('LEH') && size('LEH') > size('WCOM'), 'perspective: the front is larger');
+  assert.ok(size('LEH') > size('CFC'), 'famous ones a bit larger');
+  const more = layout(real, { counts: { CFC: 5000 } });
+  const cfc = more.find((sp) => sp.e.ticker === 'CFC').size;
+  assert.ok(cfc > size('CFC') && cfc <= size('CFC') * 1.11, 'respects grow a stone, capped');
+  assert.equal(SECTIONS.map((x) => x.label).join(' | '), 'DOT-COM | 2008 CRISIS | RECENT | BOUGHT OUT', 'four signposts');
+});
+
+test('cemetery v3: no overlaps and nothing cut off at 1536x730 and 1280x720 (and wider, and shorter)', () => {
+  const real = loadGraveyardData().stones;
+  // The scene inside the panel at those windows (the yard's own size, measured in the browser).
+  for (const [w, h] of [[1428, 560], [1172, 550], [1428, 760], [1000, 420]]) {
+    for (const counts of [{}, Object.fromEntries(real.map((e) => [e.ticker, 1e6]))]) {
+      const list = [...boxes(layout(real, { counts }), w, h), ...signBoxes(w, h)];
+      assert.deepEqual(clashes(list, w, h), [], `${w}x${h}`);
+    }
+  }
+  const st = stageFor(1428, 560);
+  assert.ok(st.sw >= 1428 && st.sh >= 560 && st.top <= 0 && st.top >= 560 - st.sh, 'the painting covers the scene');
+});
+
+test('cemetery v3: arrows walk rows back to front, the label says name, year and respects', () => {
+  const spots = layout(loadGraveyardData().stones);
+  const leh = spots.findIndex((sp) => sp.e.ticker === 'LEH');
+  const right = stepStone(spots, leh, 'ArrowRight');
+  assert.equal(spots[right].row, spots[leh].row);
+  assert.ok(spots[right].x > spots[leh].x);
+  assert.ok(spots[stepStone(spots, leh, 'ArrowDown')].row > spots[leh].row);
+  assert.ok(spots[stepStone(spots, leh, 'ArrowUp')].row < spots[leh].row);
   assert.equal(stepStone([], 0, 'ArrowLeft'), -1);
+  assert.equal(tipText(spots[leh].e, 3), 'Lehman Brothers · 2008 · 3 respects');
   const src = readFileSync(new URL('../public/screens/graveyard.js', import.meta.url), 'utf8');
   assert.match(src, /metaNote\('ESC THEN ARROWS'\)\} \$\{code\('GRAVEYARD TABLE', 'TABLE'\)\}/, 'hints in the title strip, 4 words');
   assert.match(src, /max-width: 639px/, 'a phone gets the table');
+  const t = graveyardTable(loadGraveyardData().stones, {}, { grouped: true });
+  const heads = [...t.matchAll(/<tr class="gv-sec"><th scope="rowgroup" colspan="6">([^<]+)</g)].map((m) => m[1]);
+  assert.deepEqual(heads, ['BOUGHT OUT', 'RECENT', '2008 CRISIS', 'DOT-COM'], 'the phone table, by the same sections');
+});
+
+test('stone page v3: the last website picture, its fallback, the timeline and the cliff', () => {
+  const real = loadGraveyardData().stones;
+  const leh = withArt(real.find((e) => e.ticker === 'LEH'), { stone: '/img/graveyard/stone.webp', doodles: ['LEH'], sites: ['LEH'] });
+  assert.equal(siteCaption(leh.wayback), 'lehman.com, Sep 2008 · Internet Archive');
+  const site = siteHtml(leh);
+  assert.match(site, /<a class="gv-site" href="https:\/\/web\.archive\.org\/web\/20080913111928\/http:\/\/www\.lehman\.com:80\/" target="_blank" rel="noopener noreferrer"/);
+  assert.match(site, /src="\/img\/graveyard\/sites\/leh\.webp"/, 'our own copy, nothing from the archive before a click');
+  const page = stonePageHtml(leh, 0);
+  const srcs = [...page.matchAll(/\b(?:src|srcset|data-src|poster)="([^"]*)"/g)].map((m) => m[1]);
+  assert.ok(srcs.length >= 4 && srcs.every((u) => u.startsWith('/img/graveyard/')), `every image is ours: ${srcs.join(' ')}`);
+  assert.doesNotMatch(page, /<iframe|<script|<link|<object|<embed/, 'no archive, YouTube or Google request before a click: nothing that loads by itself');
+  assert.doesNotMatch(sourcesHtml(leh, { linkSite: false }), /LAST WEBSITE/, 'the picture replaces the text link');
+  // Without a capture: no picture, the text link stays.
+  const bare = withArt(real.find((e) => e.ticker === 'LEH'), { doodles: [], sites: [] });
+  assert.equal(siteHtml(bare), '');
+  assert.match(stonePageHtml(bare, 0), /LAST WEBSITE/);
+  // The timeline: sourced dates only, in order; the cliff from the RIP WHATIF line.
+  assert.deepEqual(timelinePoints(leh).map((p) => `${p.label} ${p.when}`), ['FOUNDED 1850', 'PEAK 2 Feb 2007', 'FILED 15 Sep 2008', 'SHARES CANCELLED 6 Mar 2012']);
+  const nscp = real.find((e) => e.ticker === 'NSCP');
+  assert.deepEqual(timelinePoints(nscp).map((p) => p.label), ['LISTED', 'PEAK', 'ACQUIRED'], 'a same-day delisting is left out');
+  assert.deepEqual(cliffOf(leh), { from: '$1,000', peak: 'Feb 2007', to: '$0', by: 'Mar 2012' });
+  const tl = timelineHtml(leh);
+  assert.match(tl, /gv-cliff/);
+  assert.equal(cliffOf({}), null);
+  assert.doesNotMatch(timelineHtml({ ...leh, peakLine: undefined }), /gv-cliff/);
+  const gm = loadGraveyardData().zombies.find((z) => z.ticker === 'GM');
+  assert.ok(timelinePoints(gm).some((p) => p.label === 'CAME BACK'));
 });
 
 test('router: GRAVEYARD views and stones', () => {
