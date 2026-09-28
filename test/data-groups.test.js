@@ -1,5 +1,5 @@
-// DATA in eight groups: every dataset in exactly one group, a group's age is its oldest
-// dataset, the keys open and close groups (never from the command bar), gaps as a ring
+// DATA in eight groups: every dataset in exactly one group, FRESH is "on schedule" per
+// dataset cadence and the group's last check, the keys open and close groups (never from the command bar), gaps as a ring
 // with a tooltip, and a collapsed screen of few words.
 
 import test from 'node:test';
@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { DATASETS, dataRows } from '../lib/provenance.js';
 import { GAUGES } from '../data/weird/index.js';
 import {
-  GROUPS, groupRows, groupAge, freshState, dataGrid, memberTitle, govSource, gapOf, openFor, dataOps, intoTable, isLit, SEC_TIP,
+  GROUPS, groupRows, scheduleState, groupFresh, freshTitle, tradingDaysBehind, fetchAge, ruleOf, dataGrid, memberTitle, govSource, gapOf, openFor, dataOps, intoTable, isLit, SEC_TIP,
 } from '../public/screens/data.js';
 import { treeKey } from '../public/screens/sectors.js';
 
@@ -46,24 +46,85 @@ test('grouping: every dataset lands in exactly one group, none lost', () => {
   assert.equal(orphan.length, 1);
 });
 
-test('group age = its oldest dataset; the dot says how many have been seen', () => {
-  const rows = [
-    { id: 'quotes', age_seconds: 12, checked_seconds: 3, delay: 'real-time' },
-    { id: 'futures', age_seconds: 10800, checked_seconds: 5, delay: 'delayed-10m' },
-    { id: 'intl', age_seconds: null, checked_seconds: null, delay: 'delayed-15m' },
-  ];
-  assert.equal(groupAge(rows), 10800);
-  assert.ok(Number.isNaN(groupAge([{ age_seconds: null }])), 'none known: no made-up age');
-  assert.equal(freshState(rows), 'slow');
-  assert.equal(freshState(rows.slice(0, 2)), 'ok');
-  assert.equal(freshState([rows[2]]), 'none');
-  assert.equal(freshState([{ id: 'geo', delay: 'static', age_seconds: null, checked_seconds: null }, rows[0]]), 'ok', 'built-in data never turns the dot grey');
-  const g = groupRows(rows.map((r) => ({ ...r, group: 'Prices', name: r.id })));
-  const html = dataGrid(g);
-  assert.match(html, /data-k="g:prices"[\s\S]*?<td class="num dg-fresh"><span class="sx-dot" data-state="slow"[^>]*><\/span>3h<\/td>/, 'the collapsed row: dot and oldest age');
-  assert.doesNotMatch(html, /dg-mem/, 'collapsed: group rows only');
-  const none = dataGrid(groupRows([{ ...rows[2], group: 'Prices', name: 'x' }]));
-  assert.match(none, /data-state="none"[^>]*><\/span>--<\/td>/);
+// A dataset as /api/data sends it, checked `chk` seconds before NOW, its data dated asOf.
+const ds = (rule, asOf, chk = 5, extra = {}) => ({ id: 'x', short: 'X', updates: 'daily', rule, as_of: asOf, checked_seconds: chk, age_seconds: Math.round((NOW - Date.parse(asOf)) / 1000), ...extra });
+// NOW is Friday 2026-09-25 16:00:30 ET (market just closed). SUN: Sunday evening ET.
+const SUN = Date.parse('2026-09-27T23:00:00.000Z');
+const OPEN = Date.parse('2026-09-24T15:00:00.000Z'); // Thursday 11:00 ET
+
+test('schedule words map to rules; built in is never judged', () => {
+  assert.deepEqual(['live', 'every minute', 'hourly', 'daily', 'weekly', 'monthly', 'quarterly', 'built in', 'rarely'].map(ruleOf),
+    ['minutes', 'minutes', 'hours3', 'daily', 'days9', 'days75', 'days120', 'none', 'none']);
+  assert.equal(scheduleState(ds('none', '2020-01-01T00:00:00.000Z')), 'unknown');
+  assert.equal(scheduleState({ rule: 'daily', as_of: null, checked_seconds: null, age_seconds: null }, NOW), 'unknown', 'not seen: grey, never a guess');
+});
+
+test('on schedule: live feeds within minutes', () => {
+  const at = (asOf, chk) => ds('minutes', asOf, chk);
+  assert.equal(scheduleState(at('2026-09-25T19:50:30.000Z', 60), NOW), 'ok', '9 min behind at the fetch');
+  assert.equal(scheduleState(at('2026-09-25T18:00:30.000Z', 60), NOW), 'late', 'two hours behind');
+  // Judged at the fetch: a feed nobody opened for hours is not late.
+  assert.equal(scheduleState(at('2026-09-25T16:59:00.000Z', 3 * 3600), NOW), 'ok');
+});
+
+test('on schedule: a live price is late while the NYSE is open, not over a weekend', () => {
+  const t = (asOf, now) => scheduleState({ rule: 'market', as_of: asOf, checked_seconds: 10 }, now);
+  assert.equal(t(new Date(OPEN - 5 * 60_000).toISOString(), OPEN), 'ok');
+  assert.equal(t(new Date(OPEN - 2 * 3600_000).toISOString(), OPEN), 'late', 'market open, two hours stale');
+  assert.equal(t('2026-09-25T00:00:00.000Z', SUN), 'ok', 'Friday\'s close on Sunday');
+  assert.equal(t('2026-09-25T20:00:00.000Z', SUN), 'ok');
+  assert.equal(t('2026-09-23T20:00:00.000Z', SUN), 'late', 'Wednesday\'s price on Sunday');
+});
+
+test('on schedule: daily at most 2 trading days behind, weekends and NYSE holidays skipped', () => {
+  assert.equal(tradingDaysBehind('2026-09-25T00:00:00.000Z', SUN), 0, 'Friday, seen on Sunday');
+  assert.equal(tradingDaysBehind('2026-09-24T00:00:00.000Z', SUN), 1);
+  assert.equal(tradingDaysBehind('2026-09-04T00:00:00.000Z', Date.parse('2026-09-08T14:00:00.000Z')), 1, 'Labor Day Sep 7 not counted');
+  const d = (asOf, now) => scheduleState({ rule: 'daily', as_of: asOf, checked_seconds: 10 }, now);
+  assert.equal(d('2026-09-24T00:00:00.000Z', SUN), 'ok', 'Thursday\'s rate on Sunday');
+  assert.equal(d('2026-09-22T00:00:00.000Z', SUN), 'late', 'Tuesday\'s on Sunday: 3 trading days behind');
+  assert.equal(d('2026-09-23T00:00:00.000Z', NOW), 'ok');
+});
+
+test('on schedule: weekly, monthly (dated the 1st), quarterly', () => {
+  const s = (rule, asOf) => scheduleState(ds(rule, asOf, 60), NOW);
+  assert.equal(s('days9', '2026-09-17T00:00:00.000Z'), 'ok');
+  assert.equal(s('days9', '2026-09-10T00:00:00.000Z'), 'late');
+  assert.equal(s('days75', '2026-08-01T00:00:00.000Z'), 'ok', 'August CPI in late September');
+  assert.equal(s('days75', '2026-06-01T00:00:00.000Z'), 'late', 'June data in late September');
+  assert.equal(s('days120', '2026-07-31T00:00:00.000Z'), 'ok');
+  assert.equal(s('days120', '2026-04-30T00:00:00.000Z'), 'late');
+  // Company data, dated by its own last event: judged by the fetch only.
+  assert.equal(scheduleState(ds('fetch', '2025-01-01T00:00:00.000Z', 30), NOW), 'ok');
+  assert.equal(scheduleState({ rule: 'fetch', checked_seconds: null, age_seconds: null }, NOW), 'unknown');
+  assert.equal(fetchAge({ rule: 'fetch', checked_seconds: null, age_seconds: 7 }), 7, 'a counter kept here: its own age');
+});
+
+test('group FRESH: red when any is late, green when all seen are on time, grey when none; text = last check', () => {
+  const ok = { ...ds('days75', '2026-08-01T00:00:00.000Z', 40), short: 'CPI', updates: 'monthly' };
+  const late = { ...ds('days75', '2026-05-01T00:00:00.000Z', 300), short: 'Boxes', updates: 'monthly' };
+  const unseen = { rule: 'daily', as_of: null, checked_seconds: null, age_seconds: null };
+  assert.equal(groupFresh([ok, unseen], NOW).state, 'ok');
+  assert.equal(groupFresh([ok, unseen], NOW).age, 40, 'the newest good fetch');
+  const f = groupFresh([ok, late], NOW);
+  assert.equal(f.state, 'late');
+  assert.match(freshTitle(f), /^Late: Boxes \(monthly, data from May 1\)\. Last check 40s ago\.$/);
+  assert.equal(groupFresh([unseen], NOW).state, 'unknown');
+  assert.equal(freshTitle(groupFresh([unseen], NOW)), 'Not checked since the server started.');
+  assert.match(freshTitle(groupFresh([ok, unseen], NOW)), /^On schedule: 1 of 2 checked/);
+  // Drawn: the dot's state and the last check, the one-line tooltip on the cell.
+  const rows = groupRows([{ id: 'cpi', group: 'Economy', name: 'CPI-U inflation (CPI)', delay: 'monthly', as_of: '2026-08-01T00:00:00.000Z', checked_seconds: 12, age_seconds: 57 * 86400 }]);
+  const html = dataGrid(rows, { open: new Set(['macro']), now: NOW });
+  assert.match(html, /<td class="num dg-fresh" title="On schedule: [^"]+"><span class="sx-dot" data-state="ok"[^>]*><\/span>12s<\/td>/);
+  assert.match(html, /<tr id="data-cpi"[\s\S]*?<td class="dg-upd">monthly<\/td>\s*<td class="num dg-fresh"><span class="sx-dot" data-state="ok"[^>]*><\/span>57d<\/td>/, 'the member: cadence and its own data age');
+  const red = dataGrid(groupRows([{ id: 'cpi', group: 'Economy', name: 'CPI', delay: 'monthly', as_of: '2026-05-01T00:00:00.000Z', checked_seconds: 12, age_seconds: 1 }]), { now: NOW });
+  assert.match(red, /title="Late: CPI inflation[^"]*"><span class="sx-dot" data-state="failing"/);
+});
+
+test('every listed dataset has a rule its updates word or its own names', () => {
+  for (const g of groupRows(allRows())) for (const r of g.rows) {
+    assert.ok(['minutes', 'market', 'hours3', 'daily', 'days9', 'days10', 'days30', 'weeks5', 'days60', 'days75', 'months4', 'days120', 'days200', 'fetch', 'none'].includes(r.rule), `${r.id}: ${r.rule}`);
+  }
 });
 
 test('collapsed: three columns, no source class, licence, coverage, history or gaps', () => {

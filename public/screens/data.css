@@ -3,7 +3,7 @@
 
 /* ---- DATA: eight group rows that open to their datasets (screens/data.js) ---- */
 .dg-scroll { overflow-y: auto; max-height: 100%; }
-.dg-table { width: 100%; max-width: 760px; table-layout: fixed; }
+.dg-table { width: 100%; table-layout: fixed; }
 .dg-table .c-name { width: 20ch; }
 .dg-table .c-upd { width: 20ch; }
 .dg-table .c-fresh { width: 10ch; }
