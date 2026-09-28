@@ -4,8 +4,9 @@
 // against yesterday up to the same time, with 30 days as a sparkline. Then who they are
 // (DataFast, last 30 days) and what a sponsor gets (our own counters). Totals only, from
 // GET /api/bbrk (lib/counters.js, lib/datafast.js). Anything missing shows --.
-// The globe (public/globe.js): visitor places of the last 7 days, countries and cities of
-// 3 or more visitors rounded to about 100 km (the server folds the rest).
+// The globe (public/globe.js), big and centred under all the numbers: visitor places of
+// the last 7 days, countries and cities of 3 or more visitors rounded to about 100 km (the
+// server folds the rest).
 // Command only: a row on HOME would push the markets grid past its share of a 1536x730
 // screen (tested Sep 27 2026).
 

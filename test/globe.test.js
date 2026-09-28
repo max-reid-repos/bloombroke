@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  mountGlobe, wrapLon, pxToDeg, decay, clampV, clampTilt, autoSpeed, subsolar, daylight, shade, globeItems, tipText, pulsesOn, pickDot,
+  mountGlobe, wrapLon, pxToDeg, decay, clampV, clampTilt, autoSpeed, subsolar, daylight, shade, globeItems, tipText, pulsesOn, pickDot, denseDots,
   IDLE_MS, RAMP_MS, TURN_DEG_PER_SEC, V_MAX, TILT_MAX, TILT_MIN, KEY_STEP, FPS,
 } from '../public/globe.js';
 
@@ -305,16 +305,34 @@ test('hover and tap: the label of the dot under the pointer; keys turn it only w
   }
 });
 
-test('SPONSOR on a phone: the whole globe under the live line, as wide as the page; desktop beside YOUR AD HERE', () => {
+test('SPONSOR and BBRK: a big globe under the text, as wide as the page on a phone', () => {
   const css = readFileSync('public/screens/sponsor.css', 'utf8');
+  assert.match(css, /\.spon-globe \{[^}]*width: min\(640px, 100%\);/, 'big on a desktop');
+  assert.doesNotMatch(css, /spon-top/, 'no longer beside YOUR AD HERE');
   const phone = css.slice(css.lastIndexOf('@media (max-width: 639px) {'));
-  assert.match(phone, /\.spon-top \{ display: contents; \}/);
-  const order = (sel) => Number(phone.match(new RegExp(`\\${sel} \\{[^}]*order: (\\d)`))?.[1]);
-  assert.ok(order('.spon-hero') < order('.spon-proof') && order('.spon-proof') < order('.spon-globe') && order('.spon-globe') < order('.spon-act'));
   assert.match(phone, /\.spon-globe \{[^}]*align-self: stretch;[^}]*\}/);
   assert.match(phone, /\.spon-globe canvas \{ width: 100%; \}/);
-  assert.match(css, /\.spon-top \{ display: flex; align-items: center; justify-content: center; gap: 36px; \}/, 'desktop unchanged');
   assert.match(css, /\.spon-globe canvas \{[^}]*aspect-ratio: 1;/, 'always square: never cut in half');
+  const bb = readFileSync('public/screens/bbrk.css', 'utf8');
+  assert.match(bb, /\.bb-grid \{ display: grid; grid-template-columns: minmax\(0, 1fr\);/, 'one column: the globe under the numbers');
+  assert.match(bb, /\.bb-globe \{[^}]*width: min\(640px, 100%\);[^}]*margin: [^;]*auto/, 'big and centred');
+  assert.match(bb, /\.bb-globe canvas \{[^}]*aspect-ratio: 1;/);
+});
+
+test('globe: the land four times as dense from the shipped grid, crisp and cheap', () => {
+  const geo = JSON.parse(readFileSync('public/geo/globe-dots.json', 'utf8'));
+  const dense = denseDots(geo.dots, geo.step);
+  assert.ok(dense.length > geo.dots.length * 3 && dense.length < geo.dots.length * 4.2, `${dense.length}`);
+  const key = (d) => `${d[0]},${d[1]}`;
+  const all = new Set(dense.map(key));
+  for (const d of geo.dots) assert.ok(all.has(`${d[0]},${d[1]}`), 'every shipped dot is kept');
+  // Nothing new in the open sea: every new dot is within one grid step of a shipped one.
+  for (const d of dense.slice(0, 4000)) {
+    assert.ok(geo.dots.some((o) => Math.abs(o[1] - d[1]) <= geo.step && Math.abs(wrapLon(o[0] - d[0])) * Math.cos((d[1] * Math.PI) / 180) <= geo.step * 1.05), key(d));
+  }
+  const src = readFileSync('public/globe.js', 'utf8');
+  assert.match(src, /Math\.min\(2, win\.devicePixelRatio \|\| 1\)/, 'at most 2 device pixels a CSS pixel');
+  assert.match(src, /Math\.round\(ds \* dpr\)/, 'land dots on the device pixel grid');
 });
 
 test('house rules in the globe and hint files', () => {

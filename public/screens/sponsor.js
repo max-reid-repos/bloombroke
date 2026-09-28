@@ -1,5 +1,6 @@
 // SPONSOR: three things, big. YOUR AD HERE, with the real strip at the bottom outlined and
-// a small label above it, and BBRK's globe of visitor countries beside it; one live line
+// a small label above it, and BBRK's globe of visitor places, big, under the fine print
+// (the page scrolls to it); one live line
 // of our own numbers (/api/bbrk: DataFast audience and the strip inventory) and what one
 // line would get a week; the email, and BBRK for all the numbers. The numbers and the
 // globe's dots come again every minute while the tab is visible (the shell's ctx.live).
@@ -116,12 +117,12 @@ export function sponsorHtml({ has, bbrk = null, cfg = null } = {}) {
   const weird = exists('WEIRD')
     ? ` <a class="spon-weird" href="${esc(q('WEIRD'))}" data-cmd="WEIRD">Or a WEIRD gauge</a>` : '';
   return `<section class="spon-page" aria-label="Sponsor">
-    <div class="spon-top"><h2 class="spon-hero">${esc(HERO)}</h2>
-      <figure class="spon-globe"><canvas role="img" aria-label="${esc(globeLabel(bbrk))}"></canvas><figcaption class="dim">${esc(sponCaption(bbrk))}</figcaption></figure></div>
+    <h2 class="spon-hero">${esc(HERO)}</h2>
     <div id="spon-proof" class="spon-proof">${proofHtml(bbrk, cfg)}</div>
     <p class="spon-act"><a class="spon-mail" href="${esc(MAILTO)}">EMAIL ${esc(CONTACT)}</a>${bbrkBtn}</p>
     ${weird ? `<p class="spon-more">${weird.trim()}</p>` : ''}
     <p class="spon-fine">${esc(FINE)}</p>
+    <figure class="spon-globe"><canvas role="img" aria-label="${esc(globeLabel(bbrk))}"></canvas><figcaption class="dim">${esc(sponCaption(bbrk))}</figcaption></figure>
   </section>`;
 }
 

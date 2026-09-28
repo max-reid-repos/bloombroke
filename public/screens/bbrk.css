@@ -5,8 +5,9 @@
 
 /* ---- BBRK: our own site numbers for sponsors, drawn like a quote (screens/bbrk.js) ---- */
 .bb-panel > .panel-body { padding: 10px 12px; }
-.bb-grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 20px; align-items: start; }
-.bb-globe { position: relative; margin: 0; text-align: center; font-size: 11px; }
+/* The numbers across the panel, then the globe, big and centred, under all of them. */
+.bb-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+.bb-globe { position: relative; width: min(640px, 100%); margin: 4px auto 8px; text-align: center; font-size: 12px; }
 /* Drag to turn it (public/globe.js); pan-y: a mostly vertical drag still scrolls the page. */
 .bb-globe canvas {
   display: block; width: 100%; aspect-ratio: 1; cursor: grab; touch-action: pan-y; outline: 0;
@@ -20,8 +21,7 @@
   background: var(--panel); border: 1px solid var(--rule-strong); color: var(--text); font-size: 11px; white-space: nowrap;
 }
 .bb-globe .globe-tip[hidden] { display: none; }
-.bb-globe figcaption { margin-top: 4px; letter-spacing: .04em; }
-@media (max-width: 900px) { .bb-grid { grid-template-columns: minmax(0, 1fr); } .bb-globe { width: min(240px, 100%); margin: 0 auto; } }
+.bb-globe figcaption { margin-top: 6px; letter-spacing: .04em; }
 .bb-spark { display: flex; align-items: flex-end; gap: 8px; margin-top: 8px; font-size: 11px; }
 .bb-tops { display: grid; gap: 4px; margin-top: 14px; max-width: 760px; }
 .bb-tops > div { display: grid; grid-template-columns: 11ch minmax(0, 1fr); gap: 12px; }

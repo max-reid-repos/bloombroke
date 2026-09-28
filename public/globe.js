@@ -100,6 +100,47 @@ export function daylight(lon, lat, sun) {
 
 // A land dot's brightness from its daylight: day, dusk, night.
 export const shade = (d) => (d > 0.1 ? 1 : d > -0.1 ? 0.7 : 0.45);
+const LIGHT = [1, 0.7, 0.45];
+
+// The land dots four times as dense, for a big globe: a dot half way between two
+// neighbours along a parallel, then a row half way between two rows, where both have land.
+// Made once from the shipped grid (rows every `step` degrees of latitude, about `step`
+// degrees of distance apart along each), so no new map data. [[lon, lat], ...]
+export function denseDots(dots, step = 2.5) {
+  const rows = new Map();
+  for (const [lon, lat] of dots) {
+    const k = Math.round(lat * 10);
+    if (!rows.has(k)) rows.set(k, []);
+    rows.get(k).push(lon);
+  }
+  const lats = [...rows.keys()].sort((a, b) => a - b);
+  const along = (lat) => step / Math.max(0.2, Math.cos(lat * RAD));
+  const full = lats.map((k) => {
+    const lat = k / 10;
+    const lons = rows.get(k).sort((a, b) => a - b);
+    const gap = along(lat);
+    const out = [];
+    lons.forEach((l, i) => {
+      out.push(l);
+      const n = lons[i + 1];
+      if (n !== undefined && Math.abs(n - l - gap) < 0.35 * gap) out.push((l + n) / 2);
+    });
+    return { lat, lons: out, gap };
+  });
+  const res = [];
+  full.forEach((r, i) => {
+    for (const l of r.lons) res.push([l, r.lat]);
+    const up = full[i + 1];
+    if (!up || Math.abs(up.lat - r.lat - step) > 0.3 * step) return;
+    let j = 0;
+    for (const l of r.lons) {
+      while (j < up.lons.length - 1 && Math.abs(up.lons[j + 1] - l) <= Math.abs(up.lons[j] - l)) j += 1;
+      const q = up.lons[j];
+      if (q !== undefined && Math.abs(q - l) <= up.gap / 2) res.push([(l + q) / 2, (r.lat + up.lat) / 2]);
+    }
+  });
+  return res;
+}
 
 // Dot radius (px) for a place's visitors, against the biggest place.
 export function dotRadius(visitors, max, { min = 2.2, big = 7 } = {}) {
@@ -211,6 +252,25 @@ export function mountGlobe(canvas, geo, globe = [], { reduceMotion = false, live
   let sun = subsolar();
   let sunAt = 0;
   let geom = { w: 0, R: 0, c: 0 };
+  // The land, made once: the dense grid (denseDots) with each dot's sines and cosines, so a
+  // frame is only sums and products; its light (day, dusk, night) again when the sun moves.
+  const landDots = geo.step ? denseDots(geo.dots, geo.step) : geo.dots;
+  const nLand = landDots.length;
+  const lsin = new Float64Array(nLand);
+  const lcos = new Float64Array(nLand);
+  const psin = new Float64Array(nLand);
+  const pcos = new Float64Array(nLand);
+  const light = new Uint8Array(nLand); // 0 day, 1 dusk, 2 night: LIGHT's alphas
+  landDots.forEach(([lon, lat], i) => {
+    lsin[i] = Math.sin(lon * RAD); lcos[i] = Math.cos(lon * RAD);
+    psin[i] = Math.sin(lat * RAD); pcos[i] = Math.cos(lat * RAD);
+  });
+  let litFor = null;
+  const relight = () => {
+    if (litFor === sun) return;
+    litFor = sun;
+    for (let i = 0; i < nLand; i++) light[i] = LIGHT.indexOf(shade(daylight(landDots[i][0], landDots[i][1], sun)));
+  };
 
   // Setup for the page (not the tests' bare canvas): focusable, keeps its focus when
   // clicked (app.js), and a label for the dot under the pointer.
@@ -228,7 +288,7 @@ export function mountGlobe(canvas, geo, globe = [], { reduceMotion = false, live
 
   function size() {
     const r = canvas.getBoundingClientRect();
-    const dpr = Math.min(2, win.devicePixelRatio || 1);
+    const dpr = Math.min(2, win.devicePixelRatio || 1); // sharp on a phone, cheap on a 3x one
     const w = Math.max(80, Math.round(r.width));
     if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(w * dpr); }
     return { w, dpr };
@@ -264,24 +324,41 @@ export function mountGlobe(canvas, geo, globe = [], { reduceMotion = false, live
     ctx2.beginPath();
     ctx2.arc(c, c, R, 0, 2 * Math.PI);
     ctx2.stroke();
-    // Land, in three passes (day, dusk, night) to keep the canvas state changes few.
-    const scale = Math.max(1, Math.min(1.8, w / 220));
-    const ds = 1.8 * Math.min(1.4, scale);
-    ctx2.fillStyle = land;
-    const pass = { 1: [], 0.7: [], 0.45: [] };
-    for (const [lon, lat] of geo.dots) {
-      const [x, y, z] = ortho(lon, lat, view.lon0, view.tilt);
+    // Land, in three passes (day, dusk, night) to keep the canvas state changes few. Each
+    // dot a whole number of device pixels on the pixel grid, so a big globe stays crisp.
+    relight();
+    const ds = Math.max(1.4, Math.min(3.2, R * 0.0088)); // dot size, CSS px
+    const dd = Math.max(1, Math.round(ds * dpr)); // in device px
+    const half = dd / 2;
+    const t0 = view.tilt * RAD;
+    const st = Math.sin(t0);
+    const ct = Math.cos(t0);
+    const s0 = Math.sin(view.lon0 * RAD);
+    const c0 = Math.cos(view.lon0 * RAD);
+    const cx = c * dpr;
+    const Rd = R * dpr;
+    const pass = [[], [], []];
+    for (let i = 0; i < nLand; i++) {
+      // ortho(), with sin and cos of (lon - lon0) from the sums.
+      const sl = lsin[i] * c0 - lcos[i] * s0;
+      const cl = lcos[i] * c0 + lsin[i] * s0;
+      const z = st * psin[i] + ct * pcos[i] * cl;
       if (z <= 0) continue;
-      pass[shade(daylight(lon, lat, sun))].push(c + x * R - ds / 2, c + y * R - ds / 2);
+      const x = pcos[i] * sl;
+      const y = -(ct * psin[i] - st * pcos[i] * cl);
+      pass[light[i]].push(Math.round(cx + x * Rd - half), Math.round(cx + y * Rd - half));
     }
-    for (const a of [1, 0.7, 0.45]) {
-      const xy = pass[a];
-      ctx2.globalAlpha = a;
-      for (let i = 0; i < xy.length; i += 2) ctx2.fillRect(xy[i], xy[i + 1], ds, ds);
+    ctx2.setTransform(1, 0, 0, 1, 0, 0);
+    ctx2.fillStyle = land;
+    for (let k = 0; k < 3; k++) {
+      const xy = pass[k];
+      ctx2.globalAlpha = LIGHT[k];
+      for (let i = 0; i < xy.length; i += 2) ctx2.fillRect(xy[i], xy[i + 1], dd, dd);
     }
+    ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx2.globalAlpha = 1;
     // Visitor places.
-    const dotScale = Math.min(1.4, scale); // bigger globe, a little bigger dots, never loud
+    const dotScale = Math.max(1, Math.min(2.2, R / 125)); // bigger globe, bigger dots, never loud
     const max = items.reduce((m, x) => Math.max(m, x.n), 0);
     const pulse = pulsesOn(liveNow);
     placed = [];
@@ -305,7 +382,7 @@ export function mountGlobe(canvas, geo, globe = [], { reduceMotion = false, live
         // A soft ring out from the dot; with reduced motion one still ring.
         const ph = reduceMotion ? 0.35 : (((t + i * 700) % PULSE_MS) + PULSE_MS) % PULSE_MS / PULSE_MS;
         ctx2.globalAlpha = 0.5 * (1 - ph);
-        ctx2.lineWidth = 1;
+        ctx2.lineWidth = Math.min(2, dotScale * 0.8);
         ctx2.beginPath();
         ctx2.arc(px, py, r + 2 + ph * 10 * dotScale, 0, 2 * Math.PI);
         ctx2.stroke();

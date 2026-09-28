@@ -289,30 +289,38 @@ export function wireRespects(el, ticker, { status = () => {} } = {}) {
 
 // ---- The cemetery -----------------------------------------------------------------------------
 
-// GRAVEYARD v3: the stones stand on the empty cemetery's terraces, one section each, in
-// perspective (the back terrace small and high, the front one large and low), and the
-// bought-out ones on the small side plot. Everything is placed in % of the painting
-// (1536x1024, the stage), which covers the scene and is cropped to the terraces
-// (stageFor). An area runs x0..x1 along its path with the stones' feet at y, or lists its
-// own slots; sign: the centre of its wooden signpost's board.
+// GRAVEYARD v3: the stones stand on the empty cemetery's terraces, one section each, in a
+// gentle perspective (the back terrace a little smaller and higher, the front one larger
+// and lower), and the bought-out ones by their signpost on the side plot. Everything is
+// placed in % of the painting (1536x1024, the stage), which covers the scene and is
+// cropped to the terraces (stageFor). An area runs x0..x1 along its path with the stones'
+// feet at y, or lists its own slots; sign: the centre of its wooden signpost's board.
+// wrap: a row that would have to shrink its stones below scale goes into two staggered
+// lines on its terrace instead, the second one from wrap.x0 with its feet at wrap.y. The side plot's stones past
+// its slots carry on along its last line, step apart.
 export const ART_W = 1536;
 export const ART_H = 1024;
 export const AREAS = {
-  DOTCOM: { x0: 42, x1: 78, y: 35.8, scale: 0.44, sign: { x: 37.7, y: 32.9 } },
-  CRISIS: { x0: 31, x1: 77, y: 52.6, scale: 0.62, sign: { x: 26.2, y: 45.6 } },
-  RECENT: { x0: 13.5, x1: 76, y: 75.8, scale: 0.86, sign: { x: 8.0, y: 65.1 } },
-  // The side plot is small: its own slots, around its signpost.
-  BOUGHT: { scale: 0.52, slots: [[2.4, 52.2], [5.4, 52.4], [11.4, 52.4], [14.4, 52.2], [3.9, 59.8], [8.4, 60.0], [12.9, 59.8]], sign: { x: 8.3, y: 44.9 } },
+  DOTCOM: { x0: 43, x1: 82, y: 35.8, scale: 0.85, sign: { x: 37.7, y: 32.9 } },
+  CRISIS: { x0: 31, x1: 84, y: 52.6, scale: 0.92, sign: { x: 26.2, y: 45.6 } },
+  RECENT: { x0: 12, x1: 83, y: 75.8, scale: 1, wrap: { x0: 34, y: 64.2 }, sign: { x: 8.0, y: 65.1 } },
+  // The side plot: three on the mound either side of its signpost, the rest on the grass
+  // below the hedge, clear of RECENT's board.
+  BOUGHT: {
+    scale: 0.8, step: 4.6, sign: { x: 8.3, y: 44.9 },
+    slots: [[2.2, 52.6], [14.7, 52.6], [19.2, 52.6], [12.3, 62], [16.9, 62], [21.5, 62], [26.1, 62]],
+  },
 };
 export const STONE_W = 4.4; // a stone's width at scale 1, in % of the painting's width
 export const STONE_RATIO = 778 / 560; // height / width of the stone art
+export const GAP = 0.9; // a stone is at most this share of the room along its row
 // Famous ones stand a little larger; so does a stone with many respects (capped).
 export const FAMOUS = new Set(['LEH', 'ENE', 'WCOM', 'BBI', 'TWTR', 'YHOO', 'SIVB', 'BBBY', 'WE', 'TOY', 'NSCP', 'SHLD', 'BSC']);
 const grow = (e, n) => (FAMOUS.has(e.ticker) ? 1.14 : 1) * (1 + Math.min(0.1, Math.log10(1 + (n[e.ticker] || 0)) * 0.04));
 
 // The painting's size and offset in a scene w x h: it covers the scene (never letterboxed)
 // and is shifted so the terraces (FOCUS, a height in the painting) sit in the middle.
-export const FOCUS = 0.575;
+export const FOCUS = 0.53;
 export function stageFor(w, h) {
   const sw = Math.max(w, h * (ART_W / ART_H));
   const sh = sw * (ART_H / ART_W);
@@ -331,16 +339,28 @@ export function layout(list, { counts = {}, areas = AREAS } = {}) {
     const a = areas[sec];
     stones.sort((p, r) => (p.date < r.date ? -1 : p.date > r.date ? 1 : 0));
     if (a.slots) {
+      const [lx, ly] = a.slots[a.slots.length - 1];
       stones.forEach((e, i) => {
-        const [x, y] = a.slots[i % a.slots.length];
+        const [x, y] = i < a.slots.length ? a.slots[i] : [lx + (i - a.slots.length + 1) * (a.step || STONE_W), ly];
         spots.push({ e, sec, x, y, size: a.scale * grow(e, counts) * (y < 56 ? 0.94 : 1) });
       });
       continue;
     }
-    const spacing = (a.x1 - a.x0) / Math.max(1, stones.length);
-    const fit = (0.88 * spacing) / STONE_W; // never wider than the gap to the next stone
+    const room = (a.x1 - a.x0) / Math.max(1, stones.length);
+    if (a.wrap && (GAP * room) / STONE_W < a.scale && stones.length > 1) {
+      // Two lines: every other stone on the path, the rest on a line behind it, which starts
+      // right of the side plot. The lines are far enough apart that no stone hides another.
+      const lines = [[a.x0, a.y, stones.filter((_, i) => i % 2 === 0)], [a.wrap.x0, a.wrap.y, stones.filter((_, i) => i % 2 === 1)]];
+      const fit = Math.min(...lines.map(([x0, , s]) => (GAP * (a.x1 - x0)) / s.length / STONE_W));
+      for (const [x0, y, s] of lines) {
+        const step = (a.x1 - x0) / s.length;
+        s.forEach((e, i) => spots.push({ e, sec, x: x0 + step * (i + 0.5), y, size: Math.min(a.scale * grow(e, counts), fit) }));
+      }
+      continue;
+    }
+    const fit = (GAP * room) / STONE_W; // never wider than the gap to the next stone
     stones.forEach((e, i) => {
-      spots.push({ e, sec, x: a.x0 + spacing * (i + 0.5), y: a.y, size: Math.min(a.scale * grow(e, counts), fit) });
+      spots.push({ e, sec, x: a.x0 + room * (i + 0.5), y: a.y, size: Math.min(a.scale * grow(e, counts), fit) });
     });
   }
   const ys = [...new Set(spots.map((s) => s.y.toFixed(1)))].sort((p, r) => p - r);
