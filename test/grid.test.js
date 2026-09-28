@@ -18,7 +18,7 @@ import {
 } from '../public/screens/grid.js';
 import {
   makeGrid, mountGrid, downsample, seriesStats, loadCpiMonthly, cpiTile, ripTile, weirdTile, marketTile, periodStart, GRID_POINTS, GRID_PARALLEL,
-  GRID_RATE,
+  GRID_RATE, chartSpec, regularSession,
 } from '../lib/grid.js';
 import {
   makeGridCards, gridCardModel, cardBoard, gridMeta, gridTree, mountGridCards, GRID_CARD_MAX_AGE, INCOMPLETE_MAX_AGE,
@@ -247,6 +247,9 @@ test('GRID data: downsample keeps the high and the low, stats, CPI from BLS, the
   assert.equal(weirdTile(gridItem('W:PIZZA'), { id: 'pizza', pending: true, ok: false }).error, 'pending');
 });
 
+// getChart's range as the fakes log it: '1Y', or '1D:1M' for a range with its bar.
+const rangeKey = (r) => (r && typeof r === 'object' ? `${r.range}:${r.bar}` : r);
+
 async function listen(app) {
   const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
   return { server, base: `http://127.0.0.1:${server.address().port}` };
@@ -257,7 +260,7 @@ function fakeDeps() {
   let running = 0;
   let peak = 0;
   const getChart = async (sym, range) => {
-    calls.push(`${sym}:${range}`);
+    calls.push(`${sym}:${rangeKey(range)}`);
     running += 1;
     peak = Math.max(peak, running);
     await new Promise((r) => setTimeout(r, 5));
@@ -325,7 +328,7 @@ test('/api/grid: the 16 cap, a bad range, the per-address limit', async () => {
     const limited = await fetch(`${base}/api/grid?s=CC`);
     assert.equal(limited.status, 429);
     assert.equal(limited.headers.get('retry-after'), '60');
-    assert.deepEqual(f.calls, ['AA:1D', 'BB:1D'], 'no range: 1D; a limited request fetches nothing');
+    assert.deepEqual(f.calls, ['AA:1D:1M', 'BB:1D:1M'], 'no range: 1D (1-minute bars); a limited request fetches nothing');
   } finally { server.close(); }
 });
 
@@ -389,7 +392,7 @@ function slowCharts(ms) {
   let running = 0;
   let peak = 0;
   const getChart = async (sym, range) => {
-    calls.push(`${sym}:${range}`);
+    calls.push(`${sym}:${rangeKey(range)}`);
     running += 1;
     peak = Math.max(peak, running);
     await new Promise((r) => setTimeout(r, ms));
@@ -668,21 +671,24 @@ test('GRID live: 1D by default, a link or a saved board keeps its range', () => 
   }
   assert.equal(shareLinks(['EURUSD', 'BTC'], '1D', 'https://b.test').url, 'https://b.test/?c=GRID+EURUSD+BTC+1D');
   assert.deepEqual([isIntraday('1D'), isIntraday('5D'), isIntraday('1M'), isIntraday('MAX')], [true, true, false, false]);
-  assert.deepEqual([TICK_MS, REFETCH_MS, FLASH_MS], [15_000, 60_000, 700]);
+  assert.deepEqual([TICK_MS, REFETCH_MS, FLASH_MS], [8_000, 60_000, 700], 'a tick every 8 s: a 15 s server quote shows within about 8 s');
 });
 
-// A 1D tile of 5-minute bars from 09:30 New York (13:30 UTC), as /api/grid sends it.
+// A 1D tile of 1-minute bars from 09:30 New York (13:30 UTC), as /api/grid sends it
+// (5D: 5-minute bars).
 const OPEN = Date.UTC(2026, 8, 28, 13, 30);
-const intraday = (vals) => marketTile('AAPL', { points: vals.map((v, i) => ({ t: OPEN + i * BUCKET_MS, v })) });
+const M1 = BUCKET_MS['1D'];
+const M5 = BUCKET_MS['5D'];
+const intraday = (vals, step = M1) => marketTile('AAPL', { points: vals.map((v, i) => ({ t: OPEN + i * step, v })) });
 const at = (ms) => new Date(ms).toISOString();
 
 test('GRID tick: the value, the pill, the last point and the high and low move', () => {
   const tile = intraday([100, 101, 102, 101, 100.5]);
-  const lastT = OPEN + 4 * BUCKET_MS;
-  const q = { ticker: 'AAPL', last: 103.25, changePct: 1.5, asOf: at(lastT + 60_000) };
-  const next = applyQuote(tile, q, '1D', { now: lastT + 90_000 });
+  const lastT = OPEN + 4 * M1;
+  const q = { ticker: 'AAPL', last: 103.25, changePct: 1.5, asOf: at(lastT + 30_000) };
+  const next = applyQuote(tile, q, '1D', { now: lastT + 40_000 });
   assert.equal(next.last, 103.25);
-  assert.equal(next.points.length, 5, 'same 5-minute bucket: the last point is replaced');
+  assert.equal(next.points.length, 5, 'the same minute: the last point is replaced');
   assert.deepEqual(next.points[4], { t: lastT, v: 103.25 });
   assert.equal(next.changePct, 1.5, '1D: the quote\'s own day change (vs the previous close), as QUOTE shows');
   assert.deepEqual(next.hi, { v: 103.25, t: lastT }, 'a new high');
@@ -692,29 +698,36 @@ test('GRID tick: the value, the pill, the last point and the high and low move',
   assert.deepEqual(marks.map((m) => [m.i, m.text]), [[4, 'H 103.25'], [0, 'L 100.00']], 'the H dot moves to the new high');
   assert.equal(tile.points[4].v, 100.5, 'the old tile is left as it was');
   // A new low.
-  const low = applyQuote(next, { ...q, last: 99.1, changePct: -0.8 }, '1D', { now: lastT + 90_000 });
+  const low = applyQuote(next, { ...q, last: 99.1, changePct: -0.8 }, '1D', { now: lastT + 40_000 });
   assert.deepEqual(marksFor(low).map((m) => m.text), ['H 102.00', 'L 99.10']);
   assert.equal(tileFace(gridItem('AAPL'), low).pillDir, 'down');
   // Nothing new: nothing to draw.
-  assert.equal(applyQuote(next, q, '1D', { now: lastT + 90_000 }), null);
+  assert.equal(applyQuote(next, q, '1D', { now: lastT + 40_000 }), null);
   // Tiles that do not tick.
   assert.equal(applyQuote(cpiTile('1Y', loadCpiMonthly()), q, '1D'), null, 'CPI');
   assert.equal(applyQuote({ token: 'AAPL', kind: 'market', error: 'no_data' }, q, '1D'), null);
   assert.equal(applyQuote(tile, { ticker: 'AAPL', last: null }, '1D'), null, 'no price: no tick');
 });
 
-test('GRID tick: a new 5-minute bucket appends a point; an older quote leaves the line', () => {
+test('GRID tick: a new minute (1D) or 5-minute bucket (5D) appends a point; an older quote leaves the line', () => {
+  assert.deepEqual([M1, M5], [60_000, 300_000]);
   const tile = intraday([100, 101, 102]);
-  const lastT = OPEN + 2 * BUCKET_MS;
-  const next = applyQuote(tile, { last: 102.5, changePct: 0.2, asOf: at(lastT + BUCKET_MS + 42_000) }, '1D', { now: lastT + BUCKET_MS + 50_000 });
-  assert.equal(next.points.length, 4, 'a new bucket: one more point');
-  assert.deepEqual(next.points[3], { t: lastT + BUCKET_MS, v: 102.5 }, 'at the start of its bucket');
-  const same = applyQuote(next, { last: 102.7, changePct: 0.3, asOf: at(lastT + BUCKET_MS + 200_000) }, '1D', { now: lastT + 2 * BUCKET_MS });
-  assert.equal(same.points.length, 4, 'the same bucket again: replaced');
+  const lastT = OPEN + 2 * M1;
+  const next = applyQuote(tile, { last: 102.5, changePct: 0.2, asOf: at(lastT + M1 + 42_000) }, '1D', { now: lastT + M1 + 50_000 });
+  assert.equal(next.points.length, 4, '1D, a new minute: one more point');
+  assert.deepEqual(next.points[3], { t: lastT + M1, v: 102.5 }, 'at the start of its minute');
+  const same = applyQuote(next, { last: 102.7, changePct: 0.3, asOf: at(lastT + M1 + 55_000) }, '1D', { now: lastT + 2 * M1 });
+  assert.equal(same.points.length, 4, 'the same minute again: replaced');
+  // 5D: 5-minute bars. A minute later is the same bar; five minutes later a new one.
+  const five = intraday([100, 101, 102], M5);
+  const end5 = OPEN + 2 * M5;
+  assert.equal(applyQuote(five, { last: 103, asOf: at(end5 + 2 * M1) }, '5D', { now: end5 + 3 * M1 }).points.length, 3, '5D: the same 5-minute bar');
+  const on5 = applyQuote(five, { last: 103, asOf: at(end5 + M5 + M1) }, '5D', { now: end5 + M5 + 2 * M1 });
+  assert.deepEqual([on5.points.length, on5.points[3].t], [4, end5 + M5], '5D: a new 5-minute bar');
   // No asOf: now's bucket.
-  assert.equal(applyQuote(tile, { last: 99 }, '5D', { now: lastT + BUCKET_MS * 3 }).points.length, 4);
+  assert.equal(applyQuote(tile, { last: 99 }, '1D', { now: lastT + M1 * 3 }).points.length, 4);
   // A quote from before the last bar (a stock's close, while the line has after-hours bars).
-  const old = applyQuote(tile, { last: 101.9, changePct: 0.1, asOf: at(lastT - BUCKET_MS) }, '1D', { now: lastT + 60_000 });
+  const old = applyQuote(tile, { last: 101.9, changePct: 0.1, asOf: at(lastT - M1) }, '1D', { now: lastT + 30_000 });
   assert.equal(old.points, tile.points, 'the line stays');
   assert.equal(old.last, 101.9, 'the value is the quote\'s');
   // A quote dated in the future counts as now.
@@ -724,7 +737,7 @@ test('GRID tick: a new 5-minute bucket appends a point; an older quote leaves th
 
 test('GRID tick: on 5D and longer the change is against the first point of the range', () => {
   const tile = intraday([100, 101, 102]);
-  const five = applyQuote(tile, { last: 110, changePct: 3, asOf: at(OPEN + 2 * BUCKET_MS + 1000) }, '5D', { now: OPEN + 3 * BUCKET_MS });
+  const five = applyQuote(intraday([100, 101, 102], M5), { last: 110, changePct: 3, asOf: at(OPEN + 2 * M5 + 1000) }, '5D', { now: OPEN + 3 * M5 });
   assert.ok(Math.abs(five.changePct - 10) < 1e-9, '5D: +10% from the first point, not the quote\'s day change');
   // Daily bars (1M): New York midnight stamps. The same New York day: replaced; the next: appended.
   const day = (d) => Date.UTC(2026, 8, d, 4);
@@ -813,4 +826,30 @@ test('GRID card: a complete 1D or 5D card goes out for 10 minutes, the rest as b
   assert.equal((await cards.png('NVDA,AMD', '1Y', '1.1.1.1')).maxAge, GRID_CARD_MAX_AGE);
   assert.equal((await cards.png('NVDA,AMD', '', '1.1.1.1')).maxAge, 600, 'no range: 1D');
   assert.deepEqual(['1D', '5D', '1M', '1Y', 'MAX'].map(cardMaxAge), [600, 600, 14400, 14400, 14400]);
+});
+
+test('GRID 1D: 1-minute bars, the CHART screen\'s own 1D, and a stock keeps its regular session', async () => {
+  // The same getChart spec as CHART's 1D (?r=1D&bar=1M): one cache entry, one minute.
+  assert.deepEqual(chartSpec('1D'), { range: '1D', bar: '1M' });
+  assert.deepEqual(['5D', '1M', '1Y', 'MAX'].map(chartSpec), ['5D', '1M', '1Y', 'MAX'], 'the rest: the preset\'s own bars');
+  const f = fakeDeps();
+  const grid = makeGrid(f.deps);
+  await grid.board(['AA', 'BB'].map(gridItem), '1D');
+  await grid.board(['AA'].map(gridItem), '5D');
+  assert.deepEqual(f.calls, ['AA:1D:1M', 'BB:1D:1M', 'AA:5D']);
+  // A stock's 1D (4:00 to 20:00 New York, 1-minute bars): 9:30 to 16:00 of its last day.
+  const day = Date.UTC(2026, 8, 28); // New York is UTC-4 in September
+  const mins = (h, m) => day + (h + 4) * 3600_000 + m * 60_000;
+  const all = [];
+  for (let t = mins(4, 0); t < mins(20, 0); t += 60_000) all.push({ t, v: 100 + (t % 7) });
+  const reg = regularSession(all);
+  assert.deepEqual([reg.length, reg[0].t, reg[reg.length - 1].t], [390, mins(9, 30), mins(15, 59)], 'every minute of the session');
+  const early = all.filter((p) => p.t <= mins(9, 45));
+  assert.equal(regularSession(early).length, 16, 'early in the session: every minute so far (16 < GRID_POINTS)');
+  const pre = all.filter((p) => p.t < mins(9, 30));
+  assert.equal(regularSession(pre).length, pre.length, 'before the open: the pre-market bars stay');
+  const t1 = marketTile('AAPL', { range: '1D', ext: true, points: early });
+  assert.deepEqual([t1.points.length, t1.points[0].t], [16, mins(9, 30)]);
+  assert.equal(marketTile('BTC', { range: '1D', ext: false, points: early.slice(-50) }).points.length, 50, 'no extended hours (crypto, FX, indexes): as sent');
+  assert.equal(marketTile('AAPL', { range: '1D', ext: true, points: all }).points.length, GRID_POINTS, 'a full day: thinned to 120');
 });

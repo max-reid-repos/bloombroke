@@ -9,10 +9,10 @@
 //
 // Live: every TICK_MS one /api/quotes call for all the market tiles moves each tile's
 // value, change and the end of its line (applyQuote); on 1D and 5D the board asks
-// /api/grid again every REFETCH_MS for the real 5-minute bars. Both go through the
-// shell's ctx.live (paused while the tab is hidden or a DESK panel is off screen), never
-// two at once, and skip a turn after an error (guarded). BBRK's "here now" comes from
-// /api/live every minute. CPI, W: and RIP: tiles do not tick.
+// /api/grid again every REFETCH_MS for the real bars (1-minute on 1D, 5-minute on 5D).
+// Both go through the shell's ctx.live (paused while the tab is hidden or a DESK panel
+// is off screen), never two at once, and skip a turn after an error (guarded). BBRK's
+// "here now" comes from /api/live every minute. CPI, W: and RIP: tiles do not tick.
 //
 // The range chips above the board switch every tile in place (the URL follows); STARTER
 // brings the starter board back. A click or Enter opens a tile's own screen; arrows move
@@ -285,11 +285,14 @@ export function stepIndex(cur, key, cols, n) {
 
 // ---- Live: quote ticks, refetches -----------------------------------------------------------
 
-export const TICK_MS = 15_000; // one /api/quotes call for the board's market tiles
-export const REFETCH_MS = 60_000; // /api/grid again, 1D and 5D only (real 5-minute bars)
+// One /api/quotes call for the board's market tiles. The server keeps a quote 15 s, so a
+// new one shows here within about 8 s.
+export const TICK_MS = 8_000;
+export const REFETCH_MS = 60_000; // /api/grid again, 1D and 5D only (the real bars)
 export const HERE_MS = 60_000; // BBRK's here now (/api/live)
 export const FLASH_MS = 700;
-export const BUCKET_MS = 5 * 60_000; // 1D and 5D draw 5-minute bars (data/charts.js)
+// The bar a tick fills: 1D draws 1-minute bars (lib/grid.js GRID_BARS), 5D 5-minute bars.
+export const BUCKET_MS = { '1D': 60_000, '5D': 5 * 60_000 };
 export const INTRADAY = ['1D', '5D'];
 export const isIntraday = (range) => INTRADAY.includes(range);
 const WEEK_MS = 7 * 86_400_000;
@@ -301,11 +304,12 @@ export function quoteTime(quote, now = Date.now()) {
 }
 
 // Where time t falls against the bar at lastT, for this range's bars: 1 a later bar, 0 the
-// same bar, -1 an earlier one. 1D/5D: 5-minute bars; up to 2Y: New York days; 5Y, 10Y:
-// weeks; MAX: months.
+// same bar, -1 an earlier one. 1D: 1-minute bars; 5D: 5-minute bars; up to 2Y: New York
+// days; 5Y, 10Y: weeks; MAX: months.
 export function barStep(lastT, t, range) {
   const cmp = (a, b) => (a > b ? 1 : a < b ? -1 : 0);
-  if (isIntraday(range)) return cmp(Math.floor(t / BUCKET_MS), Math.floor(lastT / BUCKET_MS));
+  const b = BUCKET_MS[range];
+  if (b) return cmp(Math.floor(t / b), Math.floor(lastT / b));
   if (range === '5Y' || range === '10Y') return t - lastT >= WEEK_MS ? 1 : t < lastT ? -1 : 0;
   const day = (ms) => nyToday(new Date(ms));
   if (range === 'MAX') return cmp(day(t).slice(0, 7), day(lastT).slice(0, 7));
@@ -314,8 +318,8 @@ export function barStep(lastT, t, range) {
 
 // A market tile and a quote for it -> the tile moved to the quote, or null when nothing
 // changed (or the tile does not tick). The value is the quote's; the line's last point
-// takes it (a new point when the quote starts a new bar: a new 5-minute bucket on 1D and
-// 5D, a new day on the daily ranges); the high and the low follow the points.
+// takes it (a new point when the quote starts a new bar: a new minute on 1D, a new
+// 5-minute bucket on 5D, a new day on the daily ranges); the high and the low follow.
 // The change: on 1D the quote's own day change (vs the previous close, as QUOTE shows);
 // on longer ranges vs the first point of the range.
 export function applyQuote(tile, quote, range, { now = Date.now() } = {}) {
@@ -327,7 +331,8 @@ export function applyQuote(tile, quote, range, { now = Date.now() } = {}) {
   const end = pts[pts.length - 1];
   const step = barStep(end.t, t, range);
   let points = pts;
-  if (step > 0) points = [...pts, { t: isIntraday(range) ? Math.floor(t / BUCKET_MS) * BUCKET_MS : t, v }];
+  const bucket = BUCKET_MS[range];
+  if (step > 0) points = [...pts, { t: bucket ? Math.floor(t / bucket) * bucket : t, v }];
   else if (step === 0 && end.v !== v) points = [...pts.slice(0, -1), { t: end.t, v }];
   const first = points[0].v;
   const own = first > 0 ? (v / first - 1) * 100 : null;
@@ -543,7 +548,7 @@ export function render(el, cmd, ctx) {
       takeQuote(t.token, { patch: false }); // the last quote seen moves it on at once
     }
     drawBoard();
-    // A market tile with no quote yet (the first load, an added tile): ask now, not in 15 s.
+    // A market tile with no quote yet (the first load, an added tile): ask now, not a tick later.
     if ((d.tiles || []).some((t) => t.kind === 'market' && !t.error && !quotes.has(t.token))) tick();
     ctx.updated?.(d.updated, false);
     const failed = (d.tiles || []).filter((t) => RETRY.includes(t.error)).map((t) => t.token);
@@ -581,7 +586,7 @@ export function render(el, cmd, ctx) {
     const [a0, b0, a1, b1] = [pa[0], pb[0], pa[pa.length - 1], pb[pb.length - 1]];
     return a0.t === b0.t && a0.v === b0.v && a1.t === b1.t && a1.v === b1.v;
   };
-  // Every REFETCH_MS on 1D and 5D: the market tiles' real 5-minute bars. A tile that fails
+  // Every REFETCH_MS on 1D and 5D: the market tiles' real bars. A tile that fails
   // now keeps what it had; only the tiles that changed are drawn again.
   const refetch = guarded(async () => {
     const list = marketTokens();
