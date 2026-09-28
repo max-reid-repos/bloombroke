@@ -37,7 +37,7 @@ We use DataFast (datafa.st) to understand how many people visit and which screen
 - **Feature events.** When you use certain features, such as a WHATIF result or a GUESS game, we send DataFast an event with the feature's name and, for some features, a short fixed label, such as how a result was shared. The event itself carries no personal data, but DataFast links it to the same visitor and session cookies as your visits.
 - **Cloudflare Web Analytics.** Cloudflare, our network provider, adds its own count of page views and page load times. Cloudflare states that it does not use cookies for this and does not identify visitors. It is not affected by GPC.
 - **Our own counters.** Our server keeps daily totals of some actions, such as WHATIF results, GUESS games, feedback notes, MCP tool calls, and how many times sponsor-strip lines were shown and clicked. These are totals only, with no IP address and nothing about who did what, so we keep them even when your browser sends GPC.
-- **What we publish.** We publish aggregate visitor numbers on our BBRK screen, including visitor counts by country, from DataFast totals; a country or referring site with fewer than three visitors is not shown on its own, and we never publish cities or anything that identifies a visitor.
+- **What we publish.** We publish aggregate visitor numbers on our BBRK screen, including visitor counts by country, from DataFast totals; a country or referring site with fewer than three visitors is not shown on its own, and we publish approximate locations: country totals, and city dots rounded to about 100 km, only for places with three or more visitors in the last seven days; never anything about a single visitor.
 
 ### Pro subscribers
 

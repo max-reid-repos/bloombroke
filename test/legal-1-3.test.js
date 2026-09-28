@@ -15,7 +15,7 @@ const section = (md, n) => md.slice(md.indexOf(`## ${n}.`), md.indexOf(`## ${n +
 
 test('legal 1.3: the version is bumped, so everyone who accepted 1.2 is asked again', () => {
   assert.equal(TERMS_VERSION, '1.3');
-  assert.equal(LEGAL_UPDATED, '27 September 2026');
+  assert.equal(LEGAL_UPDATED, '28 September 2026');
   assert.equal(needsConsent(acceptRecord('1.2')), true);
   assert.equal(needsConsent(acceptRecord('1.3')), false);
 });
@@ -54,7 +54,7 @@ test('privacy: no AI training, GPC, feature events, Cloudflare counts, our count
     'If your browser sends a Global Privacy Control (GPC) signal, we do not load DataFast on any page of bloombroke.com.',
     'we send DataFast an event with the feature\'s name and, for some features, a short fixed label, such as how a result was shared. The event itself carries no personal data, but DataFast links it to the same visitor and session cookies as your visits.',
     'Cloudflare, our network provider, adds its own count of page views and page load times.',
-    'We publish aggregate visitor numbers on our BBRK screen, including visitor counts by country, from DataFast totals; a country or referring site with fewer than three visitors is not shown on its own, and we never publish cities or anything that identifies a visitor.',
+    'We publish aggregate visitor numbers on our BBRK screen, including visitor counts by country, from DataFast totals; a country or referring site with fewer than three visitors is not shown on its own, and we publish approximate locations: country totals, and city dots rounded to about 100 km, only for places with three or more visitors in the last seven days; never anything about a single visitor.',
     'We do not store the inputs a tool is called with: our logs keep only the tool name and whether the call worked.',
     'We also count, in total, how many times sponsor-strip lines were shown and clicked; nothing is kept per person.',
   ]) assert.ok(privacy.includes(must), must);
@@ -79,6 +79,17 @@ test('the code matches: a top country or referrer with fewer than three visitors
   const a = shapeAudience(r, '2026-09-27');
   assert.deepEqual(a.countries.map((c) => c.name), ['United States', 'India']);
   assert.deepEqual(a.referrers.map((r) => r.name), ['news.example'], 'a referrer with one visitor could point at that visitor');
+});
+
+test('the code matches: city dots only for three or more visitors in seven days, rounded to about 100 km', () => {
+  const r = {
+    globe: { data: [{ country: 'Japan', visitors: 20 }, { country: 'Germany', visitors: 5 }] },
+    cities: { data: [{ city: 'Tokyo', visitors: 3 }, { city: 'Osaka', visitors: 2 }, { city: 'Berlin', visitors: 1 }] },
+  };
+  const g = shapeAudience(r, '2026-09-28').globe;
+  assert.deepEqual(g.cities.map((c) => c.name), ['Tokyo']);
+  assert.ok(g.cities.every((c) => c.visitors >= 3 && c.at.every(Number.isInteger)));
+  assert.doesNotMatch(JSON.stringify(g), /Osaka|Berlin/);
 });
 
 // ---- Review fixes -------------------------------------------------------------------------

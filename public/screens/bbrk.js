@@ -4,7 +4,8 @@
 // against yesterday up to the same time, with 30 days as a sparkline. Then who they are
 // (DataFast, last 30 days) and what a sponsor gets (our own counters). Totals only, from
 // GET /api/bbrk (lib/counters.js, lib/datafast.js). Anything missing shows --.
-// The globe (public/globe.js): visitor countries of the last 7 days, country level only.
+// The globe (public/globe.js): visitor places of the last 7 days, countries and cities of
+// 3 or more visitors rounded to about 100 km (the server folds the rest).
 // Command only: a row on HOME would push the markets grid past its share of a 1536x730
 // screen (tested Sep 27 2026).
 
@@ -99,7 +100,7 @@ export function render(el, cmd, ctx) {
   let latest = null;
   loadDots().then((geo) => {
     if (ctx.signal?.aborted || !canvas.isConnected) return;
-    globe = mountGlobe(canvas, geo, latest?.audience?.globe?.countries || [], { reduceMotion: reduce });
+    globe = mountGlobe(canvas, geo, latest?.audience?.globe || null, { reduceMotion: reduce, live: latest?.audience?.live ?? null });
   }).catch(() => { el.querySelector('.bb-globe').hidden = true; });
   ctx.signal?.addEventListener('abort', () => globe?.stop());
   async function load() {
@@ -109,7 +110,7 @@ export function render(el, cmd, ctx) {
       body.innerHTML = bbrkHtml(d);
       caption.textContent = globeCaption(d);
       canvas.setAttribute('aria-label', globeLabel(d));
-      globe?.update(d.audience?.globe?.countries || []);
+      globe?.update(d.audience?.globe || null, d.audience?.live ?? null);
       ctx.updated(d.updated, false);
       ctx.status(`${BBRK}: ${STRIP}`);
     } catch (err) {

@@ -6,8 +6,20 @@
 /* ---- BBRK: our own site numbers for sponsors, drawn like a quote (screens/bbrk.js) ---- */
 .bb-panel > .panel-body { padding: 10px 12px; }
 .bb-grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 20px; align-items: start; }
-.bb-globe { margin: 0; text-align: center; font-size: 11px; }
-.bb-globe canvas { display: block; width: 100%; aspect-ratio: 1; --globe-land: hsla(201, 100%, 71%, .38); --globe-hot: var(--text); --globe-rim: hsla(201, 100%, 71%, .22); }
+.bb-globe { position: relative; margin: 0; text-align: center; font-size: 11px; }
+/* Drag to turn it (public/globe.js); pan-y: a mostly vertical drag still scrolls the page. */
+.bb-globe canvas {
+  display: block; width: 100%; aspect-ratio: 1; cursor: grab; touch-action: pan-y; outline: 0;
+  --globe-land: hsla(201, 100%, 71%, .38); --globe-hot: var(--text); --globe-rim: hsla(201, 100%, 71%, .22);
+}
+.bb-globe canvas:active { cursor: grabbing; }
+.bb-globe canvas:focus-visible { box-shadow: 0 0 0 1px var(--accent); border-radius: 50%; }
+/* The label of the dot under the pointer: 'Tokyo · 12 this week'. */
+.bb-globe .globe-tip {
+  position: absolute; z-index: 2; padding: 1px 6px; pointer-events: none; transform: translateY(-100%);
+  background: var(--panel); border: 1px solid var(--rule-strong); color: var(--text); font-size: 11px; white-space: nowrap;
+}
+.bb-globe .globe-tip[hidden] { display: none; }
 .bb-globe figcaption { margin-top: 4px; letter-spacing: .04em; }
 @media (max-width: 900px) { .bb-grid { grid-template-columns: minmax(0, 1fr); } .bb-globe { width: min(240px, 100%); margin: 0 auto; } }
 .bb-spark { display: flex; align-items: flex-end; gap: 8px; margin-top: 8px; font-size: 11px; }

@@ -163,18 +163,18 @@ export function render(el, cmd, ctx) {
     if (h) h.innerHTML = proofHtml(bbrk, cfg);
     if (caption) caption.textContent = sponCaption(bbrk);
     canvas?.setAttribute('aria-label', globeLabel(bbrk));
-    globe?.update(bbrk?.audience?.globe?.countries || []);
+    globe?.update(bbrk?.audience?.globe || null, bbrk?.audience?.live ?? null);
   };
   // After the sponsor config arrives (the status bar paints its strip from the same
   // request first), point at the real strip.
   let unpoint = () => {};
   let open = true;
   ctx.onCleanup(() => { open = false; unpoint(); globe?.stop(); });
-  // BBRK's globe: country totals only (the server folds countries under 3 visitors).
+  // BBRK's globe: places with 3 visitors or more only (the server folds the rest).
   const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   loadDots().then((geo) => {
     if (!open || !canvas?.isConnected) return;
-    globe = mountGlobe(canvas, geo, bbrk?.audience?.globe?.countries || [], { reduceMotion });
+    globe = mountGlobe(canvas, geo, bbrk?.audience?.globe || null, { reduceMotion, live: bbrk?.audience?.live ?? null });
   }).catch(() => { const f = el.querySelector('.spon-globe'); if (open && f) f.hidden = true; });
   loadSponsors().then((c) => {
     if (!open || !el.isConnected) return;

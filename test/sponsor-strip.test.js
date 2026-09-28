@@ -241,7 +241,7 @@ test('SPONSOR screen: YOUR AD HERE with the globe, one live line, email and BBRK
   assert.match(empty, /<figcaption class="dim">7D by country<\/figcaption>/);
   const css = readFileSync('public/screens/sponsor.css', 'utf8');
   assert.match(css, /\.spon-top \{ display: flex; align-items: center;/);
-  assert.match(css, /@media \(max-width: 639px\) \{[\s\S]*\.spon-top \{ flex-direction: column;/, 'under the hero on a phone');
+  assert.match(css, /@media \(max-width: 639px\) \{[\s\S]*\.spon-top \{ display: contents; \}[\s\S]*\.spon-globe \{ order: 3;/, 'under the live line on a phone (test/globe.test.js has the rest)');
 });
 
 test('SPONSOR live line: page views lead; -- for anything missing; short country names; caption live above 0 only', () => {

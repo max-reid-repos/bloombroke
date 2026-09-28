@@ -390,7 +390,7 @@ test('legal: version bumped, so everyone who accepted 1.0 is asked again', async
   const { needsConsent, acceptRecord } = await import('../public/consent.js');
   const { DEFAULT_TERMS_VERSION } = await import('../pro/billing.js');
   assert.equal(TERMS_VERSION, '1.3', 'sources by class, sub-processors, retention table, GPC, counters');
-  assert.equal(LEGAL_UPDATED, '27 September 2026');
+  assert.equal(LEGAL_UPDATED, '28 September 2026');
   assert.equal(needsConsent(acceptRecord('1.0')), true);
   assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
   assert.equal(DEFAULT_TERMS_VERSION, '2026-09-27', 'checkout records the new Terms');

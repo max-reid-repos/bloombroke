@@ -25,11 +25,23 @@
   font-size: clamp(44px, 7vw, 104px); font-weight: 800; line-height: 1.05; letter-spacing: -.02em; color: var(--text);
   white-space: nowrap;
 }
-/* YOUR AD HERE with BBRK's globe beside it (under it on a phone). */
+/* YOUR AD HERE with BBRK's globe beside it (under the live line on a phone). */
 .spon-top { display: flex; align-items: center; justify-content: center; gap: 36px; }
-.spon-globe { flex: 0 0 auto; width: 190px; margin: 0; text-align: center; font-size: 11px; }
+.spon-globe { position: relative; flex: 0 0 auto; width: 190px; margin: 0; text-align: center; font-size: 11px; }
 .spon-globe[hidden] { display: none; }
-.spon-globe canvas { display: block; width: 100%; aspect-ratio: 1; --globe-land: hsla(201, 100%, 71%, .38); --globe-hot: var(--text); --globe-rim: hsla(201, 100%, 71%, .22); }
+/* Drag to turn it (public/globe.js); pan-y: a mostly vertical drag still scrolls the page. */
+.spon-globe canvas {
+  display: block; width: 100%; aspect-ratio: 1; cursor: grab; touch-action: pan-y; outline: 0;
+  --globe-land: hsla(201, 100%, 71%, .38); --globe-hot: var(--text); --globe-rim: hsla(201, 100%, 71%, .22);
+}
+.spon-globe canvas:active { cursor: grabbing; }
+.spon-globe canvas:focus-visible { box-shadow: 0 0 0 1px var(--accent); border-radius: 50%; }
+/* The label of the dot under the pointer: 'Tokyo · 12 this week'. */
+.spon-globe .globe-tip {
+  position: absolute; z-index: 2; padding: 1px 6px; pointer-events: none; transform: translateY(-100%);
+  background: var(--panel); border: 1px solid var(--rule-strong); color: var(--text); font-size: 11px; white-space: nowrap;
+}
+.spon-globe .globe-tip[hidden] { display: none; }
 .spon-globe figcaption { margin-top: 2px; letter-spacing: .04em; white-space: nowrap; }
 .spon-proof { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .spon-live { margin: 0; font-size: clamp(18px, 2.2vw, 30px); font-weight: 600; line-height: 1.3; color: var(--text); }
@@ -56,9 +68,15 @@
 @media (max-width: 639px) {
   .spon-page { gap: 14px; padding-top: 8px; }
   .spon-hero { font-size: clamp(36px, 11.5vw, 56px); }
-  .spon-top { flex-direction: column; gap: 10px; }
-  .spon-globe { width: auto; }
-  .spon-globe canvas { width: 150px; margin: 0 auto; }
+  /* On a phone the globe goes under the live line, the whole of it, as wide as the page. */
+  .spon-top { display: contents; }
+  .spon-hero { order: 1; }
+  .spon-proof { order: 2; }
+  .spon-globe { order: 3; align-self: stretch; width: auto; max-width: 480px; margin: 0 auto; }
+  .spon-globe canvas { width: 100%; }
+  .spon-act { order: 4; }
+  .spon-more { order: 5; }
+  .spon-fine { order: 6; }
   /* One part a line on a phone, so a line never ends on a dot. */
   .spon-live { display: flex; flex-direction: column; gap: 2px; font-size: 20px; }
   .spon-dot { display: none; }

@@ -4,13 +4,13 @@
 
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import express from 'express';
 import { openDb } from '../pro/db.js';
 import { createLimiter } from '../pro/ratelimit.js';
 import { createCounters, mountCounters, makeCountGate, inventoryOf, BATCH_MAX } from '../lib/counters.js';
 import {
-  makeDataFast, shapeAudience, emptyAudience, plan, nyMidnight, countryCode, globeOf, API_BASE, TZ, TTL_MS, GLOBE_MIN, ENV_KEY,
+  makeDataFast, shapeAudience, emptyAudience, plan, nyMidnight, countryCode, globeOf, resolveCity, snapDeg, API_BASE, TZ, TTL_MS, GLOBE_MIN, ENV_KEY,
 } from '../lib/datafast.js';
 import { mountEmbeds } from '../lib/embed-pages.js';
 import { stripItems, mountStrip } from '../public/sponsor-strip.js';
@@ -18,6 +18,7 @@ import { countOnly, stripShownBatch } from '../public/goal.js';
 import { bbrkHtml, heroChange, visitTime, topLine, globeCaption, globeLabel, SOURCE, STRIP, INVENTORY } from '../public/screens/bbrk.js';
 import { ortho, dotRadius, startLon, mountGlobe } from '../public/globe.js';
 import { build as buildDots, rings } from '../scripts/build-globe-dots.js';
+import { snap as buildSnap } from '../scripts/build-cities.js';
 
 const T0 = Date.parse('2026-09-27T16:00:00Z'); // 12:00 in New York
 const KEY = 'df_test_not_a_real_key_1234';
@@ -34,6 +35,9 @@ const BODIES = {
   'analytics/devices': { status: 'success', data: [{ device: 'desktop', visitors: 680 }, { device: 'mobile', visitors: 300 }, { device: 'tablet', visitors: 20 }] },
   'analytics/referrers': { status: 'success', data: [{ referrer: 'x.com', visitors: 2250 }, { referrer: 'Google', visitors: 1830 }, { referrer: 'Direct / None', visitors: 900 }] },
   'analytics/realtime': { status: 'success', data: [{ visitors: 7 }] },
+  'analytics/cities:7': { status: 'success', data: [{ city: 'New York', visitors: 40 }, { city: 'Berlin', visitors: 12 }, { city: 'Smalltown Nowhere', visitors: 50 }, { city: 'Reykjavik', visitors: 2 }, { city: 'Springfield', visitors: 2 }] },
+  'analytics/countries:live': { status: 'success', data: [{ country: 'United States', image: '🇺🇸', visitors: 2 }, { country: 'Germany', visitors: 1 }] },
+  'analytics/cities:live': { status: 'success', data: [{ city: 'Berlin', visitors: 1 }, { city: 'Reykjavik', visitors: 1 }] },
 };
 
 function keyOf(url) {
@@ -45,7 +49,10 @@ function keyOf(url) {
     if (q.get('startAt') === q.get('endAt')) return `${path}:today`;
     return q.get('startAt') === '2026-09-21' ? `${path}:week` : `${path}:month`;
   }
-  if (path === 'analytics/countries') return `${path}:${q.get('startAt') === '2026-09-21' ? 7 : 30}`;
+  if (path === 'analytics/countries' || path === 'analytics/cities') {
+    if (q.get('startAt').includes('T')) return `${path}:live`;
+    return `${path}:${q.get('startAt') === '2026-09-21' ? 7 : 30}`;
+  }
   return path;
 }
 
@@ -77,7 +84,7 @@ test('DataFast: the calls are read-only GETs with the key as a Bearer token, New
   const f = fakeFetch();
   await makeDataFast({ key: KEY, fetchImpl: f, now: () => T0, log: () => {} }).get();
   const paths = f.calls.map((c) => new URL(c.url).pathname).sort();
-  assert.deepEqual([...new Set(paths)], ['/api/v1/analytics/countries', '/api/v1/analytics/devices', '/api/v1/analytics/overview', '/api/v1/analytics/realtime', '/api/v1/analytics/referrers', '/api/v1/analytics/timeseries']);
+  assert.deepEqual([...new Set(paths)], ['/api/v1/analytics/cities', '/api/v1/analytics/countries', '/api/v1/analytics/devices', '/api/v1/analytics/overview', '/api/v1/analytics/realtime', '/api/v1/analytics/referrers', '/api/v1/analytics/timeseries']);
   for (const c of f.calls) {
     assert.ok(c.url.startsWith(API_BASE));
     assert.equal(c.init.headers.Authorization, `Bearer ${KEY}`);
@@ -116,9 +123,14 @@ test('DataFast: the audience contract, from mocked answers', async () => {
   for (const k of ['today', 'd7', 'd30']) assert.ok(k in a.visitors, k);
 });
 
-test('DataFast globe: country level only; under 3 visitors or off the map folds into other', async () => {
+test('DataFast globe: under 3 visitors or off the map folds into other; cities of 3 or more, rounded to whole degrees', async () => {
   const a = await makeDataFast({ key: KEY, fetchImpl: fakeFetch(), now: () => T0, log: () => {} }).get();
-  assert.deepEqual(a.globe, { window: '7d', countries: [{ cc: 'US', visitors: 1310 }, { cc: 'DE', visitors: 194 }], other: 11 });
+  assert.deepEqual(a.globe, {
+    window: '7d',
+    countries: [{ cc: 'US', visitors: 1310, rest: 1270, live: true }, { cc: 'DE', visitors: 194, rest: 182 }],
+    cities: [{ name: 'New York', cc: 'US', at: [-74, 41], visitors: 40 }, { name: 'Berlin', cc: 'DE', at: [13, 53], visitors: 12, live: true }],
+    other: 11,
+  });
   assert.equal(GLOBE_MIN, 3);
   assert.deepEqual(globeOf([{ country: 'Iceland', visitors: 2 }]).countries, [], 'two visitors never show');
   assert.equal(countryCode({ country: 'Anywhere', image: '🇫🇷' }), 'FR', 'the flag first');
@@ -126,7 +138,58 @@ test('DataFast globe: country level only; under 3 visitors or off the map folds 
   assert.equal(countryCode({ country: 'Singapore' }), 'SG');
   assert.equal(countryCode({ country: 'Atlantis' }), null);
   const json = JSON.stringify(a.globe);
-  assert.doesNotMatch(json, /city|lat|lon|region/i, 'no place smaller than a country');
+  assert.doesNotMatch(json, /Smalltown|Reykjavik|Springfield|"city"|lat|lon|region/i, 'only the dots: never the city list, never a raw coordinate');
+  for (const c of a.globe.cities) assert.ok(c.at.every(Number.isInteger) && c.visitors >= GLOBE_MIN, c.name);
+  // No city data at all: country dots as before.
+  const bare = await makeDataFast({ key: KEY, fetchImpl: fakeFetch({ fail: ['analytics/cities:7', 'analytics/cities:live', 'analytics/countries:live'] }), now: () => T0, log: () => {} }).get();
+  assert.deepEqual(bare.globe, { window: '7d', countries: [{ cc: 'US', visitors: 1310 }, { cc: 'DE', visitors: 194 }], cities: [], other: 11 });
+  // The /api/bbrk answer is this audience as it is: nothing else about places goes out.
+  assert.deepEqual(Object.keys(a.globe).sort(), ['cities', 'countries', 'other', 'window']);
+});
+
+test('DataFast globe cities: the 3 rule, one square per ~100 km, a city counted once, the live rules', () => {
+  const rows = [{ country: 'Japan', visitors: 30 }, { country: 'United States', image: '🇺🇸', visitors: 9 }, { country: 'Iceland', visitors: 2 }];
+  // Tokyo and Kawaguchi share a whole-degree square: one dot, named after the bigger place.
+  const g = globeOf(rows, { cities: [{ city: 'Kawaguchi', visitors: 5 }, { city: 'Tokyo', visitors: 3 }, { city: 'Osaka', visitors: 2 }, { city: 'Reykjavik', visitors: 2 }] });
+  assert.deepEqual(g.cities, [{ name: 'Tokyo', cc: 'JP', at: [140, 36], visitors: 8 }]);
+  assert.equal(g.countries[0].rest, 22, 'Osaka (2) stays in Japan');
+  assert.equal(g.other, 2);
+  // A city in a country under 3, or a name in none of the visitors' countries: no dot.
+  assert.deepEqual(globeOf([{ country: 'Iceland', visitors: 2 }], { cities: [{ city: 'Reykjavik', visitors: 3 }] }).cities, []);
+  assert.deepEqual(globeOf([{ country: 'Japan', visitors: 9 }], { cities: [{ city: 'Berlin', visitors: 5 }] }).cities, [], 'never guessed across countries');
+  // Springfield: the biggest one in the visitors' countries.
+  assert.equal(resolveCity('Springfield', new Set(['US'])).cc, 'US');
+  assert.equal(resolveCity('Springfield', new Set(['JP'])), null);
+  assert.equal(snapDeg(35.69), 36);
+  // All of a country in city dots: rest 0 (no country dot). A rest under 3 is not shown either.
+  const all = globeOf([{ country: 'Japan', visitors: 10 }], { cities: [{ city: 'Tokyo', visitors: 8 }] });
+  assert.equal(all.countries[0].rest, 0, '2 left is not a dot');
+  // Live: a live city pulses only if it is a dot; the country pulses for the rest.
+  const live = globeOf(rows, {
+    cities: [{ city: 'Tokyo', visitors: 5 }],
+    liveRows: [{ country: 'Japan', visitors: 2 }, { country: 'Iceland', visitors: 1 }],
+    liveCities: [{ city: 'Tokyo', visitors: 1 }, { city: 'Osaka', visitors: 1 }],
+  });
+  assert.equal(live.cities[0].live, true);
+  assert.equal(live.countries[0].live, true, 'Osaka: the country pulses');
+  assert.equal(JSON.stringify(live).includes('Iceland') || live.countries.some((c) => c.cc === 'IS'), false, 'Iceland never shows, live or not');
+  const onlyCity = globeOf(rows, { cities: [{ city: 'Tokyo', visitors: 5 }], liveRows: [{ country: 'Japan', visitors: 1 }], liveCities: [{ city: 'Tokyo', visitors: 1 }] });
+  assert.equal(onlyCity.countries[0].live, undefined, 'the one on now is in the Tokyo dot');
+  assert.doesNotMatch(JSON.stringify(live), /Osaka|"city"/);
+});
+
+test('city table: our own, rounded to whole degrees, server only', () => {
+  const t = JSON.parse(readFileSync('data/cities.json', 'utf8'));
+  assert.match(t.source, /Natural Earth/);
+  assert.ok(t.cities.length > 5000);
+  for (const [name, cc, lat, lon, pop] of t.cities) {
+    assert.ok(typeof name === 'string' && /^[A-Z]{2}$/.test(cc) && Number.isInteger(lat) && Number.isInteger(lon) && Number.isInteger(pop), name);
+  }
+  assert.ok(!existsSync('public/geo/cities.json') && !existsSync('public/cities.json'), 'never in public/');
+  for (const f of readdirSync('public', { recursive: true }).filter((f) => /\.js$/.test(f))) {
+    assert.doesNotMatch(readFileSync(`public/${f}`, 'utf8'), /cities\.json/, f);
+  }
+  assert.equal(buildSnap(35.5), 36);
 });
 
 test('DataFast: one failed call nulls only its own numbers; the key is never logged', async () => {
