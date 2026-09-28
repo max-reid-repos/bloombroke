@@ -1,82 +1,80 @@
-// SPONSOR: how sponsors work on Bloombroke, on one short screen: a live preview of the
-// strip, four facts, links that show what a sponsor gets, and the contact. Also the
-// browser side of the sponsor config (/api/sponsors, from data/sponsors.json via
+// SPONSOR: three things, big. YOUR AD HERE, with the real strip at the bottom outlined and
+// a small label above it; one live line of our own numbers (/api/bbrk: DataFast audience
+// and the strip inventory) and what one line would get a week; one action, the email.
+// Also the browser side of the sponsor config (/api/sponsors, from data/sponsors.json via
 // lib/sponsors.js), and the "SPONSORED BY" note on a WEIRD gauge. The strip itself is
 // public/sponsor-strip.js. Plain text and plain links: no pixels, no scripts, no tracking.
 
-import { esc, panel, metaNote, q } from './markets.js';
+import { esc, metaNote, q } from './markets.js';
 import { findCommand } from '../registry.js';
-import { stripItems, mountStrip, ROTATE_MS, MAX_SPONSOR_LINES, loadSponsors } from '../sponsor-strip.js';
+import { stripItems, loadSponsors } from '../sponsor-strip.js';
 
 export { loadSponsors }; // the config, asked once per page load: the status line needs it at startup
-import { tileBody, WEIRD_GAUGES } from './weird.js';
 
 export const CONTACT = 'hello@bloombroke.com';
-export const FACTS = [
-  'Not shown to Pro users.',
-  `Rotates every ${ROTATE_MS / 1000} s, up to ${MAX_SPONSOR_LINES} sponsors.`,
-  'No tracking, no pixels, no scripts.',
-];
-export const NOT_FOR = 'Not for brokers, exchanges, crypto, funds or tip sellers.';
-// What a sponsor can look at first. A link shows only when its command exists here; its
-// words are the tooltip, so the page stays short.
-export const PROOF = [
-  ['BBRK', 'site numbers'],
-  ['CHANGES', 'what is new'],
-  ['DATA', 'sources'],
-  ['MCP', 'AI access'],
-  ['WEIRD', 'gauges'],
-];
-// SITE NUMBERS: a few rows from /api/bbrk, today so far and the last 7 days.
-// Four rows from /api/bbrk audience and inventory; BBRK has the rest.
-export const NUMBERS = [
-  ['Visitors (7d)', (b) => fmtN(b?.audience?.visitors?.d7)],
-  ['Avg visit', (b) => fmtDur(b?.audience?.avgVisitSec)],
-  ['Strip shown (7d)', (b) => fmtN(b?.inventory?.stripShown?.d7)],
-  ['Top country', (b) => topCountry(b?.audience?.countries)],
-];
-// The gauge shown as a sponsorship preview. Never saved to the sponsor config.
-export const PREVIEW_GAUGE = 'canal';
-export const PREVIEW_SPONSOR = 'SPONSORED BY YOUR NAME';
+export const SUBJECT = 'Sponsor Bloombroke';
+export const MAILTO = `mailto:${CONTACT}?subject=${encodeURIComponent(SUBJECT)}`;
+export const HERO = 'YOUR AD HERE';
+export const POINT = '↓ this line, every screen';
+export const FINE = 'One rotating line. No tracking. No finance products. Hidden for Pro.';
 
-function fmtN(v) { return Number.isFinite(v) ? v.toLocaleString('en-US') : '--'; }
-// 102 -> "1m 42s", 40 -> "40s". Unknown: --.
-export function fmtDur(sec) {
-  if (!Number.isFinite(sec) || sec < 0) return '--';
-  const s = Math.round(sec);
-  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
-}
-export function topCountry(list) {
-  const c = Array.isArray(list) ? list[0] : null;
-  return c?.name && Number.isFinite(c.pct) ? `${c.name} ${Math.round(c.pct)}%` : '--';
+const fin = (v) => typeof v === 'number' && Number.isFinite(v);
+const count = (v) => v.toLocaleString('en-US');
+// DataFast country names, short enough for one line. Any other name as it comes.
+const SHORT = { 'United States': 'US', 'United States of America': 'US', 'United Kingdom': 'UK', 'United Arab Emirates': 'UAE' };
+
+// 429 -> '7 min', 40 -> '40 s'. Unknown: '-- min'.
+export function visitLen(sec) {
+  if (!fin(sec) || sec < 0) return '-- min';
+  return sec < 60 ? `${Math.round(sec)} s` : `${Math.round(sec / 60)} min`;
 }
 
-// The rows, from /api/bbrk (null while it loads, or a field missing: --).
-export function numbersHtml(bbrk) {
-  const rows = NUMBERS.map(([label, value]) => `<tr><th scope="row">${esc(label)}</th><td class="num">${esc(value(bbrk))}</td></tr>`).join('');
-  return `<table class="spon-nums"><tbody>${rows}</tbody></table>`;
+// The live line, as parts: '7 here now', '173 this week', '8 min visits', '60% US'. Here
+// now only when DataFast knows it and it is above 0; every other part is -- when missing.
+export function proofParts(b) {
+  const a = b?.audience || {};
+  const parts = [];
+  if (Number.isInteger(a.live) && a.live > 0) parts.push(`${count(a.live)} here now`);
+  const d7 = a.visitors?.d7;
+  parts.push(`${fin(d7) && d7 >= 0 ? count(d7) : '--'} this week`);
+  parts.push(`${visitLen(a.avgVisitSec)} visits`);
+  const top = Array.isArray(a.countries) ? a.countries[0] : null;
+  parts.push(top?.name && fin(top.pct) ? `${Math.round(top.pct)}% ${SHORT[top.name] || top.name}` : '-- top country');
+  return parts;
 }
 
-// The terminal's bottom two rows in small: the status row with the ad line where it
-// really runs, and the key bar under it.
-export function bottomMockHtml() {
-  return `<p class="spon-h">BOTTOM ROW, EVERY SCREEN</p>
-    <div class="spon-mock" role="img" aria-label="The status row at the bottom of every screen, with the sponsor line in it">
-      <div class="spon-mock-row"><span class="spon-mock-msg"></span><span class="spon-strip spon-mock-strip" id="spon-demo"></span><span class="spon-mock-legal"><span class="spon-mock-nfa">Not financial advice · </span>Terms · Feedback</span></div>
-      <div class="spon-mock-keys"><span>F1 HELP</span><span class="spon-mock-key"></span><span class="spon-mock-key"></span><span class="spon-mock-more"></span></div>
-    </div>`;
+// Paid lines already in rotation (a non-Pro visitor's strip). House lines do not count:
+// the first paid line replaces them all.
+export function paidLines(cfg) {
+  return stripItems(cfg, { pro: false }).filter((i) => i.kind === 'paid').length;
 }
 
-// A real WEIRD tile with a made-up sponsor, marked as a preview. d: /api/weird/<id>.
-export function gaugePreviewHtml(d) {
-  const g = WEIRD_GAUGES.find((x) => x.id === PREVIEW_GAUGE);
-  if (!g) return '';
-  return `<div class="wd-tile spon-tile" data-cmd="${esc(g.command)}" tabindex="0"><section class="panel">
-    <header class="panel-head"><h2 class="panel-label">${esc(g.command)}</h2><span class="panel-meta">${metaNote(PREVIEW_SPONSOR, 'A preview: no gauge is sponsored yet')}</span></header>
-    <div class="panel-body">${tileBody(g, d)}</div></section></div>`;
+// Rounded down to a clean number: under 100 as it is, then two leading digits
+// (192 -> 190, 5678 -> 5600, 12345 -> 12000).
+export function cleanDown(n) {
+  if (!fin(n) || n < 0) return null;
+  const v = Math.floor(n);
+  if (v < 100) return v;
+  const step = 10 ** (String(v).length - 2);
+  return Math.floor(v / step) * step;
 }
 
-export const proofLinks = (has = (c) => Boolean(findCommand(c))) => PROOF.filter(([c]) => has(c));
+// Times one more line would be seen a week: the last 7 days' strip_shown shared with the
+// paid lines already there (all of it when there are none). null when unknown.
+export function weeklyViews(b, cfg) {
+  const shown = b?.inventory?.stripShown?.d7;
+  if (!fin(shown) || shown < 0) return null;
+  return cleanDown(shown / (paidLines(cfg) + 1));
+}
+
+export function viewsLine(n) {
+  return n === null || n === undefined ? '-- views a week' : `About ${count(n)} views a week`;
+}
+
+export function proofHtml(b, cfg) {
+  const parts = proofParts(b).map((p) => `<span class="spon-part">${esc(p)}</span>`).join('<span class="spon-dot" aria-hidden="true"> · </span>');
+  return `<p class="spon-live">${parts}</p><p class="spon-views">${esc(viewsLine(weeklyViews(b, cfg)))}</p>`;
+}
 
 // A WEIRD gauge's title strip: SPONSORED BY <name>, or '' when the gauge has no sponsor.
 export function gaugeSponsorHtml(cfg, id) {
@@ -95,51 +93,70 @@ export function markGaugeSponsor(metaEl, id) {
   });
 }
 
-export function sponsorHtml({ has, bbrk = null, gauge = null } = {}) {
-  const link = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
-  const hasBbrk = (has || ((c) => Boolean(findCommand(c))))('BBRK');
-  // BBRK already heads the numbers block, so it is not listed twice.
-  const proof = proofLinks(has).filter(([c]) => !(hasBbrk && c === 'BBRK'));
-  const numbers = hasBbrk
-    ? `<section class="spon-box"><h3 class="spon-h">SITE NUMBERS ${link('BBRK')}</h3><div id="spon-nums">${numbersHtml(bbrk)}</div></section>` : '';
-  return panel('1', 'Sponsor', `${bottomMockHtml()}
-    <ul class="spon-facts">${FACTS.map((t) => `<li>${esc(t)}</li>`).join('')}<li class="is-no">${esc(NOT_FOR)}</li></ul>
-    <div class="spon-proofs">${numbers}<section class="spon-box"><div id="spon-gauge">${gaugePreviewHtml(gauge)}</div></section></div>
-    ${proof.length ? `<ul class="spon-proof">${proof.map(([c, what]) => `<li title="${esc(what)}">${link(c)}</li>`).join('')}</ul>` : ''}
-    <p class="notice">Email for rates: <a href="mailto:${CONTACT}">${CONTACT}</a></p>`, { cls: 'panel-solo' });
+// b: /api/bbrk (null while it loads: --). cfg: /api/sponsors. has: whether a command exists.
+export function sponsorHtml({ has, bbrk = null, cfg = null } = {}) {
+  const weird = (has || ((c) => Boolean(findCommand(c))))('WEIRD')
+    ? ` <a class="spon-weird" href="${esc(q('WEIRD'))}" data-cmd="WEIRD">Or a WEIRD gauge</a>` : '';
+  return `<section class="spon-page" aria-label="Sponsor">
+    <h2 class="spon-hero">${esc(HERO)}</h2>
+    <div id="spon-proof" class="spon-proof">${proofHtml(bbrk, cfg)}</div>
+    <p class="spon-act"><a class="spon-mail" href="${esc(MAILTO)}">EMAIL ${esc(CONTACT)}</a>${weird}</p>
+    <p class="spon-fine">${esc(FINE)}</p>
+  </section>`;
 }
 
-// The real strip at the bottom: outlined for 2 s when SPONSOR opens (static with reduced
-// motion; the CSS drops the animation), so it is clear where the line runs.
-export const SPOT_MS = 2000;
-export function spotlightStrip(doc = globalThis.document) {
+// The real strip at the bottom, while SPONSOR is open: outlined (a short glow first; still
+// with reduced motion, in the CSS), with a small label just above it. Nothing for Pro (no
+// strip). Returns stop(), which takes both away.
+export function pointAtStrip(doc = globalThis.document, win = globalThis.window) {
   const real = doc?.getElementById?.('status-sponsor');
-  if (!real || real.hidden) return null;
+  if (!real || real.hidden) return () => {};
   real.classList.add('is-spot');
-  return setTimeout(() => real.classList.remove('is-spot'), SPOT_MS);
+  const tag = doc.createElement('div');
+  tag.className = 'spon-point';
+  tag.setAttribute('aria-hidden', 'true');
+  tag.textContent = POINT;
+  doc.body.appendChild(tag);
+  // Above the line itself, clear of the screen edges.
+  const place = () => {
+    const box = (real.querySelector?.('.spon-item') || real).getBoundingClientRect();
+    const w = tag.offsetWidth || 0;
+    const vw = win?.innerWidth || box.right;
+    const left = Math.max(8, Math.min(box.left + box.width / 2 - w / 2, vw - w - 8));
+    tag.style.left = `${Math.round(left)}px`;
+    tag.style.top = `${Math.round(box.top - (tag.offsetHeight || 0) - 4)}px`;
+  };
+  place();
+  win?.addEventListener?.('resize', place);
+  return () => {
+    win?.removeEventListener?.('resize', place);
+    tag.remove();
+    real.classList.remove('is-spot');
+  };
 }
 
 export function render(el, cmd, ctx) {
+  let cfg = null;
+  let bbrk = null;
   el.innerHTML = sponsorHtml();
-  ctx.status('SPONSOR: EMAIL FOR RATES');
+  ctx.status('SPONSOR: EMAIL US');
+  const paint = () => { const h = el.querySelector('#spon-proof'); if (h) h.innerHTML = proofHtml(bbrk, cfg); };
   // After the sponsor config arrives (the status bar paints its strip from the same
-  // request first), outline the real strip.
-  let spot = null;
-  loadSponsors().then(() => { if (el.isConnected) spot = spotlightStrip(); });
-  ctx.onCleanup(() => { clearTimeout(spot); document.getElementById('status-sponsor')?.classList.remove('is-spot'); });
-  const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let demo = null;
-  ctx.onCleanup(() => demo?.stop());
-  loadSponsors().then((cfg) => {
-    const host = el.querySelector('#spon-demo');
-    if (!host || !el.isConnected) return;
-    // The real strip, as a visitor who is not Pro sees it.
-    const items = stripItems(cfg, { pro: false });
-    if (items.length) demo = mountStrip(host, items, { reduceMotion, isHidden: () => document.hidden });
+  // request first), point at the real strip.
+  let unpoint = () => {};
+  let open = true;
+  ctx.onCleanup(() => { open = false; unpoint(); });
+  loadSponsors().then((c) => {
+    if (!open || !el.isConnected) return;
+    cfg = c;
+    unpoint = pointAtStrip();
+    paint();
   });
-  // Proof: the site numbers and a live gauge, each filled in when it comes.
-  const get = (url) => (ctx.fetchJSON ? ctx.fetchJSON(url, { signal: ctx.signal }) : Promise.reject(new Error('no fetch')));
-  get('/api/bbrk').then((d) => { const h = el.querySelector('#spon-nums'); if (h) h.innerHTML = numbersHtml(d); }).catch(() => {});
-  get(`/api/weird/${PREVIEW_GAUGE}`).then((d) => { const h = el.querySelector('#spon-gauge'); if (h) h.innerHTML = gaugePreviewHtml(d); })
-    .catch(() => { const h = el.querySelector('#spon-gauge'); if (h) h.innerHTML = gaugePreviewHtml({ ok: false }); });
+  // Our own numbers, again every minute while the screen is open.
+  const load = () => {
+    if (!ctx.fetchJSON) return;
+    ctx.fetchJSON('/api/bbrk', { signal: ctx.signal }).then((d) => { if (open) { bbrk = d; paint(); } }).catch(() => {});
+  };
+  load();
+  ctx.live?.(load, 60_000);
 }

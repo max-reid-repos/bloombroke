@@ -9,7 +9,8 @@ import express from 'express';
 import { cleanSponsors, cleanUrl, loadSponsors, mountSponsors, SPONSORS_FILE, MAX_LINES, MAX_HOUSE } from '../lib/sponsors.js';
 import { stripItems, itemHtml, mountStrip, ROTATE_MS, SLIDE_MS, MAX_SPONSOR_LINES } from '../public/sponsor-strip.js';
 import { stripShownBatch } from '../public/goal.js';
-import { sponsorHtml, FACTS, NOT_FOR, PROOF, proofLinks, numbersHtml, gaugePreviewHtml, PREVIEW_SPONSOR, bottomMockHtml, fmtDur, topCountry, spotlightStrip, SPOT_MS } from '../public/screens/sponsor.js';
+import { sponsorHtml, proofParts, proofHtml, visitLen, cleanDown, weeklyViews, viewsLine, paidLines, pointAtStrip, HERO, POINT, FINE, MAILTO } from '../public/screens/sponsor.js';
+import { hereText, paintHere, mountHereNow, clearOfBrand, HERE_MS } from '../public/here-now.js';
 import { findCommand } from '../public/registry.js';
 import { parseCommand } from '../public/app.js';
 
@@ -112,7 +113,7 @@ test('Pro users see nothing: no paid line, no AD line', () => {
 
 // ---- rotation ---------------------------------------------------------------------------------
 
-test('rotation: a new line every 7 seconds, with a short slide, looping', () => {
+test('rotation: a new line every 4 seconds, with a short slide, looping', () => {
   mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
   try {
     const host = fakeHost();
@@ -134,7 +135,7 @@ test('rotation: a new line every 7 seconds, with a short slide, looping', () => 
     assert.equal((host.listeners.mouseenter || []).length, 0, 'listeners removed');
   } finally { mock.timers.reset(); }
   assert.ok(SLIDE_MS >= 150 && SLIDE_MS <= 200);
-  assert.equal(ROTATE_MS, 7000);
+  assert.equal(ROTATE_MS, 4000);
 });
 
 test('rotation: holds while hovered or focused, and while the tab is hidden', () => {
@@ -196,75 +197,185 @@ test('position: the strip fills the free space and sits centred in it, clear of 
   assert.ok(html.indexOf('id="status-msg"') < html.indexOf('id="status-sponsor"') && html.indexOf('id="status-sponsor"') < html.indexOf('id="status-legal"'), 'between the status text and the legal block');
 });
 
-test('SPONSOR screen: a mock of the bottom rows, facts, proof, email for rates; short', () => {
-  const mock = bottomMockHtml();
-  assert.match(mock, /BOTTOM ROW, EVERY SCREEN/);
-  assert.match(mock, /<div class="spon-mock-row"><span class="spon-mock-msg"><\/span><span class="spon-strip spon-mock-strip" id="spon-demo"><\/span><span class="spon-mock-legal"><span class="spon-mock-nfa">Not financial advice · <\/span>Terms · Feedback<\/span><\/div>/, 'the ad line in its real place, legal links on its right');
-  assert.match(mock, /<div class="spon-mock-keys"><span>F1 HELP<\/span>/, 'the key bar under it');
-  const all = sponsorHtml({ has: () => true });
-  assert.ok(all.includes(mock));
-  for (const f of [...FACTS, NOT_FOR]) assert.ok(all.includes(f), f);
-  assert.deepEqual(FACTS, ['Not shown to Pro users.', 'Rotates every 7 s, up to 8 sponsors.', 'No tracking, no pixels, no scripts.']);
-  assert.match(all, /data-cmd="BBRK">BBRK<\/a>/);
-  for (const c of ['CHANGES', 'DATA', 'MCP', 'WEIRD']) assert.match(all, new RegExp(`data-cmd="${c}">${c}</a>`));
-  assert.match(all, /Email for rates: <a href="mailto:hello@bloombroke\.com">/);
-  assert.doesNotMatch(all, /\$\d/, 'no prices');
-  const some = sponsorHtml({ has: (c) => c === 'WEIRD' });
-  for (const c of ['BBRK', 'CHANGES', 'DATA', 'MCP']) assert.doesNotMatch(some, new RegExp(`data-cmd="${c}"`));
-  assert.doesNotMatch(sponsorHtml({ has: () => false }), /class="spon-proof"/);
-  assert.ok(proofLinks().some(([c]) => c === 'WEIRD'));
-  // Under 90 words with real-looking numbers, the links on main, a gauge, and the longest
-  // house line in the mock. The gauge's line and source are hidden in the preview (CSS).
-  const words = (h) => h.replace(/<p class="wd-(line|src)">[\s\S]*?<\/p>/g, '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w)).length;
-  const page = sponsorHtml({ bbrk: { audience: { visitors: { d7: 1234 }, avgVisitSec: 102, countries: [{ name: 'United States', pct: 41 }] }, inventory: { stripShown: { d7: 5678 } } },
-    gauge: { ok: true, headline: 'HORMUZ 3 SHIPS/DAY', line: 'a b c', source: 'IMF PortWatch' } });
-  const longest = Math.max(...loadSponsors().house.map((h) => h.text.split(/\s+/).length)) + 1;
-  assert.ok(words(page) + longest <= 90, `${words(page) + longest} words`);
-  assert.match(readFileSync('public/screens/sponsor.css', 'utf8'), /\.spon-tile \.wd-line, \.spon-tile \.wd-src \{ display: none; \}/);
+// ---- the SPONSOR screen ---------------------------------------------------------------------
+
+const FULL = {
+  audience: { live: 7, visitors: { today: 17, d7: 173, d30: 400 }, avgVisitSec: 480, countries: [{ name: 'United States', pct: 60.4 }, { name: 'Japan', pct: 10 }] },
+  inventory: { stripShown: { today: 100, d7: 5678 } },
+};
+// Visible words: anything with a letter or a digit, tags and hidden parts left out.
+const words = (h) => h.replace(/<[^>]+aria-hidden="true"[^>]*>[^<]*<\/span>/g, ' ').replace(/<[^>]+>/g, ' ').replace(/&[a-z0-9#]+;/g, ' ')
+  .split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w)).length;
+
+test('SPONSOR screen: YOUR AD HERE, one live line, one email; 40 words or fewer with the strip label', () => {
+  const page = sponsorHtml({ has: () => true, bbrk: FULL, cfg: cleanSponsors({ house: house(3) }) });
+  assert.match(page, /<h2 class="spon-hero">YOUR AD HERE<\/h2>/);
+  assert.equal(HERO, 'YOUR AD HERE');
+  assert.match(page, /<p class="spon-live"><span class="spon-part">7 here now<\/span><span class="spon-dot" aria-hidden="true"> · <\/span><span class="spon-part">173 this week<\/span>/);
+  assert.match(page, /<p class="spon-views">About 5,600 views a week<\/p>/);
+  assert.equal(MAILTO, 'mailto:hello@bloombroke.com?subject=Sponsor%20Bloombroke');
+  assert.match(page, /<a class="spon-mail" href="mailto:hello@bloombroke\.com\?subject=Sponsor%20Bloombroke">EMAIL hello@bloombroke\.com<\/a>/);
+  assert.equal((page.match(/<a /g) || []).length, 2, 'the email and one tiny WEIRD link, nothing else');
+  assert.match(page, /<a class="spon-weird" href="\?c=WEIRD" data-cmd="WEIRD">Or a WEIRD gauge<\/a>/);
+  assert.doesNotMatch(sponsorHtml({ has: () => false }), /WEIRD/, 'no link to a command that is not here');
+  assert.equal((page.match(/class="spon-fine"/g) || []).length, 1, 'one line of fine print');
+  assert.match(page, new RegExp(FINE.replace(/\./g, '\\.')));
+  assert.match(FINE, /No tracking/);
+  assert.match(FINE, /Pro/);
+  assert.equal(POINT, '↓ this line, every screen');
+  const n = words(page) + words(POINT);
+  assert.ok(n <= 40, `${n} words`);
+  // Gone: the fact rows, the numbers table, the gauge preview, the proof links, the mock.
+  assert.doesNotMatch(page, /spon-facts|spon-nums|SITE NUMBERS|spon-mock|wd-tile|CANAL|data-cmd="(BBRK|CHANGES|DATA|MCP)"/);
+  assert.doesNotMatch(page, /\$\d/, 'no prices');
+  assert.doesNotMatch(page, /—/);
+  assert.doesNotMatch(page, new RegExp(['bloom', 'berg'].join(''), 'i'));
   assert.equal(parseCommand('SPONSOR').name, 'SPONSOR');
-  assert.doesNotMatch(all, /—/);
+  // While loading: -- for every number, and no here now.
+  const empty = sponsorHtml({ has: () => true });
+  assert.match(empty, /-- this week/);
+  assert.match(empty, /-- views a week/);
+  assert.doesNotMatch(empty, /here now/);
 });
 
-test('SPONSOR numbers: visitors, average visit, strip shown and top country; -- until data; no game counts', () => {
-  const b = { audience: { visitors: { today: 50, d7: 1234, d30: 4000 }, avgVisitSec: 102, returningPct: 30, desktopPct: 60, countries: [{ name: 'United States', pct: 41.4 }, { name: 'India', pct: 9 }], referrers: [], source: 'DataFast', as_of: '2026-09-27' },
-    inventory: { stripShown: { today: 100, d7: 5678 }, stripClicks: { today: 1, d7: 9 }, embedLoads: { today: 0, d7: 2 }, mcpCalls: { today: 0, d7: 3 } } };
-  const html = numbersHtml(b);
-  assert.deepEqual([...html.matchAll(/<th scope="row">([^<]+)<\/th><td class="num">([^<]+)<\/td>/g)].map((m) => [m[1], m[2]]),
-    [['Visitors (7d)', '1,234'], ['Avg visit', '1m 42s'], ['Strip shown (7d)', '5,678'], ['Top country', 'United States 41%']]);
-  assert.equal((numbersHtml(null).match(/>--</g) || []).length, 4);
-  assert.equal((numbersHtml({ audience: {}, inventory: {} }).match(/>--</g) || []).length, 4);
-  assert.doesNotMatch(html, /WHATIF|GUESS|MCP calls/);
-  assert.equal(fmtDur(40), '40s');
-  assert.equal(fmtDur(605), '10m 05s');
-  assert.equal(fmtDur(null), '--');
-  assert.equal(topCountry([]), '--');
-  assert.match(sponsorHtml({ has: () => true }), /SITE NUMBERS <a class="code" href="\?c=BBRK" data-cmd="BBRK">BBRK<\/a>/);
-  assert.doesNotMatch(sponsorHtml({ has: (c) => c !== 'BBRK' }), /SITE NUMBERS/);
-  const tile = gaugePreviewHtml({ ok: true, headline: 'HORMUZ 3 SHIPS/DAY', line: 'x', source: 'IMF PortWatch' });
-  assert.match(tile, /data-cmd="CANAL"/);
-  assert.match(tile, new RegExp(PREVIEW_SPONSOR));
-  assert.deepEqual(loadSponsors().gauges, {}, 'a preview only');
+test('SPONSOR live line: here now only above 0; -- for anything missing; short country names', () => {
+  assert.deepEqual(proofParts(FULL), ['7 here now', '173 this week', '8 min visits', '60% US']);
+  assert.deepEqual(proofParts(null), ['-- this week', '-- min visits', '-- top country']);
+  assert.deepEqual(proofParts({ audience: { live: 0, visitors: { d7: 1234 }, avgVisitSec: 40, countries: [{ name: 'Japan', pct: 10.4 }] } }), ['1,234 this week', '40 s visits', '10% Japan']);
+  assert.deepEqual(proofParts({ audience: { live: null, visitors: {}, avgVisitSec: null, countries: [] } }), ['-- this week', '-- min visits', '-- top country']);
+  assert.deepEqual(proofParts({ audience: { live: 12000, countries: [{ name: 'United Kingdom', pct: 5 }] } }).slice(0, 1), ['12,000 here now']);
+  assert.equal(proofParts({ audience: { countries: [{ name: 'United Kingdom', pct: 5 }] } })[2], '5% UK');
+  assert.equal(visitLen(429), '7 min');
+  assert.equal(visitLen(-1), '-- min');
+  assert.match(proofHtml(FULL), /<span class="spon-part">60% US<\/span><\/p>/);
+  assert.match(proofHtml({ audience: { visitors: { d7: '<b>' } } }), /-- this week/, 'only numbers');
 });
 
-test('SPONSOR opens: the real strip is outlined for 2 s; reduced motion keeps a still outline', () => {
-  mock.timers.enable({ apis: ['setTimeout'] });
-  try {
-    const cls = new Set();
-    const real = { hidden: false, classList: { add: (c) => cls.add(c), remove: (c) => cls.delete(c) } };
-    const doc = { getElementById: (id) => (id === 'status-sponsor' ? real : null) };
-    spotlightStrip(doc);
-    assert.ok(cls.has('is-spot'));
-    mock.timers.tick(SPOT_MS - 1);
-    assert.ok(cls.has('is-spot'));
-    mock.timers.tick(1);
-    assert.ok(!cls.has('is-spot'));
-    real.hidden = true; // Pro: no strip, nothing to outline
-    assert.equal(spotlightStrip(doc), null);
-  } finally { mock.timers.reset(); }
-  assert.equal(SPOT_MS, 2000);
+test('SPONSOR views a week: last 7 days strip_shown over the paid lines plus yours, rounded down; -- when missing', () => {
+  const shown = (d7) => ({ inventory: { stripShown: { d7 } } });
+  const paid = (n) => cleanSponsors({ lines: Array.from({ length: n }, (_, i) => ({ name: `S${i}`, text: 'x' })), house: house(3) });
+  assert.equal(paidLines(cleanSponsors({ house: house(3) })), 0, 'house lines do not count');
+  assert.equal(paidLines(paid(2)), 2);
+  assert.equal(paidLines(null), 0);
+  assert.equal(weeklyViews(shown(192), null), 190, 'no paid lines: all of it');
+  assert.equal(weeklyViews(shown(192), cleanSponsors({ house: house(3) })), 190);
+  assert.equal(weeklyViews(shown(5678), paid(1)), 2800, '5678 / 2 = 2839, down to 2800');
+  assert.equal(weeklyViews(shown(5678), paid(2)), 1800, '5678 / 3 = 1892.7, down to 1800');
+  assert.equal(weeklyViews(shown(99), null), 99);
+  assert.equal(weeklyViews(shown(0), null), 0);
+  assert.equal(weeklyViews(shown(null), null), null);
+  assert.equal(weeklyViews(null, null), null);
+  assert.equal(weeklyViews({ inventory: {} }, null), null);
+  assert.deepEqual([cleanDown(12345), cleanDown(100), cleanDown(109), cleanDown(1999), cleanDown(7.9), cleanDown(-1), cleanDown(NaN)], [12000, 100, 100, 1900, 7, null, null]);
+  assert.equal(viewsLine(190), 'About 190 views a week');
+  assert.equal(viewsLine(12000), 'About 12,000 views a week');
+  assert.equal(viewsLine(null), '-- views a week');
+});
+
+test('SPONSOR open: the real strip is outlined with a label above it until the screen closes; nothing for Pro', () => {
+  const cls = new Set();
+  const added = [];
+  const real = { hidden: false, classList: { add: (c) => cls.add(c), remove: (c) => cls.delete(c) }, querySelector: () => null,
+    getBoundingClientRect: () => ({ left: 400, width: 300, top: 700, right: 700 }) };
+  const tag = { style: {}, offsetWidth: 180, offsetHeight: 16, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, remove() { this.gone = true; } };
+  const doc = { getElementById: (id) => (id === 'status-sponsor' ? real : null), createElement: () => tag, body: { appendChild: (t) => added.push(t) } };
+  const ls = {};
+  const win = { innerWidth: 1536, addEventListener: (t, f) => { ls[t] = f; }, removeEventListener: (t) => { delete ls[t]; } };
+  const stop = pointAtStrip(doc, win);
+  assert.ok(cls.has('is-spot'));
+  assert.equal(added[0], tag);
+  assert.equal(tag.textContent, POINT);
+  assert.equal(tag.className, 'spon-point');
+  assert.equal(tag.attrs['aria-hidden'], 'true');
+  assert.equal(tag.style.left, '460px', 'centred over the line');
+  assert.equal(tag.style.top, '680px', 'just above it');
+  assert.ok(ls.resize, 'moves with the window');
+  real.getBoundingClientRect = () => ({ left: 0, width: 100, top: 800, right: 100 });
+  ls.resize();
+  assert.equal(tag.style.left, '8px', 'kept on screen');
+  stop();
+  assert.ok(!cls.has('is-spot'));
+  assert.ok(tag.gone);
+  assert.equal(ls.resize, undefined);
+  real.hidden = true; // Pro: no strip, nothing to point at
+  const none = pointAtStrip(doc, win);
+  assert.ok(!cls.has('is-spot'));
+  none();
   const css = readFileSync('public/style.css', 'utf8');
   assert.match(css, /\.status-sponsor\.is-spot \{ outline: 1px solid var\(--accent\);/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.status-sponsor\.is-spot \{ animation: none; \} \}/);
+  const own = readFileSync('public/screens/sponsor.css', 'utf8');
+  assert.match(own, /\.spon-point \{\s*position: fixed;/);
+  assert.match(own, /\.wd-tile \{ display: flex;/, 'WEIRD and DESK tiles keep their base styles');
+  assert.doesNotMatch(own, /amber|orange|#f5a|#ffa|#ff9/i);
+});
+
+// ---- N HERE NOW in the top bar ---------------------------------------------------------------
+
+test('here now: hidden when unknown or 0; one dim token by the clock; hidden under 380 px', () => {
+  assert.equal(hereText(7), '7 HERE NOW');
+  assert.equal(hereText(1234), '1,234 HERE NOW');
+  for (const v of [0, null, undefined, NaN, -3, 2.5, '7']) assert.equal(hereText(v), '', String(v));
+  const el = { textContent: 'x', innerHTML: '', hidden: false };
+  paintHere(el, null);
+  assert.deepEqual([el.textContent, el.hidden], ['', true]);
+  paintHere(el, 3);
+  assert.deepEqual([el.innerHTML, el.hidden], ['3 HERE<span class="here-x"> NOW</span>', false], 'NOW drops on a phone');
+  assert.match(el.title, /^3 here now/);
+  paintHere(el, 0);
+  assert.equal(el.hidden, true);
+  paintHere(el, 9, { fits: () => false });
+  assert.equal(el.hidden, true, 'never on top of the name');
+  // Room: clear of the name and the seat at the left.
+  const box = (left, right, hidden = false) => ({ hidden, getBoundingClientRect: () => ({ left, right }) });
+  const bar = (tokLeft, kids) => ({ ...box(tokLeft, tokLeft + 50), ownerDocument: { querySelector: () => ({ children: kids }) } });
+  assert.equal(clearOfBrand(bar(140, [box(8, 104), box(110, 200, true)])), true);
+  assert.equal(clearOfBrand(bar(91, [box(8, 104)])), false);
+  assert.equal(clearOfBrand(bar(150, [box(8, 104), box(110, 170)])), false, 'the seat counts when shown');
+  assert.equal(clearOfBrand({}), true);
+  assert.equal(HERE_MS, 60_000);
+  const html = readFileSync('public/index.html', 'utf8');
+  assert.match(html, /<div class="clock" aria-live="off">\s*<span id="here-now" class="here-now num" hidden><\/span>\s*<span class="label">NEW YORK<\/span>/);
+  const css = readFileSync('public/style.css', 'utf8');
+  assert.match(css, /\.here-now \{ color: var\(--dim\);/);
+  assert.match(css, /\.here-now\[hidden\] \{ display: none; \}/);
+  assert.match(css, /@media \(max-width: 379px\) \{ \.here-now \{ display: none; \} \}/);
+  assert.match(css, /@media \(max-width: 639px\) \{ \.here-now \{ font-size: 11px; letter-spacing: 0; \} \.here-x \{ display: none; \} \}/);
+  const app = readFileSync('public/app.js', 'utf8');
+  assert.match(app, /mountHereNow\(\$\('here-now'\), \{ timer: liveTimer \}\)/);
+});
+
+test('here now: asks /api/live, again every minute while visible; a failure hides it', async () => {
+  mock.timers.enable({ apis: ['setInterval'] });
+  try {
+    const urls = [];
+    let answer = { here: 5 };
+    let hidden = false;
+    const fetchImpl = async (u) => { urls.push(u); if (answer === 'fail') throw new Error('down'); return { ok: true, json: async () => answer }; };
+    const el = { textContent: '', innerHTML: '', hidden: true };
+    const flush = () => new Promise((r) => setImmediate(r));
+    const stop = mountHereNow(el, { fetchImpl, isHidden: () => hidden });
+    await flush();
+    assert.deepEqual(urls, ['/api/live']);
+    assert.deepEqual([el.innerHTML, el.hidden], ['5 HERE<span class="here-x"> NOW</span>', false]);
+    answer = { here: null };
+    mock.timers.tick(HERE_MS);
+    await flush();
+    assert.equal(el.hidden, true, 'unknown: hidden');
+    hidden = true;
+    mock.timers.tick(HERE_MS * 3);
+    await flush();
+    assert.equal(urls.length, 2, 'a hidden tab asks nothing');
+    hidden = false;
+    answer = 'fail';
+    mock.timers.tick(HERE_MS);
+    await flush();
+    assert.equal(el.hidden, true);
+    stop();
+    mock.timers.tick(HERE_MS * 2);
+    await flush();
+    assert.equal(urls.length, 3, 'stopped');
+  } finally { mock.timers.reset(); }
 });
 
 test('counting: one strip_shown per line shown in a visible tab, batched; clicks at once', () => {

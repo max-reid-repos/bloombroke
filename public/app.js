@@ -22,6 +22,7 @@ import { getTape, loadTapeRows, bareKey, looksLikeKey, bareGift, getSeat, isPro 
 // --- Pro structure: GIFT, REDEEM, CHAT, SPONSOR, FEEDBACK ---
 import { stripItems, mountStrip, loadSponsors } from './sponsor-strip.js';
 import { countOnly, stripShownBatch } from './goal.js'; // BBRK: sponsor strip shown and clicked
+import { mountHereNow } from './here-now.js'; // N HERE NOW by the clock (GET /api/live)
 // --- end Pro structure ---
 import { ensureConsent, consentNeeded } from './consent.js';
 import { parseDeskArgs, isEmbedSearch, tickerOf, TICKER_SCREENS } from './desk-layout.js';
@@ -1660,6 +1661,7 @@ function boot() {
   if (!embed) {
     tick();
     setInterval(tick, 1000);
+    mountHereNow($('here-now'), { timer: liveTimer });
   }
   applyTape(tapeOn(store));
 

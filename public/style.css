@@ -113,6 +113,11 @@ kbd {
 .clock { display: flex; align-items: center; gap: 10px; font-size: 12px; white-space: nowrap; }
 .clock .label { color: var(--dim); letter-spacing: .1em; }
 .clock-time { color: var(--text); }
+/* N HERE NOW (here-now.js): one dim token left of the clock; the clock keeps its place. */
+.here-now { color: var(--dim); letter-spacing: .08em; }
+.here-now[hidden] { display: none; }
+@media (max-width: 639px) { .here-now { font-size: 11px; letter-spacing: 0; } .here-x { display: none; } }
+@media (max-width: 379px) { .here-now { display: none; } }
 .status {
   display: inline-flex; align-items: center; gap: 6px;
   padding-left: 10px; border-left: 1px solid var(--rule-strong);
@@ -1196,8 +1201,9 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .status-sponsor { flex: 1 1 0; min-width: 0; display: flex; justify-content: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
 .status-sponsor > .spon-item { max-width: 100%; min-width: 0; }
 @media (max-width: 639px) { .status-sponsor { flex: 0 1 auto; justify-content: flex-start; } }
-/* SPONSOR opens: the real strip is outlined for 2 s, so it is clear where it runs. */
+/* SPONSOR is open: the real strip is outlined (a short glow first), so it is clear where it runs. */
 .status-sponsor.is-spot { outline: 1px solid var(--accent); outline-offset: -1px; animation: spon-spot 2s ease-out; }
+.status-sponsor.is-spot .spon-item, .status-sponsor.is-spot .sponsor-k { color: var(--text); }
 @keyframes spon-spot { from { box-shadow: 0 0 0 3px var(--accent-tint); } to { box-shadow: none; } }
 @media (prefers-reduced-motion: reduce) { .status-sponsor.is-spot { animation: none; } }
 .status-sponsor[hidden] { display: none; }

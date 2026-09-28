@@ -195,6 +195,33 @@ test('GET /api/bbrk: the audience and inventory contract, -- (null) without Data
   try { assert.equal((await s3.get()).audience.visitors.d7, null); } finally { await s3.close(); }
 });
 
+test('GET /api/live: here now from DataFast realtime, kept a minute; null when unknown', async () => {
+  const live = async (audience) => {
+    const s = await serve({ audience });
+    try {
+      const r = await fetch(`${s.base}/api/live`);
+      return { cache: r.headers.get('cache-control'), body: await r.json() };
+    } finally { await s.close(); }
+  };
+  assert.deepEqual((await live(null)).body, { here: null }, 'no DataFast');
+  assert.deepEqual((await live(makeDataFast({ key: undefined }))).body, { here: null }, 'no key');
+  assert.deepEqual((await live({ live: async () => { throw new Error('down'); } })).body, { here: null });
+  assert.deepEqual((await live({ live: async () => 'seven' })).body, { here: null }, 'only a count');
+  let t = T0;
+  const f = fakeFetch();
+  const df = makeDataFast({ key: KEY, fetchImpl: f, now: () => t, log: () => {} });
+  const got = await live(df);
+  assert.deepEqual(got.body, { here: 7 });
+  assert.equal(got.cache, 'public, max-age=30');
+  assert.deepEqual(f.calls.map((c) => new URL(c.url).pathname), ['/api/v1/analytics/realtime'], 'realtime only, nothing else');
+  t += 30_000;
+  assert.equal(await df.live(), 7);
+  assert.equal(f.calls.length, 1, 'kept a minute on the server');
+  t += 31_000;
+  assert.equal(await df.live(), 7);
+  assert.equal(f.calls.length, 2, 'asked again after a minute');
+});
+
 test('POST /api/count: strip_shown in batches of 1 to 20, strip_click one at a time', async () => {
   const s = await serve({ max: 50 });
   try {

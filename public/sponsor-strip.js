@@ -1,4 +1,4 @@
-// The sponsor strip in the status bar: one line at a time, a new one every 7 seconds,
+// The sponsor strip in the status bar: one line at a time, a new one every 4 seconds,
 // with a short slide in (none with reduced motion). It holds still while the pointer is
 // on it or it has the keyboard focus, and while the tab is hidden. Paid lines are marked
 // SPONSOR and open the sponsor's site; our own lines are marked AD and run a command.
@@ -20,7 +20,7 @@ export function loadSponsors() {
   return loading;
 }
 
-export const ROTATE_MS = 7000;
+export const ROTATE_MS = 4000;
 export const MAX_SPONSOR_LINES = 8;
 export const SLIDE_MS = 180;
 
