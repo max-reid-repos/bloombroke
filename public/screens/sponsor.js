@@ -11,6 +11,7 @@ import { esc, metaNote, q } from './markets.js';
 import { findCommand } from '../registry.js';
 import { stripItems, loadSponsors } from '../sponsor-strip.js';
 import { loadDots, mountGlobe, globeCaption, globeLabel } from '../globe.js';
+import { HERE_MIN } from '../here-now.js';
 
 export { loadSponsors }; // the config, asked once per page load: the status line needs it at startup
 
@@ -34,7 +35,7 @@ export function visitLen(sec) {
 }
 
 // The live line, as parts: '243 page views this week', '8 min visits', '60% US'. Each is
-// -- when missing. Visitors right now are in the globe's caption, above 0 only.
+// -- when missing. Visitors right now are in the globe's caption, from 2 only.
 export function proofParts(b) {
   const a = b?.audience || {};
   const parts = [];
@@ -97,10 +98,11 @@ export function markGaugeSponsor(metaEl, id) {
 }
 
 // b: /api/bbrk (null while it loads: --). cfg: /api/sponsors. has: whether a command exists.
-// The globe's caption on SPONSOR: live now only above 0, like N HERE NOW in the top bar.
+// The globe's caption on SPONSOR: live now only from 2 (1 is most likely the viewer), like
+// N HERE NOW in the top bar.
 export function sponCaption(b) {
   const live = b?.audience?.live;
-  return globeCaption(Number.isInteger(live) && live > 0 ? b : null);
+  return globeCaption(Number.isInteger(live) && live >= HERE_MIN ? b : null);
 }
 
 export function sponsorHtml({ has, bbrk = null, cfg = null } = {}) {

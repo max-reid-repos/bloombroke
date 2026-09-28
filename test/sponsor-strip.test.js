@@ -10,7 +10,7 @@ import { cleanSponsors, cleanUrl, loadSponsors, mountSponsors, SPONSORS_FILE, MA
 import { stripItems, itemHtml, mountStrip, ROTATE_MS, SLIDE_MS, MAX_SPONSOR_LINES } from '../public/sponsor-strip.js';
 import { stripShownBatch } from '../public/goal.js';
 import { sponsorHtml, proofParts, proofHtml, visitLen, cleanDown, weeklyViews, viewsLine, paidLines, pointAtStrip, sponCaption, render, REFRESH_MS, HERO, POINT, FINE, MAILTO } from '../public/screens/sponsor.js';
-import { hereText, paintHere, mountHereNow, clearOfBrand, HERE_MS } from '../public/here-now.js';
+import { hereText, paintHere, mountHereNow, clearOfBrand, HERE_MS, HERE_MIN } from '../public/here-now.js';
 import { findCommand } from '../public/registry.js';
 import { parseCommand } from '../public/app.js';
 
@@ -256,6 +256,8 @@ test('SPONSOR live line: page views lead; -- for anything missing; short country
   assert.match(proofHtml({ audience: { pageviews: { d7: '<b>' } } }), /-- page views this week/, 'only numbers');
   assert.equal(sponCaption(FULL), '7D by country · 7 live now');
   assert.equal(sponCaption({ audience: { live: 0 } }), '7D by country');
+  assert.equal(sponCaption({ audience: { live: 1 } }), '7D by country', '1 is most likely the viewer');
+  assert.equal(sponCaption({ audience: { live: 2 } }), '7D by country · 2 live now');
   assert.equal(sponCaption(null), '7D by country');
 });
 
@@ -360,10 +362,12 @@ test('SPONSOR open: the real strip is outlined with a label above it until the s
 
 // ---- N HERE NOW in the top bar ---------------------------------------------------------------
 
-test('here now: hidden when unknown or 0; one dim token by the clock; hidden under 380 px', () => {
+test('here now: hidden when unknown, 0 or 1; one dim token by the clock; hidden under 380 px', () => {
   assert.equal(hereText(7), '7 HERE NOW');
   assert.equal(hereText(1234), '1,234 HERE NOW');
-  for (const v of [0, null, undefined, NaN, -3, 2.5, '7']) assert.equal(hereText(v), '', String(v));
+  assert.equal(hereText(2), '2 HERE NOW', 'from 2');
+  for (const v of [0, 1, null, undefined, NaN, -3, 2.5, '7']) assert.equal(hereText(v), '', String(v));
+  assert.equal(HERE_MIN, 2);
   const el = { textContent: 'x', innerHTML: '', hidden: false };
   paintHere(el, null);
   assert.deepEqual([el.textContent, el.hidden], ['', true]);
@@ -372,6 +376,8 @@ test('here now: hidden when unknown or 0; one dim token by the clock; hidden und
   assert.match(el.title, /^3 here now/);
   paintHere(el, 0);
   assert.equal(el.hidden, true);
+  paintHere(el, 1);
+  assert.equal(el.hidden, true, '1 is most likely the viewer');
   paintHere(el, 9, { fits: () => false });
   assert.equal(el.hidden, true, 'never on top of the name');
   // Room: clear of the name and the seat at the left.
