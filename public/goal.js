@@ -24,6 +24,7 @@ export const GOALS = [
   'feedback_sent', 'pro_checkout_started', 'desk_opened',
   'sponsor_click', // a paid sponsor line clicked (never our own AD lines)
   'notfound_seen', 'graveyard_seen', 'ipo_made', 'ipo_shared', // NO SUCH TICKER. YET.
+  'welcome_chip', 'welcome_typed', 'welcome_surprise', // WELCOME: the first-visit card (consent.js)
 ];
 
 // Counted on our server by the route itself (lib/counters.js SERVER_COUNTS), so not here:
@@ -61,6 +62,8 @@ export const GOAL_PROPS = {
   weird_gauge_opened: ['gauge'],
   pro_checkout_started: ['plan'],
   ipo_shared: ['via'],
+  welcome_chip: ['chip'], // guess, whatif, graveyard, chart (screens/welcome.js)
+  welcome_surprise: ['kind'], // weird, graveyard, whatif, sectors (never the words typed)
 };
 const VALUE_RE = /^[a-z0-9_]{1,16}$/;
 const QUEUE_MAX = 50;

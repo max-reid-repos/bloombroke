@@ -78,8 +78,8 @@ test('consent: garbage in storage asks again instead of throwing', () => {
 test('consent: never on the legal pages', () => {
   for (const p of ['/terms', '/privacy', '/disclaimer', '/terms/']) assert.equal(isLegalPath(p), true, p);
   for (const p of ['/', '/index.html', '/termsx', '']) assert.equal(isLegalPath(p), false, p);
-  assert.match(CONSENT_TEXT.lead, /not investment advice/);
-  assert.match(CONSENT_TEXT.body, /18 or older/);
+  assert.match(CONSENT_TEXT.lead, /not advice/);
+  assert.match(CONSENT_TEXT.body, /agree to the Terms and Privacy Policy and confirm you are 18\+/);
 });
 
 test('legal pages: 200, operator named, version and date shown', async () => {
