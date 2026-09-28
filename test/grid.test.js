@@ -18,7 +18,7 @@ import {
 import {
   makeGrid, mountGrid, downsample, seriesStats, loadCpiMonthly, cpiTile, ripTile, weirdTile, marketTile, periodStart, GRID_POINTS, GRID_PARALLEL,
 } from '../lib/grid.js';
-import { makeGridCards, gridCardModel, cardBoard, gridMeta, gridTree, mountGridCards } from '../lib/og-grid.js';
+import { makeGridCards, gridCardModel, cardBoard, gridMeta, gridTree, mountGridCards, GRID_CARD_MAX_AGE, INCOMPLETE_MAX_AGE } from '../lib/og-grid.js';
 import { makeRateLimit, withMeta, W, H } from '../lib/og.js';
 import { ChartError } from '../data/charts.js';
 import { loadGraveyardData } from '../lib/graveyard.js';
@@ -321,7 +321,7 @@ test('/api/grid: the 16 cap, a bad range, the per-address limit', async () => {
 
 // ---- the share card ------------------------------------------------------------------------------------
 
-test('GRID card: cached tiles only, never a fetch; missing tiles show the symbol alone', async () => {
+test('GRID card model: cached tiles only; missing tiles show the symbol alone', async () => {
   const f = fakeDeps();
   const grid = makeGrid(f.deps);
   const parsed = cardBoard('NVDA,AMD,RIP:LEH,CPI,W:EGGS', '1Y');
@@ -370,7 +370,124 @@ test('GRID card: renders once, kept in memory, the site card past the budget or 
   assert.equal((await perIp.png('AMD', '1Y', '4.4.4.4')).png, site, 'per address');
   const src = readFileSync('lib/og-grid.js', 'utf8');
   assert.doesNotMatch(src, /writeFile|mkdir|rename|CACHE_DIR|writeAtomic/, 'no disk cache');
-  assert.doesNotMatch(src, /getChart|getWeird|fetch\(/, 'the card never fetches');
+  assert.doesNotMatch(src, /getChart|getWeird|fetch\(/, 'the card loads only through grid.board');
+});
+
+// A getChart that counts how many run at once and takes `ms` for each.
+function slowCharts(ms) {
+  const calls = [];
+  let running = 0;
+  let peak = 0;
+  const getChart = async (sym, range) => {
+    calls.push(`${sym}:${range}`);
+    running += 1;
+    peak = Math.max(peak, running);
+    await new Promise((r) => setTimeout(r, ms));
+    running -= 1;
+    return { points: series(300), stale: false };
+  };
+  return { getChart, calls, peak: () => peak };
+}
+
+test('GRID card: a cold cache loads the missing tiles through the loader, 4 at a time, then keeps the card', async () => {
+  const f = fakeDeps();
+  const c = slowCharts(10);
+  let weirdCalls = 0;
+  const getWeird = async (o) => {
+    weirdCalls += 1;
+    const d = await f.deps.getWeird(o);
+    return { gauges: [...d.gauges, { id: 'canal', ok: true, headline: 'HORMUZ 3 SHIPS/DAY', spark: [64, 78, 91] }] };
+  };
+  const grid = makeGrid({ ...f.deps, getChart: c.getChart, getWeird });
+  let renders = 0;
+  const cards = makeGridCards({ grid, fallback: async () => Buffer.from('site'), render: async () => { renders += 1; return Buffer.from(`card${renders}`); } });
+  const parsed = cardBoard('STARTER', '1Y');
+  assert.equal(gridCardModel(parsed, grid).complete, false, 'cold: incomplete');
+  const a = await cards.png('STARTER', '1Y', '1.1.1.1');
+  const markets = parsed.items.filter((i) => i.kind === 'market').length;
+  assert.equal(markets, 11);
+  assert.equal(c.calls.length, markets, 'every market tile loaded once');
+  assert.ok(c.calls.every((x) => x.endsWith(':1Y')));
+  assert.ok(c.peak() <= 4 && c.peak() > 1, `at most 4 at once (${c.peak()})`);
+  assert.equal(weirdCalls, 1, 'one WEIRD read for the card');
+  assert.deepEqual([a.drawn, a.maxAge, GRID_CARD_MAX_AGE], [true, 14400, 14400], 'complete: 4 h');
+  assert.equal(cards.cache.size, 1, 'complete: kept');
+  const m = gridCardModel(parsed, grid);
+  assert.equal(m.complete, true);
+  assert.ok(m.tiles.every((t) => !t.missing), 'all 16 drawn');
+  // W:EGGPRICE and BBRK, as /api/grid serves them.
+  const egg = m.tiles[parsed.tokens.indexOf('W:EGGPRICE')];
+  assert.deepEqual([egg.sym, egg.big], ['EGGPRICE', '$2.27 A DOZEN']);
+  const bb = m.tiles[parsed.tokens.indexOf('BBRK')];
+  assert.deepEqual([bb.sym, bb.big, bb.pill], ['BBRK', '4,321', '7D'], 'the week of page views, like the page tile');
+  // Again: from memory, nothing loaded, nothing drawn.
+  const b = await cards.png('STARTER', '1Y', '1.1.1.1');
+  assert.deepEqual([b.png, b.maxAge, renders, c.calls.length], [a.png, 14400, 1, markets]);
+  // A W: alias is the same tile: W:EGGS draws the kept W:EGGPRICE.
+  const alias = gridCardModel(cardBoard('W:EGGS', '1Y'), grid);
+  assert.deepEqual([alias.complete, alias.tiles[0].big], [true, '$2.27 A DOZEN']);
+});
+
+test('GRID card: past the deadline an incomplete card, drawn but not kept, a minute; later loads complete it', async () => {
+  const f = fakeDeps();
+  const c = slowCharts(300);
+  const grid = makeGrid({ ...f.deps, getChart: c.getChart });
+  let renders = 0;
+  const cards = makeGridCards({ grid, wait: 40, fallback: async () => Buffer.from('site'), render: async () => { renders += 1; return Buffer.from(`card${renders}`); } });
+  const t0 = Date.now();
+  const a = await cards.png('AA,BB,CC,DD,EE,FF,CPI,W:EGGS', '1Y', '1.1.1.1');
+  assert.ok(Date.now() - t0 < 250, 'answered at the deadline, not when the loads end');
+  assert.deepEqual([a.drawn, a.maxAge, INCOMPLETE_MAX_AGE], [true, 60, 60]);
+  assert.equal(cards.cache.size, 0, 'incomplete: not kept');
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(c.calls.length, 4, 'no load starts after the deadline');
+  // The four that were running finished and were kept: the next card loads the rest.
+  const b = await cards.png('AA,BB,CC,DD,EE,FF,CPI,W:EGGS', '1Y', '1.1.1.1');
+  assert.equal(b.maxAge, 60, 'still waiting on two');
+  await new Promise((r) => setTimeout(r, 400));
+  const fast = makeGridCards({ grid, fallback: async () => Buffer.from('site'), render: async () => Buffer.from('done') });
+  const done = await fast.png('AA,BB,CC,DD,EE,FF,CPI,W:EGGS', '1Y', '1.1.1.1');
+  assert.deepEqual([done.png.toString(), done.maxAge, fast.cache.size], ['done', 14400, 1]);
+  assert.equal(c.calls.length, 6, 'each tile loaded once');
+  // A busy chart gate at the deadline is incomplete too; a final answer (no such ticker) is not.
+  const g2 = makeGrid(f.deps);
+  const busy = makeGridCards({ grid: g2, fallback: async () => Buffer.from('site'), render: async () => Buffer.from('x') });
+  assert.equal((await busy.png('BUSY,AA', '1Y', '2.2.2.2')).maxAge, 60);
+  assert.equal(busy.cache.size, 0);
+  assert.equal((await busy.png('APPL,AA', '1Y', '2.2.2.2')).maxAge, 14400, 'no such ticker is an answer');
+});
+
+test('GRID card: BBRK without its page views is not kept and not drawn; with them it is', async () => {
+  const f = fakeDeps();
+  let aud = { pageviews: { d7: null }, live: null };
+  const grid = makeGrid({ ...f.deps, audience: { get: async () => aud } });
+  const it = gridItem('BBRK');
+  const first = (await grid.board([it], '1Y'))[0];
+  assert.deepEqual([first.views7, first.error], [null, undefined], 'the page still gets its -- tile');
+  assert.equal(grid.cached(it, '1Y'), null, 'but it is not kept');
+  const cards = makeGridCards({ grid, fallback: async () => Buffer.from('site'), render: async () => Buffer.from('x') });
+  const a = await cards.png('BBRK,CPI', '1Y', '1.1.1.1');
+  assert.equal(a.maxAge, 60, 'no page views yet: incomplete');
+  assert.equal(gridCardModel(cardBoard('BBRK', '1Y'), grid).tiles[0].missing, true, 'never drawn as --');
+  aud = { pageviews: { d7: 250 }, live: 0 };
+  const b = await cards.png('BBRK,CPI', '1Y', '1.1.1.1');
+  assert.equal(b.maxAge, 14400);
+  const m = gridCardModel(cardBoard('BBRK', '1Y'), grid);
+  assert.deepEqual([m.tiles[0].big, m.tiles[0].pill], ['250', '7D']);
+});
+
+test('GRID card route: 4 h for a complete card, a minute for an incomplete one', async () => {
+  const f = fakeDeps();
+  const grid = makeGrid(f.deps);
+  const app = express();
+  mountGridCards(app, { grid, fallback: async () => Buffer.from('site'), render: async () => Buffer.from('png') });
+  const { server, base } = await listen(app);
+  try {
+    const ok = await fetch(`${base}/og/grid.png?s=NVDA,CPI&r=1Y`);
+    assert.equal(ok.headers.get('cache-control'), 'public, max-age=14400');
+    const busy = await fetch(`${base}/og/grid.png?s=BUSY,CPI&r=1Y`);
+    assert.equal(busy.headers.get('cache-control'), 'public, max-age=60');
+  } finally { server.close(); }
 });
 
 test('GRID card route and page meta', async () => {
