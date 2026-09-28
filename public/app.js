@@ -23,7 +23,8 @@ import { getTape, loadTapeRows, bareKey, looksLikeKey, bareGift, getSeat, isPro 
 import { stripItems, mountStrip, loadSponsors } from './sponsor-strip.js';
 import { countOnly, stripShownBatch } from './goal.js'; // BBRK: sponsor strip shown and clicked
 // --- end Pro structure ---
-import { ensureConsent, consentNeeded } from './consent.js';
+import { ensureConsent, consentNeeded, loadWelcome } from './consent.js';
+import { startHints, hintsDone, triedCount, countTried, HINT_STOP } from './hints.js'; // rolling hints in the command bar
 import { parseDeskArgs, isEmbedSearch, tickerOf, TICKER_SCREENS } from './desk-layout.js';
 import { COMPANY_SCREENS, COMPANY_TAKES_ARGS, matchCompany } from './company.js';
 import { MARKETS_SCREENS, MARKETS_TAKES_ARGS, matchMarkets } from './commands-markets.js';
@@ -570,6 +571,7 @@ export const SHEET_ORDER = [
   'screens/alerts.css', 'screens/pro.css', 'screens/why.css', 'screens/sectors.css', 'screens/heatmap.css',
   'screens/fxmatrix.css', 'screens/calendar.css', 'screens/bbrk.css', 'screens/options.css',
   'screens/worldmap.css', 'screens/help.css', 'screens/nosuch.css', 'screens/graveyard.css', 'screens/data.css',
+  'screens/welcome.css',
 ];
 export const stylesFor = (entry) => (entry?.js ? stylesOf(entry.js) : []);
 
@@ -782,6 +784,29 @@ function boot() {
 
   let cmdHistory = store.get('bb.history', []);
   let histIndex = cmdHistory.length;
+
+  // --- rolling hints: "Try GRAVEYARD"... in the empty bar, until 3 commands have run --
+  // Paused while typing, and on a phone while the bar has focus (hints.js).
+  let hints = null;
+  let tried = triedCount();
+  if (!embed && !hintsDone({ historyLength: cmdHistory.length })) {
+    hints = startHints({ input, paused: () => input.value !== '' || (coarse && document.activeElement === input), reduced: () => reduceMotion.matches });
+  }
+  function noteTried() {
+    if (!hints) return;
+    tried = countTried(undefined, tried);
+    if (tried >= HINT_STOP) { hints.stop(); hints = null; }
+  }
+  // --- the first HOME after the welcome card: the command bar glows once (welcome.css) --
+  let glowNext = false;
+  function glowOnce() {
+    glowNext = false;
+    const bar = form.closest('.commandbar') || form;
+    bar.classList.remove('cmd-glow');
+    void bar.offsetWidth; // restart the animation
+    bar.classList.add('cmd-glow');
+    setTimeout(() => bar.classList.remove('cmd-glow'), 1100);
+  }
   let draft = '';
   // Tab cycling: the text Tab started from, the list it showed then, and the press count.
   let linkAsk = null; // a link waiting for Enter or Esc: { run, bar } (offerLink below)
@@ -1111,6 +1136,7 @@ function boot() {
   // checked: the words were already looked up (lookUp below); note: the status line note.
   function render(raw, { fromUrl = false, checked = false, note = '' } = {}) {
     const cmd = parseCommand(raw);
+    if (glowNext && cmd.name === 'HOME') glowOnce();
     // FEEDBACK says which screen you came from, in its address bar form (no keys, no codes).
     const previous = currentCmd && currentCmd !== raw ? urlFor(currentCmd).url : '';
     currentCmd = raw;
@@ -1396,6 +1422,7 @@ function boot() {
   // screen that takes typed commands (DESK sends them to its focused panel) gets it first.
   function run(raw, { push = true, fromUrl = false, typed = false } = {}) {
     const clean = tokenize(raw).join(' ') || DEFAULT_COMMAND;
+    if (!fromUrl) noteTried();
     // MENU opens the launcher over the current screen; it is not a screen of its own.
     if (menu && !fromUrl && clean === 'MENU') {
       if (push) remember(clean);
@@ -1770,11 +1797,14 @@ function boot() {
   // it shows run right after ACCEPT; a deep link (?c=...) waits for ACCEPT too.
   const needsNotice = !embed && consentNeeded();
   const holdLink = needsNotice && Boolean(location.search);
+  if (needsNotice) loadWelcome(); // the card's chips, fetched now so they are here in time
   function notice() {
     ensureConsent().then((accepted) => {
       const typedNow = input.value.trim();
+      if (accepted) glowNext = true; // the next HOME glows the bar once
       if (accepted && typedNow) run(typedNow, { typed: true });
       else if (holdLink) openLink();
+      else if (accepted && parseCommand(currentCmd || DEFAULT_COMMAND).name === 'HOME') glowOnce();
       placeCursor();
     });
   }
@@ -1788,7 +1818,7 @@ function boot() {
     });
   } else if (holdLink) {
     neutralHead(fromQuery(location.search));
-    setStatus('ACCEPT THE NOTICE TO CONTINUE');
+    setStatus('PRESS START TO CONTINUE');
     notice();
   } else {
     openLink();
