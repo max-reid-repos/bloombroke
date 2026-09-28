@@ -1224,7 +1224,18 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .status-sponsor { align-items: center; font-size: 14px; letter-spacing: .02em; }
 .status-sponsor .sponsor-k { font-size: 11px; font-weight: 400; letter-spacing: .12em; }
 .status-sponsor .spon-item, .status-sponsor a.spon-item { color: var(--text); font-weight: 600; }
-@media (max-width: 639px) { .status-sponsor { font-size: 13px; letter-spacing: 0; } }
+/* Phones: two lines when there is a strip. Line 1 is the strip, full width; line 2 is the
+   status text (it gives way first) and the legal links (they never do). --status-h covers
+   both lines, so everything that reads --dock-h (body padding, fixed bars, maximised
+   panels, the SPONSOR label) clears the taller dock. Pro (no strip): one line, as before. */
+@media (max-width: 639px) {
+  .status-sponsor { font-size: 13px; letter-spacing: 0; }
+  :root:has(#status-sponsor:not([hidden])) { --status-h: 51px; }
+  .statusline:has(> .status-sponsor:not([hidden])) { flex-wrap: wrap; align-content: flex-start; gap: 0 12px; }
+  .statusline > .status-sponsor:not([hidden]) { order: -1; flex: 1 1 100%; height: 27px; justify-content: flex-start; border-bottom: 1px solid var(--rule); }
+  .statusline:has(> .status-sponsor:not([hidden])) > .status-msg { flex: 1 1 0; min-width: 0; line-height: 24px; }
+  .statusline:has(> .status-sponsor:not([hidden])) > .status-legal { height: 24px; align-items: center; }
+}
 .spon-strip.is-sliding .spon-item { animation: spon-in 180ms linear; }
 @keyframes spon-in { from { transform: translateY(100%); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .spon-strip.is-sliding .spon-item { animation: none; } }
