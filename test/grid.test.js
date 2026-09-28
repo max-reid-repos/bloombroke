@@ -15,7 +15,7 @@ import {
   saveLastBoard, boardKeyAction, sceneKeys, LAST_KEY,
   shareLinks, stepIndex, cleanBoard, LABEL_CHAR_W, toInput,
   applyQuote, barStep, flashClass, guarded, quoteTime, isIntraday, BUCKET_MS, TICK_MS, REFETCH_MS, FLASH_MS,
-  getJSON, startLive, nextRefetchWait, REFETCH_MAX_MS, HERE_MS,
+  getJSON, startLive, nextRefetchWait, REFETCH_MAX_MS, HERE_MS, sessionMark, sessionMoved,
 } from '../public/screens/grid.js';
 import {
   makeGrid, mountGrid, downsample, seriesStats, loadCpiMonthly, cpiTile, ripTile, weirdTile, marketTile, periodStart, GRID_POINTS, GRID_PARALLEL,
@@ -1019,4 +1019,82 @@ test('GRID live: timers only through ctx.live (set up once) and later(); a range
   }
   assert.match(fn('commit'), /liveCtl\?\.poke\(\)/, 'an edit or a range switch pokes the refetch back to every minute');
   assert.ok(at > body.indexOf('// ---- first draw ----'), 'set up with the first draw, once');
+});
+
+test('GRID 1D at the open (9:30 to 9:31): one partial bar in both charts, still never NO DATA', async () => {
+  const day = Date.UTC(2026, 8, 28);
+  const ny = (h, m = 0) => day + (h + 4) * 3600_000 + m * 60_000;
+  const minute = [];
+  for (let t = ny(4); t <= ny(9, 30); t += 60_000) minute.push({ t, v: 50 + (t % 4) }); // pre-market and the 9:30 bar
+  const calls = [];
+  const getChart = async (sym, r) => {
+    calls.push(`${sym}:${rangeKey(r)}`);
+    if (typeof r === 'object') return { range: '1D', ext: true, points: minute };
+    return { range: '1D', ext: false, points: [{ t: ny(9, 30), v: 51 }] }; // the 5-minute 1D: one partial bar
+  };
+  const grid = makeGrid({ getChart, now: () => ny(9, 30, 40) });
+  const [t] = await grid.board([gridItem('AAPL')], '1D');
+  assert.equal(t.error, undefined, 'not NO DATA');
+  assert.equal(t.points.length, Math.min(minute.length, GRID_POINTS), 'the 1-minute bars as they are');
+  assert.deepEqual(calls, ['AAPL:1D:1M', 'AAPL:1D']);
+  // Before the open with an empty 5-minute 1D: the 1-minute bars too.
+  calls.length = 0;
+  const early = makeGrid({ getChart: async (sym, r) => { calls.push(`${sym}:${rangeKey(r)}`); return typeof r === 'object' ? { range: '1D', ext: true, points: minute.slice(0, 30) } : { range: '1D', points: [] }; }, now: () => ny(8) });
+  const [e] = await early.board([gridItem('AAPL')], '1D');
+  assert.deepEqual([e.error, e.points.length, calls], [undefined, 30, ['AAPL:1D', 'AAPL:1D:1M']]);
+});
+
+test('GRID live: a quote in a new New York day or past 9:30 brings the refetch back to every minute', () => {
+  const q = (asOf) => ({ last: 1, asOf });
+  assert.equal(sessionMark(q('2026-09-28T09:29:00.000-0400')), '2026-09-28');
+  assert.equal(sessionMark(q('2026-09-28T09:30:00.000-0400')), '2026-09-28 open');
+  assert.equal(sessionMark(q('2026-09-27T12:00:00.000-0400')), '2026-09-27', 'a Sunday never opens');
+  assert.equal(sessionMark(q('nonsense')), null);
+  assert.equal(sessionMoved(q('2026-09-28T09:29:00.000-0400'), q('2026-09-28T09:30:05.000-0400')), true, 'the open');
+  assert.equal(sessionMoved(q('2026-09-25T20:00:00.000-0400'), q('2026-09-28T04:00:00.000-0400')), true, 'a new day (pre-market Monday)');
+  assert.equal(sessionMoved(q('2026-09-28T10:00:00.000-0400'), q('2026-09-28T15:59:00.000-0400')), false, 'the same session');
+  assert.equal(sessionMoved(q('2026-09-28T05:00:00.000-0400'), q('2026-09-28T08:00:00.000-0400')), false, 'still pre-market');
+  assert.equal(sessionMoved(undefined, q('2026-09-28T10:00:00.000-0400')), false, 'a first quote');
+  assert.equal(sessionMoved(q('2026-09-28T10:00:00.000-0400'), q('?')), false, 'an unknown time');
+  // The poke: after a night of backing off, the next turn refetches.
+  const lives = [];
+  let refetches = 0;
+  const ctl = startLive({ live: (fn, ms) => lives.push({ fn, ms }) }, { tick: () => {}, refetch: async () => { refetches += 1; return 'same'; }, hereNow: () => {}, intraday: () => true });
+  return (async () => {
+    for (let i = 0; i < 40; i += 1) await lives[1].fn();
+    assert.equal(ctl.wait, REFETCH_MAX_MS, 'backed off to 10 minutes');
+    ctl.poke();
+    const at = refetches;
+    await lives[1].fn();
+    assert.equal(refetches, at + 1, 'poked: refetched on the next minute');
+    const js = readFileSync(new URL('../public/screens/grid.js', import.meta.url), 'utf8');
+    assert.match(js, /if \(sessionMoved\(quotes\.get\(qt\.ticker\), qt\)\) newSession = true;[\s\S]{0,120}if \(newSession\) liveCtl\?\.poke\(\);/, 'the quote tick pokes it');
+  })();
+});
+
+test('GRID live: without AbortSignal.any/timeout, a timer and one controller; the listener is removed after', async () => {
+  const c = new AbortController();
+  let added = 0;
+  let removed = 0;
+  const add = c.signal.addEventListener.bind(c.signal);
+  const rem = c.signal.removeEventListener.bind(c.signal);
+  c.signal.addEventListener = (...a) => { added += 1; return add(...a); };
+  c.signal.removeEventListener = (...a) => { removed += 1; return rem(...a); };
+  const hang = (url, { signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+  const t0 = Date.now();
+  await assert.rejects(getJSON('/x', { signal: c.signal, timeoutMs: 30, fetchImpl: hang, native: false }), (e) => e.name === 'TimeoutError');
+  assert.ok(Date.now() - t0 < 2000, 'timed out');
+  assert.deepEqual([added, removed], [1, 1], 'the listener on the screen\'s signal is removed');
+  const ok = async () => ({ ok: true, status: 200, json: async () => ({ a: 1 }) });
+  assert.deepEqual(await getJSON('/x', { signal: c.signal, fetchImpl: ok, native: false }), { a: 1 });
+  assert.deepEqual([added, removed], [2, 2], 'also after a good answer');
+  // The screen's own abort still ends it, as an abort.
+  const run = guarded(() => getJSON('/x', { signal: c.signal, timeoutMs: 60_000, fetchImpl: hang, native: false }));
+  const p = run();
+  c.abort();
+  assert.equal(await p, 'aborted');
+  assert.equal(removed, 3);
+  // The guard is free after a fallback timeout.
+  const r2 = guarded(() => getJSON('/y', { timeoutMs: 20, fetchImpl: hang, native: false }));
+  assert.deepEqual([await r2(), await r2()], ['error', 'skipped']);
 });

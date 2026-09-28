@@ -411,30 +411,56 @@ export function startLive(ctx, { tick, refetch, hereNow, intraday = () => false,
   };
 }
 
+// The session a quote's time falls in, by the New York clock: its day, and whether a
+// weekday's regular session (9:30) has begun. null for a quote with no time it can read.
+const NY_CLOCK = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', weekday: 'short' });
+export function sessionMark(quote) {
+  const t = quoteTime(quote, Infinity);
+  if (t === null) return null;
+  const n = Object.fromEntries(NY_CLOCK.formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+  const open = !['Sat', 'Sun'].includes(n.weekday) && Number(n.hour) * 60 + Number(n.minute) >= 570;
+  return `${n.year}-${n.month}-${n.day}${open ? ' open' : ''}`;
+}
+// A new quote in a new New York day, or past 9:30 on a weekday: the refetch that backed
+// off overnight comes back to every minute (startLive poke).
+export function sessionMoved(prev, next) {
+  const a = sessionMark(prev);
+  const b = sessionMark(next);
+  return a !== null && b !== null && a !== b;
+}
+
 // ---- The screen -----------------------------------------------------------------------------
 
 export const FETCH_TIMEOUT_MS = 10_000;
-// One signal that aborts when any of these does (screens/chart.js anySignal).
-function anySignal(signals) {
-  if (typeof AbortSignal.any === 'function') return AbortSignal.any(signals);
-  const c = new AbortController();
-  for (const s of signals) {
-    if (s.aborted) { c.abort(s.reason); break; }
-    s.addEventListener('abort', () => c.abort(s.reason), { once: true });
-  }
-  return c.signal;
-}
+const timeoutError = () => (typeof DOMException === 'function' ? new DOMException('The request timed out.', 'TimeoutError') : Object.assign(new Error('The request timed out.'), { name: 'TimeoutError' }));
 
 // GET JSON, given up after timeoutMs (a hung request never holds a guard): the error has
-// the answer's status (429...).
-export async function getJSON(url, { signal, timeoutMs = FETCH_TIMEOUT_MS, fetchImpl = globalThis.fetch } = {}) {
-  const limit = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(timeoutMs) : null;
-  const sig = [signal, limit].filter(Boolean);
-  const res = await fetchImpl(url, { signal: sig.length > 1 ? anySignal(sig) : sig[0], headers: { Accept: 'application/json' } });
-  let body = null;
-  try { body = await res.json(); } catch { body = null; }
-  if (!res.ok) throw Object.assign(new Error(body?.message || 'Data is taking a break.'), { status: res.status });
-  return body;
+// the answer's status (429...). AbortSignal.any and .timeout where the browser has both;
+// else one AbortController with a timer, the timer and the listener on the screen's
+// signal removed once the answer is in. native: false tries the second way (tests).
+export async function getJSON(url, { signal, timeoutMs = FETCH_TIMEOUT_MS, fetchImpl = globalThis.fetch, native = true } = {}) {
+  let sig;
+  let done = () => {};
+  if (native && typeof AbortSignal.timeout === 'function' && typeof AbortSignal.any === 'function') {
+    sig = signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs);
+  } else {
+    const c = new AbortController();
+    const onAbort = () => c.abort(signal.reason);
+    const timer = setTimeout(() => c.abort(timeoutError()), timeoutMs);
+    if (signal?.aborted) c.abort(signal.reason);
+    else signal?.addEventListener('abort', onAbort, { once: true });
+    sig = c.signal;
+    done = () => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); };
+  }
+  try {
+    const res = await fetchImpl(url, { signal: sig, headers: { Accept: 'application/json' } });
+    let body = null;
+    try { body = await res.json(); } catch { body = null; }
+    if (!res.ok) throw Object.assign(new Error(body?.message || 'Data is taking a break.'), { status: res.status });
+    return body;
+  } finally {
+    done();
+  }
 }
 
 export function render(el, cmd, ctx) {
@@ -627,7 +653,13 @@ export function render(el, cmd, ctx) {
     const list = marketTokens();
     if (!list.length) return;
     const d = await getJSON(`/api/quotes?${new URLSearchParams({ s: list.join(',') })}`, { signal: ctx.signal });
-    for (const qt of d?.quotes || []) if (qt?.ticker) quotes.set(qt.ticker, qt);
+    let newSession = false; // a new New York day, or the open: the refetch back to every minute
+    for (const qt of d?.quotes || []) {
+      if (!qt?.ticker) continue;
+      if (sessionMoved(quotes.get(qt.ticker), qt)) newSession = true;
+      quotes.set(qt.ticker, qt);
+    }
+    if (newSession) liveCtl?.poke();
     for (const t of list) takeQuote(t);
     if (d?.updated) ctx.updated?.(d.updated, Boolean(d.stale));
   });
