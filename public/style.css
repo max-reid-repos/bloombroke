@@ -39,7 +39,9 @@
   --inset: max(var(--gutter), calc((100% - var(--maxw)) / 2));
   --topbar-h: 30px;
   --cmd-h: 40px;
-  --status-h: 22px;
+  /* The status row (status text, sponsor strip, legal links). Everything that sits above
+     or around the dock reads it through --dock-h, so a change here moves them all. */
+  --status-h: 30px;
   --tape-h: 0px; /* tape hidden by default; TAPE ON brings it back (nav.css) */
   --keybar-h: 28px;
   /* The tape is off by default; body.has-tape adds its row (see nav.css). */
@@ -1217,6 +1219,12 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .spon-strip .spon-item { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
 .spon-strip a.spon-item:hover, .spon-strip a.spon-item:focus-visible { color: var(--text); text-decoration: none; }
 .spon-strip a.spon-item:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+/* The strip in the status row: bigger and brighter than the row's other words, so a
+   sponsor's name reads at a glance. The label (AD, SPONSOR) stays small and dim. */
+.status-sponsor { align-items: center; font-size: 14px; letter-spacing: .02em; }
+.status-sponsor .sponsor-k { font-size: 11px; font-weight: 400; letter-spacing: .12em; }
+.status-sponsor .spon-item, .status-sponsor a.spon-item { color: var(--text); font-weight: 600; }
+@media (max-width: 639px) { .status-sponsor { font-size: 13px; letter-spacing: 0; } }
 .spon-strip.is-sliding .spon-item { animation: spon-in 180ms linear; }
 @keyframes spon-in { from { transform: translateY(100%); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .spon-strip.is-sliding .spon-item { animation: none; } }

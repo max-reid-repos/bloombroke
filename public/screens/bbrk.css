@@ -29,6 +29,21 @@
 .bb-tops dd { color: var(--text-2); overflow-wrap: anywhere; }
 .bb-panel .bb-table { margin-top: 12px; max-width: 760px; }
 .bb-src { margin-top: 10px; }
+/* Wider than a phone: the two columns (visitors, sparkline, top lines and the counters on
+   the left; the key numbers on the right) sit close together in one centred block, not
+   against the panel's edges. .bb-top gives its two parts to this grid. */
+@media (min-width: 640px) {
+  .bb-data {
+    display: grid; grid-template-columns: minmax(0, 520px) minmax(260px, 420px);
+    justify-content: center; align-items: start; column-gap: 56px;
+    width: 100%; max-width: 1100px; margin: 0 auto;
+  }
+  .bb-data > .bb-top { display: contents; }
+  .bb-data > .bb-top > .q-main { grid-column: 1; grid-row: 1; }
+  .bb-data > .bb-top > .stats { grid-column: 2; grid-row: 1 / span 3; }
+  .bb-data > .bb-tops, .bb-data > .bb-table { grid-column: 1; }
+  .bb-data > .bb-src { grid-column: 1 / -1; }
+}
 
 @media (max-width: 639px) {
   .bb-spark .spark { width: 160px; }
