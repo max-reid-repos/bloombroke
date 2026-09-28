@@ -1,10 +1,13 @@
 // Rolling hints in the command bar's placeholder: while the bar is empty and nobody is
-// typing, "Try GRAVEYARD", "Try WHATIF IPHONE6"... one every few seconds, typed out
-// quickly (with reduced motion: a plain swap). They stop for good once this browser has
+// typing, "Try AAPL 1Y", "Try GRAVEYARD", "Try FX 500 USD THB"... one every few
+// seconds, typed out quickly (with reduced motion: a plain swap). They stop for good once this browser has
 // run HINT_STOP commands (localStorage bb.tried, or the recent commands already saved),
 // and the bar keeps its plain placeholder from then on.
 
-export const HINTS = ['Try GRAVEYARD', 'Try WHATIF IPHONE6', 'Try GUESS', 'Try AAPL 1Y', 'Try SECTORS MAP', 'Try WEIRD'];
+// A market command, then a quirky one, in turn.
+export const MARKET_HINTS = ['Try AAPL 1Y', 'Try FX 500 USD THB', 'Try WHY NVDA', 'Try CPI', 'Try GOLD'];
+export const QUIRKY_HINTS = ['Try GRAVEYARD', 'Try GUESS', 'Try SECTORS MAP', 'Try WHATIF IPHONE6', 'Try WEIRD'];
+export const HINTS = MARKET_HINTS.flatMap((m, i) => [m, QUIRKY_HINTS[i]]);
 export const HINT_KEY = 'bb.tried';
 export const HINT_STOP = 3;
 export const HINT_EVERY = 3000; // ms a hint stays up
