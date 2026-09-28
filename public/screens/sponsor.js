@@ -12,6 +12,7 @@ import { findCommand } from '../registry.js';
 import { stripItems, loadSponsors } from '../sponsor-strip.js';
 import { loadDots, mountGlobe, globeCaption, globeLabel } from '../globe.js';
 import { HERE_MIN } from '../here-now.js';
+import { isPro } from '../pro.js'; // no SPONSORED BY on screen for Pro
 
 export { loadSponsors }; // the config, asked once per page load: the status line needs it at startup
 
@@ -81,7 +82,9 @@ export function proofHtml(b, cfg) {
 }
 
 // A WEIRD gauge's title strip: SPONSORED BY <name>, or '' when the gauge has no sponsor.
-export function gaugeSponsorHtml(cfg, id) {
+// Never on screen for Pro (PRO says "No ads."); the public share cards keep it (og-weird).
+export function gaugeSponsorHtml(cfg, id, { pro = false } = {}) {
+  if (pro) return '';
   const name = cfg?.gauges?.[id]?.name;
   return name ? metaNote(`SPONSORED BY ${String(name).toUpperCase()}`) : '';
 }
@@ -89,10 +92,11 @@ export function gaugeSponsorHtml(cfg, id) {
 // The one hook in the WEIRD gauge screen: if the gauge has a sponsor, a note of its own
 // goes in the title strip just before the gauge's meta, so the screen can keep writing
 // its own notes (record lines) into that meta without touching this one.
-export function markGaugeSponsor(metaEl, id) {
+// pro: asked when the config arrives (default: this browser holds active Pro).
+export function markGaugeSponsor(metaEl, id, { pro = isPro } = {}) {
   if (!metaEl) return;
   loadSponsors().then((cfg) => {
-    const html = gaugeSponsorHtml(cfg, id);
+    const html = gaugeSponsorHtml(cfg, id, { pro: pro() });
     if (html && metaEl.isConnected) metaEl.insertAdjacentHTML('beforebegin', `<span class="panel-meta wd-sponsor">${html}</span>`);
   });
 }

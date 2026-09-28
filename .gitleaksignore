@@ -5,3 +5,5 @@
 4d65d980ba8390386cfde099593582b3536ab5eb:test/guess.test.js:generic-api-key:19
 # Fake GUESS secret used in the BBRK counter test (test/bbrk.test.js), not a secret.
 ecb3a00eb3791ebb14afede399807c2b4df49db5:test/bbrk.test.js:generic-api-key:179
+# Fake licence key used in the PRO v3 test (test/pro-v3.test.js), not a secret.
+0b58d7bc77676fa1aaa41ca0df679d2e822752d7:test/pro-v3.test.js:generic-api-key:22

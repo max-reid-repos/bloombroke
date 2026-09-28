@@ -1,6 +1,8 @@
-// PRO, LOGIN, LOGOUT, GIFT and REDEEM: what is free and what is Pro, the price,
-// SUBSCRIBE (monthly or yearly), the key after checkout, and for a logged in browser the
-// status, the seat, MANAGE and LOGOUT. GIFT makes gift codes; REDEEM uses one.
+// PRO, LOGIN, LOGOUT, GIFT and REDEEM. PRO is the seat, big: the next seat number (or
+// yours), the price, SUBSCRIBE (yearly first, monthly one click away), one live line,
+// three perks, and + DETAILS for what is free and what is Pro and the full terms. The key
+// after checkout; for a logged in browser the status, MANAGE, SHOW KEY and LOGOUT. GIFT
+// makes gift codes; REDEEM uses one.
 
 import { esc, q, panel, LOADING, metaNote } from './markets.js';
 import * as pro from '../pro.js';
@@ -177,90 +179,248 @@ function wire(el, ctx, sel, label, fn) {
   });
 }
 
-// Two buttons, monthly and yearly. plan: the one to lead with (PRO YEARLY). The yearly
-// button waits for the server config and says so if yearly is not set up.
-function buyHtml(label = 'SUBSCRIBE', plan = 'month') {
-  const month = `<button type="button" class="btn${plan === 'year' ? '' : ' btn-solid'}" id="pro-sub" data-plan="month">${label} ${esc(pro.PRICE)}/MONTH</button>`;
-  const year = `<button type="button" class="btn${plan === 'year' ? ' btn-solid' : ''}" id="pro-sub-year" data-plan="year">${label} ${esc(pro.PRICE_YEAR)}/YEAR</button>`;
-  return `<ul class="pro-terms">${BUY_TERMS.map((t) => `<li>${esc(t)}</li>`).join('')}
-      <li>Subscribing means you agree to the <a href="/terms">Terms</a>. Bloombroke gives information only, not investment advice.</li></ul>
-    <p class="pro-actions">${plan === 'year' ? year + month : month + year}<span class="muted" id="pro-year-note" hidden>${esc(YEARLY_NOT_YET)}</span></p>`;
-}
+// ---- the PRO page: the seat, big ----------------------------------------------------
+// One huge seat number (the next one, or yours), the price with a small yearly/monthly
+// switch in it, one button, one live line of our own numbers, three perks, one dim line
+// of what is coming, one row of small links, and one dim test-mode line. Everything
+// else (FREE vs PRO, the full buying terms, gifts, the footnote) is behind + DETAILS.
+
+export const UP_NEXT = 'UP NEXT';
+export const PERKS = ['Your seat number, forever.', 'Your setup on every device.', 'No ads. No trackers.'];
+export const TEST_LINE = 'Test mode: no card is charged yet.';
+export const GIFT_ACTION = 'GIFT A FRIEND A MONTH';
+export const DETAILS_OPEN = '+ DETAILS';
+export const DETAILS_CLOSE = '- DETAILS';
+export const PLAN_PRICE = { year: `${pro.PRICE_YEAR} a year.`, month: `Or ${pro.PRICE} a month.` };
+export const planButton = (plan) => (plan === 'month' ? 'MONTHLY' : 'YEARLY');
 
 const isGift = (st) => st?.status === 'gift' || st?.status === 'gift_ended';
+const DOT = '<span class="pro3-dot" aria-hidden="true"> · </span>';
+const fin = (v) => typeof v === 'number' && Number.isFinite(v);
 
-// The account panel: logged out, or status + seat + MANAGE + LOGOUT.
-function accountHtml(note, plan = 'month') {
-  const key = pro.getKey();
-  const st = pro.getStatus();
-  const n = note ? `<p class="notice">${esc(note)}</p>` : '';
-  if (!key) {
-    return `${n}${buyHtml('SUBSCRIBE', plan)}
-      <p class="muted">Already subscribed? Type ${link('LOGIN')} and your key. Got a gift code? Type ${link('REDEEM')} and the code.</p>`;
-  }
-  const on = pro.statusActive(st);
+// SEAT 00043 as parts: the zeros in front dim, so a low number stands out. null: unknown.
+export function seatParts(n) {
+  if (!Number.isInteger(n) || n < 1) return null;
+  const s = String(n).padStart(5, '0');
+  const lead = s.match(/^0*/)[0];
+  return { lead, digits: s.slice(lead.length), label: `SEAT ${s}` };
+}
+
+// The hero: a browser with a key shows its own seat, everyone else the next free one
+// (GET /api/pro/seat). { mine, seat }.
+export function heroSeat({ key = null, st = null, next = null } = {}) {
+  if (key) return { mine: true, seat: Number.isInteger(st?.seat) ? st.seat : null };
+  return { mine: false, seat: Number.isInteger(next) ? next : null };
+}
+
+// The seat itself: YOUR SEAT 00012 or SEAT 00043.
+export function seatH2(h) {
+  const p = seatParts(h.seat);
+  const num = p ? `<span class="pro3-zero">${esc(p.lead)}</span>${esc(p.digits)}` : '<span class="pro3-zero">-----</span>';
+  const who = h.mine ? '<span class="pro3-who">YOUR </span>' : '';
+  return `<h2 class="pro3-seat num" id="pro-seat" aria-label="${esc(`${h.mine ? 'Your ' : ''}${p ? p.label : 'seat'}`)}">${who}<span class="pro3-word">SEAT </span>${num}</h2>`;
+}
+
+// UP NEXT over the next seat; your own seat needs no label.
+export function heroHtml(h) {
+  return `${h.mine ? '' : `<p class="pro3-kicker">${esc(UP_NEXT)}</p>`}${seatH2(h)}`;
+}
+
+// 417 -> '7 min', 40 -> '40 s'.
+export function visitLen(sec) {
+  return sec < 60 ? `${Math.round(sec)} s` : `${Math.round(sec / 60)} min`;
+}
+
+// The one live line, from /api/bbrk only (DataFast, our own site): '70 visitors this week
+// · 7 min average visit'. Only the parts that are known; '' when neither is. Never a
+// seat count (in test mode those are demo checkouts).
+export function proofLine(b) {
+  const a = b?.audience || {};
+  const parts = [];
+  const v = a.visitors?.d7;
+  if (Number.isInteger(v) && v > 0) parts.push(`${v.toLocaleString('en-US')} ${v === 1 ? 'visitor' : 'visitors'} this week`);
+  if (fin(a.avgVisitSec) && a.avgVisitSec > 0) parts.push(`${visitLen(a.avgVisitSec)} average visit`);
+  return parts.join(' · ');
+}
+
+// The live line as HTML: each part kept whole, so a phone breaks only between them.
+export function proofInner(b) {
+  const t = proofLine(b);
+  return t ? t.split(' · ').map((x) => `<span class="pro3-part">${esc(x)}</span>`).join(DOT) : '';
+}
+
+// The price, with the plan switch in it: the picked plan bright, the other one dim.
+function priceHtml(plan) {
+  const b = (p) => `<button type="button" class="pro3-plan" id="pro-plan-${p}" data-plan="${p}" aria-pressed="${plan === p}">${esc(PLAN_PRICE[p])}</button>`;
+  return `<p class="pro3-price">${b('year')} ${b('month')}</p>`;
+}
+
+const buyButton = (label, plan) => `<button type="button" class="pro3-buy" id="pro-sub" data-plan="${plan}" data-label="${esc(label)}">${esc(label)} ${planButton(plan)}</button>`;
+const smallLink = (c, label = c) => `<a class="pro3-link" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(label)}</a>`;
+const smallBtn = (id, label) => `<button type="button" class="pro3-link" id="${id}">${esc(label)}</button>`;
+
+// The main block. key/st: this browser's licence (none: a visitor). next: the next seat.
+// bbrk: /api/bbrk for the live line. note: a notice on top (LOGIN, LOGOUT). has: whether
+// a command exists (tests).
+export function mainHtml({ key = null, st = null, next = null, bbrk = null, note = '', plan = 'year', has } = {}) {
+  const exists = has || ((c) => Boolean(findCommand(c)));
+  const on = key ? pro.statusActive(st) : false;
   const gift = isGift(st);
-  const seat = pro.seatLabel(st?.seat);
-  let buy = '';
-  if (gift && on) buy = '<p class="muted">When the gift month ends, you can subscribe on this key and keep its seat.</p>';
-  else if (!on) buy = `${buyHtml(gift ? 'SUBSCRIBE' : 'REACTIVATE', plan)}<p class="muted">${gift ? 'SUBSCRIBE keeps this key, its seat and your synced lists.' : 'REACTIVATE keeps this key, its seat and your synced lists.'}</p>`;
-  return `${n}<dl class="stats stats-row pro-stats">
-      <div class="stat"><dt>Status</dt><dd class="${on ? 'up' : 'down'}">${esc(statusText(st))}</dd></div>
-      <div class="stat"><dt>Key</dt><dd class="num">${esc(maskKey(st?.last4 || key.slice(-4)))}</dd></div>
-      <div class="stat"><dt>Seat</dt><dd class="num" id="pro-seat">${esc(seat ? seat.slice(5) : '--')}</dd></div>
-    </dl>
-    ${buy}
-    <p class="pro-actions">
-      ${gift ? '' : '<button type="button" class="btn" id="pro-manage">MANAGE</button>'}
-      <button type="button" class="btn" id="pro-show">SHOW KEY</button>
-      ${st?.canGift ? `<a class="btn" href="${esc(q('GIFT'))}" data-cmd="GIFT">GIFT</a>` : ''}
-      <a class="btn" href="${esc(q('LOGOUT'))}" data-cmd="LOGOUT">LOGOUT</a>
-    </p>
-    <div id="pro-shown"></div>
-    ${gift ? '' : '<p class="muted">MANAGE opens Stripe: change your card, get invoices, or cancel.</p>'}`;
+  const n = note ? `<p class="notice pro3-note">${esc(note)}</p>` : '';
+  let status = '';
+  let price = '';
+  let action = '';
+  let under = '';
+  const links = [];
+  if (!key) {
+    price = priceHtml(plan);
+    action = buyButton('SUBSCRIBE', plan);
+    links.push(smallLink('LOGIN'), smallLink('REDEEM'));
+    if (exists('GIFT')) links.push(smallLink('GIFT'));
+  } else {
+    status = `<p class="pro3-status ${on ? 'up' : 'down'}">${esc(statusText(st))}</p>`;
+    if (on && gift) under = '<p class="pro3-under">When the gift month ends, you can subscribe on this key and keep its seat.</p>';
+    else if (on && st?.canGift) action = `<a class="pro3-buy" href="${esc(q('GIFT'))}" data-cmd="GIFT">${esc(GIFT_ACTION)}</a>`;
+    else if (on) action = '<button type="button" class="pro3-buy" id="pro-manage">MANAGE</button>';
+    else {
+      price = priceHtml(plan);
+      action = buyButton(gift ? 'SUBSCRIBE' : 'REACTIVATE', plan);
+      under = `<p class="pro3-under">${gift ? 'SUBSCRIBE' : 'REACTIVATE'} keeps this key, its seat and your synced lists.</p>`;
+    }
+    if (!gift && !action.includes('pro-manage')) links.push(smallBtn('pro-manage', 'MANAGE'));
+    links.push(smallBtn('pro-show', 'SHOW KEY'), smallLink('LOGOUT'));
+  }
+  links.push(`<button type="button" class="pro3-link pro3-more" id="pro-more" aria-expanded="false" aria-controls="pro-details">${esc(DETAILS_OPEN)}</button>`);
+  // The live line only where there is something to buy.
+  const proof = price ? `<p class="pro3-proof" id="pro-proof">${proofInner(bbrk)}</p>` : '';
+  const chat = exists('CHAT') ? smallLink('CHAT') : 'CHAT';
+  return `${n}<div class="pro3-top">${heroHtml(heroSeat({ key, st, next }))}${status}${price}</div>
+    ${action ? `<p class="pro3-act">${action}</p><p class="pro3-year-note" id="pro-year-note" hidden>${esc(YEARLY_NOT_YET)}</p>` : ''}${under}
+    ${proof}
+    <ul class="pro3-perks">${PERKS.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+    <p class="pro3-soon">Coming: ${chat} between seats, closed-tab alerts.</p>
+    <p class="pro3-links">${links.join(DOT)}</p>
+    <div id="pro-shown"></div>`;
+}
+
+// Behind + DETAILS: the breakdown, the full buying terms, gifts, and the footnote.
+export function detailsHtml() {
+  return `${offerHtml()}
+    <p class="pro-demo" id="pro-demo" role="note" hidden>${esc(DEMO_BANNER)}</p>
+    <ul class="pro-terms">${BUY_TERMS.map((t) => `<li>${esc(t)}</li>`).join('')}
+      <li>Subscribing means you agree to the <a href="/terms">Terms</a>. Bloombroke gives information only, not investment advice.</li>
+      <li>${esc(GIFT_RULES)}</li></ul>
+    <p class="footnote">Your key is your login. There is no email or password. ${esc(OPERATOR)} Contact <a href="mailto:${CONTACT}">${CONTACT}</a>. Not financial advice.</p>`;
+}
+
+// Per screen: the next seat and /api/bbrk once they arrive, the picked plan.
+const views = new WeakMap();
+const viewOf = (el) => {
+  if (!views.has(el)) views.set(el, { next: null, bbrk: null, plan: 'year' });
+  return views.get(el);
+};
+
+// The page around the main block. second: the key panel after checkout. The test-mode
+// line starts hidden and shows once the server says test mode (page below).
+export function pageHtml(second = '') {
+  return `<section class="pro3" aria-label="Bloombroke Pro">
+    ${second ? `<div class="pro3-second">${second}</div>` : ''}
+    <div class="pro3-main" id="pro-account"></div>
+    <p class="pro3-fine" id="pro-test" hidden>${esc(TEST_LINE)}</p>
+    <div class="pro3-details" id="pro-details" hidden>${detailsHtml()}</div>
+  </section>`;
 }
 
 function page(el, second = '') {
-  el.innerHTML = `<p class="pro-demo" id="pro-demo" role="note" hidden>${esc(DEMO_BANNER)}</p><div class="stack">
-    ${panel('1', 'Bloombroke Pro', offerHtml(), { meta: metaNote(`${pro.PRICE} A MONTH OR ${pro.PRICE_YEAR} A YEAR`) })}
-    ${second}
-    ${panel(second ? '3' : '2', 'Your account', '<div id="pro-account"></div>')}
-  </div>
-  <p class="footnote">Your key is your login. There is no email or password. ${esc(OPERATOR)} Contact <a href="mailto:${CONTACT}">${CONTACT}</a>. Not financial advice.</p>`;
-}
-
-// Test mode: say so above everything, so nobody thinks a demo is a real purchase.
-function demoBanner(el) {
+  el.innerHTML = pageHtml(second);
+  // Test mode: say so on the page (dim) and in DETAILS (with the test card).
   pro.getConfig().then((c) => {
-    const b = el.querySelector('#pro-demo');
-    if (b && c.mode === 'test') b.hidden = false;
+    if (c.mode !== 'test' || !el.isConnected) return;
+    for (const id of ['#pro-test', '#pro-demo']) { const b = el.querySelector(id); if (b) b.hidden = false; }
   });
 }
 
-// The yearly button once the server says whether yearly is set up.
-function yearlyReady(host) {
+// + DETAILS opens and closes the rest, in place.
+function wireDetails(el) {
+  const b = el.querySelector('#pro-more');
+  const d = el.querySelector('#pro-details');
+  if (!b || !d) return;
+  const set = (open) => {
+    d.hidden = !open;
+    b.setAttribute('aria-expanded', String(open));
+    b.textContent = open ? DETAILS_CLOSE : DETAILS_OPEN;
+    el.querySelector('.pro3')?.classList.toggle('is-open', open);
+  };
+  set(!d.hidden);
+  b.addEventListener('click', () => {
+    set(d.hidden);
+    if (!d.hidden) d.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+}
+
+// The plan switch: the price parts pick the plan the one button buys.
+function setPlan(host, plan) {
+  const b = host.querySelector('#pro-sub');
+  if (!b) return;
+  b.dataset.plan = plan;
+  b.textContent = `${b.dataset.label} ${planButton(plan)}`;
+  for (const p of host.querySelectorAll('.pro3-plan')) p.setAttribute('aria-pressed', String(p.dataset.plan === plan));
+}
+
+// Yearly not set up on the server: monthly only, and say so.
+function yearlyReady(host, v) {
   pro.getConfig().then((c) => {
-    const b = host.querySelector('#pro-sub-year');
-    if (!b || c.yearly) return;
-    b.disabled = true;
-    b.title = YEARLY_NOT_YET;
+    if (c.yearly || !host.isConnected) return;
+    const y = host.querySelector('#pro-plan-year');
+    if (!y) return;
+    y.disabled = true;
+    y.title = YEARLY_NOT_YET;
+    v.plan = 'month';
+    setPlan(host, 'month');
     const n = host.querySelector('#pro-year-note');
     if (n) n.hidden = false;
   });
 }
 
-function renderAccount(el, ctx, note, plan = 'month') {
-  demoBanner(el);
+function renderAccount(el, ctx, note, plan) {
+  const v = viewOf(el);
+  if (plan) v.plan = plan;
   const host = el.querySelector('#pro-account');
-  host.innerHTML = accountHtml(note, plan);
-  wire(host, ctx, '#pro-sub', 'OPENING CHECKOUT...', () => pro.startCheckout('month'));
-  wire(host, ctx, '#pro-sub-year', 'OPENING CHECKOUT...', () => pro.startCheckout('year'));
-  yearlyReady(host);
+  host.innerHTML = mainHtml({ key: pro.getKey(), st: pro.getStatus(), next: v.next, bbrk: v.bbrk, note, plan: v.plan });
+  wireDetails(el);
+  for (const p of host.querySelectorAll('.pro3-plan')) {
+    p.addEventListener('click', () => { v.plan = p.dataset.plan; setPlan(host, v.plan); });
+  }
+  wire(host, ctx, '#pro-sub', 'OPENING CHECKOUT...', () => pro.startCheckout(host.querySelector('#pro-sub').dataset.plan));
+  yearlyReady(host, v);
   wire(host, ctx, '#pro-manage', 'OPENING BILLING...', () => pro.openPortal());
   const show = host.querySelector('#pro-show');
-  if (show) show.addEventListener('click', () => { showKey(host.querySelector('#pro-shown'), pro.getKey(), ctx); show.remove(); });
+  const reveal = () => { showKey(host.querySelector('#pro-shown'), pro.getKey(), ctx); show.remove(); };
+  if (show) show.addEventListener('click', reveal);
   // Back from a reload after REDEEM (reloadAfterKey): the new key once more, to save.
-  if (show && pro.getKey() && takeShowKeyOnce()) { showKey(host.querySelector('#pro-shown'), pro.getKey(), ctx); show.remove(); }
+  if (show && pro.getKey() && takeShowKeyOnce()) reveal();
+}
+
+// The next seat (for a visitor) and our own numbers (for the live line), once each. They
+// fill in place; a screen that was redrawn since picks them up from the view.
+function loadNumbers(el, ctx) {
+  const v = viewOf(el);
+  if (!ctx?.fetchJSON) return;
+  const opts = { signal: ctx.signal };
+  if (!pro.getKey()) {
+    ctx.fetchJSON('/api/pro/seat', opts).then((d) => {
+      if (!Number.isInteger(d?.next) || !el.isConnected) return;
+      v.next = d.next;
+      const h = el.querySelector('#pro-seat');
+      if (h && !pro.getKey()) h.outerHTML = seatH2(heroSeat({ next: v.next }));
+    }).catch(() => {});
+  }
+  ctx.fetchJSON('/api/bbrk', opts).then((d) => {
+    if (!el.isConnected) return;
+    v.bbrk = d;
+    const p = el.querySelector('#pro-proof');
+    if (p) p.innerHTML = proofInner(d);
+  }).catch(() => {});
 }
 
 // After checkout: fetch the key once the payment is confirmed.
@@ -296,19 +456,22 @@ export function render(el, cmd, ctx) {
   if (pending && cmd.name === 'PRO') {
     page(el, panel('2', 'Your key', '<div id="pro-claim"></div>'));
     renderAccount(el, ctx);
+    loadNumbers(el, ctx);
     claimInto(el, ctx, pending);
     // A REACTIVATE checkout: the browser already has a key, so show its fresh status too.
     if (pro.getKey()) pro.refreshStatus().then(() => { if (el.isConnected && !pro.pendingCheckout()) renderAccount(el, ctx); }).catch(() => {});
     return;
   }
-  const plan = cmd.args?.plan === 'year' ? 'year' : 'month';
+  // Yearly first; PRO MONTHLY starts on monthly.
+  const plan = cmd.args?.plan === 'month' ? 'month' : 'year';
   page(el);
   renderAccount(el, ctx, '', plan);
+  loadNumbers(el, ctx);
   ctx.status(pro.isPro() ? 'PRO: ACTIVE' : `PRO: ${pro.PRICE_BOTH.toUpperCase()}`);
   if (pro.getKey()) {
     pro.refreshStatus().then(() => {
       if (!el.isConnected) return;
-      renderAccount(el, ctx, '', plan);
+      renderAccount(el, ctx, '');
       ctx.status(pro.isPro() ? 'PRO: ACTIVE' : 'PRO: NOT ACTIVE. REACTIVATE KEEPS YOUR KEY', pro.isPro() ? '' : 'warn');
     }).catch(() => {});
   }
@@ -319,6 +482,7 @@ export const loginCommand = {
   parse: parseLogin,
   render(el, cmd, ctx) {
     page(el);
+    loadNumbers(el, ctx);
     const host = el.querySelector('#pro-account');
     if (cmd.args?.gift) { redeemInto(el, ctx, cmd.args.gift); return; }
     if (cmd.error || cmd.args?.show) {
@@ -347,6 +511,7 @@ export const logoutCommand = {
     const had = Boolean(pro.getKey());
     pro.logout();
     page(el);
+    loadNumbers(el, ctx);
     renderAccount(el, ctx, had ? 'Logged out on this browser. Your key still works on any device.' : 'You were not logged in.');
     ctx.status('LOGGED OUT');
   },
