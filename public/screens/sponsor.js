@@ -22,6 +22,7 @@ export const MAILTO = `mailto:${CONTACT}?subject=${encodeURIComponent(SUBJECT)}`
 export const HERO = 'YOUR AD HERE';
 export const POINT = '↓ this line, every screen';
 export const REFRESH_MS = 60_000;
+export const PHONE_MQ = '(max-width: 639px)'; // sponsor.css's phone layout
 export const FINE = 'One rotating line. No tracking. No finance products. Hidden for Pro.';
 
 const fin = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -145,10 +146,24 @@ export function pointAtStrip(doc = globalThis.document, win = globalThis.window)
     tag.style.left = `${Math.round(left)}px`;
     tag.style.top = `${Math.round(box.top - (tag.offsetHeight || 0) - 4)}px`;
   };
+  // On a phone the page scrolls and the label would sit on the buttons: there it shows
+  // only while the page is scrolled to the bottom, where the screen keeps room for it
+  // (sponsor.css).
+  const phone = () => Boolean(win?.matchMedia?.(PHONE_MQ)?.matches);
+  const show = () => {
+    const el = doc.scrollingElement || doc.documentElement;
+    const atEnd = !el || el.scrollTop + (win?.innerHeight || 0) >= el.scrollHeight - 4;
+    tag.hidden = phone() && !atEnd;
+  };
+  const onScroll = () => show();
+  const onResize = () => { place(); show(); };
   place();
-  win?.addEventListener?.('resize', place);
+  show();
+  win?.addEventListener?.('resize', onResize);
+  win?.addEventListener?.('scroll', onScroll, { passive: true });
   return () => {
-    win?.removeEventListener?.('resize', place);
+    win?.removeEventListener?.('resize', onResize);
+    win?.removeEventListener?.('scroll', onScroll);
     tag.remove();
     real.classList.remove('is-spot');
   };

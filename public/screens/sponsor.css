@@ -64,9 +64,12 @@
   position: fixed; z-index: 30; padding: 1px 6px; pointer-events: none;
   background: var(--accent); color: var(--ink); font-size: 11px; font-weight: 600; letter-spacing: .06em; white-space: nowrap;
 }
+.spon-point[hidden] { display: none; }
 
 @media (max-width: 639px) {
-  .spon-page { gap: 14px; padding-top: 8px; }
+  /* The page scrolls on a phone: room at the end for the label over the strip, so at the
+     bottom (the only place the label shows, sponsor.js pointAtStrip) it covers nothing. */
+  .spon-page { gap: 14px; padding-top: 8px; padding-bottom: 44px; }
   .spon-hero { font-size: clamp(36px, 11.5vw, 56px); }
   /* On a phone the globe goes under the live line, the whole of it, as wide as the page. */
   .spon-top { display: contents; }

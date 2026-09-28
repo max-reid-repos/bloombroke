@@ -307,7 +307,7 @@ test('hover and tap: the label of the dot under the pointer; keys turn it only w
 
 test('SPONSOR on a phone: the whole globe under the live line, as wide as the page; desktop beside YOUR AD HERE', () => {
   const css = readFileSync('public/screens/sponsor.css', 'utf8');
-  const phone = css.slice(css.indexOf('@media (max-width: 639px) {\n  .spon-page'));
+  const phone = css.slice(css.lastIndexOf('@media (max-width: 639px) {'));
   assert.match(phone, /\.spon-top \{ display: contents; \}/);
   const order = (sel) => Number(phone.match(new RegExp(`\\${sel} \\{[^}]*order: (\\d)`))?.[1]);
   assert.ok(order('.spon-hero') < order('.spon-proof') && order('.spon-proof') < order('.spon-globe') && order('.spon-globe') < order('.spon-act'));

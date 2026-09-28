@@ -480,8 +480,8 @@ test('BBRK screen: -- for everything missing, and nothing breaks', () => {
   assert.doesNotMatch(html, /NaN|undefined|null|Infinity/);
   assert.ok((html.match(/--/g) || []).length >= 12);
   assert.doesNotMatch(html, /class="spark"/, 'no sparkline without data');
-  assert.equal(globeCaption(null), '7D by country');
-  assert.equal(globeCaption(FULL), '7D by country · 7 live now');
+  assert.equal(globeCaption(null), '7D by place');
+  assert.equal(globeCaption(FULL), '7D by place · 7 live now');
   assert.equal(globeLabel(FULL), 'Globe of visitors by country, last 7 days: US 1,310, other 45.');
   assert.deepEqual(heroChange(null, 3), { text: '--', dir: 'flat' });
   assert.deepEqual(heroChange(2, 0), { text: '+2', dir: 'up' });

@@ -9,7 +9,7 @@ import express from 'express';
 import { cleanSponsors, cleanUrl, loadSponsors, mountSponsors, SPONSORS_FILE, MAX_LINES, MAX_HOUSE } from '../lib/sponsors.js';
 import { stripItems, itemHtml, mountStrip, ROTATE_MS, SLIDE_MS, MAX_SPONSOR_LINES } from '../public/sponsor-strip.js';
 import { stripShownBatch } from '../public/goal.js';
-import { sponsorHtml, proofParts, proofHtml, visitLen, cleanDown, weeklyViews, viewsLine, paidLines, pointAtStrip, sponCaption, render, REFRESH_MS, HERO, POINT, FINE, MAILTO } from '../public/screens/sponsor.js';
+import { sponsorHtml, proofParts, proofHtml, visitLen, cleanDown, weeklyViews, viewsLine, paidLines, pointAtStrip, sponCaption, render, REFRESH_MS, HERO, POINT, FINE, MAILTO, PHONE_MQ } from '../public/screens/sponsor.js';
 import { hereText, paintHere, mountHereNow, clearOfBrand, HERE_MS, HERE_MIN } from '../public/here-now.js';
 import { findCommand } from '../public/registry.js';
 import { parseCommand } from '../public/app.js';
@@ -210,7 +210,7 @@ const words = (h) => h.replace(/<[^>]+aria-hidden="true"[^>]*>[^<]*<\/span>/g, '
 
 test('SPONSOR screen: YOUR AD HERE with the globe, one live line, email and BBRK; about 45 words', () => {
   const page = sponsorHtml({ has: () => true, bbrk: FULL, cfg: cleanSponsors({ house: house(3) }) });
-  assert.match(page, /<div class="spon-top"><h2 class="spon-hero">YOUR AD HERE<\/h2>\s*<figure class="spon-globe"><canvas role="img" aria-label="Globe of visitors by country, last 7 days: US 45, JP 7, other 4\."><\/canvas><figcaption class="dim">7D by country · 7 live now<\/figcaption><\/figure><\/div>/, 'the globe beside the hero');
+  assert.match(page, /<div class="spon-top"><h2 class="spon-hero">YOUR AD HERE<\/h2>\s*<figure class="spon-globe"><canvas role="img" aria-label="Globe of visitors by country, last 7 days: US 45, JP 7, other 4\."><\/canvas><figcaption class="dim">7D by place · 7 live now<\/figcaption><\/figure><\/div>/, 'the globe beside the hero');
   assert.equal(HERO, 'YOUR AD HERE');
   assert.match(page, /<p class="spon-live"><span class="spon-part">243 page views this week<\/span><span class="spon-dot" aria-hidden="true"> · <\/span><span class="spon-part">8 min visits<\/span>/);
   assert.doesNotMatch(page, /here now/, 'right now is in the globe caption, not twice');
@@ -238,7 +238,7 @@ test('SPONSOR screen: YOUR AD HERE with the globe, one live line, email and BBRK
   const empty = sponsorHtml({ has: () => true });
   assert.match(empty, /-- page views this week/);
   assert.match(empty, /Your line: -- views a week/);
-  assert.match(empty, /<figcaption class="dim">7D by country<\/figcaption>/);
+  assert.match(empty, /<figcaption class="dim">7D by place<\/figcaption>/);
   const css = readFileSync('public/screens/sponsor.css', 'utf8');
   assert.match(css, /\.spon-top \{ display: flex; align-items: center;/);
   assert.match(css, /@media \(max-width: 639px\) \{[\s\S]*\.spon-top \{ display: contents; \}[\s\S]*\.spon-globe \{ order: 3;/, 'under the live line on a phone (test/globe.test.js has the rest)');
@@ -254,11 +254,11 @@ test('SPONSOR live line: page views lead; -- for anything missing; short country
   assert.equal(visitLen(-1), '-- min');
   assert.match(proofHtml(FULL), /<span class="spon-part">60% US<\/span><\/p>/);
   assert.match(proofHtml({ audience: { pageviews: { d7: '<b>' } } }), /-- page views this week/, 'only numbers');
-  assert.equal(sponCaption(FULL), '7D by country · 7 live now');
-  assert.equal(sponCaption({ audience: { live: 0 } }), '7D by country');
-  assert.equal(sponCaption({ audience: { live: 1 } }), '7D by country', '1 is most likely the viewer');
-  assert.equal(sponCaption({ audience: { live: 2 } }), '7D by country · 2 live now');
-  assert.equal(sponCaption(null), '7D by country');
+  assert.equal(sponCaption(FULL), '7D by place · 7 live now');
+  assert.equal(sponCaption({ audience: { live: 0 } }), '7D by place');
+  assert.equal(sponCaption({ audience: { live: 1 } }), '7D by place', '1 is most likely the viewer');
+  assert.equal(sponCaption({ audience: { live: 2 } }), '7D by place · 2 live now');
+  assert.equal(sponCaption(null), '7D by place');
 });
 
 test('SPONSOR refresh: numbers and globe dots again every minute through ctx.live (paused while hidden)', async () => {
@@ -282,13 +282,13 @@ test('SPONSOR refresh: numbers and globe dots again every minute through ctx.liv
   assert.equal(lives[0][1], REFRESH_MS);
   assert.equal(REFRESH_MS, 60_000);
   assert.match(node('proof').innerHTML, /243 page views this week/);
-  assert.equal(node('cap').textContent, '7D by country · 7 live now');
+  assert.equal(node('cap').textContent, '7D by place · 7 live now');
   answer = { ...FULL, audience: { ...FULL.audience, pageviews: { d7: 300 }, live: 0 } };
   lives[0][0]();
   await flush();
   assert.equal(calls.length, 2);
   assert.match(node('proof').innerHTML, /300 page views this week/);
-  assert.equal(node('cap').textContent, '7D by country');
+  assert.equal(node('cap').textContent, '7D by place');
   for (const f of cleanups) f();
   answer = { ...FULL, audience: { ...FULL.audience, pageviews: { d7: 999 } } };
   lives[0][0]();
@@ -347,6 +347,23 @@ test('SPONSOR open: the real strip is outlined with a label above it until the s
   assert.ok(!cls.has('is-spot'));
   assert.ok(tag.gone);
   assert.equal(ls.resize, undefined);
+  assert.equal(tag.hidden, false, 'wide screen: always shown');
+  // A phone: only while the page is scrolled to the bottom.
+  const se = { scrollTop: 0, scrollHeight: 1600 };
+  const pdoc = { ...doc, scrollingElement: se };
+  const pls = {};
+  const pwin = { innerWidth: 390, innerHeight: 844, matchMedia: (q) => ({ matches: q === PHONE_MQ }), addEventListener: (t, f) => { pls[t] = f; }, removeEventListener: (t) => { delete pls[t]; } };
+  const pstop = pointAtStrip(pdoc, pwin);
+  assert.equal(tag.hidden, true, 'at the top of a phone page: hidden, it would sit on the buttons');
+  se.scrollTop = 1600 - 844;
+  pls.scroll();
+  assert.equal(tag.hidden, false, 'at the bottom: shown, over the room the page keeps for it');
+  se.scrollTop = 300;
+  pls.scroll();
+  assert.equal(tag.hidden, true);
+  pstop();
+  assert.equal(pls.scroll, undefined);
+  assert.match(readFileSync('public/screens/sponsor.css', 'utf8'), /\.spon-page \{ gap: 14px; padding-top: 8px; padding-bottom: 44px; \}/);
   real.hidden = true; // Pro: no strip, nothing to point at
   const none = pointAtStrip(doc, win);
   assert.ok(!cls.has('is-spot'));

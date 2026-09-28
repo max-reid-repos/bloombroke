@@ -166,10 +166,10 @@ export function pickDot(placed, px, py, slop = 8) {
   return best;
 }
 
-// The globe's caption: '7D by country · 4 live now'.
+// The globe's caption: '7D by place · 4 live now'.
 export function globeCaption(d) {
   const live = d?.audience?.live;
-  return `7D by country${fin(live) ? ` · ${count(live)} live now` : ''}`;
+  return `7D by place${fin(live) ? ` · ${count(live)} live now` : ''}`;
 }
 
 // The canvas's words for a screen reader: the countries and their visitors.
