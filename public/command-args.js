@@ -9,6 +9,9 @@
 
 import { PRESETS, nyToday } from './ranges.js';
 import { instrumentById, resolveInstrument } from './instruments.js';
+import { ALIASES } from './registry.js';
+import { tickerForName, LISTED_TICKERS, stockIdOf } from './known-tickers.js';
+import { editDistance } from './resolve.js';
 import * as pro from './pro.js';
 import { parseTapeSwitch } from './tape.js';
 
@@ -441,4 +444,112 @@ export function parseFishtank(words = []) {
     if (key) return { args: { sector: key }, input: `FISHTANK ${key}` };
   }
   return null;
+}
+
+// ---- GRID ----------------------------------------------------------------------------
+// GRID [TOKENS...] [RANGE]: your own board of up to GRID_MAX mini charts. The same
+// grammar on the server (lib/grid.js reads ?s= with gridItem), so a link rebuilds the
+// same board.
+//   NVDA, $GOLD, OIL      a market symbol (aliases resolve: OIL is WTI); $ forces the stock
+//   CPI                   US consumer prices (BLS)
+//   W:PIZZA, WEIRD:EGGS   a WEIRD gauge (the prefix is needed: BUZZ is also an ETF)
+//   RIP:LEH               a GRAVEYARD stone
+//   BBRK                  our own site numbers
+//   STARTER               the starter board, when it is the only word
+// A trailing preset range (1D ... MAX) sets every market tile's range; 1Y by default.
+export const GRID_MAX = 16;
+export const GRID_RANGE = '1Y';
+// The range chips on the board; any preset can still be typed.
+export const GRID_RANGE_CHIPS = ['1M', '1Y', '5Y', 'MAX'];
+// What a first visit sees, and what STARTER brings back.
+export const GRID_STARTER = ['SPX', 'NDX', 'NVDA', 'TSLA', 'AAPL', 'BTC', 'ETH', 'GOLD', 'WTI', 'US10Y', 'VIX', 'CPI', 'W:PIZZA', 'W:EGGPRICE', 'RIP:LEH', 'BBRK'];
+export const GRID_STARTER_WORD = 'STARTER';
+
+// A gauge's API id, where it is not its command in lower case (W:EGGS is EGGPRICE).
+const GAUGE_IDS = { EGGS: 'EGGPRICE', ODDS: 'CHANCES', BUZZ: 'BUZZWORD' };
+const GRID_TICKER = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
+const GRID_STOCK = /^\$[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
+
+// A typed gauge name -> its command (PIZZA, PIZZINT, EGGS -> EGGPRICE), or null.
+export function gaugeCommand(word) {
+  const w = String(word ?? '').trim().toUpperCase();
+  if (WEIRD_GAUGE_COMMANDS.includes(w)) return w;
+  const alias = ALIASES[w] || GAUGE_IDS[w];
+  return alias && WEIRD_GAUGE_COMMANDS.includes(alias) ? alias : null;
+}
+
+// A word that is not a tile -> the tile it most likely meant, or null: a company name
+// (NVIDIA -> NVDA), a gauge without its prefix (EGGPRICE -> W:EGGPRICE), or a known
+// ticker one letter off (APPL -> AAPL).
+export function gridSuggest(word) {
+  const w = String(word ?? '').trim().toUpperCase().replace(/^\$/, '');
+  if (!w) return null;
+  const named = tickerForName(w);
+  if (named && named.id !== w) return named.id;
+  const g = gaugeCommand(w.replace(/^(W|WEIRD):/, ''));
+  if (g) return `W:${g}`;
+  if (w.length >= 3 && GRID_TICKER.test(w) && !LISTED_TICKERS.has(w)) {
+    for (const t of LISTED_TICKERS) if (t.length === w.length && editDistance(t, w) === 1) return t;
+  }
+  return null;
+}
+
+// One word -> { token, kind, ... } or null (an empty word). token is the canonical form:
+// the same tile always has the same token, so duplicates drop and the URL stays clean.
+// kind: market | cpi | weird | rip | bbrk | unknown (with suggest, a guess or null).
+export function gridItem(raw) {
+  const t = String(raw ?? '').trim().toUpperCase().slice(0, 24);
+  if (!t) return null;
+  const unknown = () => ({ token: t, kind: 'unknown', suggest: gridSuggest(t) });
+  let m = /^(?:W|WEIRD):(.*)$/.exec(t);
+  if (m) {
+    const g = gaugeCommand(m[1]);
+    return g ? { token: `W:${g}`, kind: 'weird', gauge: g } : unknown();
+  }
+  m = /^RIP:(.*)$/.exec(t);
+  if (m) return /^[A-Z]{1,12}$/.test(m[1]) ? { token: `RIP:${m[1]}`, kind: 'rip', ticker: m[1] } : unknown();
+  if (t === 'CPI') return { token: 'CPI', kind: 'cpi' };
+  if (t === 'BBRK') return { token: 'BBRK', kind: 'bbrk' };
+  // $ always means the stock: $AAPL is AAPL, $GOLD stays $GOLD (GOLD is spot gold).
+  if (GRID_STOCK.test(t)) {
+    const id = stockIdOf(t);
+    return id ? { token: id, kind: 'market' } : unknown();
+  }
+  const inst = resolveInstrument(t);
+  if (inst) return { token: inst.id, kind: 'market' };
+  return GRID_TICKER.test(t) ? { token: t, kind: 'market' } : unknown();
+}
+
+// The words after GRID -> { items, tokens, range, rangeGiven, starter, dropped, bare }.
+// starter: STARTER was the only word. bare: no words at all but maybe a range (the screen
+// then opens the last board, else the starter). dropped: how many past GRID_MAX were
+// left out. Never an error: a word that is no tile becomes a NO SUCH TICKER tile.
+export function parseGrid(args = []) {
+  const toks = args.flatMap((a) => String(a).split(',')).map((a) => a.trim().toUpperCase()).filter(Boolean);
+  let range = GRID_RANGE;
+  let rangeGiven = false;
+  if (toks.length && PRESETS.includes(toks[toks.length - 1])) { range = toks.pop(); rangeGiven = true; }
+  const starter = toks.length === 1 && toks[0] === GRID_STARTER_WORD;
+  const words = starter ? GRID_STARTER : toks;
+  const items = [];
+  const seen = new Set();
+  let dropped = 0;
+  for (const w of words) {
+    const it = gridItem(w);
+    if (!it || seen.has(it.token)) continue;
+    seen.add(it.token);
+    if (items.length >= GRID_MAX) { dropped += 1; continue; }
+    items.push(it);
+  }
+  return { items, tokens: items.map((i) => i.token), range, rangeGiven, starter, dropped, bare: !toks.length };
+}
+
+// Is this board the starter board?
+export const isGridStarter = (tokens = []) => tokens.join(',') === GRID_STARTER.join(',');
+
+// The command (and URL) for a board: GRID STARTER for the starter board, the tokens
+// otherwise, then the range unless it is 1Y. GRID alone for no tokens.
+export function gridCmd({ tokens = [], range = GRID_RANGE } = {}) {
+  const words = tokens.length && isGridStarter(tokens) ? [GRID_STARTER_WORD] : tokens;
+  return ['GRID', ...words, range !== GRID_RANGE ? range : ''].filter(Boolean).join(' ');
 }

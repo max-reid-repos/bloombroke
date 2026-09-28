@@ -181,6 +181,11 @@ export const REGISTRY = [
     syntax: 'COMPARE <tickers> [<range>]', examples: ['COMPARE AAPL MSFT NVDA', 'COMPARE KO PEP 5Y'], keywords: ['versus', 'vs', 'race', 'performance', 'relative'],
   },
   {
+    name: 'GRID', category: 'Charts', summary: 'A board of up to 16 mini charts',
+    syntax: 'GRID [<tickers>] [<range>]', examples: ['GRID', 'GRID NVDA AMD INTC 1Y', 'GRID BTC ETH GOLD W:PIZZA RIP:LEH'],
+    keywords: ['board', 'dashboard', 'multi chart', 'many charts', 'tiles', 'small multiples', 'sparklines', 'overview', 'my board', 'share'],
+  },
+  {
     name: 'HISTORY', category: 'Charts', summary: 'Daily prices for any dates, with a CSV download', takesTicker: true, bar: 5,
     syntax: 'HISTORY <ticker> [<from> [<to>]]', examples: ['HISTORY AAPL', 'HISTORY TSLA 2024'], keywords: ['historical', 'prices', 'csv', 'download', 'close', 'data'],
   },

@@ -1,0 +1,182 @@
+/* grid.js's own styles, loaded with it (public/lazy.js) the first time GRID opens.
+   Numbers first: the value is the biggest thing on a tile, its change beside it, the
+   line with its labelled high and low under it. No inline styles (the CSP): every look
+   the SVG needs is a class here. */
+
+.gr-panel > .panel-body.gr-body { display: flex; flex-direction: column; position: relative; }
+
+/* ---- The bar: the range and STARTER on the left, SHARE on the right --------------------- */
+.gr-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px 12px;
+  padding: 6px 8px; border-bottom: 1px solid var(--rule); flex-wrap: wrap;
+}
+.gr-chips { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.gr-chips .seg { flex: 0 0 auto; }
+.gr-share { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+/* STARTER: a small text button, not a chip. */
+.gr-starter {
+  padding: 0 2px; border: 0; background: transparent; color: var(--dim);
+  font: 600 11px var(--font); letter-spacing: .08em; cursor: pointer;
+}
+.gr-starter:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ---- The board ----------------------------------------------------------------------- */
+.gr-scene { display: flex; flex-direction: column; min-width: 0; }
+.gr-scene:focus { outline: 0; }
+/* Each tile's own 1px rule sits in the 1px gaps, like the WEIRD grid. */
+.gr-board { display: grid; gap: 1px; padding: 1px; grid-auto-rows: 168px; min-width: 0; }
+.gr-c1 { grid-template-columns: minmax(0, 1fr); }
+.gr-c2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.gr-c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.gr-c4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.gr-tile {
+  position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  padding: 7px 10px 6px; background: var(--bg); cursor: pointer;
+  outline: 0; box-shadow: 0 0 0 1px var(--rule-strong);
+}
+.gr-tile:hover { background: var(--panel); }
+.gr-tile:focus { background: var(--panel); box-shadow: 0 0 0 1px var(--rule-strong), inset 2px 0 0 var(--accent); }
+
+/* The first line: the symbol and its short name (desktop); a whole row on a phone. */
+.gr-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding-right: 18px; }
+.gr-sym { flex: 0 0 auto; font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--accent); white-space: nowrap; }
+.gr-name { flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gr-mini, .gr-val, .gr-chg { display: none; }
+
+.gr-full { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.gr-hero { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 2px; }
+.gr-big {
+  min-width: 0; font-size: 22px; font-weight: 600; line-height: 1.2; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gr-big.is-text { font-size: 15px; letter-spacing: .02em; }
+.gr-big.is-stale { color: var(--text-2); opacity: .7; }
+.gr-pill {
+  flex: 0 0 auto; padding: 0 5px; border: 1px solid currentColor;
+  font-size: 11px; font-weight: 600; line-height: 16px; white-space: nowrap;
+}
+.gr-pill.up { color: var(--up); }
+.gr-pill.down { color: var(--down); }
+.gr-pill.flat, .gr-pill.rip { color: var(--dim); }
+.gr-msg { font-size: 12px; font-weight: 600; letter-spacing: .08em; color: var(--dim); }
+.gr-sub { font-size: 11px; color: var(--dim); margin-top: 2px; }
+.gr-dym { font-size: 11px; color: var(--text-2); margin-top: 4px; }
+.gr-swapto { padding: 0; border: 0; background: transparent; color: var(--accent); font: inherit; cursor: pointer; }
+.gr-swapto:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* The line is drawn at the chart box's own size (grid.js): absolute, so it never
+   changes the size it was measured at. */
+.gr-chart { position: relative; flex: 1 1 auto; min-height: 36px; margin-top: 4px; }
+.gr-chart > .gr-svg { position: absolute; left: 0; top: 0; }
+.gr-svg { display: block; overflow: visible; }
+.gr-line { fill: none; stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; }
+.gr-line.up { stroke: var(--up); }
+.gr-line.down { stroke: var(--down); }
+.gr-line.flat { stroke: var(--accent); }
+.gr-dot { fill: var(--text); }
+.gr-lab { fill: var(--text-2); font-family: var(--font); font-size: 10px; font-weight: 500; }
+.gr-open { display: none; }
+
+/* x: on hover or focus (always a little on touch screens). */
+.gr-x {
+  position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; padding: 0;
+  border: 0; background: transparent; color: var(--dim); font: 14px/18px var(--font);
+  opacity: 0; cursor: pointer;
+}
+.gr-tile:hover .gr-x, .gr-tile:focus-within .gr-x { opacity: 1; }
+.gr-x:hover { color: var(--text); }
+@media (hover: none) { .gr-x { opacity: .7; } }
+
+/* The + tile: a small input. */
+.gr-add { flex-direction: row; align-items: center; justify-content: center; gap: 8px; cursor: text; }
+.gr-add:hover { background: var(--bg); }
+.gr-add-plus { color: var(--dim); font-size: 18px; line-height: 1; }
+.gr-in {
+  width: 100%; max-width: 168px; height: 24px; padding: 0 6px;
+  border: 1px solid var(--rule-strong); background: var(--panel-2); color: var(--text);
+  font: 12px var(--font); letter-spacing: .04em; text-transform: uppercase;
+}
+.gr-in::placeholder { color: var(--faint); }
+.gr-in:focus { outline: 1px solid var(--accent); outline-offset: 0; }
+.gr-swap-in { flex: 0 1 132px; max-width: 132px; height: 20px; }
+
+.gr-foot { padding: 4px 8px 6px; }
+.gr-note { font-size: 10px; letter-spacing: .04em; color: var(--dim); }
+
+/* "Link copied": a tiny line over the dock, gone after a moment. */
+.gr-toast {
+  position: fixed; left: 50%; bottom: calc(var(--dock-h) + 12px); z-index: 50;
+  transform: translateX(-50%); padding: 3px 10px;
+  background: var(--text-2); color: var(--ink); font-size: 11px; font-weight: 600; letter-spacing: .04em;
+  opacity: 0; pointer-events: none; transition: opacity .15s;
+}
+.gr-toast.is-on { opacity: 1; }
+.gr-toast:empty { display: none; }
+
+/* Desktop, full-height screen: the board takes the room left, rows share it. */
+@media (min-width: 1100px) {
+  html:not(.is-embed) .gr-scene { flex: 1 1 auto; min-height: 0; }
+  html:not(.is-embed) .gr-board { flex: 1 1 auto; min-height: 0; grid-auto-rows: minmax(120px, 1fr); }
+  html:not(.is-embed) .gr-r1 { grid-template-rows: repeat(1, minmax(120px, 1fr)); }
+  html:not(.is-embed) .gr-r2 { grid-template-rows: repeat(2, minmax(120px, 1fr)); }
+  html:not(.is-embed) .gr-r3 { grid-template-rows: repeat(3, minmax(120px, 1fr)); }
+  html:not(.is-embed) .gr-r4 { grid-template-rows: repeat(4, minmax(120px, 1fr)); }
+  html:not(.is-embed) .gr-r1 .gr-big, html:not(.is-embed) .gr-r2 .gr-big { font-size: 32px; }
+  html:not(.is-embed) .gr-r1 .gr-big.is-text, html:not(.is-embed) .gr-r2 .gr-big.is-text { font-size: 20px; }
+}
+@media (min-width: 640px) and (max-width: 1099px) {
+  .gr-c4 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* Phones: one-line rows (symbol, a tiny line, the value, the change). A tap opens the
+   row into the whole tile, with OPEN; a second tap closes it. The chips scroll sideways
+   in one row inside the bar, never the page. A DESK panel keeps its tiles. */
+@media (max-width: 639px) {
+  html:not(.is-embed) .gr-bar { flex-wrap: nowrap; flex-direction: column; align-items: stretch; gap: 6px; }
+  html:not(.is-embed) .gr-chips {
+    flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  html:not(.is-embed) .gr-chips::-webkit-scrollbar { display: none; }
+  html:not(.is-embed) .gr-share { margin-left: 0; }
+  html:not(.is-embed) .gr-board { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; grid-template-rows: none; }
+  html:not(.is-embed) .gr-tile { padding: 0 10px; }
+  html:not(.is-embed) .gr-row { align-items: center; min-height: 38px; gap: 8px; padding-right: 0; }
+  html:not(.is-embed) .gr-sym { flex: 0 0 64px; overflow: hidden; text-overflow: ellipsis; }
+  html:not(.is-embed) .gr-name { display: none; }
+  html:not(.is-embed) .gr-mini { display: block; flex: 0 0 56px; height: 16px; }
+  html:not(.is-embed) .gr-val {
+    display: block; flex: 1 1 auto; min-width: 0; text-align: right;
+    font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  html:not(.is-embed) .gr-val.is-text { font-size: 11px; }
+  html:not(.is-embed) .gr-val.gr-msg { font-size: 11px; color: var(--dim); }
+  html:not(.is-embed) .gr-chg { display: block; flex: 0 0 64px; text-align: right; font-size: 12px; white-space: nowrap; }
+  html:not(.is-embed) .gr-chg.up { color: var(--up); }
+  html:not(.is-embed) .gr-chg.down { color: var(--down); }
+  html:not(.is-embed) .gr-chg.flat { color: var(--dim); }
+  html:not(.is-embed) .gr-tile:not(.is-open) .gr-full { display: none; }
+  html:not(.is-embed) .gr-tile.is-open { background: var(--panel); }
+  html:not(.is-embed) .gr-tile.is-open .gr-full { height: 164px; padding-bottom: 8px; }
+  html:not(.is-embed) .gr-hero { display: none; } /* the row above already says it */
+  html:not(.is-embed) .gr-tile.is-open .gr-open { display: inline-block; align-self: flex-start; margin-top: 4px; font-size: 11px; }
+  html:not(.is-embed) .gr-tile:not(.is-open) .gr-x { display: none; }
+  html:not(.is-embed) .gr-tile.is-open .gr-x { top: auto; bottom: 8px; right: 8px; opacity: 1; }
+  html:not(.is-embed) .gr-add { min-height: 44px; justify-content: flex-start; padding: 0 10px; }
+  html:not(.is-embed) .gr-add .gr-in { max-width: none; }
+  html:not(.is-embed) .gr-swap-in { flex: 0 0 96px; }
+}
+
+/* In a DESK panel (embed): the board alone, filling the panel, no chips, no note. */
+.gr-panel.is-embed { height: 100vh; }
+.gr-panel.is-embed > .gr-body { overflow: hidden; }
+.gr-panel.is-embed .gr-bar, .gr-panel.is-embed .gr-foot, .gr-panel.is-embed .gr-x { display: none; }
+.gr-panel.is-embed .gr-scene { flex: 1 1 auto; min-height: 0; }
+.gr-panel.is-embed .gr-board { flex: 1 1 auto; min-height: 0; grid-auto-rows: minmax(56px, 1fr); }
+.gr-panel.is-embed .gr-r1 { grid-template-rows: repeat(1, minmax(56px, 1fr)); }
+.gr-panel.is-embed .gr-r2 { grid-template-rows: repeat(2, minmax(56px, 1fr)); }
+.gr-panel.is-embed .gr-r3 { grid-template-rows: repeat(3, minmax(56px, 1fr)); }
+.gr-panel.is-embed .gr-r4 { grid-template-rows: repeat(4, minmax(56px, 1fr)); }
+.gr-panel.is-embed .gr-tile { padding: 5px 8px 4px; }
+.gr-panel.is-embed .gr-big { font-size: 18px; }
+.gr-panel.is-embed .gr-big.is-text { font-size: 13px; }
+.gr-panel.is-embed .gr-name { display: none; }

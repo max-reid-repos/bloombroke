@@ -23,10 +23,10 @@ export const FREE_ROWS = [
   ['WHATIF with your own purchase', LIVE, 'WHATIF'],
   ['GUESS', LIVE, 'GUESS'],
   ['Alerts while the tab is open', LIVE, 'ALERTS'],
+  ['DESK and GRID, saved on this device', LIVE, 'GRID'],
 ];
 export const PRO_ROWS = [
-  ['Sync across devices', LIVE, ''],
-  ['Saved DESK layouts', LIVE, 'DESK'],
+  ['Watchlist, portfolio, DESK and GRID on every device', LIVE, 'DESK'],
   ['Your own ticker tape', LIVE, 'TAPE'],
   ['A seat number', LIVE, ''],
   ['No sponsor line', LIVE, 'SPONSOR'],

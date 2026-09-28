@@ -48,6 +48,19 @@ test('router: every extra command parses, keeps its own URL, and beats a same-na
   assert.equal(suggest('LOAN')[0].value, 'LOAN ');
 });
 
+test('router: GRID is its own screen, ahead of the GRID ETF, with a clean URL', () => {
+  const bare = parseCommand('GRID');
+  assert.deepEqual([bare.name, bare.input, bare.url], ['GRID', 'GRID', 'GRID']);
+  const p = parseCommand('grid nvda amd intc 1y');
+  assert.deepEqual([p.name, p.input, p.url, p.error], ['GRID', 'GRID NVDA AMD INTC', 'GRID NVDA AMD INTC', undefined]);
+  assert.deepEqual(parseCommand('GRID BTC ETH GOLD W:PIZZA RIP:LEH 5Y').args.tokens, ['BTC', 'ETH', 'GOLD', 'W:PIZZA', 'RIP:LEH']);
+  assert.equal(parseCommand('GRID BTC ETH GOLD W:PIZZA RIP:LEH 5Y').input, 'GRID BTC ETH GOLD W:PIZZA RIP:LEH 5Y');
+  assert.equal(parseCommand('$GRID').name, 'QUOTE', '$GRID is the ETF');
+  assert.equal(EXTRA.find((c) => c.name === 'GRID').takesArgs, true);
+  assert.equal(findCommand('GRID').summary, 'A board of up to 16 mini charts');
+  assert.deepEqual(findCommand('GRID').examples, ['GRID', 'GRID NVDA AMD INTC 1Y', 'GRID BTC ETH GOLD W:PIZZA RIP:LEH']);
+});
+
 test('copy rules: no banned brand word, no em dashes, no amber in the new files', () => {
   const files = [
     ...readdirSync('public/screens').map((f) => `public/screens/${f}`),
@@ -58,7 +71,7 @@ test('copy rules: no banned brand word, no em dashes, no amber in the new files'
     const s = readFileSync(f, 'utf8');
     assert.doesNotMatch(s, new RegExp(['bloom', 'berg'].join(''), 'i'), f);
   }
-  for (const f of ['public/commands.css', 'public/commands.js', 'public/screens/heatmap.js', 'public/screens/lines.js']) {
+  for (const f of ['public/commands.css', 'public/commands.js', 'public/screens/heatmap.js', 'public/screens/lines.js', 'public/screens/grid.js', 'public/screens/grid.css']) {
     const s = readFileSync(f, 'utf8');
     assert.doesNotMatch(s, /—/, `${f}: em dash`);
     assert.doesNotMatch(s, /amber|#ffb|hsl\((3\d|4\d|5\d),/i, `${f}: amber`);

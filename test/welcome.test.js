@@ -405,7 +405,7 @@ test('hints: stop for good after three commands; returning visitors never see th
 });
 
 test('hints: the list and app.js wiring', () => {
-  assert.deepEqual(HINTS, ['Try AAPL 1Y', 'Try GRAVEYARD', 'Try FX 500 USD THB', 'Try GUESS', 'Try WHY NVDA', 'Try SECTORS MAP', 'Try CPI', 'Try WHATIF IPHONE6', 'Try GOLD', 'Try WEIRD']);
+  assert.deepEqual(HINTS, ['Try AAPL 1Y', 'Try GRAVEYARD', 'Try FX 500 USD THB', 'Try GUESS', 'Try WHY NVDA', 'Try SECTORS MAP', 'Try CPI', 'Try WHATIF IPHONE6', 'Try GOLD', 'Try WEIRD', 'Try GRID NVDA AMD INTC', 'Try FISHTANK']);
   // A market command, then a quirky one, in turn, all the way round (the list wraps too).
   HINTS.forEach((h, i) => assert.ok((i % 2 ? QUIRKY_HINTS : MARKET_HINTS).includes(h), `${i}: ${h}`));
   assert.equal(HINTS.length % 2, 0, 'the last (quirky) is followed by the first (market)');

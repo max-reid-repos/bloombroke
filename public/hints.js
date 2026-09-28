@@ -5,8 +5,8 @@
 // and the bar keeps its plain placeholder from then on.
 
 // A market command, then a quirky one, in turn.
-export const MARKET_HINTS = ['Try AAPL 1Y', 'Try FX 500 USD THB', 'Try WHY NVDA', 'Try CPI', 'Try GOLD'];
-export const QUIRKY_HINTS = ['Try GRAVEYARD', 'Try GUESS', 'Try SECTORS MAP', 'Try WHATIF IPHONE6', 'Try WEIRD'];
+export const MARKET_HINTS = ['Try AAPL 1Y', 'Try FX 500 USD THB', 'Try WHY NVDA', 'Try CPI', 'Try GOLD', 'Try GRID NVDA AMD INTC'];
+export const QUIRKY_HINTS = ['Try GRAVEYARD', 'Try GUESS', 'Try SECTORS MAP', 'Try WHATIF IPHONE6', 'Try WEIRD', 'Try FISHTANK'];
 export const HINTS = MARKET_HINTS.flatMap((m, i) => [m, QUIRKY_HINTS[i]]);
 export const HINT_KEY = 'bb.tried';
 export const HINT_STOP = 3;

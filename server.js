@@ -335,7 +335,8 @@ mountGuessCard(app, { todayPuzzle: () => guessGame.todayPuzzle() });
 
 // BBRK (lib/counters.js): the site's own daily totals, in the Pro database.
 const pro = startPro(app, { dir, counters: siteCounters });
-mountCounters(app, { counters: siteCounters, mode: pro?.mode || null, publicUrl: process.env.PUBLIC_URL || 'https://bloombroke.com', audience: makeDataFast() });
+const audience = makeDataFast(); // BBRK audience; GRID's BBRK tile reads the same one
+mountCounters(app, { counters: siteCounters, mode: pro?.mode || null, publicUrl: process.env.PUBLIC_URL || 'https://bloombroke.com', audience });
 
 // --- MCP (lib/mcp/): POST /mcp, public-domain data only, and /llms.txt ---
 import { mountMcp } from './lib/mcp/server.js';
@@ -363,6 +364,14 @@ const grave = mountGraveyard(app, { respects: siteRespects, publicUrl: process.e
 // getQuote: a graveyard ticker's live US listing wins.
 const noSuch = mountNoSuch(app, { getQuote, graveyard: grave.data.stones, zombies: grave.data.zombies, art: grave.art, today: grave.today });
 // --- end NO SUCH TICKER ---
+
+// --- GRID (lib/grid.js): GET /api/grid, a board's tiles in one answer; its share card
+// /og/grid.png (lib/og-grid.js) draws from the tiles kept there, never fetching ---
+import { mountGrid } from './lib/grid.js';
+import { mountGridCards } from './lib/og-grid.js';
+const grid = mountGrid(app, { getChart, getWeird, stones: grave.data.stones, zombies: grave.data.zombies, audience });
+const gridCards = mountGridCards(app, { grid });
+// --- end GRID ---
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: 'No such endpoint.' }));
 
@@ -477,6 +486,8 @@ async function shareIndex(c) {
   if (whyPage) return withMeta(PAGE, whyPage);
   const noSuchPage = noSuch.meta(c); // GRAVEYARD <ticker> and IPO IT <word> share cards
   if (noSuchPage) return withMeta(PAGE, noSuchPage);
+  const gridPage = gridCards.meta(c, parseCommand); // GRID with tiles: its own card
+  if (gridPage) return withMeta(PAGE, gridPage);
   // A bare command (/?c=MARKETS): its own title, description and canonical, no card.
   const plain = !whatif && commandMeta(c, parseCommand);
   if (plain) return withMeta(PAGE, plain);

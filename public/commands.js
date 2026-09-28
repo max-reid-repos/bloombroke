@@ -11,6 +11,7 @@ import { lazyScreen as lazy } from './lazy.js';
 import {
   parseTicker, parseCompare, parseHistory, parseTickerNews, parseBonds, parseFxMatrix, parseEarnings, parseCalendar,
   parseLoan, parseCompound, parsePro, parseTapeArgs, parseLogin, parseData, parseSectors, sectorsCmd,
+  parseGrid, gridCmd,
 } from './command-args.js';
 import { parse as parseNewsTab } from './screens/news.js'; // NEWS is on HOME: loaded at startup anyway
 import { parseAlertArgs } from './alerts.js'; // ALERTS: the watcher runs on every page anyway
@@ -24,6 +25,7 @@ export const EXTRA = [
   { name: 'HEATMAP', screen: lazy('screens/heatmap.js') },
   { name: 'SECTORS', screen: lazy('screens/sectors.js'), parse: parseSectors, toInput: sectorsCmd },
   { name: 'COMPARE', screen: lazy('screens/compare.js'), parse: parseCompare, takesArgs: true },
+  { name: 'GRID', screen: lazy('screens/grid.js'), parse: parseGrid, takesArgs: true, toInput: gridCmd }, // GRID: up to 16 mini charts
   { name: 'COMMODITIES', screen: lazy('screens/commodities.js') },
   { name: 'CRYPTO', screen: lazy('screens/crypto.js') },
   { name: 'CLOCK', screen: lazy('screens/clock.js') },

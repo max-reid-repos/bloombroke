@@ -20,8 +20,10 @@ export const LS = { key: 'bb.pro.key', status: 'bb.pro.status', meta: 'bb.sync.m
 export const PENDING_KEY = 'bb.pro.session';
 
 // Synced documents: server name -> localStorage key. watch and pf are the WATCH and PF
-// lists; tape is your own ticker tape; desk is your saved DESK layouts.
-export const SYNC_DOCS = { watch: WATCH_KEY, pf: PF_KEY, tape: 'bb.tape', desk: DESK_KEY };
+// lists; tape is your own ticker tape; desk is your saved DESK layouts; grid is your
+// last GRID board (screens/grid.js LAST_KEY).
+export const GRID_LAST_KEY = 'bb.grid';
+export const SYNC_DOCS = { watch: WATCH_KEY, pf: PF_KEY, tape: 'bb.tape', desk: DESK_KEY, grid: GRID_LAST_KEY };
 
 export const MAX_TAPE = 40;
 export const DEFAULT_TAPE = INSTRUMENTS.filter((i) => i.tape).map((i) => i.id);
