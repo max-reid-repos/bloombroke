@@ -233,9 +233,9 @@ test('requests: 10 new ones a day, 30 waiting at most', async () => {
   try {
     const [a, ...to] = Array.from({ length: 5 }, () => s.person());
     for (const p of to.slice(0, 3)) assert.equal((await a.open(p.seat)).status, 200);
-    assert.equal((await a.open(to[0].seat)).status, 200, 'the same seat again is not a new request');
     const r = await a.open(to[3].seat);
     assert.equal(r.status, 429);
+    assert.equal((await a.open(to[0].seat)).status, 429, 'every ask counts, the same seat too: one answer for all');
   } finally { await s.close(); }
   const s2 = await setup();
   try {
@@ -421,7 +421,7 @@ test('cards: a screen of the terminal only; never HOME, CHAT, PRO, LOGIN, a key,
   assert.deepEqual(cleanCard({ cmd: 'AAPL 1Y', title: 'join t.me/pump' }, titled), { cmd: 'AAPL 1Y', title: screenTitle(parseCommand('AAPL 1Y')).title });
   assert.equal(cleanCard({ cmd: 'WEIRD', title: 'x'.repeat(80) }, titled).title, screenTitle(parseCommand('WEIRD')).title);
   assert.equal(cleanCard({ cmd: 'WEIRD' }, { ...deps, titleOf: () => 'see evil.ru' }).title, 'WEIRD', 'a title with a link falls back to the command');
-  assert.throws(() => cleanCard({ cmd: 'X.RU' }, deps), { code: 'bad_card' });
+  assert.throws(() => cleanCard({ cmd: 'HTTPS://X.CO' }, deps), { code: 'bad_card' }, 'not a screen');
   assert.equal(cleanCard(null, deps), null);
   for (const cmd of ['HOME', 'CHAT', 'CHAT 42', 'PRO', 'LOGIN', 'LOGOUT', 'REDEEM', 'GIFT', 'FEEDBACK', 'IDEA', 'WATCH ADD AAPL', 'PF ADD AAPL 1 @ 100', 'DESK RESET', 'ALERTS AAPL > 300', 'TAPE ADD AAPL',
     'BB-AAAA-BBBB-CCCC-DDDD', 'NOT A COMMAND AT ALL', 'AAPL<script>', 'https://x.co', 'x'.repeat(61), '']) {
@@ -811,4 +811,53 @@ test('fix 16: the stamp uses the quote\'s own time, and a stale quote gives the 
     const r = await a.say(room, '$NEW and $OLD');
     assert.deepEqual(r.body.message.tickers, [{ sym: 'NEW', price: 20, at: Date.parse(at) }, { sym: 'OLD' }]);
   } finally { await s.close(); }
+});
+
+// ---- last fixes -------------------------------------------------------------------------------
+
+test('fix A: exchange-suffix tickers are text and cards, not links; real links still are', async () => {
+  for (const ok of ['0700.HK up 3%', 'SAP.DE earnings', '2330.TW', 'RY.TO', 'SHOP.TO', '$SHOP.TO', 'BHP.AX', 'VOD.L', 'NESN.SW']) assert.equal(hasLink(ok), false, ok);
+  for (const bad of ['evil.io', 'EVIL.IO', 'pump.Com', 'sap.de', 'X.CO', 'BIT.LY', 'T.ME', 'DISCORD.GG', 'SCAM.ME', 'see x.de/pump']) assert.equal(hasLink(bad), true, bad);
+  const deps = { parse: parseCommand, linkChanges };
+  for (const cmd of ['SAP.DE', 'SHOP.TO', 'RY.TO']) assert.equal(cleanCard({ cmd }, deps).cmd, cmd, cmd);
+  const client = await import('../public/screens/chat.js');
+  for (const cmd of ['SAP.DE', 'SHOP.TO', 'RY.TO', 'AAPL 1Y', 'WEIRD']) {
+    const card = client.attachFor(cmd);
+    assert.ok(card, `${cmd}: offered`);
+    assert.doesNotThrow(() => cleanCard(card, deps), `${cmd}: the server takes what the client offers`);
+  }
+  const s = await setup();
+  try {
+    const [a, b] = [s.person(), s.person()];
+    const room = await s.connect(a, b);
+    assert.equal((await a.say(room, '0700.HK up 3%, SAP.DE earnings, 2330.TW', { cmd: 'SAP.DE' })).status, 200);
+    assert.equal((await a.say(room, 'EVIL.IO')).status, 400);
+  } finally { await s.close(); }
+});
+
+test('fix B: after the limit, a Pro seat, a lapsed seat and a missing seat get the same answer', async () => {
+  const now = () => T0;
+  for (const kind of ['daily', 'waiting']) {
+    const limits = kind === 'daily' ? { ...chatLimits(now), request: createLimiter({ max: 1, windowMs: DAY, now }) } : null;
+    const s = await setup(limits ? { limits } : {});
+    try {
+      const a = s.person();
+      const pro = s.person();
+      const lapsed = s.person('canceled');
+      const first = s.person();
+      if (kind === 'daily') assert.equal((await a.open(first.seat)).body.sent, true);
+      else {
+        const ins = s.db.prepare('INSERT INTO chat_requests (from_licence, to_seat, created_at) VALUES (?, ?, ?)');
+        for (let i = 0; i < 30; i++) ins.run(a.id, 5000 + i, T0);
+      }
+      const answers = [];
+      for (const seat of [pro.seat, lapsed.seat, 987654]) {
+        const r = await a.open(seat);
+        answers.push([r.status, r.body.error, r.body.message.replace(/\d+/g, 'N')]);
+      }
+      assert.equal(answers[0][0], 429, kind);
+      assert.deepEqual(answers[1], answers[0], `${kind}: lapsed = Pro`);
+      assert.deepEqual(answers[2], answers[0], `${kind}: missing = Pro`);
+    } finally { await s.close(); }
+  }
 });

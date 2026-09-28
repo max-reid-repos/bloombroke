@@ -67,14 +67,21 @@ export const TLDS = [
 const URL_RE = /\b[a-z][a-z0-9+.-]{1,15}:\/\/|\bhxxps?\b|\bwww\s*[.\u3002\uff0e]\s*\w/i;
 // A word, dots, then a known ending, in any case: t.me, bit.ly, pump.Com, x.co/abc. Not
 // after a $ ($SHOP.TO is a ticker).
-const DOMAIN_RE = new RegExp(`(^|[^$\\w])[a-z0-9-]+(?:[.\\u3002\\uff0e][a-z0-9-]+)*[.\\u3002\\uff0e](?:${TLDS.join('|')})(?![a-z0-9])`, 'i');
+const DOMAIN_RE = new RegExp(`(^|[^$\\w])([a-z0-9-]+(?:[.\\u3002\\uff0e][a-z0-9-]+)*)[.\\u3002\\uff0e](${TLDS.join('|')})(?![a-z0-9])`, 'gi');
+// Exchange suffixes of tickers (SAP.DE, SHOP.TO, 0700.HK, 2330.TW): in upper case after an
+// upper-case symbol they are a ticker, not a link. CO, ME, LY, GG and IO are not here: in
+// any case they stay links.
+export const EXCHANGE_SUFFIXES = new Set(['HK', 'DE', 'TO', 'TW', 'CN', 'MX', 'NZ', 'AX', 'SW', 'PA', 'KS', 'SS', 'SZ', 'NS', 'BO', 'SA', 'L', 'T', 'V', 'F', 'AS', 'MI', 'ST', 'OL']);
+const isTickerLike = (stem, end) => /^\$?[A-Z0-9]{1,10}$/.test(stem) && EXCHANGE_SUFFIXES.has(end);
 // Spelled-out dots in brackets: example[.]com, example(.)com, example (dot) com. A bare
 // "dot com" stays text (the dot com bubble).
 const DOT_WORDS = /\s*[[({]\s*(?:\.|dot)\s*[\])}]\s*/gi;
 
 export function hasLink(text) {
   const s = String(text ?? '').replace(DOT_WORDS, '.');
-  return URL_RE.test(s) || DOMAIN_RE.test(s);
+  if (URL_RE.test(s)) return true;
+  for (const m of s.matchAll(DOMAIN_RE)) if (!isTickerLike(m[2], m[3])) return true;
+  return false;
 }
 
 // The $TICKERs in a message, in order, each once, at most 3: ['NVDA', 'AAPL'].
@@ -132,7 +139,9 @@ export function cleanCard(card, { parse, linkChanges, titleOf = null }) {
   if (card === undefined || card === null) return null;
   if (typeof card !== 'object' || Array.isArray(card)) throw new ChatError('bad_card', 'That screen cannot be attached.');
   const cmd = typeof card.cmd === 'string' ? card.cmd.replace(/\s+/g, ' ').trim().toUpperCase() : '';
-  if (!CARD_RE.test(cmd) || hasLink(cmd)) throw new ChatError('bad_card', 'That screen cannot be attached.');
+  // No link check here: the command must parse to a screen of the terminal (below), and a
+  // card is a button, never a link (SAP.DE is a ticker).
+  if (!CARD_RE.test(cmd)) throw new ChatError('bad_card', 'That screen cannot be attached.');
   const head = cmd.split(' ')[0];
   const c = parse(cmd);
   if (!c || c.name === 'UNKNOWN' || c.secret || c.mutates || c.error || linkChanges(c) || CARD_DENY.includes(head) || CARD_DENY.includes(c.name)) {

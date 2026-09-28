@@ -257,16 +257,17 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
               return { room: room.id, accepted: true, notify: [lic, target.id] };
             }
           }
-          // The same neutral answer whether or not the seat exists or has Pro, but a
-          // request is only kept for a seat that has Pro now.
-          if (!target || !isActive(target.id)) return { sent: true, seat, notify: [] };
-          const existing = q.request.get(lic, seat);
-          if (existing && existing.created_at > requestSince()) return { sent: true, seat, notify: [] };
-          if (existing) q.dropRequest.run(lic, seat); // expired: start again
+          // The same answer for every seat in every state: the limits come first, for
+          // any seat, so a 429 never tells a seat with Pro from one without.
           if (Number(q.outCount.get(lic, requestSince()).n) >= MAX_OUT) {
             throw new ChatError('too_many_requests', `You have ${MAX_OUT} requests waiting. Wait for some answers first.`, 429);
           }
           if (!allowRequest()) throw new ChatError('rate_limited', 'That is a lot of requests for one day. Try again tomorrow.', 429);
+          // A request is only kept for a seat that has Pro now.
+          if (!target || !isActive(target.id)) return { sent: true, seat, notify: [] };
+          const existing = q.request.get(lic, seat);
+          if (existing && existing.created_at > requestSince()) return { sent: true, seat, notify: [] };
+          if (existing) q.dropRequest.run(lic, seat); // expired: start again
           q.addRequest.run(lic, seat, now());
           const notify = isBlocked(target.id, lic) ? [] : [target.id];
           return { sent: true, seat, notify };
