@@ -198,7 +198,13 @@ export function ensureConsent({ doc = document, win = window, store = consentSto
         if (!coarse && back && typeof back.focus === 'function' && doc.contains(back)) back.focus();
         resolve(true);
       }
-      const chipPressed = (el) => { const c = ui?.chipChoice(el, rand); if (c) finish(c); };
+      // SURPRISE ME answers with a promise (it asks which gauges are empty first); START,
+      // typing and the other chips still work meanwhile, and the first choice wins.
+      const chipPressed = (el) => {
+        const c = ui?.chipChoice(el, rand);
+        if (c && typeof c.then === 'function') c.then((x) => { if (x) finish(x); }, () => {});
+        else if (c) finish(c);
+      };
 
       // While the card is open, keys do not reach the terminal. Enter on a chip runs it,
       // anywhere else it starts with what is typed (a link keeps its Enter). Arrows move

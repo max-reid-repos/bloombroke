@@ -44,12 +44,16 @@ export function tileBody(g, d, { rec = false } = {}) {
     <p class="wd-src">${sourceHtml(g, d)}</p>`;
 }
 
-// Show or leave out a tile (or a DESK card): the tile CSS sets display, so hidden alone
-// would not hide it.
+// Show or leave out a tile: the tile CSS sets display, so hidden alone would not hide it.
 export function showTile(node, on) {
   node.hidden = !on;
   node.style.display = on ? '' : 'none';
 }
+
+// The status line's NO DATA count: tiles that show NO DATA. A gauge left out of the grid
+// (emptyGauge) is not counted, nor is one still loading. With today's emptyGauge every
+// NO DATA row is left out, so this is 0; it stays right if that rule narrows.
+export const noDataCount = (rows) => (rows || []).filter((x) => x && x.ok === false && !x.pending && !emptyGauge(x)).length;
 
 // data-num: a number and Enter in the command bar opens this tile's own screen (not the
 // tile maximised). A bare digit stays typing, so 12 can be typed. period: the grid's
@@ -144,7 +148,7 @@ function grid(el, ctx, period) {
       if (d.gauges.some((x) => x.pending) && !ctx.signal?.aborted) again = setTimeout(load, PENDING_POLL_MS);
       // The dot by the clock says when; the status line only carries a warning.
       ctx.updated(d.updated, d.stale);
-      const bad = d.gauges.filter((x) => x.ok === false && !x.pending).length;
+      const bad = noDataCount(d.gauges);
       ctx.status(bad ? `${bad} NO DATA` : '', bad ? 'warn' : '');
     } catch (err) {
       if (err.name === 'AbortError') return;

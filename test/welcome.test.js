@@ -69,11 +69,11 @@ test('welcome: four chips, each a real command with a 2-4 word caption', () => {
   assert.equal(parseCommand('AAPL 1Y').name, 'QUOTE');
 });
 
-test('welcome: a chip means accept and run its command', () => {
+test('welcome: a chip means accept and run its command', async () => {
   WELCOME_CHIPS.forEach((c, i) => assert.deepEqual(chipChoice({ dataset: { chip: String(i) } }), { cmd: c.cmd, chip: c.chip }));
   assert.equal(chipChoice({ dataset: { chip: '9' } }), null);
   assert.equal(chipChoice(null), null);
-  const s = chipChoice({ dataset: { surprise: '1' } }, () => 0);
+  const s = await chipChoice({ dataset: { surprise: '1' } }, () => 0, { fetchImpl: async () => { throw new Error('offline'); } });
   assert.ok(SURPRISE_PICKS.some((p) => p.cmd === s.cmd && p.kind === s.surprise));
 });
 
@@ -260,6 +260,33 @@ test('welcome card: Enter on a chip runs that chip; SURPRISE ME runs an allowed 
   page.key('Enter');
   assert.equal(await done, true);
   assert.ok(SURPRISE_PICKS.some((p) => p.cmd === page.cmd.value), page.cmd.value);
+});
+
+test('welcome card: while SURPRISE ME waits for /api/weird, START still works and wins', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (url, opts) => new Promise((resolve, reject) => {
+    opts?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+  }); // never answers: the pick waits its 600 ms
+  try {
+    const page = fakePage();
+    const store = consentStore({ local: memStorage() });
+    const { sent, opts } = fakeGoals();
+    const done = ensureConsent({ doc: page.doc, win: page.win, store, ready: () => welcome, goalOpts: opts });
+    const wrap = page.appended[0];
+    wrap.parts.chips[4].focus(); // SURPRISE ME
+    page.key('Enter');
+    const field = wrap.parts['.consent-input'];
+    field.focus();
+    field.value = 'nvidia';
+    page.key('Enter');
+    assert.equal(await done, true);
+    assert.equal(page.cmd.value, 'nvidia');
+    await new Promise((r) => { setTimeout(r, 700); }); // the late pick changes nothing
+    assert.equal(page.cmd.value, 'nvidia');
+    assert.deepEqual(sent, [['welcome_typed']]);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
 test('welcome card: on a phone the focus rests on the card, not the input', async () => {

@@ -23,27 +23,48 @@ export const SURPRISE_PICKS = [
 ];
 
 // WEIRD gauges with nothing to show (NO DATA and no last good reading, as emptyGauge in
-// weird-gauges.js): SURPRISE ME skips them until they report again. Filled from
-// /api/weird once, when this module loads in the browser; until then nothing is skipped.
-const emptyWeird = new Set();
-export function noteWeird(rows) {
-  emptyWeird.clear();
+// weird-gauges.js): SURPRISE ME skips them until they report again. rows: /api/weird's
+// gauges -> the Set of their ids.
+export function emptyWeirdIds(rows) {
+  const out = new Set();
   for (const r of Array.isArray(rows) ? rows : []) {
-    if (r && typeof r.id === 'string' && r.ok === false && !r.pending) emptyWeird.add(r.id);
+    if (r && typeof r.id === 'string' && r.ok === false && !r.pending) out.add(r.id);
   }
-  return emptyWeird;
+  return out;
 }
-if (typeof document !== 'undefined' && typeof fetch === 'function') {
-  fetch('/api/weird', { headers: { Accept: 'application/json' } })
-    .then((res) => (res.ok ? res.json() : null))
-    .then((d) => { if (d) noteWeird(d.gauges); })
-    .catch(() => {});
+
+// How long SURPRISE ME waits for /api/weird before it picks from everything.
+export const SURPRISE_WAIT_MS = 600;
+
+// Asked only when SURPRISE ME is pressed: the empty gauge ids, or null when /api/weird
+// failed or did not answer within waitMs (then nothing is skipped). Never rejects.
+export async function fetchEmptyWeird({ fetchImpl = globalThis.fetch, waitMs = SURPRISE_WAIT_MS } = {}) {
+  if (typeof fetchImpl !== 'function') return null;
+  const abort = typeof AbortController === 'function' ? new AbortController() : null;
+  let timer;
+  const late = new Promise((resolve) => { timer = setTimeout(resolve, waitMs, null); });
+  const got = (async () => {
+    try {
+      const res = await fetchImpl('/api/weird', { headers: { Accept: 'application/json' }, signal: abort?.signal });
+      if (!res?.ok) return null;
+      const d = await res.json();
+      return Array.isArray(d?.gauges) ? emptyWeirdIds(d.gauges) : null;
+    } catch {
+      return null;
+    }
+  })();
+  try {
+    return await Promise.race([got, late]);
+  } finally {
+    clearTimeout(timer);
+    abort?.abort();
+  }
 }
 
 // One pick: a kind first (so the one SECTORS MAP comes up as often as a gauge), then one
 // of its commands. rand: () => [0, 1). skip: gauge ids to leave out (a kind left with
 // none is left out too). Always an item of SURPRISE_PICKS.
-export function pickSurprise(rand = Math.random, skip = emptyWeird) {
+export function pickSurprise(rand = Math.random, skip = new Set()) {
   const r = () => { const x = Number(rand()); return Number.isFinite(x) && x >= 0 && x < 1 ? x : 0; };
   const picks = SURPRISE_PICKS.filter((p) => !p.id || !skip.has(p.id));
   const kinds = [...new Set(picks.map((p) => p.kind))];
@@ -60,12 +81,20 @@ export function chipsHtml() {
       <button type="button" class="wc-surprise" data-surprise="1">SURPRISE ME</button>`;
 }
 
-// What a pressed chip means: { cmd, chip } or { cmd, surprise } (surprise: the kind), or null.
-export function chipChoice(el, rand = Math.random) {
+// What a pressed chip means: { cmd, chip } or null at once; SURPRISE ME: a promise of
+// { cmd, surprise } (surprise: the kind), picked once /api/weird answers or waitMs is up
+// (see fetchEmptyWeird). A second press while it waits gets the same promise.
+let surprising = null;
+export function chipChoice(el, rand = Math.random, { fetchImpl, waitMs } = {}) {
   if (!el || !el.dataset) return null;
   if (el.dataset.surprise) {
-    const p = pickSurprise(rand);
-    return { cmd: p.cmd, surprise: p.kind };
+    if (!surprising) {
+      surprising = fetchEmptyWeird({ fetchImpl, waitMs }).then((skip) => {
+        const p = pickSurprise(rand, skip || undefined);
+        return { cmd: p.cmd, surprise: p.kind };
+      }).finally(() => { surprising = null; });
+    }
+    return surprising;
   }
   const c = WELCOME_CHIPS[Number(el.dataset.chip)];
   return c ? { cmd: c.cmd, chip: c.chip } : null;

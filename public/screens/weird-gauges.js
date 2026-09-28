@@ -575,7 +575,7 @@ export const WEIRD_GAUGES = [
 export const gaugeByCommand = (cmd) => WEIRD_GAUGES.find((g) => g.command === cmd) || null;
 
 // A gauge whose feed has nothing to show: NO DATA and no last good reading (the server
-// serves a last good one as ok, stale). The WEIRD grid and DESK cards leave it out until
-// it reports again; its own screen and a GRID tile still say NO DATA. Pending is not
-// empty: it is still loading.
+// serves a last good one as ok, stale). The WEIRD grid and SURPRISE ME leave it out
+// until it reports again; its own screen, a DESK card and a GRID tile still say NO DATA.
+// Pending is not empty: it is still loading.
 export const emptyGauge = (d) => Boolean(d && d.ok === false && !d.pending);

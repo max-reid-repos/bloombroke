@@ -1,15 +1,15 @@
 // A WEIRD gauge whose feed has nothing (NO DATA, no last good reading) is left out of the
-// WEIRD grid, the DESK cards and SURPRISE ME, and comes back by itself once it reports.
-// Its own screen, a GRID tile and /api/weird keep the row as it is.
+// WEIRD grid and SURPRISE ME, and comes back by itself once it reports. Its own screen, a
+// DESK card, a GRID tile and /api/weird keep the row as it is.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { makeWeird } from '../data/weird/index.js';
 import * as pizzaGauge from '../data/weird/pizza.js';
 import { emptyGauge, WEIRD_GAUGES, gaugeByCommand } from '../public/screens/weird-gauges.js';
-import { render, showTile, tileBody } from '../public/screens/weird.js';
-import { cardHidden, mergeCardRows } from '../public/screens/desk-cards.js';
-import { SURPRISE_PICKS, pickSurprise, noteWeird } from '../public/screens/welcome.js';
+import { render, showTile, tileBody, noDataCount } from '../public/screens/weird.js';
+import { cardBody } from '../public/screens/desk-cards.js';
+import { SURPRISE_PICKS, SURPRISE_WAIT_MS, pickSurprise, emptyWeirdIds, fetchEmptyWeird, chipChoice } from '../public/screens/welcome.js';
 
 const fx = (f) => readFileSync(new URL(`./fixtures/weird/${f}`, import.meta.url), 'utf8');
 const FULL = JSON.stringify({
@@ -108,6 +108,7 @@ test('WEIRD grid: an empty gauge is left out, the others show, and it comes back
   await settle();
   assert.equal(tiles.get('pizza').style.display, 'none');
   assert.equal(tiles.get('pizza').hidden, true);
+  assert.equal(calls.status.at(-1), '', 'a left-out gauge is not in the NO DATA count');
   for (const [id, t] of tiles) if (id !== 'pizza') assert.equal(t.style.display, '', id);
   calls.load();
   await settle();
@@ -131,15 +132,9 @@ test('the NO DATA tile itself is unchanged (hiding is done around it, not in it)
   assert.match(html, /wd-big is-none">NO DATA</);
 });
 
-test('DESK cards: an empty gauge card is left out and comes back; a failed fetch or LOADING hides nothing', () => {
-  let rows = mergeCardRows(new Map(), [row('pizza', { ok: false, headline: 'NO DATA' }), row('canal', { ok: true, headline: 'X' })]);
-  assert.equal(cardHidden(rows, 'pizza'), true);
-  assert.equal(cardHidden(rows, 'canal'), false);
-  assert.equal(cardHidden(new Map(), 'pizza'), false, 'no row yet (or a failed fetch): the card shows');
-  rows = mergeCardRows(rows, [row('pizza', { ok: true, headline: 'DEFCON 4' })]);
-  assert.equal(cardHidden(rows, 'pizza'), false, 'shown again once it reports');
-  rows = mergeCardRows(new Map(), [row('pizza', { ok: false, headline: 'LOADING', pending: true })]);
-  assert.equal(cardHidden(rows, 'pizza'), false);
+test('DESK cards keep the calm NO DATA look (not left out)', () => {
+  const g = gaugeByCommand('PIZZA');
+  assert.match(cardBody(g, { id: 'pizza', ok: false, headline: 'NO DATA', source: 'pizzint.watch' }), /wd-big is-none">NO DATA</);
 });
 
 test('SURPRISE ME: skips a gauge with nothing to show, and picks it again once it reports', () => {
@@ -151,15 +146,73 @@ test('SURPRISE ME: skips a gauge with nothing to show, and picks it again once i
     for (const r of rands) out.add(pickSurprise(() => r, skip).cmd);
     return out;
   };
-  const skip = noteWeird([row('pizza', { ok: false, headline: 'NO DATA' }), row('waffle', { ok: false, headline: 'LOADING', pending: true }), row('canal', { ok: true })]);
+  const skip = emptyWeirdIds([row('pizza', { ok: false, headline: 'NO DATA' }), row('waffle', { ok: false, headline: 'LOADING', pending: true }), row('canal', { ok: true })]);
   assert.deepEqual([...skip], ['pizza']);
   const without = seen(skip);
   assert.ok(!without.has('PIZZA'), 'an empty gauge is never picked');
   assert.ok(without.has('WAFFLE'), 'a loading gauge still is');
-  assert.ok(seen(noteWeird([row('pizza', { ok: true, headline: 'DEFCON 4' })])).has('PIZZA'), 'back once it reports');
+  assert.ok(seen(emptyWeirdIds([row('pizza', { ok: true, headline: 'DEFCON 4' })])).has('PIZZA'), 'back once it reports');
   // Every weird gauge empty: the kind is left out, the other kinds still come up.
   const all = seen(new Set(weird.map((p) => p.id)));
   assert.ok(![...all].some((c) => weird.some((p) => p.cmd === c)));
   assert.ok(all.size > 0);
-  noteWeird([]);
+  assert.ok(seen(undefined).has('PIZZA'), 'no skip list: every pick as before');
+});
+
+test('WEIRD status count: only tiles that show NO DATA; left-out and loading ones are not counted', () => {
+  assert.equal(noDataCount([row('pizza', { ok: false, headline: 'NO DATA' }), row('canal', { ok: true })]), 0);
+  assert.equal(noDataCount([row('pizza', { ok: false, headline: 'LOADING', pending: true })]), 0);
+  assert.equal(noDataCount([]), 0);
+  assert.equal(noDataCount(undefined), 0);
+});
+
+// A fetch that answers after `ms` with /api/weird's rows, and counts its calls.
+function slowFetch(ms, gauges) {
+  const f = async (url, opts) => {
+    f.calls.push(url);
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(resolve, ms);
+      opts?.signal?.addEventListener('abort', () => { clearTimeout(t); reject(new Error('aborted')); });
+    });
+    return new Response(JSON.stringify({ gauges }), { status: 200 });
+  };
+  f.calls = [];
+  return f;
+}
+const pizzaEmpty = [row('pizza', { ok: false, headline: 'NO DATA' })];
+const surprise = { dataset: { surprise: '1' } };
+const weirdFirst = () => 0; // kind 0 is weird, pick 0 is PIZZA
+
+test('SURPRISE ME: /api/weird is asked only on the press, and an empty gauge is skipped', async () => {
+  assert.equal(SURPRISE_PICKS[0].cmd, 'PIZZA');
+  assert.equal(SURPRISE_WAIT_MS, 600);
+  const f = slowFetch(5, pizzaEmpty);
+  assert.equal(f.calls.length, 0);
+  const c = await chipChoice(surprise, weirdFirst, { fetchImpl: f });
+  assert.deepEqual(f.calls, ['/api/weird']);
+  assert.equal(c.surprise, 'weird');
+  assert.notEqual(c.cmd, 'PIZZA');
+  // A normal chip asks nothing and answers at once.
+  assert.equal(typeof chipChoice({ dataset: { chip: '0' } }).then, 'undefined');
+});
+
+test('SURPRISE ME: past the wait it picks from everything, as before', async () => {
+  const f = slowFetch(5000, pizzaEmpty);
+  const t0 = Date.now();
+  const c = await chipChoice(surprise, weirdFirst, { fetchImpl: f, waitMs: 30 });
+  assert.ok(Date.now() - t0 < 1000, 'did not wait for the slow answer');
+  assert.equal(c.cmd, 'PIZZA');
+  assert.equal(await fetchEmptyWeird({ fetchImpl: f, waitMs: 20 }), null);
+  assert.equal(await fetchEmptyWeird({ fetchImpl: async () => new Response('nope', { status: 503 }) }), null);
+  assert.equal(await fetchEmptyWeird({ fetchImpl: async () => { throw new Error('offline'); } }), null);
+  assert.equal(await fetchEmptyWeird({ fetchImpl: null }), null);
+});
+
+test('SURPRISE ME: a second press while it waits shares the one request', async () => {
+  const f = slowFetch(10, pizzaEmpty);
+  const a = chipChoice(surprise, weirdFirst, { fetchImpl: f });
+  const b = chipChoice(surprise, weirdFirst, { fetchImpl: f });
+  assert.equal(a, b);
+  await a;
+  assert.equal(f.calls.length, 1);
 });
