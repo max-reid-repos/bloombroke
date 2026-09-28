@@ -457,6 +457,31 @@ test('GRID card: past the deadline an incomplete card, drawn but not kept, a min
   assert.equal((await busy.png('APPL,AA', '1Y', '2.2.2.2')).maxAge, 14400, 'no such ticker is an answer');
 });
 
+test('GRID card: a WEIRD gauge with no data (a failed source) is not final: incomplete, a minute, not kept', async () => {
+  const f = fakeDeps();
+  const grid = makeGrid(f.deps);
+  const cards = makeGridCards({ grid, fallback: async () => Buffer.from('site'), render: async () => Buffer.from('x') });
+  const a = await cards.png('W:PIZZA,CPI', '1Y', '1.1.1.1');
+  assert.equal(f.weirdCalls(), 1, 'the gauge was read (ok: false)');
+  assert.deepEqual([a.drawn, a.maxAge, cards.cache.size], [true, 60, 0]);
+  assert.equal((await cards.png('W:PIZZA,CPI', '1Y', '1.1.1.1')).maxAge, 60, 'asked again, still not kept');
+  assert.equal(cards.cache.size, 0);
+});
+
+test('GRID card: a request turned away by the per-address limit or the budget loads nothing', async () => {
+  const f = fakeDeps();
+  const grid = makeGrid(f.deps);
+  const site = Buffer.from('site');
+  const render = async () => Buffer.from('x');
+  const perIp = makeGridCards({ grid, fallback: async () => site, render, allow: () => false });
+  const a = await perIp.png('NVDA,AMD,W:EGGS,BBRK', '1Y', '1.1.1.1');
+  assert.deepEqual([a.png, a.drawn, a.maxAge], [site, false, 60]);
+  const spent = makeGridCards({ grid, fallback: async () => site, render, budget: { renders: 0, windowMs: 60_000 } });
+  const b = await spent.png('NVDA,AMD,W:EGGS,BBRK', '1Y', '2.2.2.2');
+  assert.deepEqual([b.png, b.drawn, b.maxAge], [site, false, 60]);
+  assert.deepEqual([f.calls.length, f.weirdCalls()], [0, 0], 'no getChart, no WEIRD read');
+});
+
 test('GRID card: BBRK without its page views is not kept and not drawn; with them it is', async () => {
   const f = fakeDeps();
   let aud = { pageviews: { d7: null }, live: null };
