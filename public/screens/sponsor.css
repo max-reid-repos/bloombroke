@@ -36,7 +36,8 @@
   font-size: 15px; font-weight: 600; letter-spacing: .06em; white-space: nowrap;
 }
 .spon-mail:hover, .spon-mail:focus-visible { background: var(--accent); color: var(--ink); text-decoration: none; }
-.spon-weird { font-size: 12px; color: var(--dim); white-space: nowrap; }
+/* The one extra link: small and dim, below the main words. */
+.spon-weird { font-size: 11px; color: var(--dim); opacity: .8; white-space: nowrap; }
 .spon-weird:hover { color: var(--text); }
 .spon-fine { margin: 0; font-size: 12px; color: var(--dim); }
 /* The label just above the real strip (sponsor.js pointAtStrip), while SPONSOR is open. */

@@ -211,8 +211,8 @@ test('SPONSOR screen: YOUR AD HERE, one live line, one email; 40 words or fewer 
   const page = sponsorHtml({ has: () => true, bbrk: FULL, cfg: cleanSponsors({ house: house(3) }) });
   assert.match(page, /<h2 class="spon-hero">YOUR AD HERE<\/h2>/);
   assert.equal(HERO, 'YOUR AD HERE');
-  assert.match(page, /<p class="spon-live"><span class="spon-part">7 here now<\/span><span class="spon-dot" aria-hidden="true"> · <\/span><span class="spon-part">173 this week<\/span>/);
-  assert.match(page, /<p class="spon-views">About 5,600 views a week<\/p>/);
+  assert.match(page, /<p class="spon-live"><span class="spon-part">7 here now<\/span><span class="spon-dot" aria-hidden="true"> · <\/span><span class="spon-part">173 visitors this week<\/span>/);
+  assert.match(page, /<p class="spon-views">Your line: about 5,600 views a week<\/p>/);
   assert.equal(MAILTO, 'mailto:hello@bloombroke.com?subject=Sponsor%20Bloombroke');
   assert.match(page, /<a class="spon-mail" href="mailto:hello@bloombroke\.com\?subject=Sponsor%20Bloombroke">EMAIL hello@bloombroke\.com<\/a>/);
   assert.equal((page.match(/<a /g) || []).length, 2, 'the email and one tiny WEIRD link, nothing else');
@@ -223,8 +223,10 @@ test('SPONSOR screen: YOUR AD HERE, one live line, one email; 40 words or fewer 
   assert.match(FINE, /No tracking/);
   assert.match(FINE, /Pro/);
   assert.equal(POINT, '↓ this line, every screen');
-  const n = words(page) + words(POINT);
-  assert.ok(n <= 40, `${n} words`);
+  // 40 main words or fewer with the strip label; the small dim WEIRD link (4) on top.
+  const main = words(page.replace(/<a class="spon-weird"[^>]*>[^<]*<\/a>/, '')) + words(POINT);
+  assert.ok(main <= 40, `${main} words`);
+  assert.ok(words(page) + words(POINT) <= 44, 'everything, the small link too');
   // Gone: the fact rows, the numbers table, the gauge preview, the proof links, the mock.
   assert.doesNotMatch(page, /spon-facts|spon-nums|SITE NUMBERS|spon-mock|wd-tile|CANAL|data-cmd="(BBRK|CHANGES|DATA|MCP)"/);
   assert.doesNotMatch(page, /\$\d/, 'no prices');
@@ -233,22 +235,22 @@ test('SPONSOR screen: YOUR AD HERE, one live line, one email; 40 words or fewer 
   assert.equal(parseCommand('SPONSOR').name, 'SPONSOR');
   // While loading: -- for every number, and no here now.
   const empty = sponsorHtml({ has: () => true });
-  assert.match(empty, /-- this week/);
-  assert.match(empty, /-- views a week/);
+  assert.match(empty, /-- visitors this week/);
+  assert.match(empty, /Your line: -- views a week/);
   assert.doesNotMatch(empty, /here now/);
 });
 
 test('SPONSOR live line: here now only above 0; -- for anything missing; short country names', () => {
-  assert.deepEqual(proofParts(FULL), ['7 here now', '173 this week', '8 min visits', '60% US']);
-  assert.deepEqual(proofParts(null), ['-- this week', '-- min visits', '-- top country']);
-  assert.deepEqual(proofParts({ audience: { live: 0, visitors: { d7: 1234 }, avgVisitSec: 40, countries: [{ name: 'Japan', pct: 10.4 }] } }), ['1,234 this week', '40 s visits', '10% Japan']);
-  assert.deepEqual(proofParts({ audience: { live: null, visitors: {}, avgVisitSec: null, countries: [] } }), ['-- this week', '-- min visits', '-- top country']);
+  assert.deepEqual(proofParts(FULL), ['7 here now', '173 visitors this week', '8 min visits', '60% US']);
+  assert.deepEqual(proofParts(null), ['-- visitors this week', '-- min visits', '-- top country']);
+  assert.deepEqual(proofParts({ audience: { live: 0, visitors: { d7: 1234 }, avgVisitSec: 40, countries: [{ name: 'Japan', pct: 10.4 }] } }), ['1,234 visitors this week', '40 s visits', '10% Japan']);
+  assert.deepEqual(proofParts({ audience: { live: null, visitors: {}, avgVisitSec: null, countries: [] } }), ['-- visitors this week', '-- min visits', '-- top country']);
   assert.deepEqual(proofParts({ audience: { live: 12000, countries: [{ name: 'United Kingdom', pct: 5 }] } }).slice(0, 1), ['12,000 here now']);
   assert.equal(proofParts({ audience: { countries: [{ name: 'United Kingdom', pct: 5 }] } })[2], '5% UK');
   assert.equal(visitLen(429), '7 min');
   assert.equal(visitLen(-1), '-- min');
   assert.match(proofHtml(FULL), /<span class="spon-part">60% US<\/span><\/p>/);
-  assert.match(proofHtml({ audience: { visitors: { d7: '<b>' } } }), /-- this week/, 'only numbers');
+  assert.match(proofHtml({ audience: { visitors: { d7: '<b>' } } }), /-- visitors this week/, 'only numbers');
 });
 
 test('SPONSOR views a week: last 7 days strip_shown over the paid lines plus yours, rounded down; -- when missing', () => {
@@ -267,9 +269,9 @@ test('SPONSOR views a week: last 7 days strip_shown over the paid lines plus you
   assert.equal(weeklyViews(null, null), null);
   assert.equal(weeklyViews({ inventory: {} }, null), null);
   assert.deepEqual([cleanDown(12345), cleanDown(100), cleanDown(109), cleanDown(1999), cleanDown(7.9), cleanDown(-1), cleanDown(NaN)], [12000, 100, 100, 1900, 7, null, null]);
-  assert.equal(viewsLine(190), 'About 190 views a week');
-  assert.equal(viewsLine(12000), 'About 12,000 views a week');
-  assert.equal(viewsLine(null), '-- views a week');
+  assert.equal(viewsLine(190), 'Your line: about 190 views a week');
+  assert.equal(viewsLine(12000), 'Your line: about 12,000 views a week');
+  assert.equal(viewsLine(null), 'Your line: -- views a week');
 });
 
 test('SPONSOR open: the real strip is outlined with a label above it until the screen closes; nothing for Pro', () => {

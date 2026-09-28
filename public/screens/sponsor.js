@@ -29,14 +29,14 @@ export function visitLen(sec) {
   return sec < 60 ? `${Math.round(sec)} s` : `${Math.round(sec / 60)} min`;
 }
 
-// The live line, as parts: '7 here now', '173 this week', '8 min visits', '60% US'. Here
+// The live line, as parts: '7 here now', '173 visitors this week', '8 min visits', '60% US'. Here
 // now only when DataFast knows it and it is above 0; every other part is -- when missing.
 export function proofParts(b) {
   const a = b?.audience || {};
   const parts = [];
   if (Number.isInteger(a.live) && a.live > 0) parts.push(`${count(a.live)} here now`);
   const d7 = a.visitors?.d7;
-  parts.push(`${fin(d7) && d7 >= 0 ? count(d7) : '--'} this week`);
+  parts.push(`${fin(d7) && d7 >= 0 ? count(d7) : '--'} visitors this week`);
   parts.push(`${visitLen(a.avgVisitSec)} visits`);
   const top = Array.isArray(a.countries) ? a.countries[0] : null;
   parts.push(top?.name && fin(top.pct) ? `${Math.round(top.pct)}% ${SHORT[top.name] || top.name}` : '-- top country');
@@ -68,7 +68,7 @@ export function weeklyViews(b, cfg) {
 }
 
 export function viewsLine(n) {
-  return n === null || n === undefined ? '-- views a week' : `About ${count(n)} views a week`;
+  return n === null || n === undefined ? 'Your line: -- views a week' : `Your line: about ${count(n)} views a week`;
 }
 
 export function proofHtml(b, cfg) {
