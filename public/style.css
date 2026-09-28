@@ -1197,6 +1197,10 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .seat { font-size: 11px; font-weight: 600; letter-spacing: .12em; color: var(--accent); white-space: nowrap; }
 .seat:hover { text-decoration: none; color: var(--text); }
 .seat[hidden] { display: none; }
+/* CHAT 2 by the seat (chat-badge.js): unread chats, Pro only. */
+.chat-badge { font-size: 11px; font-weight: 700; letter-spacing: .08em; padding: 0 4px; background: var(--accent); color: var(--ink); white-space: nowrap; }
+.chat-badge:hover { text-decoration: none; background: var(--text); }
+.chat-badge[hidden] { display: none; }
 /* The sponsor line gives way first (ellipsis); the legal line and its links never do. */
 /* It takes the free space between the status text and the legal block, and sits centred
    in it: clear of the legal links on every screen. */
@@ -1258,6 +1262,9 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
   .brand { gap: 6px; }
   .brand:has(.seat:not([hidden])) .wordmark { letter-spacing: .04em; }
   .seat { font-size: 10px; letter-spacing: .04em; }
+  .chat-badge { font-size: 10px; letter-spacing: .02em; }
+  /* Unread chats matter more than the seat number when the top bar is tight. */
+  .brand:has(.chat-badge:not([hidden])) .seat { display: none; }
   .status-legal { gap: 6px; }
   .fb-keys { display: none; }
 }

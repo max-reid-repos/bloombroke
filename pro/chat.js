@@ -1,0 +1,222 @@
+// CHAT rules and the long-poll hub. Pure: no database, no Express. pro/chat-store.js
+// keeps the rows, pro/chat-routes.js mounts /api/chat.
+//
+// The rules: a seat number is a public address (never a credential: every route takes
+// the key). A name is optional, 16 characters at most, and always shown with the seat,
+// so nobody can pass for someone else: Tom 42. Messages are text up to 500 characters,
+// no links, no images, no files; each $TICKER (up to 3) gets the price at send time;
+// one optional card points at a screen of the terminal.
+
+import { cleanMessage } from './feedback.js';
+
+export const MAX_TEXT = 500;
+export const MAX_NAME = 16;
+export const MAX_REASON = 200;
+export const MAX_MEMBERS = 8;
+export const MAX_TICKERS = 3;
+export const MAX_CARD = 60;
+export const MAX_OUT = 30; // open outgoing requests
+export const PAGE = 50;
+export const DAY_MS = 24 * 60 * 60 * 1000;
+export const KEEP_MS = 30 * DAY_MS; // messages and requests
+export const REPORT_KEEP_MS = 365 * DAY_MS; // reports: 12 months
+export const SNAPSHOT = 20; // messages copied into a report
+
+export const NAME_RE = /^[A-Za-z0-9 ._-]{1,16}$/;
+export const SEAT_RE = /^\d{1,9}$/;
+// A $TICKER in a message: the STOCK_RE shape, upper case, not glued to a word.
+export const TICKER_WORD_RE = /(^|[^A-Za-z0-9$])\$([A-Z]{1,5}(?:\.[A-Z]{1,2})?)(?![A-Za-z0-9])/g;
+// A card is a terminal command: these characters only (S&P 500, MCAP>10B, EUR/USD, $GOLD).
+export const CARD_RE = /^[A-Z0-9 .$&%<>=:/+-]{1,60}$/;
+// Screens a card may never point at: account, chat itself, feedback.
+export const CARD_DENY = ['HOME', 'CHAT', 'PRO', 'LOGIN', 'LOGOUT', 'REDEEM', 'GIFT', 'FEEDBACK', 'IDEA'];
+export const NO_LINKS = 'No links. Attach a screen instead.';
+
+export class ChatError extends Error {
+  constructor(code, message, status = 400) {
+    super(message);
+    this.code = code;
+    this.status = status;
+  }
+}
+
+// 'Tom 42' or 'SEAT 42'.
+export const label = (seat, name) => (name ? `${name} ${seat}` : `SEAT ${seat}`);
+
+// ---- text ------------------------------------------------------------------------------
+
+// Plain line ends, no control or bidi characters, trimmed, at most 2 blank lines in a row.
+export function cleanText(v) {
+  if (typeof v !== 'string') return '';
+  return cleanMessage(v).replace(/[ \t]+\n/g, '\n').replace(/\n{4,}/g, '\n\n\n').trim();
+}
+
+const TLDS = ['com', 'net', 'org', 'io', 'co', 'ai', 'app', 'xyz', 'me', 'gg', 'ly', 'to', 'be', 'info', 'biz', 'us', 'uk', 'sg', 'link', 'site', 'online', 'club', 'top', 'shop', 'so'];
+const URL_RE = /\b(?:https?|ftp):\/\/|\bwww\s*[.\u3002\uff0e]\s*\w/i;
+// A word, dots, then a known ending: t.me, bit.ly, example.com, x.co/abc. Not after a $
+// ($SHOP.TO is a ticker), and a capital first letter after a dot is a sentence (cheap.So).
+const DOMAIN_RE = new RegExp(`(^|[^$\\w])[a-z0-9-]+(?:[.\\u3002\\uff0e][a-z0-9-]+)*[.\\u3002\\uff0e](${TLDS.join('|')})(?![a-z0-9])`, 'gi');
+
+export function hasLink(text) {
+  const s = String(text ?? '');
+  if (URL_RE.test(s)) return true;
+  for (const m of s.matchAll(DOMAIN_RE)) {
+    if (!/^[A-Z][a-z]+$/.test(m[2])) return true;
+  }
+  return false;
+}
+
+// The $TICKERs in a message, in order, each once, at most 3: ['NVDA', 'AAPL'].
+export function tickersIn(text) {
+  const out = [];
+  for (const m of String(text ?? '').matchAll(TICKER_WORD_RE)) {
+    if (!out.includes(m[2])) out.push(m[2]);
+    if (out.length >= MAX_TICKERS) break;
+  }
+  return out;
+}
+
+// { text } checked: throws ChatError. Empty text only with a card.
+export function checkText(raw, { hasCard = false } = {}) {
+  const text = cleanText(raw);
+  if (!text && !hasCard) throw new ChatError('empty', 'Write something first.');
+  if (text.length > MAX_TEXT) throw new ChatError('too_long', `Keep it under ${MAX_TEXT} characters.`);
+  if (hasLink(text)) throw new ChatError('no_links', NO_LINKS);
+  return text;
+}
+
+// ---- names, seats, cards ---------------------------------------------------------------
+
+// A display name, or null to go back to SEAT 42. Throws ChatError.
+export function cleanName(v) {
+  if (v === null || v === undefined) return null;
+  if (typeof v !== 'string') throw new ChatError('bad_name', 'Send { name }.');
+  const s = cleanMessage(v).replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  if (s.length > MAX_NAME) throw new ChatError('bad_name', `A name is ${MAX_NAME} characters at most.`);
+  if (!NAME_RE.test(s)) throw new ChatError('bad_name', 'Letters, numbers, spaces and . _ - only.');
+  if (/seat/i.test(s) || /^[\d .]+$/.test(s)) throw new ChatError('bad_name', 'Pick a name that is not a seat number.');
+  return s;
+}
+
+// Seat numbers from a body: 1 to 7, whole, positive, each once.
+export function cleanSeats(list, { max = MAX_MEMBERS - 1 } = {}) {
+  if (!Array.isArray(list) || !list.length) throw new ChatError('bad_seats', 'Type CHAT and a seat number: CHAT 42.');
+  const seats = [];
+  for (const v of list) {
+    const n = typeof v === 'number' ? v : SEAT_RE.test(String(v ?? '').trim()) ? Number(String(v).trim()) : NaN;
+    if (!Number.isInteger(n) || n < 1 || n > 999_999_999) throw new ChatError('bad_seats', 'A seat is a number, like 42.');
+    if (!seats.includes(n)) seats.push(n);
+  }
+  if (seats.length > max) throw new ChatError('too_many', `A group has ${MAX_MEMBERS} people at most, you included.`);
+  return seats;
+}
+
+// A card: { cmd, title } for a screen of the terminal, or null. parse is the terminal's
+// own parser (public/app.js parseCommand); linkChanges says whether a link to it would
+// change something saved. Throws ChatError.
+export function cleanCard(card, { parse, linkChanges }) {
+  if (card === undefined || card === null) return null;
+  if (typeof card !== 'object' || Array.isArray(card)) throw new ChatError('bad_card', 'That screen cannot be attached.');
+  const cmd = typeof card.cmd === 'string' ? card.cmd.replace(/\s+/g, ' ').trim().toUpperCase() : '';
+  if (!CARD_RE.test(cmd)) throw new ChatError('bad_card', 'That screen cannot be attached.');
+  const head = cmd.split(' ')[0];
+  const c = parse(cmd);
+  if (!c || c.name === 'UNKNOWN' || c.secret || c.mutates || c.error || linkChanges(c) || CARD_DENY.includes(head) || CARD_DENY.includes(c.name)) {
+    throw new ChatError('bad_card', 'That screen cannot be attached.');
+  }
+  let title = typeof card.title === 'string' ? cleanMessage(card.title).replace(/\s+/g, ' ').trim() : '';
+  if (title.length > MAX_CARD) title = title.slice(0, MAX_CARD).trim();
+  return { cmd, title: title || cmd };
+}
+
+// ---- the long-poll hub -----------------------------------------------------------------
+// Events are nudges: { id, type, room? }. The client answers any of them by loading the
+// list again, and the open room's new messages. Each licence keeps its newest event id
+// and its last 20 events, in memory only (a restart starts over; ids come from the
+// clock, so they still only go up).
+
+export const WAIT_MS = 25_000;
+export const MAX_WAITS_PER_LICENCE = 3;
+export const MAX_WAITS = 500;
+const KEEP_EVENTS = 20;
+const MAX_LICENCES = 50_000;
+
+export function createHub({ now = () => Date.now(), waitMs = WAIT_MS, perLicence = MAX_WAITS_PER_LICENCE, total = MAX_WAITS } = {}) {
+  let seq = 0;
+  const recent = new Map(); // licence id -> { last, floor, events }
+  const waiting = new Map(); // licence id -> [waiter]
+  let open = 0;
+
+  const next = () => { seq = Math.max(now(), seq + 1); return seq; };
+
+  // Events for a licence after this id: [] when none; a resync nudge when some were dropped.
+  function since(lic, after) {
+    const r = recent.get(lic);
+    if (!r || r.last <= after) return [];
+    const kept = r.events.filter((e) => e.id > after);
+    return r.floor > after ? [{ id: r.last, type: 'resync' }, ...kept] : kept;
+  }
+
+  function drop(lic, w) {
+    const list = waiting.get(lic);
+    if (!list) return;
+    const i = list.indexOf(w);
+    if (i >= 0) { list.splice(i, 1); open -= 1; }
+    if (!list.length) waiting.delete(lic);
+  }
+
+  return {
+    cursor: () => seq,
+    open: () => open,
+    // Send an event to these licences: every waiting request of theirs answers now.
+    emit(lics, event) {
+      const e = { ...event, id: next() };
+      for (const lic of new Set(lics)) {
+        let r = recent.get(lic);
+        if (r) recent.delete(lic); // newest last, so the oldest go first when full
+        else r = { last: 0, floor: 0, events: [] };
+        r.last = e.id;
+        r.events.push(e);
+        if (r.events.length > KEEP_EVENTS) r.floor = r.events.shift().id; // older than the kept ones: resync
+        recent.set(lic, r);
+        if (recent.size > MAX_LICENCES) recent.delete(recent.keys().next().value);
+        for (const w of [...(waiting.get(lic) || [])]) w.finish();
+      }
+      return e;
+    },
+    // Wait for events after `after`. answer(events, last) is called once: at once when
+    // there is something already, on the next event, or empty after waitMs. Returns
+    // cancel() (the request closed), or null when the server holds too many waits.
+    wait(lic, after, answer) {
+      const ready = since(lic, after);
+      if (ready.length) { answer(ready, recent.get(lic).last); return () => {}; }
+      if (open >= total) return null;
+      const list = waiting.get(lic) || [];
+      // A fourth tab: the oldest wait answers empty, so a licence holds at most 3.
+      while (list.length >= perLicence) list[0].finish(true);
+      let done = false;
+      const w = {
+        finish(empty = false) {
+          if (done) return;
+          done = true;
+          clearTimeout(w.timer);
+          drop(lic, w);
+          const events = empty ? [] : since(lic, after);
+          answer(events, Math.max(after, events.length ? recent.get(lic).last : after));
+        },
+      };
+      w.timer = setTimeout(() => w.finish(true), waitMs);
+      w.timer.unref?.();
+      list.push(w);
+      waiting.set(lic, list);
+      open += 1;
+      return () => {
+        if (done) return;
+        done = true;
+        clearTimeout(w.timer);
+        drop(lic, w);
+      };
+    },
+  };
+}

@@ -328,8 +328,8 @@ export const REGISTRY = [
     syntax: 'REDEEM <code>', examples: ['REDEEM'], keywords: ['gift code', 'redeem', 'free month', 'code'],
   },
   {
-    name: 'CHAT', category: 'Pro', summary: 'Private 1-to-1 chat between Pro seats. Coming when Pro launches',
-    syntax: 'CHAT', examples: ['CHAT'], keywords: ['chat', 'message', 'talk', 'private'],
+    name: 'CHAT', category: 'Pro', summary: 'Private chat with friends who have Pro, by seat number',
+    syntax: 'CHAT [seat ...]', examples: ['CHAT'], keywords: ['chat', 'message', 'talk', 'private', 'friends', 'group', 'seat'],
   },
   // --- end Pro structure ---
   {

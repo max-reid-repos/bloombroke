@@ -204,7 +204,7 @@ test('few words: the visitor page is about 50 words, perks as three lines', () =
   assert.ok(w.length <= 55, `${w.length} words: ${w.join(' ')}`);
   assert.deepEqual(PERKS, ['Your seat number, forever.', 'Your setup on every device.', 'No ads. No trackers.']);
   for (const p of PERKS) assert.ok(html.includes(`<li>${p}</li>`), p);
-  assert.match(html, /Coming: <a class="pro3-link" href="\?c=CHAT" data-cmd="CHAT">CHAT<\/a> between seats, closed-tab alerts\./);
+  assert.match(html, /<a class="pro3-link" href="\?c=CHAT" data-cmd="CHAT">CHAT<\/a> with Pro friends\. Coming: closed-tab alerts\./);
   // One row of small links for a visitor.
   assert.match(html, /data-cmd="LOGIN">LOGIN<.*data-cmd="REDEEM">REDEEM<.*data-cmd="GIFT">GIFT<.*id="pro-more"/s);
 });

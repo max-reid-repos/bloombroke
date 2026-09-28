@@ -16,8 +16,11 @@ import { openDb } from './db.js';
 import { createStore } from './store.js';
 import { revealKeyFrom } from './licence.js';
 import { createStripe, stripeEnv, DEFAULT_TERMS_VERSION } from './billing.js';
-import { mountPro } from './routes.js';
+import { mountPro, defaultLimits } from './routes.js';
 import { createFeedbackStore, mountFeedback } from './feedback.js';
+import { mountChat } from './chat-routes.js'; // CHAT: private chat between Pro seats
+import { getQuote } from '../data/quotes.js'; // CHAT: the price stamp on a $TICKER
+import { parseCommand, linkChanges } from '../public/app.js'; // CHAT: what a card may open
 
 export function startPro(app, { dir, env = process.env, log = console, counters = null }) {
   try {
@@ -29,9 +32,12 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
     const se = stripeEnv(env);
     if (se.error) log.error('[pro]', se.error);
     const stripe = se.secretKey ? createStripe(se.secretKey) : null;
+    // One wrong-key limiter for Pro and CHAT, so CHAT is no second place to guess keys.
+    const limits = defaultLimits(() => Date.now());
     const { ready, proActive } = mountPro(app, {
       store,
       stripe,
+      limits,
       config: {
         mode: se.mode,
         priceId: se.priceId,
@@ -46,6 +52,10 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
     // FEEDBACK lives in the same database: POST /api/feedback, for everyone.
     const feedback = createFeedbackStore(db);
     mountFeedback(app, { store: feedback, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', log, onSaved: () => counters?.bump('feedback_sent') });
+    // CHAT: /api/chat, active Pro keys only (pro/chat-routes.js).
+    const chat = mountChat(app, {
+      db, store, guess: limits.guess, mode: se.mode, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', getQuote, parse: parseCommand, linkChanges, log,
+    });
     const clean = () => {
       try { store.purgeReveals(); store.pruneEvents(); } catch (err) { log.error('[pro] clean-up', err.message); }
     };
@@ -67,11 +77,17 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
       try {
         log.log(`[pro] purge: ${feedback.prune()} feedback notes over 12 months old`);
       } catch (err) { log.error('[pro] feedback purge', err.message); }
+      // Privacy Policy: chat messages and requests go after 30 days, chat reports after 12
+      // months, and all chat rows of a licence 30 days after its Pro ended.
+      try {
+        const c = chat.purge();
+        log.log(`[pro] purge: chat ${c.messages} messages, ${c.requests} requests, ${c.reports} reports, ${c.ended} rows of ended licences, ${c.rooms} empty rooms`);
+      } catch (err) { log.error('[pro] chat purge', err.message); }
     };
     purge();
     setInterval(purge, 24 * 60 * 60 * 1000).unref();
     log.log(`[pro] ${se.mode} mode, ${ready ? 'ready' : 'not configured: checkout is closed'}`);
-    return { db, store, feedback, ready, mode: se.mode, proActive };
+    return { db, store, feedback, chat, ready, mode: se.mode, proActive };
   } catch (err) {
     log.error('[pro] could not start:', err.message);
     return null;

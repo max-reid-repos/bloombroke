@@ -30,7 +30,7 @@ export const PRO_ROWS = [
   ['Your own ticker tape', LIVE, 'TAPE'],
   ['A seat number', LIVE, ''],
   ['No sponsor line', LIVE, 'SPONSOR'],
-  ['CHAT', COMING, 'CHAT'],
+  ['CHAT with friends who have Pro', LIVE, 'CHAT'],
   ['Alerts when the tab is closed', COMING, ''],
 ];
 // A row for a command that is not on this site (yet) is left out, never shown as live.
@@ -298,7 +298,7 @@ export function mainHtml({ key = null, st = null, next = null, bbrk = null, note
     ${action ? `<p class="pro3-act">${action}</p><p class="pro3-year-note" id="pro-year-note" hidden>${esc(YEARLY_NOT_YET)}</p>` : ''}${under}
     ${proof}
     <ul class="pro3-perks">${PERKS.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
-    <p class="pro3-soon">Coming: ${chat} between seats, closed-tab alerts.</p>
+    <p class="pro3-soon">${chat} with Pro friends. Coming: closed-tab alerts.</p>
     <p class="pro3-links">${links.join(DOT)}</p>
     <div id="pro-shown"></div>`;
 }

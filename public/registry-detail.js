@@ -66,7 +66,7 @@ export const DETAIL = {
   'PRO': { options: [['YEARLY', 'The $420 a year plan (the default)'], ['MONTHLY', 'Lead with the $42 a month plan']], source: 'Built in', delay: 'None' },
   'GIFT': { source: 'Built in', delay: 'None' },
   'REDEEM': { options: [['<code>', 'The gift code, GIFT-XXXX-.... It never goes in the address bar']], source: 'Built in', delay: 'None' },
-  'CHAT': { source: 'Built in', delay: 'None' },
+  'CHAT': { options: [['<seat>', 'Chat with that seat. The first time, they get a request'], ['<seat> <seat> ...', 'A group of your contacts, up to 8 people']], source: 'Messages between Pro members, deleted after 30 days', delay: 'Live' },
   'LOGIN': { options: [['<key>', 'Your Pro key, BB-XXXX-XXXX-XXXX-XXXX. It never goes in the address bar']], source: 'Built in', delay: 'None' },
   'LOGOUT': { source: 'Built in', delay: 'None' },
   'ALERTS': { options: [['<symbol> > <level>', 'When it goes above the level'], ['<symbol> < <level>', 'When it goes below'], ['CLEAR', 'Remove them all (asks first)']], source: 'Saved in this browser, up to 20; prices live', delay: 'Checked every 60 seconds while Bloombroke is open in a tab' },

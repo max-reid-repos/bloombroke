@@ -40,6 +40,7 @@ import { resolveInput } from './resolve.js';
 import { tickerForName, LISTED_TICKERS, SHADOWED_TICKERS } from './known-tickers.js';
 import { sendSeen, countsAsOpen } from './trending.js'; // TRENDING
 import { startAlerts } from './alerts.js'; // ALERTS: the watcher
+import { mountChatBadge } from './chat-badge.js'; // CHAT 2 by the seat: unread chats (Pro)
 import './goal.js'; // GOALS: loads DataFast unless Global Privacy Control is on
 
 export { FUNCTION_BAR, TICKER_FUNCTIONS };
@@ -248,6 +249,17 @@ export function tickerFunctions(ticker, current = 'CHART') {
   });
 }
 
+// CHAT, CHAT 42 (open that chat or ask them), CHAT 42 88 (a group): 1 to 7 seat numbers,
+// leading zeros fine. With seats it changes something (a request, a group), so it shows
+// plain CHAT in the address bar and a link to it asks first.
+export const MAX_CHAT_SEATS = 7;
+export function parseChat(rest) {
+  if (!rest.length) return { name: 'CHAT', input: 'CHAT' };
+  const seats = [...new Set(rest.map((w) => (/^\d{1,9}$/.test(w) ? Number(w) : NaN)))];
+  if (seats.some((n) => !(n >= 1)) || seats.length > MAX_CHAT_SEATS) return { name: 'CHAT', args: { error: 'usage' }, error: 'usage', input: ['CHAT', ...rest].join(' ') };
+  return { name: 'CHAT', args: { seats }, input: `CHAT ${seats.join(' ')}`, mutates: true, view: 'CHAT' };
+}
+
 // Turn raw input into { name, args?, error?, input }. Unknown commands get name 'UNKNOWN'.
 // Commands that change saved lists (WATCH ADD, PF SELL) carry mutates: true and the
 // screen to show in the URL instead (view), so a reload never runs them twice.
@@ -270,7 +282,8 @@ export function parseCommand(raw, depth = 0) {
   if (head === 'REDEEM') return { name: 'REDEEM', args: parseRedeem(rest), input: 'REDEEM', secret: true, url: 'REDEEM' };
   const giftCode = (!isCommandHead(head) || head === 'GIFT') && bareGift(toks);
   if (giftCode) return { name: 'REDEEM', args: { code: giftCode }, input: 'REDEEM', secret: true, url: 'REDEEM' };
-  if (head === 'GIFT' || head === 'CHAT' || head === 'SPONSOR' || head === 'FEEDBACK') return { name: head, input: head };
+  if (head === 'GIFT' || head === 'SPONSOR' || head === 'FEEDBACK') return { name: head, input: head };
+  if (head === 'CHAT') return parseChat(rest);
   // --- end Pro structure ---
   const extra = matchExtra(head, rest);
   if (extra) return extra;
@@ -572,7 +585,7 @@ export const SHEET_ORDER = [
   'screens/alerts.css', 'screens/pro.css', 'screens/why.css', 'screens/sectors.css', 'screens/heatmap.css',
   'screens/fxmatrix.css', 'screens/calendar.css', 'screens/bbrk.css', 'screens/options.css',
   'screens/worldmap.css', 'screens/help.css', 'screens/nosuch.css', 'screens/graveyard.css', 'screens/data.css',
-  'screens/welcome.css', 'screens/grid.css',
+  'screens/welcome.css', 'screens/grid.css', 'screens/chat.css',
 ];
 export const stylesFor = (entry) => (entry?.js ? stylesOf(entry.js) : []);
 
@@ -670,10 +683,10 @@ export function screenTitle(cmd) {
   return { title: fullName(cmd.input), sub: entry && !entry.hidden ? entry.summary : '' };
 }
 // What a saved-list command changes, for the "this link wants to change" question.
-const SAVED_LIST = { PORTFOLIO: ['Portfolio', 'portfolio'], WATCH: ['Watchlist', 'watchlist'], DESK: ['Desk', 'desk layout'] };
-const LINK_CHANGES = { PORTFOLIO: 'portfolio', WATCH: 'watchlist', DESK: 'desk layout', ALERTS: 'alerts', TAPE: 'ticker tape', WAGE: 'saved wage' };
+const SAVED_LIST = { PORTFOLIO: ['Portfolio', 'portfolio'], WATCH: ['Watchlist', 'watchlist'], DESK: ['Desk', 'desk layout'], CHAT: ['CHAT', 'chats'] };
+const LINK_CHANGES = { PORTFOLIO: 'portfolio', WATCH: 'watchlist', DESK: 'desk layout', ALERTS: 'alerts', TAPE: 'ticker tape', WAGE: 'saved wage', CHAT: 'chats' };
 // The plain screen each one shows (DESK: its own view, DESK or DESK 2).
-const LINK_SCREEN = { PORTFOLIO: 'PF', WATCH: 'WATCH', ALERTS: 'ALERTS', TAPE: 'TAPE', WAGE: 'WAGE' };
+const LINK_SCREEN = { PORTFOLIO: 'PF', WATCH: 'WATCH', ALERTS: 'ALERTS', TAPE: 'TAPE', WAGE: 'WAGE', CHAT: 'CHAT' };
 
 // Does this command change something saved in this browser (anything but a pure show)?
 export function linkChanges(cmd) {
@@ -693,6 +706,7 @@ export function linkQuestion(cmd) {
   if (cmd.name === 'WAGE' && Number.isFinite(a.wage)) return { question: `Save your wage as $${a.wage} an hour?`, verb: 'SAVE' };
   if (cmd.name === 'WATCH' && a.action === 'add' && a.ids?.length) return { question: `Add ${a.ids.join(', ')} to your watchlist?`, verb: 'ADD' };
   if (cmd.name === 'WATCH' && a.action === 'remove' && a.ids?.length) return { question: `Remove ${a.ids.join(', ')} from your watchlist?`, verb: 'REMOVE' };
+  if (cmd.name === 'CHAT' && a.seats?.length) return { question: `Chat with ${a.seats.map((n) => `SEAT ${n}`).join(', ')}?`, verb: 'CHAT' };
   return { question: `Run ${cmd.input}? It changes your ${LINK_CHANGES[cmd.name] || 'saved settings'}.`, verb: 'RUN' };
 }
 
@@ -1689,6 +1703,7 @@ function boot() {
     tick();
     setInterval(tick, 1000);
     mountHereNow($('here-now'), { timer: liveTimer });
+    mountChatBadge($('chat-badge'), { timer: liveTimer });
   }
   applyTape(tapeOn(store));
 
