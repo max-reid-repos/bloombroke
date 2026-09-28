@@ -1,13 +1,15 @@
 // N HERE NOW by the New York clock: visitors in the last 10 minutes, from GET /api/live
 // (DataFast realtime, kept a minute on the server). Asked again every minute while the tab
-// is visible. Hidden when the number is unknown or 0, and on phones under 380 px (CSS).
+// is visible. Hidden when the number is unknown or under 2 (1 is most likely the viewer),
+// and on phones under 380 px (CSS).
 // Totals only: the server never sends anything about a visitor.
 
 export const HERE_MS = 60_000;
 
-// 7 -> '7 HERE NOW'. Unknown, 0 or nonsense: '' (the token hides).
+// 7 -> '7 HERE NOW'. Unknown, 0, 1 (most likely the viewer) or nonsense: '' (the token hides).
+export const HERE_MIN = 2;
 export function hereText(n) {
-  return Number.isInteger(n) && n > 0 ? `${n.toLocaleString('en-US')} HERE NOW` : '';
+  return Number.isInteger(n) && n >= HERE_MIN ? `${n.toLocaleString('en-US')} HERE NOW` : '';
 }
 
 // Paint the token: '7 HERE NOW' ('7 HERE' on a phone: CSS hides the NOW). fits: whether it

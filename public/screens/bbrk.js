@@ -10,7 +10,7 @@
 
 import { esc, fmtSigned, fmtPct, dirOf, panel, metaNote, LOADING } from './markets.js';
 import { sparkSvg } from './economy.js';
-import { loadDots, mountGlobe } from '../globe.js';
+import { loadDots, mountGlobe, globeCaption, globeLabel } from '../globe.js';
 
 export const BBRK = 'BBRK';
 export const STRIP = 'OUR OWN SITE NUMBERS. NOT A SECURITY. NOT FOR SALE.';
@@ -83,18 +83,9 @@ export function bbrkHtml(d) {
   <p class="q-asof dim bb-src">${esc(SOURCE)}</p>`;
 }
 
-// The globe's caption: '7D by country · 4 live now'.
-export function globeCaption(d) {
-  const live = d?.audience?.live;
-  return `7D by country${fin(live) ? ` · ${count(live)} live now` : ''}`;
-}
-
-// The canvas's words for a screen reader: the countries and their visitors.
-export function globeLabel(d) {
-  const g = d?.audience?.globe;
-  const list = (g?.countries || []).slice(0, 8).map((c) => `${c.cc} ${count(c.visitors)}`).join(', ');
-  return `Globe of visitors by country, last 7 days${list ? `: ${list}` : ''}${fin(g?.other) && g.other > 0 ? `, other ${count(g.other)}` : ''}.`;
-}
+// The globe's caption and its words for a screen reader live with the globe (SPONSOR
+// shows the same globe).
+export { globeCaption, globeLabel } from '../globe.js';
 
 export function render(el, cmd, ctx) {
   el.innerHTML = panel('1', BBRK, `<div class="bb-grid"><div class="bb-data">${LOADING}</div>

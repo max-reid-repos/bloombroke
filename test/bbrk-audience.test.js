@@ -24,10 +24,10 @@ const KEY = 'df_test_not_a_real_key_1234';
 
 // ---- a mock DataFast ----------------------------------------------------------------
 const BODIES = {
-  'analytics/overview:today': { status: 'success', data: [{ visitors: 412 }] },
+  'analytics/overview:today': { status: 'success', data: [{ visitors: 412, pageviews: 1500 }] },
   'analytics/overview:ySoFar': { status: 'success', data: [{ visitors: 377 }] },
-  'analytics/overview:week': { status: 'success', data: [{ visitors: 3180 }] },
-  'analytics/overview:month': { status: 'success', data: [{ visitors: 10000, avg_session_duration: 96600, visitorBreakdown: { new: 7000, returning: 3000, newPercentage: 70, returningPercentage: 30 } }] },
+  'analytics/overview:week': { status: 'success', data: [{ visitors: 3180, pageviews: 11400 }] },
+  'analytics/overview:month': { status: 'success', data: [{ visitors: 10000, pageviews: 36000, avg_session_duration: 96600, visitorBreakdown: { new: 7000, returning: 3000, newPercentage: 70, returningPercentage: 30 } }] },
   'analytics/timeseries': { status: 'success', data: Array.from({ length: 30 }, (_, i) => ({ timestamp: `2026-09-${String(i + 1).padStart(2, '0')}T00:00:00Z`, visitors: 100 + i })) },
   'analytics/countries:30': { status: 'success', data: [{ country: 'United States', image: '🇺🇸', visitors: 4120 }, { country: 'United Kingdom', visitors: 890 }, { country: 'Germany', visitors: 610 }] },
   'analytics/countries:7': { status: 'success', data: [{ country: 'United States', image: '🇺🇸', visitors: 1310 }, { country: 'Germany', visitors: 194 }, { country: 'Iceland', visitors: 2 }, { country: 'Atlantis', visitors: 9 }] },
@@ -97,6 +97,11 @@ test('DataFast: the calls are read-only GETs with the key as a Bearer token, New
 test('DataFast: the audience contract, from mocked answers', async () => {
   const a = await makeDataFast({ key: KEY, fetchImpl: fakeFetch(), now: () => T0, log: () => {} }).get();
   assert.deepEqual(a.visitors, { today: 412, yesterdaySoFar: 377, d7: 3180, d30: 10000 });
+  assert.deepEqual(a.pageviews, { today: 1500, d7: 11400, d30: 36000 }, 'page views from the same overview calls');
+  assert.deepEqual(emptyAudience().pageviews, { today: null, d7: null, d30: null });
+  const p = plan(T0);
+  for (const k of ['today', 'week', 'month']) assert.match(p[k][1].fields, /(^|,)pageviews(,|$)/, k);
+  assert.equal(p.ySoFar[1].fields, 'visitors', 'yesterday so far stays visitors only');
   assert.equal(a.avgVisitSec, 97);
   assert.equal(a.returningPct, 30);
   assert.equal(a.desktopPct, 68);
@@ -441,6 +446,7 @@ test('DataFast units: avg_session_duration is milliseconds; shares are 0 to 100;
     devices: { status: 'success', data: [{ device: 'desktop', visitors: 812 }, { device: 'mobile', visitors: 450 }, { device: 'tablet', visitors: 25 }] },
   }, '2026-09-27T16:00:00Z');
   assert.equal(a.avgVisitSec, 433);
+  assert.equal(a.pageviews.d30, 5310, 'pageviews, as DataFast names it');
   assert.equal(visitTime(a.avgVisitSec), '7m 13s');
   assert.equal(a.returningPct, 14.5, 'from the counts, 0 to 100');
   assert.equal(a.desktopPct, 63.1);
