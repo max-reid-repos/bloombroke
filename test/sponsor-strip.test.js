@@ -355,6 +355,11 @@ test('SPONSOR open: the real strip is outlined with a label above it until the s
   const dwin = { innerWidth: 1440, innerHeight: 900, addEventListener: (t, f) => { dls[t] = f; }, removeEventListener: (t) => { delete dls[t]; } };
   const dstop = pointAtStrip(ddoc, dwin);
   assert.equal(tag.hidden, true, 'at the top: hidden, it would sit on the globe');
+  scr.scrollHeight = 700; // the screen's content got shorter: no scroll, shown
+  dstop.refresh();
+  assert.equal(tag.hidden, false, 'refresh() after the numbers change');
+  scr.scrollHeight = 1500;
+  dstop.refresh();
   scr.scrollTop = 1500 - 770;
   dls.scroll();
   assert.equal(tag.hidden, false, 'at the bottom: shown');

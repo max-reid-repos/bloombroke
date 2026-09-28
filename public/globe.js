@@ -221,6 +221,23 @@ export function globeLabel(d) {
 }
 
 let dotsPromise = null;
+// The land as drawn (denseDots, with each dot's sines and cosines), made once per map per
+// page: BBRK and SPONSOR, and every visit to them, share it.
+const lands = new WeakMap();
+export function landOf(geo) {
+  let l = lands.get(geo);
+  if (!l) {
+    const dots = geo.step ? denseDots(geo.dots, geo.step) : geo.dots;
+    const n = dots.length;
+    l = { dots, n, lsin: new Float64Array(n), lcos: new Float64Array(n), psin: new Float64Array(n), pcos: new Float64Array(n) };
+    dots.forEach(([lon, lat], i) => {
+      l.lsin[i] = Math.sin(lon * RAD); l.lcos[i] = Math.cos(lon * RAD);
+      l.psin[i] = Math.sin(lat * RAD); l.pcos[i] = Math.cos(lat * RAD);
+    });
+    lands.set(geo, l);
+  }
+  return l;
+}
 export function loadDots(fetchImpl = globalThis.fetch) {
   dotsPromise ||= fetchImpl(DOTS_URL).then((r) => (r.ok ? r.json() : Promise.reject(new Error('no globe')))).catch((e) => { dotsPromise = null; throw e; });
   return dotsPromise;
@@ -252,19 +269,10 @@ export function mountGlobe(canvas, geo, globe = [], { reduceMotion = false, live
   let sun = subsolar();
   let sunAt = 0;
   let geom = { w: 0, R: 0, c: 0 };
-  // The land, made once: the dense grid (denseDots) with each dot's sines and cosines, so a
-  // frame is only sums and products; its light (day, dusk, night) again when the sun moves.
-  const landDots = geo.step ? denseDots(geo.dots, geo.step) : geo.dots;
-  const nLand = landDots.length;
-  const lsin = new Float64Array(nLand);
-  const lcos = new Float64Array(nLand);
-  const psin = new Float64Array(nLand);
-  const pcos = new Float64Array(nLand);
+  // The land, made once per page (landOf): a frame is only sums and products; its light
+  // (day, dusk, night) again when the sun moves.
+  const { dots: landDots, n: nLand, lsin, lcos, psin, pcos } = landOf(geo);
   const light = new Uint8Array(nLand); // 0 day, 1 dusk, 2 night: LIGHT's alphas
-  landDots.forEach(([lon, lat], i) => {
-    lsin[i] = Math.sin(lon * RAD); lcos[i] = Math.cos(lon * RAD);
-    psin[i] = Math.sin(lat * RAD); pcos[i] = Math.cos(lat * RAD);
-  });
   let litFor = null;
   const relight = () => {
     if (litFor === sun) return;

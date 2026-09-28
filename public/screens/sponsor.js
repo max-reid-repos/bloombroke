@@ -156,7 +156,8 @@ export function pointAtStrip(doc = globalThis.document, win = globalThis.window)
       .filter((el, i, a) => el && typeof el.scrollHeight === 'number' && a.indexOf(el) === i)
       .map((el) => ({ el, view: el.clientHeight || win?.innerHeight || 0 }))
       .filter(({ el, view }) => el.scrollHeight - view > 4);
-    tag.hidden = boxes.some(({ el, view }) => el.scrollTop + view < el.scrollHeight - 4);
+    const hide = boxes.some(({ el, view }) => el.scrollTop + view < el.scrollHeight - 4);
+    if (tag.hidden !== hide) tag.hidden = hide;
   };
   const onScroll = () => show();
   const onResize = () => { place(); show(); };
@@ -165,12 +166,15 @@ export function pointAtStrip(doc = globalThis.document, win = globalThis.window)
   win?.addEventListener?.('resize', onResize);
   // Capture: #screen's own scroll does not bubble to the window.
   win?.addEventListener?.('scroll', onScroll, { passive: true, capture: true });
-  return () => {
+  // stop.refresh(): again after the screen's own content changes height (sponsor render).
+  const stop = () => {
     win?.removeEventListener?.('resize', onResize);
     win?.removeEventListener?.('scroll', onScroll, { capture: true });
     tag.remove();
     real.classList.remove('is-spot');
   };
+  stop.refresh = show;
+  return stop;
 }
 
 export function render(el, cmd, ctx) {
@@ -187,6 +191,7 @@ export function render(el, cmd, ctx) {
     if (caption) caption.textContent = sponCaption(bbrk);
     canvas?.setAttribute('aria-label', globeLabel(bbrk));
     globe?.update(bbrk?.audience?.globe || null, bbrk?.audience?.live ?? null);
+    unpoint.refresh?.(); // the new numbers may change the page's height
   };
   // After the sponsor config arrives (the status bar paints its strip from the same
   // request first), point at the real strip.
