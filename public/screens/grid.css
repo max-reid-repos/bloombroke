@@ -80,6 +80,14 @@
 .gr-lab { fill: var(--text-2); font-family: var(--font); font-size: 10px; font-weight: 500; }
 .gr-open { display: none; }
 
+/* A tick: a changed number flashes green or red for a moment (grid.js FLASH_MS). With
+   reduced motion grid.js never sets the class, and this rule stays off too. */
+.gr-panel .gr-tile .gr-flash-up { background: var(--up-flash); color: var(--up); }
+.gr-panel .gr-tile .gr-flash-down { background: var(--down-flash); color: var(--down); }
+@media (prefers-reduced-motion: reduce) {
+  .gr-panel .gr-tile .gr-flash-up, .gr-panel .gr-tile .gr-flash-down { background: none; color: inherit; }
+}
+
 /* x: on hover or focus (always a little on touch screens). */
 .gr-x {
   position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; padding: 0;

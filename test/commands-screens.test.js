@@ -52,7 +52,7 @@ test('router: GRID is its own screen, ahead of the GRID ETF, with a clean URL', 
   const bare = parseCommand('GRID');
   assert.deepEqual([bare.name, bare.input, bare.url], ['GRID', 'GRID', 'GRID']);
   const p = parseCommand('grid nvda amd intc 1y');
-  assert.deepEqual([p.name, p.input, p.url, p.error], ['GRID', 'GRID NVDA AMD INTC', 'GRID NVDA AMD INTC', undefined]);
+  assert.deepEqual([p.name, p.input, p.url, p.error], ['GRID', 'GRID NVDA AMD INTC 1Y', 'GRID NVDA AMD INTC 1Y', undefined], 'a board URL always says its range');
   assert.deepEqual(parseCommand('GRID BTC ETH GOLD W:PIZZA RIP:LEH 5Y').args.tokens, ['BTC', 'ETH', 'GOLD', 'W:PIZZA', 'RIP:LEH']);
   assert.equal(parseCommand('GRID BTC ETH GOLD W:PIZZA RIP:LEH 5Y').input, 'GRID BTC ETH GOLD W:PIZZA RIP:LEH 5Y');
   assert.equal(parseCommand('$GRID').name, 'QUOTE', '$GRID is the ETF');

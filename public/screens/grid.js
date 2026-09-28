@@ -3,9 +3,16 @@
 // high and low marked (H 237.40, L 164.10). /api/grid (lib/grid.js) sends every tile of a
 // board in one answer; the words it takes are in command-args.js (parseGrid).
 //
-//   GRID                   your last board, else the starter board
+//   GRID                   your last board, else the starter board (1D)
 //   GRID NVDA AMD INTC 1Y  those tiles over 1Y
 //   GRID STARTER           the starter board
+//
+// Live: every TICK_MS one /api/quotes call for all the market tiles moves each tile's
+// value, change and the end of its line (applyQuote); on 1D and 5D the board asks
+// /api/grid again every REFETCH_MS for the real 5-minute bars. Both go through the
+// shell's ctx.live (paused while the tab is hidden or a DESK panel is off screen), never
+// two at once, and skip a turn after an error (guarded). BBRK's "here now" comes from
+// /api/live every minute. CPI, W: and RIP: tiles do not tick.
 //
 // The range chips above the board switch every tile in place (the URL follows); STARTER
 // brings the starter board back. A click or Enter opens a tile's own screen; arrows move
@@ -17,7 +24,7 @@
 // keeps the last board (LAST_KEY); with Pro it syncs like DESK layouts (pro.js SYNC_DOCS).
 
 import { esc, q, fmtNum, fmtPct, dirOf } from './markets.js';
-import { PRESETS } from '../ranges.js';
+import { PRESETS, nyToday } from '../ranges.js';
 import { GRID_LAST_KEY } from '../pro.js';
 import {
   parseGrid as parse, gridCmd, gridItem, isGridStarter,
@@ -276,9 +283,98 @@ export function stepIndex(cur, key, cols, n) {
   return next < 0 || next >= n ? cur : next;
 }
 
+// ---- Live: quote ticks, refetches -----------------------------------------------------------
+
+export const TICK_MS = 15_000; // one /api/quotes call for the board's market tiles
+export const REFETCH_MS = 60_000; // /api/grid again, 1D and 5D only (real 5-minute bars)
+export const HERE_MS = 60_000; // BBRK's here now (/api/live)
+export const FLASH_MS = 700;
+export const BUCKET_MS = 5 * 60_000; // 1D and 5D draw 5-minute bars (data/charts.js)
+export const INTRADAY = ['1D', '5D'];
+export const isIntraday = (range) => INTRADAY.includes(range);
+const WEEK_MS = 7 * 86_400_000;
+
+// The time a quote is for: its own time (asOf), else now; never later than now.
+export function quoteTime(quote, now = Date.now()) {
+  const t = Date.parse(quote?.asOf ?? '');
+  return Number.isFinite(t) ? Math.min(t, now) : now;
+}
+
+// Where time t falls against the bar at lastT, for this range's bars: 1 a later bar, 0 the
+// same bar, -1 an earlier one. 1D/5D: 5-minute bars; up to 2Y: New York days; 5Y, 10Y:
+// weeks; MAX: months.
+export function barStep(lastT, t, range) {
+  const cmp = (a, b) => (a > b ? 1 : a < b ? -1 : 0);
+  if (isIntraday(range)) return cmp(Math.floor(t / BUCKET_MS), Math.floor(lastT / BUCKET_MS));
+  if (range === '5Y' || range === '10Y') return t - lastT >= WEEK_MS ? 1 : t < lastT ? -1 : 0;
+  const day = (ms) => nyToday(new Date(ms));
+  if (range === 'MAX') return cmp(day(t).slice(0, 7), day(lastT).slice(0, 7));
+  return cmp(day(t), day(lastT));
+}
+
+// A market tile and a quote for it -> the tile moved to the quote, or null when nothing
+// changed (or the tile does not tick). The value is the quote's; the line's last point
+// takes it (a new point when the quote starts a new bar: a new 5-minute bucket on 1D and
+// 5D, a new day on the daily ranges); the high and the low follow the points.
+// The change: on 1D the quote's own day change (vs the previous close, as QUOTE shows);
+// on longer ranges vs the first point of the range.
+export function applyQuote(tile, quote, range, { now = Date.now() } = {}) {
+  if (!tile || tile.error || tile.kind !== 'market' || !quote) return null;
+  const v = quote.last;
+  const pts = tile.points || [];
+  if (!Number.isFinite(v) || pts.length < 2) return null;
+  const t = quoteTime(quote, now);
+  const end = pts[pts.length - 1];
+  const step = barStep(end.t, t, range);
+  let points = pts;
+  if (step > 0) points = [...pts, { t: isIntraday(range) ? Math.floor(t / BUCKET_MS) * BUCKET_MS : t, v }];
+  else if (step === 0 && end.v !== v) points = [...pts.slice(0, -1), { t: end.t, v }];
+  const first = points[0].v;
+  const own = first > 0 ? (v / first - 1) * 100 : null;
+  const changePct = range === '1D' && Number.isFinite(quote.changePct) ? quote.changePct : Number.isFinite(own) ? own : tile.changePct ?? null;
+  const stale = Boolean(quote.stale);
+  if (points === pts && v === tile.last && changePct === tile.changePct && stale === Boolean(tile.stale)) return null;
+  let hi = points[0];
+  let lo = points[0];
+  for (const p of points) { if (p.v > hi.v) hi = p; if (p.v < lo.v) lo = p; }
+  const next = { ...tile, last: v, changePct, points, hi: { v: hi.v, t: hi.t }, lo: { v: lo.v, t: lo.t } };
+  if (stale) next.stale = true; else delete next.stale;
+  return next;
+}
+
+// The flash on a changed number: up or down for FLASH_MS, none when the value is the same
+// or the viewer asked for less motion.
+export function flashClass(prev, next, { reduced = false } = {}) {
+  if (reduced || !Number.isFinite(prev) || !Number.isFinite(next) || prev === next) return '';
+  return next > prev ? 'gr-flash-up' : 'gr-flash-down';
+}
+
+// fn -> run(): never two runs at once (a run while one is out is skipped: 'busy'), and a
+// run that failed backs off: the next turn is skipped ('skipped'), the next two after a
+// 429. -> 'ok' | 'busy' | 'skipped' | 'error' | 'aborted'.
+export function guarded(fn) {
+  let busy = false;
+  let skip = 0;
+  return async function run() {
+    if (busy) return 'busy';
+    if (skip > 0) { skip -= 1; return 'skipped'; }
+    busy = true;
+    try {
+      await fn();
+      return 'ok';
+    } catch (err) {
+      if (err?.name === 'AbortError') return 'aborted';
+      skip = err?.status === 429 ? 2 : 1;
+      return 'error';
+    } finally {
+      busy = false;
+    }
+  };
+}
+
 // ---- The screen -----------------------------------------------------------------------------
 
-async function getGrid(url, { signal } = {}) {
+async function getJSON(url, { signal } = {}) {
   const res = await fetch(url, { signal, headers: { Accept: 'application/json' } });
   let body = null;
   try { body = await res.json(); } catch { body = null; }
@@ -291,6 +387,7 @@ export function render(el, cmd, ctx) {
   const store = ctx.store;
   const phoneMq = typeof window === 'object' ? window.matchMedia?.(PHONE_MQ) : null;
   const phone = () => Boolean(phoneMq?.matches) && !ctx.embed; // a DESK panel keeps tiles
+  const reducedMq = typeof window === 'object' ? window.matchMedia?.('(prefers-reduced-motion: reduce)') : null;
   const last = cleanBoard(store?.get(LAST_KEY, null));
 
   let range = args.range;
@@ -334,21 +431,57 @@ export function render(el, cmd, ctx) {
   function drawFoot() {
     foot.innerHTML = `<p class="gr-note">${esc(NOTE_LINE)}</p>`;
   }
+  function drawTileCharts(node) {
+    const item = items[Number(node.dataset.i)];
+    const tile = item && data.get(item.token);
+    const host = node.querySelector('.gr-chart');
+    const mini = node.querySelector('.gr-mini');
+    const pts = tile && !tile.error ? tile.points : null;
+    const dir = tile?.kind === 'rip' ? 'down' : dirOf(tile?.changePct);
+    if (host) {
+      const w = Math.floor(host.clientWidth);
+      const h = Math.floor(host.clientHeight);
+      host.innerHTML = pts && w > 8 && h > 8 ? gridSparkSvg(pts, { w, h, marks: marksFor(tile), dir, byTime: Boolean(tile.xByTime) }) : '';
+    }
+    if (mini) mini.innerHTML = pts && phone() ? gridSparkSvg(pts, { w: 56, h: 16, dir, pad: 1, byTime: Boolean(tile.xByTime), cls: 'is-mini' }) : '';
+  }
   function drawCharts() {
-    board.querySelectorAll('.gr-tile[data-i]').forEach((node) => {
-      const item = items[Number(node.dataset.i)];
-      const tile = item && data.get(item.token);
-      const host = node.querySelector('.gr-chart');
-      const mini = node.querySelector('.gr-mini');
-      const pts = tile && !tile.error ? tile.points : null;
-      const dir = tile?.kind === 'rip' ? 'down' : dirOf(tile?.changePct);
-      if (host) {
-        const w = Math.floor(host.clientWidth);
-        const h = Math.floor(host.clientHeight);
-        host.innerHTML = pts && w > 8 && h > 8 ? gridSparkSvg(pts, { w, h, marks: marksFor(tile), dir, byTime: Boolean(tile.xByTime) }) : '';
-      }
-      if (mini) mini.innerHTML = pts && phone() ? gridSparkSvg(pts, { w: 56, h: 16, dir, pad: 1, byTime: Boolean(tile.xByTime), cls: 'is-mini' }) : '';
-    });
+    board.querySelectorAll('.gr-tile[data-i]').forEach(drawTileCharts);
+  }
+  // One tile again, in place (a tick, a refetch): its numbers and its line, not the board.
+  // A tile that had no numbers yet (LOADING, NO DATA) is drawn anew, unless its word is
+  // being swapped. prev: the tile before, for the flash.
+  function patchTile(i, prev) {
+    const node = board.querySelector(`.gr-tile[data-i="${i}"]`);
+    const item = items[i];
+    if (!node || !item) return;
+    const tile = data.get(item.token);
+    const f = tileFace(item, tile);
+    const big = node.querySelector('.gr-big');
+    const val = node.querySelector('.gr-val');
+    if (f.msg || !big || !val || val.classList.contains('gr-msg')) {
+      if (node.querySelector('.gr-swap-in')) return;
+      const had = document.activeElement === node;
+      node.outerHTML = tileHtml(item, tile, { i, open: i === openAt, range });
+      const fresh = board.querySelector(`.gr-tile[data-i="${i}"]`);
+      if (fresh) { drawTileCharts(fresh); if (had) fresh.focus({ preventScroll: true }); }
+      return;
+    }
+    big.textContent = f.big;
+    big.classList.toggle('is-stale', Boolean(f.stale));
+    val.textContent = f.big;
+    const pill = node.querySelector('.gr-hero .gr-pill');
+    if (pill && f.pill) { pill.textContent = f.pill; pill.className = `gr-pill num ${f.pillDir || 'flat'}`; }
+    const sub = node.querySelector('.gr-sub');
+    if (sub && f.sub) sub.textContent = f.sub;
+    const chg = node.querySelector('.gr-row .gr-chg');
+    if (chg && (f.rowPill || f.pill)) { chg.textContent = f.rowPill || f.pill; chg.className = `gr-chg num ${f.rowPill ? 'flat' : f.pillDir || 'flat'}`; }
+    const fl = flashClass(prev?.last, tile?.last, { reduced: Boolean(reducedMq?.matches) });
+    if (fl) {
+      for (const n of [big, val]) { n.classList.remove('gr-flash-up', 'gr-flash-down'); n.classList.add(fl); }
+      later(() => { for (const n of [big, val]) n.classList.remove(fl); }, FLASH_MS);
+    }
+    drawTileCharts(node);
   }
   function drawBoard() {
     const had = document.activeElement;
@@ -392,7 +525,7 @@ export function render(el, cmd, ctx) {
     const r = range;
     let d;
     try {
-      d = await getGrid(`/api/grid?${new URLSearchParams({ s: list.join(','), r })}`, { signal: ctx.signal });
+      d = await getJSON(`/api/grid?${new URLSearchParams({ s: list.join(','), r })}`, { signal: ctx.signal });
     } catch (err) {
       if (err.name === 'AbortError' || my !== gen) return;
       ctx.status(err.status === 429 ? 'GRID: A LOT OF BOARDS. TRY AGAIN IN A MINUTE' : 'GRID: NO DATA', 'warn');
@@ -407,14 +540,75 @@ export function render(el, cmd, ctx) {
       // A second try that failed keeps a tile it had, else says NO DATA.
       if (t.error && data.get(t.token) && !data.get(t.token).error) continue;
       data.set(t.token, !again && RETRY.includes(t.error) ? { ...t, error: 'no_data' } : t);
+      takeQuote(t.token, { patch: false }); // the last quote seen moves it on at once
     }
     drawBoard();
+    // A market tile with no quote yet (the first load, an added tile): ask now, not in 15 s.
+    if ((d.tiles || []).some((t) => t.kind === 'market' && !t.error && !quotes.has(t.token))) tick();
     ctx.updated?.(d.updated, false);
     const failed = (d.tiles || []).filter((t) => RETRY.includes(t.error)).map((t) => t.token);
     if (again && failed.length) later(() => load(failed, { again: false }), RETRY_MS);
     ctx.status(note, note ? 'warn' : '');
   }
   const missing = () => tokens().filter((t) => !data.has(t));
+
+  // ---- live ----
+  const quotes = new Map(); // token -> the last quote seen, for any range
+  const marketTokens = () => items.filter((it) => it.kind === 'market').map((it) => it.token);
+  const indexOf = (token) => items.findIndex((it) => it.token === token);
+  // The last quote seen, on its tile (applyQuote), patched in place.
+  function takeQuote(token, { patch = true } = {}) {
+    const prev = data.get(token);
+    const next = applyQuote(prev, quotes.get(token), range);
+    if (!next) return false;
+    data.set(token, next);
+    if (patch && indexOf(token) >= 0) patchTile(indexOf(token), prev);
+    return true;
+  }
+  // Every TICK_MS: one /api/quotes call for the board's market tiles.
+  const tick = guarded(async () => {
+    const list = marketTokens();
+    if (!list.length) return;
+    const d = await getJSON(`/api/quotes?${new URLSearchParams({ s: list.join(',') })}`, { signal: ctx.signal });
+    for (const qt of d?.quotes || []) if (qt?.ticker) quotes.set(qt.ticker, qt);
+    for (const t of list) takeQuote(t);
+    if (d?.updated) ctx.updated?.(d.updated, Boolean(d.stale));
+  });
+  const sameTile = (a, b) => {
+    if (!a || !b || a.error || b.error || a.last !== b.last || a.changePct !== b.changePct || Boolean(a.stale) !== Boolean(b.stale)) return false;
+    const [pa, pb] = [a.points || [], b.points || []];
+    if (pa.length !== pb.length || !pa.length) return pa.length === pb.length;
+    const [a0, b0, a1, b1] = [pa[0], pb[0], pa[pa.length - 1], pb[pb.length - 1]];
+    return a0.t === b0.t && a0.v === b0.v && a1.t === b1.t && a1.v === b1.v;
+  };
+  // Every REFETCH_MS on 1D and 5D: the market tiles' real 5-minute bars. A tile that fails
+  // now keeps what it had; only the tiles that changed are drawn again.
+  const refetch = guarded(async () => {
+    const list = marketTokens();
+    if (!list.length || !isIntraday(range)) return;
+    const my = gen;
+    const r = range;
+    const d = await getJSON(`/api/grid?${new URLSearchParams({ s: list.join(','), r })}`, { signal: ctx.signal });
+    if (my !== gen) return;
+    for (const t of d?.tiles || []) {
+      if (t.error || indexOf(t.token) < 0) continue;
+      const prev = data.get(t.token);
+      const next = applyQuote(t, quotes.get(t.token), r) || t;
+      data.set(t.token, next);
+      if (!sameTile(prev, next)) patchTile(indexOf(t.token), prev);
+    }
+    if (d?.updated) ctx.updated?.(d.updated, false);
+  });
+  // Every HERE_MS with a BBRK tile: its "here now" (/api/live, cached on the server).
+  const hereNow = guarded(async () => {
+    const had = data.get('BBRK');
+    if (!had || had.error) return;
+    const d = await getJSON('/api/live', { signal: ctx.signal });
+    const cur = data.get('BBRK');
+    if (!Number.isInteger(d?.here) || !cur || cur.error || cur.here === d.here) return;
+    data.set('BBRK', { ...cur, here: d.here });
+    if (indexOf('BBRK') >= 0) patchTile(indexOf('BBRK'), cur);
+  });
 
   // ---- edits ----
   function tell(text) { note = ''; ctx.status(text, 'warn'); }
@@ -592,4 +786,8 @@ export function render(el, cmd, ctx) {
   drawAll();
   if (note) ctx.status(note, 'warn');
   load(tokens());
+  // Live (ctx.live: paused while the tab is hidden or a DESK panel is off screen).
+  ctx.live(tick, TICK_MS);
+  ctx.live(() => { if (isIntraday(range)) refetch(); }, REFETCH_MS);
+  ctx.live(() => { if (items.some((it) => it.kind === 'bbrk')) hereNow(); }, HERE_MS);
 }

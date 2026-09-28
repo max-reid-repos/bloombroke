@@ -14,11 +14,16 @@ import {
   layoutFor, gridSparkSvg, placeLabel, marksFor, tileHtml, tileFace, openCmd, starterButton, rangeChips,
   saveLastBoard, boardKeyAction, sceneKeys, LAST_KEY,
   shareLinks, stepIndex, cleanBoard, LABEL_CHAR_W, toInput,
+  applyQuote, barStep, flashClass, guarded, quoteTime, isIntraday, BUCKET_MS, TICK_MS, REFETCH_MS, FLASH_MS,
 } from '../public/screens/grid.js';
 import {
   makeGrid, mountGrid, downsample, seriesStats, loadCpiMonthly, cpiTile, ripTile, weirdTile, marketTile, periodStart, GRID_POINTS, GRID_PARALLEL,
+  GRID_RATE,
 } from '../lib/grid.js';
-import { makeGridCards, gridCardModel, cardBoard, gridMeta, gridTree, mountGridCards, GRID_CARD_MAX_AGE, INCOMPLETE_MAX_AGE } from '../lib/og-grid.js';
+import {
+  makeGridCards, gridCardModel, cardBoard, gridMeta, gridTree, mountGridCards, GRID_CARD_MAX_AGE, INCOMPLETE_MAX_AGE,
+  GRID_CARD_MAX_AGE_INTRADAY, cardMaxAge,
+} from '../lib/og-grid.js';
 import { makeRateLimit, withMeta, W, H } from '../lib/og.js';
 import { ChartError } from '../data/charts.js';
 import { loadGraveyardData } from '../lib/graveyard.js';
@@ -35,7 +40,7 @@ test('GRID parser: tokens, prefixes, the range, $ stocks, aliases', () => {
   assert.equal(p.rangeGiven, true);
   assert.deepEqual(p.tokens, ['NVDA', 'W:EGGPRICE', 'W:PIZZA', 'RIP:LEH', 'CPI', 'BBRK', '$GOLD', 'WTI', 'BTC', 'AAPL', 'GOLD']);
   assert.deepEqual(p.items.map((i) => i.kind), ['market', 'weird', 'weird', 'rip', 'cpi', 'bbrk', 'market', 'market', 'market', 'market', 'market']);
-  assert.equal(parseGrid(['NVDA']).range, '1Y', '1Y by default');
+  assert.equal(parseGrid(['NVDA']).range, '1D', '1D by default: the board ticks live');
   const r = parseGrid(['5Y', 'NVDA', 'MAX', 'AMD']);
   assert.deepEqual([r.tokens, r.range, r.rangeGiven], [['NVDA', 'AMD'], 'MAX', true], 'a range word anywhere sets the range, the last wins, never a tile');
   assert.equal(gaugeCommand('PIZZINT'), 'PIZZA', 'a registry alias');
@@ -71,8 +76,8 @@ test('GRID STARTER: bare GRID falls back to it, STARTER alone names it, $ still 
   assert.deepEqual(parseGrid(['STARTER', 'NVDA']).tokens, ['NVDA'], 'with other words STARTER is dropped');
   assert.ok(!GRID_STARTER.includes('W:PIZZA'), 'PIZZA is often NO DATA: CANAL stands in');
   assert.equal(isGridStarter(GRID_STARTER), true);
-  assert.equal(gridCmd({ tokens: GRID_STARTER }), 'GRID STARTER');
-  assert.equal(parseCommand('grid starter').input, 'GRID STARTER');
+  assert.equal(gridCmd({ tokens: GRID_STARTER }), 'GRID STARTER 1D');
+  assert.equal(parseCommand('grid starter').input, 'GRID STARTER 1D');
   // No preset words: they are other screens (MARKETS, CRYPTO, WEIRD, GRAVEYARD, DESK MACRO).
   for (const w of ['BIGTECH', 'CRYPTO', 'GRAVEYARD']) assert.equal(parseGrid([w]).items[0].kind, 'unknown', w);
   assert.equal(parseGrid(['WEIRD']).items[0].kind, 'market', 'WEIRD is ticker-shaped: a stock tile, W:PIZZA is the gauge');
@@ -81,19 +86,23 @@ test('GRID STARTER: bare GRID falls back to it, STARTER alone names it, $ still 
 });
 
 test('GRID command: the canonical URL, bare GRID, toInput', () => {
-  assert.equal(gridCmd({ tokens: ['NVDA', 'AMD', 'INTC'], range: '1Y' }), 'GRID NVDA AMD INTC');
+  // The canonical URL always says its range, so a link keeps it whatever the default.
+  assert.equal(gridCmd({ tokens: ['NVDA', 'AMD', 'INTC'], range: '1Y' }), 'GRID NVDA AMD INTC 1Y');
   assert.equal(gridCmd({ tokens: ['NVDA'], range: '5Y' }), 'GRID NVDA 5Y');
-  assert.equal(gridCmd({ tokens: [], range: '1Y' }), 'GRID');
+  assert.equal(gridCmd({ tokens: ['NVDA'], range: '1D' }), 'GRID NVDA 1D');
+  assert.equal(gridCmd({ tokens: [], range: '1D' }), 'GRID');
   const bare = parseCommand('GRID');
   assert.equal(bare.name, 'GRID');
   assert.equal(bare.args.bare, true);
-  assert.equal(bare.url, 'GRID');
+  assert.equal(bare.url, 'GRID', 'bare GRID stays bare: the last board keeps its own range');
+  assert.equal(parseCommand('GRID 1D').url, 'GRID 1D', 'a typed range on bare GRID stays');
+  assert.equal(parseCommand('GRID 5Y').url, 'GRID 5Y');
   const p = parseCommand('grid nvda amd intc 1y');
-  assert.equal(p.input, 'GRID NVDA AMD INTC');
+  assert.equal(p.input, 'GRID NVDA AMD INTC 1Y');
   assert.equal(toInput(p.args), p.input);
   // A pasted link rebuilds the same board.
   assert.deepEqual(parseCommand(p.input).args.tokens, p.args.tokens);
-  assert.deepEqual(cleanBoard({ tokens: ['nvda', 'NVDA', 'W:EGGS'], range: 'NOPE' }), { tokens: ['NVDA', 'W:EGGPRICE'], range: '1Y' });
+  assert.deepEqual(cleanBoard({ tokens: ['nvda', 'NVDA', 'W:EGGS'], range: 'NOPE' }), { tokens: ['NVDA', 'W:EGGPRICE'], range: '1D' });
   assert.equal(cleanBoard(null), null);
 });
 
@@ -194,7 +203,7 @@ test('GRID tiles: numbers first, and one-line phone rows that open in place', ()
 
 test('GRID chips, STARTER and SHARE', () => {
   const r = rangeChips('5Y');
-  assert.deepEqual([...r.matchAll(/data-range="(\w+)"/g)].map((m) => m[1]), ['1M', '1Y', '5Y', 'MAX']);
+  assert.deepEqual([...r.matchAll(/data-range="(\w+)"/g)].map((m) => m[1]), ['1D', '5D', '1M', '1Y', '5Y', 'MAX']);
   assert.equal((r.match(/is-active/g) || []).length, 1);
   assert.match(rangeChips('3M'), /data-range="3M" aria-pressed="true">3M</, 'a typed range shows as its own chip');
   assert.equal(starterButton(GRID_STARTER), '', 'on the starter board: no STARTER button');
@@ -202,7 +211,8 @@ test('GRID chips, STARTER and SHARE', () => {
   const links = shareLinks(['NVDA', 'AMD'], '5Y', 'https://bloombroke.com');
   assert.equal(links.url, 'https://bloombroke.com/?c=GRID+NVDA+AMD+5Y');
   assert.match(links.x, /^https:\/\/x\.com\/intent\/post\?/);
-  assert.equal(shareLinks(GRID_STARTER, '1Y', 'https://b.test').url, 'https://b.test/?c=GRID+STARTER');
+  assert.equal(shareLinks(GRID_STARTER, '1Y', 'https://b.test').url, 'https://b.test/?c=GRID+STARTER+1Y');
+  assert.equal(shareLinks(GRID_STARTER, '1D', 'https://b.test').url, 'https://b.test/?c=GRID+STARTER+1D');
 });
 
 // ---- the server ------------------------------------------------------------------------------------
@@ -315,7 +325,7 @@ test('/api/grid: the 16 cap, a bad range, the per-address limit', async () => {
     const limited = await fetch(`${base}/api/grid?s=CC`);
     assert.equal(limited.status, 429);
     assert.equal(limited.headers.get('retry-after'), '60');
-    assert.deepEqual(f.calls, ['AA:1Y', 'BB:1Y'], 'a limited request fetches nothing');
+    assert.deepEqual(f.calls, ['AA:1D', 'BB:1D'], 'no range: 1D; a limited request fetches nothing');
   } finally { server.close(); }
 });
 
@@ -531,7 +541,7 @@ test('GRID card route and page meta', async () => {
   const m = gridMeta('GRID NVDA AMD INTC 1Y', parseCommand);
   assert.equal(m.title, 'GRID: NVDA, AMD, INTC (1Y) | Bloombroke');
   assert.equal(m.image, 'https://bloombroke.com/og/grid.png?s=NVDA%2CAMD%2CINTC&r=1Y');
-  assert.equal(m.url, 'https://bloombroke.com/?c=GRID+NVDA+AMD+INTC');
+  assert.equal(m.url, 'https://bloombroke.com/?c=GRID+NVDA+AMD+INTC+1Y');
   assert.match(gridMeta('GRID STARTER', parseCommand).title, /^GRID STARTER: SPX, NDX/);
   assert.match(gridMeta('GRID STARTER', parseCommand).image, /s=STARTER/);
   assert.equal(gridMeta('GRID', parseCommand), null, 'bare GRID: lib/seo.js');
@@ -617,7 +627,7 @@ test('GRID hostile words: escaped on the page, never on the card or in the meta 
   // The meta tags: only real tiles.
   const m = gridMeta(`GRID NVDA ${bad} AMD`, parseCommand);
   for (const v of Object.values(m)) assert.doesNotMatch(v, /CASH|XYZ/i, v);
-  assert.equal(m.title, 'GRID: NVDA, AMD (1Y) | Bloombroke');
+  assert.equal(m.title, 'GRID: NVDA, AMD (1D) | Bloombroke');
   assert.equal(gridMeta(`GRID ${bad}`, parseCommand), null, 'nothing real: the plain page');
   const page = withMeta('<html><head><title>x</title><meta name="description" content="y"></head></html>', m);
   assert.doesNotMatch(page, /CASH|XYZ/i);
@@ -625,12 +635,12 @@ test('GRID hostile words: escaped on the page, never on the card or in the meta 
   const grid = makeGrid(fakeDeps().deps);
   const card = gridCardModel(cardBoard(`NVDA,${bad}`, '1Y'), grid);
   assert.deepEqual(card.tiles.map((t) => t.sym), ['NVDA', '?']);
-  assert.equal(card.command, 'GRID NVDA ?');
+  assert.equal(card.command, 'GRID NVDA ? 1Y');
   assert.doesNotMatch(JSON.stringify(gridTree(card)), /CASH|XYZ/i);
   // The last board and the share link.
   assert.deepEqual(cleanBoard({ tokens: ['nvda', '<script>', 'x'.repeat(40), bad], range: '1Y' }).tokens, ['NVDA', 'X'.repeat(24), bad]);
   const links = shareLinks(['NVDA', bad], '1Y', 'https://bloombroke.com');
-  assert.equal(links.url, `https://bloombroke.com/?c=GRID+NVDA+${bad}`, 'the link keeps the board as typed');
+  assert.equal(links.url, `https://bloombroke.com/?c=GRID+NVDA+${bad}+1Y`, 'the link keeps the board as typed');
   assert.doesNotMatch(new URL(links.x).searchParams.get('text'), /CASH|XYZ/i, 'the post text names real tiles only');
 });
 
@@ -640,4 +650,167 @@ test('GRID CPI: a small 1Y chip when its range is not the board range', () => {
   assert.match(one, /<span class="gr-rng">1Y<\/span>/);
   assert.doesNotMatch(tileHtml(gridItem('CPI'), cpiTile('5Y', cpi), { range: '5Y' }), /gr-rng/);
   assert.doesNotMatch(tileHtml(gridItem('NVDA'), marketTile('NVDA', { points: series(20) }), { range: '1M' }), /gr-rng/);
+});
+
+// ---- live: 1D by default, quote ticks, refetches ------------------------------------------------
+
+test('GRID live: 1D by default, a link or a saved board keeps its range', () => {
+  assert.equal(parseGrid([]).range, '1D', 'bare GRID and a new board: 1D');
+  assert.equal(parseCommand('GRID NVDA AMD').args.range, '1D', 'a link with no range opens 1D');
+  assert.equal(parseCommand('GRID NVDA AMD 1Y').args.range, '1Y', 'a link with a range keeps it');
+  assert.equal(parseCommand('GRID STARTER 5Y').args.range, '5Y');
+  assert.deepEqual(cleanBoard({ tokens: ['NVDA'], range: '1Y' }), { tokens: ['NVDA'], range: '1Y' }, 'a saved board keeps its range');
+  // The canonical form always carries the range, so it round-trips.
+  for (const r of ['1D', '5D', '1M', '1Y', '5Y', 'MAX']) {
+    const c = gridCmd({ tokens: ['NVDA', 'BTC'], range: r });
+    assert.equal(c, `GRID NVDA BTC ${r}`);
+    assert.equal(parseCommand(c).args.range, r);
+  }
+  assert.equal(shareLinks(['EURUSD', 'BTC'], '1D', 'https://b.test').url, 'https://b.test/?c=GRID+EURUSD+BTC+1D');
+  assert.deepEqual([isIntraday('1D'), isIntraday('5D'), isIntraday('1M'), isIntraday('MAX')], [true, true, false, false]);
+  assert.deepEqual([TICK_MS, REFETCH_MS, FLASH_MS], [15_000, 60_000, 700]);
+});
+
+// A 1D tile of 5-minute bars from 09:30 New York (13:30 UTC), as /api/grid sends it.
+const OPEN = Date.UTC(2026, 8, 28, 13, 30);
+const intraday = (vals) => marketTile('AAPL', { points: vals.map((v, i) => ({ t: OPEN + i * BUCKET_MS, v })) });
+const at = (ms) => new Date(ms).toISOString();
+
+test('GRID tick: the value, the pill, the last point and the high and low move', () => {
+  const tile = intraday([100, 101, 102, 101, 100.5]);
+  const lastT = OPEN + 4 * BUCKET_MS;
+  const q = { ticker: 'AAPL', last: 103.25, changePct: 1.5, asOf: at(lastT + 60_000) };
+  const next = applyQuote(tile, q, '1D', { now: lastT + 90_000 });
+  assert.equal(next.last, 103.25);
+  assert.equal(next.points.length, 5, 'same 5-minute bucket: the last point is replaced');
+  assert.deepEqual(next.points[4], { t: lastT, v: 103.25 });
+  assert.equal(next.changePct, 1.5, '1D: the quote\'s own day change (vs the previous close), as QUOTE shows');
+  assert.deepEqual(next.hi, { v: 103.25, t: lastT }, 'a new high');
+  const f = tileFace(gridItem('AAPL'), next);
+  assert.deepEqual([f.big, f.pill, f.pillDir], ['103.25', '+1.50%', 'up']);
+  const marks = marksFor(next);
+  assert.deepEqual(marks.map((m) => [m.i, m.text]), [[4, 'H 103.25'], [0, 'L 100.00']], 'the H dot moves to the new high');
+  assert.equal(tile.points[4].v, 100.5, 'the old tile is left as it was');
+  // A new low.
+  const low = applyQuote(next, { ...q, last: 99.1, changePct: -0.8 }, '1D', { now: lastT + 90_000 });
+  assert.deepEqual(marksFor(low).map((m) => m.text), ['H 102.00', 'L 99.10']);
+  assert.equal(tileFace(gridItem('AAPL'), low).pillDir, 'down');
+  // Nothing new: nothing to draw.
+  assert.equal(applyQuote(next, q, '1D', { now: lastT + 90_000 }), null);
+  // Tiles that do not tick.
+  assert.equal(applyQuote(cpiTile('1Y', loadCpiMonthly()), q, '1D'), null, 'CPI');
+  assert.equal(applyQuote({ token: 'AAPL', kind: 'market', error: 'no_data' }, q, '1D'), null);
+  assert.equal(applyQuote(tile, { ticker: 'AAPL', last: null }, '1D'), null, 'no price: no tick');
+});
+
+test('GRID tick: a new 5-minute bucket appends a point; an older quote leaves the line', () => {
+  const tile = intraday([100, 101, 102]);
+  const lastT = OPEN + 2 * BUCKET_MS;
+  const next = applyQuote(tile, { last: 102.5, changePct: 0.2, asOf: at(lastT + BUCKET_MS + 42_000) }, '1D', { now: lastT + BUCKET_MS + 50_000 });
+  assert.equal(next.points.length, 4, 'a new bucket: one more point');
+  assert.deepEqual(next.points[3], { t: lastT + BUCKET_MS, v: 102.5 }, 'at the start of its bucket');
+  const same = applyQuote(next, { last: 102.7, changePct: 0.3, asOf: at(lastT + BUCKET_MS + 200_000) }, '1D', { now: lastT + 2 * BUCKET_MS });
+  assert.equal(same.points.length, 4, 'the same bucket again: replaced');
+  // No asOf: now's bucket.
+  assert.equal(applyQuote(tile, { last: 99 }, '5D', { now: lastT + BUCKET_MS * 3 }).points.length, 4);
+  // A quote from before the last bar (a stock's close, while the line has after-hours bars).
+  const old = applyQuote(tile, { last: 101.9, changePct: 0.1, asOf: at(lastT - BUCKET_MS) }, '1D', { now: lastT + 60_000 });
+  assert.equal(old.points, tile.points, 'the line stays');
+  assert.equal(old.last, 101.9, 'the value is the quote\'s');
+  // A quote dated in the future counts as now.
+  assert.equal(quoteTime({ asOf: at(OPEN + 3_600_000) }, OPEN), OPEN);
+  assert.equal(quoteTime({ asOf: '2026-09-28T10:12:35.937-0400' }, Date.UTC(2026, 8, 29)), Date.UTC(2026, 8, 28, 14, 12, 35, 937), 'the quote source\'s time form');
+});
+
+test('GRID tick: on 5D and longer the change is against the first point of the range', () => {
+  const tile = intraday([100, 101, 102]);
+  const five = applyQuote(tile, { last: 110, changePct: 3, asOf: at(OPEN + 2 * BUCKET_MS + 1000) }, '5D', { now: OPEN + 3 * BUCKET_MS });
+  assert.ok(Math.abs(five.changePct - 10) < 1e-9, '5D: +10% from the first point, not the quote\'s day change');
+  // Daily bars (1M): New York midnight stamps. The same New York day: replaced; the next: appended.
+  const day = (d) => Date.UTC(2026, 8, d, 4);
+  const month = marketTile('AAPL', { points: [22, 23, 24, 25].map((d, i) => ({ t: day(d), v: 100 + i })) });
+  const fri = applyQuote(month, { last: 104, changePct: 1, asOf: '2026-09-25T15:59:00.000-0400' }, '1M', { now: day(26) });
+  assert.deepEqual([fri.points.length, fri.points[3].v], [4, 104], 'today\'s point updated');
+  assert.ok(Math.abs(fri.changePct - 4) < 1e-9);
+  const mon = applyQuote(month, { last: 105, changePct: 2, asOf: '2026-09-28T10:12:35.000-0400' }, '1M', { now: day(29) });
+  assert.deepEqual([mon.points.length, mon.points[4].v], [5, 105], 'a new day: its own point');
+  assert.deepEqual([barStep(day(25), day(25) + 3600_000, '1Y'), barStep(day(25), day(28), '1Y'), barStep(day(25), day(24), '1Y')], [0, 1, -1]);
+  assert.deepEqual([barStep(day(21), day(25), '5Y'), barStep(day(21), day(28), '5Y')], [0, 1], 'weekly bars');
+  assert.deepEqual([barStep(Date.UTC(2026, 8, 1, 4), day(28), 'MAX'), barStep(Date.UTC(2026, 7, 1, 4), day(28), 'MAX')], [0, 1], 'monthly bars');
+});
+
+test('GRID tick: a changed value flashes up or down, never with reduced motion', () => {
+  assert.equal(flashClass(100, 101), 'gr-flash-up');
+  assert.equal(flashClass(100, 99), 'gr-flash-down');
+  assert.equal(flashClass(100, 100), '', 'the same value: no flash');
+  assert.equal(flashClass(undefined, 100), '', 'a first value: no flash');
+  assert.equal(flashClass(100, 101, { reduced: true }), '', 'reduced motion: no flash class');
+  assert.equal(flashClass(100, 99, { reduced: true }), '');
+  const css = readFileSync(new URL('../public/screens/grid.css', import.meta.url), 'utf8');
+  assert.match(css, /\.gr-flash-up \{[^}]*var\(--up-flash\)/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\.gr-panel \.gr-tile \.gr-flash-up/);
+  const js = readFileSync(new URL('../public/screens/grid.js', import.meta.url), 'utf8');
+  assert.match(js, /prefers-reduced-motion: reduce/, 'the screen asks the browser');
+  assert.doesNotMatch(js, /style=/, 'no inline styles (the CSP)');
+});
+
+test('GRID live: never two requests at once, and a failed one skips a turn', async () => {
+  let calls = 0;
+  let release;
+  const run = guarded(() => { calls += 1; return new Promise((r) => { release = r; }); });
+  const first = run();
+  assert.equal(await run(), 'busy', 'in flight: the next turn does not stack');
+  assert.equal(calls, 1);
+  release();
+  assert.equal(await first, 'ok');
+  // An error: the next turn is skipped, then it asks again.
+  let fail = { status: 503 };
+  const r2 = guarded(async () => { calls += 1; if (fail) throw fail; });
+  calls = 0;
+  assert.equal(await r2(), 'error');
+  assert.equal(await r2(), 'skipped');
+  fail = null;
+  assert.equal(await r2(), 'ok');
+  assert.equal(calls, 2);
+  // A 429: two turns skipped.
+  fail = { status: 429 };
+  assert.equal(await r2(), 'error');
+  fail = null;
+  assert.deepEqual([await r2(), await r2(), await r2()], ['skipped', 'skipped', 'ok']);
+  // A closed screen (aborted): no back-off.
+  const r3 = guarded(async () => { throw Object.assign(new Error('x'), { name: 'AbortError' }); });
+  assert.equal(await r3(), 'aborted');
+  assert.equal(await r3(), 'aborted');
+});
+
+test('GRID live: the budget and the caches for a board that asks every minute', async () => {
+  // 10 refetches in 10 minutes, a board built tile by tile (16), six range switches with
+  // a retry each (12), and a second board open (10 more): well inside the limit.
+  const perWindow = (GRID_RATE.windowMs / REFETCH_MS);
+  assert.equal(perWindow, 10);
+  assert.ok(perWindow * 2 + 16 + 12 < GRID_RATE.renders, `${GRID_RATE.renders} per 10 minutes`);
+  assert.equal(GRID_RATE.renders, 90);
+  const f = fakeDeps();
+  const app = express();
+  mountGrid(app, f.deps);
+  const { server, base } = await listen(app);
+  try {
+    assert.equal((await fetch(`${base}/api/grid?s=AA&r=1D`)).headers.get('cache-control'), 'public, max-age=15', '1D: asked again every minute');
+    assert.equal((await fetch(`${base}/api/grid?s=AA&r=5D`)).headers.get('cache-control'), 'public, max-age=15');
+    assert.equal((await fetch(`${base}/api/grid?s=AA&r=1M`)).headers.get('cache-control'), 'public, max-age=60');
+  } finally { server.close(); }
+});
+
+test('GRID card: a complete 1D or 5D card goes out for 10 minutes, the rest as before', async () => {
+  const f = fakeDeps();
+  const grid = makeGrid(f.deps);
+  const cards = makeGridCards({ grid, fallback: async () => Buffer.from('site'), render: async () => Buffer.from('card') });
+  for (const r of ['1D', '5D', '1Y']) await grid.board(cardBoard('NVDA,AMD', r).items, r);
+  const one = await cards.png('NVDA,AMD', '1D', '1.1.1.1');
+  assert.deepEqual([one.drawn, one.maxAge, GRID_CARD_MAX_AGE_INTRADAY], [true, 600, 600]);
+  assert.equal((await cards.png('NVDA,AMD', '1D', '1.1.1.1')).maxAge, 600, 'from the kept card too');
+  assert.equal((await cards.png('NVDA,AMD', '5D', '1.1.1.1')).maxAge, 600);
+  assert.equal((await cards.png('NVDA,AMD', '1Y', '1.1.1.1')).maxAge, GRID_CARD_MAX_AGE);
+  assert.equal((await cards.png('NVDA,AMD', '', '1.1.1.1')).maxAge, 600, 'no range: 1D');
+  assert.deepEqual(['1D', '5D', '1M', '1Y', 'MAX'].map(cardMaxAge), [600, 600, 14400, 14400, 14400]);
 });

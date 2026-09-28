@@ -456,11 +456,12 @@ export function parseFishtank(words = []) {
 //   RIP:LEH               a GRAVEYARD stone
 //   BBRK                  our own site numbers
 //   STARTER               the starter board, when it is the only word
-// A trailing preset range (1D ... MAX) sets every market tile's range; 1Y by default.
+// A trailing preset range (1D ... MAX) sets every market tile's range; 1D by default (the
+// board ticks live: screens/grid.js).
 export const GRID_MAX = 16;
-export const GRID_RANGE = '1Y';
+export const GRID_RANGE = '1D';
 // The range chips on the board; any preset can still be typed.
-export const GRID_RANGE_CHIPS = ['1M', '1Y', '5Y', 'MAX'];
+export const GRID_RANGE_CHIPS = ['1D', '5D', '1M', '1Y', '5Y', 'MAX'];
 // What a first visit sees, and what STARTER brings back.
 export const GRID_STARTER = ['SPX', 'NDX', 'NVDA', 'TSLA', 'AAPL', 'BTC', 'ETH', 'GOLD', 'WTI', 'US10Y', 'VIX', 'CPI', 'W:CANAL', 'W:EGGPRICE', 'RIP:LEH', 'BBRK'];
 export const GRID_STARTER_WORD = 'STARTER';
@@ -559,8 +560,11 @@ export function parseGrid(args = []) {
 export const isGridStarter = (tokens = []) => tokens.join(',') === GRID_STARTER.join(',');
 
 // The command (and URL) for a board: GRID STARTER for the starter board, the tokens
-// otherwise, then the range unless it is 1Y. GRID alone for no tokens.
-export function gridCmd({ tokens = [], range = GRID_RANGE } = {}) {
+// otherwise, then always the range (a link keeps its range when the default changes).
+// No tokens (bare GRID: the last board): the range only when one was typed, so bare GRID
+// keeps the last board's own range.
+export function gridCmd({ tokens = [], range = GRID_RANGE, rangeGiven } = {}) {
   const words = tokens.length && isGridStarter(tokens) ? [GRID_STARTER_WORD] : tokens;
-  return ['GRID', ...words, range !== GRID_RANGE ? range : ''].filter(Boolean).join(' ');
+  const withRange = tokens.length > 0 || rangeGiven === true || (rangeGiven === undefined && range !== GRID_RANGE);
+  return ['GRID', ...words, withRange ? range : ''].filter(Boolean).join(' ');
 }
