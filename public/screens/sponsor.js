@@ -1,5 +1,6 @@
 // SPONSOR: three things, big. YOUR AD HERE, with the real strip at the bottom outlined and
-// a small label above it, and BBRK's globe of visitor countries beside it; one live line
+// a small label above it, and BBRK's globe of visitor places, big, under the fine print
+// (the page scrolls to it); one live line
 // of our own numbers (/api/bbrk: DataFast audience and the strip inventory) and what one
 // line would get a week; the email, and BBRK for all the numbers. The numbers and the
 // globe's dots come again every minute while the tab is visible (the shell's ctx.live).
@@ -116,12 +117,12 @@ export function sponsorHtml({ has, bbrk = null, cfg = null } = {}) {
   const weird = exists('WEIRD')
     ? ` <a class="spon-weird" href="${esc(q('WEIRD'))}" data-cmd="WEIRD">Or a WEIRD gauge</a>` : '';
   return `<section class="spon-page" aria-label="Sponsor">
-    <div class="spon-top"><h2 class="spon-hero">${esc(HERO)}</h2>
-      <figure class="spon-globe"><canvas role="img" aria-label="${esc(globeLabel(bbrk))}"></canvas><figcaption class="dim">${esc(sponCaption(bbrk))}</figcaption></figure></div>
+    <h2 class="spon-hero">${esc(HERO)}</h2>
     <div id="spon-proof" class="spon-proof">${proofHtml(bbrk, cfg)}</div>
     <p class="spon-act"><a class="spon-mail" href="${esc(MAILTO)}">EMAIL ${esc(CONTACT)}</a>${bbrkBtn}</p>
     ${weird ? `<p class="spon-more">${weird.trim()}</p>` : ''}
     <p class="spon-fine">${esc(FINE)}</p>
+    <figure class="spon-globe"><canvas role="img" aria-label="${esc(globeLabel(bbrk))}"></canvas><figcaption class="dim">${esc(sponCaption(bbrk))}</figcaption></figure>
   </section>`;
 }
 
@@ -146,27 +147,34 @@ export function pointAtStrip(doc = globalThis.document, win = globalThis.window)
     tag.style.left = `${Math.round(left)}px`;
     tag.style.top = `${Math.round(box.top - (tag.offsetHeight || 0) - 4)}px`;
   };
-  // On a phone the page scrolls and the label would sit on the buttons: there it shows
-  // only while the page is scrolled to the bottom, where the screen keeps room for it
-  // (sponsor.css).
-  const phone = () => Boolean(win?.matchMedia?.(PHONE_MQ)?.matches);
+  // When the page scrolls (a phone; a desktop too, down to the big globe), the label would
+  // sit on the buttons or the globe: then it shows only while the page is scrolled to the
+  // bottom, where the screen keeps room for it (sponsor.css). A page that does not scroll
+  // shows it all the time. The page is the document on a phone, #screen on a desktop.
   const show = () => {
-    const el = doc.scrollingElement || doc.documentElement;
-    const atEnd = !el || el.scrollTop + (win?.innerHeight || 0) >= el.scrollHeight - 4;
-    tag.hidden = phone() && !atEnd;
+    const boxes = [doc.scrollingElement || doc.documentElement, doc.getElementById?.('screen')]
+      .filter((el, i, a) => el && typeof el.scrollHeight === 'number' && a.indexOf(el) === i)
+      .map((el) => ({ el, view: el.clientHeight || win?.innerHeight || 0 }))
+      .filter(({ el, view }) => el.scrollHeight - view > 4);
+    const hide = boxes.some(({ el, view }) => el.scrollTop + view < el.scrollHeight - 4);
+    if (tag.hidden !== hide) tag.hidden = hide;
   };
   const onScroll = () => show();
   const onResize = () => { place(); show(); };
   place();
   show();
   win?.addEventListener?.('resize', onResize);
-  win?.addEventListener?.('scroll', onScroll, { passive: true });
-  return () => {
+  // Capture: #screen's own scroll does not bubble to the window.
+  win?.addEventListener?.('scroll', onScroll, { passive: true, capture: true });
+  // stop.refresh(): again after the screen's own content changes height (sponsor render).
+  const stop = () => {
     win?.removeEventListener?.('resize', onResize);
-    win?.removeEventListener?.('scroll', onScroll);
+    win?.removeEventListener?.('scroll', onScroll, { capture: true });
     tag.remove();
     real.classList.remove('is-spot');
   };
+  stop.refresh = show;
+  return stop;
 }
 
 export function render(el, cmd, ctx) {
@@ -183,6 +191,7 @@ export function render(el, cmd, ctx) {
     if (caption) caption.textContent = sponCaption(bbrk);
     canvas?.setAttribute('aria-label', globeLabel(bbrk));
     globe?.update(bbrk?.audience?.globe || null, bbrk?.audience?.live ?? null);
+    unpoint.refresh?.(); // the new numbers may change the page's height
   };
   // After the sponsor config arrives (the status bar paints its strip from the same
   // request first), point at the real strip.

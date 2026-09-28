@@ -14,7 +14,7 @@ import { parseCommand } from '../public/app.js';
 import { stoneYears, flowersFor, respectsText, onThisDayLine, ytEmbed, periodText, sectionOf, SECTIONS, siteCaption, timelinePoints, cliffOf, MAX_FLOWERS, GRAVEYARD_VIEWS } from '../public/nosuch.js';
 import {
   stoneHtml, stonePageHtml, peakLineHtml, videoHtml, flowersHtml, layout, stepStone, zombiesHtml, graveyardTable, onThisDayHtml, sourcesHtml, pageSources,
-  sceneKeys, respectStatus, boxes, signBoxes, clashes, stageFor, tipText, siteHtml, timelineHtml,
+  sceneKeys, respectStatus, boxes, signBoxes, clashes, stageFor, STONE_W, AREAS, BAND, tipText, siteHtml, timelineHtml,
 } from '../public/screens/graveyard.js';
 
 const FIX = fileURLToPath(new URL('./fixtures/graveyard-v2.json', import.meta.url));
@@ -274,7 +274,10 @@ test('cemetery v3: every stone in one section, back to front; the mapping', () =
 test('cemetery v3: no overlaps and nothing cut off at 1536x730 and 1280x720 (and wider, and shorter)', () => {
   const real = loadGraveyardData().stones;
   // The scene inside the panel at those windows (the yard's own size, measured in the browser).
-  for (const [w, h] of [[1428, 560], [1172, 550], [1428, 760], [1000, 420]]) {
+  // Also the yard at common windows (measured in the browser): 1366x650 (a 1366x768 laptop
+  // less the browser bar), 1920x700, 1536x600, 1280x1024 and 1024x768.
+  for (const [w, h] of [[1428, 560], [1172, 550], [1428, 760], [1000, 420], [1394, 730], [1234, 550], [1428, 910], [1428, 952],
+    [1320, 480], [1418, 530], [1418, 430], [1234, 823], [998, 598]]) {
     for (const counts of [{}, Object.fromEntries(real.map((e) => [e.ticker, 1e6]))]) {
       const list = [...boxes(layout(real, { counts }), w, h), ...signBoxes(w, h)];
       assert.deepEqual(clashes(list, w, h), [], `${w}x${h}`);
@@ -282,6 +285,66 @@ test('cemetery v3: no overlaps and nothing cut off at 1536x730 and 1280x720 (and
   }
   const st = stageFor(1428, 560);
   assert.ok(st.sw >= 1428 && st.sh >= 560 && st.top <= 0 && st.top >= 560 - st.sh, 'the painting covers the scene');
+  // Too wide and short for all four rows: narrower than the scene, never cut through a row.
+  const low = stageFor(1418, 430);
+  assert.ok(low.sw < 1418 && low.left > 0 && low.top <= 0 && low.top >= 430 - low.sh);
+  assert.ok(low.top + (BAND[0] / 100) * low.sh >= 0 && low.top + (BAND[1] / 100) * low.sh <= 430 + 1e-9, 'the whole band shows');
+  const css = readFileSync(new URL('../public/screens/graveyard.css', import.meta.url), 'utf8');
+  assert.match(css, /\.gv-yard \{[^}]*height: min\([^;]*calc\(100cqw \/ 1\.5\)\);/, 'never taller than w / 1.5');
+});
+
+test('cemetery v3: bigger stones, a gentle perspective, readable tickers', () => {
+  const real = loadGraveyardData().stones;
+  const spots = layout(real);
+  const min = (sec) => Math.min(...spots.filter((sp) => sp.sec === sec).map((sp) => sp.size));
+  // At 1440x900 the painting is 1394 px wide: the ticker (27cqw) on the smallest stone of
+  // a terrace is 13 px or more; on the small side plot 12 px or more (the CSS floor).
+  for (const sec of ['DOTCOM', 'CRISIS', 'RECENT', 'BOUGHT']) {
+    const px = (STONE_W / 100) * 1394 * min(sec);
+    assert.ok(px * 0.27 >= (sec === 'BOUGHT' ? 12 : 13), `${sec}: ${px.toFixed(0)} px wide`);
+  }
+  assert.ok(min('DOTCOM') >= 0.75 && min('RECENT') <= 1.2, 'gentle, not extreme');
+  const css = readFileSync(new URL('../public/screens/graveyard.css', import.meta.url), 'utf8');
+  assert.match(css, /\.gv-stone\.is-small \.gv-tk \{ font-size: max\(12px, \d+cqw\); \}/, 'a font floor');
+});
+
+test('cemetery v3: an 8th bought-out stone and a long RECENT row still fit, no stacking', () => {
+  const real = loadGraveyardData().stones;
+  const bought = real.find((e) => sectionOf(e) === 'BOUGHT');
+  const recent = real.find((e) => sectionOf(e) === 'RECENT');
+  const more = (base, n, tag, from) => Array.from({ length: n }, (_, i) => ({ ...base, ticker: `${tag}${i}`, date: `${from + i}-01-02` }));
+  for (const extra of [1, 2]) {
+    const list = [...real, ...more(bought, extra, 'BO', 2014)];
+    const spots = layout(list);
+    const at = spots.filter((sp) => sp.sec === 'BOUGHT').map((sp) => `${sp.x},${sp.y}`);
+    assert.equal(new Set(at).size, at.length, `${extra} more: every bought-out stone has its own place`);
+    for (const [w, h] of [[1428, 560], [1394, 730], [1000, 420]]) {
+      assert.deepEqual(clashes([...boxes(spots, w, h), ...signBoxes(w, h)], w, h), [], `${extra} more at ${w}x${h}`);
+    }
+  }
+  // Many more on both: the wrapped line starts past the side plot's last stone.
+  const both = [...real, ...more(bought, 3, 'BX', 2014), ...more(recent, 5, 'RX', 2016)];
+  const bs = layout(both);
+  assert.ok(bs.filter((sp) => sp.sec === 'BOUGHT').length >= 10 && bs.filter((sp) => sp.sec === 'RECENT').length >= 18);
+  const lastBought = Math.max(...bs.filter((sp) => sp.sec === 'BOUGHT').map((sp) => sp.x));
+  const back = bs.filter((sp) => sp.sec === 'RECENT' && sp.y === AREAS.RECENT.wrap.y);
+  assert.ok(back.length && Math.min(...back.map((sp) => sp.x)) > lastBought + AREAS.BOUGHT.step, 'past the side plot');
+  for (const counts of [{}, Object.fromEntries(both.map((e) => [e.ticker, 1e6]))]) {
+    for (const [w, h] of [[1428, 560], [1394, 730], [1320, 480], [998, 598], [1000, 420]]) {
+      assert.deepEqual(clashes([...boxes(layout(both, { counts }), w, h), ...signBoxes(w, h)], w, h), [], `both at ${w}x${h}`);
+    }
+  }
+  // Six more recent deaths: two lines on the front terrace, not smaller stones.
+  const long = [...real, ...more(recent, 6, 'RC', 2016)];
+  const spots = layout(long);
+  const rec = spots.filter((sp) => sp.sec === 'RECENT');
+  assert.equal(new Set(rec.map((sp) => sp.y)).size, 2, 'two lines');
+  assert.ok(Math.min(...rec.map((sp) => sp.size)) >= AREAS.RECENT.scale - 1e-9, 'no shrinking');
+  for (const counts of [{}, Object.fromEntries(long.map((e) => [e.ticker, 1e6]))]) {
+    for (const [w, h] of [[1428, 560], [1394, 730], [1172, 550], [1000, 420], [1428, 952]]) {
+      assert.deepEqual(clashes([...boxes(layout(long, { counts }), w, h), ...signBoxes(w, h)], w, h), [], `wrapped at ${w}x${h}`);
+    }
+  }
 });
 
 test('cemetery v3: arrows walk rows back to front, the label says name, year and respects', () => {

@@ -210,7 +210,8 @@ const words = (h) => h.replace(/<[^>]+aria-hidden="true"[^>]*>[^<]*<\/span>/g, '
 
 test('SPONSOR screen: YOUR AD HERE with the globe, one live line, email and BBRK; about 45 words', () => {
   const page = sponsorHtml({ has: () => true, bbrk: FULL, cfg: cleanSponsors({ house: house(3) }) });
-  assert.match(page, /<div class="spon-top"><h2 class="spon-hero">YOUR AD HERE<\/h2>\s*<figure class="spon-globe"><canvas role="img" aria-label="Globe of visitors by country, last 7 days: US 45, JP 7, other 4\."><\/canvas><figcaption class="dim">7D by place · 7 live now<\/figcaption><\/figure><\/div>/, 'the globe beside the hero');
+  assert.match(page, /<section class="spon-page" aria-label="Sponsor">\s*<h2 class="spon-hero">YOUR AD HERE<\/h2>\s*<div id="spon-proof"/, 'YOUR AD HERE on its own row');
+  assert.match(page, /<p class="spon-fine">[^<]*<\/p>\s*<figure class="spon-globe"><canvas role="img" aria-label="Globe of visitors by country, last 7 days: US 45, JP 7, other 4\."><\/canvas><figcaption class="dim">7D by place · 7 live now<\/figcaption><\/figure>\s*<\/section>/, 'the globe under the fine print, its caption under it');
   assert.equal(HERO, 'YOUR AD HERE');
   assert.match(page, /<p class="spon-live"><span class="spon-part">243 page views this week<\/span><span class="spon-dot" aria-hidden="true"> · <\/span><span class="spon-part">8 min visits<\/span>/);
   assert.doesNotMatch(page, /here now/, 'right now is in the globe caption, not twice');
@@ -240,8 +241,7 @@ test('SPONSOR screen: YOUR AD HERE with the globe, one live line, email and BBRK
   assert.match(empty, /Your line: -- views a week/);
   assert.match(empty, /<figcaption class="dim">7D by place<\/figcaption>/);
   const css = readFileSync('public/screens/sponsor.css', 'utf8');
-  assert.match(css, /\.spon-top \{ display: flex; align-items: center;/);
-  assert.match(css, /@media \(max-width: 639px\) \{[\s\S]*\.spon-top \{ display: contents; \}[\s\S]*\.spon-globe \{ order: 3;/, 'under the live line on a phone (test/globe.test.js has the rest)');
+  assert.match(css, /@media \(max-width: 639px\) \{[\s\S]*\.spon-globe \{ align-self: stretch;/, 'as wide as the page on a phone (test/globe.test.js has the rest)');
 });
 
 test('SPONSOR live line: page views lead; -- for anything missing; short country names; caption live above 0 only', () => {
@@ -347,7 +347,24 @@ test('SPONSOR open: the real strip is outlined with a label above it until the s
   assert.ok(!cls.has('is-spot'));
   assert.ok(tag.gone);
   assert.equal(ls.resize, undefined);
-  assert.equal(tag.hidden, false, 'wide screen: always shown');
+  assert.equal(tag.hidden, false, 'a page that does not scroll: always shown');
+  // A desktop whose #screen scrolls down to the big globe: only while scrolled to the bottom.
+  const scr = { scrollTop: 0, scrollHeight: 1500, clientHeight: 770 };
+  const ddoc = { ...doc, getElementById: (id) => (id === 'screen' ? scr : doc.getElementById(id)) };
+  const dls = {};
+  const dwin = { innerWidth: 1440, innerHeight: 900, addEventListener: (t, f) => { dls[t] = f; }, removeEventListener: (t) => { delete dls[t]; } };
+  const dstop = pointAtStrip(ddoc, dwin);
+  assert.equal(tag.hidden, true, 'at the top: hidden, it would sit on the globe');
+  scr.scrollHeight = 700; // the screen's content got shorter: no scroll, shown
+  dstop.refresh();
+  assert.equal(tag.hidden, false, 'refresh() after the numbers change');
+  scr.scrollHeight = 1500;
+  dstop.refresh();
+  scr.scrollTop = 1500 - 770;
+  dls.scroll();
+  assert.equal(tag.hidden, false, 'at the bottom: shown');
+  dstop();
+  assert.equal(dls.scroll, undefined);
   // A phone: only while the page is scrolled to the bottom.
   const se = { scrollTop: 0, scrollHeight: 1600 };
   const pdoc = { ...doc, scrollingElement: se };
