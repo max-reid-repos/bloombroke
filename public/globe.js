@@ -11,7 +11,8 @@
 // Drag it round (mouse or touch; on a phone a mostly vertical drag still scrolls the
 // page), with a little momentum after letting go; it turns by itself again after
 // IDLE_MS (at 1x). Arrow keys turn it while it has focus. Zoom from 1x to ZOOM_MAX:
-// the wheel (or a trackpad pinch) over the globe, toward the pointer; two fingers on it
+// the wheel (or a trackpad pinch) with the pointer resting on the globe, toward the
+// pointer (the page's scroll otherwise: see onWheel); two fingers on it
 // on a phone; a double click or double tap; the + and - buttons (and keys); 1x goes
 // back. Zoomed in, it is a round lens: the canvas stays the same size, the land gets
 // denser (from the WORLDMAP outlines, public/geo/world-110m.json) and the figures a
@@ -44,6 +45,9 @@ export const ZOOM_MAX = 6;
 export const ZOOM_STEP = 2; // a button, a key, a double click
 export const DOUBLE_MS = 350; // two taps this close together are a double tap
 export const SPRITE_CAP = 240; // figures drawn at most, in all
+export const LOD_WAIT_MS = 150; // finer land is made this long after zooming stops, never inside a frame
+export const WORLD_RETRY_MS = 30_000; // the map outlines failed: one more try after this long
+export const SCROLL_QUIET_MS = 600; // the page scrolled this recently: the wheel is still scrolling it
 export const PLACE_Z1 = 9; // figures a place shows at 1x (times the zoom squared); the rest is its +N
 
 const RAD = Math.PI / 180;
@@ -280,11 +284,13 @@ export function zoomAt(view, next, dx = 0, dy = 0, R = 0) {
 }
 
 // A wheel event -> the zoom factor: a mouse wheel notch (100 px) about 1.2x; a trackpad
-// pinch (ctrl + wheel, small steps) quicker per pixel.
+// pinch (ctrl + wheel, small steps) quicker per pixel, but at most 1.25x an event.
 export function wheelFactor(e) {
   const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
   const k = e.ctrlKey ? 0.01 : 0.0018;
-  return Math.exp(-Math.max(-300, Math.min(300, (e.deltaY || 0) * unit)) * k);
+  const f = Math.exp(-Math.max(-300, Math.min(300, (e.deltaY || 0) * unit)) * k);
+  // A mouse notch with ctrl held is not a 2.7x jump: at most 1.25x an event.
+  return e.ctrlKey ? Math.max(1 / 1.25, Math.min(1.25, f)) : f;
 }
 
 // Is x, y (px on the canvas) on the globe? geom: { c, R }.
@@ -360,6 +366,13 @@ export function layoutSprites(places, { pitch, size }) {
     }
     return { ...pl, sprites, tag, box: sprites.length ? [left, top, right, bottom] : [pl.x, pl.y, pl.x, pl.y] };
   });
+}
+
+// Does a size x size square at left, top reach inside the lens (centre c, c; radius R)?
+export function inLens(left, top, size, c, R) {
+  const dx = Math.max(left - c, 0, c - (left + size));
+  const dy = Math.max(top - c, 0, c - (top + size));
+  return Math.hypot(dx, dy) < R;
 }
 
 // The place whose figure is under a point (within slop px), else the nearest place
@@ -478,25 +491,49 @@ export function pathRings(d) {
   return out;
 }
 
+// The map outlines as edges, parsed once per map: per country its edges [x1, y1, x2, y2,
+// ...] (map units) and its top and bottom, so a row skips the countries it misses.
+const outlines = new WeakMap();
+function outlinesOf(world) {
+  let o = outlines.get(world);
+  if (!o) {
+    o = (world?.countries || []).map((c) => {
+      const e = [];
+      let top = Infinity;
+      let bottom = -Infinity;
+      for (const r of pathRings(c.d)) {
+        for (let i = 0, j = r.length - 1; i < r.length; j = i, i += 1) {
+          e.push(r[j][0], r[j][1], r[i][0], r[i][1]);
+          top = Math.min(top, r[i][1]);
+          bottom = Math.max(bottom, r[i][1]);
+        }
+      }
+      return { e: Float64Array.from(e), top, bottom };
+    });
+    outlines.set(world, o);
+  }
+  return o;
+}
+
 // Land dots every step degrees (and about step degrees apart along each parallel) from
 // the WORLDMAP outlines (Robinson: a parallel is a straight line across the map, so each
 // row is the stretches between where it crosses a country's edges). [[lon, lat], ...]
 export function worldDots(world, step) {
-  const shapes = (world?.countries || []).map((c) => pathRings(c.d));
+  const shapes = outlinesOf(world);
   const out = [];
+  const xs = [];
   for (let lat = LAT_BOTTOM + step / 2; lat < LAT_TOP; lat += step) {
     const [x0, y] = project(0, lat);
     const perDeg = project(1, lat)[0] - x0;
     const along = step / Math.max(0.2, Math.cos(lat * RAD));
     const first = -180 + along / 2;
-    for (const rs of shapes) {
-      const xs = [];
-      for (const r of rs) {
-        for (let i = 0, j = r.length - 1; i < r.length; j = i, i += 1) {
-          const [xi, yi] = r[i];
-          const [xj, yj] = r[j];
-          if ((yi > y) !== (yj > y)) xs.push(xi + ((xj - xi) * (y - yi)) / (yj - yi));
-        }
+    for (const { e, top, bottom } of shapes) {
+      if (y < top || y > bottom) continue;
+      xs.length = 0;
+      for (let i = 0; i < e.length; i += 4) {
+        const yi = e[i + 3];
+        const yj = e[i + 1];
+        if ((yi > y) !== (yj > y)) xs.push(e[i + 2] + ((e[i] - e[i + 2]) * (y - yi)) / (yj - yi));
       }
       xs.sort((a, b) => a - b);
       for (let k = 0; k + 1 < xs.length; k += 2) {
@@ -511,6 +548,7 @@ export function worldDots(world, step) {
 
 // The land at a detail level (2 to 4), made once per level per page from the map.
 const lods = new WeakMap();
+export const lodReady = (world, level) => Boolean(world && lods.get(world)?.has(level));
 export function lodLand(world, level) {
   let byLevel = lods.get(world);
   if (!byLevel) { byLevel = new Map(); lods.set(world, byLevel); }
@@ -571,10 +609,47 @@ export function mountGlobe(canvas, geo, globe = [], {
   const land1 = landOf(geo);
   let worldMap = null;
   let wantedWorld = false;
+  let worldTries = 0;
+  let worldRetry = 0;
+  let lodTimer = 0;
+  let drawnLevel = 1;
+  const later = (fn, ms) => (win.setTimeout || globalThis.setTimeout)(fn, ms);
+  const cancel = (id) => { if (id) (win.clearTimeout || globalThis.clearTimeout)(id); };
+  // The map outlines, once someone zooms in. A failed load is tried once more after
+  // WORLD_RETRY_MS, then the land stays the 1x land.
   const needWorld = () => {
-    if (wantedWorld || typeof getWorld !== 'function') return;
+    if (wantedWorld || worldMap || stopped || typeof getWorld !== 'function') return;
     wantedWorld = true;
-    Promise.resolve().then(() => getWorld()).then((w) => { if (stopped) return; worldMap = w; redraw(); }).catch(() => { wantedWorld = false; });
+    worldTries += 1;
+    Promise.resolve().then(() => getWorld()).then((w) => {
+      if (stopped) return;
+      worldMap = w;
+      wantLevel();
+    }).catch(() => {
+      if (stopped || worldTries >= 2) return;
+      worldRetry = later(() => { worldRetry = 0; wantedWorld = false; if (levelFor(view.zoom) > 1) needWorld(); }, WORLD_RETRY_MS);
+    });
+  };
+  // The land this zoom wants, made LOD_WAIT_MS after the zooming stops (each zoom starts
+  // the wait again), so no frame ever waits for it; until then the best one made so far.
+  function wantLevel() {
+    cancel(lodTimer);
+    lodTimer = 0;
+    if (levelFor(view.zoom) <= 1) return;
+    if (!worldMap) { needWorld(); return; }
+    if (lodReady(worldMap, levelFor(view.zoom))) { redraw(); return; }
+    lodTimer = later(() => {
+      lodTimer = 0;
+      if (stopped || !worldMap) return;
+      lodLand(worldMap, levelFor(view.zoom));
+      redraw();
+    }, LOD_WAIT_MS);
+  }
+  const landFor = (level) => {
+    if (level <= 1 || !worldMap) return [land1, 1];
+    for (let l = level; l >= 2; l--) if (lodReady(worldMap, l)) return [lodLand(worldMap, l), l];
+    for (let l = level + 1; l <= 4; l++) if (lodReady(worldMap, l)) return [lodLand(worldMap, l), l];
+    return [land1, 1];
   };
   // Each figure, made once a day: seed -> { hex, color }.
   const looks = new Map();
@@ -678,9 +753,8 @@ export function mountGlobe(canvas, geo, globe = [], {
     // Land, in three passes (day, dusk, night) to keep the canvas state changes few. Each
     // dot a whole number of device pixels on the pixel grid, so a big globe stays crisp.
     // Zoomed in: finer land (once the map is in), and only the squares in the lens.
-    const level = levelFor(zoom);
-    if (level > 1 && !worldMap) needWorld();
-    const L = level > 1 && worldMap ? lodLand(worldMap, level) : land1;
+    const [L, used] = landFor(levelFor(zoom));
+    drawnLevel = used;
     relight(L, sun);
     // Dot size, CSS px: at 1x as before; zoomed in, about half the gap between dots, so
     // the coasts read.
@@ -795,7 +869,7 @@ export function mountGlobe(canvas, geo, globe = [], {
     ctx2.textBaseline = 'middle';
     for (const p of laid) {
       const more = p.item.n - p.sprites.length;
-      if (more <= 0 || !p.tag) continue;
+      if (more <= 0 || !p.tag || !inLens(p.tag[0], p.tag[1] - 7, 14, c, R)) continue;
       const text = `+${count(more)}`;
       const x = Math.round(p.tag[0]) + 2;
       const y = Math.round(p.tag[1]);
@@ -805,11 +879,15 @@ export function mountGlobe(canvas, geo, globe = [], {
       ctx2.fillText(text, x, y + 0.5);
     }
     ctx2.restore();
-    placed = laid.map((p) => ({
-      item: p.item, x: p.x, y: p.y, size,
-      r: Math.max(size / 2, Math.hypot(Math.max(p.x - p.box[0], p.box[2] - p.x), Math.max(p.y - p.box[1], p.box[3] - p.y))),
-      sprites: p.sprites, shown: p.sprites.length,
-    }));
+    // What hover and tap can find: only figures at least partly inside the lens.
+    placed = [];
+    for (const p of laid) {
+      const sprites = p.sprites.filter(([sx, sy]) => inLens(sx, sy, size, c, R));
+      if (!sprites.length && Math.hypot(p.x - c, p.y - c) > R) continue;
+      let r = size / 2;
+      for (const [sx, sy] of sprites) r = Math.max(r, Math.hypot(Math.max(p.x - sx, sx + size - p.x), Math.max(p.y - sy, sy + size - p.y)));
+      placed.push({ item: p.item, x: p.x, y: p.y, size, r, sprites, shown: p.sprites.length });
+    }
   }
 
   function moving(t) {
@@ -862,6 +940,7 @@ export function mountGlobe(canvas, geo, globe = [], {
     touched();
     syncButtons();
     redraw();
+    wantLevel();
   }
 
   // ---- drag, momentum, pinch, wheel, hover and tap ----
@@ -966,13 +1045,21 @@ export function mountGlobe(canvas, geo, globe = [], {
     e.preventDefault?.();
     setZoom(view.zoom * ZOOM_STEP, x - geom.c, y - geom.c);
   }
-  // The wheel zooms only over the globe (the page scrolls anywhere else, and at 1x a
-  // scroll down is the page's too). ctrl + wheel is a trackpad pinch.
+  // The wheel zooms with the pointer resting on the globe. The page scrolls instead: off
+  // the globe; for a sideways wheel or a back swipe (no deltaY); at 1x zooming out or at
+  // ZOOM_MAX zooming in; and while the page is scrolling (it scrolled in the last
+  // SCROLL_QUIET_MS: the globe slid under a pointer that was scrolling the page).
+  // ctrl + wheel is a trackpad pinch: always the globe's inside the circle, never the
+  // page zooming.
   function onWheel(e) {
+    if (!e.deltaY) return;
     const [x, y] = at(e);
     if (!overGlobe(x, y, geom)) return;
     const f = wheelFactor(e);
-    if (!e.ctrlKey && f < 1 && view.zoom <= ZOOM_MIN) return;
+    if (!e.ctrlKey) {
+      if (clock() - lastScroll < SCROLL_QUIET_MS) return;
+      if ((f < 1 && view.zoom <= ZOOM_MIN + 1e-9) || (f > 1 && view.zoom >= ZOOM_MAX - 1e-9)) return;
+    }
     e.preventDefault();
     if (tipItem) showTip(null);
     setZoom(view.zoom * f, x - geom.c, y - geom.c);
@@ -1006,6 +1093,15 @@ export function mountGlobe(canvas, geo, globe = [], {
     ['keydown', onKey], ['dblclick', onDbl], ['wheel', onWheel, { passive: false }],
   ];
   for (const [type, fn, opts] of handlers) canvas.addEventListener?.(type, fn, opts);
+  // The boxes that scroll the page around the globe (the screen, a panel) and the window.
+  let lastScroll = -Infinity;
+  const onScroll = () => { lastScroll = clock(); };
+  const scrollers = [win];
+  for (let a = canvas.parentElement; a && a !== doc.documentElement && a !== doc.body; a = a.parentElement) {
+    const oy = win.getComputedStyle?.(a)?.overflowY;
+    if (oy && /auto|scroll/.test(oy)) scrollers.push(a);
+  }
+  for (const el of scrollers) el.addEventListener?.('scroll', onScroll, { passive: true });
 
   // ---- only while on screen and the tab is visible ----
   const onVis = () => sync();
@@ -1037,6 +1133,9 @@ export function mountGlobe(canvas, geo, globe = [], {
       io?.disconnect();
       for (const [type, fn, opts] of handlers) canvas.removeEventListener?.(type, fn, opts);
       for (const [b, fn] of buttons) b.removeEventListener?.('click', fn);
+      for (const el of scrollers) el.removeEventListener?.('scroll', onScroll, { passive: true });
+      cancel(lodTimer);
+      cancel(worldRetry);
       tip?.remove?.();
       zoomBox?.remove?.();
     },
@@ -1047,6 +1146,6 @@ export function mountGlobe(canvas, geo, globe = [], {
     // For the tests: the places as last drawn, and how long that frame took (ms).
     get placed() { return placed.slice(); },
     get frameMs() { return frameMs; },
-    get level() { return levelFor(view.zoom) > 1 && worldMap ? levelFor(view.zoom) : 1; },
+    get level() { return drawnLevel; },
   };
 }

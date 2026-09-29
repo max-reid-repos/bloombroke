@@ -11,7 +11,7 @@ import {
 } from '../public/globe-sprites.js';
 import {
   mountGlobe, clampZoom, zoomAt, unortho, ortho, wheelFactor, overGlobe, levelFor, spritePx, perPlace, layoutSprites,
-  pickSprite, lodLand, landOf, worldDots, wrapLon, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, SPRITE_CAP, PLACE_Z1, TILT, IDLE_MS,
+  pickSprite, lodLand, lodReady, inLens, LOD_WAIT_MS, WORLD_RETRY_MS, landOf, worldDots, wrapLon, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, SPRITE_CAP, PLACE_Z1, TILT, IDLE_MS,
 } from '../public/globe.js';
 
 const WORLD = JSON.parse(readFileSync('public/geo/world-110m.json', 'utf8'));
@@ -234,9 +234,12 @@ function el(tag) {
     click() { listeners.click?.({}); },
   };
 }
-function page({ reduceMotion = false, world = WORLD } = {}) {
+function page({ reduceMotion = false, world = WORLD, scroller = null } = {}) {
   let t = 0;
   let frames = [];
+  let timers = [];
+  let timerId = 0;
+  const winListeners = {};
   const listeners = {};
   const docListeners = {};
   const draws = { rect: 0, text: [] };
@@ -246,6 +249,7 @@ function page({ reduceMotion = false, world = WORLD } = {}) {
   });
   const fig = el('figure');
   fig.clientWidth = 300;
+  if (scroller) fig.parentElement = scroller;
   const canvas = {
     width: 0, height: 0, offsetLeft: 0, offsetTop: 0, parentElement: fig, attrs: {},
     getContext: () => ctx,
@@ -256,10 +260,14 @@ function page({ reduceMotion = false, world = WORLD } = {}) {
     setPointerCapture() {},
   };
   const win = {
-    getComputedStyle: () => ({ getPropertyValue: () => '' }),
+    getComputedStyle: (e) => ({ getPropertyValue: () => '', overflowY: e?.overflowY }),
     devicePixelRatio: 2,
     requestAnimationFrame: (f) => { frames.push(f); return frames.length; },
     cancelAnimationFrame: () => { frames = []; },
+    setTimeout: (f, ms) => { timerId += 1; timers.push({ at: t + ms, f, id: timerId }); return timerId; },
+    clearTimeout: (id) => { timers = timers.filter((x) => x.id !== id); },
+    addEventListener: (type, f, opts) => { winListeners[type] = f; winListeners[`${type}:opts`] = opts; },
+    removeEventListener: (type) => { delete winListeners[type]; },
   };
   const doc = {
     hidden: false, activeElement: null,
@@ -274,6 +282,9 @@ function page({ reduceMotion = false, world = WORLD } = {}) {
       const f = frames;
       frames = [];
       for (const fn of f) fn(t);
+      const due = timers.filter((x) => x.at <= t);
+      timers = timers.filter((x) => x.at > t);
+      for (const x of due) x.f();
     }
   };
   const ev = (type, o = {}) => {
@@ -284,10 +295,11 @@ function page({ reduceMotion = false, world = WORLD } = {}) {
   };
   let worldCalls = 0;
   return {
-    canvas, fig, win, doc, draws, listeners, docListeners, run, ev,
+    canvas, fig, win, doc, draws, listeners, docListeners, winListeners, run, ev,
+    get timers() { return timers.length; },
     get t() { return t; },
     get worldCalls() { return worldCalls; },
-    opts: { reduceMotion, win, doc, now: () => t, world: () => { worldCalls += 1; return Promise.resolve(world); }, day: '2026-09-29' },
+    opts: { reduceMotion, win, doc, now: () => t, world: () => { worldCalls += 1; return typeof world === 'function' ? world() : Promise.resolve(world); }, day: '2026-09-29' },
   };
 }
 const FIX = {
@@ -336,33 +348,95 @@ test('mounted: 240 figures at most, the biggest places show +N', () => {
   g.stop();
 });
 
-test('wheel: zooms only over the globe, toward the pointer; the page scrolls elsewhere', () => {
+test('wheel: a pointer resting on the globe zooms, toward itself; the page scrolls elsewhere', () => {
   const p = page();
   const g = mountGlobe(p.canvas, GEO, FIX, p.opts);
   assert.deepEqual(p.listeners['wheel:opts'], { passive: false }, 'able to stop the page scrolling');
+  p.run(1000);
   // A corner of the canvas is not the globe: the page scrolls.
   let r = p.ev('wheel', { clientX: 3, clientY: 3, deltaY: -100 });
   assert.equal(r.prevented, false);
   assert.equal(g.view.zoom, 1);
-  // Over the globe: zoom in, and no page scroll.
+  // Resting on the globe, no click needed: zoom in, and no page scroll.
   r = p.ev('wheel', { clientX: 150, clientY: 150, deltaY: -100 });
   assert.equal(r.prevented, true);
   assert.ok(g.view.zoom > 1.1);
-  // At 1x a scroll down is the page's.
+  // Toward the pointer: the place under it stays put.
   const q = page();
   const h = mountGlobe(q.canvas, GEO, FIX, q.opts);
-  assert.equal(q.ev('wheel', { clientX: 150, clientY: 150, deltaY: 100 }).prevented, false);
-  assert.equal(q.ev('wheel', { clientX: 150, clientY: 150, deltaY: 10, ctrlKey: true }).prevented, true, 'a trackpad pinch never zooms the page');
-  // Toward the pointer: the place under it stays put.
+  q.run(1000);
   const before = unortho((200 - 150) / (144), (120 - 150) / 144, h.view.lon0, h.view.tilt);
   for (let i = 0; i < 5; i++) q.ev('wheel', { clientX: 200, clientY: 120, deltaY: -100 });
   const v = h.view;
   const [x, y] = ortho(before[0], before[1], v.lon0, v.tilt);
   assert.ok(Math.hypot(150 + x * 144 * v.zoom - 200, 150 + y * 144 * v.zoom - 120) < 1, 'under the pointer');
-  for (let i = 0; i < 40; i++) q.ev('wheel', { clientX: 150, clientY: 150, deltaY: -300 });
-  assert.equal(h.view.zoom, ZOOM_MAX, 'never past 6x');
   g.stop();
   h.stop();
+});
+
+test('wheel (a): a sideways wheel or a back swipe (no deltaY) is always the page\'s', () => {
+  const p = page();
+  const g = mountGlobe(p.canvas, GEO, FIX, p.opts);
+  p.run(1000);
+  g.zoom(3);
+  for (const e of [{ deltaY: 0, deltaX: -120 }, { deltaY: 0, deltaX: 40, ctrlKey: true }, { deltaX: 80 }]) {
+    const r = p.ev('wheel', { clientX: 150, clientY: 150, ...e });
+    assert.equal(r.prevented, false, JSON.stringify(e));
+  }
+  assert.equal(g.view.zoom, 3);
+  g.stop();
+});
+
+test('wheel (b): at a limit in the wheel\'s direction the page scrolls: 1x zooming out, 6x zooming in', () => {
+  const p = page();
+  const g = mountGlobe(p.canvas, GEO, FIX, p.opts);
+  p.run(1000);
+  assert.equal(p.ev('wheel', { clientX: 150, clientY: 150, deltaY: 100 }).prevented, false, '1x, scrolling down');
+  assert.equal(g.view.zoom, 1);
+  for (let i = 0; i < 40; i++) p.ev('wheel', { clientX: 150, clientY: 150, deltaY: -300 });
+  assert.equal(g.view.zoom, ZOOM_MAX, 'never past 6x');
+  assert.equal(p.ev('wheel', { clientX: 150, clientY: 150, deltaY: -100 }).prevented, false, '6x, scrolling up');
+  assert.equal(p.ev('wheel', { clientX: 150, clientY: 150, deltaY: 100 }).prevented, true, '6x, scrolling down zooms out');
+  assert.ok(g.view.zoom < ZOOM_MAX);
+  // ctrl + wheel (a trackpad pinch) is the globe's inside the circle, even at a limit:
+  // never the page zooming. A mouse notch with ctrl is at most 1.25x.
+  g.zoom(1);
+  const r = p.ev('wheel', { clientX: 150, clientY: 150, deltaY: 10, ctrlKey: true });
+  assert.equal(r.prevented, true);
+  assert.equal(g.view.zoom, 1);
+  p.ev('wheel', { clientX: 150, clientY: 150, deltaY: -100, ctrlKey: true });
+  assert.ok(Math.abs(g.view.zoom - 1.25) < 1e-9, `${g.view.zoom}`);
+  assert.equal(wheelFactor({ deltaY: -300, ctrlKey: true }), 1.25);
+  assert.equal(wheelFactor({ deltaY: 300, ctrlKey: true }), 1 / 1.25);
+  assert.ok(wheelFactor({ deltaY: -3, ctrlKey: true }) > 1.02, 'a real pinch step is untouched');
+  assert.equal(p.ev('wheel', { clientX: 3, clientY: 3, deltaY: -10, ctrlKey: true }).prevented, false, 'outside the circle: not ours');
+  g.stop();
+});
+
+test('wheel (c): while the page is scrolling (the globe slid under the pointer), the wheel keeps scrolling it', () => {
+  const box = { overflowY: 'auto', parentElement: null, ...el('div') };
+  const p = page({ scroller: box });
+  const g = mountGlobe(p.canvas, GEO, FIX, p.opts);
+  assert.equal(typeof box.listeners.scroll, 'function', 'listens to the box that scrolls');
+  assert.equal(typeof p.winListeners.scroll, 'function', 'and the window');
+  assert.deepEqual(p.winListeners['scroll:opts'], { passive: true });
+  p.run(1000);
+  box.listeners.scroll();
+  p.run(100);
+  let r = p.ev('wheel', { clientX: 150, clientY: 150, deltaY: -100 });
+  assert.equal(r.prevented, false, 'just scrolled: the page scrolls on');
+  assert.equal(g.view.zoom, 1);
+  p.run(400);
+  p.winListeners.scroll();
+  p.run(300);
+  assert.equal(p.ev('wheel', { clientX: 150, clientY: 150, deltaY: -100 }).prevented, false, 'the window scrolling counts too');
+  p.run(700);
+  r = p.ev('wheel', { clientX: 150, clientY: 150, deltaY: -100 });
+  assert.equal(r.prevented, true, 'the pointer has rested: now it zooms');
+  assert.ok(g.view.zoom > 1);
+  g.stop();
+  assert.equal(box.listeners.scroll, undefined, 'stop() lets go of the scroll listeners');
+  assert.equal(p.winListeners.scroll, undefined);
 });
 
 test('zoomed in: it stays put (no turning by itself), a drag turns it less, the land is finer', async () => {
@@ -374,7 +448,7 @@ test('zoomed in: it stays put (no turning by itself), a drag turns it less, the 
   await tick();
   await tick();
   assert.equal(p.worldCalls, 1);
-  p.run(100);
+  p.run(400);
   assert.equal(g.level, 3, 'finer land at 4x');
   const lon = g.view.lon0;
   p.run(IDLE_MS + 3000);
@@ -385,11 +459,90 @@ test('zoomed in: it stays put (no turning by itself), a drag turns it less, the 
   const turned = Math.abs(wrapLon(g.view.lon0 - lon));
   assert.ok(turned > 0 && turned < 4, `a 30 px drag at 4x turns ${turned.toFixed(2)} degrees`);
   g.zoom(1);
+  p.run(50);
   assert.equal(g.level, 1);
   p.run(IDLE_MS + 2000);
   const at1 = g.view.lon0;
   p.run(1000);
   assert.notEqual(g.view.lon0, at1, 'back at 1x it turns again');
+  g.stop();
+});
+
+test('finer land is made after the zooming stops, never inside a frame; the best made so far meanwhile', async () => {
+  const world = JSON.parse(JSON.stringify(WORLD)); // a map no level was made for yet
+  const p = page({ world });
+  const g = mountGlobe(p.canvas, GEO, FIX, p.opts);
+  g.zoom(2);
+  await tick(); await tick();
+  assert.equal(p.worldCalls, 1);
+  // Still zooming: every frame draws, none makes a level.
+  for (let i = 0; i < 6; i++) {
+    p.run(LOD_WAIT_MS / 2);
+    assert.equal(lodReady(world, 2), false, `zoom step ${i}: not made yet`);
+    assert.equal(g.level, 1, 'the 1x land meanwhile');
+    g.zoom(i % 2 ? 2.2 : 2.1);
+  }
+  p.run(LOD_WAIT_MS + 50);
+  assert.equal(lodReady(world, 2), true, 'made once the zooming stopped');
+  assert.equal(g.level, 2);
+  // Zoom on to 6x: level 2 is drawn until level 4 is made.
+  g.zoom(6);
+  p.run(50);
+  assert.equal(g.level, 2, 'the best made so far');
+  assert.equal(lodReady(world, 4), false);
+  p.run(LOD_WAIT_MS + 50);
+  assert.equal(g.level, 4);
+  g.stop();
+  assert.equal(p.timers, 0, 'no timer left behind');
+});
+
+test('the map outlines fail: one more try after 30 s, then the 1x land for good', async () => {
+  let calls = 0;
+  const p = page({ world: () => { calls += 1; return Promise.reject(new Error('offline')); } });
+  const g = mountGlobe(p.canvas, GEO, FIX, p.opts);
+  g.zoom(4);
+  await tick(); await tick();
+  assert.equal(calls, 1);
+  for (let i = 0; i < 20; i++) { p.run(200); g.zoom(3 + (i % 2)); }
+  await tick();
+  assert.equal(calls, 1, 'not again every frame or zoom');
+  p.run(WORLD_RETRY_MS);
+  await tick(); await tick();
+  assert.equal(calls, 2, 'once more after 30 s');
+  p.run(WORLD_RETRY_MS * 3);
+  g.zoom(5);
+  await tick(); await tick();
+  assert.equal(calls, 2, 'then never');
+  assert.equal(g.level, 1);
+  g.stop();
+});
+
+test('zoomed in: hover finds only figures inside the lens', () => {
+  assert.equal(inLens(90, 90, 16, 100, 50), true);
+  assert.equal(inLens(145, 100, 16, 100, 50), true, 'partly inside');
+  assert.equal(inLens(152, 100, 16, 100, 50), false);
+  assert.equal(inLens(140, 140, 16, 100, 50), false, 'the corner');
+  const p = page();
+  // 300 visitors in the middle of the view (it starts facing the US at tilt 18): at 6x
+  // their bunch is far bigger than the lens.
+  const big = { countries: [{ cc: 'US', visitors: 400, rest: 100 }], cities: [{ name: 'Mid', cc: 'US', at: [-99, 18], visitors: 300 }] };
+  const g = mountGlobe(p.canvas, GEO, big, p.opts);
+  g.zoom(6);
+  p.run(50);
+  const mid = g.placed.find((x) => x.item.name === 'Mid');
+  assert.ok(mid.shown > mid.sprites.length, `${mid.shown} laid out, ${mid.sprites.length} in the lens`);
+  const c = 150;
+  const R = 144;
+  let n = 0;
+  for (const pl of g.placed) {
+    for (const [sx, sy] of pl.sprites) {
+      n += 1;
+      assert.ok(inLens(sx, sy, pl.size, c, R), 'a hidden figure is not hoverable');
+    }
+  }
+  assert.ok(n > 0);
+  // A corner of the canvas never finds a figure.
+  assert.equal(pickSprite(g.placed, 2, 2, 4), null);
   g.stop();
 });
 
@@ -512,9 +665,10 @@ test('the screens: zoom buttons styled in the corner, out of the flow; the globe
     assert.match(css, new RegExp(`\\.${cls} \\.globe-zoom-btn:focus-visible`), `${f}: keyboard focus shows`);
     assert.doesNotMatch(css, /btn-solid/, `${f}: tertiary, not a primary button`);
   }
-  // BBRK's caption stays one line at any globe size: fitToView measures it once, so a
+  // BBRK's caption stays one line at any desktop globe size: fitToView measures it once, so a
   // caption that wrapped at 220 px would push the globe below the fold (1536x730).
-  assert.match(readFileSync('public/screens/bbrk.css', 'utf8'), /\.bb-globe figcaption \{[^}]*justify-content: center;[^}]*white-space: nowrap;/);
+  // On a phone (the page scrolls there) it wraps as usual.
+  assert.match(readFileSync('public/screens/bbrk.css', 'utf8'), /@media \(min-width: 640px\) \{\s*\.bb-globe figcaption \{[^}]*justify-content: center;[^}]*white-space: nowrap;/);
   const src = readFileSync('public/globe.js', 'utf8');
   assert.match(src, /\['wheel', onWheel, \{ passive: false \}\]/);
   assert.doesNotMatch(src, /DataFast|datafa\.st|Mapbox/i);

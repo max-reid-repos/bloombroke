@@ -22,14 +22,15 @@
 .spon-slot { display: inline-block; padding: 12px 32px; border: 1px solid var(--rule-strong); background: var(--panel); }
 .spon-globe { position: relative; width: min(var(--fit-w, var(--globe-w)), 100%); margin: 0 auto; text-align: center; font-size: 12px; }
 .spon-globe[hidden] { display: none; }
-/* Drag to turn it (public/globe.js); pan-y: a mostly vertical drag still scrolls the page. */
+/* Drag to turn it, the wheel or two fingers to zoom (public/globe.js); pan-y: a mostly
+   vertical one-finger drag still scrolls the page. */
 .spon-globe canvas {
   display: block; width: 100%; aspect-ratio: 1; cursor: grab; touch-action: pan-y; outline: 0;
   --globe-land: hsla(201, 100%, 71%, .38); --globe-hot: var(--text); --globe-rim: hsla(201, 100%, 71%, .22);
 }
 .spon-globe canvas:active { cursor: grabbing; }
 .spon-globe canvas:focus-visible { box-shadow: 0 0 0 1px var(--accent); border-radius: 50%; }
-/* The label of the dot under the pointer: 'Tokyo · 12 this week'. */
+/* The label of the bunch under the pointer: 'Tokyo · 12 visitors this week'. */
 .spon-globe .globe-tip {
   position: absolute; z-index: 2; padding: 2px 6px; pointer-events: none; transform: translateY(-100%);
   background: var(--panel); border: 1px solid var(--rule-strong); color: var(--text); font-size: 11px; white-space: nowrap;
