@@ -49,9 +49,10 @@ const toSuggestEntry = (c) => ({
   example: c.examples[0], examples: c.examples, usageExample: c.usageExample, keywords: c.keywords || [],
 });
 const runnable = LISTED.filter((c) => !c.pattern && !c.soon);
+const LAST = ['HELP', 'MENU'];
 export const COMMANDS = [
-  ...runnable.filter((c) => c.category !== 'Start here'),
-  ...runnable.filter((c) => c.category === 'Start here'),
+  ...runnable.filter((c) => !LAST.includes(c.name)),
+  ...LAST.map((n) => runnable.find((c) => c.name === n)).filter(Boolean),
 ].map(toSuggestEntry);
 
 // Listed but not built yet: they answer "coming soon".

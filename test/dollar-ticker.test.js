@@ -140,7 +140,7 @@ test('$: Tab and the suggestion list offer stocks only, as $ + ticker', () => {
 
 test('$: HELP says it in one line', () => {
   const html = startHere();
-  assert.match(html, /\$ \+ ticker always means the stock, e\.g\. <a class="code" href="\?c=\$GOLD" data-cmd="\$GOLD">\$GOLD<\/a>\./);
+  assert.match(html, /\$ before a ticker always means the stock, e\.g\. <a class="code" href="\?c=\$GOLD" data-cmd="\$GOLD">\$GOLD<\/a>\./);
 });
 
 test('$: the server quotes the stock GOLD for $GOLD and spot gold for GOLD', async () => {

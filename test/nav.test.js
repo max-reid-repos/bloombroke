@@ -6,7 +6,7 @@ import {
   keybarHtml, panelByNumber, panelNumberInput, freshOverdue,
 } from '../public/app.js';
 import {
-  REGISTRY, LISTED, CATEGORIES, findCommand, byCategory, categoriesInUse, searchCommands, START_HERE, START_KEYS,
+  REGISTRY, LISTED, CATEGORIES, findCommand, byCategory, categoriesInUse, searchCommands, START_HERE, START_KEYS, commandGroups,
 } from '../public/registry.js';
 import { EXTRA } from '../public/commands.js';
 import { COMPANY } from '../public/company.js';
@@ -58,9 +58,8 @@ test('registry: entries are complete, unique and in a known category', () => {
       assert.ok(c.source && c.delay, `${c.name} has a source and a delay`);
     }
   }
-  assert.ok(categoriesInUse().includes('Start here'));
-  assert.equal(categoriesInUse()[0], 'Start here');
-  assert.ok(categoriesInUse().includes('Legal') && categoriesInUse().includes('Pro'));
+  assert.equal(commandGroups()[0].name, 'Start here');
+  assert.ok(categoriesInUse().includes('About') && categoriesInUse().includes('Pro'));
 });
 
 test('registry: every example parses and runs its own command', () => {
@@ -286,17 +285,13 @@ test('freshness: a dot by the clock, the time in its tooltip; the status line ke
   assert.doesNotMatch(readFileSync('public/screens/help.js', 'utf8'), /PICK A CATEGORY/, 'no permanent hint in the status line');
 });
 
-test('HELP start here: one plain list, no cards, one line of keys', () => {
+test('HELP start here: one plain list of five, no cards, then the $ line', () => {
   const html = startHere();
   assert.doesNotMatch(html, /hs-card|hs-try|hs-rule|hs-n\b|How it works|Try these first|Help and navigation/);
-  assert.equal((html.match(/class="hs-row"/g) || []).length, START_HERE.length);
-  assert.ok(START_HERE.length >= 15 && START_HERE.length <= 20);
+  assert.equal((html.match(/class="hl-row"/g) || []).length, START_HERE.length);
+  assert.equal(START_HERE.length, 5);
   for (const [c] of START_HERE) assert.match(html, new RegExp(`data-cmd="${c}"`));
-  for (const c of ['AAPL', 'AAPL NEWS', 'MARKETS', 'NEWS', 'RATES', 'HEATMAP', 'SCREEN', 'WATCH', 'PORTFOLIO', 'DESK', 'WHATIF', 'MENU']) {
-    assert.ok(START_HERE.some(([x]) => x === c), c);
-  }
-  assert.equal((html.match(/class="hs-keys"/g) || []).length, 1);
-  assert.deepEqual(START_KEYS.map(([k]) => k), ['Enter', 'Tab', 'Esc', 'Ctrl K', '/', '1-9', 'number Enter', 'F1-F10']);
+  assert.deepEqual(START_KEYS.map(([k]) => k), ['Enter', 'Tab', 'Esc', 'Ctrl K', '/', 'F1-F10', '1-9']);
 });
 
 test('copy rules for the navigation files', () => {

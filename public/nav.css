@@ -85,15 +85,15 @@ body.has-tape .dock > .tape:not([hidden]) { display: block; }
   height: 48px; padding: 0 16px;
   border-bottom: 1px solid var(--rule-strong);
 }
-.menu-q, .help-q {
+.menu-q {
   flex: 1; min-width: 0;
   padding: 0; border: 0; outline: 0;
   background: transparent;
   color: var(--text);
   font-family: var(--font); font-size: 16px;
 }
-.menu-q::placeholder, .help-q::placeholder { color: var(--dim); opacity: 1; }
-.menu-q::-webkit-search-cancel-button, .help-q::-webkit-search-cancel-button { display: none; }
+.menu-q::placeholder { color: var(--dim); opacity: 1; }
+.menu-q::-webkit-search-cancel-button { display: none; }
 .menu-keys { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--dim); white-space: nowrap; }
 .menu-keys kbd:not(:first-child) { margin-left: 6px; }
 .menu-body { overflow: auto; padding: 16px; }
@@ -105,7 +105,7 @@ body.has-tape .dock > .tape:not([hidden]) { display: block; }
   color: var(--dim);
 }
 .mn-item {
-  display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 12px; align-items: baseline;
+  display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px; align-items: baseline;
   margin: 0 -8px; padding: 2px 8px;
   color: var(--text);
 }
@@ -118,17 +118,7 @@ body.has-tape .dock > .tape:not([hidden]) { display: block; }
 .menu-foot { padding: 8px 16px; border-top: 1px solid var(--rule); font-size: 12px; color: var(--dim); }
 body.menu-open { overflow: hidden; }
 
-/* ---- HELP: search on top, categories left, commands right --------------------- */
-.help { display: grid; gap: 16px; padding-top: 4px; }
-.help-search {
-  display: flex; align-items: center; gap: 12px;
-  height: 44px; padding: 0 16px;
-  background: var(--panel);
-  border: 1px solid var(--rule-strong);
-}
-.help-search:focus-within { border-color: var(--accent); }
-.help-search .prompt { font-size: 14px; }
-
+/* ---- HELP <ticker>: the function rows (screens/help.css has the rest) ---------- */
 .hc-list { margin: 0 0 8px; }
 .hc-row {
   display: grid;
@@ -178,6 +168,6 @@ body.menu-open { overflow: hidden; }
   .menu-keys { display: none; }
   .mn-grid { columns: 1; }
 
-  .help-q, .menu-q { font-size: 16px; }
+  .menu-q { font-size: 16px; }
   .hc-row, .hc-row-fn { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 8px; }
 }
