@@ -21,6 +21,7 @@ import { parseCommand, linkPlan, seatHtml, badgeCount, nyClock } from '../public
 import { findCommand } from '../public/registry.js';
 import { DETAIL } from '../public/registry-detail.js';
 import { USERNAME_RE as SERVER_RE } from '../pro/chat.js';
+import { resolveInput, splitWords, FILLER } from '../public/resolve.js';
 
 const all = () => true;
 const KEY = 'BB-AAAA-BBBB-CCCC-DDDD'; // a made-up key (not a real one): only its shape matters here
@@ -264,6 +265,16 @@ test('ME: a command with SETTINGS and ACCOUNT; the top bar seat opens it', () =>
   assert.equal(badgeCount('CHAT 3'), 3);
   assert.equal(badgeCount('CHAT 99+'), 99);
   assert.equal(badgeCount(''), 0);
+});
+
+test('ME is a command, but "me" in plain words stays a filler word (resolve.js)', async () => {
+  const deps = { search: async () => [], checkTicker: async () => false };
+  assert.deepEqual(await resolveInput('show me AAPL 5Y', deps), { confident: true, from: 'show me AAPL 5Y', command: 'AAPL 5Y' });
+  assert.equal((await resolveInput('show me the price of tesla', deps)).command, 'TSLA');
+  assert.deepEqual(splitWords('show me AAPL 5Y').map((p) => p.kind), ['filler', 'filler', 'other', 'range']);
+  assert.ok(FILLER.has('me'));
+  // Typed alone, ME is the command: the router takes it before the resolver.
+  for (const w of ['ME', 'me', ' Me ']) assert.equal(parseCommand(w).name, 'ME', w);
 });
 
 test('CHAT @name: parsed, a link asks first, the NAME button opens ME', () => {

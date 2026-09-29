@@ -434,12 +434,18 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     },
 
     // At start-up: usernames that break a rule now (a name carried over from the old
-    // display name that is a command word or a bad word) go back to SEAT 42. Not locked:
-    // they were never usable. Returns how many.
+    // display name, or one that became a command word) go back to SEAT 42. Like any name
+    // given up, it is locked 30 days for others; its licence may pick a valid name at once
+    // (a clearing is not one of its 3 changes a day). Returns how many.
     sweepNames() {
       return tx(db, () => {
         let n = 0;
-        for (const r of q.allNames.all()) if (!usernameOk(r.username)) n += Number(q.dropName.run(r.licence_id).changes);
+        const t = now();
+        for (const r of q.allNames.all()) {
+          if (usernameOk(r.username)) continue;
+          q.release.run(r.username.toLowerCase(), r.licence_id, t);
+          n += Number(q.dropName.run(r.licence_id).changes);
+        }
         return n;
       });
     },

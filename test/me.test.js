@@ -453,6 +453,9 @@ test('migration 015: old names that pass and are unique become usernames; the re
     const app = express();
     mountChat(app, { db, store, parse: parseCommand, linkChanges, log: quiet, sweepMs: 0 });
     assert.deepEqual(db.prepare('SELECT username FROM chat_profiles WHERE username IS NOT NULL ORDER BY licence_id').all().map((r) => r.username), ['Bob', 'Kim_2']);
+    // A name cleared at start-up is locked 30 days for others, like any name given up;
+    // its licence (seat 12) may take any valid name at once.
+    assert.deepEqual(db.prepare('SELECT name_key, licence_id FROM name_releases').all(), [{ name_key: 'graveyard', licence_id: 12 }]);
     // Unique whatever the case, in the database too.
     assert.throws(() => db.prepare('UPDATE chat_profiles SET username = ? WHERE licence_id = 1').run('BOB'), /UNIQUE/);
     assert.throws(() => db.prepare('UPDATE chat_profiles SET color = 8 WHERE licence_id = 1').run(), /CHECK/);
