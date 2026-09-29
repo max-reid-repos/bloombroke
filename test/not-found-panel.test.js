@@ -7,7 +7,7 @@ import { parseCommand, tickerToCheck } from '../public/app.js';
 import { resolveInput } from '../public/resolve.js';
 import { tickerForName } from '../public/known-tickers.js';
 import {
-  closeness, candidates, closestRows, graveByName, notFoundHtml, notFoundStatus, notFoundKeys, fillPrices, liveText, shortName, noSuchExtra,
+  closeness, candidates, closestRows, graveByName, stoneFor, notFound, notFoundHtml, notFoundStatus, notFoundKeys, fillPrices, liveText, shortName, noSuchExtra,
 } from '../public/screens/nosuch.js';
 import { loadGraveyard } from '../lib/og-nosuch.js';
 
@@ -59,10 +59,8 @@ test('a graveyard company typed by name is its stone; its old ticker is not a na
   }
   for (const typed of ['LEH', 'LEHMANN', 'APPLE', '', 'LEHMAN FOO']) assert.equal(graveByName(typed, GRAVES), null, typed);
   assert.equal(graveByName('LEHMAN', []), null, 'no list, no stone (the server word check still finds LEHMAN)');
-  // app.js: the stone opens as GRAVEYARD <ticker> in the address bar; the server's own
-  // word check (/api/nosuch) is the fallback when the list did not load.
+  // app.js: the stone opens as GRAVEYARD <ticker> in the address bar (stoneFor: below).
   const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
-  assert.match(app, /const stone = ns\?\.graveByName\(typed, graves\) \|\| \(info\.grave && info\.grave\.ticker !== word \? info\.grave : null\);/);
   assert.match(app, /const c = `GRAVEYARD \$\{stone\.ticker\}`;\s*replaceUrl\(c\);\s*render\(c, \{ checked: true/);
 });
 
@@ -125,34 +123,60 @@ test('the status line: says what Enter does, in the second text colour (never th
   assert.doesNotMatch(src.slice(src.indexOf('export function notFound('), src.indexOf('// ---- IPO IT')), /'warn'/);
 });
 
-test('keys: Enter opens the closest, a digit its row; typing, a focused link and an open list keep their keys', () => {
+test('keys: Enter opens the closest from the empty bar; a digit opens its row only with the focus in the panel', () => {
   let handler = null;
   let list = { hidden: true };
   const doc = { addEventListener: (t, h, cap) => { assert.equal(cap, true); handler = h; }, removeEventListener: () => { handler = null; }, getElementById: (id) => (id === 'suggest' ? list : null) };
   const clicked = [];
-  const el = { isConnected: true, querySelector: (sel) => { const m = /\[data-key="(\d)"\]/.exec(sel); return m && Number(m[1]) <= 4 ? { click: () => clicked.push(m[1]) } : null; } };
+  const row = { inPanel: true, closest: (s) => (/\ba\b/.test(s) ? {} : null) }; // a focused row link
+  const el = {
+    isConnected: true,
+    contains: (t) => Boolean(t?.inPanel),
+    querySelector: (sel) => { const m = /\[data-key="(\d)"\]/.exec(sel); return m && Number(m[1]) <= 4 ? { click: () => clicked.push(m[1]) } : null; },
+  };
   const stop = notFoundKeys(el, { doc });
   const press = (key, target, extra = {}) => { const e = { key, target, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {}, ...extra }; handler(e); return e.defaultPrevented; };
-  const bar = (value = '') => ({ id: 'cmd', value });
+  const bar = (value = '') => ({ id: 'cmd', value, closest: () => null });
   const page = { closest: () => null };
-  assert.equal(press('Enter', bar()), true);
-  assert.equal(press('2', bar()), true);
-  assert.equal(press('4', page), true);
-  assert.deepEqual(clicked, ['1', '2', '4']);
-  assert.equal(press('9', bar()), false, 'no row 9');
+  assert.equal(press('Enter', bar()), true, 'Enter in the empty bar: the closest');
+  assert.equal(press('Enter', page), true, 'Enter on the page: the closest');
+  assert.equal(press('2', row), true, 'a digit with the focus in the panel');
+  assert.equal(press('4', { inPanel: true, closest: () => null }), true);
+  assert.deepEqual(clicked, ['1', '1', '2', '4']);
+  // A digit in the command bar is typing (3988.HK); "2 Enter" there is app.js's numberedItem.
+  assert.equal(press('2', bar()), false, 'the empty bar: typing a digit');
   assert.equal(press('3', bar('A')), false, 'typing A3 stays typing');
+  assert.equal(press('2', page), false, 'focus outside the panel');
+  assert.equal(press('9', row), false, 'no row 9');
   assert.equal(press('Enter', bar('AAPL')), false, 'Enter runs what is typed');
-  assert.equal(press('Enter', { closest: (s) => (/\ba\b/.test(s) ? {} : null) }), false, 'a focused link opens itself');
-  assert.equal(press('1', { closest: (s) => (/input/.test(s) ? {} : null) }), false, 'another field');
+  assert.equal(press('Enter', row), false, 'a focused link opens itself');
+  assert.equal(press('Enter', { closest: (s) => (/input/.test(s) ? {} : null) }), false, 'another field');
   assert.equal(press('Enter', bar(), { ctrlKey: true }), false);
   list = { hidden: false };
   assert.equal(press('Enter', bar()), false, 'the suggestion list is open: its own pick');
-  assert.deepEqual(clicked, ['1', '2', '4']);
+  assert.deepEqual(clicked, ['1', '1', '2', '4']);
   stop();
   assert.equal(handler, null);
-  // The rows carry the keys: 1 (Enter) for the hero, then 2, 3... (app.js "2 Enter" works too).
+  // The rows carry the keys: 1 (Enter) for the hero, then 2, 3...; from the bar a number
+  // and Enter opens that row (app.js panelNumberInput and numberedItem, data-key).
   const html = notFoundHtml({ typed: 'LEHM', rows: LEHM_ROWS, ipo: 'LEHM' });
   assert.deepEqual([...html.matchAll(/data-key="(\d)"/g)].map((m) => m[1]), ['1', '2', '3', '4']);
+  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(app, /const n = typed && !embed && tickerBar\.hidden \? panelNumberInput\(clean\) : null;\s*if \(n\) \{\s*const item = numberedItem\(screen, n\);/);
+});
+
+test('DESK panels: no key handler (the desk owns the keys); the rows still click', () => {
+  const view = { innerHTML: '', addEventListener() {}, removeEventListener() {}, querySelectorAll: () => [] };
+  let added = 0;
+  const doc = { addEventListener: () => { added += 1; }, removeEventListener: () => {}, getElementById: () => null };
+  const stop = notFound(view, { typed: 'LEHM', found: { symbols: [THLM] }, graves: GRAVES, keys: false, doc, status: () => {} });
+  assert.equal(added, 0, 'embed: no keydown handler');
+  assert.match(view.innerHTML, /data-cmd="GRAVEYARD LEH" data-key="1"/);
+  stop();
+  notFound(view, { typed: 'LEHM', graves: GRAVES, doc, status: () => {} })();
+  assert.equal(added, 1, 'the page: one handler');
+  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(app, /ns\.notFound\(view, \{ typed, ticker, found, info, graves, signal, status: setStatus, keys: !embed \}\)/);
 });
 
 test('live rows: price and change fill in from one quotes call; "live" stays when it fails', async () => {
@@ -167,6 +191,13 @@ test('live rows: price and change fill in from one quotes call; "live" stays whe
   assert.equal(cells[0].textContent, 'live 200.00 +1.00%');
   assert.equal(cells[1].textContent, 'live', 'no quote: live');
   await fillPrices(el, { fetchImpl: async () => { throw new Error('offline'); } });
+  // A $ stock (a ticker that is also one of our names: $GOLD is Gold.com, not spot gold).
+  const gold = [{ dataset: { price: '$GOLD' }, isConnected: true, textContent: 'live' }];
+  await fillPrices({ querySelectorAll: () => gold }, { fetchImpl: async (url) => { asked = url; return { ok: true, json: async () => ({ quotes: [{ ticker: '$GOLD', symbol: 'GOLD', last: 21.5, changePct: -0.5 }] }) }; } });
+  assert.equal(asked, '/api/quotes?s=%24GOLD');
+  assert.match(gold[0].textContent, /^live 21\.50 \S0\.50%$/);
+  const html = notFoundHtml({ typed: 'GOLDD', rows: [{ kind: 'live', id: '$GOLD', name: 'Gold.com', cmd: '$GOLD' }] });
+  assert.match(html, /data-cmd="\$GOLD" data-key="1">[\s\S]*?<span class="nf-tk">\$GOLD<\/span>[\s\S]*?data-price="\$GOLD">live</);
 });
 
 test('a dead ticker typed on its own keeps its stone card; other words get nothing from noSuchExtra', () => {
@@ -215,4 +246,50 @@ test('command bar: a word that is a command stays a command', () => {
     assert.notEqual(c.name, 'QUOTE', w);
     assert.equal(tickerToCheck(c), null, `${w} is never looked up`);
   }
+});
+
+// ---- Command guesses and routing (review fixes) ------------------------------------------------
+
+test('command guesses from the resolver are listed, and first on a tie', async () => {
+  const first = async (typed) => {
+    const found = await resolveInput(typed, { search: async () => [], checkTicker: async () => false });
+    return rowsFor(typed, found);
+  };
+  assert.equal((await first('RATSE'))[0].cmd, 'RATES');
+  const cmp = await first('COMPAER');
+  assert.equal(cmp[0].name, 'COMPARE', cmp.map((r) => r.name).join(', '));
+  const news = await first('NEWZ');
+  assert.equal(news[0].cmd, 'NEWS', news.map((r) => r.name).join(', '));
+  // MOVESR: the resolver's guess (by what the command does) is kept, though its name is far.
+  const moves = await first('MOVESR');
+  assert.ok(moves.some((r) => r.kind === 'cmd' && r.name === 'WHY'), moves.map((r) => r.name).join(', '));
+  // One word typed is matched word by word: NEWZ is not "New Zealand ..." by prefix.
+  assert.equal(closeness('NEWZ', { names: ['New Zealand 50'] }) < 80, true);
+  assert.equal(closeness('LEHM', { names: ['Lehman Brothers'] }), 80);
+  assert.equal(closeness('american exp', { names: ['American Express'] }), 80, 'more words: the name starts with them');
+});
+
+test('routing: a name opens its stone; LEH alone keeps its card; a stone that beat a quote keeps its $ link', () => {
+  const leh = GRAVES.find((e) => e.ticker === 'LEH');
+  const ene = GRAVES.find((e) => e.ticker === 'ENE');
+  assert.equal(stoneFor('LEHMAN', 'LEHMAN', { grave: leh }, GRAVES)?.ticker, 'LEH');
+  assert.equal(stoneFor('LEHMAN BROTHERS', null, { grave: null }, GRAVES)?.ticker, 'LEH');
+  assert.equal(stoneFor('ENRON', 'ENRON', { grave: ene }, [])?.ticker, 'ENE', 'the list did not load: the server word check');
+  assert.equal(stoneFor('LEH', 'LEH', { grave: leh }, GRAVES), null, 'LEH typed: its stone card');
+  assert.equal(stoneFor('LEHMAN', 'LEHMAN', { grave: leh, wins: true }, GRAVES, { quote: true }), null, 'beat a quote: the card with its $ link');
+  assert.equal(stoneFor('LEHM', 'LEHM', { grave: null }, GRAVES), null, 'a typo: the panel');
+  assert.match(JSON.stringify(noSuchExtra('LEH', { grave: leh, wins: true }, { quote: true })), /Quote: \$LEH, another listing/);
+  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(app, /const stone = ns\?\.stoneFor\(typed, word, info, graves, \{ quote \}\);/);
+});
+
+test('the lookup itself failed: a neutral line, never "Not a ticker", nothing on Enter', () => {
+  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(app, /search: \(text\) => searchSymbols\(text, signal\)\.catch\(\(e\) => \{ if \(e\.name !== 'AbortError'\) searchDown = true; throw e; \}\)/);
+  assert.match(app, /if \(searchDown\) \{ lookupFailed\(view, typed\); return; \}\s*await showDidYouMean\(view, typed, found, ticker, signal\);/);
+  assert.match(app, /if \(err\.name === 'AbortError' \|\| signal\.aborted\) return;\s*lookupFailed\(view, typed\);/);
+  const fn = app.slice(app.indexOf('function lookupFailed('), app.indexOf('function lookupFailed(') + 500);
+  assert.match(fn, /Could not look that up\. Try again in a minute\./);
+  assert.match(fn, /setStatus\('COULD NOT LOOK THAT UP\. TRY AGAIN'\);/);
+  assert.doesNotMatch(fn, /notFound|data-key|Not a ticker|'warn'/);
 });

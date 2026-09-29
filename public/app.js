@@ -1475,8 +1475,11 @@ function boot() {
         if (ok !== false && info?.grave && info.wins) { await showDidYouMean(view, typed, {}, ticker, signal, { quote: true }); return; }
         if (ok !== false) { render(raw, { fromUrl, checked: true }); return; }
       }
+      let searchDown = false;
       const found = await resolveInput(raw, {
-        search: (text) => searchSymbols(text, signal),
+        // The resolver treats a failed search as no rows: remember it, so "Not a ticker"
+        // is never said when the lookup itself did not work.
+        search: (text) => searchSymbols(text, signal).catch((e) => { if (e.name !== 'AbortError') searchDown = true; throw e; }),
         checkTicker: (t) => checkTicker(t, signal),
         stockId,
       });
@@ -1488,11 +1491,19 @@ function boot() {
         render(found.command, { fromUrl, checked: true, note: same ? '' : resolvedNote(found.command, found.from) });
         return;
       }
+      if (searchDown) { lookupFailed(view, typed); return; }
       await showDidYouMean(view, typed, found, ticker, signal);
     } catch (err) {
       if (err.name === 'AbortError' || signal.aborted) return;
-      await showDidYouMean(view, typed, {}, ticker, signal);
+      lookupFailed(view, typed);
     }
+  }
+  // The lookup itself failed (offline, a data break): say so, nothing on Enter.
+  function lookupFailed(view, typed) {
+    neutralHead(typed);
+    view.classList.remove('is-loading');
+    view.innerHTML = panel('1', typed, '<p class="notice">Could not look that up. Try again in a minute.</p>', { cls: 'panel-solo' });
+    setStatus('COULD NOT LOOK THAT UP. TRY AGAIN');
   }
   // NOT A TICKER (screens/nosuch.js): the closest names, tickers and graveyard stones as
   // numbered rows, or the IPO IT joke when nothing is close. A graveyard company's name
@@ -1506,8 +1517,8 @@ function boot() {
     const none = { grave: null, ipo: false };
     const [info, graves] = ns ? await Promise.all([word && !embed ? ns.noSuchInfo(word, { signal }) : none, ns.loadGraves(signal)]) : [none, []];
     if (signal?.aborted) return;
-    // (The server knows a stone by its other words too: ENRON is ENE.)
-    const stone = ns?.graveByName(typed, graves) || (info.grave && info.grave.ticker !== word ? info.grave : null);
+    // A name opens its stone (LEHMAN, ENRON); LEH alone, or beating a quote, keeps its card.
+    const stone = ns?.stoneFor(typed, word, info, graves, { quote });
     if (stone) {
       const c = `GRAVEYARD ${stone.ticker}`;
       replaceUrl(c);
@@ -1518,7 +1529,7 @@ function boot() {
     // GA4: a GRAVEYARD stone's ticker, or just UNKNOWN (never the words typed).
     if (!embed) window.dispatchEvent(new CustomEvent('bb:page', { detail: info.grave?.ticker || 'UNKNOWN' }));
     view.classList.remove('is-loading');
-    if (ns && !info.grave) { cleanups.push(ns.notFound(view, { typed, ticker, found, info, graves, signal, status: setStatus })); return; }
+    if (ns && !info.grave) { cleanups.push(ns.notFound(view, { typed, ticker, found, info, graves, signal, status: setStatus, keys: !embed })); return; }
     const extra = ns ? ns.noSuchExtra(word, info, { quote }) : {};
     view.innerHTML = cards
       ? cards.didYouMeanHtml(typed, found, ticker, { extra: { ...extra, kicker: extra.kicker || 'Not found' } })

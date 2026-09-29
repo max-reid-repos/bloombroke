@@ -127,11 +127,14 @@ const squash = (s) => nameKey(s).replace(/ /g, '');
 
 // How close a candidate is to the words typed: 0 (not at all) to 100 (the same).
 // Tickers: the same (100), one inside the other (LEHM, LEH: 60), one letter off (45).
-// Names: the same (95), the name starts with the words (80), a word of the name does (70),
-// one or two letters off (APPLEE, Apple: 50).
+// Names: the same (95), the name starts with the words (80: one word typed is matched
+// word by word, so NEWZ is not "New Zealand"), a later word of the name does (70), one
+// or two letters off (APPLEE, Apple: 50).
 export function closeness(typed, { names = [], tickers = [] } = {}) {
   const t = squash(typed);
   const T = t.toUpperCase();
+  const spaced = nameKey(typed);
+  const oneWord = !spaced.includes(' ');
   if (!t) return 0;
   let best = 0;
   const at = (n) => { if (n > best) best = n; };
@@ -148,8 +151,8 @@ export function closeness(typed, { names = [], tickers = [] } = {}) {
     const whole = key.replace(/ /g, '');
     if (!whole) continue;
     if (whole === t) at(95);
-    else if (t.length >= MIN_LEN && whole.startsWith(t)) at(80);
-    else if (t.length >= MIN_LEN && key.split(' ').some((w) => w.startsWith(t))) at(70);
+    else if (t.length >= MIN_LEN && (oneWord ? key.split(' ')[0].startsWith(t) : key.startsWith(spaced))) at(80);
+    else if (t.length >= MIN_LEN && oneWord && key.split(' ').some((w) => w.startsWith(t))) at(70);
     else if (typos) {
       const d = Math.min(editDistance(t, whole), editDistance(t, key.split(' ')[0]));
       if (d <= typos) at(55 - 5 * d);
@@ -178,7 +181,9 @@ export function candidates({ found = {}, graves = [] } = {}) {
   }
   for (const [id, ...names] of [...SP100_NAMES, ...OTHER_NAMES]) add({ kind: 'live', id, name: names[0], cmd: id, names, tickers: [id] });
   for (const i of INSTRUMENTS) add({ kind: 'live', id: i.id, name: i.name, cmd: i.id, names: [i.name, ...i.aliases], tickers: [i.id] });
-  for (const c of found.commands || []) add({ kind: 'cmd', id: '', name: c.name, cmd: c.cmd, what: c.summary || '', names: [c.name] });
+  // The resolver's command guesses (a typo away, or by what the command does: MOVESR is
+  // WHY): always listed, and first on a tie.
+  for (const c of found.commands || []) add({ kind: 'cmd', id: '', name: c.name, cmd: c.cmd, what: c.summary || '', names: [c.name], floor: 50 });
   return [...out.values()];
 }
 
@@ -187,9 +192,9 @@ export function closestRows(typed, list) {
   const same = squash(typed);
   return (list || [])
     .filter((c) => squash(c.cmd) !== same)
-    .map((c) => ({ c, s: closeness(typed, c) || c.floor || 0 }))
+    .map((c) => ({ c, s: Math.max(closeness(typed, c), c.floor || 0) }))
     .filter((r) => r.s > 0)
-    .sort((a, b) => b.s - a.s || a.c.name.length - b.c.name.length)
+    .sort((a, b) => b.s - a.s || (b.c.kind === 'cmd') - (a.c.kind === 'cmd') || a.c.name.length - b.c.name.length)
     .slice(0, MAX_ROWS)
     .map((r) => r.c);
 }
@@ -202,6 +207,16 @@ export function graveByName(typed, graves) {
   const flat = key.replace(/ /g, '').toUpperCase();
   if (!key) return null;
   return (graves || []).find((e) => e?.ticker && (nameKey(e.name) === key || (e.also || []).includes(flat))) || null;
+}
+
+// Where app.js showDidYouMean sends the words: a graveyard entry to open as GRAVEYARD
+// <ticker>, or null (the panel, or the stone card). A name or other word opens its stone
+// (from the list, or the server's answer when the list did not load); a dead ticker typed
+// on its own (LEH), and a stone that beat another listing's quote (quote: its $ link),
+// keep the stone card.
+export function stoneFor(typed, word, info, graves, { quote = false } = {}) {
+  if (quote) return null;
+  return graveByName(typed, graves) || (info?.grave && info.grave.ticker !== word ? info.grave : null);
 }
 
 // ---- NOT A TICKER: the panel -----------------------------------------------------------------
@@ -260,15 +275,19 @@ export function notFoundStatus(typed, rows) {
   return [`${what} ${rows.length ? 'Enter opens the closest.' : 'Nothing close.'}`, 'note'];
 }
 
-// Enter opens the first row and a digit its row, when the command bar is empty (or
-// the focus is on the page, not on a link or a field). Returns a cleanup.
+// Enter opens the first row when the command bar is empty (or the focus is on the page,
+// not on a link or a field). A digit opens its row only with the focus in the panel: in
+// the bar a digit is typing (3988.HK), and "2 Enter" there opens row 2 (app.js
+// numberedItem). Returns a cleanup.
 export function notFoundKeys(el, { doc = globalThis.document } = {}) {
   const handler = (ev) => {
     if (ev.defaultPrevented || ev.metaKey || ev.ctrlKey || ev.altKey || ev.isComposing || ev.repeat || !el.isConnected) return;
     const n = ev.key === 'Enter' ? '1' : /^[1-9]$/.test(ev.key) ? ev.key : null;
     if (!n) return;
     const t = ev.target;
-    if (t?.id === 'cmd') {
+    if (ev.key !== 'Enter') {
+      if (!el.contains?.(t)) return; // a digit: only with the focus in the panel
+    } else if (t?.id === 'cmd') {
       if (t.value !== '') return;
       const list = doc.getElementById?.('suggest');
       if (list && !list.hidden) return;
@@ -298,7 +317,8 @@ export async function fillPrices(el, { signal, fetchImpl = globalThis.fetch } = 
 
 // Draw the panel into view and wire it. ctx: { typed, ticker, found, info, graves, signal,
 // status }. ticker: the word typed, when it has a ticker's shape (IPO IT needs one).
-export function notFound(view, { typed, ticker = null, found = {}, info = {}, graves = [], signal, status = () => {} } = {}) {
+// keys: false in a DESK panel (the desk owns the keys there; its rows still click).
+export function notFound(view, { typed, ticker = null, found = {}, info = {}, graves = [], signal, status = () => {}, keys = true, doc = globalThis.document } = {}) {
   const words = String(typed || '').trim().replace(/\s+/g, ' ');
   const rows = closestRows(words, candidates({ found, graves }));
   const ipo = (info?.ipo && ipoShape(ticker)) || null;
@@ -318,7 +338,7 @@ export function notFound(view, { typed, ticker = null, found = {}, info = {}, gr
   };
   view.addEventListener('click', onClick);
   wireShare(view);
-  const stopKeys = notFoundKeys(view);
+  const stopKeys = keys ? notFoundKeys(view, { doc }) : () => {};
   fillPrices(view, { signal });
   return () => { view.removeEventListener('click', onClick); stopKeys(); };
 }
