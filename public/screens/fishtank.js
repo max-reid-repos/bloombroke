@@ -7,6 +7,7 @@
 
 import { esc, q, fmtPct, nyTime, panel, LOADING } from './markets.js';
 import { sizeGuard } from './size-guard.js';
+import { parseSprite, paintSprite, spriteCache, blit } from '../pixel-sprite.js';
 import { SPECIES, parseFishtank as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { SPECIES, parse };
 
@@ -160,6 +161,10 @@ export function sectorCentre(key, t, W) {
 // spreads about as wide), matches its school's speed, keeps clear of fish at its own
 // depth, and turns before the walls. Depth (y) is data and is never
 // touched here. `hold` (the hovered fish) slows to a stop.
+// A fish's drawn sprite size in CSS px (dw, dh), or, before it has one, its length.
+const drawnW = (f) => (f.dw > 0 ? f.dw : f.len);
+const drawnH = (f) => (f.dh > 0 ? f.dh : f.len * 0.6);
+
 export function schoolStep(fish, dt, W, { centre = () => null, hold = null, spread = W * 0.11 } = {}) {
   if (!(dt > 0) || !(W > 0) || !fish.length) return;
   const span = Math.max(60, spread);
@@ -171,15 +176,15 @@ export function schoolStep(fish, dt, W, { centre = () => null, hold = null, spre
     m.v += f.vx; m.n += 1;
     mean.set(f.sector, m);
   }
-  // Separation: fish that share a depth push apart sideways. The reach follows the fish
-  // lengths (plus a fifth for room), and the push grows with FISH_SCALE, so bigger fish clear
-  // each other as fast as the old, smaller ones did.
+  // Separation: fish that share a depth push apart sideways. The reach follows the drawn
+  // sprite widths (plus a fifth for room), the depth test their drawn heights, and the push
+  // grows with FISH_SCALE, so bigger fish clear each other as fast as the old, smaller ones did.
   for (let i = 0; i < fish.length; i += 1) {
     const a = fish[i];
     for (let j = i + 1; j < fish.length; j += 1) {
       const b = fish[j];
-      const reach = (a.len + b.len) * 0.6;
-      if (Math.abs(a.y - b.y) > reach * 0.55) continue;
+      const reach = (drawnW(a) + drawnW(b)) * 0.6;
+      if (Math.abs(a.y - b.y) > (drawnH(a) + drawnH(b)) * 0.55) continue;
       const dx = b.x - a.x;
       if (Math.abs(dx) >= reach) continue;
       const push = (1 - Math.abs(dx) / reach) * 36 * FISH_SCALE;
@@ -195,660 +200,343 @@ export function schoolStep(fish, dt, W, { centre = () => null, hold = null, spre
     const m = mean.get(f.sector);
     if (m && m.n > 1) ax += (m.v / m.n - f.vx) * 0.35;
     ax += ((f.vx < 0 ? -1 : 1) * f.speed - f.vx) * 0.8; // cruise
-    const margin = Math.min(W / 2, f.len * 0.6 + 8);
+    const margin = Math.min(W / 2, drawnW(f) * 0.6 + 8);
     if (f.x < margin) ax += (margin - f.x) * 4;
     else if (f.x > W - margin) ax -= (f.x - (W - margin)) * 4;
     const vmax = f.speed * 1.6;
     f.vx = clamp(f.vx + ax * dt, -vmax, vmax);
     f.x += f.vx * dt;
-    const lo = Math.min(W / 2, f.len * 0.5);
+    const lo = Math.min(W / 2, drawnW(f) * 0.5);
     if (f.x < lo) { f.x = lo; f.vx = Math.abs(f.vx) * 0.3 + 0.5; } else if (f.x > W - lo) { f.x = W - lo; f.vx = -Math.abs(f.vx) * 0.3 - 0.5; }
     if (Math.abs(f.vx) > 1) f.face += (Math.sign(f.vx) - f.face) * Math.min(1, dt * 2.5);
   }
 }
 
-// ---- Drawing the species ---------------------------------------------------------
-// Each is drawn at the origin facing right, `L` long, in its direction colour `col`.
-// Same family as the plain fish: filled body, a lighter rim, darker fins, a square eye.
+// ---- The sprites ------------------------------------------------------------------
+// Each species as pixel art, the same family as the globe critters (public/pixel-sprite.js
+// has the format): facing right, '#' body, '+' a darker shade (fins, stripes, a shell),
+// 'o' the eye, '.' clear. Two frames each: a tail flick, a tentacle pulse, walking legs.
 
-const LIT = 'hsl(206, 100%, 94%)';
+export const FISH_SPRITES = {
+  swordfish: [[
+    '.......+..............',
+    '.......++.............',
+    '+......+++............',
+    '++....#######.........',
+    '.++.#########o#.......',
+    '..+###################',
+    '.++.##########........',
+    '++.....++.............',
+    '+.....................',
+  ], [
+    '.......+..............',
+    '.......++.............',
+    '.......+++............',
+    '+.....#######.........',
+    '++..#########o#.......',
+    '.++###################',
+    '++..##########........',
+    '+......++.............',
+    '......................',
+  ]],
+  shark: [[
+    '+.......#...........',
+    '++......##..........',
+    '.++.....###.........',
+    '..++.###########....',
+    '...+###########o##..',
+    '..++###########+####',
+    '.+...#########......',
+    '.........++.........',
+    '........+...........',
+  ], [
+    '........#...........',
+    '+.......##..........',
+    '++......###.........',
+    '.+++.###########....',
+    '...+###########o##..',
+    '.+++###########+####',
+    '++...#########......',
+    '.........++.........',
+    '........+...........',
+  ]],
+  eel: [[
+    '....####................',
+    '..########.....########.',
+    '++##....#############o##',
+    '++........+++++....###..',
+  ], [
+    '++........#####.........',
+    '++##....###############.',
+    '..########.....######o##',
+    '....++++...........###..',
+  ]],
+  angler: [[
+    '......+++++.....',
+    '...........+....',
+    '....######..##..',
+    '..##########....',
+    '+.#######o###...',
+    '++###########...',
+    '+.#######+#+#...',
+    '++######++++++..',
+    '+.######+#+#+##.',
+    '...##########...',
+    '....++....++....',
+  ], [
+    '......+++++.##..',
+    '...........+....',
+    '....######......',
+    '..##########....',
+    '.+#######o###...',
+    '++###########...',
+    '.+#######+#+#...',
+    '++######++++++..',
+    '.+######+#+#+##.',
+    '...##########...',
+    '.....++....++...',
+  ]],
+  dolphin: [[
+    '.......+...........',
+    '.......++..........',
+    '+....#########.....',
+    '++.############....',
+    '.++############o#..',
+    '..##############+##',
+    '...###########.....',
+    '.......++..........',
+    '........+..........',
+  ], [
+    '.......+...........',
+    '.......++..........',
+    '.....#########.....',
+    '...############....',
+    '..#############o#..',
+    '.+##############+##',
+    '++.###########.....',
+    '+......++..........',
+    '........+..........',
+  ]],
+  jelly: [[
+    '...#####...',
+    '.#########.',
+    '###########',
+    '##+##+##+##',
+    '+++++++++++',
+    '.#.+.#.+.#.',
+    '.#.+.#.+.#.',
+    '..#.+.#.+.#',
+    '..#.+.#.+.#',
+    '.#.+.#.+.#.',
+    '.#...#...#.',
+  ], [
+    '....###....',
+    '..#######..',
+    '.#########.',
+    '.#+##+##+#.',
+    '.+++++++++.',
+    '.#.+.#.+.#.',
+    '..#.+.#.+.#',
+    '..#.+.#.+.#',
+    '.#.+.#.+.#.',
+    '.#.+.#.+.#.',
+    '..#...#...#',
+  ]],
+  clown: [[
+    '......+++......',
+    '+...#+##+##+#..',
+    '++.##+##+##+##.',
+    '.++##+##+##+#o#',
+    '.++##+##+##+###',
+    '++.##+##+##+##.',
+    '+...#+##+##+#..',
+    '......++.+.....',
+  ], [
+    '......+++......',
+    '....#+##+##+#..',
+    '+..##+##+##+##.',
+    '++.##+##+##+#o#',
+    '++.##+##+##+###',
+    '+..##+##+##+##.',
+    '....#+##+##+#..',
+    '......++.+.....',
+  ]],
+  goldfish: [[
+    '+.......++.......',
+    '++.....+++.......',
+    '+++..#######.....',
+    '.+++#########....',
+    '..++##########o#.',
+    '...+############.',
+    '..++###########..',
+    '.+++##########...',
+    '+++..########....',
+    '++......+..+.....',
+    '+................',
+  ], [
+    '........++.......',
+    '+......+++.......',
+    '++...#######.....',
+    '+++.#########....',
+    '.+++##########o#.',
+    '..++############.',
+    '.+++###########..',
+    '++++##########...',
+    '++...########....',
+    '+.......+..+.....',
+    '.................',
+  ]],
+  puffer: [[
+    '.............',
+    '....+...+....',
+    '.+..#####..+.',
+    '..#########..',
+    '.###########.',
+    '+#######o###+',
+    '.##+#####+##.',
+    '+###########+',
+    '.##+##+####..',
+    '..#########..',
+    '.+..#####..+.',
+    '....+...+....',
+    '.............',
+  ], [
+    '....+...+....',
+    '.+..+...+..+.',
+    '..+.#####.+..',
+    '..#########..',
+    '.###########.',
+    '++#######o###',
+    '.##+#####+##.',
+    '++###########',
+    '.##+##+####..',
+    '..#########..',
+    '..+.#####.+..',
+    '.+..+...+..+.',
+    '....+...+....',
+  ]],
+  crab: [[
+    '..+++++.........',
+    '.+#####+....o.o.',
+    '+##++++#+...#.#.',
+    '+#+####+#+..###.',
+    '+#+#++#+#+.####.',
+    '+#+##+#+#+######',
+    '.+#++++#+#####.#',
+    '..++++++###..##.',
+    '......#.#.#.....',
+    '.....#.#.#......',
+  ], [
+    '..+++++.........',
+    '.+#####+....o.o.',
+    '+##++++#+...#.#.',
+    '+#+####+#+..###.',
+    '+#+#++#+#+.#####',
+    '+#+##+#+#+######',
+    '.+#++++#+######.',
+    '..++++++###.....',
+    '.....#.#.#......',
+    '......#.#.#.....',
+  ]],
+  lobster: [[
+    '............++++++..',
+    '...............####.',
+    '+.............##..##',
+    '++#+#+#+#######o##..',
+    '+##+#+#+##########..',
+    '++#+#+#+#######.....',
+    '+.............##..##',
+    '...............####.',
+    '......+.+.+.+.......',
+  ], [
+    '............++++++..',
+    '...............####.',
+    '..............######',
+    '.+#+#+#+#######o##..',
+    '+##+#+#+##########..',
+    '.+#+#+#+#######.....',
+    '..............######',
+    '...............####.',
+    '.....+.+.+.+........',
+  ]],
+  fish: [[
+    '.....+++......',
+    '+..#######....',
+    '++#########o#.',
+    '.+############',
+    '++###########.',
+    '+..#######....',
+    '......++......',
+  ], [
+    '.....+++......',
+    '...#######....',
+    '+.#########o#.',
+    '++############',
+    '.+###########.',
+    '++.#######....',
+    '+.....++......',
+  ]],
+};
+
+const SPRITES = Object.fromEntries(Object.entries(FISH_SPRITES).map(([k, frames]) => [k, frames.map((rows, i) => parseSprite(rows, `${k} ${i}`))]));
+export const spriteOf = (kind, frame = 0) => (SPRITES[kind] || SPRITES.fish)[frame ? 1 : 0];
+
+// Whether a fish is drawn mirrored: facing left. The jellyfish drifts the same way up
+// whichever way it goes, so it never flips (a flip would jump its tentacles).
+export const mirrored = (kind, face) => kind !== 'jelly' && face < 0;
+
+// How long each species is drawn, as a share of its fish length: the round ones stay
+// shorter, so a jellyfish is not as tall as a swordfish is long.
+const FIT = { jelly: 0.65, puffer: 0.8, crab: 0.85, goldfish: 0.9, clown: 0.9, angler: 0.9 };
+
+// Device pixels per sprite pixel for a fish `len` CSS px long: a whole number, so the
+// sprite is about as long as the fish's size says and never stretched by a fraction.
+export function spriteScale(len, spriteW, dpr = 1, fit = 1) {
+  if (!(len > 0) || !(spriteW > 0)) return 1;
+  return Math.max(1, Math.round((len * (dpr > 0 ? dpr : 1) * fit) / spriteW));
+}
+
+// Frame swaps a second, per species (a swimmer's tail flicks faster the faster it swims).
+const RATE = { jelly: 1.2, puffer: 1.4, crab: 3, lobster: 1.6, eel: 2.2, angler: 1.4 };
+const rateOf = (kind, speed) => RATE[kind] || 1.8 + speed * 0.05;
+
+// The frame to show at time t (s), with its own phase `ph` (radians): two frames swapped
+// `rate` times a second. Reduced motion: always the first frame.
+export function animFrame(t, ph = 0, rate = 2, reduced = false) {
+  if (reduced || !(rate > 0) || !(t > 0)) return 0;
+  return Math.floor(t * rate + ph / 6.2832) % 2 ? 1 : 0;
+}
+
+// Colours in buckets: flat, and five steps each way up to full strength at a 3% move
+// (fishColor), so the sprite cache holds a few dozen canvases, not one per fish.
+export const LEVELS = 5;
 const EYE = 'hsl(213, 43%, 5%)';
-const shade = (c, dl, a = 0.9) => hsl({ ...c, l: clamp(c.l + dl, 4, 94) }, a);
-
-function rim(g, col, lit, a = 0.9) {
-  g.lineWidth = lit ? 1.5 : 1;
-  g.strokeStyle = lit ? LIT : shade(col, 22, a);
-  g.stroke();
+const LIT = 'hsl(206, 100%, 94%)';
+export function colorLevel(pct) {
+  if (!Number.isFinite(pct) || Math.abs(pct) < 0.005) return 0;
+  return Math.sign(pct) * Math.max(1, Math.ceil(Math.min(1, Math.abs(pct) / 3) * LEVELS - 1e-9));
 }
-function eye(g, x, y, L, k = 0.045) {
-  const s = Math.max(1.5, L * k);
-  g.fillStyle = EYE;
-  g.fillRect(x - s / 2, y - s / 2, s, s);
-}
-function finFill(g, col, a = 0.8) { g.fillStyle = shade(col, -8, a); g.fill(); }
-
-// A soft ice-white glow for the anglerfish lure, drawn once.
-let glow = null;
-function glowSprite() {
-  if (glow) return glow;
-  glow = document.createElement('canvas');
-  glow.width = 32; glow.height = 32;
-  const b = glow.getContext('2d');
-  const r = b.createRadialGradient(16, 16, 0, 16, 16, 16);
-  r.addColorStop(0, 'hsla(195, 100%, 97%, 0.95)');
-  r.addColorStop(0.25, 'hsla(197, 100%, 82%, 0.5)');
-  r.addColorStop(1, 'hsla(201, 100%, 70%, 0)');
-  b.fillStyle = r;
-  b.fillRect(0, 0, 32, 32);
-  return glow;
+export function spriteColors(pct) {
+  const lv = colorLevel(pct);
+  const c = fishColor((lv / LEVELS) * 3);
+  return { key: String(lv), body: hsl(c), shade: hsl({ ...c, l: clamp(c.l - 15, 8, 90) }), eye: EYE };
 }
 
-function plainFish(g, L, col, w, lit) {
-  const Hh = L * 0.42;
-  g.beginPath();
-  g.moveTo(-L * 0.26, 0);
-  g.lineTo(-L * 0.5, -Hh * 0.46 + w);
-  g.lineTo(-L * 0.43, w * 0.6);
-  g.lineTo(-L * 0.5, Hh * 0.46 + w);
-  g.closePath();
-  finFill(g, col);
-  g.beginPath();
-  g.moveTo(L * 0.5, 0);
-  g.quadraticCurveTo(L * 0.1, -Hh, -L * 0.3, w * 0.25);
-  g.quadraticCurveTo(L * 0.1, Hh, L * 0.5, 0);
-  g.fillStyle = hsl(col, 0.9);
-  g.fill();
-  rim(g, col, lit);
-  if (L >= 16) {
-    g.beginPath();
-    g.moveTo(L * 0.2, -Hh * 0.28);
-    g.quadraticCurveTo(L * 0.14, 0, L * 0.2, Hh * 0.28);
-    g.strokeStyle = shade(col, -14, 0.8);
-    g.lineWidth = 1;
-    g.stroke();
-    eye(g, L * 0.32, -Hh * 0.1, L);
-  }
-}
-
-// Swordfish: slim body, a long bill, a tall sail and a crescent tail.
-function swordfish(g, L, col, w, lit) {
-  const H = L * 0.12;
-  g.beginPath();
-  g.moveTo(-L * 0.32, 0);
-  g.quadraticCurveTo(-L * 0.39, -H * 0.6 + w * 0.5, -L * 0.5, -H * 2.1 + w);
-  g.quadraticCurveTo(-L * 0.42, w * 0.4, -L * 0.5, H * 2.1 + w);
-  g.quadraticCurveTo(-L * 0.39, H * 0.6 + w * 0.5, -L * 0.32, 0);
-  finFill(g, col, 0.85);
-  g.beginPath();
-  g.moveTo(L * 0.13, -H * 0.8);
-  g.quadraticCurveTo(L * 0.1, -H * 2.9, -L * 0.01, -H * 2.8);
-  g.quadraticCurveTo(L * 0.01, -H * 1.6, -L * 0.07, -H * 0.8);
-  g.closePath();
-  finFill(g, col, 0.85);
-  if (L >= 18) {
-    g.beginPath();
-    g.moveTo(L * 0.15, H * 0.5);
-    g.quadraticCurveTo(L * 0.06, H * 1.5, -L * 0.07, H * 1.8);
-    g.quadraticCurveTo(L * 0.05, H * 1.0, L * 0.09, H * 0.6);
-    g.closePath();
-    finFill(g, col, 0.75);
-  }
-  g.beginPath();
-  g.moveTo(L * 0.25, -H * 0.3);
-  g.lineTo(L * 0.5, -H * 0.12);
-  g.lineTo(L * 0.25, H * 0.25);
-  g.quadraticCurveTo(L * 0.04, H * 1.2, -L * 0.33, H * 0.2);
-  g.lineTo(-L * 0.33, -H * 0.2);
-  g.quadraticCurveTo(L * 0.02, -H * 1.3, L * 0.25, -H * 0.3);
-  g.fillStyle = hsl(col, 0.9);
-  g.fill();
-  rim(g, col, lit);
-  eye(g, L * 0.19, -H * 0.25, L, 0.04);
-}
-
-// Shark: pointed snout, a tall swept dorsal fin, long upper tail lobe, gill slits.
-function shark(g, L, col, w, lit) {
-  const H = L * 0.14;
-  g.beginPath();
-  g.moveTo(-L * 0.3, -H * 0.35);
-  g.quadraticCurveTo(-L * 0.4, -H * 0.9 + w * 0.5, -L * 0.5, -H * 2.2 + w);
-  g.quadraticCurveTo(-L * 0.43, -H * 0.5 + w * 0.6, -L * 0.41, w * 0.4);
-  g.lineTo(-L * 0.47, H * 1.15 + w * 0.8);
-  g.quadraticCurveTo(-L * 0.38, H * 0.5, -L * 0.3, H * 0.3);
-  g.closePath();
-  finFill(g, col, 0.85);
-  g.beginPath();
-  g.moveTo(L * 0.1, -H * 0.85);
-  g.quadraticCurveTo(L * 0.04, -H * 1.7, -L * 0.07, -H * 2.5);
-  g.quadraticCurveTo(-L * 0.06, -H * 1.35, -L * 0.13, -H * 0.72);
-  g.closePath();
-  finFill(g, col, 0.9);
-  g.beginPath();
-  g.moveTo(L * 0.17, H * 0.55);
-  g.quadraticCurveTo(L * 0.09, H * 1.35, -L * 0.03, H * 2);
-  g.quadraticCurveTo(L * 0.04, H * 1.05, L * 0.06, H * 0.75);
-  g.closePath();
-  finFill(g, col, 0.85);
-  g.beginPath();
-  g.moveTo(L * 0.5, -H * 0.05);
-  g.quadraticCurveTo(L * 0.45, -H * 0.85, L * 0.26, -H * 0.95);
-  g.quadraticCurveTo(-L * 0.05, -H * 1.1, -L * 0.32, -H * 0.28);
-  g.lineTo(-L * 0.32, H * 0.26);
-  g.quadraticCurveTo(-L * 0.02, H * 0.95, L * 0.28, H * 0.72);
-  g.quadraticCurveTo(L * 0.44, H * 0.55, L * 0.5, -H * 0.05);
-  g.fillStyle = hsl(col, 0.9);
-  g.fill();
-  rim(g, col, lit);
-  if (L >= 26) {
-    g.beginPath();
-    for (let i = 0; i < 3; i += 1) {
-      const x = L * (0.2 - i * 0.035);
-      g.moveTo(x, -H * 0.35); g.lineTo(x - L * 0.01, H * 0.3);
-    }
-    g.strokeStyle = shade(col, -16, 0.8);
-    g.lineWidth = 1;
-    g.stroke();
-  }
-  eye(g, L * 0.34, -H * 0.3, L, 0.035);
-}
-
-// Electric eel: a long wavy ribbon with a fin along its belly, and now and then a tiny
-// spark.
-function eel(g, L, col, t, ph, lit, still) {
-  const n = 16;
-  const top = []; const bot = [];
-  const thick = Math.max(1.6, L * 0.065);
-  for (let i = 0; i <= n; i += 1) {
-    const u = i / n;
-    const x = L * (0.5 - u);
-    const y = Math.sin(u * 8.5 - t * 4 + ph) * L * 0.06 * (0.2 + u);
-    const hw = thick * (u < 0.12 ? 0.55 + u * 3.75 : 1 - (u - 0.12) * 1.06);
-    top.push([x, y - hw]); bot.push([x, y + hw]);
-  }
-  if (L >= 20) {
-    g.beginPath();
-    for (let i = 3; i <= n - 1; i += 1) (i === 3 ? g.moveTo(bot[i][0], bot[i][1]) : g.lineTo(bot[i][0], bot[i][1] + thick * 0.35 * (1 - i / n) + 0.5));
-    g.strokeStyle = shade(col, 20, 0.5);
-    g.lineWidth = 1;
-    g.stroke();
-  }
-  g.beginPath();
-  g.moveTo(top[0][0], top[0][1]);
-  g.quadraticCurveTo(L * 0.5 + thick * 0.9, (top[0][1] + bot[0][1]) / 2, bot[0][0], bot[0][1]);
-  for (let i = 1; i <= n; i += 1) g.lineTo(bot[i][0], bot[i][1]);
-  for (let i = n; i >= 1; i -= 1) g.lineTo(top[i][0], top[i][1]);
-  g.closePath();
-  g.fillStyle = hsl(col, 0.9);
-  g.fill();
-  rim(g, col, lit);
-  eye(g, L * 0.44, top[1][1] + thick * 0.45, L, 0.035);
-  if (!still) {
-    const k = (t * 0.23 + ph) % 1;
-    if (k < 0.022) {
-      const m = Math.round(n * 0.45);
-      const [x, y] = top[m];
-      g.beginPath();
-      g.moveTo(x - 4, y - 2); g.lineTo(x - 1, y - 5); g.lineTo(x + 1, y - 3); g.lineTo(x + 4, y - 7);
-      g.strokeStyle = 'hsla(195, 100%, 92%, 0.9)';
-      g.lineWidth = 1;
-      g.stroke();
-    }
-  }
-}
-
-// Anglerfish: a big head with an open underbite and a few teeth, a small tail, and a
-// stalk from its brow ending in a glowing ice-blue lure.
-function angler(g, L, col, t, ph, w, lit) {
-  const H = L * 0.26;
-  g.beginPath();
-  g.moveTo(-L * 0.26, 0);
-  g.lineTo(-L * 0.47, -H * 0.75 + w);
-  g.quadraticCurveTo(-L * 0.42, w * 0.5, -L * 0.47, H * 0.75 + w);
-  g.closePath();
-  finFill(g, col);
-  const sway = Math.sin(t * 1.4 + ph) * L * 0.03;
-  const lx = L * 0.5; const ly = -H * 1.3 + sway;
-  g.beginPath();
-  g.moveTo(L * 0.14, -H * 1.02);
-  g.quadraticCurveTo(L * 0.3, -H * 2.1, lx, ly);
-  g.strokeStyle = shade(col, 12, 0.85);
-  g.lineWidth = 1;
-  g.stroke();
-  g.beginPath();
-  g.moveTo(L * 0.4, -H * 0.22);
-  g.bezierCurveTo(L * 0.36, -H * 1.3, -L * 0.02, -H * 1.3, -L * 0.28, -H * 0.3);
-  g.lineTo(-L * 0.28, H * 0.3);
-  g.bezierCurveTo(-L * 0.05, H * 1.2, L * 0.36, H * 1.2, L * 0.47, H * 0.12);
-  g.lineTo(L * 0.17, H * 0.06);
-  g.closePath();
-  g.fillStyle = hsl(col, 0.9);
-  g.fill();
-  rim(g, col, lit);
-  if (L >= 20) {
-    g.beginPath();
-    for (let i = 0; i < 4; i += 1) {
-      const u = 0.25 + i * 0.22;
-      const x = L * (0.17 + (0.47 - 0.17) * u); const y = H * (0.06 + 0.06 * u);
-      g.moveTo(x - L * 0.018, y); g.lineTo(x, y - H * 0.28); g.lineTo(x + L * 0.018, y);
-    }
-    g.fillStyle = 'hsla(206, 60%, 90%, 0.85)';
-    g.fill();
-  }
-  eye(g, L * 0.2, -H * 0.62, L);
-  const r = Math.max(7, L * 0.34) * (1 + 0.12 * Math.sin(t * 2.1 + ph));
-  g.drawImage(glowSprite(), lx - r, ly - r, r * 2, r * 2);
-  g.fillStyle = 'hsl(195, 100%, 96%)';
-  const d = Math.max(1.5, L * 0.035);
-  g.fillRect(lx - d / 2, ly - d / 2, d, d);
-}
-
-// Dolphin: a short beak and rounded melon, a curved dorsal fin, flukes that beat up and
-// down.
-function dolphin(g, L, col, w, lit) {
-  g.beginPath();
-  g.moveTo(-L * 0.37, 0);
-  g.lineTo(-L * 0.5, -L * 0.1 + w * 0.6);
-  g.quadraticCurveTo(-L * 0.45, w * 0.3, -L * 0.5, L * 0.08 + w * 0.6);
-  g.closePath();
-  finFill(g, col);
-  g.beginPath();
-  g.moveTo(L * 0.02, -L * 0.13);
-  g.quadraticCurveTo(-L * 0.02, -L * 0.27, -L * 0.13, -L * 0.29);
-  g.quadraticCurveTo(-L * 0.08, -L * 0.2, -L * 0.11, -L * 0.1);
-  g.closePath();
-  finFill(g, col, 0.9);
-  g.beginPath();
-  g.moveTo(L * 0.5, L * 0.02);
-  g.lineTo(L * 0.41, -L * 0.005);
-  g.quadraticCurveTo(L * 0.38, -L * 0.12, L * 0.26, -L * 0.13);
-  g.bezierCurveTo(L * 0.05, -L * 0.15, -L * 0.2, -L * 0.1, -L * 0.38, -L * 0.022);
-  g.lineTo(-L * 0.38, L * 0.022);
-  g.bezierCurveTo(-L * 0.15, L * 0.09, L * 0.15, L * 0.13, L * 0.34, L * 0.07);
-  g.quadraticCurveTo(L * 0.43, L * 0.045, L * 0.5, L * 0.02);
-  g.fillStyle = hsl(col, 0.9);
-  g.fill();
-  rim(g, col, lit);
-  if (L >= 16) {
-    g.beginPath();
-    g.moveTo(L * 0.19, L * 0.07);
-    g.quadraticCurveTo(L * 0.13, L * 0.17, L * 0.06, L * 0.2);
-    g.quadraticCurveTo(L * 0.1, L * 0.12, L * 0.11, L * 0.085);
-    g.closePath();
-    finFill(g, col, 0.85);
-    g.beginPath();
-    g.moveTo(L * 0.42, L * 0.022); g.lineTo(L * 0.34, L * 0.03);
-    g.strokeStyle = shade(col, -16, 0.8);
-    g.lineWidth = 1;
-    g.stroke();
-  }
-  eye(g, L * 0.31, -L * 0.035, L, 0.035);
-}
-
-// Jellyfish: a bell with a scalloped rim that pulses, trailing tentacles.
-function jelly(g, L, col, t, ph, lit) {
-  const p = Math.sin(t * 1.6 + ph);
-  const bw = L * 0.3 * (1 + 0.07 * p);
-  const bh = L * 0.34 * (1 - 0.06 * p);
-  const rimY = L * 0.06;
-  g.lineCap = 'round';
-  g.lineWidth = 1;
-  g.strokeStyle = shade(col, 8, 0.55);
-  g.beginPath();
-  for (let j = 0; j < 5; j += 1) {
-    const x0 = -bw * 0.72 + j * (bw * 1.44 / 4);
-    g.moveTo(x0, rimY);
-    for (let s = 1; s <= 7; s += 1) {
-      g.lineTo(x0 + Math.sin(s * 0.85 - t * 2 + ph + j * 1.3) * L * 0.035 * (s / 7 + 0.3), rimY + s * L * 0.058);
-    }
-  }
-  g.stroke();
-  g.beginPath();
-  for (let j = 0; j < 2; j += 1) {
-    const x0 = (j ? 1 : -1) * bw * 0.16;
-    g.moveTo(x0, rimY);
-    for (let s = 1; s <= 5; s += 1) g.lineTo(x0 + Math.sin(s * 1.1 - t * 1.6 + ph + j * 2) * L * 0.03, rimY + s * L * 0.05);
-  }
-  g.lineWidth = Math.max(1.5, L * 0.04);
-  g.strokeStyle = shade(col, 4, 0.5);
-  g.stroke();
-  g.lineCap = 'butt';
-  g.beginPath();
-  g.moveTo(-bw, rimY);
-  g.bezierCurveTo(-bw * 1.04, rimY - bh * 1.33, bw * 1.04, rimY - bh * 1.33, bw, rimY);
-  const n = 5;
-  for (let i = 0; i < n; i += 1) {
-    const x0 = bw - (2 * bw * i) / n; const x1 = bw - (2 * bw * (i + 1)) / n;
-    g.quadraticCurveTo((x0 + x1) / 2, rimY + bh * 0.16, x1, rimY);
-  }
-  g.closePath();
-  g.fillStyle = hsl(col, 0.6);
-  g.fill();
-  rim(g, col, lit);
-  if (L >= 20) {
-    g.beginPath();
-    g.ellipse(0, rimY - bh * 0.42, bw * 0.46, bh * 0.28, 0, Math.PI, 2 * Math.PI);
-    g.strokeStyle = shade(col, 22, 0.45);
-    g.lineWidth = 1;
-    g.stroke();
-  }
-}
-
-// Clownfish: a round-nosed oval with three pale bands edged dark, rounded fins.
-function clown(g, L, col, w, lit) {
-  const H = L * 0.25;
-  const edge = shade(col, -24, 0.9);
-  g.beginPath();
-  g.moveTo(-L * 0.27, 0);
-  g.bezierCurveTo(-L * 0.4, -H * 1.3 + w, -L * 0.55, -H * 0.7 + w, -L * 0.5, w);
-  g.bezierCurveTo(-L * 0.55, H * 0.7 + w, -L * 0.4, H * 1.3 + w, -L * 0.27, 0);
-  finFill(g, col, 0.85);
-  g.strokeStyle = edge; g.lineWidth = 1; g.stroke();
-  g.beginPath();
-  g.moveTo(L * 0.2, -H * 0.86);
-  g.quadraticCurveTo(L * 0.1, -H * 1.6, 0, -H * 1.05);
-  g.quadraticCurveTo(-L * 0.12, -H * 1.55, -L * 0.24, -H * 0.5);
-  g.closePath();
-  finFill(g, col, 0.85);
-  g.strokeStyle = edge; g.stroke();
-  const body = () => {
-    g.beginPath();
-    g.moveTo(L * 0.45, H * 0.05);
-    g.bezierCurveTo(L * 0.43, -H * 1.1, -L * 0.12, -H * 1.18, -L * 0.3, -H * 0.3);
-    g.lineTo(-L * 0.3, H * 0.3);
-    g.bezierCurveTo(-L * 0.12, H * 1.18, L * 0.43, H * 1.1, L * 0.45, H * 0.05);
-  };
-  body();
-  g.fillStyle = hsl(col, 0.92);
-  g.fill();
-  g.save();
-  body();
-  g.clip();
-  const bw = Math.max(0.9, L * 0.045);
-  g.beginPath();
-  for (const bx of [0.25, 0.02, -0.22]) {
-    const x = L * bx;
-    g.moveTo(x + bw, -H * 1.3);
-    g.quadraticCurveTo(x + L * 0.05 + bw, 0, x + bw, H * 1.3);
-    g.lineTo(x - bw, H * 1.3);
-    g.quadraticCurveTo(x + L * 0.05 - bw, 0, x - bw, -H * 1.3);
-    g.closePath();
-  }
-  g.fillStyle = `hsla(${col.h}, 30%, 92%, 0.9)`;
-  g.fill();
-  if (L >= 20) { g.strokeStyle = edge; g.lineWidth = 1; g.stroke(); }
-  g.restore();
-  body();
-  rim(g, col, lit);
-  eye(g, L * 0.35, -H * 0.2, L);
-}
-
-// Goldfish: a round body, a tall dorsal fin and a flowing double fan tail.
-function goldfish(g, L, col, t, ph, w, lit) {
-  const w2 = Math.sin(t * 2.2 + ph + 1.3) * L * 0.035;
-  for (const [sgn, ww] of [[-1, w], [1, w2]]) {
-    g.beginPath();
-    g.moveTo(-L * 0.07, sgn * L * 0.03);
-    g.bezierCurveTo(-L * 0.18, sgn * L * 0.2 + ww, -L * 0.36, sgn * L * 0.26 + ww, -L * 0.49, sgn * L * 0.2 + ww);
-    g.bezierCurveTo(-L * 0.56, sgn * L * 0.12 + ww, -L * 0.46, sgn * L * 0.03 + ww * 0.5, -L * 0.3, 0);
-    g.lineTo(-L * 0.07, 0);
-    g.closePath();
-    g.fillStyle = shade(col, 4, 0.55);
-    g.fill();
-    rim(g, col, lit, 0.6);
-  }
-  if (L >= 28) {
-    g.beginPath();
-    for (const sgn of [-1, 1]) for (let i = 0; i < 3; i += 1) {
-      g.moveTo(-L * 0.1, sgn * L * 0.02);
-      g.lineTo(-L * (0.3 + i * 0.07), sgn * L * (0.2 - i * 0.04) + (sgn < 0 ? w : w2) * 0.8);
-    }
-    g.strokeStyle = shade(col, 18, 0.3);
-    g.lineWidth = 1;
-    g.stroke();
-  }
-  g.beginPath();
-  g.moveTo(L * 0.2, -L * 0.17);
-  g.bezierCurveTo(L * 0.14, -L * 0.4, -L * 0.02, -L * 0.37, -L * 0.07, -L * 0.1);
-  g.closePath();
-  finFill(g, col, 0.75);
-  g.beginPath();
-  g.moveTo(L * 0.14, L * 0.16);
-  g.quadraticCurveTo(L * 0.06, L * 0.33 + w2 * 0.5, -L * 0.02, L * 0.31 + w2 * 0.5);
-  g.quadraticCurveTo(L * 0.06, L * 0.22, L * 0.08, L * 0.17);
-  g.closePath();
-  finFill(g, col, 0.7);
-  g.beginPath();
-  g.moveTo(L * 0.38, L * 0.01);
-  g.bezierCurveTo(L * 0.35, -L * 0.25, -L * 0.05, -L * 0.27, -L * 0.1, -L * 0.01);
-  g.bezierCurveTo(-L * 0.06, L * 0.26, L * 0.34, L * 0.25, L * 0.38, L * 0.01);
-  g.fillStyle = hsl(col, 0.92);
-  g.fill();
-  rim(g, col, lit);
-  eye(g, L * 0.27, -L * 0.06, L, 0.055);
-}
-
-// Pufferfish: a round, gently breathing body ringed with short spikes, a pale belly,
-// a small tail.
-function puffer(g, L, col, t, ph, w, lit) {
-  const R = L * 0.3 * (1 + 0.04 * Math.sin(t * 0.9 + ph));
-  const cx = L * 0.04;
-  g.beginPath();
-  g.moveTo(cx - R * 0.85, 0);
-  g.lineTo(-L * 0.5, -L * 0.13 + w);
-  g.quadraticCurveTo(-L * 0.44, w * 0.5, -L * 0.5, L * 0.13 + w);
-  g.closePath();
-  finFill(g, col);
-  g.beginPath();
-  const n = 18;
-  for (let i = 0; i < n; i += 1) {
-    const a = (i / n) * Math.PI * 2 + 0.17;
-    if (Math.cos(a) > 0.9) continue; // the mouth
-    const c = Math.cos(a); const s = Math.sin(a);
-    g.moveTo(cx + c * R * 0.95, s * R * 0.95);
-    g.lineTo(cx + c * R * 1.22, s * R * 1.22);
-  }
-  g.strokeStyle = shade(col, 16, 0.9);
-  g.lineWidth = 1;
-  g.stroke();
-  g.beginPath();
-  g.arc(cx, 0, R, 0, Math.PI * 2);
-  g.fillStyle = hsl(col, 0.92);
-  g.fill();
-  g.beginPath();
-  g.arc(cx, 0, R, Math.PI * 0.14, Math.PI * 0.86);
-  g.closePath();
-  g.fillStyle = shade(col, 16, 0.55);
-  g.fill();
-  g.beginPath();
-  g.arc(cx, 0, R, 0, Math.PI * 2);
-  rim(g, col, lit);
-  if (L >= 16) {
-    const f = Math.sin(t * 6 + ph) * L * 0.03;
-    g.beginPath();
-    g.moveTo(cx + R * 0.12, R * 0.05);
-    g.quadraticCurveTo(cx - R * 0.1, -R * 0.2 + f, cx - R * 0.22, -R * 0.08 + f);
-    g.quadraticCurveTo(cx - R * 0.12, R * 0.2 + f, cx + R * 0.12, R * 0.05);
-    g.fillStyle = shade(col, 12, 0.55);
-    g.fill();
-  }
-  if (L >= 26) {
-    g.fillStyle = shade(col, -18, 0.7);
-    for (const [dx, dy] of [[-0.35, -0.5], [-0.05, -0.62], [-0.55, -0.12], [0.2, -0.72]]) g.fillRect(cx + dx * R, dy * R, 1.5, 1.5);
-  }
-  eye(g, cx + R * 0.48, -R * 0.3, L, 0.06);
-}
-
-// Hermit crab: a spiral shell on its back, walking legs, one big claw, eyes on stalks.
-// Drawn standing on y = +0.2L.
-function crab(g, L, col, t, ph, lit, walking) {
-  const step = walking ? Math.sin(t * 8 + ph) : 0;
-  g.strokeStyle = shade(col, 10, 0.9);
-  g.lineWidth = Math.max(1, L * 0.035);
-  g.beginPath();
-  for (let k = 0; k < 3; k += 1) {
-    const bx = L * (0.08 + k * 0.08);
-    const sw = step * (k % 2 ? 1 : -1) * L * 0.035;
-    g.moveTo(bx, L * 0.05);
-    g.lineTo(bx + L * 0.05 + sw * 0.5, L * 0.08);
-    g.lineTo(bx + L * 0.02 + sw, L * 0.2);
-  }
-  g.stroke();
-  g.beginPath();
-  g.moveTo(L * 0.24, 0); g.lineTo(L * 0.28, -L * 0.15);
-  g.moveTo(L * 0.27, 0); g.lineTo(L * 0.33, -L * 0.13);
-  g.lineWidth = 1;
-  g.stroke();
-  g.fillStyle = EYE;
-  const e = Math.max(1.5, L * 0.04);
-  g.fillRect(L * 0.28 - e / 2, -L * 0.15 - e / 2, e, e);
-  g.fillRect(L * 0.33 - e / 2, -L * 0.13 - e / 2, e, e);
-  g.beginPath();
-  g.ellipse(L * 0.2, L * 0.04, L * 0.1, L * 0.06, 0, 0, Math.PI * 2);
-  g.fillStyle = shade(col, -6, 0.95);
-  g.fill();
-  g.save();
-  g.translate(L * 0.36, L * 0.07);
-  g.rotate(-0.25);
-  g.beginPath();
-  g.ellipse(0, 0, L * 0.09, L * 0.06, 0, 0, Math.PI * 2);
-  g.fillStyle = shade(col, 4, 0.95);
-  g.fill();
-  rim(g, col, lit);
-  g.beginPath();
-  g.moveTo(L * 0.09, 0); g.lineTo(L * 0.01, 0);
-  g.strokeStyle = EYE;
-  g.lineWidth = 1;
-  g.stroke();
-  g.restore();
-  g.beginPath();
-  g.moveTo(L * 0.16, L * 0.13);
-  g.bezierCurveTo(L * 0.24, -L * 0.3, -L * 0.22, -L * 0.44, -L * 0.44, -L * 0.2);
-  g.bezierCurveTo(-L * 0.38, -L * 0.02, -L * 0.3, L * 0.17, L * 0.16, L * 0.13);
-  g.fillStyle = hsl(col, 0.92);
-  g.fill();
-  rim(g, col, lit);
-  g.beginPath();
-  const turns = L >= 22 ? 2.4 : 1.5;
-  for (let i = 0; i <= 28; i += 1) {
-    const a = (i / 28) * turns * Math.PI * 2;
-    const r = L * 0.2 * (1 - i / 32);
-    const x = -L * 0.06 + Math.cos(a + 2.4) * r; const y = -L * 0.07 + Math.sin(a + 2.4) * r * 0.85;
-    if (i) g.lineTo(x, y); else g.moveTo(x, y);
-  }
-  g.strokeStyle = shade(col, -18, 0.75);
-  g.lineWidth = 1;
-  g.stroke();
-}
-
-// Lobster: carapace, a segmented tail and fan, one big claw, long antennae swept back.
-function lobster(g, L, col, t, ph, w, lit) {
-  const sw = Math.sin(t * 1.3 + ph) * L * 0.04;
-  g.beginPath();
-  g.moveTo(L * 0.34, -L * 0.05);
-  g.quadraticCurveTo(L * 0.66, -L * 0.28, L * 0.05, -L * 0.36 + sw);
-  g.moveTo(L * 0.34, -L * 0.03);
-  g.quadraticCurveTo(L * 0.58, -L * 0.2, L * 0.16, -L * 0.28 + sw * 0.7);
-  g.strokeStyle = shade(col, 8, 0.7);
-  g.lineWidth = 1;
-  g.stroke();
-  g.beginPath();
-  for (let k = 0; k < 4; k += 1) {
-    const bx = L * (0.08 + k * 0.055);
-    g.moveTo(bx, L * 0.07); g.lineTo(bx - L * 0.03, L * 0.19);
-  }
-  g.strokeStyle = shade(col, 6, 0.85);
-  g.stroke();
-  g.beginPath();
-  g.moveTo(-L * 0.33, L * 0.02);
-  g.lineTo(-L * 0.5, -L * 0.07 + w * 0.3);
-  g.lineTo(-L * 0.47, L * 0.04 + w * 0.3);
-  g.lineTo(-L * 0.5, L * 0.14 + w * 0.3);
-  g.closePath();
-  finFill(g, col);
-  g.beginPath();
-  g.moveTo(L * 0.05, -L * 0.1);
-  g.quadraticCurveTo(-L * 0.16, -L * 0.12, -L * 0.34, -L * 0.03);
-  g.lineTo(-L * 0.34, L * 0.07);
-  g.quadraticCurveTo(-L * 0.16, L * 0.1, L * 0.05, L * 0.09);
-  g.closePath();
-  g.fillStyle = hsl(col, 0.9);
-  g.fill();
-  rim(g, col, lit);
-  if (L >= 18) {
-    g.beginPath();
-    for (let k = 0; k < 4; k += 1) { const x = -L * (0.03 + k * 0.075); g.moveTo(x, -L * 0.1 + k * 0.012 * L); g.lineTo(x, L * 0.09); }
-    g.strokeStyle = shade(col, -16, 0.7);
-    g.lineWidth = 1;
-    g.stroke();
-  }
-  g.beginPath();
-  g.moveTo(L * 0.26, L * 0.06); g.lineTo(L * 0.38, L * 0.11);
-  g.strokeStyle = shade(col, 4, 0.9);
-  g.lineWidth = Math.max(1, L * 0.035);
-  g.stroke();
-  g.beginPath();
-  g.moveTo(L * 0.4, -L * 0.02);
-  g.quadraticCurveTo(L * 0.38, -L * 0.12, L * 0.18, -L * 0.12);
-  g.quadraticCurveTo(L * 0.03, -L * 0.1, L * 0.03, 0);
-  g.quadraticCurveTo(L * 0.04, L * 0.1, L * 0.2, L * 0.1);
-  g.quadraticCurveTo(L * 0.34, L * 0.08, L * 0.4, -L * 0.02);
-  g.fillStyle = hsl(col, 0.92);
-  g.fill();
-  rim(g, col, lit);
-  g.save();
-  g.translate(L * 0.47, L * 0.12);
-  g.rotate(-0.12);
-  g.beginPath();
-  g.moveTo(-L * 0.09, 0);
-  g.quadraticCurveTo(-L * 0.04, -L * 0.07, L * 0.1, -L * 0.02);
-  g.lineTo(L * 0.01, -L * 0.004);
-  g.lineTo(L * 0.09, L * 0.03);
-  g.quadraticCurveTo(-L * 0.02, L * 0.06, -L * 0.09, 0);
-  g.fillStyle = hsl(col, 0.92);
-  g.fill();
-  rim(g, col, lit);
-  g.restore();
-  eye(g, L * 0.33, -L * 0.07, L, 0.04);
-}
-
-// Draw one animal of `kind` at the origin, facing right. `t` is the animation clock (0
-// when still), `ph` its own phase.
-export function drawSpecies(g, kind, L, col, { t = 0, ph = 0, speed = 20, lit = false, still = false } = {}) {
-  const w = still ? 0 : Math.sin(t * (5 + speed * 0.12) + ph) * L * 0.08;
-  switch (kind) {
-    case 'swordfish': return swordfish(g, L, col, w, lit);
-    case 'shark': return shark(g, L, col, w * 0.8, lit);
-    case 'eel': return eel(g, L, col, t, ph, lit, still);
-    case 'angler': return angler(g, L, col, t, ph, w, lit);
-    case 'dolphin': {
-      g.rotate(still ? 0 : Math.sin(t * 1.3 + ph) * 0.05);
-      return dolphin(g, L, col, still ? 0 : Math.sin(t * 3 + ph) * L * 0.08, lit);
-    }
-    case 'jelly': return jelly(g, L, col, t, ph, lit);
-    case 'clown': return clown(g, L, col, w, lit);
-    case 'goldfish': return goldfish(g, L, col, t, ph, w, lit);
-    case 'puffer': return puffer(g, L, col, t, ph, w, lit);
-    case 'crab': return crab(g, L, col, t, ph, lit, !still);
-    case 'lobster': return lobster(g, L, col, t, ph, w, lit);
-    default: return plainFish(g, L, col, w, lit);
-  }
-}
-
-// Hit area of each species around its centre: half-height as a share of its length, and
-// how far below the centre it sits.
-const HIT = { jelly: [0.36, 0.06], puffer: [0.36, 0], goldfish: [0.3, 0], angler: [0.32, 0], crab: [0.3, -0.05], clown: [0.28, 0] };
-
-// A legend glyph: the species small, in ice blue, fitted to a 26 x 16 box.
-const GLYPH = { jelly: [15, -1], puffer: [19, 0], crab: [19, 1], goldfish: [21, 0], clown: [20, 0], angler: [18, 1], lobster: [19, 1] };
-const GLYPH_COL = { h: 201, s: 70, l: 70 };
-function drawGlyph(canvas, kind) {
-  const b = canvas.getContext?.('2d');
+// A legend glyph: the species at the biggest whole scale that fits a 26 x 16 CSS px
+// box at this pixel ratio, in ice blue. The canvas is exactly the sprite times that scale
+// in device pixels and shown at that size, so every pixel is the same whole size.
+const GLYPH_COLORS = { body: 'hsl(201, 70%, 70%)', shade: 'hsl(201, 55%, 50%)', eye: EYE };
+export function drawGlyph(canvas, kind, dpr = 1) {
+  const b = canvas?.getContext?.('2d');
   if (!b) return;
-  const [L, dy] = GLYPH[kind] || [22, 0];
-  b.setTransform?.(2, 0, 0, 2, 0, 0);
-  b.clearRect?.(0, 0, 26, 16);
-  b.translate?.(13, 8 + dy);
-  drawSpecies(b, kind, L, GLYPH_COL, { still: true });
+  const d = clamp(dpr > 0 ? dpr : 1, 1, 3);
+  const sp = spriteOf(kind);
+  const p = Math.max(1, Math.floor(Math.min((26 * d) / sp.w, (16 * d) / sp.h)));
+  canvas.width = sp.w * p; canvas.height = sp.h * p;
+  if (canvas.style) { canvas.style.width = `${canvas.width / d}px`; canvas.style.height = `${canvas.height / d}px`; }
+  b.imageSmoothingEnabled = false;
+  b.clearRect?.(0, 0, canvas.width, canvas.height);
+  paintSprite(b, sp, 0, 0, p, GLYPH_COLORS);
 }
 
 // ---- The tank ----------------------------------------------------------------------
@@ -898,7 +586,7 @@ export function makeRunner(frame, {
   };
 }
 
-function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
+function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprChanged = () => {} }) {
   const g = canvas.getContext('2d');
   const font = (getComputedStyle(host).fontFamily || 'monospace');
   let W = 0; let H = 0; let dpr = 1;
@@ -918,6 +606,8 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
   runner.hold('data'); // nothing to draw until the first batch
 
   const floorY = () => H - FLOOR;
+  const unit = () => Math.max(1, Math.round(dpr)); // one scenery pixel, in device pixels
+  const sprites = spriteCache();
   const band = () => ({ top: SURFACE + 14, bot: floorY() - 12 });
   const centre = (key) => sectorCentre(key, clock, W);
 
@@ -925,41 +615,45 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
     bg = document.createElement('canvas');
     bg.width = Math.round(W * dpr); bg.height = Math.round(H * dpr);
     const b = bg.getContext('2d');
-    b.scale(dpr, dpr);
-    const water = b.createLinearGradient(0, 0, 0, H);
-    water.addColorStop(0, 'hsl(206, 52%, 10%)');
-    water.addColorStop(0.55, 'hsl(211, 44%, 6%)');
-    water.addColorStop(1, 'hsl(213, 43%, 4%)');
-    b.fillStyle = water;
-    b.fillRect(0, 0, W, H);
-    // Light from above: a few faint slanted beams.
-    for (let i = 0; i < 5; i += 1) {
-      const x = W * (0.12 + i * 0.2 + (seeded('beam', i) - 0.5) * 0.08);
-      const wTop = 18 + seeded('bw', i) * 40;
-      const beam = b.createLinearGradient(0, SURFACE, 0, floorY());
-      beam.addColorStop(0, `${ICE} 0.045)`);
-      beam.addColorStop(1, `${ICE} 0)`);
-      b.fillStyle = beam;
-      b.beginPath();
-      b.moveTo(x, SURFACE); b.lineTo(x + wTop, SURFACE);
-      b.lineTo(x + wTop + H * 0.28, floorY()); b.lineTo(x + H * 0.18, floorY());
-      b.closePath(); b.fill();
+    // Everything pixel is drawn in device pixels, in whole units of u.
+    const u = unit();
+    const DW = bg.width; const DH = bg.height;
+    const snap = (v) => Math.round(v / u) * u;
+    // The water: flat bands, a shade darker each step down.
+    const BANDS = 8;
+    for (let i = 0; i < BANDS; i += 1) {
+      const k = i / (BANDS - 1);
+      const y0 = snap((DH * i) / BANDS); const y1 = i === BANDS - 1 ? DH : snap((DH * (i + 1)) / BANDS);
+      b.fillStyle = `hsl(${Math.round(206 + 7 * k)}, ${Math.round(52 - 9 * k)}%, ${(10 - 6 * k).toFixed(1)}%)`;
+      b.fillRect(0, y0, DW, y1 - y0);
     }
-    // The waterline: a dashed rule with a tint above it.
+    // Light from above: a few faint beams in stair steps, fading a step at a time.
+    const sy = SURFACE * dpr; const floorD = floorY() * dpr;
+    const stepH = u * 6;
+    const steps = Math.max(1, Math.ceil((floorD - sy) / stepH));
+    for (let i = 0; i < 5; i += 1) {
+      const x = W * dpr * (0.12 + i * 0.2 + (seeded('beam', i) - 0.5) * 0.08);
+      const wTop = (18 + seeded('bw', i) * 40) * dpr;
+      for (let j = 0; j < steps; j += 1) {
+        const k = j / steps;
+        const a = Math.round(0.045 * (1 - k) * 200) / 200; // fades in whole steps
+        if (a <= 0) break;
+        b.fillStyle = `${ICE} ${a})`;
+        const lx = snap(x + H * dpr * 0.18 * k); const rx = snap(x + wTop + H * dpr * 0.28 * k);
+        b.fillRect(lx, snap(sy + j * stepH), rx - lx, stepH);
+      }
+    }
+    // The waterline: a tint above it and a dashed rule of whole pixels.
     b.fillStyle = `${ICE} 0.035)`;
-    b.fillRect(0, 0, W, SURFACE);
-    b.strokeStyle = `${ICE} 0.32)`;
-    b.lineWidth = 1;
-    b.setLineDash([6, 4]);
-    b.beginPath(); b.moveTo(0, SURFACE + 0.5); b.lineTo(W, SURFACE + 0.5); b.stroke();
-    b.setLineDash([]);
+    b.fillRect(0, 0, DW, Math.round(sy));
+    b.fillStyle = `${ICE} 0.32)`;
+    for (let x = 0; x < DW; x += u * 10) b.fillRect(x, Math.round(sy), u * 6, u);
     // Depth marks on the left wall: the move that reaches the surface, flat, the floor.
     const { top, bot } = band();
-    const mid = Math.round((top + bot) / 2) + 0.5;
-    b.strokeStyle = 'hsla(210, 24%, 40%, 0.22)';
-    b.setLineDash([2, 6]);
-    b.beginPath(); b.moveTo(0, mid); b.lineTo(W, mid); b.stroke();
-    b.setLineDash([]);
+    const mid = Math.round((top + bot) / 2);
+    b.fillStyle = 'hsla(210, 24%, 40%, 0.22)';
+    for (let x = 0; x < DW; x += u * 8) b.fillRect(x, Math.round(mid * dpr), u, u);
+    b.setTransform(dpr, 0, 0, dpr, 0, 0);
     b.font = `10px ${font}`;
     b.fillStyle = 'hsla(208, 24%, 58%, 0.6)';
     b.textBaseline = 'middle';
@@ -969,37 +663,43 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
       b.fillText(fmtPct(range), 6, top);
       b.fillText(fmtPct(-range), 6, bot);
     }
-    // The sand: a low dune with a lit edge and a scatter of pixel grains.
-    const fy = floorY();
-    const dune = (x) => fy + 2 + Math.sin(x / 90 + 1.3) * 1.6 + Math.sin(x / 37) * 0.8;
-    const sand = b.createLinearGradient(0, fy, 0, H);
-    sand.addColorStop(0, 'hsl(208, 30%, 13%)');
-    sand.addColorStop(1, 'hsl(212, 34%, 7%)');
-    b.beginPath();
-    b.moveTo(0, H);
-    for (let x = 0; x <= W; x += 6) b.lineTo(x, dune(x));
-    b.lineTo(W, H);
-    b.closePath();
-    b.fillStyle = sand;
-    b.fill();
-    b.beginPath();
-    for (let x = 0; x <= W; x += 6) (x ? b.lineTo(x, dune(x)) : b.moveTo(x, dune(x)));
-    b.strokeStyle = 'hsla(206, 60%, 80%, 0.45)';
-    b.lineWidth = 1;
-    b.stroke();
-    for (let x = 3; x < W; x += 7) {
-      const k = seeded(`s${x}`);
-      const y = dune(x) + 4 + k * (H - dune(x) - 7);
-      b.fillStyle = `hsla(206, 40%, ${48 + k * 32}%, ${0.25 + k * 0.35})`;
-      b.fillRect(x + Math.round(seeded(`t${x}`) * 5), Math.round(y), k > 0.8 ? 2 : 1, 1);
+    // The sand: a low stepped dune, a lit top row and a two-tone dither under it.
+    b.setTransform(1, 0, 0, 1, 0, 0);
+    const c = u * 2; // one sand cell
+    const dune = (x) => floorD + (2 + Math.sin(x / (90 * dpr) + 1.3) * 1.6 + Math.sin(x / (37 * dpr)) * 0.8) * dpr;
+    const DARK = ['hsl(208, 30%, 13%)', 'hsl(210, 32%, 10%)', 'hsl(212, 34%, 7%)'];
+    for (let x = 0, i = 0; x < DW; x += c, i += 1) {
+      const top = snap(dune(x));
+      b.fillStyle = 'hsla(206, 60%, 80%, 0.45)';
+      b.fillRect(x, top, c, u);
+      for (let y = top + u, j = 0; y < DH; y += c, j += 1) {
+        const k = (y - top) / Math.max(1, DH - top);
+        const band = k < 0.34 ? 0 : k < 0.67 ? 1 : 2;
+        b.fillStyle = DARK[band];
+        b.fillRect(x, y, c, c);
+        // The dither: every other cell a step lighter, thinning out with depth.
+        if ((i + j) % 2 === 0 && seeded(`s${i}`, j) > k * 0.9) {
+          b.fillStyle = band ? DARK[band - 1] : 'hsl(206, 30%, 17%)';
+          b.fillRect(x, y, u, u);
+        }
+      }
+      // A few pale grains.
+      const g0 = seeded(`t${i}`);
+      if (g0 > 0.82) {
+        b.fillStyle = `hsla(206, 40%, ${Math.round(48 + g0 * 32)}%, 0.5)`;
+        b.fillRect(x, snap(top + u + (DH - top) * seeded(`g${i}`) * 0.8), u, u);
+      }
     }
   }
 
+  // Seaweed: a stalk of square blocks (WEED css px each) with a leaf now and then,
+  // swaying a whole block at a time.
+  const WEED = 4;
   function makeWeeds() {
     const n = clamp(Math.round(W / 190), 3, 9);
     weeds = Array.from({ length: n }, (_, i) => ({
       x: Math.round(W * ((i + 0.5) / n + (seeded('weed', i) - 0.5) * 0.6 / n)),
-      n: Math.round(clamp(H * (0.12 + seeded('wh', i) * 0.16), 60, 220) / 13),
+      n: Math.round(clamp(H * (0.12 + seeded('wh', i) * 0.16), 60, 220) / WEED),
       ph: seeded('wp', i) * 6.28,
     }));
   }
@@ -1044,7 +744,7 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
         const x01 = cx == null ? 0.04 + seeded(s.ticker) * 0.92 : clamp(cx + (seeded(s.ticker) - 0.5) * 0.2, 0.03, 0.97);
         f = {
           x01, x: x01 * (W || 800), vx: dir * speed, dir, face: dir, y: null, a: 1,
-          speed, ph: seeded(s.ticker, 5) * 6.28, jit: (seeded(s.ticker, 11) - 0.5) * 2,
+          speed, ph: seeded(s.ticker, 5) * 6.28, jit: (seeded(s.ticker, 11) - 0.5) * 2, rate: rateOf(kind, speed),
         };
         byTicker.set(s.ticker, f);
         born = true;
@@ -1053,7 +753,7 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
       f.kind = kind;
       f.sector = SPECIES[s.sector] ? s.sector : null;
       f.depth = pctToDepth(s.changePct, range);
-      f.col = fishColor(s.changePct);
+      f.pal = spriteColors(s.changePct);
       f.cap = s.marketCap;
       return f;
     });
@@ -1071,6 +771,10 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
   function applySize(lim = sizeLimits(W, H), maxCap = fish.reduce((m, f) => Math.max(m, f.cap > 0 ? f.cap : 0), 0)) {
     for (const f of fish) {
       f.len = capToSize(f.cap, maxCap, lim);
+      // The sprite's whole-number scale and its drawn size in CSS px.
+      const sp = spriteOf(f.kind);
+      f.px = spriteScale(f.len, sp.w, dpr, FIT[f.kind]);
+      f.dw = (sp.w * f.px) / dpr; f.dh = (sp.h * f.px) / dpr;
       f.x = f.x01 * W;
       if (f.y == null || reduced()) f.y = targetY(f);
     }
@@ -1079,9 +783,9 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
   // Depth is data: a fish's y comes from its % change. The hermit crab walks the sand,
   // so its move shows as a tick and a label instead.
   function targetY(f) {
-    if (f.kind === 'crab') return floorY() + 3 - f.len * 0.2;
+    if (f.kind === 'crab') return floorY() + 1 - f.dh / 2;
     const { top, bot } = band();
-    const pad = f.len * 0.22;
+    const pad = f.dh / 2;
     return clamp(top + f.depth * (bot - top) + f.jit * 5, top + pad, bot - pad);
   }
 
@@ -1107,13 +811,15 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
 
   // ---- drawing ----
 
-  function drawFish(f, t, lit, still) {
-    g.save();
+  // One fish: its cached sprite canvas, scaled up by a whole number, at whole device
+  // pixels (the context is in device pixels here). The hovered fish gets a pale outline.
+  function drawFish(f, t, lit, calm) {
+    const sp = spriteOf(f.kind, animFrame(t, f.ph, f.rate, calm));
+    const img = sprites.get(sp, f.pal.key, f.pal, mirrored(f.kind, f.face), lit ? LIT : null);
+    const p = f.px; const o = lit ? p : 0;
     g.globalAlpha = f.a;
-    g.translate(f.x, f.bobY);
-    if (f.kind !== 'jelly') g.scale(Math.abs(f.face) < 0.08 ? 0.08 * Math.sign(f.face || 1) : f.face, 1);
-    drawSpecies(g, f.kind, f.len, f.col, { t, ph: f.ph, speed: f.speed, lit, still });
-    g.restore();
+    blit(g, img, Math.round(f.x * dpr - (sp.w * p) / 2) - o, Math.round(f.bobY * dpr - (sp.h * p) / 2) - o, p);
+    g.globalAlpha = 1;
   }
 
   const measure = (text) => {
@@ -1128,8 +834,8 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
   function drawLabel(f, text, color, alpha = 1, taken = null) {
     g.font = `600 10px ${font}`;
     const tw = measure(text);
-    const gap = f.len * 0.5 + 7;
-    const y = f.kind === 'crab' ? f.bobY - f.len * 0.1 : f.bobY;
+    const gap = f.dw / 2 + 6;
+    const y = f.bobY;
     const sides = f.x + gap + tw + 4 <= W ? [f.x + gap, f.x - gap - tw] : [f.x - gap - tw, f.x + gap];
     const clear = (x) => !taken || !taken.some((r) => x - 3 < r.x + r.w && r.x < x + tw + 3 && Math.abs(r.y - y) < 13);
     const x = sides.find(clear);
@@ -1145,57 +851,68 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
     g.globalAlpha = 1;
   }
 
-  // The crab's move: a small up or down tick over its shell.
+  // The crab's move: a small up or down pixel arrow over its shell (device pixels).
   function drawTick(f) {
     const p = f.s.changePct;
     if (!Number.isFinite(p) || p === 0) return;
-    const x = f.x - f.face * f.len * 0.08; const y = f.bobY - f.len * 0.45 - 5;
+    const u = unit();
+    const x = Math.round((f.x * dpr) / u) * u; const y = Math.round(((f.bobY - f.dh / 2 - 7) * dpr) / u) * u;
     g.globalAlpha = f.a;
-    g.beginPath();
-    if (p > 0) { g.moveTo(x - 3.5, y + 2); g.lineTo(x + 3.5, y + 2); g.lineTo(x, y - 2.5); } else { g.moveTo(x - 3.5, y - 2); g.lineTo(x + 3.5, y - 2); g.lineTo(x, y + 2.5); }
-    g.closePath();
     g.fillStyle = p > 0 ? 'hsl(147, 70%, 62%)' : 'hsl(0, 100%, 74%)';
-    g.fill();
+    for (let r = 0; r < 3; r += 1) {
+      const row = p > 0 ? r : 2 - r; // the wide row at the bottom for up, at the top for down
+      g.fillRect(x - row * u, y + r * u, (row * 2 + 1) * u, u);
+    }
     g.globalAlpha = 1;
   }
 
+  // Tones of the seaweed, darkest at the root.
+  const WEED_TONES = ['hsla(186, 50%, 36%, 0.95)', 'hsla(186, 50%, 42%, 0.85)', 'hsla(186, 50%, 48%, 0.72)'];
   function drawWeeds(t) {
-    g.font = `600 13px ${font}`;
-    g.textAlign = 'center';
-    g.textBaseline = 'alphabetic';
-    for (const w of weeds) {
-      for (let i = 0; i < w.n; i += 1) {
-        const k = i / w.n;
-        const sway = reduced() ? Math.sin(w.ph + i * 0.5) * 2 : Math.sin(t * 0.9 + w.ph + i * 0.45) * (1.5 + k * 7);
-        g.fillStyle = `hsla(186, 50%, ${36 + k * 16}%, ${0.95 - k * 0.35})`;
-        g.fillText(i % 2 ? ')' : '(', w.x + sway, floorY() - 2 - i * 13);
+    const u = unit();
+    const B = Math.max(u, Math.round(WEED * dpr / u) * u);
+    const tq = Math.floor(t * 3) / 3; // the sway moves in steps, three a second
+    const base = Math.round((floorY() - 1) * dpr);
+    for (let tone = 0; tone < WEED_TONES.length; tone += 1) {
+      g.fillStyle = WEED_TONES[tone];
+      for (const w of weeds) {
+        const from = Math.floor((w.n * tone) / 3); const to = Math.floor((w.n * (tone + 1)) / 3);
+        for (let i = from; i < to; i += 1) {
+          const k = i / w.n;
+          const sway = t ? Math.sin(tq * 0.9 + w.ph + i * 0.18) * (0.3 + k * 2.2) : Math.sin(w.ph + i * 0.2) * 0.6;
+          const x = Math.round(w.x * dpr / u) * u + Math.round(sway) * B;
+          const y = base - (i + 1) * B;
+          g.fillRect(x, y, B, B);
+          if (i > 2 && i % 4 === 0) g.fillRect(x + ((i >> 2) % 2 ? B : -B), y, B, B); // a leaf
+        }
       }
     }
   }
 
+  // Bubbles: small squares rising a whole pixel at a time; the big ones hollow.
   function drawBubbles(t, dt) {
-    g.strokeStyle = `${ICE} 0.4)`;
-    g.lineWidth = 1;
-    g.beginPath();
+    const u = unit();
+    g.fillStyle = `${ICE} 0.45)`;
     for (let i = 0; i < bubbles.length; i += 1) {
       const b = bubbles[i];
       if (dt) {
         b.y -= b.v * dt;
         if (b.y < SURFACE + 2) { bubbles[i] = newBubble(i); continue; }
       }
-      const x = b.x + Math.sin(t * 1.6 + b.ph) * 2.5;
-      g.moveTo(x + b.r, b.y);
-      g.arc(x, b.y, b.r, 0, 6.2832);
+      const x = Math.round((b.x * dpr) / u) * u + Math.round(Math.sin(t * 1.6 + b.ph) * 1.2) * u;
+      const y = Math.round((b.y * dpr) / u) * u;
+      if (b.r < 2) { g.fillRect(x, y, 2 * u, 2 * u); continue; }
+      // A 4 x 4 ring with its corners off.
+      g.fillRect(x + u, y, 2 * u, u); g.fillRect(x + u, y + 3 * u, 2 * u, u);
+      g.fillRect(x, y + u, u, 2 * u); g.fillRect(x + 3 * u, y + u, u, 2 * u);
     }
-    g.stroke();
   }
 
   // The fish under a point, front ones first. The fish already hovered gets a slightly
   // bigger target, so its gentle bob never flickers the readout on and off.
   const inside = (f, px, py, k = 1) => {
-    const [hh, dy] = HIT[f.kind] || [0.24, 0];
-    const dx = (px - f.x) / (Math.max(7, f.len * 0.5) * k);
-    const ddy = (py - f.bobY - dy * f.len) / (Math.max(6, f.len * hh) * k);
+    const dx = (px - f.x) / (Math.max(7, f.dw * 0.5) * k);
+    const ddy = (py - f.bobY) / (Math.max(6, f.dh * 0.5) * k);
     return dx * dx + ddy * ddy <= 1;
   };
   function hitTest(px, py) {
@@ -1222,8 +939,8 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
   function placeTip() {
     if (!hover) return;
     const x = clamp(hover.x - tipW / 2, 4, Math.max(4, W - tipW - 4));
-    const upper = hover.bobY - hover.len * 0.4 - tipH - 8;
-    const y = upper > 2 ? upper : hover.bobY + hover.len * 0.4 + 8;
+    const upper = hover.bobY - hover.dh / 2 - tipH - 6;
+    const y = upper > 2 ? upper : hover.bobY + hover.dh / 2 + 6;
     tip.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
   }
 
@@ -1234,8 +951,10 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
     clock += dt;
     const calm = reduced();
     const t = calm ? 0 : clock;
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.drawImage(bg, 0, 0, W, H);
+    // Pixels first, in device pixels: the still background, weeds, fish, bubbles, ticks.
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.imageSmoothingEnabled = false;
+    g.drawImage(bg, 0, 0);
     drawWeeds(t);
     if (dt) {
       schoolStep(fish, dt, W, { centre, hold: hover });
@@ -1246,9 +965,11 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
       const want = sectorAlpha(f.sector, active);
       f.a = dt ? f.a + (want - f.a) * Math.min(1, dt * 8) : want;
     }
-    for (const f of fish) drawFish(f, t, f === hover, calm || !dt);
+    for (const f of fish) drawFish(f, t, f === hover, calm);
     drawBubbles(t, dt);
     for (const f of fish) if (f.kind === 'crab') drawTick(f);
+    // Then the tags, in CSS pixels.
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
     const taken = [];
     const plan = tagPlan(fish, { winner: labels.winner && byTicker.get(labels.winner), loser: labels.loser && byTicker.get(labels.loser), active });
     for (const { f, tag } of plan) {
@@ -1270,6 +991,7 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
   function onDpr() {
     watchDpr();
     if (W && H) resize(W, H);
+    dprChanged();
   }
   watchDpr();
 
@@ -1323,7 +1045,7 @@ export function render(el, cmd, ctx) {
 
   function mount() {
     host.innerHTML = '<canvas class="ft-canvas" role="img" aria-label="The S&amp;P 100 as fish"></canvas><div class="ft-tip" hidden></div><ul class="ft-sr" aria-label="Every fish"></ul>';
-    tank = makeTank(host, host.querySelector('canvas'), host.querySelector('.ft-tip'), { onOpen: (t) => ctx.run(t), reduced, sectorName });
+    tank = makeTank(host, host.querySelector('canvas'), host.querySelector('.ft-tip'), { onOpen: (t) => ctx.run(t), reduced, sectorName, onDpr: drawGlyphs });
     applyHolds();
   }
 
@@ -1337,8 +1059,14 @@ export function render(el, cmd, ctx) {
     legKey = key;
     if (active && !items.some((i) => i.key === active)) setActive(null);
     leg.innerHTML = legendHtml(items, active, names);
-    leg.querySelectorAll?.('.ft-leg-btn').forEach((b) => drawGlyph(b.querySelector('canvas'), speciesOf(b.dataset.sector)));
+    drawGlyphs();
     leg.hidden = !items.length;
+  }
+  // The legend glyphs at the current pixel ratio: after a build, and again when the
+  // ratio changes (a zoom, another monitor), so they stay crisp.
+  function drawGlyphs() {
+    const d = window.devicePixelRatio || 1;
+    leg?.querySelectorAll?.('.ft-leg-btn').forEach((b) => drawGlyph(b.querySelector('canvas'), speciesOf(b.dataset.sector), d));
   }
   function setActive(key) {
     active = key;
