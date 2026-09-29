@@ -21,7 +21,7 @@ import { truePhase, lunation, moonPhase } from '../data/weird/moon.js';
 import { makeWeird, GAUGES, gaugeById, summarize } from '../data/weird/index.js';
 import { parseFredCsv } from '../data/economy.js';
 import { UA, signedPct, sourceClient, MAX_BYTES } from '../data/weird/source.js';
-import { tileBody } from '../public/screens/weird.js';
+import { tileBody, tileTitle } from '../public/screens/weird.js';
 import { CPI_RETRY_MS } from '../data/cpi.js';
 import { WEIRD_GAUGES } from '../public/screens/weird-gauges.js';
 import { findCommand } from '../public/registry.js';
@@ -351,11 +351,11 @@ test('last good value: served stale with its own date after a failure or a resta
     assert.equal(last.updated, good.updated);
     const none = makeWeird({ gauges: [{ ...g, id: 'other' }], lastGoodDir: dir });
     assert.equal((await none.getGauge('other')).headline, 'NO DATA');
-    // The tile dims it and says when it is from.
+    // The tile dims it and says when it is from (its title, on hover).
     const gauge = WEIRD_GAUGES.find((x) => x.id === 'pizza');
     const html = tileBody(gauge, { ...last, id: 'pizza' });
     assert.match(html, /wd-big is-stale/);
-    assert.match(html, /last reading 18:00 ET SEP 25/);
+    assert.match(tileTitle(gauge, { ...last, id: 'pizza' }), /last reading 18:00 ET SEP 25/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

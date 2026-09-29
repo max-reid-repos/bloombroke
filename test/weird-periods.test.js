@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { periodRow, titleStrip, tileBody, chartSeries, firstKeys, axisFormat, gaugeShareLinks } from '../public/screens/weird.js';
+import { periodRow, titleStrip, tileBody, recordTag, tile, chartSeries, firstKeys, axisFormat, gaugeShareLinks } from '../public/screens/weird.js';
 import { WEIRD_GAUGES, gaugeByCommand } from '../public/screens/weird-gauges.js';
 import { gaugeModel, gaugeTree, weirdMeta, cardStrip } from '../lib/og-weird.js';
 import { renderPng } from '../lib/og.js';
@@ -37,11 +37,12 @@ test('title strip: the record line and the recording date, from one function; no
   assert.match(titleStrip(g, { ok: true, record: { ...record, record: true, since: '1985-01-01', text: 'RECORD LOW SINCE JAN 1985' } }), /Lower than every reading since JAN 1985/);
 });
 
-test('grid tile: the short record line only where the grid asks for it (a DESK card keeps four lines)', () => {
+test('grid tile: the short record tag in one place, the kicker (a DESK card keeps to its lines)', () => {
   const d = { ok: true, headline: 'HORMUZ 3 SHIPS/DAY', line: 'x', spark: [1, 2, 3], asOf: '2026-09-20', source: 'IMF PortWatch', record };
-  assert.match(tileBody(g, d, { rec: true }), /<p class="wd-rec" title="LOWEST SINCE MAR 2021">LOW SINCE MAR 2021<\/p>/);
-  assert.doesNotMatch(tileBody(g, d), /wd-rec/);
-  assert.doesNotMatch(tileBody(g, { ok: false, headline: 'NO DATA', source: 'S', record }, { rec: true }), /wd-rec/);
+  assert.equal(recordTag(d), '<span class="wd-rec" title="LOWEST SINCE MAR 2021">LOW SINCE MAR 2021</span>');
+  assert.doesNotMatch(tileBody(g, d), /wd-rec/, 'never in the body: the kicker holds it');
+  assert.equal(recordTag({ ok: false, headline: 'NO DATA', source: 'S', record }), '');
+  assert.match(tile(g, 0), /<p class="wd-kick"><span class="wd-no">1<\/span><span class="wd-name">CANAL<\/span><span class="wd-tag"><\/span><\/p>/);
 });
 
 test('chart series: readings only, a break across missing stretches, the first view per gauge', () => {

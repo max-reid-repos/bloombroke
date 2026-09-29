@@ -60,9 +60,13 @@ export function asOfLabel(asOf, period = 'day') {
 export function sourceLine(d, period) {
   const src = d.credit && d.credit.includes(d.source) ? d.credit : [d.source, d.credit].filter(Boolean).join(', ');
   if (d.ok === false) return src;
-  if (!d.stale) return `${src} · ${asOfLabel(d.asOf, period)}`;
+  return `${src} · ${whenLine(d, period)}`;
+}
+// When a reading is from: "SEP 20", or for a stale one "last reading 18:00 ET SEP 25".
+export function whenLine(d, period) {
+  if (!d.stale) return asOfLabel(d.asOf, period);
   const timed = period === 'time' && d.asOf && !/^\d{4}-\d{2}-\d{2}$/.test(d.asOf);
-  return `${src} · last reading ${timed ? `${nyTime(d.asOf)} ET ${asOfLabel(d.asOf)}` : asOfLabel(d.asOf, period)}`;
+  return `last reading ${timed ? `${nyTime(d.asOf)} ET ${asOfLabel(d.asOf)}` : asOfLabel(d.asOf, period)}`;
 }
 
 // The source line as HTML. A gauge whose source asks for a linked credit (RIDES:
@@ -579,3 +583,135 @@ export const gaugeByCommand = (cmd) => WEIRD_GAUGES.find((g) => g.command === cm
 // until it reports again; its own screen, a DESK card and a GRID tile still say NO DATA.
 // Pending is not empty: it is still loading.
 export const emptyGauge = (d) => Boolean(d && d.ok === false && !d.pending);
+
+// ---- The hero: a noun and a number that read alone ---------------------------------------
+// A tile's big line is the gauge's noun, its number and the number's unit: "Eggs $2.27 a
+// dozen", "Hormuz 3 ships a day", "Cosmetics prices +2.8% a year". Each is read from the
+// server's own headline (data/weird/<id>.js writes it; its unit is the headline's own), so
+// the number is always the one the headline and the share card show. A zero is said in
+// words ("none"), never a bare 0. A headline in a shape not known here keeps the gauge's
+// title as its noun. -> { noun, num, unit } or null (no reading: LOADING, NO DATA).
+const titleCase = (s) => String(s).toLowerCase().replace(/(^|[\s\-'(])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+const SIGNED = '[+−-]?[\\d.,]+%';
+const yoyHero = (noun) => (h) => {
+  const m = new RegExp(`^(?:\\S+ )?(${SIGNED}) YOY$`).exec(h);
+  return m && { noun, num: m[1], unit: 'a year' };
+};
+const TRUCK_NOUNS = { CASS: 'Freight shipments', TRUCKS: 'Truck tonnage', RAIL: 'Rail carloads' };
+export const HEROES = {
+  canal: (h) => {
+    const m = /^(.+?) ([\d.,]+) SHIPS?\/DAY$/.exec(h);
+    return m && { noun: titleCase(m[1]), num: m[2] === '0' ? 'no' : m[2], unit: `${m[2] === '1' ? 'ship' : 'ships'} a day` };
+  },
+  pizza: (h) => {
+    const m = /^(DEFCON|INDEX) ([\d.,]+)$/.exec(h);
+    if (!m) return null;
+    return m[1] === 'DEFCON' ? { noun: 'Pentagon pizza', num: `DEFCON ${m[2]}`, unit: '' } : { noun: 'Pentagon pizza index', num: m[2], unit: '' };
+  },
+  degen: (h) => {
+    const none = /^NONE IN TOP (\d+)$/.exec(h);
+    if (none) return { noun: 'Trading apps', num: 'none', unit: `in the top ${none[1]}` };
+    const m = /^(.+?) (#\d+)$/.exec(h);
+    return m && { noun: titleCase(m[1]), num: m[2], unit: 'in free apps' };
+  },
+  waffle: (h) => {
+    const m = /^(\d[\d,]*) STORES? IN STORMS( \(PARTIAL\))?$/.exec(h);
+    if (!m) return null;
+    const part = m[2] ? ' (partial)' : '';
+    return m[1] === '0'
+      ? { noun: 'Waffle House', num: 'none', unit: `in storms${part}` }
+      : { noun: 'Waffle House', num: m[1], unit: `${m[1] === '1' ? 'store' : 'stores'} in storms${part}` };
+  },
+  panic: (h) => { const m = new RegExp(`^(${SIGNED})$`).exec(h); return m && { noun: 'Crash-page views', num: m[1], unit: 'vs average' }; },
+  hiring: (h) => { const m = /^([\d.,]+) PER JOB$/.exec(h); return m && { noun: 'Job seekers', num: m[1], unit: 'per job post' }; },
+  hotdog: (h) => { const m = /^(\$[\d.,]+)$/.exec(h); return m && { noun: 'Costco hot dog', num: m[1], unit: 'today' }; },
+  omens: (h) => (/^[A-Z ]+$/.test(h) ? { noun: 'Moon', num: h.toLowerCase(), unit: '' } : null),
+  undies: yoyHero('Underwear prices'),
+  bigmac: (h) => {
+    const m = new RegExp(`^(.+?) (${SIGNED})$`).exec(h);
+    return m && { noun: `Big Mac in ${titleCase(m[1])}`, num: m[2], unit: 'vs US' };
+  },
+  billions: (h) => {
+    if (h === 'NO BIG MOVES TODAY') return { noun: 'Billionaires', num: 'no big moves', unit: 'today' };
+    const m = /^(.+?) ([+−-]\$[\d.,]+[BM])$/.exec(h);
+    return m && { noun: titleCase(m[1]), num: m[2], unit: 'today' };
+  },
+  wsb: (h) => { const m = /^(\S+) ([\d,]+) MENTIONS$/.exec(h); return m && { noun: m[1], num: m[2], unit: 'mentions in 24h' }; },
+  odds: (h) => {
+    const m = /^(RECESSION|FED) ([<>]?\d+%)$/.exec(h);
+    return m && { noun: m[1] === 'RECESSION' ? 'Recession chance' : 'Fed call chance', num: m[2], unit: '' };
+  },
+  boxrate: (h) => { const m = /^(\$[\d.,]+)$/.exec(h); return m && { noun: '40ft container', num: m[1], unit: 'to ship' }; },
+  eggs: (h) => { const m = /^(\$[\d.,]+) A DOZEN$/.exec(h); return m && { noun: 'Eggs', num: m[1], unit: 'a dozen' }; },
+  rides: (h) => {
+    if (h === 'PARKS CLOSED') return { noun: 'Disney parks', num: 'closed', unit: '' };
+    const m = /^(\d+) MIN AVERAGE WAIT$/.exec(h);
+    return m && { noun: 'Disney ride wait', num: `${m[1]} min`, unit: 'average' };
+  },
+  buzz: (h) => { const m = /^([\d,]+\+?) AI FILINGS$/.exec(h); return m && { noun: 'Filings naming AI', num: m[1], unit: '' }; },
+  beige: (h) => {
+    const m = /^(.+?) ([\d,]+) TIMES$/.exec(h);
+    return m && { noun: `Fed says "${m[1] === 'AI' ? 'AI' : m[1].toLowerCase()}"`, num: m[2], unit: m[2] === '1' ? 'time' : 'times' };
+  },
+  trucks: (h) => {
+    const m = new RegExp(`^(\\S+) (${SIGNED}) YOY$`).exec(h);
+    return m && { noun: TRUCK_NOUNS[m[1]] || titleCase(m[1]), num: m[2], unit: 'a year' };
+  },
+  boxes: (h, d) => yoyHero(/^Box prices/.test(d?.line || '') ? 'Box prices' : 'Box output')(h),
+  lipstick: yoyHero('Cosmetics prices'),
+  sick: (h) => { const m = /^COVID ([\d.,]+)$/.exec(h); return m && { noun: 'Covid wastewater level', num: m[1], unit: '' }; },
+  macau: yoyHero('Macau casino revenue'),
+};
+
+// A reading -> its hero, or null when there is no reading (LOADING, NO DATA).
+export function heroOf(g, d) {
+  if (!g || !d || d.ok === false || d.pending || !d.headline) return null;
+  const h = String(d.headline).trim();
+  const got = HEROES[g.id]?.(h, d);
+  return got || { noun: g.title, num: h, unit: '' };
+}
+// The hero as one line of text (a GRID tile, a share text).
+export function heroText(g, d) {
+  const x = heroOf(g, d);
+  return x ? [x.noun, x.num, x.unit].filter(Boolean).join(' ') : '';
+}
+
+// A tile's one meaning line: what the hero is about, never a second number and never a
+// data vendor's name. Where the server's own line already does that, it is used (the
+// gauge's own screen always shows the server's line).
+export const MEANINGS = {
+  canal: 'Ship crossings, 7-day average',
+  degen: 'Best placed of five trading apps',
+  panic: 'Views of the recession, crash and bank-run pages',
+  hiring: 'People looking for work per job ad, monthly',
+  hotdog: 'Its 1985 price in today\'s money',
+  undies: 'Folklore: men buy fewer when money is tight',
+  boxrate: 'Spot price on eight main routes',
+  rides: 'Posted waits across five Disney parks',
+  trucks: 'US freight volume, monthly',
+  boxes: 'Box demand, an early read on shipping',
+  lipstick: 'Folklore: lipstick sells when money is tight',
+  sick: 'National median of sewage sites; 1 is the lowest',
+  macau: 'Gross gaming revenue, monthly',
+};
+export const meaningOf = (g, d) => MEANINGS[g?.id] || String(d?.line || '');
+
+// ---- The credit a tile must carry ----------------------------------------------------------
+// Only a credit the source's licence or terms ask for sits on a tile, short: the rest of
+// the source line (who, when) is in the gauge's own screen. OpenStreetMap (ODbL) is
+// "© OSM" here; its long form stays on the gauge's screen and in How is this measured.
+export const SHORT_CREDITS = {
+  '© OpenStreetMap contributors, ODbL': '© OSM',
+};
+export function tileCredit(g, d) {
+  const c = d?.credit;
+  if (!c || typeof c !== 'string') return '';
+  return SHORT_CREDITS[c] || c;
+}
+// The tile credit as HTML: a credit that asks for a link keeps it (RIDES: Queue-Times.com).
+export function tileCreditHtml(g, d) {
+  const text = esc(tileCredit(g, d));
+  const c = g?.creditLink;
+  if (!text || !c) return text;
+  return text.replace(esc(c.text), `<a href="${esc(c.href)}" target="_blank" rel="noopener noreferrer" title="${esc(c.title || c.text)}">${esc(c.text)}</a>`);
+}

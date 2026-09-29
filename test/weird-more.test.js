@@ -24,7 +24,7 @@ import { pool, decodeEntities } from '../data/weird/source.js';
 import { parseFredCsv } from '../data/economy.js';
 import { GAUGES, lastGoodStore, makeWeird } from '../data/weird/index.js';
 import { WEIRD_GAUGES } from '../public/screens/weird-gauges.js';
-import { tileBody, commandForNumber, tile } from '../public/screens/weird.js';
+import { tileBody, commandForNumber, tile, tileTitle } from '../public/screens/weird.js';
 import { numberedItem, panelNumberInput, parseCommand } from '../public/app.js';
 import { REGISTRY } from '../public/registry.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -205,7 +205,8 @@ test('rides: open rides with a posted wait, closed parks say closed', () => {
   const tile = tileBody(gauge, { id: 'rides', ok: true, ...g });
   assert.match(tile, link, 'the tile credit links to Queue-Times.com');
   assert.match(tile, /target="_blank" rel="noopener noreferrer"/);
-  assert.match(tileBody(gauge, { id: 'rides', ok: false, headline: 'NO DATA', source: 'Queue-Times.com' }), /<a href="https:\/\/queue-times\.com\/"/);
+  // NO DATA shows no data, so it carries no credit (and never names a vendor).
+  assert.doesNotMatch(tileBody(gauge, { id: 'rides', ok: false, headline: 'NO DATA', source: 'Queue-Times.com' }), /Queue-Times/);
   assert.match(readFileSync('public/screens/weird.js', 'utf8'), /<div class="wd-foot">\$\{how\}<p class="wd-src">\$\{sourceHtml\(g, d\)\}<\/p>/, 'the detail footer uses the linked credit too');
   // Other credits stay plain text.
   assert.doesNotMatch(tileBody(WEIRD_GAUGES.find((x) => x.id === 'wsb'), { id: 'wsb', ok: true, headline: 'X', source: 'ApeWisdom', asOf: '2026-09-26' }), /<a /);
@@ -316,7 +317,8 @@ test('beige: the edition list, article text only, and whole-word counts', () => 
   assert.deepEqual(g.spark, [22, 38]);
   assert.equal(g.asOf, '2026-09-02');
   const gauge = WEIRD_GAUGES.find((x) => x.id === 'beige');
-  assert.match(tileBody(gauge, { id: 'beige', ok: true, stale: false, ...g }), /FEDERAL RESERVE · SEP 02|Federal Reserve · SEP 02/);
+  assert.match(tileBody(gauge, { id: 'beige', ok: true, stale: false, ...g }), /Fed says &quot;slow&quot;<\/span> <span class="wd-val">38<\/span> <span class="wd-unit">times/);
+  assert.equal(tileTitle(gauge, { id: 'beige', ok: true, stale: false, ...g }), 'Beige Book · SEP 02', 'when: in the tile title, not on the tile');
   const html = gauge.detail(g).html;
   assert.match(html, /Sep 2, 2026/);
   assert.doesNotMatch(html, /AUG 2026/);

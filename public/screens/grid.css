@@ -1,11 +1,12 @@
 /* grid.js's own styles, loaded with it (public/lazy.js) the first time GRID opens.
-   Numbers first: the value is the biggest thing on a tile, its change beside it, the
-   line with its labelled high and low under it. No inline styles (the CSP): every look
-   the SVG needs is a class here. */
+   One tile template: the symbol and its short name, one number, its change as coloured
+   text (never boxed: boxes are keys), and a small line. The high and the low are on hover
+   only. No inline styles (the CSP): every look the SVG needs is a class here. */
 
 .gr-panel > .panel-body.gr-body { display: flex; flex-direction: column; position: relative; }
 
-/* ---- The bar: the range and STARTER on the left, SHARE on the right --------------------- */
+/* ---- The strip: the range and STARTER on the left; the share links, then + TILE and EDIT
+   at the right end (DESK's + PANEL and EDIT, in DESK's look: .desk-btn). ---------------- */
 .gr-bar {
   display: flex; align-items: center; justify-content: space-between; gap: 6px 12px;
   padding: 6px 8px; border-bottom: 1px solid var(--rule); flex-wrap: wrap;
@@ -13,6 +14,19 @@
 .gr-chips { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
 .gr-chips .seg { flex: 0 0 auto; }
 .gr-share { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.gr-share .desk-btn { align-self: center; }
+.gr-share .gr-add-btn { margin-left: 8px; }
+.gr-edit[aria-pressed="true"] { color: var(--ink); background: var(--here); border-color: var(--here); }
+/* COPY LINK, POST ON X: text links (a box would say key). */
+.gr-link {
+  padding: 0; border: 0; background: transparent; color: var(--text-2);
+  font: 600 11px var(--font); letter-spacing: .08em; cursor: pointer; text-decoration: none; white-space: nowrap;
+}
+.gr-link:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.gr-dot-sep { color: var(--dim); font-size: 11px; }
+/* EDIT's one line: only while editing. */
+.gr-hint { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.gr-panel:not(.is-editing) .gr-hint { display: none; }
 /* STARTER: a small text button, not a chip. */
 .gr-starter {
   padding: 0 2px; border: 0; background: transparent; color: var(--dim);
@@ -38,47 +52,44 @@
 .gr-tile:hover { background: var(--panel); }
 .gr-tile:focus { background: var(--panel); box-shadow: 0 0 0 1px var(--rule-strong), inset 2px 0 0 var(--accent); }
 
-/* The first line: the symbol and its short name (desktop); a whole row on a phone. */
-.gr-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding-right: 18px; }
+/* The first line: the symbol and its short name (the name is left out on a phone). */
+.gr-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding-right: 18px; }
 .gr-sym { flex: 0 0 auto; font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--accent); white-space: nowrap; }
 .gr-name { flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gr-mini, .gr-val, .gr-chg { display: none; }
 
-.gr-full { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
-.gr-hero { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 2px; }
+/* The one number and its one change, as coloured text. */
+.gr-hero { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin-top: 2px; }
 .gr-big {
   min-width: 0; font-size: 22px; font-weight: 600; line-height: 1.2; color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .gr-big.is-text { font-size: 15px; letter-spacing: .02em; }
 .gr-big.is-stale { color: var(--text-2); opacity: .7; }
-.gr-pill {
-  flex: 0 0 auto; padding: 0 5px; border: 1px solid currentColor;
-  font-size: 11px; font-weight: 600; line-height: 16px; white-space: nowrap;
-}
-.gr-pill.up { color: var(--up); }
-.gr-pill.down { color: var(--down); }
-.gr-pill.flat, .gr-pill.rip { color: var(--dim); }
-/* CPI's own range, when it is not the board's (monthly: a year at least). */
-.gr-rng { flex: 0 0 auto; font-size: 10px; letter-spacing: .06em; color: var(--dim); background: var(--panel-2); padding: 0 4px; line-height: 16px; }
+.gr-chg { flex: 0 1 auto; min-width: 0; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gr-chg:empty { display: none; }
+.gr-chg.up { color: var(--up); }
+.gr-chg.down { color: var(--down); }
+.gr-chg.flat { color: var(--dim); font-weight: 500; }
+/* CPI's own range, when it is not the board's (monthly: a year at least): plain text. */
+.gr-rng { flex: 0 0 auto; font-size: 11px; letter-spacing: .06em; color: var(--dim); }
 .gr-msg { font-size: 12px; font-weight: 600; letter-spacing: .08em; color: var(--dim); }
-.gr-sub { font-size: 11px; color: var(--dim); margin-top: 2px; }
 .gr-dym { font-size: 11px; color: var(--text-2); margin-top: 4px; }
 .gr-swapto { padding: 0; border: 0; background: transparent; color: var(--accent); font: inherit; cursor: pointer; }
 .gr-swapto:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* The line is drawn at the chart box's own size (grid.js): absolute, so it never
    changes the size it was measured at. */
-.gr-chart { position: relative; flex: 1 1 auto; min-height: 36px; margin-top: 4px; }
+.gr-chart { position: relative; flex: 1 1 auto; min-height: 28px; margin-top: 6px; }
+/* No points to draw: said, calmly, where the line would be. */
+.gr-nochart { position: absolute; left: 0; bottom: 0; font-size: 11px; color: var(--dim); }
 .gr-chart > .gr-svg { position: absolute; left: 0; top: 0; }
 .gr-svg { display: block; overflow: visible; }
 .gr-line { fill: none; stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; }
 .gr-line.up { stroke: var(--up); }
 .gr-line.down { stroke: var(--down); }
-.gr-line.flat { stroke: var(--accent); }
+.gr-line.flat { stroke: var(--dim); }
 .gr-dot { fill: var(--text); }
-.gr-lab { fill: var(--text-2); font-family: var(--font); font-size: 10px; font-weight: 500; }
-.gr-open { display: none; }
+.gr-lab { fill: var(--text-2); font-family: var(--font); font-size: 11px; font-weight: 500; }
 
 /* A tick: a changed number flashes green or red for a moment (grid.js FLASH_MS). With
    reduced motion grid.js never sets the class, and this rule stays off too. */
@@ -88,15 +99,16 @@
   .gr-panel .gr-tile .gr-flash-up, .gr-panel .gr-tile .gr-flash-down { background: none; color: inherit; }
 }
 
-/* x: on hover or focus (always a little on touch screens). */
+/* x: on hover or focus, and on every tile in EDIT (on touch screens only in EDIT). */
 .gr-x {
   position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; padding: 0;
   border: 0; background: transparent; color: var(--dim); font: 14px/18px var(--font);
   opacity: 0; cursor: pointer;
 }
-.gr-tile:hover .gr-x, .gr-tile:focus-within .gr-x { opacity: 1; }
+.gr-tile:hover .gr-x, .gr-tile:focus-within .gr-x, .gr-panel.is-editing .gr-x { opacity: 1; }
 .gr-x:hover { color: var(--text); }
-@media (hover: none) { .gr-x { opacity: .7; } }
+@media (hover: none) { .gr-panel:not(.is-editing) .gr-x { display: none; } }
+.gr-panel.is-editing .gr-tile:not(.gr-add) { cursor: text; }
 
 /* The + tile: a small input. */
 .gr-add { flex-direction: row; align-items: center; justify-content: center; gap: 8px; cursor: text; }
@@ -111,8 +123,6 @@
 .gr-in:focus { outline: 1px solid var(--accent); outline-offset: 0; }
 .gr-swap-in { flex: 0 1 132px; max-width: 132px; height: 20px; }
 
-.gr-foot { padding: 4px 8px 6px; }
-.gr-note { font-size: 10px; letter-spacing: .04em; color: var(--dim); }
 
 /* "Link copied": a tiny line over the dock, gone after a moment. */
 .gr-toast {
@@ -139,9 +149,9 @@
   .gr-c4 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
-/* Phones: one-line rows (symbol, a tiny line, the value, the change). A tap opens the
-   row into the whole tile, with OPEN; a second tap closes it. The chips scroll sideways
-   in one row inside the bar, never the page. A DESK panel keeps its tiles. */
+/* Phones: two tiles a row, the long name left out, one number and its change, the small
+   line under them. A tap opens the tile (in EDIT, swaps it). The chips scroll sideways in
+   one row inside the strip, never the page. A DESK panel keeps its own layout. */
 @media (max-width: 639px) {
   html:not(.is-embed) .gr-bar { flex-wrap: nowrap; flex-direction: column; align-items: stretch; gap: 6px; }
   html:not(.is-embed) .gr-chips {
@@ -149,37 +159,25 @@
     scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   html:not(.is-embed) .gr-chips::-webkit-scrollbar { display: none; }
   html:not(.is-embed) .gr-share { margin-left: 0; }
-  html:not(.is-embed) .gr-board { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; grid-template-rows: none; }
-  html:not(.is-embed) .gr-tile { padding: 0 10px; }
-  html:not(.is-embed) .gr-row { align-items: center; min-height: 38px; gap: 8px; padding-right: 0; }
-  html:not(.is-embed) .gr-sym { flex: 0 0 64px; overflow: hidden; text-overflow: ellipsis; }
+  html:not(.is-embed) .gr-share .gr-add-btn { margin-left: auto; }
+  html:not(.is-embed) .gr-hint { white-space: normal; }
+  html:not(.is-embed) .gr-board { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: auto; grid-template-rows: none; }
+  html:not(.is-embed) .gr-tile { padding: 8px 8px 6px; }
+  html:not(.is-embed) .gr-tile:not(.gr-add) { height: 112px; }
   html:not(.is-embed) .gr-name { display: none; }
-  html:not(.is-embed) .gr-mini { display: block; flex: 0 0 56px; height: 16px; }
-  html:not(.is-embed) .gr-val {
-    display: block; flex: 1 1 auto; min-width: 0; text-align: right;
-    font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  html:not(.is-embed) .gr-val.is-text { font-size: 11px; }
-  html:not(.is-embed) .gr-val.gr-msg { font-size: 11px; color: var(--dim); }
-  html:not(.is-embed) .gr-chg { display: block; flex: 0 0 64px; text-align: right; font-size: 12px; white-space: nowrap; }
-  html:not(.is-embed) .gr-chg.up { color: var(--up); }
-  html:not(.is-embed) .gr-chg.down { color: var(--down); }
-  html:not(.is-embed) .gr-chg.flat { color: var(--dim); }
-  html:not(.is-embed) .gr-tile:not(.is-open) .gr-full { display: none; }
-  html:not(.is-embed) .gr-tile.is-open { background: var(--panel); }
-  html:not(.is-embed) .gr-tile.is-open .gr-full { height: 164px; padding-bottom: 8px; }
-  html:not(.is-embed) .gr-hero { display: none; } /* the row above already says it */
-  html:not(.is-embed) .gr-tile.is-open .gr-open { display: inline-block; align-self: flex-start; margin-top: 4px; font-size: 11px; }
-  html:not(.is-embed) .gr-tile:not(.is-open) .gr-x { display: none; }
-  html:not(.is-embed) .gr-tile.is-open .gr-x { top: auto; bottom: 8px; right: 8px; opacity: 1; }
-  html:not(.is-embed) .gr-add { min-height: 44px; justify-content: flex-start; padding: 0 10px; }
+  html:not(.is-embed) .gr-big { font-size: 18px; }
+  html:not(.is-embed) .gr-big.is-text { font-size: 13px; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  html:not(.is-embed) .gr-hero { flex-wrap: wrap; gap: 0 6px; }
+  html:not(.is-embed) .gr-chg { font-size: 13px; }
+  html:not(.is-embed) .gr-add { grid-column: 1 / -1; min-height: 44px; justify-content: flex-start; padding: 0 10px; }
   html:not(.is-embed) .gr-add .gr-in { max-width: none; }
-  html:not(.is-embed) .gr-swap-in { flex: 0 0 96px; }
+  html:not(.is-embed) .gr-swap-in { flex: 0 1 96px; }
 }
 
 /* In a DESK panel (embed): the board alone, filling the panel, no chips, no note. */
 .gr-panel.is-embed { height: 100vh; }
 .gr-panel.is-embed > .gr-body { overflow: hidden; }
-.gr-panel.is-embed .gr-bar, .gr-panel.is-embed .gr-foot, .gr-panel.is-embed .gr-x, .gr-panel.is-embed .gr-dym { display: none; }
+.gr-panel.is-embed .gr-bar, .gr-panel.is-embed .gr-x, .gr-panel.is-embed .gr-dym { display: none; }
 .gr-panel.is-embed .gr-scene { flex: 1 1 auto; min-height: 0; }
 .gr-panel.is-embed .gr-board { flex: 1 1 auto; min-height: 0; grid-auto-rows: minmax(56px, 1fr); }
 .gr-panel.is-embed .gr-r1 { grid-template-rows: repeat(1, minmax(56px, 1fr)); }
