@@ -1,8 +1,9 @@
 // COMPOUND: what regular saving grows to at a steady yearly return, compounded monthly.
 
-import { esc, q, fmtNum, panel, metaNote } from './markets.js';
+import { esc, fmtNum, panel, metaNote } from './markets.js';
 import { mountLines, legend } from './lines.js';
 import { compactUsd } from './loan.js';
+import { usageCard } from '../kit.js';
 import { parseCompound as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { parse };
 
@@ -27,12 +28,10 @@ export function growth({ start = 0, monthly = 0, yearly = 0, rate, years }) {
 
 const usd = (n) => `$${fmtNum(n, 0)}`;
 
-function usage(kind) {
+export function usage(kind) {
   const ex = ['COMPOUND 500/MO 8% 30Y', 'COMPOUND 10000 7% 20Y', 'COMPOUND 5000 200/MO 6% 10Y'];
   const title = kind === 'rate' ? 'Pick a yearly return from 0% to 50%.' : kind === 'years' ? 'Pick a whole number of years, 1 to 80.' : kind === 'amount' ? 'That amount does not look right.' : 'COMPOUND needs money, a yearly return and years.';
-  return `<p class="notice">${esc(title)}</p>
-    <p class="muted">Format: <span class="code">COMPOUND [start] [&lt;amount&gt;/MO] &lt;rate&gt;% &lt;years&gt;Y</span></p>
-    <p class="muted examples">Try ${ex.map((e) => `<a class="code" href="${esc(q(e))}" data-cmd="${esc(e)}">${esc(e)}</a>`).join(' ')}</p>`;
+  return usageCard({ problem: title, format: 'COMPOUND [start] [n/MO] rate% nY', grammar: 'COMPOUND [start] [<amount>/MO] <rate>% <years>Y', example: ex[0], more: ex.slice(1) });
 }
 
 export function render(el, cmd, ctx) {

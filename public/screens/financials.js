@@ -5,6 +5,7 @@
 
 import { esc, q, fmtNum, dirOf, panel, metaNote, LOADING } from './markets.js';
 import { niceTicks } from './chart.js';
+import { usageCard } from '../kit.js';
 import { FIN_TICKER_RE, parseFinancialsArgs, financialsInput, parseFinancialsCommand } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { FIN_TICKER_RE, parseFinancialsArgs, financialsInput, parseFinancialsCommand };
 
@@ -230,6 +231,8 @@ export function shortLabel(label) {
 
 const EXAMPLES = ['FINANCIALS AAPL', 'FINANCIALS MSFT BALANCE', 'FINANCIALS NVDA QUARTERLY'];
 const exampleLinks = () => EXAMPLES.map((e) => `<a class="code" href="${esc(q(e))}" data-cmd="${esc(e)}">${esc(e)}</a>`).join(' ');
+// Typed wrong: the kit's usage card.
+export const financialsUsage = () => usageCard({ problem: 'FINANCIALS needs a ticker.', format: 'FINANCIALS ticker [BALANCE|CASHFLOW] [QUARTERLY]', grammar: 'FINANCIALS <ticker> [BALANCE|CASHFLOW] [QUARTERLY]', example: EXAMPLES[0], more: EXAMPLES.slice(1) });
 
 function tabBar(args, withBasis = false) {
   const tab = (label, a, on) => {
@@ -255,10 +258,7 @@ export function basisNote(d, basis = 'adjusted') {
 
 export function render(el, cmd, ctx) {
   if (cmd.error) {
-    el.innerHTML = panel('1', 'Financials', `
-      <p class="notice">FINANCIALS needs a ticker.</p>
-      <p class="muted">Format: <span class="code">FINANCIALS &lt;ticker&gt; [BALANCE|CASHFLOW] [QUARTERLY]</span></p>
-      <p class="muted examples">Try ${exampleLinks()}</p>`, { cls: 'panel-solo' });
+    el.innerHTML = panel('1', 'Financials', financialsUsage(), { cls: 'panel-solo' });
     ctx.status('FINANCIALS: CHECK THE FORMAT', 'warn');
     return;
   }

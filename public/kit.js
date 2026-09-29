@@ -298,12 +298,12 @@ export function emptyState({ title, hint = '', action = null, details = '', smal
 
 // The words a card shows above its + Details: tags, hidden bits and the details out;
 // numbers, prices, dates' digits, keys and codes are not words, nor words on a picture
-// (role="img", aria-hidden="true"). The budgets (test/layout-rules.test.js) count with this.
+// (role="img" with an aria-label, aria-hidden="true"). The budgets (test/layout-rules.test.js) count with this.
 export function cardWords(html) {
   const cut = String(html).split('<details class="how card-more"')[0];
   const text = cut
     .replace(/<([a-z0-9]+)\b[^>]*?\shidden(?=[\s>=])[^>]*>[\s\S]*?<\/\1>/gi, ' ')
-    .replace(/<([a-z0-9]+)\b[^>]*?\s(?:role="img"|aria-hidden="true")[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<([a-z0-9]+)\b(?:(?=[^>]*\srole="img")(?=[^>]*\saria-label="[^"]+")|(?=[^>]*\saria-hidden="true"))[^>]*>[\s\S]*?<\/\1>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
   return text.split(/\s+/)

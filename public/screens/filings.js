@@ -4,7 +4,7 @@
 
 import { esc, q, panel, LOADING } from './markets.js';
 import { metaNote, errorHtml, fmtInt, fmtDay, dash } from './company-kit.js';
-import { toolbar, panelTools, dataTable, sortRows, nextSort, edgeFade } from '../kit.js';
+import { toolbar, panelTools, dataTable, sortRows, nextSort, edgeFade, usageCard } from '../kit.js';
 import { sessionHtml } from '../provenance.js';
 import { FORMS, parseFilings as parse, filingsInputOf as inputOf } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { FORMS, parse, inputOf };
@@ -43,12 +43,12 @@ export function filingsTable(rows, sort = { key: 'filed', dir: 'desc' }) {
 }
 
 const USAGE_EX = ['FILINGS AAPL', 'FILINGS MSFT 10-K', 'FILINGS TSLA 8-K', 'FILINGS NVDA 4'];
+// Typed wrong: the kit's usage card.
+export const filingsUsage = () => usageCard({ problem: 'FILINGS needs a ticker.', format: 'FILINGS ticker [form]', grammar: 'FILINGS <ticker> [10-K|10-Q|8-K|4|ALL]', example: USAGE_EX[0], more: USAGE_EX.slice(1), notes: ['A form is optional: 10-K, 10-Q, 8-K, 4 or ALL.'] });
 
 export function render(el, cmd, ctx) {
   if (cmd.error) {
-    el.innerHTML = panel('1', 'Filings', `<p class="notice">FILINGS needs one ticker, then a form if you want one.</p>
-      <p class="muted">Format: <span class="code">FILINGS &lt;ticker&gt; [10-K|10-Q|8-K|4|ALL]</span></p>
-      <p class="muted examples">Try ${USAGE_EX.map((e) => `<a class="code" href="${esc(q(e))}" data-cmd="${esc(e)}">${esc(e)}</a>`).join(' ')}</p>`, { cls: 'panel-solo' });
+    el.innerHTML = panel('1', 'Filings', filingsUsage(), { cls: 'panel-solo' });
     ctx.status('FILINGS: CHECK THE FORMAT', 'warn');
     return;
   }

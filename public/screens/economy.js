@@ -5,7 +5,7 @@
 
 import { esc, q, fmtNum, fmtSigned, panel, LOADING, rowAttrs, nameCell } from './markets.js';
 import { mountLines } from './lines.js';
-import { fmtDate, rangePills } from '../kit.js';
+import { fmtDate, rangePills, usageCard } from '../kit.js';
 import { ECONOMY_RANGES, parseEconomy as parse, economyToInput as toInput } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { ECONOMY_RANGES, parse, toInput };
 
@@ -125,13 +125,13 @@ function series(el, args, ctx) {
   });
 }
 
+// Typed wrong: the kit's usage card.
+export const economyUsage = (error) => usageCard({ problem: error === 'range' ? 'Pick a range: 5Y, 10Y or MAX.' : 'ECONOMY takes one indicator, like UNRATE.', format: 'ECONOMY [indicator] [5Y|10Y|MAX]', example: 'ECONOMY', more: ['ECONOMY UNRATE', 'ECONOMY CPI MAX'] });
+
 export function render(el, cmd, ctx) {
   const args = cmd.args;
   if (args.error) {
-    el.innerHTML = panel('1', 'Economy', `
-      <p class="notice">${args.error === 'range' ? 'Pick a range: 5Y, 10Y or MAX.' : 'ECONOMY takes one indicator, like UNRATE.'}</p>
-      <p class="muted">Format: <span class="code">ECONOMY [indicator] [5Y|10Y|MAX]</span></p>
-      <p class="muted examples">Try ${['ECONOMY', 'ECONOMY UNRATE', 'ECONOMY CPI MAX'].map((c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`).join(' ')}</p>`, { cls: 'panel-solo' });
+    el.innerHTML = panel('1', 'Economy', economyUsage(args.error), { cls: 'panel-solo' });
     ctx.status('ECONOMY: CHECK THE FORMAT', 'warn');
     return;
   }

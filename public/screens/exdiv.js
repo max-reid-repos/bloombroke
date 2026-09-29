@@ -3,7 +3,7 @@
 
 import { esc, q, fmtNum, panel, LOADING } from './markets.js';
 import { metaNote, symbolCell, symbolRow, fmtWeekday, dash } from './company-kit.js';
-import { fmtDate } from '../kit.js';
+import { fmtDate, usageCard } from '../kit.js';
 import { parseExdiv as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { parse };
 
@@ -26,10 +26,9 @@ export function exdivTable(rows) {
   </table>`;
 }
 
-function usage() {
-  const ex = ['EXDIV', 'EXDIV 2026-10-01'];
-  return `<p class="notice">EXDIV takes nothing, or one day like 2026-10-01.</p>
-    <p class="muted examples">Try ${ex.map((e) => `<a class="code" href="${esc(q(e))}" data-cmd="${esc(e)}">${esc(e)}</a>`).join(' ')}</p>`;
+// Typed wrong: the kit's usage card.
+export function usage() {
+  return usageCard({ problem: 'EXDIV takes nothing, or one day like 2026-10-01.', format: 'EXDIV [day]', example: 'EXDIV', more: ['EXDIV 2026-10-01'] });
 }
 
 // Ex-date: the first day a buyer does not get the next dividend.

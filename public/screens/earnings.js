@@ -2,7 +2,7 @@
 
 import { esc, q, fmtNum, panel, LOADING } from './markets.js';
 import { tickerCell, fmtCompact } from './movers.js';
-import { toolbar, segmented, edgeFade } from '../kit.js';
+import { toolbar, segmented, edgeFade, usageCard } from '../kit.js';
 import { parseEarnings as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { parse };
 
@@ -66,10 +66,10 @@ function table(rows) {
   </table>`;
 }
 
-function usage() {
+// Typed wrong: the kit's usage card.
+export function usage() {
   const ex = ['EARNINGS', 'EARNINGS TOMORROW', 'EARNINGS WEEK', 'EARNINGS 2026-10-14'];
-  return `<p class="notice">EARNINGS takes a day or WEEK.</p>
-    <p class="muted examples">Try ${ex.map((e) => `<a class="code" href="${esc(q(e))}" data-cmd="${esc(e)}">${esc(e)}</a>`).join(' ')}</p>`;
+  return usageCard({ problem: 'EARNINGS takes a day or WEEK.', format: 'EARNINGS [day | WEEK]', example: ex[0], more: ex.slice(1) });
 }
 
 const WEEK_LIMIT = 15;

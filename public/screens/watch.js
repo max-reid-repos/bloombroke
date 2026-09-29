@@ -11,7 +11,7 @@ import {
 import { toolbar, emptyState } from '../kit.js';
 
 const SORT_KEY = 'bb.watch.sort';
-const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
+const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}" data-example>${esc(c)}</a>`; // an example: saving ones prefill (app.js examplePlan)
 
 // Quotes for a list of symbols, in the order asked. Missing ones come back as null.
 export async function fetchQuotes(ctx, ids) {

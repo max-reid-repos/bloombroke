@@ -32,6 +32,16 @@ import { emptyHtml as chatEmptyHtml } from '../public/screens/chat.js';
 import { noSuchExtra, ipoUsage, TITLE_GONE } from '../public/screens/nosuch.js';
 import { stonePageHtml, fitStone, GV_ROW } from '../public/screens/graveyard.js';
 import { wageUsage } from '../public/screens/buy.js';
+import { usage as earningsUsage } from '../public/screens/earnings.js';
+import { usageHtml as compareUsage } from '../public/screens/compare.js';
+import { usage as compoundUsage } from '../public/screens/compound.js';
+import { usage as exdivUsage } from '../public/screens/exdiv.js';
+import { filingsUsage } from '../public/screens/filings.js';
+import { economyUsage } from '../public/screens/economy.js';
+import { rangeUsage } from '../public/screens/quote.js';
+import { optionsUsage } from '../public/screens/options.js';
+import { fxUsage } from '../public/screens/fx.js';
+import { financialsUsage } from '../public/screens/financials.js';
 import { withArt } from '../lib/graveyard.js';
 
 const all = () => true;
@@ -118,6 +128,19 @@ export const USAGE = [
   ['DATA', dataUsage()],
   ['IPO IT, no word', ipoUsage()],
   ['WAGE, no pay', wageUsage('usage')],
+  ['EARNINGS', earningsUsage()],
+  ['COMPARE', compareUsage()],
+  ...['usage', 'rate', 'years', 'amount'].map((k) => [`COMPOUND, ${k}`, compoundUsage(k)]),
+  ['EXDIV', exdivUsage()],
+  ['FILINGS', filingsUsage()],
+  ['ECONOMY', economyUsage('usage')],
+  ['ECONOMY, a range', economyUsage('range')],
+  ...['usage', 'date', 'order', 'future'].map((k) => [`A chart range, ${k}`, rangeUsage('AAPL', k)]),
+  ...['usage', 'kind', 'expiry'].map((k) => [`OPTIONS, ${k}`, optionsUsage({ error: k, ticker: 'AAPL' })]),
+  ['FX, typed wrong', fxUsage('Use three-letter codes, like USD or EUR.')],
+  ['FX, an amount', fxUsage('That amount does not look right. Use digits, up to 1,000,000,000,000.')],
+  ['FX, a currency it does not know', fxUsage('We do not know the currency XYZ.', 'Supported: <span class="codes">USD EUR</span>', ['FX 100 USD EUR'])],
+  ['FINANCIALS', financialsUsage()],
   ['WAGE, a pay it cannot read', wageUsage('amount')],
 ];
 
@@ -340,15 +363,28 @@ test('NO SUCH TICKER and a GRAVEYARD stone: card pages, 30 words; every stone in
   }
   // Words drawn on a picture (the stone's face, the certificate's stamp) are the picture's.
   assert.deepEqual(cardWords('<figure class="gv-stone" role="img" aria-label="x"><span>R.I.P.</span></figure><p>one</p><span aria-hidden="true">two</span>'), ['one']);
+  assert.deepEqual(cardWords('<div role="img"><span>no label</span></div>'), ['no', 'label'], 'role="img" without an aria-label counts');
+  // aria-hidden hides words from the count only on the known pictures (the certificate's
+  // ticker and stamp): anywhere else it may not wrap more than 3 words.
+  const PICTURES = /class="(ns-mini-big|ns-mini-stamp|gv-play)"/;
+  for (const [name, html] of [...PAGES, ...USAGE, ...EMPTY].map(([n, h]) => [n, h])) {
+    for (const m of html.matchAll(/<([a-z0-9]+)\b[^>]*\saria-hidden="true"[^>]*>([\s\S]*?)<\/\1>/gi)) {
+      if (PICTURES.test(m[0])) continue;
+      const words = m[2].replace(/<[^>]+>/g, ' ').split(/\s+/).filter((w) => /[A-Za-z]/.test(w));
+      assert.ok(words.length <= 3, `${name}: aria-hidden hides ${words.length} words: ${words.join(' ')}`);
+    }
+  }
 });
 
 test('every replaced site uses the kit: usage card, empty state, the NO SUCH card', () => {
   const src = (f) => readFileSync(f, 'utf8');
-  for (const f of ['buy', 'cpi', 'loan', 'history', 'tape', 'profile', 'why', 'data', 'nosuch'].map((n) => `public/screens/${n}.js`)) {
+  for (const f of ['buy', 'cpi', 'loan', 'history', 'tape', 'profile', 'why', 'data', 'nosuch', 'earnings', 'compare', 'compound', 'exdiv', 'filings', 'economy', 'quote', 'options', 'fx', 'financials'].map((n) => `public/screens/${n}.js`)) {
     assert.match(src(f), /usageCard\(/, `${f}: usageCard`);
     // (buy.js keeps WAGE's own lines: not a usage pile of AFFORD's.)
     const own = f.endsWith('buy.js') ? src(f).replace(/function renderWage[\s\S]*?\n}\n/, '') : src(f);
-    assert.doesNotMatch(own, /Format: <span|class="muted examples">Try /, `${f}: no "Format:" and "Try" pile`);
+    // (The later ten keep a "Try" link under a data error, which is not a usage pile.)
+    assert.doesNotMatch(own, /Format: <span/, `${f}: no "Format:" line`);
+    if (/\/(buy|cpi|loan|history|tape|profile|why|data|nosuch)\.js$/.test(f)) assert.doesNotMatch(own, /class="muted examples">Try /, `${f}: no "Try" pile`);
   }
   for (const f of ['watch', 'portfolio', 'alerts', 'desk', 'chat', 'insiders', 'shorts'].map((n) => `public/screens/${n}.js`)) {
     assert.match(src(f), /emptyState\(/, `${f}: emptyState`);
@@ -362,7 +398,7 @@ test('every replaced site uses the kit: usage card, empty state, the NO SUCH car
 });
 
 test('one-line messages: 60ch at most, centred on a screen of their own; the profile blurb in + Details', () => {
-  assert.match(STYLE, /\.panel-solo \.panel-body:not\(:has\(table\)\) > \.notice,\s*\.panel-solo \.panel-body:not\(:has\(table\)\) > \.panel-msg,\s*\.panel-solo \.panel-body:not\(:has\(table\)\) > \.notice \+ \.muted \{ max-width: 60ch; margin-left: auto; margin-right: auto; text-align: center; \}/);
+  assert.match(STYLE, /\.panel-solo \.panel-body:not\(:has\(table\)\) > \.notice,\s*\.panel-solo \.panel-body:not\(:has\(table\)\) > \.panel-msg,\s*\.panel-solo \.panel-body:not\(:has\(table\)\) > \.notice ~ \.muted \{ max-width: 60ch; margin-left: auto; margin-right: auto; text-align: center; \}/);
   assert.match(readFileSync('public/commands.css', 'utf8'), /\.profile-desc \{ max-width: 60ch;/);
   const long = 'Apple Inc. designs, manufactures and markets smartphones, personal computers, tablets, wearables and accessories worldwide. It also sells a range of related services. The company offers iPhone, a line of smartphones. It was founded in 1976 and is based in Cupertino.';
   const [lead, rest] = splitDescription(long);
@@ -383,7 +419,14 @@ test('examples: one that changes something saved goes into the command bar; one 
     for (const m of examples.matchAll(/<a [^>]*data-cmd="([^"]+)"[^>]*>/g)) assert.match(m[0], /data-example/, `${name}: ${m[1]}`);
   }
   const app = readFileSync('public/app.js', 'utf8');
-  assert.match(app, /if \(el\.hasAttribute\('data-example'\) && examplePlan\(el\.dataset\.cmd\) === 'fill'\) \{ fillBar\(el\.dataset\.cmd\); return; \}\n\s*run\(el\.dataset\.cmd\);/, 'the click handler: fill before run');
+  assert.match(app, /if \(el\.hasAttribute\('data-example'\) && examplePlan\(el\.dataset\.cmd\) === 'fill'\) \{[\s\S]{0,200}?if \(e\.detail === 0\) setTimeout\(\(\) => fillBar\(el\.dataset\.cmd\), 0\); else fillBar\(el\.dataset\.cmd\);\s*return;\s*\}\n\s*run\(el\.dataset\.cmd\);/, 'the click handler: fill before run; after the key press on a keyboard click');
+  // Keys, codes and the Pro doors always wait for Enter, whatever follows them.
+  for (const c of ['LOGOUT', 'LOGIN', 'REDEEM X', 'REDEEM', 'GIFT', 'GIFT ABC']) assert.equal(examplePlan(c), 'fill', c);
+  // The list screens' own "Try" rows and DESK's: the saving ones wait for Enter too.
+  for (const c of ['PF REMOVE AAPL', 'PF SELL AAPL 3', 'PF ADD AAPL 10 @ 150', 'WATCH REMOVE TSLA', 'WATCH IMPORT AAPL,MSFT,GOLD', 'DESK RESET']) assert.equal(examplePlan(c), 'fill', c);
+  for (const c of ['PF EXPORT', 'PF IMPORT', 'WATCH EXPORT', 'DESK', 'DESK 2', 'DESK WEIRD']) assert.equal(examplePlan(c), 'run', `${c}: shows (PF IMPORT alone opens the paste box)`);
+  for (const f of ['public/screens/portfolio.js', 'public/screens/watch.js']) assert.match(readFileSync(f, 'utf8'), /const code = \(c\) => `<a class="code" href="\$\{esc\(q\(c\)\)\}" data-cmd="\$\{esc\(c\)\}" data-example>/, `${f}: its examples carry data-example`);
+  assert.match(readFileSync('public/screens/desk.js', 'utf8'), /\['DESK', 'DESK 2', 'DESK RESET', 'DESK WEIRD'\]\.map\(\(c\) => `<a class="code"[^`]*data-example>/, 'DESK: its examples too');
   assert.match(app, /function fillBar\(raw\) \{[\s\S]*?input\.value = clean;[\s\S]*?input\.focus\(\);/);
 });
 

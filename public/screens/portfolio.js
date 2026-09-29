@@ -11,7 +11,7 @@ import {
 } from '../portfolio.js';
 import { toolbar, emptyState } from '../kit.js';
 
-const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
+const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}" data-example>${esc(c)}</a>`; // an example: saving ones prefill (app.js examplePlan)
 const EXAMPLES = ['PF ADD AAPL 10 @ 150', 'PF SELL AAPL 3', 'PF REMOVE AAPL', 'PF EXPORT', 'PF IMPORT'];
 
 // $1,234.56 and −$12.30. Money always shows cents.

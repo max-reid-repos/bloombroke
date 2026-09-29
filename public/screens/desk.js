@@ -44,7 +44,7 @@ export function render(el, cmd, ctx) {
   if (cmd.error) {
     el.innerHTML = panel('1', 'Desk', `
       <p class="notice">DESK takes a desk number, RESET or a preset.</p>
-      <p class="muted examples">Try ${['DESK', 'DESK 2', 'DESK RESET', 'DESK WEIRD'].map((c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`).join(' ')}</p>`, { cls: 'panel-solo' });
+      <p class="muted examples">Try ${['DESK', 'DESK 2', 'DESK RESET', 'DESK WEIRD'].map((c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}" data-example>${esc(c)}</a>`).join(' ')}</p>`, { cls: 'panel-solo' });
     ctx.status('DESK: CHECK THE WORDS AFTER IT', 'warn');
     return undefined;
   }

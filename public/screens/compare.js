@@ -3,7 +3,7 @@
 import { esc, q, fmtPct, dirOf, panel, LOADING } from './markets.js';
 import { fmtXForSpan, fmtHoverForBar } from './chart.js';
 import { mountLines } from './lines.js';
-import { toolbar, rangePills } from '../kit.js';
+import { toolbar, rangePills, usageCard } from '../kit.js';
 import { stockIdOf } from '../known-tickers.js';
 import { COMPARE_RANGES as RANGES, MAX_TICKERS, parseCompare as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { RANGES, MAX_TICKERS, parse };
@@ -43,9 +43,7 @@ function legendHtml(series, values) {
 
 export function usageHtml() {
   const ex = ['COMPARE AAPL MSFT NVDA', 'COMPARE SPY QQQ 5Y', 'COMPARE KO PEP 6M'];
-  return `<p class="notice">COMPARE needs 2 to 5 tickers.</p>
-    <p class="muted">Format: <span class="code">COMPARE &lt;ticker&gt; &lt;ticker&gt; [&lt;range&gt;]</span></p>
-    <p class="muted examples">Try ${ex.map((e) => `<a class="code" href="${esc(q(e))}" data-cmd="${esc(e)}">${esc(e)}</a>`).join(' ')}</p>`;
+  return usageCard({ problem: 'COMPARE needs 2 to 5 tickers.', format: 'COMPARE ticker ticker [range]', grammar: 'COMPARE <ticker> <ticker> [<range>]', example: ex[0], more: ex.slice(1) });
 }
 
 // How to read the lines: price change only, no dividends.

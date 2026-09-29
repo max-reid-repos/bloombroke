@@ -748,7 +748,14 @@ export function linkPlan(raw) {
 }
 // An example (kit.js data-example) that changes something saved (linkPlan asks) goes into
 // the command bar for Enter ('fill'); one that only shows something runs ('run').
-export const examplePlan = (raw) => (linkPlan(raw).ask ? 'fill' : 'run');
+// Keys, codes, LOGIN, LOGOUT, REDEEM and GIFT always wait for Enter.
+const FILL_ONLY = new Set(['LOGIN', 'LOGOUT', 'REDEEM', 'GIFT']);
+export function examplePlan(raw) {
+  const clean = tokenize(raw).join(' ');
+  const cmd = parseCommand(clean);
+  if (cmd.secret || isSecret(clean) || FILL_ONLY.has(cmd.name) || FILL_ONLY.has(tokenize(raw)[0])) return 'fill';
+  return linkPlan(raw).ask ? 'fill' : 'run';
+}
 export const DEFAULT_TITLE = 'Bloombroke: a free market terminal. Pro $420 a year.';
 // DRIVE (drive.js): a screen from the driver opens like a link, so it never changes anything.
 export const driveTarget = (raw) => { const p = linkPlan(raw); return p.ask ? p.url : p.show; };
@@ -1651,7 +1658,11 @@ function boot() {
         toParent({ type: 'bb:pick', c: tokenize(el.dataset.cmd).join(' ') });
         return;
       }
-      if (el.hasAttribute('data-example') && examplePlan(el.dataset.cmd) === 'fill') { fillBar(el.dataset.cmd); return; }
+      if (el.hasAttribute('data-example') && examplePlan(el.dataset.cmd) === 'fill') {
+        // A key press (Enter on the link) would reach the bar and run it: fill after it.
+        if (e.detail === 0) setTimeout(() => fillBar(el.dataset.cmd), 0); else fillBar(el.dataset.cmd);
+        return;
+      }
       run(el.dataset.cmd);
       if (!coarse) input.focus();
       return;

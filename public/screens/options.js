@@ -4,7 +4,7 @@
 //   OPTIONS AAPL 2026-10-16   one expiry (the tabs list them all)
 
 import { esc, q, fmtNum, fmtSigned, fmtPct, dirOf, fmtAsOf, panel, metaNote, LOADING } from './markets.js';
-import { edgeFade } from '../kit.js';
+import { edgeFade, usageCard } from '../kit.js';
 import { OPTION_TICKER_RE, OPTION_INDEXES, parseOptions as parse, optionsToInput as toInput } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { OPTION_TICKER_RE, OPTION_INDEXES, parse, toInput };
 
@@ -85,6 +85,13 @@ export function chainTable(rows, price, ticker, near = NEAR) {
 
 const EXAMPLES = ['OPTIONS AAPL', 'OPTIONS SPY', 'OPTIONS TSLA'];
 const links = (list) => list.map((c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`).join(' ');
+// Typed wrong: the kit's usage card. The first sentence is the problem, the rest a note.
+export function optionsUsage(args) {
+  // Which tickers have options is a note; the problem stays short.
+  const [problem, ...rest] = args.error === 'kind' ? ['No options for that ticker.', ERRORS.kind] : String(ERRORS[args.error] || ERRORS.usage).split(/(?<=[.?]) /);
+  const ex = args.ticker && args.error === 'expiry' ? [`OPTIONS ${args.ticker}`] : EXAMPLES;
+  return usageCard({ problem, format: 'OPTIONS ticker [expiry]', grammar: 'OPTIONS <ticker> [expiry]', example: ex[0], more: ex.slice(1), notes: [rest.join(' ')] });
+}
 const ERRORS = {
   usage: 'OPTIONS needs a ticker.',
   kind: 'Options here cover US stocks and ETFs, and the SPX, NDX, RUT and VIX indexes.',
@@ -94,10 +101,7 @@ const ERRORS = {
 export function render(el, cmd, ctx) {
   const args = cmd.args;
   if (args.error) {
-    el.innerHTML = panel('1', 'Options', `
-      <p class="notice">${esc(ERRORS[args.error] || ERRORS.usage)}</p>
-      <p class="muted">Format: <span class="code">OPTIONS &lt;ticker&gt; [expiry]</span></p>
-      <p class="muted examples">Try ${links(args.ticker && args.error === 'expiry' ? [`OPTIONS ${args.ticker}`] : EXAMPLES)}</p>`, { cls: 'panel-solo' });
+    el.innerHTML = panel('1', 'Options', optionsUsage(args), { cls: 'panel-solo' });
     ctx.status('OPTIONS: CHECK THE FORMAT', 'warn');
     return;
   }
