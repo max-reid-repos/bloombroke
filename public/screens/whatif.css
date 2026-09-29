@@ -11,9 +11,10 @@
 .wi-tabs { max-width: 1120px; margin: 0 auto 16px; }
 .wi-tabs .toolbar { padding-left: 0; padding-right: 0; }
 /* YOUR OWN: one line at the right of the tabs (under them on a phone). */
-.wi-own { display: flex; width: 320px; max-width: 100%; }
+.wi-own { display: flex; gap: 8px; width: 384px; max-width: 100%; }
+.wi-own .wi-own-add { flex: 0 0 auto; height: 28px; padding: 0 12px; }
 .wi-own-in {
-  width: 100%; height: 28px; padding: 0 8px;
+  flex: 1 1 auto; min-width: 0; width: 100%; height: 28px; padding: 0 8px;
   border: 1px solid var(--rule-strong); background: var(--bg);
   color: var(--text); font-family: var(--font); font-size: 13px; text-transform: uppercase;
 }
@@ -36,7 +37,7 @@
 .wi-card:hover { background: var(--panel-2); }
 .wi-card:focus { outline: 0; border-color: var(--accent); }
 .wi-card.is-on { color: var(--text); }
-.wi-fam[aria-expanded="true"] { background: var(--panel-2); }
+.wi-fam.is-open { background: var(--panel-2); }
 .wi-doodle { display: block; width: 160px; height: 160px; max-width: 100%; object-fit: contain; }
 .wi-cname {
   font-size: 14px; line-height: 18px;
@@ -74,6 +75,7 @@
   margin: -8px 0 16px; padding: 8px 12px;
   border: 1px solid var(--rule-strong); background: var(--panel);
 }
+.wi-chips[hidden] { display: none; }
 .wi-chips-label { flex: 0 0 auto; }
 .wi-chips-row { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .wi-chip { flex: 0 0 auto; gap: 6px; height: 28px; letter-spacing: .04em; cursor: pointer; }
@@ -207,7 +209,12 @@
 }
 /* Nothing under 11 px on the paper: the clip's list never shrinks below it. */
 .wc-receipt { font-size: max(11px, .92cqw); line-height: max(16px, 2.18cqw); }
-.wc-receipt span { max-width: 10.5cqw; overflow: hidden; text-overflow: ellipsis; }
+.wc-receipt span {
+  max-width: 10.5cqw; white-space: normal; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; /* a long name wraps to two lines before it is cut */
+}
+/* The title wraps rather than leave the banner when 11 px is still too wide (a phone). */
+.wc-ribbon { max-width: 36%; white-space: normal; line-height: 1.05; }
 .wc-sticker { position: absolute; left: -3%; bottom: -5%; width: 17%; height: auto; transform: rotate(-8deg); pointer-events: none; }
 
 @media (max-width: 639px) {

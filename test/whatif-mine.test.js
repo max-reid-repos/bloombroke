@@ -269,7 +269,8 @@ test('free for everyone: no Pro gate, the FREE list says so', async () => {
   assert.doesNotMatch(src, /isPro|Pro feature/);
   // The YOUR OWN line shows for a free user: one input, Enter runs it.
   assert.match(ownInputHtml(), new RegExp(`<input id="wi-own-in" class="wi-own-in" type="text" maxlength="80" placeholder="${OWN_PLACEHOLDER}"`));
-  assert.doesNotMatch(ownInputHtml(), /<button|btn-solid/, 'Enter runs it: no button of its own');
+  assert.doesNotMatch(ownInputHtml(), /btn-solid|type="submit"/, 'Enter runs it: no white button, no submit button');
+  assert.match(ownInputHtml(), /<button type="button" class="btn wi-own-add" data-own-add title="Add it to the basket">ADD<\/button>/, 'ADD: an outline key for the basket');
   // The server never gates: a free visitor (no key) gets the result.
   const d = await getWhatif(['MY', '649', 'AAPL', '2014-09-19'], { quoteImpl: quote(341.07), dailyImpl: bakedAapl, now: NOW });
   assert.equal(d.mine, true);

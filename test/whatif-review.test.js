@@ -8,18 +8,34 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { El, mount, flush } from './fixtures/tiny-dom.js';
-import { render, ownWords, certLine, certLineHtml, resultHtml, shareLinks, videoHtml, SHELF_LINE, shelfCols, tableHtml } from '../public/screens/whatif.js';
+import { El, mount, flush, fakeDocument } from './fixtures/tiny-dom.js';
+import { render, ownWords, certLine, certLineHtml, resultHtml, shareLinks, videoHtml, SHELF_LINE, shelfCols, tableHtml, chipScroll, PHONE_MQ, LOSS_WORDS } from '../public/screens/whatif.js';
 import { getCatalog, getWhatif, catalog } from '../data/whatif-service.js';
 import { certModel } from '../data/whatif-cert.js';
 import { cardWords } from '../public/kit.js';
 
 const NOW = new Date('2026-09-27T12:00:00Z');
 
-// The browser bits render() touches that the tiny DOM leaves out.
+// The browser bits render() touches that the tiny DOM leaves out. The phone query can be
+// flipped (phone.set(true)), and tells the picker, like a window crossing 639 px.
 El.prototype.scrollIntoView = function scrollIntoView() {};
+const phone = {
+  matches: false,
+  fns: new Set(),
+  addEventListener(t, f) { this.fns.add(f); },
+  removeEventListener(t, f) { this.fns.delete(f); },
+  set(v) { this.matches = v; for (const f of [...this.fns]) f({ matches: v }); },
+};
 globalThis.window ??= {};
-globalThis.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+globalThis.window.matchMedia = (q) => (q === PHONE_MQ ? phone : { matches: false, addEventListener() {}, removeEventListener() {} });
+globalThis.window.addEventListener ??= () => {};
+globalThis.window.removeEventListener ??= () => {};
+const doc = fakeDocument();
+globalThis.document = doc;
+
+// Every picker's leave-the-screen hooks, so a test can start with no other picker listening.
+const everyCleanup = [];
+const leaveAll = () => everyCleanup.splice(0).forEach((f) => f());
 
 async function picker(tokens = []) {
   const el = mount();
@@ -31,7 +47,7 @@ async function picker(tokens = []) {
     signal: null,
     run: (c) => runs.push(c),
     status: (...a) => status.push(a),
-    onCleanup: (f) => cleanups.push(f),
+    onCleanup: (f) => { cleanups.push(f); everyCleanup.push(f); },
   };
   render(el, { args: { tokens }, input: ['WHATIF', ...tokens].join(' ') }, ctx);
   await flush();
@@ -41,7 +57,8 @@ async function picker(tokens = []) {
   const key = (k, target) => shelf.dispatch('keydown', { key: k, target });
   const bar = () => el.querySelector('.wi-bar');
   const run = () => el.querySelector('#wi-run');
-  return { el, shelf, card, click, key, runs, status, bar, run, cleanups };
+  const tray = () => shelf.querySelector('.wi-chips:not([hidden])');
+  return { el, shelf, card, click, key, runs, status, bar, run, cleanups, tray };
 }
 
 test('picker: the shelf is the screen; big cards in rows of four on pencil lines; no line under the title', async () => {
@@ -61,6 +78,14 @@ test('picker: the shelf is the screen; big cards in rows of four on pencil lines
   assert.ok(rows.length >= 2);
   for (const r of rows.slice(0, -1)) assert.equal(r.querySelectorAll('.wi-card').length, 4);
   assert.equal(p.shelf.querySelectorAll('svg').length, rows.length, 'one pencil line under each row');
+  for (const r of rows) {
+    const box = r.parent;
+    assert.deepEqual(box.children.map((k) => k.tag), ['ul', 'svg', 'div'], 'a row box: the cards, the line, the chips tray');
+    assert.equal(r.getAttribute('role'), 'listbox');
+    assert.equal(box.children[1].getAttribute('aria-hidden'), 'true', 'the line: hidden, outside the list');
+    assert.equal(r.querySelector('svg'), null);
+  }
+  assert.equal(p.shelf.getAttribute('role'), null, 'the shelf itself is not a list');
   assert.match(SHELF_LINE, /^<svg class="wi-line" viewBox="0 0 400 12" preserveAspectRatio="none" aria-hidden="true" focusable="false"><path d="M2 6\.4 C /);
   assert.doesNotMatch(SHELF_LINE, /<image|href=|style=/, 'drawn, not an image file');
   // The RUN bar waits for a basket of two.
@@ -91,29 +116,36 @@ test('picker: a click (or Enter) on a single card runs it at once', async () => 
 test('picker: a family card opens its chips under its row; a chip runs that model', async () => {
   const p = await picker();
   const fam = p.card('[data-fam="IPHONE"]');
-  assert.equal(p.shelf.querySelector('.wi-chips'), null);
+  assert.equal(p.tray(), null);
   p.click(fam);
   assert.deepEqual(p.runs, [], 'a family does not run');
-  const kids = p.shelf.children;
-  const chips = p.shelf.querySelector('.wi-chips');
+  const chips = p.tray();
   assert.ok(chips, 'the chips open');
   // Right under the family's row (after its pencil line), before the next row.
-  const rowAt = kids.findIndex((k) => k.classList?.contains('wi-row') && k.contains(p.card('[data-fam="IPHONE"]')));
-  assert.equal(kids[rowAt + 1].tag, 'svg');
-  assert.equal(kids[rowAt + 2], chips);
-  assert.equal(p.card('[data-fam="IPHONE"]').getAttribute('aria-expanded'), 'true');
+  const box = fam.closest('.wi-rowbox');
+  assert.deepEqual(box.children.map((k) => k.tag), ['ul', 'svg', 'div']);
+  assert.equal(box.children[2], chips);
+  assert.equal(p.card('[data-fam="IPHONE"]'), fam, 'the cards are not redrawn');
+  assert.match(fam.getAttribute('class'), /\bis-open\b/);
+  assert.equal(fam.getAttribute('aria-expanded'), null, 'no aria-expanded on an option');
   assert.equal(chips.querySelectorAll('[data-chip]').length, 18);
+  // The chips are buttons, pressed when in the basket; not options.
+  for (const c of chips.querySelectorAll('[data-chip]')) {
+    assert.equal(c.tag, 'button');
+    assert.equal(c.getAttribute('role'), null);
+    assert.equal(c.getAttribute('aria-pressed'), 'false');
+  }
   p.click(chips.querySelector('[data-chip="iphone7"]'));
   assert.deepEqual(p.runs, ['WHATIF IPHONE7']);
   p.key('Enter', p.shelf.querySelector('[data-chip="iphone11"]'));
   assert.deepEqual(p.runs, ['WHATIF IPHONE7', 'WHATIF IPHONE11']);
   // Enter on the family card opens it too; a second click (or Esc) closes it.
   p.click(p.card('[data-fam="IPHONE"]'));
-  assert.equal(p.shelf.querySelector('.wi-chips'), null, 'closed again');
+  assert.equal(p.tray(), null, 'closed again');
   p.key('Enter', p.card('[data-fam="IPHONE"]'));
-  assert.ok(p.shelf.querySelector('.wi-chips'));
+  assert.ok(p.tray());
   p.key('Escape', p.shelf.querySelector('[data-chip="iphone6"]'));
-  assert.equal(p.shelf.querySelector('.wi-chips'), null, 'Esc closes the chips');
+  assert.equal(p.tray(), null, 'Esc closes the chips');
   // Other shelves' families: PlayStation on GAMES.
   const g = await picker(['GAMES']);
   g.click(g.card('[data-fam="PLAYSTATION"]'));
@@ -141,7 +173,7 @@ test('picker: Space (or the box) adds to the basket; RUN, white, shows only at t
   assert.equal(p.card('[data-fam="IPHONE"]').querySelector('.wi-cname').textContent, 'iPhone 6');
   p.key(' ', p.shelf.querySelector('[data-chip="iphone8"]'));
   assert.equal(p.run().textContent, 'RUN 4');
-  assert.equal(p.shelf.querySelector('[data-chip="iphone8"]').getAttribute('aria-selected'), 'true');
+  assert.equal(p.shelf.querySelector('[data-chip="iphone8"]').getAttribute('aria-pressed'), 'true');
   assert.match(p.el.querySelector('#wi-count').textContent, /^iPhone 6, iPhone 8, iPad \(first\), MacBook Air \(2008\)$/);
   // Space again drops it.
   p.key(' ', p.shelf.querySelector('[data-chip="iphone8"]'));
@@ -236,8 +268,10 @@ test('every amount is the engine\'s, unchanged: IPHONE6, a basket of three, BEER
     assert.deepEqual([d.cert.big, d.cert.spent, d.cert.holding, d.cert.multiple], want.cert, `${cmd} certificate`);
     // The page shows the certificate's words, the phone line the same numbers, the table the engine's.
     assert.ok(html.includes(`<div class="wc wc-big" data-fs="${d.cert.fit.big}">${want.cert[0]}</div>`), `${cmd}: the big amount`);
-    assert.ok(html.includes(`<p class="wi-certline num" aria-hidden="true">${certLine(d.cert)}</p>`));
-    assert.equal(certLine(d.cert), `${want.cert[1].replace('You spent', 'Spent')} · ${want.cert[2].replace(/ of .*$/, '').replace(/^in /, '')} · ${want.cert[3]}`);
+    assert.ok(html.includes(certLineHtml(d.cert)));
+    const loss = d.total.value < d.total.paid;
+    assert.equal(d.cert.loss, loss);
+    assert.equal(certLine(d.cert), `${want.cert[1].replace('You spent', 'Spent')} · ${want.cert[2].replace(/ of .*$/, '').replace(/^in /, '')} · ${want.cert[3]}${loss ? ` · ${LOSS_WORDS}` : ''}`);
     assert.ok(html.includes(tableHtml(d)), `${cmd}: the table in + Details`);
   }
 });
@@ -271,4 +305,135 @@ test('the share image and the download keep today\'s certificate (the engine and
   const share = readFileSync('public/screens/whatif.js', 'utf8');
   assert.match(share, /image: `\/og\/whatif\.png\?\$\{new URLSearchParams\(\{ c: m\.command \}\)\}`/);
   assert.match(share, /href="\$\{esc\(links\.image\)\}" download="bloombroke-whatif\.png"/);
+});
+
+// ---- Review nits (Sep 29, second pass) --------------------------------------------------
+
+test('Esc with the chips open: caught first on the document, whatever has the focus; the app never goes back', async () => {
+  leaveAll();
+  const p = await picker();
+  let back = 0;
+  // The app's own Esc (app.js, after the capture phase): back a screen unless the key was
+  // already handled (default prevented, propagation stopped).
+  const press = (target) => { const e = doc.key('Escape', target); if (!e.prevented && !e.stopped) back += 1; return e; };
+  const before = doc.count('keydown');
+  p.click(p.card('[data-fam="IPHONE"]'));
+  assert.ok(p.tray());
+  assert.equal(doc.count('keydown'), before + 1, 'listening while the chips are open');
+  // The focus on RUN, on a shelf tab, on the page: each closes the chips and stops the key.
+  for (const target of [p.run(), p.el.querySelector('[data-value="CARS"]'), p.el]) {
+    if (!p.tray()) p.click(p.card('[data-fam="IPHONE"]'));
+    const e = press(target);
+    assert.ok(e.prevented && e.stopped, 'the key stops here');
+    assert.equal(p.tray(), null, 'the chips close');
+  }
+  assert.equal(back, 0, 'never back a screen');
+  assert.equal(doc.count('keydown'), before, 'removed once closed');
+  // Closed: Esc is the app's again.
+  press(p.el);
+  assert.equal(back, 1);
+  // Leaving the screen with the chips open removes it too.
+  p.click(p.card('[data-fam="IPHONE"]'));
+  assert.equal(doc.count('keydown'), before + 1);
+  p.cleanups.forEach((f) => f());
+  assert.equal(doc.count('keydown'), before);
+});
+
+test('Space and chip toggles change only the state: no card (and no picture) is drawn again', async () => {
+  const p = await picker();
+  const imgs = () => p.shelf.querySelectorAll('img');
+  const first = imgs();
+  p.key(' ', p.card('[data-id="ipad"]'));
+  p.key(' ', p.card('[data-fam="IPHONE"]'));
+  p.key(' ', p.shelf.querySelector('[data-chip="iphone8"]'));
+  p.click(p.shelf.querySelector('[data-chip="iphone11"]').querySelector('[data-box]'));
+  p.key(' ', p.card('[data-id="ipad"]'));
+  const after = imgs();
+  assert.equal(after.length, first.length);
+  assert.ok(after.every((img, i) => img === first[i]), 'the same image elements');
+  assert.equal(p.run().textContent, 'RUN 3');
+  assert.equal(p.card('[data-fam="IPHONE"]').querySelector('.wi-cname').textContent, 'iPhone, 3 models');
+  assert.equal(p.card('[data-id="ipad"]').getAttribute('aria-selected'), 'false');
+});
+
+test('phone: two cards a row, a new layout when the window crosses 639 px, the chips scroll to the one in the basket', async () => {
+  leaveAll();
+  phone.set(true);
+  try {
+    const p = await picker(['EDIT', 'IPHONE6']);
+    const rows = () => p.shelf.querySelectorAll('.wi-row');
+    assert.ok(rows().slice(0, -1).every((r) => r.querySelectorAll('.wi-card').length === 2), 'two a row');
+    const phoneRows = rows().length;
+    // Wider than a phone: four a row (fewer rows), the basket kept.
+    phone.set(false);
+    assert.ok(rows().slice(0, -1).every((r) => r.querySelectorAll('.wi-card').length === 4), 'four a row');
+    assert.ok(rows().length < phoneRows);
+    assert.equal(p.card('[data-fam="IPHONE"]').getAttribute('aria-selected'), 'true');
+    phone.set(true);
+    assert.equal(rows().length, phoneRows, 'two a row again');
+    // The chips: iPhone 6 (the 7th chip) starts in the middle of the row.
+    const at = (el) => (el.classList.contains('wi-chip') ? el.parent.children.indexOf(el) * 80 : 20);
+    El.prototype.getBoundingClientRect = function rect() { return { left: at(this) }; };
+    Object.defineProperty(El.prototype, 'clientWidth', { configurable: true, get() { return 300; } });
+    Object.defineProperty(El.prototype, 'offsetWidth', { configurable: true, get() { return 70; } });
+    p.click(p.card('[data-fam="IPHONE"]'));
+    const row = p.tray().querySelector('.wi-chips-row');
+    assert.equal(row.scrollLeft, chipScroll({ scrollLeft: 0, rowLeft: 20, rowWidth: 300, chipLeft: 6 * 80, chipWidth: 70 }));
+    assert.equal(row.scrollLeft, 6 * 80 - 20 - (300 - 70) / 2);
+    assert.match(row.getAttribute('class'), /\bscroll-x\b/, 'the row scrolls sideways, its edges fade');
+    assert.equal(chipScroll({ scrollLeft: 0, rowLeft: 0, rowWidth: 300, chipLeft: 10, chipWidth: 70 }), 0, 'never before the start');
+    const css = readFileSync('public/screens/whatif.css', 'utf8');
+    assert.match(css, /@media \(max-width: 639px\) \{[\s\S]*?\.wi-chips-row \{ flex-wrap: nowrap; \}/);
+  } finally {
+    phone.set(false);
+    delete El.prototype.getBoundingClientRect;
+    delete El.prototype.clientWidth;
+    delete El.prototype.offsetWidth;
+  }
+});
+
+test('YOUR OWN: Enter runs it alone; ADD (an outline key) puts it in the basket to run with more', async () => {
+  const p = await picker();
+  const add = p.el.querySelector('[data-own-add]');
+  assert.equal(add.tag, 'button');
+  assert.equal(add.getAttribute('type'), 'button');
+  assert.match(add.getAttribute('class'), /^btn wi-own-add$/, 'an outline key, not white');
+  assert.equal(add.textContent, 'ADD');
+  const input = p.el.querySelector('#wi-own-in');
+  input.value = 'AAPL 2019-01-01 5000';
+  p.el.querySelector('.wi-tabs').dispatch('click', { target: add });
+  assert.deepEqual(p.runs, [], 'ADD does not run');
+  assert.equal(input.value, '', 'the line is empty for the next one');
+  const mine = p.card('[data-mine]');
+  assert.ok(mine, 'a card of its own, first on the shelf');
+  assert.equal(mine.getAttribute('aria-selected'), 'true');
+  assert.equal(p.bar().hidden, true, 'one in the basket');
+  p.key(' ', p.card('[data-id="ipad"]'));
+  assert.equal(p.run().textContent, 'RUN 2');
+  p.run().dispatch('click');
+  assert.deepEqual(p.runs, ['WHATIF IPAD MY 5000 AAPL 2019-01-01']);
+  // A line it cannot read: nothing added, the reason under it.
+  input.value = 'AAPL 2099 5000';
+  p.el.querySelector('.wi-tabs').dispatch('click', { target: add });
+  assert.match(p.el.querySelector('[data-own-msg]').textContent, /in the future/);
+  assert.equal(p.shelf.querySelectorAll('[data-mine]').length, 1);
+  // Enter still runs it alone.
+  input.value = '1200 MSFT 2015';
+  p.el.querySelector('[data-own]').dispatch('submit');
+  assert.equal(p.runs.at(-1), 'WHATIF MY 1200 MSFT 2015');
+});
+
+test('a loss on a phone: the line under the certificate says so, in the loss colour', async () => {
+  const { d, html } = await result(['BEER:10Y']);
+  assert.equal(d.cert.loss, true, 'fixed prices: BEER:10Y is below what was paid');
+  assert.equal(certLine(d.cert), `Spent ${d.cert.spent.replace('You spent ', '')} · 55.2 shares · 0.9x · less than you paid`);
+  assert.ok(html.includes(`<p class="wi-certline num" aria-hidden="true">Spent $3,739 · 55.2 shares · 0.9x · <span class="down">less than you paid</span></p>`));
+  const { html: win } = await result(['IPHONE6']);
+  assert.doesNotMatch(win, /less than you paid/);
+  // The on-page certificate: a long name wraps to two lines before it is cut; a long title wraps.
+  const css = readFileSync('public/screens/whatif.css', 'utf8');
+  assert.match(css, /\.wc-receipt span \{\n  max-width: 10\.5cqw; white-space: normal; overflow: hidden;\n  display: -webkit-box; -webkit-line-clamp: 2;/);
+  assert.doesNotMatch(css, /text-overflow: ellipsis; \}\n\/\* The title/);
+  assert.match(css, /\.wc-ribbon \{ max-width: 36%; white-space: normal; line-height: 1\.05; \}/);
+  assert.match(readFileSync('public/screens/whatif.js', 'utf8'), /n\.style\.fontSize = `max\(11px, \$\{v\}cqw\)`/, 'never under 11 px');
 });

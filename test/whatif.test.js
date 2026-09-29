@@ -199,8 +199,8 @@ test('family cards: one card per family, its chips the same item ids as the comm
   const html = chipsHtml(fam, new Map([['iphone6', ''], ['iphone8', '']]));
   const ids = [...html.matchAll(/data-chip="([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(ids, fam.items.map((p) => p.id));
-  assert.deepEqual([...html.matchAll(/data-chip="([^"]+)" aria-selected="true"/g)].map((m) => m[1]), ['iphone6', 'iphone8'], 'the ones in the basket');
-  assert.match(html, /data-chip="iphone6" aria-selected="true" tabindex="0"/, 'the roving focus starts on the first in the basket');
+  assert.deepEqual([...html.matchAll(/data-chip="([^"]+)" aria-pressed="true"/g)].map((m) => m[1]), ['iphone6', 'iphone8'], 'the ones in the basket');
+  assert.match(html, /data-chip="iphone6" aria-pressed="true" tabindex="0"/, 'the roving focus starts on the first in the basket');
   assert.equal((html.match(/tabindex="0"/g) || []).length, 1);
   const edit = planWhatif(['EDIT', 'IPHONE6', 'IPHONE8'], cat);
   assert.equal(commandFor(edit.picks, cat), 'WHATIF IPHONE6 IPHONE8');
@@ -215,8 +215,8 @@ test('family cards: one card per family, its chips the same item ids as the comm
   // The card: doodle, name and how many models; the model once one is in the basket.
   const none = familyCardHtml(fam, new Map());
   assert.match(none, /doodle-phones\.webp[\s\S]*<span class="wi-cname">iPhone<\/span><span class="wi-cmeta">18 models<\/span>/);
-  assert.match(none, /aria-expanded="false"/);
-  assert.match(familyCardHtml(fam, new Map(), true), /aria-expanded="true"/, 'its chips open');
+  assert.doesNotMatch(none + familyCardHtml(fam, new Map(), true), /aria-expanded/, 'no aria-expanded on an option');
+  assert.match(familyCardHtml(fam, new Map(), true), /class="wi-card wi-fam is-open"/, 'its chips open');
   assert.doesNotMatch(none, />[^<]*\$|20\d\d</);
   assert.deepEqual(familyCardParts(fam, new Map([['iphone6', '']])), { on: true, name: 'iPhone 6' });
   assert.deepEqual(familyCardParts(fam, edit.picks), { on: true, name: 'iPhone, 2 models' });

@@ -289,17 +289,19 @@ export function familyCardParts(fam, picks) {
 export function familyCardHtml(fam, picks, open = false) {
   const { on, name } = familyCardParts(fam, picks);
   const p0 = fam.items[0];
-  return `<li class="wi-card wi-fam${on ? ' is-on' : ''}" role="option" aria-selected="${on}" aria-expanded="${open}" tabindex="-1" data-fam="${esc(fam.fam)}" title="${esc(`${fam.name}: ${fam.items.length} models, ${p0.company} ${p0.ticker}`)}">${doodleImg(fam.doodle)}${BOX}<span class="wi-cname">${esc(name)}</span><span class="wi-cmeta">${fam.items.length} models</span></li>`;
+  return `<li class="wi-card wi-fam${on ? ' is-on' : ''}${open ? ' is-open' : ''}" role="option" aria-selected="${on}" tabindex="-1" data-fam="${esc(fam.fam)}" title="${esc(`${fam.name}: ${fam.items.length} models, ${p0.company} ${p0.ticker}`)}">${doodleImg(fam.doodle)}${BOX}<span class="wi-cname">${esc(name)}</span><span class="wi-cmeta">${fam.items.length} models</span></li>`;
 }
 
-// A family's chips, under its row: one per model, its year beside it. A click or Enter
-// runs the model; Space or the box adds it to the basket. The roving focus starts on
-// the first one in the basket (or the first).
+// A family's chips, under its row: one button per model, its year beside it. A click or
+// Enter runs the model; Space or the box adds it to the basket (aria-pressed: in the
+// basket). The roving focus starts on the first one in the basket (or the first).
 export function chipsHtml(fam, picks) {
   const labels = chipLabels(fam.items);
   const start = Math.max(0, fam.items.findIndex((p) => picks.has(p.id)));
-  return `<span class="tag wi-chips-label">${esc(fam.name)}</span><span class="wi-chips-row" role="group" aria-label="${esc(`${fam.name}: which model`)}" data-chips="${esc(fam.fam)}">${fam.items.map((p, i) => `<button type="button" class="chip wi-chip${picks.has(p.id) ? ' is-on' : ''}" role="option" data-chip="${esc(p.id)}" aria-selected="${picks.has(p.id)}" tabindex="${i === start ? 0 : -1}" title="${esc(`${p.name}: ${pickedMeta(p)}`)}" aria-label="${esc(`${p.name}, ${p.date.slice(0, 4)}`)}">${BOX}${esc(labels[i])} <span class="wi-chip-y num">${esc(p.date.slice(0, 4))}</span></button>`).join('')}</span>`;
+  return `<span class="tag wi-chips-label">${esc(fam.name)}</span><span class="wi-chips-row" role="group" aria-label="${esc(`${fam.name}: which model`)}" data-chips="${esc(fam.fam)}">${fam.items.map((p, i) => `<button type="button" class="chip wi-chip${picks.has(p.id) ? ' is-on' : ''}" data-chip="${esc(p.id)}" aria-pressed="${picks.has(p.id)}" tabindex="${i === start ? 0 : -1}" title="${esc(`${p.name}: ${pickedMeta(p)}`)}" aria-label="${esc(`${p.name}, ${p.date.slice(0, 4)}`)}">${BOX}${esc(labels[i])} <span class="wi-chip-y num">${esc(p.date.slice(0, 4))}</span></button>`).join('')}</span>`;
 }
+// How far a phone's chip row scrolls so the chip starts in the middle of it (never before 0).
+export const chipScroll = ({ scrollLeft = 0, rowLeft, rowWidth, chipLeft, chipWidth }) => Math.max(0, scrollLeft + chipLeft - rowLeft - (rowWidth - chipWidth) / 2);
 
 // A purchase of your own (from the line above the shelf, or from WHATIF EDIT MY ...):
 // a card on every shelf, first. A click runs it; Space adds it to the basket or drops it.
@@ -309,11 +311,13 @@ export function mineCardHtml(m, on = true) {
   </li>`;
 }
 
-// YOUR OWN: one line above the shelf. Enter runs it.
+// YOUR OWN: one line above the shelf. Enter runs it alone; ADD (a key, an outline) puts
+// it in the basket, to run with other things.
 export function ownInputHtml() {
   return `<form class="wi-own" data-own novalidate>`
     + '<label class="offscreen" for="wi-own-in">Your own purchase: a ticker, a date and dollars</label>'
     + `<input id="wi-own-in" class="wi-own-in" type="text" maxlength="80" placeholder="${esc(OWN_PLACEHOLDER)}" title="${esc(`${OWN_HOW} Or a habit: 5 A DAY SBUX SINCE 2018.`)}" spellcheck="false" autocomplete="off" autocapitalize="characters" enterkeyhint="go">`
+    + '<button type="button" class="btn wi-own-add" data-own-add title="Add it to the basket">ADD</button>'
     + '</form>';
 }
 
@@ -355,11 +359,12 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
   const mineOn = new Set(mine.map((m) => m.id)); // your own purchases in the basket
   const phone = window.matchMedia(PHONE_MQ);
   const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const doc = globalThis.document;
   const tabs = () => segmented(SHELVES.map((x) => ({ label: x, value: x })), shelf, { label: 'Shelves' });
   el.innerHTML = panel('1', WHATIF_TITLE, `
     <div class="wi-tabs">${toolbar({ left: tabs(), right: ownInputHtml(), label: 'Shelves' })}</div>
     <p class="wi-own-msg" data-own-msg role="status"></p>
-    <div class="wi-shelf" role="listbox" aria-multiselectable="true" aria-label="Things you bought" data-own-focus></div>
+    <div class="wi-shelf" data-own-focus></div>
     <div class="wi-bar" hidden>
       <span class="wi-count" id="wi-count"></span>
       <button type="button" class="wi-run btn-solid" id="wi-run">RUN</button>
@@ -373,7 +378,6 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
   const ownForm = el.querySelector('[data-own]');
   const ownIn = el.querySelector('#wi-own-in');
   const ownMsg = el.querySelector('[data-own-msg]');
-  const byId = new Map(allItems(cat).map((p) => [p.id, p]));
   let cols = shelfCols(phone.matches);
   let cards = []; // this shelf's card elements, in order
   let fams = new Map(); // this shelf's family cards, by family
@@ -397,31 +401,84 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
   }
   const famPicked = (fam) => fam.items.some((p) => picks.has(p.id));
 
-  // The shelf: rows of cards, each on its pencil line; an open family's chips under its row.
+  // Esc while the chips are open closes them, wherever the focus is (RUN, a tab, a chip),
+  // and never reaches the app's own Esc (back a screen): caught first, on the document.
+  const onEsc = (e) => {
+    if (e.key !== 'Escape' || !famOpen || e.ctrlKey || e.metaKey || e.altKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    closeChips({ refocus: Boolean(e.target?.closest?.('[data-chip]')) });
+  };
+  function setOpen(f) {
+    famOpen = f;
+    if (f) doc?.addEventListener('keydown', onEsc, true);
+    else doc?.removeEventListener('keydown', onEsc, true);
+  }
+
+  // The shelf: a box per row: its cards (a listbox), its pencil line (a picture, hidden
+  // from screen readers) and a tray where a family's chips open.
   function drawShelf() {
     keepYears();
-    stopFade();
     const items = [...mine.map((m) => ({ mine: m })), ...shelfCards(cat, shelf)];
     fams = new Map(items.filter((c) => c.fam).map((c) => [c.fam, c]));
-    if (!fams.has(famOpen)) famOpen = null;
+    if (!fams.has(famOpen)) setOpen(null);
+    const n = Math.ceil(items.length / cols);
     let html = '';
-    for (let i = 0, r = 0; i < items.length; i += cols, r += 1) {
-      const row = items.slice(i, i + cols);
-      html += `<ul class="wi-row${r % 2 ? ' is-odd' : ''}" role="group">${row.map((c) => (c.mine ? mineCardHtml(c.mine, mineOn.has(c.mine.id)) : c.fam ? familyCardHtml(c, picks, c.fam === famOpen) : cardHtml(c.item, picks))).join('')}</ul>${SHELF_LINE}`;
-      const open = row.find((c) => c.fam && c.fam === famOpen);
-      if (open) html += `<div class="wi-chips">${chipsHtml(open, picks)}</div>`;
+    for (let r = 0; r < n; r += 1) {
+      const row = items.slice(r * cols, (r + 1) * cols);
+      html += `<div class="wi-rowbox"><ul class="wi-row${r % 2 ? ' is-odd' : ''}" role="listbox" aria-multiselectable="true" aria-label="${esc(`${shelf}, row ${r + 1} of ${n}`)}">`
+        + row.map((c) => (c.mine ? mineCardHtml(c.mine, mineOn.has(c.mine.id)) : c.fam ? familyCardHtml(c, picks, c.fam === famOpen) : cardHtml(c.item, picks))).join('')
+        + `</ul>${SHELF_LINE}<div class="wi-chips" data-tray hidden></div></div>`;
     }
     shelfEl.innerHTML = html;
-    shelfEl.setAttribute('aria-label', `${shelf}: things you bought`);
     cards = [...shelfEl.querySelectorAll('.wi-card')];
     current = Math.max(0, Math.min(cards.length - 1, current));
     cards.forEach((c, i) => { c.tabIndex = i === current ? 0 : -1; });
-    const row = shelfEl.querySelector('.wi-chips-row');
+    paintTray();
+  }
+
+  // Only what changed is redrawn: a card's state, the chips' state, the open tray.
+  function paintCard(card) {
+    if (!card) return;
+    let on;
+    if (card.dataset.mine) on = mineOn.has(card.dataset.mine);
+    else if (card.dataset.fam) {
+      const parts = familyCardParts(fams.get(card.dataset.fam), picks);
+      on = parts.on;
+      card.querySelector('.wi-cname').textContent = parts.name;
+      card.classList.toggle('is-open', card.dataset.fam === famOpen);
+    } else on = picks.has(card.dataset.id);
+    card.classList.toggle('is-on', on);
+    card.setAttribute('aria-selected', String(on));
+  }
+  function paintChips() {
+    for (const c of shelfEl.querySelectorAll('[data-chip]')) {
+      const on = picks.has(c.dataset.chip);
+      c.classList.toggle('is-on', on);
+      c.setAttribute('aria-pressed', String(on));
+    }
+  }
+  const famCard = (f) => cards.find((c) => c.dataset.fam === f);
+  function paintTray() {
+    stopFade();
+    stopFade = () => {};
+    const card = famOpen && famCard(famOpen);
+    const open = card?.closest('.wi-rowbox')?.querySelector('[data-tray]');
+    for (const t of shelfEl.querySelectorAll('[data-tray]')) {
+      if (t === open) continue;
+      if (!t.hidden) { t.hidden = true; t.innerHTML = ''; }
+    }
+    if (!open) return;
+    open.innerHTML = chipsHtml(fams.get(famOpen), picks);
+    open.hidden = false;
+    const row = open.querySelector('.wi-chips-row');
     if (row && phone.matches) {
       // A phone's chips scroll sideways: the first one in the basket starts in view.
       stopFade = edgeFade(row);
       const on = row.querySelector('.wi-chip[tabindex="0"]');
-      if (on) row.scrollLeft += on.getBoundingClientRect().left - row.getBoundingClientRect().left - (row.clientWidth - on.offsetWidth) / 2;
+      if (on) {
+        row.scrollLeft = chipScroll({ scrollLeft: row.scrollLeft, rowLeft: row.getBoundingClientRect().left, rowWidth: row.clientWidth, chipLeft: on.getBoundingClientRect().left, chipWidth: on.offsetWidth });
+      }
     }
   }
 
@@ -446,7 +503,7 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
   function showShelf(name, { focus = true } = {}) {
     keepYears();
     shelf = name;
-    famOpen = null;
+    setOpen(null);
     tabBox.querySelectorAll('.seg-item').forEach((b) => {
       const on = b.dataset.value === shelf;
       b.classList.toggle('is-active', on);
@@ -462,12 +519,25 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
   }
   const moveShelf = (dir) => showShelf(SHELVES[(SHELVES.indexOf(shelf) + dir + SHELVES.length) % SHELVES.length]);
 
-  // Opens or closes a family's chips (only one family's at a time).
-  function toggleChips(fam, { keys = false } = {}) {
-    famOpen = famOpen === fam ? null : fam;
-    drawShelf();
-    if (famOpen && keys) focusChip();
-    else focusCard(current, { scroll: false });
+  // A family's chips (one family's at a time): open under its row, or closed.
+  function openChips(f, { keys = false } = {}) {
+    const was = famOpen;
+    setOpen(f);
+    paintCard(famCard(was));
+    paintCard(famCard(f));
+    paintTray();
+    if (keys) focusChip();
+  }
+  function closeChips({ refocus = false } = {}) {
+    const card = famCard(famOpen);
+    setOpen(null);
+    paintCard(card);
+    paintTray();
+    if (refocus && card) focusCard(cards.indexOf(card), { scroll: false });
+  }
+  function toggleChips(f, opts = {}) {
+    if (famOpen === f) closeChips({ refocus: true });
+    else openChips(f, opts);
   }
 
   // ---- Running.
@@ -496,20 +566,23 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
       // A family: its first model goes in (its chips open, to change it), or all of it out.
       const fam = fams.get(card.dataset.fam);
       if (famPicked(fam)) fam.items.forEach((p) => picks.delete(p.id));
-      else { picks.set(familyPick(fam), ''); famOpen = fam.fam; }
+      else {
+        picks.set(familyPick(fam), '');
+        if (famOpen !== fam.fam) openChips(fam.fam);
+      }
+      paintChips();
     } else {
       const id = card.dataset.id;
       if (picks.has(id)) picks.delete(id);
       else picks.set(id, card.querySelector('input[data-spec]')?.value || '');
     }
-    drawShelf();
-    focusCard(current, { scroll: false });
+    paintCard(card);
     refresh();
   }
   function toggleChip(id) {
     if (picks.has(id)) picks.delete(id); else picks.set(id, '');
-    drawShelf();
-    focusChip(id);
+    paintChips();
+    paintCard(famCard(famOpen));
     refresh();
   }
 
@@ -531,7 +604,7 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
         c.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       } else if (act.add) toggleChip(chip.dataset.chip);
       else if (act.run) run(commandFor(new Map([[chip.dataset.chip, '']]), cat));
-      else if (act.close) { current = fi; toggleChips(famOpen); }
+      else if (act.close) closeChips({ refocus: true });
       else if (act.back) focusCard(fi);
       else if (act.down) { const next = (rowOf(fi) + 1) * cols; if (next < cards.length) focusCard(next); }
       else if (act.shelf) moveShelf(act.shelf);
@@ -542,7 +615,7 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
     const i = cards.indexOf(card);
     if (e.target.matches('input')) {
       if (e.key === 'Enter') { stop(); keepYears(); runCard(card); }
-      else if (e.key === 'Escape') { stop(); focusCard(i); }
+      else if (e.key === 'Escape' && !famOpen) { stop(); focusCard(i); }
       return;
     }
     const input = card.querySelector('input');
@@ -561,7 +634,6 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
       ']': () => moveShelf(1),
       ' ': () => toggleBasket(card),
       Enter: () => activate(card, { keys: true }),
-      ...(famOpen ? { Escape: () => { current = fi; toggleChips(famOpen); } } : {}),
     };
     if (keys[e.key]) { stop(); keys[e.key](); }
   });
@@ -578,7 +650,7 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
     }
     const card = e.target.closest('.wi-card');
     if (!card) return;
-    current = cards.indexOf(card);
+    focusCard(cards.indexOf(card), { scroll: false });
     if (add) toggleBasket(card);
     else activate(card, { keys: e.detail === 0 });
   });
@@ -595,11 +667,13 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
     if ((e.key === '[' || e.key === ']') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); moveShelf(e.key === ']' ? 1 : -1); }
   });
   tabBox.addEventListener('click', (e) => {
+    if (e.target.closest('[data-own-add]')) { addOwn(); return; }
     const b = e.target.closest('[data-value]');
     if (b) showShelf(b.dataset.value);
   });
 
-  // YOUR OWN: Enter runs it; a line it cannot read says why, under it.
+  // YOUR OWN: Enter runs it alone; ADD puts it in the basket (a card on the shelf, first).
+  // A line it cannot read says why, under it.
   ownForm.addEventListener('submit', (e) => {
     e.preventDefault();
     try {
@@ -608,17 +682,32 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
       ownMsg.textContent = err.message;
     }
   });
+  function addOwn() {
+    try {
+      const { mine: items } = parseMine(ownWords(ownIn.value));
+      for (const m of items) {
+        if (!mine.some((x) => x.id === m.id)) mine.push(m);
+        mineOn.add(m.id);
+      }
+      ownIn.value = '';
+      ownMsg.textContent = '';
+      drawShelf();
+      refresh();
+    } catch (err) {
+      ownMsg.textContent = err.message;
+    }
+  }
   ownIn.addEventListener('input', () => { ownMsg.textContent = ''; });
   ownIn.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); focusCard(current); }
-    else if (e.key === 'Escape' && ownIn.value) { e.preventDefault(); e.stopPropagation(); ownIn.value = ''; ownMsg.textContent = ''; }
+    else if (e.key === 'Escape' && ownIn.value && !famOpen) { e.preventDefault(); e.stopPropagation(); ownIn.value = ''; ownMsg.textContent = ''; }
   });
 
   runBtn.addEventListener('click', runBasket);
   // Four to a row, two on a phone: redrawn when the window crosses the line.
   const onWidth = () => { cols = shelfCols(phone.matches); drawShelf(); };
   phone.addEventListener?.('change', onWidth);
-  ctx.onCleanup?.(() => { stopFade(); phone.removeEventListener?.('change', onWidth); });
+  ctx.onCleanup?.(() => { stopFade(); setOpen(null); phone.removeEventListener?.('change', onWidth); });
 
   refresh();
   // Start on the first card in the basket (or the first card) so the arrows work at once.
@@ -668,12 +757,12 @@ export function certHtml(m) {
 // lines (spent, shares, the seal) leave the paper for this one line under it (whatif.css
 // shows it under 600 px). The same words and numbers as the certificate's (d.cert), so
 // nothing is worked out twice. aria-hidden: the certificate's label already says them.
-//   "Spent $649.00 · 25.7 shares · 13.2x"
-export function certLine(m) {
-  const held = String(m.holding || '').replace(/ of .*$/, '').replace(/^in /, '');
-  return [String(m.spent || '').replace(/^You spent/, 'Spent'), held, m.multiple].filter(Boolean).join(' · ');
-}
-export const certLineHtml = (m) => `<p class="wi-certline num" aria-hidden="true">${esc(certLine(m))}</p>`;
+//   "Spent $649.00 · 25.7 shares · 13.2x", "... · 0.9x · less than you paid"
+export const LOSS_WORDS = 'less than you paid';
+const certParts = (m) => [String(m.spent || '').replace(/^You spent/, 'Spent'), String(m.holding || '').replace(/ of .*$/, '').replace(/^in /, ''), m.multiple].filter(Boolean);
+// A loss says so in words too (the phone's certificate has no seal): in the loss colour.
+export const certLine = (m) => [...certParts(m), ...(m.loss ? [LOSS_WORDS] : [])].join(' · ');
+export const certLineHtml = (m) => `<p class="wi-certline num" aria-hidden="true">${esc(certParts(m).join(' · '))}${m.loss ? ` · <span class="down">${LOSS_WORDS}</span>` : ''}</p>`;
 
 // The title never goes under 11 px (a long one is fitted smaller on a phone).
 function sizeCert(el) {
