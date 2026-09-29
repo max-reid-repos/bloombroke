@@ -449,6 +449,14 @@ test('fix 1: a new drive or follow tells the server the old one ended; so does l
   await dv.follow(9);
   await tick(5);
   assert.deepEqual(told().at(-1), ['/api/chat/rooms/7/drive', 'stop', 'KEY-A'], 'driving 7 ended when following 9 began');
+  // DRIVE again in the room you drive (typed DRIVE): your drive goes on, nothing is told.
+  await dv.start(7);
+  const n = told().length;
+  await dv.start(7);
+  await tick(5);
+  assert.equal(told().length, n, 'the same drive again never stops itself');
+  assert.equal(dv.state().role, 'drive');
+  assert.match(readFileSync('public/screens/chat.js', 'utf8'), /if \(now\?\.role === 'drive' && now\.room === r\.id\) \{ ctx\.status\('DRIVING: OPEN ANY SCREEN'\); return true; \}/);
   // Logout (the key is gone): the old drive ends, told with the key it began with.
   await dv.start(7);
   k = null;
@@ -466,6 +474,7 @@ test('fix 2: no key or gift code in a card or a driven screen, in any case or sh
     `HELP ${KEY}`, `help ${KEY.toLowerCase()}`, 'HELP BB7K2MABCDEFGHJK3M', 'GRID AAPL 7K2MABCDEFGHJK3M', 'WHATIF 7K2M-ABCD-EFGH-JK3M',
     'HELP BB 7K2M ABCD EFGH JK3M', 'GRID AAPL 7K2M ABCD EFGH JK3M', 'HELP 7K2M.ABCD.EFGH.JK3M', 'HELP GIFT-7K2M-ABCD-EFGH-JK3M-ABCD-EFGH-JK3M',
     'WHATIF GIFT 7K2M ABCD EFGH JK3M ABCD EFGH JK3M', 'HELP 7K2MABCDEFGHJK3MABCDEFGHJK3M', 'NEWS ABCD-EFGH-JKLM-NPQR',
+    'HELP BBABCD EFGH JKLM NPQR', 'HELP GIFT7K2M ABCD EFGH JK3M ABCD EFGH JK3M',
   ];
   const good = ['AAPL 1Y', 'COMPARE AAPL MSFT NVDA TSLA', 'HISTORY AAPL 2020-01-01 2024-12-31', 'FX 500 USD THB', 'WEIRD', 'NEWS'];
   for (const c of bad) {

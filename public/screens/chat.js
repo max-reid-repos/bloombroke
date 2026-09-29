@@ -103,7 +103,7 @@ export function secretIn(raw) {
       const part = toks.slice(i, j);
       const joined = part.join('').replace(/[^A-Z0-9]/g, '');
       if (!normalizeKey(joined) && !normalizeGiftCode(joined)) continue;
-      if (part.length === 1 || /^(BB|GIFT)\b/.test(part[0]) || /\d/.test(joined)) return true;
+      if (part.length === 1 || /^(BB|GIFT)/.test(part[0]) || /\d/.test(joined)) return true;
     }
   }
   return false;
@@ -356,6 +356,8 @@ export function render(el, cmd, ctx) {
   ctx.setCommandHook?.((clean) => {
     const r = room();
     if (clean !== 'DRIVE' || !r || r.readOnly) return false;
+    const now = dv.state();
+    if (now?.role === 'drive' && now.room === r.id) { ctx.status('DRIVING: OPEN ANY SCREEN'); return true; }
     act(() => startDrive(r));
     return true;
   });

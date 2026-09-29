@@ -214,7 +214,8 @@ export function createDrive({ win = globalThis.window, doc = globalThis.document
     // Driving or following elsewhere: that one ends, and the server hears it.
     const old = st;
     end();
-    if (old) tell(old);
+    // The same drive or follow again (DRIVE typed while driving): nothing to tell.
+    if (old && !(old.room === next.room && old.role === next.role)) tell(old);
     gen += 1;
     st = { ...next, gen, ctl: new AbortController(), last: null, timer: 0, key: key() || null, checked: Date.now() };
     win.addEventListener('bb:pro', onPro);

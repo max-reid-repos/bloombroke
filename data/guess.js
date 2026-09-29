@@ -17,8 +17,8 @@
 //
 // Routes (mountGuess): /api/guess/today, /api/guess/check?n=&g=&p=, /api/guess/reveal?n=.
 // Today's answer comes only with the last (sixth) wrong guess: check gets the five before
-// it (p) and adds the answer. Reveal gives past puzzles only, so a GUESS result posted
-// to CHAT is not one request away from the answer.
+// it (p) and adds the answer. Reveal gives past puzzles only. A GUESS result posted to
+// CHAT is an honour system: the answer takes a lost game or one crafted check.
 
 import { createHmac, randomBytes } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
