@@ -9,9 +9,10 @@ import path from 'node:path';
 import { FUNCTION_BAR, tickerStripHtml } from '../public/app.js';
 import { changeTag, flagKeyHtml } from '../public/screens/chart.js';
 import { quoteHtml, changeWhen, sessionTz } from '../public/screens/quote.js';
+import { newsList, TAB_SOURCES } from '../public/screens/news.js';
 import {
-  newsList, sourceToggles, hourOf, readSeen, writeSeen, newestTime, VISIT_LINE, SEEN_KEY, TAB_SOURCES,
-} from '../public/screens/news.js';
+  newsPageList, sourceToggles, hourOf, readSeen, writeSeen, newestTime, VISIT_LINE, SEEN_KEY,
+} from '../public/screens/news-page.js';
 import { mainHtml } from '../public/screens/pro.js';
 import { feedbackHtml } from '../public/screens/feedback.js';
 import { ownFormHtml } from '../public/screens/whatif.js';
@@ -125,7 +126,7 @@ test('NEWS: the sources once, as toggles in the title strip; each row\'s source 
   assert.match(sourceToggles(['CNBC', 'MKTW'], 'MKTW', 'MARKETS'), /class="news-src-one" data-value="ALL"/, 'the last one steps back to ALL');
   assert.equal(sourceToggles(['SEC EDGAR'], 'ALL', 'SEC'), `<span class="news-srcs-t">${TAB_SOURCES.SEC}</span>`, 'one source: its name, no toggles');
   // The filter row under the strip has the tabs only; the strip's meta the toggles.
-  const news = src('public/screens/news.js');
+  const news = src('public/screens/news-page.js');
   assert.match(news, /bar\.innerHTML = toolbar\(\{ left: tabs, label: 'News' \}\);/);
   assert.doesNotMatch(news, /toolbar\(\{[^)]*right:/);
   assert.match(news, /metaHtml: \(\) => sourceToggles\(sources, src, tab\)/);
@@ -137,20 +138,28 @@ test('NEWS: the sources once, as toggles in the title strip; each row\'s source 
   assert.match(STYLE, /\.news-srcs \{ display: none; \}\n {2}\.news-src-one \{ display: inline-flex;/);
 });
 
+test('NEWS: the screen is its own lazy module; HOME\'s startup keeps only the list', () => {
+  assert.match(src('public/app.js'), /NEWS: lazy\('screens\/news-page\.js'\)/);
+  assert.match(src('public/commands.js'), /\{ name: 'NEWS', screen: lazy\('screens\/news-page\.js'\), parse: parseNewsTab \}/);
+  const news = src('public/screens/news.js');
+  for (const x of ['export function render', 'sourceToggles', 'hourOf', 'readSeen', SEEN_KEY]) assert.ok(!news.includes(x), `${x} is not in the startup file`);
+});
+
 test('NEWS: a thin rule at each hour, the hour a small dim label; the day for older ones', () => {
   assert.deepEqual(hourOf('2026-09-29T14:37:00Z', NOW), { key: 'h:10', label: '10:00' });
   assert.deepEqual(hourOf('2026-09-28T19:00:00Z', NOW), { key: 'd:2026-09-28', label: 'SEP 28' });
   assert.equal(hourOf(null, NOW), null);
-  const html = newsList(LIST, { hours: true, now: NOW });
+  const html = newsPageList(LIST, { hours: true, now: NOW });
   const hours = [...html.matchAll(/<li class="news-hour" aria-hidden="true"><span class="news-hour-l num">([^<]+)<\/span><\/li>/g)].map((m) => m[1]);
   assert.deepEqual(hours, ['09:00', '08:00', 'SEP 28'], 'between rows only, never above the first');
   assert.ok(html.indexOf('>09:00<') < html.indexOf('>C<') && html.indexOf('>09:00<') > html.indexOf('>B<'));
-  assert.doesNotMatch(newsList(LIST, { now: NOW }), /news-hour/, 'the HOME box stays plain');
+  assert.doesNotMatch(newsList(LIST, { now: NOW }), /news-hour|news-since/, 'the HOME box stays plain');
+  assert.doesNotMatch(newsPageList(LIST, { now: NOW }), /news-hour/, 'no hours unless asked');
   assert.match(ruleOf(STYLE, '.news-hour-l'), /color: var\(--dim\)/);
 });
 
 test('NEWS: "Before your last visit": one line above the older stories', () => {
-  const at = (since) => newsList(LIST, { hours: true, since, now: NOW });
+  const at = (since) => newsPageList(LIST, { hours: true, since, now: NOW });
   const html = at('2026-09-29T14:00:00Z');
   assert.equal((html.match(/class="news-since"/g) || []).length, 1);
   assert.match(html, new RegExp(`>B<[\\s\\S]*<li class="news-since" role="separator"><span class="news-since-l">${VISIT_LINE}</span></li>\\s*<li class="news-row"[^>]*>[\\s\\S]*>C<`));
@@ -179,7 +188,7 @@ test('NEWS: the newest time seen, kept per tab; storage that fails is no line, n
   assert.equal(newestTime(LIST), '2026-09-29T14:37:00Z');
   assert.equal(newestTime([]), '');
   // Kept when the reader leaves NEWS, hides the page, or has seen the list a while.
-  const news = src('public/screens/news.js');
+  const news = src('public/screens/news-page.js');
   assert.match(news, /const since = readSeen\(ctx\.store, tab\);/);
   assert.match(news, /ctx\.onCleanup\?\.\(\(\) => \{\n\s+clearTimeout\(seenTimer\);\n\s+remember\(\);/);
   assert.match(news, /seenTimer = setTimeout\(remember, SEEN_MS\)/);

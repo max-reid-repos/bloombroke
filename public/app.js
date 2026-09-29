@@ -572,7 +572,7 @@ const help = lazy('screens/help.js');
 const buy = lazy('screens/buy.js');
 const SCREENS = {
   HOME: homeScreen, HELP: help, MARKETS: marketsScreen, FX: lazy('screens/fx.js'),
-  QUOTE: lazy('screens/quote.js'), CPI: lazy('screens/cpi.js'), RATES: lazy('screens/rates.js'), NEWS: lazy('screens/news.js'),
+  QUOTE: lazy('screens/quote.js'), CPI: lazy('screens/cpi.js'), RATES: lazy('screens/rates.js'), NEWS: lazy('screens/news-page.js'),
   AFFORD: buy, WAGE: buy, WHATIF: lazy('screens/whatif.js'), FUNDING: lazy('screens/funding.js'),
   WATCH: lazy('screens/watch.js'), PORTFOLIO: lazy('screens/portfolio.js'),
   FINANCIALS: lazy('screens/financials.js'), SCREEN: lazy('screens/screen.js'), DESK: lazy('screens/desk.js'),

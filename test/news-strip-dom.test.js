@@ -6,7 +6,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { render } from '../public/screens/news.js';
+import { render } from '../public/screens/news-page.js';
 import { mount, fakeDocument, flush } from './fixtures/tiny-dom.js';
 
 const doc = fakeDocument();
