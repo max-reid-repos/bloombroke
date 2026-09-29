@@ -14,9 +14,9 @@ import { parseCommand } from '../public/app.js';
 import { wireNoSuch } from '../public/screens/nosuch.js';
 import { stoneYears, respectsText, onThisDayLine, ytEmbed, periodText, sectionOf, SECTIONS, siteCaption, timelinePoints, cliffOf, GRAVEYARD_VIEWS } from '../public/nosuch.js';
 import {
-  stoneHtml, stonePageHtml, stoneSlots, stoneFacts, peakLineHtml, moreLinks, siteLabel, candlesHtml, candlesFor, MAX_CANDLES, revealText, engraving, shortName, diedVerb,
-  rowsOf, rowHtml, plotHtml, cemeteryHtml, heroPick, heroLine, stepGrid, liveHtml, loadLive, tipText, HINT, STONE_HINT, ROWS, wireRespects, showRespects,
-  graveyardTable, onThisDayHtml, sourcesHtml, pageSources, sceneKeys, respectStatus, timelineHtml,
+  stoneHtml, stonePageHtml, stoneFacts, peakLineHtml, videoHtml, siteHtml, candlesHtml, candlesFor, MAX_CANDLES, revealText, engraving, diedVerb,
+  layout, stepStone, boxes, signBoxes, clashes, stageFor, STONE_W, AREAS, BAND, cemeteryHtml, latestHtml, heroPick, heroLine, zombiesHtml, tipText, STONE_HINT,
+  wireRespects, showRespects, graveyardTable, onThisDayHtml, sourcesHtml, pageSources, sceneKeys, respectStatus, timelineHtml,
 } from '../public/screens/graveyard.js';
 
 const FIX = fileURLToPath(new URL('./fixtures/graveyard-v2.json', import.meta.url));
@@ -149,21 +149,26 @@ test('RIP WHATIF: the sourced peak line, hidden when null', () => {
   assert.deepEqual(stoneFacts(LEH), [{ label: 'Peak', value: '$85.80' }, { label: '$1,000 at peak, by Sep 2008', value: '$2', cls: 'down' }]);
 });
 
-test('video: a "Watch the video" link; nothing from YouTube or Google before a click', () => {
+test('video: our own art and a play mark; nothing from YouTube or Google before a click', () => {
   const e = withArt(LEH, { doodles: ['LEH'] });
-  const [watch] = moreLinks({ ...e, video: { ...e.video, channel: 'CBS' } });
-  assert.match(watch, /^<button type="button" class="card-link gv-watch" data-yt="AAAAAAAAAAA" aria-label="Play: Lehman files for bankruptcy \(CBS\)">Watch the video<\/button>$/);
+  const html = videoHtml({ ...e, video: { ...e.video, channel: 'CBS' } });
+  assert.match(html, /<button type="button" class="gv-video" data-yt="AAAAAAAAAAA"/);
+  assert.match(html, /src="\/img\/graveyard\/doodle-leh\.webp"/, 'our own drawing');
+  assert.match(html, /<span class="gv-play" aria-hidden="true"><\/span>/);
+  assert.match(html, /PLAY VIDEO · CBS/);
   const page = stonePageHtml(e, 0);
-  for (const h of [watch, page]) {
+  for (const h of [html, page]) {
     assert.doesNotMatch(h, /<iframe|<script/);
     assert.doesNotMatch(h, /ytimg|youtube|google|googlevideo|gstatic/i, 'no request to any Google or YouTube host before the click');
   }
-  assert.doesNotMatch(page, /gv-video|gv-play|PLAY VIDEO/, 'no video still in the page');
-  assert.deepEqual(moreLinks(BBI), [], 'a bad id: no link');
+  assert.match(page, /<span class="gv-vlabel">PLAY VIDEO<\/span>/, 'the stone page: the label; the channel is in + Details');
+  assert.match(page, /class="gv-card-media has-video"/, 'the video under the story, in the card\'s media slot');
+  assert.equal(videoHtml(BBI), '', 'a bad id: no video');
   assert.equal(ytEmbed('AAAAAAAAAAA'), 'https://www.youtube-nocookie.com/embed/AAAAAAAAAAA?autoplay=1&rel=0');
   assert.equal(ytEmbed('<x>'), null);
   const src = readFileSync(new URL('../public/screens/graveyard.js', import.meta.url), 'utf8');
   assert.doesNotMatch(src, /ytimg|youtube\.com\/iframe_api|www\.youtube\.com\/embed/, 'no stills from YouTube, no YouTube script');
+  assert.match(src, /b\.replaceWith\(f\);/, 'the click swaps the button for the player');
 });
 
 test('CSP: only the video still and the no-cookie player are added', () => {
@@ -273,44 +278,112 @@ test('respects route: same origin, known stones only, the day gate and a per-add
   }
 });
 
-test('cemetery: rows by era, front terrace first, then CAME BACK; names under the stones', () => {
-  const real = loadGraveyardData();
+test('cemetery v3: every stone in one section, back to front; the mapping', () => {
+  const real = loadGraveyardData().stones;
   const by = {};
-  for (const e of real.stones) (by[sectionOf(e)] ||= []).push(e.ticker);
+  for (const e of real) (by[sectionOf(e)] ||= []).push(e.ticker);
+  assert.deepEqual(Object.keys(by).sort(), ['BOUGHT', 'CRISIS', 'DOTCOM', 'RECENT']);
+  assert.equal(Object.values(by).flat().length, real.length, 'every stone once');
+  assert.equal(new Set(Object.values(by).flat()).size, real.length);
   assert.deepEqual(by.BOUGHT.sort(), ['ATVI', 'LNKD', 'NSCP', 'TOY', 'TWTR', 'WFM', 'YHOO']);
   assert.deepEqual(by.DOTCOM.sort(), ['ENE', 'IPET', 'WBVN', 'WCOM']);
   assert.ok(by.CRISIS.includes('LEH') && by.CRISIS.includes('BSC'), 'crisis rescues stay in the crisis');
-  assert.equal(SECTIONS.map((x) => x.label).join(' | '), 'DOT-COM | 2008 CRISIS | RECENT | BOUGHT OUT');
-  const rows = rowsOf(real.stones, real.zombies);
-  assert.deepEqual(rows.map((r) => r.label), ['RECENT', '2008 CRISIS', 'DOT-COM', 'BOUGHT OUT', 'CAME BACK']);
-  assert.deepEqual(ROWS.map((r) => r.id), ['RECENT', 'CRISIS', 'DOTCOM', 'BOUGHT', 'BACK']);
-  assert.equal(rows.flatMap((r) => r.stones).length, real.stones.length + real.zombies.length, 'every stone once');
-  for (const r of rows) assert.deepEqual(r.stones.map((e) => e.date), [...r.stones.map((e) => e.date)].sort().reverse(), `${r.label}: newest first`);
-  assert.deepEqual(rowsOf(DATA.stones, []).map((r) => r.id), ['RECENT', 'CRISIS'].filter((id) => DATA.stones.some((e) => sectionOf(e) === id)), 'empty rows left out');
-  // The company name under each stone; the ticker on the stone.
-  const html = cemeteryHtml(rows, { stone: '/img/graveyard/stone.webp', yard: '/img/graveyard/cemetery-empty.webp' }, heroPick([...real.stones, ...real.zombies], '2026-09-29'));
-  for (const e of real.stones) {
-    const plot = new RegExp(`data-cmd="GRAVEYARD ${e.ticker}"[^>]*>[\\s\\S]*?<span class="gv-tk">${e.ticker}</span>[\\s\\S]*?<span class="gv-pname">${e.name.replace(/[.&()]/g, (c) => (c === '&' ? '&amp;' : `\\${c}`))}</span>`);
-    assert.match(html, plot, `${e.ticker}: its name under it`);
-  }
-  assert.equal((html.match(/class="gv-plot is-bought"/g) || []).length, 7, 'the bought-out stones keep their look');
-  assert.match(html, /<span class="gv-row-name">BOUGHT OUT<\/span> <span class="gv-row-n num">7<\/span><span class="gv-key"><span class="gv-swatch" aria-hidden="true"><\/span>pale stone: sold, not bankrupt<\/span>/, 'a tiny key in its label');
-  assert.equal((html.match(/<img class="gv-art" src="\/img\/graveyard\/stone\.webp"/g) || []).length, real.stones.length + real.zombies.length, 'one stone drawing everywhere');
-  assert.equal((html.match(/<section class="gv-row"/g) || []).length, 5);
-  assert.doesNotMatch(html, /gv-sign|gv-corner|ZOMBIES|respect/, 'no signposts, no floating button, no "0 respects"');
-  // The CSS: 88 px stones, 13 px names, 11 px at the least inside the picture, the sky band.
-  const css = readFileSync(new URL('../public/screens/graveyard.css', import.meta.url), 'utf8');
-  assert.match(css, /\.gv-plot \.gv-stone \{ width: 88px;/);
-  assert.match(css, /\.gv-pname \{\n  max-width: 100%; font-size: 13px;/);
-  assert.match(css, /\.gv-stone\.is-small \.gv-tk \{ font-size: max\(13px, 25cqw\); \}/, 'the ticker on a small stone: 13 px or more');
-  assert.match(css, /\.gv-sky \{ position: relative; height: 160px;/);
-  assert.match(css, /@media \(max-width: 599px\) \{\n  \.gv-sky \{ height: 120px; \}/);
-  assert.match(css, /\.gv-hero-line \{ font-size: 24px;/);
-  for (const m of css.matchAll(/font-size:\s*(\d+)px/g)) assert.ok(Number(m[1]) >= 11, `nothing under 11 px: ${m[0]}`);
-  assert.match(css, /html:not\(\.is-embed\) \.view > \.panel\.gv-panel:not\(\[hidden\]\) \{ flex: 0 1 auto !important; \}/, 'the panel ends after the last row: no void');
+  assert.ok(by.RECENT.includes('SIVB') && by.RECENT.includes('NKLA'));
+  const spots = layout(real);
+  assert.equal(spots.length, real.length);
+  const y = (sec) => Math.max(...spots.filter((sp) => sp.sec === sec).map((sp) => sp.y));
+  assert.ok(y('DOTCOM') < y('CRISIS') && y('CRISIS') < y('RECENT'), 'back terrace high, front low');
+  const size = (t) => spots.find((sp) => sp.e.ticker === t).size;
+  assert.ok(size('SIVB') > size('LEH') && size('LEH') > size('WCOM'), 'perspective: the front is larger');
+  assert.ok(size('LEH') > size('CFC'), 'famous ones a bit larger');
+  const more = layout(real, { counts: { CFC: 5000 } });
+  const cfc = more.find((sp) => sp.e.ticker === 'CFC').size;
+  assert.ok(cfc > size('CFC') && cfc <= size('CFC') * 1.11, 'respects grow a stone, capped');
+  assert.equal(SECTIONS.map((x) => x.label).join(' | '), 'DOT-COM | 2008 CRISIS | RECENT | BOUGHT OUT', 'four signposts');
 });
 
-test('cemetery: the sky band opens LATEST, or ON THIS DAY only on a real anniversary (New York day)', () => {
+test('cemetery v3: no overlaps and nothing cut off at 1536x730 and 1280x720 (and wider, and shorter)', () => {
+  const real = loadGraveyardData().stones;
+  // The scene inside the panel at those windows (the yard's own size, measured in the browser).
+  // Also the yard at common windows (measured in the browser): 1366x650 (a 1366x768 laptop
+  // less the browser bar), 1920x700, 1536x600, 1280x1024 and 1024x768; and 40 px shorter
+  // under the LATEST line (1440x900: 1414x684).
+  for (const [w, h] of [[1428, 560], [1172, 550], [1428, 760], [1000, 420], [1394, 730], [1234, 550], [1428, 910], [1428, 952],
+    [1320, 480], [1418, 530], [1418, 430], [1234, 823], [998, 598], [1394, 690], [1414, 684]]) {
+    for (const counts of [{}, Object.fromEntries(real.map((e) => [e.ticker, 1e6]))]) {
+      const list = [...boxes(layout(real, { counts }), w, h), ...signBoxes(w, h)];
+      assert.deepEqual(clashes(list, w, h), [], `${w}x${h}`);
+    }
+  }
+  const st = stageFor(1428, 560);
+  assert.ok(st.sw >= 1428 && st.sh >= 560 && st.top <= 0 && st.top >= 560 - st.sh, 'the painting covers the scene');
+  // Too wide and short for all four rows: narrower than the scene, never cut through a row.
+  const low = stageFor(1418, 430);
+  assert.ok(low.sw < 1418 && low.left > 0 && low.top <= 0 && low.top >= 430 - low.sh);
+  assert.ok(low.top + (BAND[0] / 100) * low.sh >= 0 && low.top + (BAND[1] / 100) * low.sh <= 430 + 1e-9, 'the whole band shows');
+  const css = readFileSync(new URL('../public/screens/graveyard.css', import.meta.url), 'utf8');
+  assert.match(css, /\.gv-yard \{[^}]*height: min\([^;]*calc\(100cqw \/ 1\.5\)\);/, 'never taller than w / 1.5');
+});
+
+test('cemetery v3: bigger stones, a gentle perspective, readable tickers', () => {
+  const real = loadGraveyardData().stones;
+  const spots = layout(real);
+  const min = (sec) => Math.min(...spots.filter((sp) => sp.sec === sec).map((sp) => sp.size));
+  // At 1440x900 the painting is 1394 px wide: the smallest stone of a terrace is wide
+  // enough for its ticker, which never goes under 13 px (the CSS floor).
+  for (const sec of ['DOTCOM', 'CRISIS', 'RECENT', 'BOUGHT']) {
+    const px = (STONE_W / 100) * 1394 * min(sec);
+    assert.ok(px >= 44, `${sec}: ${px.toFixed(0)} px wide`);
+  }
+  assert.ok(min('DOTCOM') >= 0.75 && min('RECENT') <= 1.2, 'gentle, not extreme');
+  const css = readFileSync(new URL('../public/screens/graveyard.css', import.meta.url), 'utf8');
+  assert.match(css, /\.gv-stone\.is-small \.gv-tk \{ font-size: max\(13px, 25cqw\); \}/, 'a font floor: 13 px');
+  // Nothing under 11 px anywhere on the GRAVEYARD screens: the signposts are 11 px now.
+  for (const m of css.matchAll(/font-size:\s*(\d+)px/g)) assert.ok(Number(m[1]) >= 11, `nothing under 11 px: ${m[0]}`);
+  assert.match(css, /\.gv-sign \{[^}]*font-size: 11px;/);
+  assert.match(css, /\.gv-tl-l \{ display: block; font-size: 11px;/);
+});
+
+test('cemetery v3: an 8th bought-out stone and a long RECENT row still fit, no stacking', () => {
+  const real = loadGraveyardData().stones;
+  const bought = real.find((e) => sectionOf(e) === 'BOUGHT');
+  const recent = real.find((e) => sectionOf(e) === 'RECENT');
+  const more = (base, n, tag, from) => Array.from({ length: n }, (_, i) => ({ ...base, ticker: `${tag}${i}`, date: `${from + i}-01-02` }));
+  for (const extra of [1, 2]) {
+    const list = [...real, ...more(bought, extra, 'BO', 2014)];
+    const spots = layout(list);
+    const at = spots.filter((sp) => sp.sec === 'BOUGHT').map((sp) => `${sp.x},${sp.y}`);
+    assert.equal(new Set(at).size, at.length, `${extra} more: every bought-out stone has its own place`);
+    for (const [w, h] of [[1428, 560], [1394, 730], [1000, 420]]) {
+      assert.deepEqual(clashes([...boxes(spots, w, h), ...signBoxes(w, h)], w, h), [], `${extra} more at ${w}x${h}`);
+    }
+  }
+  // Many more on both: the wrapped line starts past the side plot's last stone.
+  const both = [...real, ...more(bought, 3, 'BX', 2014), ...more(recent, 5, 'RX', 2016)];
+  const bs = layout(both);
+  assert.ok(bs.filter((sp) => sp.sec === 'BOUGHT').length >= 10 && bs.filter((sp) => sp.sec === 'RECENT').length >= 18);
+  const lastBought = Math.max(...bs.filter((sp) => sp.sec === 'BOUGHT').map((sp) => sp.x));
+  const back = bs.filter((sp) => sp.sec === 'RECENT' && sp.y === AREAS.RECENT.wrap.y);
+  assert.ok(back.length && Math.min(...back.map((sp) => sp.x)) > lastBought + AREAS.BOUGHT.step, 'past the side plot');
+  for (const counts of [{}, Object.fromEntries(both.map((e) => [e.ticker, 1e6]))]) {
+    for (const [w, h] of [[1428, 560], [1394, 730], [1320, 480], [998, 598], [1000, 420]]) {
+      assert.deepEqual(clashes([...boxes(layout(both, { counts }), w, h), ...signBoxes(w, h)], w, h), [], `both at ${w}x${h}`);
+    }
+  }
+  // Six more recent deaths: two lines on the front terrace, not smaller stones.
+  const long = [...real, ...more(recent, 6, 'RC', 2016)];
+  const spots = layout(long);
+  const rec = spots.filter((sp) => sp.sec === 'RECENT');
+  assert.equal(new Set(rec.map((sp) => sp.y)).size, 2, 'two lines');
+  assert.ok(Math.min(...rec.map((sp) => sp.size)) >= AREAS.RECENT.scale - 1e-9, 'no shrinking');
+  for (const counts of [{}, Object.fromEntries(long.map((e) => [e.ticker, 1e6]))]) {
+    for (const [w, h] of [[1428, 560], [1394, 730], [1172, 550], [1000, 420], [1428, 952]]) {
+      assert.deepEqual(clashes([...boxes(layout(long, { counts }), w, h), ...signBoxes(w, h)], w, h), [], `wrapped at ${w}x${h}`);
+    }
+  }
+});
+
+test('cemetery: the LATEST line opens LATEST, or ON THIS DAY only on a real anniversary (New York day)', () => {
   const real = loadGraveyardData();
   const all = [...real.stones, ...real.zombies];
   const latest = heroPick(all, '2026-09-29');
@@ -325,13 +398,21 @@ test('cemetery: the sky band opens LATEST, or ON THIS DAY only on a real anniver
   assert.equal(heroPick(all, '2026-06-01').e.ticker, 'GM', 'a filing that came back is a real filing too');
   assert.equal(heroPick(all, '').kicker, 'Latest', 'no day: LATEST');
   assert.equal(heroPick([], '2026-09-15'), null);
-  const html = cemeteryHtml(rowsOf(real.stones, real.zombies), { stone: '/s.webp', yard: '/img/graveyard/cemetery-empty.webp' }, latest);
-  assert.match(html, /<div class="gv-sky">\s*<img class="gv-sky-art" src="\/img\/graveyard\/cemetery-empty\.webp" width="1536" height="1024" alt="">/, 'the band is cut from the painting');
-  assert.match(html, /<a class="gv-hero" href="\?c=GRAVEYARD\+NKLA" data-cmd="GRAVEYARD NKLA" data-hero>\s*<span class="tag gv-kicker">Latest<\/span>\s*<span class="gv-hero-line"><span class="gv-hero-name">Nikola<\/span> · NKLA · filed 2025 <kbd data-enter title="Enter in the empty command bar opens it">Enter<\/kbd><\/span>/);
-  // The badge follows the stone Enter opens (the sky band's by default).
+  // One line of text above the painting, never inside it: name · ticker · filed year · Enter.
+  const html = cemeteryHtml(layout(real.stones), { stone: '/s.webp', yard: '/img/graveyard/cemetery-empty.webp' }, latest);
+  assert.match(html, /^<p class="gv-latest"><a class="gv-hero" href="\?c=GRAVEYARD\+NKLA" data-cmd="GRAVEYARD NKLA" data-hero><span class="tag gv-kicker">Latest<\/span> <span class="gv-hero-name">Nikola<\/span> · NKLA · filed 2025 <kbd data-enter title="Enter in the empty command bar opens it">Enter<\/kbd><\/a><\/p><div class="gv-yard has-art">/);
+  assert.doesNotMatch(html.slice(html.indexOf('<div class="gv-yard')), /gv-latest|gv-hero|data-enter/, 'nothing of it on the painting');
+  assert.equal(latestHtml(null), '', 'no stones: no line');
+  // Enter opens the stone picked, else the LATEST line's; from the empty command bar too.
   const gsrc = readFileSync(new URL('../public/screens/graveyard.js', import.meta.url), 'utf8');
-  assert.match(gsrc, /if \(badge\) badge\.hidden = on !== heroAt;/);
-  assert.match(gsrc, /pick\(heroAt, \{ scroll: false \}\);/, 'the sky band\'s stone is picked from the start');
+  assert.match(gsrc, /const e = on >= 0 \? spots\[on\]\.e : hero\?\.e;/);
+  assert.match(gsrc, /\}, \{ barEnter: open \}\)\);/);
+  assert.match(gsrc, /if \(badge\) badge\.hidden = spots\[on\]\.e !== hero\?\.e;/, 'the badge only while Enter opens it');
+  // The yard is 40 px shorter for the line, so the page does not scroll at 1440x900.
+  const css = readFileSync(new URL('../public/screens/graveyard.css', import.meta.url), 'utf8');
+  assert.match(css, /\.gv-latest \{[^}]*height: 40px;/);
+  assert.match(css, /height: min\(clamp\(380px, calc\(100vh - 159px - var\(--dock-h\)\), 952px\), calc\(100cqw \/ 1\.5\)\);/);
+
   // The verbs for each way to die.
   assert.deepEqual(['Filed for bankruptcy', 'Bought by Microsoft', 'Seized, sold to JPMorgan', 'Bank closed by regulators', 'Taken private', 'Shut down', 'Announced shutdown', 'Delisted from Nasdaq', 'Core business sold to Verizon'].map((what) => diedVerb({ what })),
     ['filed', 'bought out', 'seized', 'seized', 'went private', 'shut down', 'shut down', 'delisted', 'bought out']);
@@ -340,112 +421,84 @@ test('cemetery: the sky band opens LATEST, or ON THIS DAY only on a real anniver
   assert.match(src, /heroPick\(\[\.\.\.data\.entries, \.\.\.data\.zombies\], nyToday\(\)\)/);
 });
 
-test('cemetery: CAME BACK row: a one-line name, the years, the live price; no numbers when quotes fail', async () => {
-  const real = loadGraveyardData();
-  assert.deepEqual(real.zombies.filter((z) => z.tradesAs).map((z) => `${z.ticker}:${z.tradesAs}`), ['GM:GM', 'HTZ:HTZ', 'DAL:DAL', 'AMR:AAL', 'PCG:PCG', 'UAL:UAL']);
-  const amr = real.zombies.find((z) => z.ticker === 'AMR');
-  assert.equal(shortName(amr), 'American Airlines');
-  assert.equal(shortName(real.zombies.find((z) => z.ticker === 'MRV')), 'Marvel');
-  assert.equal(shortName(real.zombies.find((z) => z.ticker === 'GM')), 'General Motors');
-  const plot = plotHtml(amr, 3, '/s.webp');
-  assert.match(plot, /<span class="gv-pname">American Airlines<\/span><span class="gv-back">died 2011 · back 2013<\/span><span class="gv-live" data-live="AAL"><\/span>/);
-  assert.doesNotMatch(plotHtml(real.zombies.find((z) => z.ticker === 'TX'), 0, '/s.webp'), /gv-live/, 'no longer trades: no price slot');
-  // The price: the live one, with its change; the other ticker named when it differs.
-  const q = { ticker: 'AAL', last: 13.48, change: -0.05, changePct: -0.33 };
-  assert.equal(liveHtml(amr, q), 'AAL <span class="num">$13.48</span> <span class="num down">−0.33%</span>');
-  const gm = real.zombies.find((z) => z.ticker === 'GM');
-  assert.equal(liveHtml(gm, { last: 79.84, changePct: 1.2 }), '<span class="num">$79.84</span> <span class="num up">+1.20%</span>');
-  assert.equal(liveHtml(gm, null), '');
-  assert.equal(liveHtml(gm, { last: null }), '', 'no price, no numbers');
-  // A stale quote never looks live: dim, with the day of its last trade, no change.
-  assert.equal(liveHtml(gm, { last: 79.84, changePct: 1.2, stale: true, asOf: '2026-09-26T16:00:00.000-0400' }), '<span class="gv-stale"><span class="num">$79.84</span> on 26 Sep</span>');
-  assert.equal(liveHtml(amr, { last: 13.48, changePct: -0.3, stale: true, asOf: '2026-09-26' }), '<span class="gv-stale">AAL <span class="num">$13.48</span> on 26 Sep</span>');
-  assert.equal(liveHtml(gm, { last: 79.84, stale: true }), '', 'stale without a day: nothing');
-  assert.doesNotMatch(liveHtml(gm, { last: 79.84, changePct: 1.2, stale: true, asOf: '2026-09-26' }), /up|down|%/);
-  // One /api/quotes call; a failure leaves the slots empty.
-  const slots = new Map(real.zombies.filter((z) => z.tradesAs).map((z) => [z.tradesAs, { innerHTML: '' }]));
-  const el = { isConnected: true, querySelector: (s) => slots.get(/data-live="([A-Z]+)"/.exec(s)?.[1]) || null };
-  const asked = [];
-  await loadLive(el, real.zombies, { fetchImpl: async (u) => { asked.push(u); return { ok: true, json: async () => ({ quotes: [{ ticker: 'GM', last: 79.84, change: -0.8, changePct: -1 }] }) }; } });
-  assert.deepEqual(asked, ['/api/quotes?s=GM,HTZ,DAL,AAL,PCG,UAL']);
-  assert.equal(slots.get('GM').innerHTML, '<span class="num">$79.84</span> <span class="num down">−1.00%</span>');
-  assert.equal(slots.get('HTZ').innerHTML, '', 'no quote for it: nothing');
-  for (const s of slots.values()) s.innerHTML = '';
-  await loadLive(el, real.zombies, { fetchImpl: async () => { throw new Error('offline'); } });
-  assert.ok([...slots.values()].every((s) => s.innerHTML === ''), 'quotes fail: no numbers');
-  await loadLive(el, real.zombies, { fetchImpl: async () => ({ ok: false, json: async () => ({}) }) });
-  assert.ok([...slots.values()].every((s) => s.innerHTML === ''), 'a 503: no numbers');
-  const css = readFileSync(new URL('../public/screens/graveyard.css', import.meta.url), 'utf8');
-  assert.match(css, /\.gv-plot\.is-back \.gv-pname \{ display: block; white-space: nowrap; \}/, 'one line on a desktop');
-});
-
-test('cemetery: ZOMBIES is an alias for the CAME BACK row; the separate screen and button are gone', () => {
-  assert.deepEqual(parseCommand('GRAVEYARD ZOMBIES').args, { view: 'ZOMBIES' }, 'the command stays');
+test('ZOMBIES: its own screen, and the button on the painting', () => {
+  assert.deepEqual(parseCommand('GRAVEYARD ZOMBIES').args, { view: 'ZOMBIES' });
+  const z = zombiesHtml(DATA.zombies);
+  assert.match(z, /<a class="gv-plot is-flat" href="\?c=GRAVEYARD\+GMZ" data-cmd="GRAVEYARD GMZ"/);
+  assert.match(z, /<span class="gv-zname">[^<]+<\/span>/);
+  assert.equal(zombiesHtml([]), '<p class="panel-msg">No zombies yet.</p>');
+  assert.match(cemeteryHtml(layout(DATA.stones), { stone: '/s.webp' }), /<p class="gv-corner"><a class="code" href="\?c=GRAVEYARD\+ZOMBIES" data-cmd="GRAVEYARD ZOMBIES">ZOMBIES<\/a><\/p>/);
   const src = readFileSync(new URL('../public/screens/graveyard.js', import.meta.url), 'utf8');
-  assert.match(src, /renderCemetery\(el, data, ctx, \{ at: view === 'ZOMBIES' \? 'BACK' : '' \}\)/);
-  assert.match(src, /if \(at === 'BACK'\) \{\s*const row = el\.querySelector\('#gv-row-BACK'\);\s*if \(row\) \{\s*row\.scrollIntoView\?\.\(\{ block: 'start' \}\);/);
-  assert.doesNotMatch(src, /zombiesHtml|gv-corner|'GRAVEYARD ZOMBIES', 'ZOMBIES'|Graveyard: zombies/, 'no ZOMBIES screen or button');
-  const row = rowHtml(rowsOf([], DATA.zombies)[0], '/s.webp');
-  assert.match(row, /<section class="gv-row" data-row="BACK" id="gv-row-BACK">/);
+  assert.match(src, /if \(view === 'ZOMBIES'\) \{\s*el\.innerHTML = panel\('1', 'Graveyard: zombies', zombiesHtml\(data\.zombies\)/);
+  assert.doesNotMatch(src, /gv-row|gv-sky|gv-live|loadLive|liveHtml|stepGrid/, 'the rows, the sky band and the live prices are gone');
 });
 
-test('cemetery: arrows move, Enter opens, TABLE lists; the hover shows respects only above zero', () => {
-  assert.equal(HINT, 'Enter opens · Esc, then arrows move · TABLE lists');
-  assert.equal(STONE_HINT, 'Esc, then F pays respects · Esc back');
+test('cemetery v3: arrows walk rows back to front, the label says name, year and respects above zero', () => {
+  const spots = layout(loadGraveyardData().stones);
+  const leh = spots.findIndex((sp) => sp.e.ticker === 'LEH');
+  const right = stepStone(spots, leh, 'ArrowRight');
+  assert.equal(spots[right].row, spots[leh].row);
+  assert.ok(spots[right].x > spots[leh].x);
+  assert.ok(spots[stepStone(spots, leh, 'ArrowDown')].row > spots[leh].row);
+  assert.ok(spots[stepStone(spots, leh, 'ArrowUp')].row < spots[leh].row);
+  assert.equal(stepStone([], 0, 'ArrowLeft'), -1);
+  assert.equal(tipText(spots[leh].e, 3), 'Lehman Brothers · 2008 · 3 respects');
+  assert.equal(tipText(spots[leh].e, 1), 'Lehman Brothers · 2008 · 1 respect');
+  assert.equal(tipText(spots[leh].e, 0), 'Lehman Brothers · 2008', 'never "0 respects"');
+  assert.doesNotMatch(tipText(LEH, 0), /respect/);
   const src = readFileSync(new URL('../public/screens/graveyard.js', import.meta.url), 'utf8');
-  assert.match(src, /ctx\.status\(HINT\);/);
-  assert.doesNotMatch(src, /ESC THEN ARROWS/);
-  assert.match(src, /meta: `\$\{metaNote\(`\$\{all\.length\} STONES`\)\} · \$\{code\('GRAVEYARD TABLE', 'TABLE'\)\}`/, 'the strip: N STONES · TABLE');
-  // Stones on two lines of a row (wrapped) and the next row.
-  const pts = [{ x: 0, y: 0 }, { x: 116, y: 0 }, { x: 232, y: 0 }, { x: 0, y: 180 }, { x: 116, y: 180 }, { x: 0, y: 400 }];
-  assert.equal(stepGrid(pts, 1, 'ArrowRight'), 2);
-  assert.equal(stepGrid(pts, 2, 'ArrowRight'), 3, 'on to the next line');
-  assert.equal(stepGrid(pts, 0, 'ArrowLeft'), 0);
-  assert.equal(stepGrid(pts, 5, 'ArrowRight'), 5);
-  assert.equal(stepGrid(pts, 2, 'ArrowDown'), 4, 'the nearest on the line below');
-  assert.equal(stepGrid(pts, 4, 'ArrowDown'), 5);
-  assert.equal(stepGrid(pts, 4, 'ArrowUp'), 1);
-  assert.equal(stepGrid(pts, 0, 'ArrowUp'), 0);
-  assert.equal(stepGrid([], 0, 'ArrowLeft'), -1);
-  assert.equal(stepGrid(pts, -1, 'ArrowDown'), 0);
-  // The hover label: how and when; the respects only above zero, never "0 respects".
-  assert.equal(tipText(LEH, 0), 'filed 2008');
-  assert.equal(tipText(LEH, 3), 'filed 2008 · 3 respects');
-  assert.equal(tipText(LEH, 1), 'filed 2008 · 1 respect');
-  assert.doesNotMatch(plotHtml(LEH, 0, '/s.webp', { n: 0 }), /respect/);
-  assert.match(plotHtml(LEH, 0, '/s.webp', { n: 12 }), /<span class="gv-tip" data-tip>filed 2008 · 12 respects<\/span>/);
+  assert.match(src, /metaNote\('ESC THEN ARROWS'\)\} \$\{code\('GRAVEYARD TABLE', 'TABLE'\)\}/, 'hints in the title strip, 4 words');
+  assert.match(src, /ctx\.status\(`GRAVEYARD: \$\{data\.entries\.length\} STONES`\);/);
+  const t = graveyardTable(loadGraveyardData().stones, {}, { grouped: true });
+  const heads = [...t.matchAll(/<tr class="gv-sec"><th scope="rowgroup" colspan="6">([^<]+)</g)].map((m) => m[1]);
+  assert.deepEqual(heads, ['BOUGHT OUT', 'RECENT', '2008 CRISIS', 'DOT-COM'], 'the phone table, by the same sections');
 });
 
-test('cemetery: the phone gets the rows, 4 stones a line with their names; TABLE one tap away', () => {
-  const css = readFileSync(new URL('../public/screens/graveyard.css', import.meta.url), 'utf8');
-  const phone = css.slice(css.indexOf('@media (max-width: 599px) {'));
-  assert.match(phone, /\.gv-row-stones \{ display: grid; grid-template-columns: repeat\(4, minmax\(0, 1fr\)\);/);
-  assert.match(phone, /\.gv-plot \.gv-stone \{ width: 64px; \}/);
+test('cemetery: under 600 px wide the table is the default, grouped by section', () => {
   const src = readFileSync(new URL('../public/screens/graveyard.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(src, /matchMedia/, 'the same scene on a phone, not the table');
-  assert.match(src, /if \(view === 'TABLE' \|\| view === 'MOURNED' \|\| t\) \{ renderTable\(/);
+  assert.match(src, /const phone = \(\) => typeof matchMedia === 'function' && matchMedia\('\(max-width: 599px\)'\)\.matches;/, 'the breakpoint is 599');
+  assert.doesNotMatch(src, /const phone = [^\n]*639/);
+  assert.match(src, /if \(view === 'TABLE' \|\| view === 'MOURNED' \|\| t \|\| phone\(\)\) \{ renderTable\(el, data, ctx, \{ mourned: view === 'MOURNED', miss, grouped: !view && !t \}\); return; \}/);
 });
 
-test('stone page: the words left, the stone (one picture) right; the old media row is gone', () => {
+test('stone page: the words left, the stone right; the video and the last homepage under the story', () => {
   const real = loadGraveyardData().stones;
   const leh = withArt(real.find((e) => e.ticker === 'LEH'), { stone: '/img/graveyard/stone.webp', doodles: ['LEH'], sites: ['LEH'] });
   assert.equal(siteCaption(leh.wayback), 'lehman.com, Sep 2008 · Internet Archive');
-  assert.equal(siteLabel(leh.wayback), 'lehman.com in 2008');
-  assert.equal(siteLabel('nope'), '');
+  const site = siteHtml(leh);
+  assert.match(site, /<a class="gv-site" href="https:\/\/web\.archive\.org\/web\/20080913111928\/http:\/\/www\.lehman\.com:80\/" target="_blank" rel="noopener noreferrer"/);
+  assert.match(site, /src="\/img\/graveyard\/sites\/leh\.webp"/, 'our own copy, nothing from the archive before a click');
+  assert.match(site, /<span class="gv-sitecap">lehman\.com, Sep 2008 · Internet Archive<\/span>/);
   const page = stonePageHtml(leh, 0);
   assert.match(page, /^<section class="card card-wide card-split gv-card" aria-label="Graveyard: Lehman Brothers"><div class="card-art"><div class="gv-card-stone"><figure class="gv-stone has-art"/);
-  assert.equal((page.match(/<figure class="gv-stone/g) || []).length, 1, 'one picture');
-  assert.doesNotMatch(page, /gv-site|gv-screen|gv-card-media|gv-video|gv-cliff|100%/, 'no tablet frame, no video still, no "100%" tile');
+  assert.equal((page.match(/<figure class="gv-stone/g) || []).length, 1, 'one stone');
+  // Under the story, side by side: the video, then the homepage. Pictures, not text links.
+  assert.match(page, /<p class="gv-story">[^<]*<\/p><div class="gv-card-media has-video has-site"><div class="gv-card-video"><button type="button" class="gv-video"[\s\S]*?<\/button><\/div><div class="gv-card-site"><a class="gv-site"[\s\S]*?<\/a><\/div><\/div><\/div>/);
+  assert.doesNotMatch(page, /gv-more|gv-watch|Watch the video|lehman\.com in 2008/, 'no line of text links');
   assert.doesNotMatch(page.split('<details')[0], /\d respects?/, 'no "0 respects"');
   const srcs = [...page.matchAll(/\b(?:src|srcset|data-src|poster)="([^"]*)"/g)].map((m) => m[1]);
-  assert.ok(srcs.length >= 2 && srcs.every((u) => u.startsWith('/img/graveyard/')), `every image is ours: ${srcs.join(' ')}`);
+  assert.ok(srcs.length >= 4 && srcs.every((u) => u.startsWith('/img/graveyard/')), `every image is ours: ${srcs.join(' ')}`);
   assert.doesNotMatch(page, /<iframe|<script|<link|<object|<embed/, 'nothing that loads by itself');
-  // The last homepage: our own copy opened full size; no copy: the archive's page.
-  assert.match(page, /<a class="card-link" href="\/img\/graveyard\/sites\/leh\.webp" target="_blank" rel="noopener">lehman\.com in 2008<\/a>/);
+  // No copy of the homepage: the video alone, and the text link under SOURCES.
   const bare = withArt(real.find((e) => e.ticker === 'LEH'), { doodles: [], sites: [] });
-  assert.match(stonePageHtml(bare, 0), /<a class="card-link" href="https:\/\/web\.archive\.org\/web\/20080913111928\/http:\/\/www\.lehman\.com:80\/" target="_blank" rel="noopener noreferrer">lehman\.com in 2008<\/a>/);
-  assert.match(stonePageHtml(bare, 0), /LAST WEBSITE/, 'and the text link under SOURCES');
+  assert.equal(siteHtml(bare), '');
+  assert.match(stonePageHtml(bare, 0), /<div class="gv-card-media has-video"><div class="gv-card-video"><button/);
+  assert.match(stonePageHtml(bare, 0), /LAST WEBSITE/, 'the text link under SOURCES');
   assert.doesNotMatch(sourcesHtml(leh, { linkSite: false }), /LAST WEBSITE/);
+  // The real art on disk: a stone without a video shows the homepage alone, one without a
+  // copy of it the video alone, one with neither no media row (never an empty frame).
+  const art = artOnDisk();
+  const data = loadGraveyardData();
+  for (const e of [...data.stones, ...data.zombies].map((x) => withArt(x, art))) {
+    const html = stonePageHtml(e, 0);
+    const v = Boolean(ytEmbed(e.video?.id));
+    const s = Boolean(e.wayback && e.art.site);
+    assert.equal(html.includes('class="gv-card-video"'), v, `${e.ticker}: video`);
+    assert.equal(html.includes('class="gv-card-site"'), s, `${e.ticker}: homepage`);
+    assert.equal(html.includes('gv-card-media'), v || s, `${e.ticker}: a media row only with media`);
+  }
+  for (const t of ['WBVN', 'SIX', 'DAL', 'TX']) assert.doesNotMatch(stonePageHtml(withArt([...data.stones, ...data.zombies].find((x) => x.ticker === t), art), 0), /gv-card-video/, `${t}: no video`);
+  for (const t of ['MRV', 'TX']) assert.doesNotMatch(stonePageHtml(withArt([...data.stones, ...data.zombies].find((x) => x.ticker === t), art), 0), /gv-card-site/, `${t}: no archived homepage`);
   // The timeline stays in + Details; the cliff from the RIP WHATIF line.
   assert.deepEqual(timelinePoints(leh).map((p) => `${p.label} ${p.when}`), ['FOUNDED 1850', 'PEAK 2 Feb 2007', 'FILED 15 Sep 2008', 'SHARES CANCELLED 6 Mar 2012']);
   assert.match(page.split('<details class="how card-more">')[1], /class="gv-tl"/);
@@ -456,11 +509,13 @@ test('stone page: the words left, the stone (one picture) right; the old media r
   assert.equal(cliffOf({}), null);
   const gm = loadGraveyardData().zombies.find((z) => z.ticker === 'GM');
   assert.ok(timelinePoints(gm).some((p) => p.label === 'CAME BACK'));
-  // The CSS: the stone column on the right from 1100 px, first below that.
+  // The CSS: the stone column on the right from 1100 px, first below that; the media row.
   const css = readFileSync(new URL('../public/screens/graveyard.css', import.meta.url), 'utf8');
   assert.match(css, /\.gv-card\.card-split > \.card-art \{ order: 2; \}/);
   assert.match(css, /@media \(max-width: 1099px\) \{\n  \.gv-card-stone \{ width: 200px; \}/, 'a phone: the stone first, about 280 px tall');
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.gv-flame, \.gv-candle\.is-new \{ animation: none; \} \}/, 'reduced motion: still candles');
+  assert.ok(css.includes('.gv-card-video { flex: 0 0 auto; width: calc(var(--gv-h) * 16 / 9); }'));
+  assert.ok(css.includes('.gv-card-site { flex: 0 0 auto; width: calc((var(--gv-h) - 25px) * 1.6 + 20px); }'), 'the monitor as tall as the video');
 });
 
 test('stone page: respects hidden at zero; F lights a candle and reveals the count', async () => {
@@ -527,9 +582,9 @@ test('router: GRAVEYARD views and stones', () => {
 });
 
 test('ON THIS DAY rows and the table', () => {
-  const row = rowHtml({ id: 'TODAY', label: 'On this day', stones: [LEH, BBI] }, '/s.webp');
+  const row = zombiesHtml([LEH, BBI]);
   assert.match(row, /data-cmd="GRAVEYARD LEH"/);
-  assert.match(row, /<span class="gv-pname">Blockbuster<\/span>/);
+  assert.match(row, /<span class="gv-zname">Blockbuster<\/span>/);
   const t = graveyardTable(DATA.stones, { BBI: 5, LEH: 2 }, { mourned: true });
   assert.ok(t.indexOf('GRAVEYARD BBI') < t.indexOf('GRAVEYARD LEH'), 'most mourned first');
   const n = graveyardTable(DATA.stones, {}, {});

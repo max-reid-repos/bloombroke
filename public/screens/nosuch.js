@@ -1,22 +1,22 @@
-// NOT A TICKER (the screen), GRAVEYARD and IPO IT.
+// NO SUCH TICKER. YET. (the screen), GRAVEYARD and IPO IT.
 //
-// Words that open nothing (app.js showDidYouMean) get the NOT A TICKER panel: a numbered
-// panel like every other screen.
-//  - CLOSEST: up to 3 rows, live instruments (the names and tickers the command bar
-//    resolves, and the symbol search) and graveyard stones, matched by ticker and by name.
-//    Enter opens the first, digits the others.
-//  - OR: IPO <WORD> (a joke listing certificate, the IPO IT <WORD> screen) and HELP.
-//  - Nothing close: the certificate itself is the result, with SHARE, "Tell us." and HELP.
-// A famous dead ticker typed (LEH) keeps its stone card (noSuchExtra); a graveyard company's
-// name (LEHMAN, ENRON) opens its stone (graveByName). GRAVEYARD lists every entry. The pure
-// parts are ../nosuch.js.
+// Words that open nothing (app.js showDidYouMean) get the NO SUCH card (cards.js
+// didYouMeanHtml, kit.js cardPage). It asks /api/nosuch about the word typed:
+//  - a famous dead ticker (LEH) gets its stone card (graveyard.js stoneSlots);
+//  - any other A-Z word of 1 to 5 letters the server allows gets IPO IT, a joke listing
+//    certificate (the IPO IT <WORD> screen, card at /og/ipo.png), and THE GRAVEYARD row;
+//  - and one line to ask us to add it (FEEDBACK, prefilled "Please add: WORD").
+// A close match by ticker or by name (live tickers and names, graveyard stones) adds ONE
+// line on top, "Did you mean LEH, Lehman Brothers?", which Enter opens (closeMatch). A
+// graveyard company's name (LEHMAN, ENRON) opens its stone (graveByName). GRAVEYARD lists
+// every entry. The pure parts are ../nosuch.js.
 
-import { esc, q, panel, fmtNum, fmtPct } from './markets.js';
+import { esc, q, panel } from './markets.js';
 import { goal } from '../goal.js';
 import { setPrefill } from './feedback.js';
-import { tombstoneLine, ipoLinks, ipoShape, eventLabel, IPO_STAMP, FEEDBACK_PREFILL, MAX_ROWS } from '../nosuch.js';
+import { tombstoneLine, ipoLinks, pickGraves, dymRows, eventLabel, IPO_STAMP, FEEDBACK_PREFILL, MAX_ROWS } from '../nosuch.js';
 import {
-  loadGraveyardAll, loadRespects, showRespects, shareRow, wireShare, wireRespects, renderGraveyard, graveyardTable, stoneSlots, wireVideo,
+  loadGraveyardAll, loadRespects, showRespects, shareRow, wireShare, wireRespects, renderGraveyard, graveyardTable, stoneSlots, fitStone, wireVideo,
 } from './graveyard.js';
 import { SP100_NAMES, OTHER_NAMES, nameKey } from '../known-tickers.js';
 import { INSTRUMENTS } from '../instruments.js';
@@ -76,25 +76,72 @@ export function ipoPreviewHtml(word) {
     </a>`;
 }
 
-// "Want it on Bloombroke? Tell us." (FEEDBACK, prefilled "Please add: WORD").
-const askHtml = (word) => `<span class="ns-ask">Want it on Bloombroke? <a href="${esc(q('FEEDBACK'))}" data-cmd="FEEDBACK" data-prefill="${esc(FEEDBACK_PREFILL(word))}">Tell us.</a></span>`;
-
-// The slots a dead ticker typed on its own (LEH) adds to the NO SUCH card (app.js
-// didYouMeanHtml, kit.js cardPage): its stone card (graveyard.js stoneSlots), "Not
-// anymore."; quote: a tombstone that beat a non-US quote links the quote ($LEH). Any
-// other word gets the NOT A TICKER panel (notFound), so nothing here.
-export function noSuchExtra(word, info, { quote = false } = {}) {
-  if (!info?.grave) return {};
-  const e = info.grave;
-  const s = stoneSlots(e, 0);
-  const q$ = `$${e.ticker}`;
-  // The share links, and the other listing's quote ($LEH on Frankfurt); no ALL COMMANDS.
-  return { ...s, kicker: TITLE_GONE, help: false, links: [...s.links, ...(quote ? [cardLink({ label: q$, cmd: q$, attrs: `title="${esc(`Quote: ${q$}, another listing`)}"` })] : [])] };
+// THE GRAVEYARD: a row of small tombstones, each opening its GRAVEYARD entry. No count
+// on them (respects show on a stone's own page, after F).
+export function yardHtml(list) {
+  if (!list?.length) return '';
+  return `<section class="ns-yard"><h3 class="hs-h">The graveyard</h3><div class="ns-yard-row">${list.map((e) => `<a class="ns-mini-stone" href="${esc(q(`GRAVEYARD ${e.ticker}`))}" data-cmd="${esc(`GRAVEYARD ${e.ticker}`)}" title="${esc(tombstoneLine(e))}" aria-label="${esc(tombstoneLine(e))}">${esc(e.ticker)}</a>`).join('')}</div></section>`;
 }
 
-// Clicks on the stone card: F pays respects, shares count. (Clicks run before app.js's
-// own handler, which runs the command.) status: the status line.
-export function wireNoSuch(el, word, info, { status = () => {} } = {}) {
+// n random entries for THE GRAVEYARD row (a fresh pick each visit).
+export function yardPick(graves, n = 4, rand = Math.random) {
+  return pickGraves(graves, n, rand);
+}
+
+// The one line on top when the words are close to something real: "Did you mean LEH,
+// Lehman Brothers?" (a command: its name alone). A link with key 1: Enter in the empty
+// command bar opens it (notFoundKeys; the status line says so), and the card's other keys
+// move down one (keysAfterLine).
+export function didYouMeanLine(top) {
+  if (!top?.cmd) return '';
+  const id = top.kind === 'cmd' ? '' : String(top.id || '');
+  const name = String(top.name || id);
+  const label = id && name.toUpperCase() !== id.toUpperCase() ? `${id}, ${name}` : id || name;
+  return `<span class="ns-dym">Did you mean <a href="${esc(q(top.cmd))}" data-cmd="${esc(top.cmd)}" data-key="1" data-dym>${esc(label)}</a>?</span>`;
+}
+
+// The card's numbered items (the guesses, IPO IT) one key down, the line being key 1;
+// past 9 an item has no key.
+export function keysAfterLine(html) {
+  return String(html).replace(/ data-key="([1-9])"(?! data-dym)/g, (m, k) => (Number(k) < 9 ? ` data-key="${Number(k) + 1}"` : ''));
+}
+
+// The slots this screen adds to the NO SUCH card (app.js didYouMeanHtml, kit.js cardPage).
+// word: the one word typed (or null); info: noSuchInfo's answer; next: the key number for
+// IPO IT; quote: a tombstone that beat a non-US quote links the quote ($LEH); yard:
+// entries for THE GRAVEYARD row; top: the close match (closeMatch), the line on top.
+//  - a famous dead ticker: its stone card (graveyard.js stoneSlots), "Not anymore.";
+//  - a word IPO IT can list: "Be the first.", IPO IT, the certificate and the row;
+//  - any other word: the row. And "Tell us." to ask us to add it.
+export function noSuchExtra(word, info, { ticker = null, next = 1, quote = false, yard = [], top = null } = {}) {
+  if (info?.grave) {
+    const e = info.grave;
+    const s = stoneSlots(e, 0);
+    const q$ = `$${e.ticker}`;
+    // The share links, and the other listing's quote ($LEH on Frankfurt); no ALL COMMANDS.
+    return { ...s, kicker: TITLE_GONE, help: false, links: [...s.links, ...(quote ? [cardLink({ label: q$, cmd: q$, attrs: `title="${esc(`Quote: ${q$}, another listing`)}"` })] : [])] };
+  }
+  const line = didYouMeanLine(top);
+  const alert = line ? { alert: raw(line) } : {};
+  if (!word) return alert;
+  const canIpo = Boolean(ticker && info?.ipo);
+  const ask = `<span class="ns-ask">Want it on Bloombroke? <a href="${esc(q('FEEDBACK'))}" data-cmd="FEEDBACK" data-prefill="${esc(FEEDBACK_PREFILL(word))}">Tell us.</a></span>`;
+  const media = (canIpo ? ipoPreviewHtml(word) : '') + yardHtml(yard);
+  return {
+    ...alert,
+    ...(canIpo ? {
+      sub: 'Nobody has listed it. Be the first.',
+      act: raw(`<button type="button" class="btn card-btn btn-solid ns-ipo-btn" data-cmd="${esc(`IPO IT ${word}`)}" data-ipo${next <= 9 ? ` data-key="${next}"` : ''}>IPO IT</button>`),
+    } : {}),
+    media: media ? raw(`<div class="ns-media">${media}</div>`) : '',
+    links: [ask],
+  };
+}
+
+// Clicks on the NO SUCH card: FEEDBACK gets its prefill, IPO IT and shares count, and F
+// pays respects to a tombstone. (Clicks run before app.js's own handler, which runs the
+// command.) status: the status line; enter: the Did-you-mean line is there (Enter opens it).
+export function wireNoSuch(el, word, info, { status = () => {}, enter = false, doc = globalThis.document } = {}) {
   if (info?.grave) goal('graveyard_seen', null, { once: info.grave.ticker });
   else if (word) goal('notfound_seen', null, { once: word });
   const onClick = (e) => {
@@ -105,13 +152,15 @@ export function wireNoSuch(el, word, info, { status = () => {} } = {}) {
   el.addEventListener('click', onClick);
   wireShare(el);
   const stop = info?.grave ? wireRespects(el, info.grave.ticker, { status }) : () => {};
+  const stopFit = info?.grave ? fitStone(el) : () => {}; // the stone card's media row, to the first view
+  const stopKeys = enter && !info?.grave ? notFoundKeys(el, { doc }) : () => {};
   if (info?.grave) wireVideo(el); // its video loads on a click, as on GRAVEYARD LEH
   // The candles for its respects so far (the count itself shows only after F).
   if (info?.grave) loadRespects().then((n) => { if (el.isConnected) showRespects(el, n[info.grave.ticker] || 0); });
-  return () => { el.removeEventListener('click', onClick); stop(); };
+  return () => { el.removeEventListener('click', onClick); stop(); stopFit(); stopKeys(); };
 }
 
-// ---- NOT A TICKER: matching ------------------------------------------------------------------
+// ---- Did you mean: matching ------------------------------------------------------------------
 
 const MIN_LEN = 3; // shorter words match only a ticker exactly
 const squash = (s) => nameKey(s).replace(/ /g, '');
@@ -194,6 +243,26 @@ export function closestRows(typed, list) {
     .map((r) => r.c);
 }
 
+// The one close match for the Did-you-mean line: the closest candidate that is close by
+// its ticker or its name (never a guess by meaning alone), or null (no line).
+export function closeMatch(typed, { found = {}, graves = [] } = {}) {
+  const words = String(typed || '').trim().replace(/\s+/g, ' ');
+  if (!words) return null;
+  const close = candidates({ found, graves, typed: words }).filter((c) => closeness(words, c) > 0);
+  return closestRows(words, close)[0] || null;
+}
+
+// The resolver's rows without the line's match, so the card's guesses never repeat it.
+export function withoutMatch(found = {}, top = null) {
+  if (!top?.cmd) return found;
+  const k = (s) => String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
+  const same = (c) => k(c) === k(top.cmd);
+  return { ...found, commands: (found.commands || []).filter((c) => !same(c.cmd)), symbols: (found.symbols || []).filter((x) => !same(x.cmd)) };
+}
+
+// How many guesses the card shows (cards.js didYouMeanHtml): IPO IT's key comes after them.
+export const guessCount = (found, typed, ticker) => dymRows(found, typed, ticker).length;
+
 // A graveyard company typed by name: LEHMAN, LEHMAN BROTHERS, TOYS R US -> its entry.
 // Only its name or its other words (data/graveyard.json "also"), never its old ticker
 // (LEH typed is the stone card, see noSuchExtra).
@@ -205,7 +274,7 @@ export function graveByName(typed, graves) {
 }
 
 // Where app.js showDidYouMean sends the words: a graveyard entry to open as GRAVEYARD
-// <ticker>, or null (the panel, or the stone card). A name or other word opens its stone
+// <ticker>, or null (the NO SUCH card, or the stone card). A name or other word opens its stone
 // (from the list, or the server's answer when the list did not load); a dead ticker typed
 // on its own (LEH), and a stone that beat another listing's quote (quote: its $ link),
 // keep the stone card.
@@ -214,66 +283,12 @@ export function stoneFor(typed, word, info, graves, { quote = false } = {}) {
   return graveByName(typed, graves) || (info?.grave && info.grave.ticker !== word ? info.grave : null);
 }
 
-// ---- NOT A TICKER: the panel -----------------------------------------------------------------
+// ---- The Did-you-mean line: keys ---------------------------------------------------------
 
-// 'live 331.74 -1.97%' for a quote row; 'live' until the quote comes.
-export function liveText(quote) {
-  if (!quote || !Number.isFinite(quote.last)) return 'live';
-  return `live ${fmtNum(quote.last, Number.isInteger(quote.decimals) ? quote.decimals : 2)} ${fmtPct(quote.changePct)}`;
-}
-
-const dot = '<span class="nf-dot" aria-hidden="true">·</span>';
-// One row: the name, then "ticker · detail" (dim), and its key at the right.
-function rowHtml({ name, id = '', what = '', cmd, key, hero = false, price = '', attrs = '' }) {
-  const tk = id ? `${dot}<span class="nf-tk">${esc(id)}</span>` : '';
-  const det = what || price ? `${dot}<span class="nf-what"${price ? ` data-price="${esc(price)}"` : ''}>${esc(what || 'live')}</span>` : '';
-  return `<a class="nf-row${hero ? ' nf-hero' : ''}" href="${esc(q(cmd))}" data-cmd="${esc(cmd)}" data-key="${key}"${attrs}>`
-    + `<span class="nf-name">${esc(name)}</span><span class="nf-meta">${tk}${det}</span>`
-    + `<kbd class="nf-key">${hero ? 'Enter' : key}</kbd></a>`;
-}
-
-// The panel. typed: the words; rows: closestRows; ipo: the word IPO IT can list, or null.
-export function notFoundHtml({ typed, rows = [], ipo = null } = {}) {
-  const words = String(typed || '').trim().replace(/\s+/g, ' ');
-  const one = !words.includes(' ');
-  const label = `${one ? 'Not a ticker' : 'Not found'}: ${words}`;
-  const back = '<a class="nf-back" href="?c=HOME" data-cmd="HOME" data-back><kbd>Esc</kbd> BACK</a>';
-  let body;
-  if (rows.length) {
-    const closest = rows.map((c, i) => rowHtml({
-      name: c.name, id: c.kind === 'cmd' ? '' : c.id, what: c.kind === 'live' ? '' : c.what, price: c.kind === 'live' ? c.id : '', cmd: c.cmd, key: i + 1, hero: i === 0,
-    })).join('');
-    let n = rows.length;
-    const or = [
-      ...(ipo ? [rowHtml({ name: `IPO ${ipo}`, what: 'a certificate for a stock that does not exist', cmd: `IPO IT ${ipo}`, key: n += 1, attrs: ' data-ipo' })] : []),
-      rowHtml({ name: 'HELP', what: 'every command', cmd: 'HELP', key: n += 1 }),
-    ].join('');
-    body = `<div class="nf-list"><p class="tag nf-kick">Closest</p>${closest}<p class="tag nf-kick">Or</p>${or}</div>`;
-  } else {
-    // Nothing close: the joke is the result. The certificate only for a word IPO IT can list.
-    const help = `<a href="${esc(q('HELP'))}" data-cmd="HELP">HELP</a>`;
-    body = ipo
-      ? `<div class="nf-joke has-cert"><p class="nf-none">Nothing close.</p><div class="nf-cert">${ipoPreviewHtml(ipo)}</div>`
-        + '<p class="nf-sub">Nobody has listed it.</p>'
-        + `<div class="nf-act"><a class="btn card-btn btn-solid" href="${esc(ipoLinks(ipo, origin()).x)}" target="_blank" rel="noopener noreferrer" data-share="ipo" data-via="x">SHARE</a></div>`
-        + `<p class="nf-links">${askHtml(words)} ${dot} ${help}</p></div>`
-      : `<div class="nf-joke"><p class="nf-none">Nothing close.</p><p class="nf-sub">Check the spelling.</p><p class="nf-links">${askHtml(words)} ${dot} ${help}</p></div>`;
-  }
-  return `<div class="nf">${panel('1', label, body, { meta: back, cls: 'panel-solo nf-panel' })}</div>`;
-}
-
-// The status line: what happened and what Enter does, in the second text colour (kind
-// 'note', nosuch.css), never the loss red.
-export function notFoundStatus(typed, rows) {
-  const one = !String(typed || '').trim().includes(' ');
-  const what = one ? 'Not a ticker.' : 'Not found.';
-  return [`${what} ${rows.length ? 'Enter opens the closest.' : 'Nothing close.'}`, 'note'];
-}
-
-// Enter opens the first row when the command bar is empty (or the focus is on the page,
-// not on a link or a field). A digit opens its row only with the focus in the panel: in
-// the bar a digit is typing (3988.HK), and "2 Enter" there opens row 2 (app.js
-// numberedItem). Returns a cleanup.
+// With the Did-you-mean line on the card: Enter opens it (key 1) when the command bar is
+// empty (or the focus is on the page, not on a link or a field). A digit opens its item
+// only with the focus in the card: in the bar a digit is typing (3988.HK), and "2 Enter"
+// there opens item 2 (app.js numberedItem). Returns a cleanup.
 export function notFoundKeys(el, { doc = globalThis.document } = {}) {
   const handler = (ev) => {
     if (ev.defaultPrevented || ev.metaKey || ev.ctrlKey || ev.altKey || ev.isComposing || ev.repeat || !el.isConnected) return;
@@ -296,46 +311,6 @@ export function notFoundKeys(el, { doc = globalThis.document } = {}) {
   };
   doc.addEventListener('keydown', handler, true);
   return () => doc.removeEventListener('keydown', handler, true);
-}
-
-// Each live row's price and change, in one call; rows keep "live" when it fails.
-export async function fillPrices(el, { signal, fetchImpl = globalThis.fetch } = {}) {
-  const cells = [...el.querySelectorAll('[data-price]')];
-  if (!cells.length) return;
-  try {
-    const r = await fetchImpl(`/api/quotes?${new URLSearchParams({ s: cells.map((c) => c.dataset.price).join(',') })}`, { signal, headers: { Accept: 'application/json' } });
-    if (!r.ok) return;
-    const byId = new Map(((await r.json()).quotes || []).map((x) => [x.ticker, x]));
-    for (const c of cells) if (c.isConnected && byId.has(c.dataset.price)) c.textContent = liveText(byId.get(c.dataset.price));
-  } catch { /* offline: "live" stays */ }
-}
-
-// Draw the panel into view and wire it. ctx: { typed, ticker, found, info, graves, signal,
-// status }. ticker: the word typed, when it has a ticker's shape (IPO IT needs one).
-// keys: false in a DESK panel (the desk owns the keys there; its rows still click).
-export function notFound(view, { typed, ticker = null, found = {}, info = {}, graves = [], signal, status = () => {}, keys = true, doc = globalThis.document } = {}) {
-  const words = String(typed || '').trim().replace(/\s+/g, ' ');
-  const rows = closestRows(words, candidates({ found, graves, typed: words }));
-  const ipo = (info?.ipo && ipoShape(ticker)) || null;
-  view.innerHTML = notFoundHtml({ typed: words, rows, ipo });
-  status(...notFoundStatus(words, rows));
-  goal('notfound_seen', null, { once: words });
-  const onClick = (e) => {
-    const f = e.target.closest?.('[data-prefill]');
-    if (f) setPrefill(f.dataset.prefill);
-    if (e.target.closest?.('[data-ipo]')) goal('ipo_made', null, { once: words });
-    // ESC BACK: back a screen when there is one; else the link (HOME) runs.
-    if (e.target.closest?.('[data-back]') && Number(globalThis.history?.state?.d) > 0) {
-      e.preventDefault();
-      e.stopPropagation();
-      globalThis.history.back();
-    }
-  };
-  view.addEventListener('click', onClick);
-  wireShare(view);
-  const stopKeys = keys ? notFoundKeys(view, { doc }) : () => {};
-  fillPrices(view, { signal });
-  return () => { view.removeEventListener('click', onClick); stopKeys(); };
 }
 
 // ---- IPO IT --------------------------------------------------------------------------------

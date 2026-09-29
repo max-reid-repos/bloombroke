@@ -1,13 +1,16 @@
-// NOT A TICKER: the numbered panel that replaced NO SUCH TICKER. YET. (screens/nosuch.js
-// notFound), and company names in the command bar (APPLE is AAPL, LEHMAN is its stone).
+// NO SUCH TICKER. YET. and its one Did-you-mean line (screens/nosuch.js): the close match
+// by ticker or by name (closeMatch) on top of the restored card, Enter opens it; and
+// company names in the command bar (APPLE is AAPL, LEHMAN is its stone).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseCommand, tickerToCheck } from '../public/app.js';
 import { resolveInput } from '../public/resolve.js';
 import { tickerForName } from '../public/known-tickers.js';
+import { didYouMeanHtml } from '../public/cards.js';
 import {
-  closeness, candidates, closestRows, graveByName, stoneFor, notFound, notFoundHtml, notFoundStatus, notFoundKeys, fillPrices, liveText, shortName, noSuchExtra,
+  closeness, candidates, closestRows, graveByName, stoneFor, notFoundKeys, shortName, noSuchExtra, closeMatch, withoutMatch, guessCount, didYouMeanLine,
+  keysAfterLine, wireNoSuch, yardHtml, TITLE_YET,
 } from '../public/screens/nosuch.js';
 import { loadGraveyard } from '../lib/og-nosuch.js';
 
@@ -64,66 +67,7 @@ test('a graveyard company typed by name is its stone; its old ticker is not a na
   assert.match(app, /const c = `GRAVEYARD \$\{stone\.ticker\}`;\s*replaceUrl\(c\);\s*render\(c, \{ checked: true/);
 });
 
-// ---- The panel -----------------------------------------------------------------------------
-
-const LEHM_ROWS = rowsFor('LEHM', { symbols: [THLM] });
-
-test('the panel: a numbered strip, CLOSEST with the hero row and digits, OR with IPO and HELP', () => {
-  const html = notFoundHtml({ typed: 'LEHM', rows: LEHM_ROWS, ipo: 'LEHM' });
-  assert.match(html, /^<div class="nf"><section class="panel panel-solo nf-panel">/);
-  assert.match(html, /<h2 class="panel-label">1\) NOT A TICKER: LEHM<\/h2><span class="panel-meta"><a class="nf-back" href="\?c=HOME" data-cmd="HOME" data-back><kbd>Esc<\/kbd> BACK<\/a><\/span>/);
-  assert.match(html, /<p class="tag nf-kick">Closest<\/p><a class="nf-row nf-hero" href="\?c=GRAVEYARD\+LEH" data-cmd="GRAVEYARD LEH" data-key="1"><span class="nf-name">Lehman Brothers<\/span><span class="nf-meta"><span class="nf-dot" aria-hidden="true">·<\/span><span class="nf-tk">LEH<\/span><span class="nf-dot" aria-hidden="true">·<\/span><span class="nf-what">graveyard · filed 2008<\/span><\/span><kbd class="nf-key">Enter<\/kbd><\/a>/);
-  assert.match(html, /data-cmd="THLM" data-key="2"><span class="nf-name">TH Lehman &amp; Co<\/span>[\s\S]*?<span class="nf-tk">THLM<\/span>[\s\S]*?<span class="nf-what" data-price="THLM">live<\/span><\/span><kbd class="nf-key">2<\/kbd>/);
-  const or = html.split('<p class="tag nf-kick">Or</p>')[1];
-  assert.match(or, /data-cmd="IPO IT LEHM" data-key="3" data-ipo><span class="nf-name">IPO LEHM<\/span>[\s\S]*?a certificate for a stock that does not exist[\s\S]*?<kbd class="nf-key">3<\/kbd>/);
-  assert.match(or, /data-cmd="HELP" data-key="4"><span class="nf-name">HELP<\/span>[\s\S]*?every command[\s\S]*?<kbd class="nf-key">4<\/kbd>/);
-  assert.equal((html.match(/class="nf-row nf-hero"/g) || []).length, 1, 'one hero row');
-  assert.equal((html.match(/<kbd class="nf-key">Enter<\/kbd>/g) || []).length, 1);
-  // Without IPO IT (a word it cannot list): HELP takes the next number.
-  assert.match(notFoundHtml({ typed: 'LEHM', rows: LEHM_ROWS, ipo: null }), /data-cmd="HELP" data-key="3"/);
-  // More than one word: NOT FOUND, never IPO.
-  assert.match(notFoundHtml({ typed: 'lehman  brotherz', rows: LEHM_ROWS.slice(0, 1) }), /1\) NOT FOUND: LEHMAN BROTHERZ/);
-  assert.doesNotMatch(notFoundHtml({ typed: '<b>', rows: [] }), /<b>/, 'escaped');
-});
-
-test('the matched state never shows the certificate, nor the old NO SUCH pieces', () => {
-  const html = notFoundHtml({ typed: 'LEHM', rows: LEHM_ROWS, ipo: 'LEHM' });
-  for (const gone of [/certificate\.webp/, /ns-mini/, /NOT A REAL SECURITY/, /ns-mini-stone/, /No such ticker/i, /Be the first/, /card-hero/, /\$LEHM/, /btn-solid/, /Nothing close/]) {
-    assert.doesNotMatch(html, gone, String(gone));
-  }
-});
-
-test('nothing close: the panel flips to the certificate, SHARE, Tell us and HELP', () => {
-  const html = notFoundHtml({ typed: 'XQZT', rows: [], ipo: 'XQZT' });
-  const body = html.split('<div class="panel-body ">')[1];
-  assert.match(html, /1\) NOT A TICKER: XQZT/);
-  // In order: Nothing close., the certificate with the word and its stamp, Nobody has listed it., SHARE, Tell us . HELP.
-  const order = ['Nothing close.', 'certificate.webp', '$XQZT</span>', 'NOT A REAL SECURITY', 'Nobody has listed it.', '>SHARE</a>', 'Tell us.', '>HELP</a>'].map((s) => body.indexOf(s));
-  assert.ok(order.every((i) => i >= 0), JSON.stringify(order));
-  assert.deepEqual([...order].sort((a, b) => a - b), order, 'in this order');
-  // One white action: SHARE, the IPO certificate's own share (the X post, counted as ipo_shared).
-  assert.equal((html.match(/btn-solid/g) || []).length, 1);
-  assert.match(html, /<a class="btn card-btn btn-solid" href="https:\/\/x\.com\/intent\/post\?text=I\+listed\+%24XQZT[^"]*" target="_blank" rel="noopener noreferrer" data-share="ipo" data-via="x">SHARE<\/a>/);
-  assert.match(html, /Want it on Bloombroke\? <a href="\?c=FEEDBACK" data-cmd="FEEDBACK" data-prefill="Please add: XQZT">Tell us\.<\/a><\/span> <span class="nf-dot" aria-hidden="true">·<\/span> <a href="\?c=HELP" data-cmd="HELP">HELP<\/a>/);
-  assert.doesNotMatch(html, /nf-row|Be the first|No such ticker/i, 'no rows, no old title');
-  // A word IPO IT cannot list (too long, refused): no certificate, no SHARE.
-  const plain = notFoundHtml({ typed: 'ZORBLAT', rows: [], ipo: null });
-  assert.match(plain, /Nothing close\.[\s\S]*Check the spelling\.[\s\S]*Tell us\.[\s\S]*>HELP<\/a>/);
-  assert.doesNotMatch(plain, /certificate|btn-solid|Nobody has listed it/);
-});
-
-test('the status line: says what Enter does, in the second text colour (never the loss red)', () => {
-  assert.deepEqual(notFoundStatus('LEHM', LEHM_ROWS), ['Not a ticker. Enter opens the closest.', 'note']);
-  assert.deepEqual(notFoundStatus('XQZT', []), ['Not a ticker. Nothing close.', 'note']);
-  assert.deepEqual(notFoundStatus('FOO BAR', LEHM_ROWS), ['Not found. Enter opens the closest.', 'note']);
-  const css = readFileSync(new URL('../public/screens/nosuch.css', import.meta.url), 'utf8');
-  assert.match(css, /\.status-msg\[data-kind="note"\] \{ color: var\(--text-2\); \}/);
-  const src = readFileSync(new URL('../public/screens/nosuch.js', import.meta.url), 'utf8');
-  assert.match(src, /status\(\.\.\.notFoundStatus\(words, rows\)\);/);
-  assert.doesNotMatch(src.slice(src.indexOf('export function notFound('), src.indexOf('// ---- IPO IT')), /'warn'/);
-});
-
-test('keys: Enter opens the closest from the empty bar; a digit opens its row only with the focus in the panel', () => {
+test('keys: Enter opens the Did-you-mean line from the empty bar; a digit opens its item only with the focus in the card', () => {
   let handler = null;
   let list = { hidden: true };
   const doc = { addEventListener: (t, h, cap) => { assert.equal(cap, true); handler = h; }, removeEventListener: () => { handler = null; }, getElementById: (id) => (id === 'suggest' ? list : null) };
@@ -157,56 +101,112 @@ test('keys: Enter opens the closest from the empty bar; a digit opens its row on
   assert.deepEqual(clicked, ['1', '1', '2', '4']);
   stop();
   assert.equal(handler, null);
-  // The rows carry the keys: 1 (Enter) for the hero, then 2, 3...; from the bar a number
-  // and Enter opens that row (app.js panelNumberInput and numberedItem, data-key).
-  const html = notFoundHtml({ typed: 'LEHM', rows: LEHM_ROWS, ipo: 'LEHM' });
-  assert.deepEqual([...html.matchAll(/data-key="(\d)"/g)].map((m) => m[1]), ['1', '2', '3', '4']);
+  // From the bar a number and Enter opens that item (app.js panelNumberInput and numberedItem, data-key).
   const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   assert.match(app, /const n = typed && !embed && tickerBar\.hidden \? panelNumberInput\(clean\) : null;\s*if \(n\) \{\s*const item = numberedItem\(screen, n\);/);
 });
 
-test('DESK panels: no key handler (the desk owns the keys); the rows still click', () => {
-  const view = { innerHTML: '', addEventListener() {}, removeEventListener() {}, querySelectorAll: () => [] };
+
+// ---- The Did-you-mean line on the restored NO SUCH card --------------------------------------
+
+// The card as app.js showDidYouMean draws it (cards.js didYouMeanHtml with this screen's slots).
+const page = (typed, ticker, found = {}, info = { grave: null, ipo: true }) => {
+  const top = closeMatch(typed, { found, graves: GRAVES });
+  const shown = withoutMatch(found, top);
+  const extra = noSuchExtra(ticker || typed, info, { ticker, next: guessCount(shown, typed, ticker) + 1, yard: GRAVES.slice(0, 4), top });
+  const html = didYouMeanHtml(typed, shown, ticker, { extra: { ...extra, kicker: extra.kicker || (ticker ? TITLE_YET : 'Unknown command') } });
+  return top ? keysAfterLine(html) : html;
+};
+
+test('Did you mean: a close match (LEHM) adds one line on top; Enter opens it', () => {
+  const top = closeMatch('LEHM', { found: { symbols: [THLM] }, graves: GRAVES });
+  assert.deepEqual([top.kind, top.id, top.name, top.cmd], ['grave', 'LEH', 'Lehman Brothers', 'GRAVEYARD LEH']);
+  assert.equal(didYouMeanLine(top), '<span class="ns-dym">Did you mean <a href="?c=GRAVEYARD+LEH" data-cmd="GRAVEYARD LEH" data-key="1" data-dym>LEH, Lehman Brothers</a>?</span>');
+  const html = page('LEHM', 'LEHM', { symbols: [THLM] });
+  // The line first (the kit's alert slot, above the kicker and the hero), then the old page.
+  assert.match(html, /^<section class="card ns-card"[^>]*><p class="card-alert" role="status"><span class="ns-dym">Did you mean <a href="\?c=GRAVEYARD\+LEH" data-cmd="GRAVEYARD LEH" data-key="1" data-dym>LEH, Lehman Brothers<\/a>\?<\/span><\/p><div class="card-head"><p class="tag card-kicker">No such ticker\. Yet\.<\/p><h2 class="card-hero card-hero-60 num">\$LEHM<\/h2><p class="card-sub">Nobody has listed it\. Be the first\.<\/p>/);
+  assert.equal((html.match(/Did you mean/g) || []).length, 1, 'one line');
+  const order = ['ns-dym', '>IPO IT</button>', 'class="ns-mini"', 'NOT A REAL SECURITY', 'class="ns-yard"', 'Want it on Bloombroke?', 'data-cmd="THLM"', 'ALL COMMANDS'].map((s) => html.indexOf(s));
+  assert.ok(order.every((i) => i >= 0), JSON.stringify(order));
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'the old page, in its order');
+  assert.equal((html.match(/class="ns-mini-stone"/g) || []).length, 4, 'THE GRAVEYARD row of 4');
+  // Keys: the line 1 (Enter), then the guess and IPO IT one down.
+  assert.match(html, /data-cmd="IPO IT LEHM" data-ipo data-key="3">IPO IT</);
+  assert.match(html, /data-cmd="THLM" data-key="2"/);
+  assert.deepEqual([...html.matchAll(/data-key="(\d)"/g)].map((m) => m[1]).sort(), ['1', '2', '3']);
+  for (const gone of [/Nothing close/, /Check the spelling/, /nf-row|nf-panel|NOT A TICKER/]) assert.doesNotMatch(html, gone, String(gone));
+});
+
+test('Did you mean: nothing close (XQZT), no line: the previous page as it was', () => {
+  assert.equal(closeMatch('XQZT', { graves: GRAVES }), null);
+  assert.equal(closeMatch('FOO BAR', { found: { commands: [{ name: 'WHY', cmd: 'WHY AAPL', summary: 'Why it moved' }] } }), null, 'a guess by meaning alone is not close');
+  const html = page('XQZT', 'XQZT');
+  assert.doesNotMatch(html, /card-alert|ns-dym|data-dym|Did you mean/);
+  assert.match(html, /card-kicker">No such ticker\. Yet\.<\/p><h2 class="card-hero card-hero-60 num">\$XQZT<\/h2><p class="card-sub">Nobody has listed it\. Be the first\.<\/p>/);
+  assert.match(html, /<button type="button" class="btn card-btn btn-solid ns-ipo-btn" data-cmd="IPO IT XQZT" data-ipo data-key="1">IPO IT<\/button>/);
+  assert.match(html, /\$XQZT<\/span><span class="ns-mini-stamp" aria-hidden="true">NOT A REAL SECURITY/);
+  assert.match(html, /<h3 class="hs-h">The graveyard<\/h3>/);
+  assert.match(html, /data-prefill="Please add: XQZT">Tell us\.<\/a>/);
+  assert.match(html, /ALL COMMANDS/);
+  assert.doesNotMatch(html, /Nothing close/);
+});
+
+test('Did you mean: the match is never also one of the guesses', () => {
+  const found = { symbols: [{ id: 'AAPL', name: 'Apple Inc.', cmd: 'AAPL' }, THLM], commands: [] };
+  const top = closeMatch('APPLEE', { found, graves: GRAVES });
+  assert.equal(top.cmd, 'AAPL');
+  assert.deepEqual(withoutMatch(found, top).symbols.map((s) => s.cmd), ['THLM']);
+  assert.equal(withoutMatch(found, null), found, 'no match: the guesses as they were');
+  const html = page('APPLEE', null, found, { grave: null, ipo: false });
+  assert.equal((html.match(/data-cmd="AAPL"/g) || []).length, 1, 'AAPL once: the line');
+  assert.match(html, /Did you mean <a href="\?c=AAPL" data-cmd="AAPL" data-key="1" data-dym>AAPL, Apple<\/a>\?/);
+  assert.match(html, /data-cmd="THLM" data-key="2"/, 'the other guess, key 2');
+  // Keys past the line: one down; past 9 no key; the line keeps 1.
+  assert.equal(keysAfterLine('<a data-key="1" data-dym></a><b data-key="1"></b><c data-key="8"></c><d data-key="9"></d>'), '<a data-key="1" data-dym></a><b data-key="2"></b><c data-key="9"></c><d></d>');
+});
+
+test('Did you mean: Enter is wired only with the line, never on a stone card', () => {
   let added = 0;
   const doc = { addEventListener: () => { added += 1; }, removeEventListener: () => {}, getElementById: () => null };
-  const stop = notFound(view, { typed: 'LEHM', found: { symbols: [THLM] }, graves: GRAVES, keys: false, doc, status: () => {} });
-  assert.equal(added, 0, 'embed: no keydown handler');
-  assert.match(view.innerHTML, /data-cmd="GRAVEYARD LEH" data-key="1"/);
-  stop();
-  notFound(view, { typed: 'LEHM', graves: GRAVES, doc, status: () => {} })();
-  assert.equal(added, 1, 'the page: one handler');
+  const el = { isConnected: true, addEventListener() {}, removeEventListener() {}, querySelectorAll: () => [], querySelector: () => null };
+  wireNoSuch(el, 'XQZT', { grave: null }, { doc })();
+  assert.equal(added, 0, 'no line: no key handler (the old page)');
+  wireNoSuch(el, 'LEHM', { grave: null }, { doc, enter: true })();
+  assert.equal(added, 1, 'the line: Enter opens it');
+  const leh = GRAVES.find((e) => e.ticker === 'LEH');
+  assert.equal(noSuchExtra('LEH', { grave: leh }, { top: { cmd: 'X', id: 'X', name: 'X' } }).alert, undefined, 'a stone card has no line');
+  assert.deepEqual(noSuchExtra(null, { grave: null }), {}, 'no word, no match: nothing');
+  assert.deepEqual(Object.keys(noSuchExtra(null, { grave: null }, { top: closeMatch('LEHM', { graves: GRAVES }) })), ['alert'], 'a DESK panel: the line only');
   const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
-  assert.match(app, /ns\.notFound\(view, \{ typed, ticker, found, info, graves, signal, status: setStatus, keys: !embed \}\)/);
+  assert.match(app, /const top = ns && !info\.grave \? ns\.closeMatch\(typed, \{ found, graves \}\) : null;\s*if \(ns\) found = ns\.withoutMatch\(found, top\);/);
+  assert.match(app, /view\.innerHTML = cards && top \? ns\.keysAfterLine\(html\) : html;/);
+  assert.match(app, /ns\.wireNoSuch\(view, word, info, \{ status: setStatus, enter: Boolean\(top\) \}\)/);
+  assert.match(app, /yard: info\.grave \? \[\] : ns\.yardPick\(graves\)/);
+  assert.doesNotMatch(app, /ns\.notFound\(/, 'the NOT A TICKER panel is gone');
 });
 
-test('live rows: price and change fill in from one quotes call; "live" stays when it fails', async () => {
-  assert.equal(liveText(null), 'live');
-  assert.match(liveText({ last: 331.74, changePct: -1.97 }), /^live 331\.74 \S1\.97%$/);
-  assert.equal(liveText({ last: 4154.99, changePct: 1.2, decimals: 2 }), 'live 4,154.99 +1.20%');
-  const cells = [{ dataset: { price: 'AAPL' }, isConnected: true, textContent: 'live' }, { dataset: { price: 'THLM' }, isConnected: true, textContent: 'live' }];
-  const el = { querySelectorAll: () => cells };
-  let asked = '';
-  await fillPrices(el, { fetchImpl: async (url) => { asked = url; return { ok: true, json: async () => ({ quotes: [{ ticker: 'AAPL', last: 200, changePct: 1 }] }) }; } });
-  assert.equal(asked, '/api/quotes?s=AAPL%2CTHLM');
-  assert.equal(cells[0].textContent, 'live 200.00 +1.00%');
-  assert.equal(cells[1].textContent, 'live', 'no quote: live');
-  await fillPrices(el, { fetchImpl: async () => { throw new Error('offline'); } });
-  // A $ stock (a ticker that is also one of our names: $GOLD is Gold.com, not spot gold).
-  const gold = [{ dataset: { price: '$GOLD' }, isConnected: true, textContent: 'live' }];
-  await fillPrices({ querySelectorAll: () => gold }, { fetchImpl: async (url) => { asked = url; return { ok: true, json: async () => ({ quotes: [{ ticker: '$GOLD', symbol: 'GOLD', last: 21.5, changePct: -0.5 }] }) }; } });
-  assert.equal(asked, '/api/quotes?s=%24GOLD');
-  assert.match(gold[0].textContent, /^live 21\.50 \S0\.50%$/);
-  const html = notFoundHtml({ typed: 'GOLDD', rows: [{ kind: 'live', id: '$GOLD', name: 'Gold.com', cmd: '$GOLD' }] });
-  assert.match(html, /data-cmd="\$GOLD" data-key="1">[\s\S]*?<span class="nf-tk">\$GOLD<\/span>[\s\S]*?data-price="\$GOLD">live</);
+test('the restored page: the red status line, THE GRAVEYARD row without counts, its styles', () => {
+  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(app, /else setStatus\(rows \? 'NOT FOUND\. PICK ONE BELOW, OR TYPE HELP' : ticker \? 'NO SUCH TICKER\. TYPE HELP' : 'UNKNOWN COMMAND\. TYPE HELP', 'warn'\);/);
+  assert.match(app, /else if \(top\) setStatus\(`NOT FOUND\. ENTER OPENS \$\{String\(top\.id \|\| top\.name\)\.toUpperCase\(\)\}, OR TYPE HELP`, 'warn'\);/);
+  assert.doesNotMatch(yardHtml(GRAVES.slice(0, 4)), /respect|data-count/, 'no count on the small stones');
+  const src = readFileSync(new URL('../public/screens/nosuch.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /Nothing close|notFoundHtml|notFoundStatus|fillPrices|nf-row/, 'the panel is gone');
+  const css = readFileSync(new URL('../public/screens/nosuch.css', import.meta.url), 'utf8');
+  assert.match(css, /\.ns-yard \{/);
+  assert.match(css, /\.ns-mini-stone \{/);
+  assert.doesNotMatch(css, /\.nf-/);
+  assert.match(css, /\.status-msg\[data-kind="note"\] \{ color: var\(--text-2\); \}/, 'app.js lookupFailed');
+  const dym = css.slice(css.indexOf('/* The Did-you-mean line'));
+  for (const m of dym.matchAll(/font-size:\s*(\d+)px/g)) assert.ok(Number(m[1]) >= 12, m[0]);
+  assert.match(dym, /\.ns-card > \.card-alert \{ font-size: 14px;/, 'the line at 14 px');
 });
 
-test('a dead ticker typed on its own keeps its stone card; other words get nothing from noSuchExtra', () => {
+test('a dead ticker typed on its own keeps its stone card', () => {
   const leh = GRAVES.find((e) => e.ticker === 'LEH');
   assert.match(JSON.stringify(noSuchExtra('LEH', { grave: leh })), /No such ticker\. Not anymore\./);
-  assert.deepEqual(noSuchExtra('MAXX', { grave: null, ipo: true }), {});
-  const css = readFileSync(new URL('../public/screens/nosuch.css', import.meta.url), 'utf8');
-  assert.doesNotMatch(css, /ns-yard|ns-mini-stone|ns-media/, 'the stone tiles and the old media slot are gone');
 });
+
 
 // ---- The command bar: names -----------------------------------------------------------------
 
@@ -226,7 +226,7 @@ test('command bar: an unambiguous company name opens its ticker', async () => {
   assert.match(app, /if \(ticker && !tickerForName\(ticker\)\) \{/);
 });
 
-test('command bar: graveyard names, typos and ambiguous words are not resolved (they reach the panel)', async () => {
+test('command bar: graveyard names, typos and ambiguous words are not resolved (they reach the NO SUCH card)', async () => {
   for (const typed of ['LEHMAN', 'LEHMAN BROTHERS', 'BLOCKBUSTER', 'ENRON', 'APPLEE', 'LEHM', 'XQZT']) {
     const r = await resolveInput(typed, { search: async () => [], checkTicker: async () => false });
     assert.equal(r.confident, false, typed);
@@ -235,7 +235,7 @@ test('command bar: graveyard names, typos and ambiguous words are not resolved (
     search: async () => [{ id: 'AXP', name: 'American Express Company', kind: 'stock' }, { id: 'AAL', name: 'American Airlines Group Inc.', kind: 'stock' }],
     checkTicker: async () => false,
   });
-  assert.equal(amer.confident, false, 'two strong names: pick one on the panel');
+  assert.equal(amer.confident, false, 'two strong names: pick one on the card');
   assert.deepEqual(amer.symbols.map((s) => s.id), ['AXP', 'AAL']);
 });
 
@@ -277,7 +277,7 @@ test('routing: a name opens its stone; LEH alone keeps its card; a stone that be
   assert.equal(stoneFor('ENRON', 'ENRON', { grave: ene }, [])?.ticker, 'ENE', 'the list did not load: the server word check');
   assert.equal(stoneFor('LEH', 'LEH', { grave: leh }, GRAVES), null, 'LEH typed: its stone card');
   assert.equal(stoneFor('LEHMAN', 'LEHMAN', { grave: leh, wins: true }, GRAVES, { quote: true }), null, 'beat a quote: the card with its $ link');
-  assert.equal(stoneFor('LEHM', 'LEHM', { grave: null }, GRAVES), null, 'a typo: the panel');
+  assert.equal(stoneFor('LEHM', 'LEHM', { grave: null }, GRAVES), null, 'a typo: the NO SUCH card');
   assert.match(JSON.stringify(noSuchExtra('LEH', { grave: leh, wins: true }, { quote: true })), /Quote: \$LEH, another listing/);
   const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   assert.match(app, /const stone = ns\?\.stoneFor\(typed, word, info, graves, \{ quote \}\);/);

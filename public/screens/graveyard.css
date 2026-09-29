@@ -47,98 +47,84 @@
 .gv-sources[open] > summary { color: var(--text); }
 .gv-sources ul { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 2px 12px; }
 
-/* ---- The cemetery ----
-   A band of sky cut from the painting with the one stone to open, then one row per era
-   (front terrace first) on the grass, and the CAME BACK row. The rows wrap; the panel ends
-   after the last one (no empty panel under it); taller than the window, it scrolls inside. */
-html:not(.is-embed) .view > .panel.gv-panel:not([hidden]) { flex: 0 1 auto !important; }
-.gv-panel .panel-body { padding: 0; }
-.gv-yard { background: linear-gradient(180deg, var(--gv-hill), hsl(150, 14%, 10%)); }
-.gv-sky { position: relative; height: 160px; overflow: hidden; background: var(--gv-sky); }
-.gv-sky-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 16%; }
-.gv-sky::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(90deg, hsla(213, 43%, 3%, .82) 0%, hsla(213, 43%, 3%, .55) 40%, hsla(213, 43%, 3%, 0) 72%);
+/* The video: our own drawing and a play mark; a click swaps in the player. */
+.gv-video {
+  position: relative; display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 16 / 9; padding: 0;
+  border: 1px solid var(--rule-strong); background: radial-gradient(ellipse at 50% 60%, var(--panel-3), var(--bg)); cursor: pointer; overflow: hidden;
 }
-.gv-hero {
-  position: absolute; z-index: 1; left: 24px; right: 24px; top: 50%; transform: translateY(-50%);
-  display: flex; flex-direction: column; gap: 6px; color: var(--text-2); text-decoration: none;
+.gv-video img { position: absolute; left: 50%; top: 46%; width: 46%; height: auto; transform: translate(-50%, -50%) rotate(-4deg); opacity: .9; }
+.gv-video:hover img, .gv-video:focus-visible img { opacity: 1; }
+.gv-play { position: absolute; left: 50%; top: 50%; width: 56px; height: 40px; transform: translate(-50%, -50%); background: var(--accent); border-radius: 8px; }
+.gv-play::after { content: ''; position: absolute; left: 22px; top: 11px; border-style: solid; border-width: 9px 0 9px 15px; border-color: transparent transparent transparent var(--ink); }
+.gv-vlabel { position: absolute; left: 10px; bottom: 8px; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--text-2); }
+
+/* The last website, in an old monitor. */
+.gv-site { display: block; max-width: 330px; text-decoration: none; }
+.gv-site:hover { text-decoration: none; }
+.gv-screen {
+  display: block; padding: 9px 9px 14px; background: linear-gradient(180deg, #D9D3C4, #BDB6A6); border: 1px solid #6F6A5E; border-radius: 9px;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .25), 0 3px 0 #6F6A5E;
 }
+.gv-screen img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; object-position: top; border: 2px solid #2B2A26; border-radius: 3px; background: #fff; }
+.gv-site:hover .gv-screen img, .gv-site:focus-visible .gv-screen img { outline: 2px solid var(--accent); }
+.gv-sitecap { display: block; margin-top: 7px; font-size: 11px; color: var(--dim); letter-spacing: .02em; }
+
+/* ---- The cemetery ---- */
+/* The LATEST line: one line of text above the painting, the stone Enter opens. */
+.gv-latest {
+  display: flex; align-items: center; height: 40px; margin: 0; padding: 0 12px; overflow: hidden;
+  border-bottom: 1px solid var(--rule-strong); white-space: nowrap;
+}
+.gv-hero { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 14px; line-height: 20px; color: var(--text-2); text-decoration: none; }
 .gv-hero:hover, .gv-hero:focus-visible { text-decoration: none; }
-.gv-kicker { color: var(--text-2); letter-spacing: .2em; }
-.gv-hero-line { font-size: 24px; line-height: 1.25; }
+.gv-kicker { margin-right: 8px; color: var(--text-2); letter-spacing: .2em; }
 .gv-hero-name { font-weight: 700; color: var(--text); }
 .gv-hero:hover .gv-hero-name, .gv-hero:focus-visible .gv-hero-name { text-decoration: underline; text-underline-offset: 4px; }
 .gv-hero kbd[hidden] { display: none; }
-.gv-hero kbd { margin-left: 8px; vertical-align: 4px; font-size: 12px; line-height: 20px; padding: 0 6px; border-color: var(--text-2); color: var(--text); }
-
-.gv-rows { display: flex; flex-direction: column; }
-.gv-row {
-  display: grid; grid-template-columns: 136px minmax(0, 1fr); gap: 16px; align-items: start;
-  padding: 16px 16px 12px; border-top: 1px solid hsla(95, 22%, 42%, .35);
+.gv-hero kbd { margin-left: 8px; font-size: 12px; line-height: 18px; padding: 0 6px; border-color: var(--text-2); color: var(--text); }
+/* The yard is never taller than its width / 1.5 (the painting's shape), so the painting
+   never has to be cut at the sides (screens/graveyard.js stageFor). 159px is the top bar,
+   the command bar, the panel head (119px) and the LATEST line (40px); --dock-h is the
+   status row and the key bar. */
+.gv-panel .panel-body { padding: 0; container-type: inline-size; }
+.gv-yard {
+  position: relative; overflow: hidden; height: min(clamp(380px, calc(100vh - 159px - var(--dock-h)), 952px), calc(100cqw / 1.5));
+  background: linear-gradient(180deg, var(--gv-sky) 0%, hsl(222, 30%, 20%) 38%, var(--gv-hill) 40%, hsl(150, 14%, 12%) 100%);
 }
-.gv-row:first-child { border-top: 0; }
-.gv-row-label { display: flex; flex-direction: column; gap: 4px; margin: 0; padding-top: 8px; font-size: 11px; font-weight: 600; letter-spacing: .1em; color: var(--text-2); }
-.gv-row-name { font-size: 12px; font-weight: 700; color: var(--text); }
-.gv-row-n { color: var(--dim); }
-.gv-key { display: flex; align-items: center; gap: 6px; letter-spacing: .02em; text-transform: none; color: var(--text-2); font-weight: 400; line-height: 1.3; }
-.gv-swatch { flex: 0 0 auto; width: 12px; height: 16px; border-radius: 6px 6px 1px 1px; background: hsl(200, 30%, 82%); border: 1px solid var(--gv-ink); }
-.gv-row-stones { display: flex; flex-wrap: wrap; gap: 16px 12px; }
-.gv-plot {
-  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px;
-  flex: 0 0 auto; width: 104px; padding: 4px 0 6px; color: var(--text); text-decoration: none; border-radius: 2px;
-}
+.gv-stage { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.gv-bg { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .92; }
+.gv-plot { position: absolute; width: calc(4.4% * var(--s, 1)); transform: translate(-50%, -100%); text-decoration: none; }
 .gv-plot:hover { text-decoration: none; }
-.gv-plot .gv-stone { width: 88px; transition: transform 120ms ease-out, filter 120ms ease-out; }
-.gv-pname {
-  max-width: 100%; font-size: 13px; line-height: 16px; text-align: center; color: var(--text);
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
-/* CAME BACK: the short name on one line; the stone keeps its size, the plot fits the name. */
-.gv-plot.is-back { width: auto; min-width: 104px; }
-.gv-plot.is-back .gv-pname { display: block; white-space: nowrap; }
-.gv-back { font-size: 11px; line-height: 14px; color: var(--text-2); white-space: nowrap; }
-.gv-live { font-size: 12px; line-height: 16px; color: var(--text); white-space: nowrap; }
-.gv-live:empty { display: none; }
-/* A stale price: dim, with its day, never looking live. */
-.gv-live .gv-stale { color: var(--dim); }
-.gv-live .up { color: var(--up); }
-.gv-live .down { color: var(--down); }
-/* Where you are: the stone lifts, its name gets the blue fill. */
-.gv-plot:hover .gv-stone, .gv-plot.is-on .gv-stone, .gv-plot:focus-visible .gv-stone { transform: translateY(-4px); }
-.gv-plot.is-on .gv-pname { background: var(--here); color: var(--ink); padding: 0 4px; }
+.gv-plot .gv-stone { transition: transform 120ms ease-out, filter 120ms ease-out; }
+.gv-plot.is-on .gv-stone { transform: translateY(-6px); filter: drop-shadow(0 0 6px var(--accent)); }
 .gv-plot:focus-visible { outline: none; }
-.gv-plot:focus-visible .gv-pname { outline: 1px solid var(--accent); outline-offset: 2px; }
-/* BOUGHT OUT: a cooler, paler stone. */
+.gv-plot:focus-visible .gv-stone { filter: drop-shadow(0 0 6px var(--accent)); }
+/* BOUGHT OUT: a cooler, paler stone on the side plot. */
 .gv-plot.is-bought .gv-stone { filter: saturate(.55) hue-rotate(160deg) brightness(1.05); }
-/* The hover and focus label: how and when it died, and the respects above zero. */
-.gv-tip {
-  position: absolute; z-index: 5; left: 50%; bottom: 100%; transform: translate(-50%, -2px); display: none;
-  padding: 2px 8px; white-space: nowrap; pointer-events: none;
-  background: hsla(213, 43%, 3%, .9); border: 1px solid var(--rule-strong); color: var(--text); font-size: 12px; line-height: 16px;
+.gv-plot.is-bought.is-on .gv-stone { filter: saturate(.55) hue-rotate(160deg) brightness(1.05) drop-shadow(0 0 6px var(--accent)); }
+/* The section names, pinned on the wooden signposts like paper tags. */
+.gv-sign {
+  position: absolute; transform: translate(-50%, -50%); z-index: 5; padding: 1px 5px; white-space: nowrap; pointer-events: none;
+  background: var(--gv-stone); color: var(--gv-ink); border: 1px solid var(--gv-ink); border-radius: 2px;
+  font-size: 11px; font-weight: 800; letter-spacing: .06em; line-height: 14px; box-shadow: 1px 1px 0 rgba(0, 0, 0, .35);
 }
-.gv-plot:hover .gv-tip, .gv-plot.is-on .gv-tip, .gv-plot:focus-visible .gv-tip { display: block; }
-.gv-tip:empty { display: none !important; }
-
-/* The table, grouped by section. */
+.gv-sign[data-sec="RECENT"] { font-size: 12px; line-height: 16px; }
+/* The hover and focus label, above the lifted stone. */
+.gv-tip {
+  position: absolute; z-index: 40; margin: 0; transform: translate(-50%, -100%); padding: 3px 8px; white-space: nowrap; pointer-events: none;
+  background: hsla(213, 43%, 3%, .86); border: 1px solid var(--rule-strong); color: var(--text); font-size: 12px; font-weight: 600;
+}
+.gv-corner {
+  position: absolute; bottom: 10px; right: 12px; margin: 0; padding: 4px 10px; background: hsla(213, 43%, 3%, .78);
+  border: 1px solid var(--rule-strong); font-size: 13px; white-space: nowrap; z-index: 45;
+}
+/* The phone's table, grouped by section. */
 .ns-table tr.gv-sec th { text-align: left; padding-top: 10px; color: var(--accent); font-size: 11px; letter-spacing: .1em; }
 
-@media (max-width: 599px) {
-  .gv-sky { height: 120px; }
-  .gv-hero { left: 16px; right: 16px; gap: 4px; }
-  .gv-hero-line { font-size: 18px; }
-  .gv-hero kbd { display: none; }
-  .gv-row { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 12px 12px 8px; }
-  .gv-row-label { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding-top: 0; }
-  .gv-row-stones { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 4px; }
-  .gv-plot { width: auto; min-width: 0; }
-  .gv-plot .gv-stone { width: 64px; }
-  .gv-back { font-size: 11px; white-space: normal; text-align: center; }
-  .gv-live { font-size: 11px; white-space: normal; text-align: center; }
-  .gv-plot.is-back { width: auto; min-width: 0; }
-  .gv-plot.is-back .gv-pname { display: -webkit-box; white-space: normal; }
-  .gv-tip { display: none !important; }
-}
+/* ---- ZOMBIES ---- */
+.gv-zombies { display: flex; flex-wrap: wrap; gap: 20px 24px; padding: 8px 4px; }
+.gv-plot.is-flat { position: static; transform: none; width: 104px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.gv-zname { font-size: 12px; color: var(--text-2); text-align: center; line-height: 1.2; }
 
 /* ---- ON THIS DAY: one line in the MARKETS title strip on HOME ---- */
 .panel-head > .gv-otd {
@@ -175,7 +161,10 @@ html:not(.is-embed) .view > .panel.gv-panel:not([hidden]) { flex: 0 1 auto !impo
    right (a phone and a narrow window: the stone first, then the words). The stone keeps
    its engraving; respects are candles at its foot, none at zero. Above + Details: the
    name, one line, F PAY RESPECTS (the count only after it), two facts at most, the share
-   links, the short story (65ch), one line of two links. */
+   links, the short story (65ch), and under it the video and the last homepage side by
+   side at one height (--gv-h, graveyard.js fitStone), each with its caption; a phone
+   stacks them. Text and data screens only. Art screens (GRAVEYARD, the WHATIF catalogue,
+   FISHTANK) are their own layout; see kit.css Rule E. */
 @media (min-width: 1100px) {
   .gv-card.card-split { grid-template-columns: minmax(0, 640px) 320px; justify-content: center; max-width: 100%; gap: 48px; }
   .gv-card.card-split > .card-art { order: 2; }
@@ -190,10 +179,13 @@ html:not(.is-embed) .view > .panel.gv-panel:not([hidden]) { flex: 0 1 auto !impo
 .gv-count { color: var(--text-2); font-size: 14px; }
 .gv-body { display: flex; flex-direction: column; gap: 16px; width: 100%; }
 .gv-story { max-width: 65ch; margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-2); text-align: left; }
-.gv-more { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0; font-size: 12px; letter-spacing: .06em; color: var(--dim); }
-.gv-more .card-link { color: var(--accent); }
-.gv-more .card-link:hover, .gv-more .card-link:focus-visible { color: var(--text); }
-.gv-more .card-link[aria-disabled="true"] { color: var(--dim); cursor: default; }
+/* The media row: the video (16:9) and the homepage's monitor, both --gv-h tall (the
+   monitor: its 16:10 screen plus the frame, 25px tall and 20px wide; .gv-screen). */
+.gv-card-media { --gv-h: 240px; display: flex; align-items: flex-start; gap: 24px; width: 100%; }
+.gv-card-video { flex: 0 0 auto; width: calc(var(--gv-h) * 16 / 9); }
+.gv-card-video .gv-video img { width: 30%; }
+.gv-card-site { flex: 0 0 auto; width: calc((var(--gv-h) - 25px) * 1.6 + 20px); }
+.gv-card-site .gv-site { max-width: none; }
 .gv-player { display: block; width: 100%; max-width: 640px; aspect-ratio: 16 / 9; border: 1px solid var(--rule-strong); }
 .gv-card .card-details .gv-tl { margin-bottom: 16px; }
 
@@ -216,5 +208,10 @@ html:not(.is-embed) .view > .panel.gv-panel:not([hidden]) { flex: 0 1 auto !impo
   .gv-card-stone { width: 200px; }
   .gv-body { align-items: center; }
   .gv-story { text-align: left; }
-  .gv-more { justify-content: center; }
+  .gv-card-media { justify-content: center; }
+}
+@media (max-width: 639px) {
+  .gv-card-media { flex-direction: column; align-items: center; }
+  .gv-card-video, .gv-card-site { width: 100%; }
+  .gv-card-site { max-width: 330px; }
 }
