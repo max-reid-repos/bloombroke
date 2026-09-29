@@ -14,9 +14,9 @@
 import { esc, q, panel, fmtNum, fmtPct } from './markets.js';
 import { goal } from '../goal.js';
 import { setPrefill } from './feedback.js';
-import { tombstoneLine, ipoLinks, ipoShape, eventLabel, respectsText, IPO_STAMP, FEEDBACK_PREFILL, MAX_ROWS } from '../nosuch.js';
+import { tombstoneLine, ipoLinks, ipoShape, eventLabel, IPO_STAMP, FEEDBACK_PREFILL, MAX_ROWS } from '../nosuch.js';
 import {
-  loadGraveyardAll, loadRespects, flowersHtml, shareRow, wireShare, wireRespects, renderGraveyard, graveyardTable, stoneSlots, fitStone, wireVideo,
+  loadGraveyardAll, loadRespects, showRespects, shareRow, wireShare, wireRespects, renderGraveyard, graveyardTable, stoneSlots, wireVideo,
 } from './graveyard.js';
 import { SP100_NAMES, OTHER_NAMES, nameKey } from '../known-tickers.js';
 import { INSTRUMENTS } from '../instruments.js';
@@ -105,19 +105,10 @@ export function wireNoSuch(el, word, info, { status = () => {} } = {}) {
   el.addEventListener('click', onClick);
   wireShare(el);
   const stop = info?.grave ? wireRespects(el, info.grave.ticker, { status }) : () => {};
-  const stopFit = info?.grave ? fitStone(el) : () => {}; // the stone card's media row, to the first view
   if (info?.grave) wireVideo(el); // its video loads on a click, as on GRAVEYARD LEH
-  if (info?.grave) {
-    loadRespects().then((n) => {
-      if (!el.isConnected) return;
-      const v = n[info.grave.ticker] || 0;
-      const c = el.querySelector('[data-count]');
-      if (c) c.textContent = respectsText(v);
-      const f = el.querySelector('[data-flowers]');
-      if (f) f.innerHTML = flowersHtml(v);
-    });
-  }
-  return () => { el.removeEventListener('click', onClick); stop(); stopFit(); };
+  // The candles for its respects so far (the count itself shows only after F).
+  if (info?.grave) loadRespects().then((n) => { if (el.isConnected) showRespects(el, n[info.grave.ticker] || 0); });
+  return () => { el.removeEventListener('click', onClick); stop(); };
 }
 
 // ---- NOT A TICKER: matching ------------------------------------------------------------------

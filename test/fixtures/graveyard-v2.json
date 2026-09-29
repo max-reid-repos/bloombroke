@@ -6,7 +6,7 @@
    "video":{"id":"AAAAAAAAAAA","title":"Lehman files for bankruptcy"},"anniversary":"2008-09-15","seoTitle":"Lehman Brothers (LEH): the 2008 bankruptcy"},
   {"ticker":"BBI","name":"Blockbuster","what":"Filed for bankruptcy","date":"2010-09-23","src":["https://example.test/bbi"],
    "peakLine":"an unsourced line is dropped","epitaph":"Be kind, rewind.","video":{"id":"bad id","title":"x"},"wayback":"https://example.test/not-wayback"},
-  {"ticker":"GMZ","name":"Zombie Motors","what":"Filed for bankruptcy","date":"2009-06-01","src":["https://example.test/gm"],"zombie":true,
+  {"ticker":"GMZ","name":"Zombie Motors","what":"Filed for bankruptcy","date":"2009-06-01","src":["https://example.test/gm"],"zombie":true,"tradesAs":"GMX",
    "back":{"what":"Listed again","date":"2010-11-18","ticker":"GMX"}},
   {"ticker":"bad","name":"x","what":"y","date":"2001-01-01","src":["https://example.test"]}
 ]

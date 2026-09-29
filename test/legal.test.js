@@ -145,7 +145,7 @@ test('TERMS, PRIVACY and DISCLAIMER are commands, listed in HELP', () => {
   for (const name of ['TERMS', 'PRIVACY', 'DISCLAIMER']) {
     assert.equal(parseCommand(name.toLowerCase()).name, name);
   }
-  assert.ok(HELP_GROUPS.includes('Legal'));
+  assert.ok(HELP_GROUPS.includes('About'));
 });
 
 test('the status bar carries the short legal line and a Terms link', () => {

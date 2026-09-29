@@ -63,6 +63,13 @@ test('sitemap: home, key commands, every WEIRD gauge, legal pages; escaped, no d
   assert.equal(sitemapXml(), sitemapXml(), 'the same every time');
 });
 
+test('page meta: the About group\'s commands are ?c= pages; only the three legal pages have paths', () => {
+  for (const c of ['FEEDBACK', 'DATA', 'STATUS', 'CHANGES', 'SPONSOR', 'BBRK']) {
+    assert.equal(commandMeta(c, parseCommand)?.url, `https://bloombroke.com/?c=${c}`, c);
+  }
+  for (const c of ['TERMS', 'PRIVACY', 'DISCLAIMER']) assert.equal(commandMeta(c, parseCommand).url, `https://bloombroke.com/${c.toLowerCase()}`, c);
+});
+
 test('page meta: a bare command gets its own title, description and canonical', () => {
   const page = '<head>\n  <title>Site</title>\n  <meta name="description" content="Site.">\n</head>';
   const meta = commandMeta('markets', parseCommand);

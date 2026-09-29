@@ -1,48 +1,49 @@
 /* help.js's own styles, loaded with it (public/lazy.js) the first time a screen that
    uses it opens; the page's always-on styles are in the stylesheets public/index.html links. */
 
-/* ==== from nav.css ==== */
+/* ---- HELP: one numbered panel. The key row, then START HERE and every group as one
+   list, two columns on a desktop, one on a phone. ---------------------------------- */
+.help-esc { display: flex; align-items: center; gap: 6px; }
+.help .panel-body { padding: 12px 16px 16px; }
 
-.help-count { font-size: 12px; white-space: nowrap; }
-.help-body { display: grid; grid-template-columns: 224px minmax(0, 1fr); gap: 32px; align-items: start; }
-.help-cats {
-  position: sticky; top: calc(var(--cmd-h) + 8px);
-  display: flex; flex-direction: column;
+.help-keys {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  margin: 0 0 24px;
+  font-size: 14px; line-height: 24px; color: var(--text-2);
 }
-.help-cat {
-  display: flex; justify-content: space-between; gap: 8px;
-  padding: 6px 12px;
-  border: 0; border-left: 2px solid transparent;
-  background: transparent;
+.hk { white-space: nowrap; }
+.help-keys kbd { margin-right: 4px; padding: 0 6px; font-size: 12px; line-height: 20px; color: var(--text); }
+.hk-sep { color: var(--faint); }
+
+.hl { columns: 2; column-gap: 48px; }
+.hl-group { margin: 0 0 24px; break-inside: avoid; }
+.hl-h {
+  margin: 0; padding: 0 8px 6px;
+  border-bottom: 1px solid var(--rule-strong);
+  font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
   color: var(--text-2);
-  font-family: var(--font); font-size: 13px; text-align: left;
-  cursor: pointer;
+  break-after: avoid;
 }
-.help-cat:hover { color: var(--text); background: var(--panel-2); }
-.help-cat.is-active { color: var(--text); font-weight: 600; background: var(--panel-2); border-left-color: var(--accent); }
-.help-n { color: var(--dim); font-weight: 400; }
-.help-main { min-width: 0; }
-.help-h { margin: 0 0 12px; font-size: 16px; font-weight: 600; color: var(--text); }
-.help-tip { margin-top: 12px; font-size: 12px; }
-.hc-cat { display: block; font-size: 11px; color: var(--dim); }
-.hc-syn { font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
-.hc-ex { overflow-wrap: anywhere; }
-.hc-ex .code { white-space: normal; }
-.hc-soon { font-size: 11px; letter-spacing: .1em; color: var(--dim); }
-.hs-list { columns: 3 320px; column-gap: 32px; margin: 0 0 8px; }
-.hs-row {
-  display: grid; grid-template-columns: 124px minmax(0, 1fr); gap: 12px; align-items: baseline;
-  break-inside: avoid;
+.hl-n { font-weight: 400; color: var(--dim); }
+.hl-list { margin: 0; padding: 0; list-style: none; }
+.hl-row {
+  display: grid; grid-template-columns: 136px minmax(0, 1fr); gap: 16px; align-items: baseline;
   padding: 4px 8px;
   border-bottom: 1px solid var(--rule);
+  break-inside: avoid;
 }
-.hs-row:hover { background: var(--panel-2); }
-.hs-cmd { font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
-.hs-cmd:hover { color: var(--accent); text-decoration: none; }
-.hs-what { color: var(--text-2); }
-.hs-keys { margin-top: 12px; font-size: 12px; color: var(--text-2); line-height: 2; }
-.hs-sep { margin: 0 4px; color: var(--faint); }
+.hl-row:hover, .hl-row.is-best { background: var(--panel-3); }
+.hl-name { font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.hl-name:hover { color: var(--accent); text-decoration: none; }
+.hl-sum { color: var(--dim); }
+.help-tip { margin: 8px 0 0; padding: 0 8px; color: var(--text-2); }
+.help-none { margin: 0 0 24px; padding: 0 8px; color: var(--text-2); }
+.help-foot { margin: 0; padding: 0 8px; font-size: 12px; color: var(--dim); }
 
+/* Find mode ("/"): the command bar's prompt reads "/" while it filters this list. */
+.cmd.is-find .prompt { color: var(--text); }
+
+/* ---- HELP <command>: one command's page ------------------------------------------ */
 .hd { max-width: 880px; }
 .hd-name { margin: 0; font-size: 24px; font-weight: 600; line-height: 1.2; color: var(--text); }
 .hd-sum { margin-top: 4px; font-size: 14px; color: var(--text-2); }
@@ -56,20 +57,18 @@
 .hd-cat:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 @media (max-width: 1100px) {
-  .hc-syn { display: none; }
-  .help-body { grid-template-columns: 192px minmax(0, 1fr); gap: 24px; }
+  .hl { column-gap: 32px; }
+  .hl-row { grid-template-columns: 120px minmax(0, 1fr); gap: 12px; }
 }
 
+/* Phones: one column. The key row keeps the keys a phone keyboard can send, in two
+   lines, no dots. */
 @media (max-width: 639px) {
-  .help-body { grid-template-columns: minmax(0, 1fr); gap: 16px; }
-  .help-cats {
-    position: static; flex-direction: row; overflow-x: auto; scrollbar-width: none;
-    margin: 0 calc(var(--gutter) * -1); padding: 0 var(--gutter);
-  }
-  .help-cats::-webkit-scrollbar { display: none; }
-  .help-cat { flex: 0 0 auto; border-left: 0; border-bottom: 2px solid transparent; white-space: nowrap; }
-  .help-cat.is-active { border-bottom-color: var(--accent); }
-  .help-n { display: none; }
-  .hs-list { columns: 1; }
+  .help .panel-body { padding: 12px 8px 16px; }
+  .help-keys { gap: 4px 12px; margin-bottom: 16px; font-size: 12px; line-height: 20px; }
+  .help-keys kbd { padding: 0 4px; font-size: 11px; line-height: 16px; }
+  .hk-sep, .hk-desk { display: none; }
+  .hl { columns: 1; }
+  .hl-row { grid-template-columns: 112px minmax(0, 1fr); gap: 12px; padding: 6px 8px; }
   .hd-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 }

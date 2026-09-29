@@ -42,16 +42,17 @@ import './goal.js'; // GOALS: loads DataFast unless Global Privacy Control is on
 export { FUNCTION_BAR, TICKER_FUNCTIONS };
 
 // The command bar's list: every listed, runnable command from registry.js, in the
-// registry's order, with the HELP and MENU entries last. Shape: { name, aliases, hint,
+// registry's order, with the MCP, HELP and MENU entries last. Shape: { name, aliases, hint,
 // usage, example, usageExample, keywords }.
 const toSuggestEntry = (c) => ({
   name: c.name, aliases: c.aliases, group: c.category, hint: c.summary, usage: c.syntax,
   example: c.examples[0], examples: c.examples, usageExample: c.usageExample, keywords: c.keywords || [],
 });
 const runnable = LISTED.filter((c) => !c.pattern && !c.soon);
+const LAST = ['MCP', 'HELP', 'MENU']; // the old Start here group: last, as before
 export const COMMANDS = [
-  ...runnable.filter((c) => c.category !== 'Start here'),
-  ...runnable.filter((c) => c.category === 'Start here'),
+  ...runnable.filter((c) => !LAST.includes(c.name)),
+  ...LAST.map((n) => runnable.find((c) => c.name === n)).filter(Boolean),
 ].map(toSuggestEntry);
 
 // Listed but not built yet: they answer "coming soon".
@@ -603,7 +604,7 @@ export const SHEET_ORDER = [
   'screens/alerts.css', 'screens/pro.css', 'screens/why.css', 'screens/sectors.css', 'screens/heatmap.css',
   'screens/fxmatrix.css', 'screens/calendar.css', 'screens/bbrk.css', 'screens/options.css',
   'screens/worldmap.css', 'screens/help.css', 'screens/nosuch.css', 'screens/graveyard.css', 'screens/data.css',
-  'screens/welcome.css', 'screens/grid.css', 'screens/chat.css', 'screens/me.css', 'screens/pro-demo.css',
+  'screens/welcome.css', 'screens/grid.css', 'screens/chat.css', 'screens/me.css', 'screens/pro-demo.css', 'screens/holidays.css', 'screens/embed.css',
 ];
 export const stylesFor = (entry) => (entry?.js ? stylesOf(entry.js) : []);
 
