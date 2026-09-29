@@ -30,6 +30,10 @@
 /* ---- + Details: what a sponsor gets, from our own counters -------------------------- */
 .bb-card .bb-table { max-width: 60ch; margin: 0 auto 12px; }
 
+/* A short window: a lower chart, so more of the globe is in the first view. */
+@media (max-height: 800px) {
+  .bb-chart { height: 64px; }
+}
 @media (max-width: 639px) {
   .bb-chart { height: 64px; }
   .bb-card .bb-table { table-layout: fixed; }

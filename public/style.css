@@ -1254,8 +1254,10 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 @keyframes spon-in { from { transform: translateY(100%); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .spon-strip.is-sliding .spon-item { animation: none; } }
 .pro-cols .pro-list, .pro-gifts .pro-list { margin: 0 0 8px; }
-.fb { display: grid; gap: 6px; max-width: 80ch; }
-.fb-l { font-size: 11px; letter-spacing: .08em; color: var(--dim); }
+/* FEEDBACK: a card page (kit.css); the form reads left to right in its column. */
+.fb-body { width: 100%; }
+.fb { display: grid; gap: 8px; width: 100%; text-align: left; }
+.fb-l { margin-top: 8px; font-size: 12px; letter-spacing: .04em; color: var(--dim); }
 .fb-msg, .fb-email {
   width: 100%; padding: 6px 8px; border: 1px solid var(--rule-strong); border-radius: 0;
   background: var(--bg); color: var(--text); font: inherit;
@@ -1264,9 +1266,8 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .fb-msg:focus, .fb-email:focus { outline: 1px solid var(--accent); outline-offset: 0; }
 .fb-count { margin: 0; font-size: 11px; color: var(--dim); text-align: right; }
 .fb-hp { position: absolute; left: -10000px; width: 1px; height: 1px; opacity: 0; }
-.fb .pro-actions { margin: 4px 0 0; }
-.fb-keys { font-size: 11px; }
-.fb-mail { margin-top: 8px; }
+.fb-send { margin: 8px 0 0; }
+.fb-err { margin: 0; font-size: 14px; color: var(--down); }
 @media (max-width: 639px) {
   /* A seat by the name: the name and the seat tighten so the clock keeps its room. */
   .brand { gap: 6px; }
@@ -1276,7 +1277,6 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
   /* Unread chats matter more than the seat number when the top bar is tight. */
   .brand:has(.chat-badge:not([hidden])) .seat { display: none; }
   .status-legal { gap: 6px; }
-  .fb-keys { display: none; }
 }
 @media (max-width: 379px) {
   .seat { display: none; }

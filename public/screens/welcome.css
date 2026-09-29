@@ -1,30 +1,31 @@
 /* welcome.js's own styles, loaded with it (public/lazy.js) on a first visit only: the
    WELCOME card around the chips (its plain frame is in legal.css) and the command bar's
-   one-time glow after it. */
+   one-time glow after it. Sizes and spaces from the scales in style.css; text in the
+   three levels (--text, --text-2, --dim). */
 
 /* --- the card ------------------------------------------------------------------ */
 .consent-welcome .consent-box {
   max-width: 680px;
   max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px);
   overflow-y: auto;
-  padding: 26px 28px 20px;
+  padding: 24px 24px 16px;
 }
 .consent-welcome .consent-box:focus { outline: 0; }
 .consent-welcome .consent-k {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   color: var(--text, #CFEAFF);
-  font-size: 26px; font-weight: 800; letter-spacing: .14em; line-height: 1.1;
+  font-size: 24px; font-weight: 700; letter-spacing: .14em; line-height: 1.1;
 }
 .consent-welcome .consent-lead {
-  margin: 0 0 20px;
+  margin: 0 0 24px;
   color: var(--text-2, #b6d3ea);
-  font-size: 15px; font-weight: 400;
+  font-size: 16px; font-weight: 400;
 }
 .consent-try { margin: 0 0 8px; color: var(--dim, #7f93a8); font-size: 12px; letter-spacing: .04em; }
 
 /* The input: a small copy of the command bar, with START on its right. */
 .consent-welcome .consent-bar {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 12px;
   height: 48px; padding: 0 4px 0 12px;
   border: 1px solid var(--rule-strong, #2a3746);
   background: var(--bg, #05080C);
@@ -38,7 +39,7 @@
   font: inherit; font-size: 16px; text-transform: uppercase;
   caret-color: var(--accent, #6CCBFF);
 }
-.consent-welcome .consent-accept { height: 38px; padding: 0 16px; }
+.consent-welcome .consent-accept { height: 40px; padding: 0 16px; }
 
 /* The chips: four big buttons, two by two on a phone. */
 .wc-chips {
@@ -51,13 +52,13 @@
   background: var(--panel-2, #10171f);
   color: var(--text, #CFEAFF);
 }
-.wc-chip { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-height: 64px; padding: 10px 12px; }
+.wc-chip { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-height: 64px; padding: 12px; }
 .wc-cmd { color: var(--accent, #6CCBFF); font-size: 14px; font-weight: 700; letter-spacing: .02em; }
 .wc-cap { color: var(--dim, #7f93a8); font-size: 12px; line-height: 1.3; }
 .wc-chip:hover, .wc-surprise:hover { border-color: var(--accent, #6CCBFF); background: var(--panel-3, #161f2a); }
 .wc-chip:focus-visible, .wc-surprise:focus-visible { outline: 2px solid var(--accent, #6CCBFF); outline-offset: 1px; }
 .wc-surprise {
-  min-height: 36px; padding: 6px 14px;
+  min-height: 32px; padding: 8px 16px;
   color: var(--text-2, #b6d3ea); font-size: 12px; font-weight: 700; letter-spacing: .12em;
 }
 .consent-welcome .consent-body { margin: 16px 0 0; color: var(--dim, #7f93a8); font-size: 12px; line-height: 1.55; }
@@ -65,8 +66,8 @@
 
 @media (max-width: 639px) {
   .consent-welcome.consent { align-items: flex-start; padding: 16px; }
-  .consent-welcome .consent-box { padding: 20px 16px 16px; }
-  .consent-welcome .consent-k { font-size: 22px; }
+  .consent-welcome .consent-box { padding: 24px 16px 16px; }
+  .consent-welcome .consent-k { font-size: 18px; }
   .consent-welcome .consent-lead { margin-bottom: 16px; font-size: 14px; }
   .wc-chips { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .wc-chip { min-height: 68px; }

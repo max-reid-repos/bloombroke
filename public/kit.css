@@ -117,6 +117,8 @@
 .btn.card-btn { display: inline-flex; align-items: center; justify-content: center; height: 40px; padding: 0 24px; font-size: 14px; letter-spacing: .08em; white-space: nowrap; text-decoration: none; }
 .btn.card-btn:disabled { opacity: .5; cursor: wait; }
 .card-note { max-width: 60ch; font-size: 12px; color: var(--dim); }
+/* A line that wraps wraps evenly, never one word alone on the last line. */
+.card-alert, .card-sub, .card-note, .card-hero-44 { text-wrap: balance; }
 .card-note [hidden] { display: none; }
 .card-chart { position: relative; width: 100%; }
 .card-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px 16px; width: 100%; }

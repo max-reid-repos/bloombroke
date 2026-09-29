@@ -11,6 +11,8 @@ import { cardPage, cardButton, cardLink, cardFacts, cardRows, cardWords, raw, HE
 import { bbrkHtml } from '../public/screens/bbrk.js';
 import { sponsorHtml } from '../public/screens/sponsor.js';
 import { mainHtml, loginHtml, redeemHtml, giftHtml, giftLoggedOutHtml } from '../public/screens/pro.js';
+import { feedbackHtml } from '../public/screens/feedback.js';
+import { notProHtml } from '../public/screens/chat.js';
 
 const all = () => true;
 const KEY = 'BB-7KQ2-M9XD-HT4P-WZ3C';
@@ -40,6 +42,8 @@ export const PAGES = [
   ['GIFT, logged out', giftLoggedOutHtml(), 15],
   ['GIFT', giftHtml({ gifts: [], left: 3, canGift: true }), 15],
   ['GIFT, a code made', giftHtml({ gifts: [], left: 2, canGift: true }, { shown: 'GIFT-ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-2345' }), 15],
+  ['FEEDBACK', feedbackHtml(), 15],
+  ['CHAT without Pro', notProHtml(), 15],
 ];
 
 test('word budget: each card page says what it must above + Details, and no more', () => {
@@ -90,18 +94,22 @@ const SPACE = scale('Spacing');
 function cardCss() {
   const kit = readFileSync('public/kit.css', 'utf8');
   const pro = readFileSync('public/screens/pro.css', 'utf8');
+  const style = readFileSync('public/style.css', 'utf8');
   return [
     ['kit.css', kit.slice(kit.indexOf('/* ---- Card pages'))],
     ['bbrk.css', readFileSync('public/screens/bbrk.css', 'utf8')],
     ['sponsor.css', readFileSync('public/screens/sponsor.css', 'utf8')],
     ['pro.css', pro.slice(pro.indexOf('/* ==== PRO, LOGIN, REDEEM, GIFT: card pages'))],
+    ['style.css FEEDBACK', style.slice(style.indexOf('/* FEEDBACK: a card page'), style.indexOf('.fb-hp'))],
+    // WELCOME's colours keep their fallbacks (it can paint before style.css): sizes only.
+    ['welcome.css', readFileSync('public/screens/welcome.css', 'utf8'), { colours: false }],
   ];
 }
 
 test('card CSS: font sizes on the type scale, spaces on the spacing scale, px only', () => {
   assert.deepEqual(TYPE, [11, 12, 13, 14, 16, 18, 24, 32, 44, 60, 96]);
   assert.deepEqual(SPACE, [2, 4, 6, 8, 12, 16, 24, 32, 48]);
-  for (const [file, css] of cardCss()) {
+  for (const [file, css, { colours = true } = {}] of cardCss()) {
     assert.ok(css.length > 200, `${file}: its card section is there`);
     const body = css.replace(/\/\*[\s\S]*?\*\//g, '');
     for (const m of body.matchAll(/font-size:\s*([^;}]+)/g)) {
@@ -119,7 +127,7 @@ test('card CSS: font sizes on the type scale, spaces on the spacing scale, px on
     // Weights: 400 and 700 in the kit (600 is the older label weight of .tag).
     for (const m of body.matchAll(/font-weight:\s*(\d+)/g)) assert.ok(['400', '600', '700'].includes(m[1]), `${file}: weight ${m[1]}`);
     // Colours: the palette's own levels, never a new one.
-    assert.doesNotMatch(body.replace(/--globe-[a-z]+: [^;]+;/g, ''), /#[0-9a-f]{3,6}\b|rgb\(|hsl\(/i, `${file}: colours come from style.css`);
+    if (colours) assert.doesNotMatch(body.replace(/--globe-[a-z]+: [^;]+;/g, ''), /#[0-9a-f]{3,6}\b|rgb\(|hsl\(/i, `${file}: colours come from style.css`);
   }
   // The group gap is at least twice the gap inside a group (Refactoring UI: more space
   // around a group than within it).
@@ -141,7 +149,7 @@ test('copy rules on the card pages: no em dash, no emoji, no brand word, no ambe
     assert.doesNotMatch(html.split('<details')[0], /\b(advice|advise|you should|we recommend|buy now|invest in)\b/i, `${name}: advice words above Details`);
     assert.doesNotMatch(html, /DataFast|Yahoo|Polygon|Finnhub|Alpha Vantage|Twelve Data|Nasdaq Data/i, `${name}: a data vendor on screen`);
   }
-  for (const f of ['public/kit.js', 'public/kit.css', 'public/screens/bbrk.css', 'public/screens/sponsor.css', 'public/screens/pro.css']) {
+  for (const f of ['public/kit.js', 'public/kit.css', 'public/screens/bbrk.css', 'public/screens/sponsor.css', 'public/screens/pro.css', 'public/screens/feedback.js', 'public/screens/welcome.css']) {
     const src = readFileSync(f, 'utf8');
     assert.doesNotMatch(src, /—/, `${f}: em dash`);
     assert.doesNotMatch(src, brand, `${f}: brand word`);

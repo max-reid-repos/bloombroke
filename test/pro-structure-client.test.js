@@ -17,7 +17,7 @@ import {
 } from '../public/screens/pro.js';
 import { notProHtml, NOT_PRO } from '../public/screens/chat.js';
 import { gaugeSponsorHtml } from '../public/screens/sponsor.js';
-import { feedbackPayload, feedbackHtml, counterText, THANKS, EMAIL_LABEL, MAX_FEEDBACK } from '../public/screens/feedback.js';
+import { feedbackPayload, feedbackHtml, counterText, THANKS, EMAIL_LABEL, MAX_FEEDBACK, STATUS } from '../public/screens/feedback.js';
 import { cleanSponsors, loadSponsors } from '../lib/sponsors.js';
 import { gaugeModel, gaugeTree } from '../lib/og-weird.js';
 import { WEIRD_GAUGES } from '../public/screens/weird-gauges.js';
@@ -166,7 +166,8 @@ test('CHAT: in the registry, a Pro command, its own screen (test/chat-client.tes
   assert.ok(!SOON.some((x) => x.name === 'CHAT'), 'its own screen, not the generic soon line');
   const html = notProHtml();
   const text = html.replace(/<[^>]+>/g, '\n').split('\n').map((l) => l.trim()).filter(Boolean);
-  assert.deepEqual(text, ['1) CHAT', NOT_PRO, 'PRO']);
+  assert.deepEqual(text, ['CHAT', NOT_PRO, 'PRO'], 'a card page: CHAT, one line, PRO');
+  assert.match(html, /class="btn card-btn btn-solid" href="\?c=PRO" data-cmd="PRO">PRO</);
   assert.equal(screenTitle(c).title, 'CHAT');
 });
 
@@ -354,9 +355,13 @@ test('feedback screen: the form, the counter, the email label, thanks, the mail 
   assert.equal(MAX_FEEDBACK, 1000);
   assert.match(html, /id="fb-count"[^>]*>0 \/ 1000</);
   assert.equal(counterText(12), '12 / 1000');
-  assert.equal(EMAIL_LABEL, 'Email, only if you want a reply');
-  assert.match(html, /<label class="fb-l" for="fb-email">Email, only if you want a reply<\/label>/);
-  assert.match(html, /type="submit" class="btn btn-solid" id="fb-send">SEND</);
+  assert.equal(EMAIL_LABEL, 'Email for a reply (optional)');
+  assert.match(html, /<label class="fb-l" for="fb-email">Email for a reply \(optional\)<\/label>/);
+  assert.match(html, /<span id="fb-q">What should we fix or build\?<\/span>/, 'the question is the hero');
+  assert.match(html, /<textarea id="fb-msg"[^>]*aria-labelledby="fb-q"/, 'and it labels the note');
+  assert.match(html, /type="submit" class="btn card-btn btn-solid" id="fb-send" title="Ctrl\+Enter sends">SEND</);
+  assert.equal((html.match(/btn-solid/g) || []).length, 1, 'one primary button');
+  assert.equal(STATUS, 'FEEDBACK: NO IP ADDRESS STORED. CTRL+ENTER SENDS');
   assert.match(html, /name="website"[^>]*tabindex="-1"/, 'the honeypot is out of the tab order');
   assert.match(html, /Or email <a href="mailto:hello@bloombroke\.com">hello@bloombroke\.com<\/a>/);
   assert.equal(THANKS, 'Thanks. We read every one.');

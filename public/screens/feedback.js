@@ -1,13 +1,16 @@
-// FEEDBACK (and IDEA): a short note to us, from anyone, free or Pro. One panel: the
-// note, an optional email, SEND. Ctrl+Enter in the note or Enter in the email sends.
-// The note goes to POST /api/feedback with the screen you came from, for context.
+// FEEDBACK (and IDEA): a short note to us, from anyone, free or Pro. A card page (kit.js
+// cardPage): the question, the note, an optional email, SEND. Ctrl+Enter in the note or
+// Enter in the email sends. The note goes to POST /api/feedback with the screen you came
+// from, for context. No IP address is stored (the status line says so).
 
-import { esc, panel, metaNote } from './markets.js';
+import { esc } from './markets.js';
+import { cardPage, raw } from '../kit.js';
 import { goal } from '../goal.js'; // GOALS
 
 export const MAX_FEEDBACK = 1000;
 export const PROMPT = 'What should we fix or build?';
-export const EMAIL_LABEL = 'Email, only if you want a reply';
+export const EMAIL_LABEL = 'Email for a reply (optional)';
+export const STATUS = 'FEEDBACK: NO IP ADDRESS STORED. CTRL+ENTER SENDS';
 export const THANKS = 'Thanks. We read every one.';
 export const CONTACT = 'hello@bloombroke.com';
 
@@ -28,22 +31,28 @@ export function feedbackPayload({ message, email, screen, website }) {
   return out;
 }
 
+// The question is the card's hero; it labels the note.
 export function formHtml() {
-  return `<form id="fb-form" class="fb" novalidate>
-      <label class="fb-l" for="fb-msg">${esc(PROMPT)}</label>
-      <textarea id="fb-msg" class="fb-msg" maxlength="${MAX_FEEDBACK}" rows="5" spellcheck="true"></textarea>
+  return `<form id="fb-form" class="fb" novalidate aria-labelledby="fb-q">
+      <textarea id="fb-msg" class="fb-msg" maxlength="${MAX_FEEDBACK}" rows="5" spellcheck="true" aria-labelledby="fb-q"></textarea>
       <p class="fb-count num" id="fb-count" aria-live="polite">${counterText(0)}</p>
       <label class="fb-l" for="fb-email">${esc(EMAIL_LABEL)}</label>
       <input id="fb-email" class="fb-email" type="email" maxlength="254" autocomplete="email" spellcheck="false">
       <input id="fb-website" class="fb-hp" name="website" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
-      <p class="pro-actions"><button type="submit" class="btn btn-solid" id="fb-send">SEND</button><span class="muted fb-keys">Ctrl+Enter sends</span></p>
-      <p class="notice warn" id="fb-err" hidden></p>
+      <p class="fb-send"><button type="submit" class="btn card-btn btn-solid" id="fb-send" title="Ctrl+Enter sends">SEND</button></p>
+      <p class="fb-err" id="fb-err" role="alert" hidden></p>
     </form>`;
 }
 
 export function feedbackHtml() {
-  return panel('1', 'Feedback', `<div id="fb-body">${formHtml()}</div>
-    <p class="muted fb-mail">Or email <a href="mailto:${CONTACT}">${CONTACT}</a></p>`, { cls: 'panel-solo', meta: metaNote('NO IP ADDRESS STORED') });
+  return cardPage({
+    label: 'Feedback',
+    cls: 'fb-card',
+    hero: raw(`<span id="fb-q">${esc(PROMPT)}</span>`),
+    heroSize: 32,
+    act: raw(`<div id="fb-body" class="fb-body">${formHtml()}</div>`),
+    note: raw(`Or email <a href="mailto:${CONTACT}">${CONTACT}</a>`),
+  });
 }
 
 async function send(payload) {
@@ -67,7 +76,7 @@ export function render(el, cmd, ctx) {
   const count = el.querySelector('#fb-count');
   const err = el.querySelector('#fb-err');
   const btn = el.querySelector('#fb-send');
-  ctx.status('FEEDBACK: WRITE A NOTE, CTRL+ENTER SENDS');
+  ctx.status(STATUS);
   msg.addEventListener('input', () => { count.textContent = counterText(msg.value.length); });
   const start = takePrefill();
   if (start) { msg.value = start; count.textContent = counterText(start.length); }
@@ -83,7 +92,7 @@ export function render(el, cmd, ctx) {
     try {
       await send(payload);
       if (!el.isConnected) return;
-      el.querySelector('#fb-body').innerHTML = `<p class="notice">${esc(THANKS)}</p>`;
+      el.querySelector('#fb-body').innerHTML = `<p class="card-alert">${esc(THANKS)}</p>`;
       ctx.status('FEEDBACK SENT');
       goal('feedback_sent');
     } catch (e) {

@@ -10,6 +10,7 @@
 import { esc, panel, metaNote, fmtNum } from './markets.js';
 import { getKey, isPro, HEADER } from '../pro.js';
 import { parseCommand, screenTitle, linkChanges, linkPlan } from '../app.js';
+import { cardPage, cardButton, raw } from '../kit.js';
 
 // The same rules as the server (pro/chat.js; test/chat.test.js checks they match).
 export const MAX_TEXT = 500;
@@ -34,9 +35,9 @@ export function whoHtml(seat, name, own = false) {
 
 // ---- the screen without Pro -------------------------------------------------------------
 
+// A card page (kit.js cardPage): CHAT, what it is, and PRO.
 export function notProHtml() {
-  return panel('1', 'CHAT', `<p class="notice">${esc(NOT_PRO)}</p>
-    <p class="pro-actions"><a class="btn btn-solid" href="${q('PRO')}" data-cmd="PRO">PRO</a></p>`, { cls: 'panel-solo' });
+  return cardPage({ label: 'CHAT', hero: 'CHAT', heroSize: 60, sub: NOT_PRO, act: raw(cardButton({ label: 'PRO', primary: true, cmd: 'PRO' })) });
 }
 
 // ---- $TICKER chips ----------------------------------------------------------------------
