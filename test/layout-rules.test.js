@@ -138,12 +138,14 @@ export const WHATIF = [
 
 // [page, html, budget]: the words above + Details, numbers, keys and codes not counted.
 export const PAGES = [
-  // PRO v4 (Sep 29): the owner's copy is six captions under the minis (Chat with friends,
-  // Every device, Pings when closed, No ads, Yours forever, 3 friends get a month) and the
-  // key line (Key or gift code?), on top of the price, the button and the note:
-  // 35 in test mode, 31 in live mode. Words on a mini are the picture's (role="img").
-  ['PRO visitor (test mode)', shownInTest(mainHtml({ next: 4, has: all })), 35],
-  ['PRO visitor', mainHtml({ next: 4, has: all }), 31],
+  // PRO v5 (Sep 29, "one stage, four keys"): the kicker (1), the promise as the hero (19),
+  // the price line's words (a month, a year: 4), SUBSCRIBE (1), "Cancel any time." (3),
+  // the stage's title strip (PINGS demo: 2) and its key row (PINGS CHAT EVERY DEVICE
+  // SEAT: 5) = 35 in live mode; 42 with the test-mode line ("Test mode: no card is charged
+  // yet.": 7). The key-or-code line is in + Details now; words in the stage's view are the
+  // picture's (role="img").
+  ['PRO visitor (test mode)', shownInTest(mainHtml({ next: 4, has: all })), 42],
+  ['PRO visitor', mainHtml({ next: 4, has: all }), 35],
   ['PRO key', mainHtml({ key: KEY, st: ST, has: all }), 25],
   // Just bought or redeemed: the save line (the last chance to save the key); in a browser
   // that saved it, MANAGE PLAN and CANCEL too. 27 (the reviewer's call, Sep 29).

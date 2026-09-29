@@ -12,7 +12,8 @@
 import { esc, q, panel, nyTime } from './markets.js';
 import { goal } from '../goal.js'; // GOALS
 import * as L from '../desk-layout.js';
-import { emptyState, cardRows, raw } from '../kit.js';
+import { emptyState, cardRows, raw, proLine } from '../kit.js';
+import { isPro, getKey, getStatus, refreshStatus } from '../pro.js'; // the quiet PRO line, for a visitor only
 import { cardGauge, cardHtml, cardBody, weirdPickItems, mergeCardRows, nextCardFetch, confirmKey, CARD_RETRY_MS } from './desk-cards.js';
 
 const MOBILE = '(max-width: 699px)';
@@ -31,6 +32,32 @@ export function deskEmptyHtml(n) {
     details: raw(cardRows([['Any command', 'A chart, NEWS, WATCH, HEATMAP, FX 500 USD THB.']])),
     cls: 'desk-empty', hidden: true,
   });
+}
+
+// A quiet line in the bar for a visitor, once per browser: DESK is saved here only, and
+// Pro keeps it on every device. Shown the first time, never again (a flag in this
+// browser's storage); nothing when that storage cannot be used (the desk is not saved
+// there either), and never for Pro.
+export const DESK_PRO_LINE = 'Saved in this browser only. Everywhere: PRO';
+export const DESK_PRO_FLAG = 'bb.desk.proline';
+export function deskProLineHtml(pro = false, storage = globalThis.localStorage) {
+  if (pro) return '';
+  try {
+    if (!storage || storage.getItem(DESK_PRO_FLAG)) return '';
+    storage.setItem(DESK_PRO_FLAG, '1');
+  } catch { return ''; }
+  return proLine(DESK_PRO_LINE);
+}
+// Only once Pro is known, so a Pro key on a fresh device never sees the line or uses up
+// the once: no key is a visitor; a key waits for its status (none: no line, flag kept).
+// alive(): the bar is still on the page (the flag is not used up for a page that left).
+export async function deskProLineFor({ key = getKey, status = getStatus, refresh = refreshStatus, pro = isPro, alive = () => true, storage } = {}) {
+  if (key() && !status()) {
+    try { await refresh(); } catch { return ''; }
+    if (!status()) return '';
+  }
+  if (!alive()) return '';
+  return deskProLineHtml(pro(), storage);
 }
 
 export function render(el, cmd, ctx) {
@@ -68,6 +95,7 @@ export function render(el, cmd, ctx) {
       <span class="desk-label">DESK</span>
       <nav class="tabs desk-tabs" aria-label="Desks">${[1, 2, 3, 4].map((k) => `<a class="tab${k === n ? ' is-active' : ''}" href="${esc(q(`DESK ${k}`))}" data-cmd="DESK ${k}"${k === n ? ' aria-current="page"' : ''}>${k}</a>`).join('')}</nav>
       <span class="desk-focus" aria-live="polite"></span>
+      <span class="desk-pro" hidden></span>
       <span class="desk-hint">Drag a header to move, the corner to resize. Alt+Arrows move, Alt+Shift+Arrows resize, Ctrl+[ ] focus.</span>
       <span class="desk-presets" role="group" aria-label="Preset desks">${L.PRESET_NAMES.map((k) => `<button type="button" class="desk-btn desk-preset" data-act="preset" data-preset="${k}">${k}</button>`).join('')}</span>
       <button type="button" class="desk-btn desk-add" data-act="add">+ PANEL</button>
@@ -93,6 +121,10 @@ export function render(el, cmd, ctx) {
   const desk = el.querySelector('.desk');
   const grid = el.querySelector('.desk-grid');
   const focusEl = el.querySelector('.desk-focus');
+  const proEl = el.querySelector('.desk-pro');
+  deskProLineFor({ alive: () => proEl.isConnected }).then((html) => {
+    if (html && proEl.isConnected) { proEl.innerHTML = html; proEl.hidden = false; }
+  }).catch(() => {});
   const picker = el.querySelector('.desk-picker');
   const pickInput = el.querySelector('.desk-pick-input');
   const pickList = el.querySelector('.desk-pick-list');
