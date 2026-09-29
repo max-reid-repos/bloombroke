@@ -1,12 +1,13 @@
 // The BBRK globe (BBRK and SPONSOR): a small globe drawn on a canvas in the terminal's
 // style. Land is ice-blue dots (public/geo/globe-dots.json, made from the WORLDMAP
 // Natural Earth map by scripts/build-globe-dots.js), lit by the real sun: the night side
-// is dimmer. Every visitor of the last 7 days is a little pixel figure (globe-sprites.js),
-// in a tight bunch round their place: a country at its centre, and a city with 3 or more
-// visitors at its place rounded to whole degrees (about 100 km). The server does the
-// folding (GET /api/bbrk): the browser only ever gets those places and their counts,
-// never a city list, never anything about one visitor, so each figure is made up from
-// the place, a number and the day.
+// is dimmer. The visitors of the last 7 days are little pixel critters (globe-sprites.js)
+// at their places: a country at its centre, and a city with 3 or more visitors at its
+// place rounded to whole degrees (about 100 km). Nearby places merge into one critter
+// with a count (globe-cluster.js), map style, so the critters never cover the map;
+// zooming in splits them. The server does the folding (GET /api/bbrk): the browser only
+// ever gets those places and their counts, never a city list, never anything about one
+// visitor, so each critter is made up from its place and the day.
 //
 // Drag it round (mouse or touch; on a phone a mostly vertical drag still scrolls the
 // page), with a little momentum after letting go; it turns by itself again after
@@ -15,15 +16,17 @@
 // pointer (the page's scroll otherwise: see onWheel); two fingers on it
 // on a phone; a double click or double tap; the + and - buttons (and keys); 1x goes
 // back. Zoomed in, it is a round lens: the canvas stays the same size, the land gets
-// denser (from the WORLDMAP outlines, public/geo/world-110m.json) and the figures a
-// little bigger. Hover or tap a bunch: "Tokyo · 12 visitors this week". A place with
-// someone on now bobs its first figure (from HERE_MIN people on now, like N HERE NOW).
+// denser (from the WORLDMAP outlines, public/geo/world-110m.json), the critters a little
+// bigger and the clusters split. Hover or tap a critter: "Tokyo, Osaka · 14 visitors this
+// week". A cluster with someone on now bobs its critter (from HERE_MIN people on now,
+// like N HERE NOW).
 // At most FPS frames a second, only while it is on screen and the tab is visible.
 // Reduced motion: a still globe (it still turns and zooms by hand), no bobbing.
 
 import { HERE_MIN } from './here-now.js';
 import { project, LAT_TOP, LAT_BOTTOM } from './screens/worldmap-geo.js';
-import { draw as drawSprite, spriteHex, colorFor, dayKey, budget, spotsFor } from './globe-sprites.js';
+import { draw as drawSprite, spriteHex, colorFor, dayKey } from './globe-sprites.js';
+import { clusterPlaces, clusterLevel, markLive, footprint, groupOf, countText, capFor, GAP } from './globe-cluster.js';
 
 export const DOTS_URL = new URL('./geo/globe-dots.json', import.meta.url).href;
 export const WORLD_URL = new URL('./geo/world-110m.json', import.meta.url).href;
@@ -44,13 +47,12 @@ export const ZOOM_MIN = 1;
 export const ZOOM_MAX = 6;
 export const ZOOM_STEP = 2; // a button, a key, a double click
 export const DOUBLE_MS = 350; // two taps this close together are a double tap
-export const SPRITE_CAP = 240; // figures drawn at most, in all
 export const LOD_WAIT_MS = 150; // finer land is made this long after zooming stops, never inside a frame
 export const WORLD_RETRY_MS = 30_000; // the map outlines failed: one more try after this long
 export const SCROLL_QUIET_MS = 600; // the page scrolled this recently: the wheel is still scrolling it
-export const PLACE_Z1 = 9; // figures a place shows at 1x (times the zoom squared); the rest is its +N
 
 const RAD = Math.PI / 180;
+const LABEL_H_PX = 14; // a count label's height
 
 // Orthographic projection. lon, lat in degrees; lon0 the centre meridian; tilt the
 // latitude at the centre. -> [x, y, z] on the unit disc (y down), z > 0 on the near side.
@@ -204,8 +206,8 @@ export const PLAIN_NAMES = {
   GQ: 'Equatorial Guinea', SB: 'Solomon Islands', SS: 'South Sudan', FK: 'Falkland Islands', EH: 'Western Sahara', CYN: 'Northern Cyprus',
 };
 
-// The label for a bunch: 'United States · 45 visitors this week', 'Tokyo · 12 visitors
-// this week', and for a country that also has city bunches, 'United States, elsewhere ·
+// The label for one place: 'United States · 45 visitors this week', 'Tokyo · 12 visitors
+// this week', and for a country that also has city clusters, 'United States, elsewhere ·
 // 4 visitors this week'.
 export function tipText(item, names = {}) {
   if (!item || !(item.n > 0)) return '';
@@ -213,11 +215,30 @@ export function tipText(item, names = {}) {
   return `${place} · ${count(item.n)} ${item.n === 1 ? 'visitor' : 'visitors'} this week`;
 }
 
+// What the clusters are made from, as one string: each place's key, visitors, live and
+// place. The same string, the same clusters.
+export const signature = (items) => (Array.isArray(items) ? items : []).map((k) => `${k.kind}:${k.cc}:${k.name || ''}:${k.n}:${k.live ? 1 : 0}:${k.at?.[0]},${k.at?.[1]}`).join('|');
+
+// The label for a cluster: one place as tipText; more: its two biggest places, then how
+// many more: 'Tokyo, Osaka · 14 visitors this week', 'Tokyo, Osaka and 3 more places ·
+// 20 visitors this week', 'Tokyo, Japan (elsewhere) · 15 visitors this week'.
+export function clusterText(c, names = {}) {
+  if (!c || !(c.n > 0)) return '';
+  const ps = Array.isArray(c.places) && c.places.length ? c.places : [c];
+  // In a list, the rest of a country that also has cities reads 'Japan (elsewhere)'.
+  const nameOf = (k) => (k.kind === 'city' ? k.name : `${PLAIN_NAMES[k.cc] || names[k.cc] || k.cc}${k.part ? ' (elsewhere)' : ''}`);
+  const all = [...new Set(ps.map(nameOf))];
+  if (all.length <= 1) return tipText({ ...ps[0], n: c.n }, names);
+  const more = all.length - 2;
+  const list = `${all[0]}, ${all[1]}${more > 0 ? ` and ${more} more ${more === 1 ? 'place' : 'places'}` : ''}`;
+  return `${list} · ${count(c.n)} ${c.n === 1 ? 'visitor' : 'visitors'} this week`;
+}
+
 // Pulses only from HERE_MIN people on now (1 is most likely the viewer).
 export const pulsesOn = (live) => Number.isInteger(live) && live >= HERE_MIN;
 
 // The place near a point (px, py on the canvas), or null. placed: [{ item, x, y, r }] of
-// the places on the near side, as drawn (r: how far its bunch reaches).
+// the places on the near side, as drawn (r: how far its critter and count reach).
 export function pickDot(placed, px, py, slop = 8) {
   let best = null;
   let bestD = Infinity;
@@ -301,93 +322,28 @@ export const overGlobe = (x, y, geom) => geom.R > 0 && Math.hypot(x - geom.c, y 
 export const LOD_STEP = { 2: 0.8, 3: 0.5, 4: 0.35 };
 export const levelFor = (zoom) => (zoom < 1.5 ? 1 : zoom < 3 ? 2 : zoom < 4.5 ? 3 : 4);
 
-// CSS px a figure pixel: 2 at 1x (a 16 px figure), 3 from 2x, 4 from 4x.
-export const spritePx = (zoom) => (zoom < 2 ? 2 : zoom < 4 ? 3 : 4);
-
-// Figures a place shows at this zoom before its +N.
-export const perPlace = (zoom) => Math.round(PLACE_Z1 * clampZoom(zoom) ** 2);
-
-// ---- the figures ------------------------------------------------------------------------
-
-// Where the figures go. places: [{ x, y, count, tagW? }] (their centres, px), biggest
-// first; pitch: px from one figure's centre to the next; size: a figure's width (px).
-// Each place fills the grid spots round it (spotsFor), nearest first, skipping any spot
-// another figure already has: no two figures ever overlap, and a small place next to a
-// big one sits round its edge. A place with a +N (tagW: its width, px) then takes the
-// first free spots for it, side by side, so the label covers no figure either.
-// -> the places, each with sprites: [[left, top], ...], box: [left, top, right, bottom]
-// and tag: [left, middle] or null.
-export function layoutSprites(places, { pitch, size }) {
-  const grid = new Map();
-  const cell = (v) => Math.floor(v / pitch) + 32768;
-  const key = (cx, cy) => cx * 65536 + cy;
-  const free = (x, y) => {
-    const cx = cell(x);
-    const cy = cell(y);
-    for (let i = -1; i <= 1; i++) {
-      for (let j = -1; j <= 1; j++) {
-        const list = grid.get(key(cx + i, cy + j));
-        if (list) for (let k = 0; k < list.length; k += 2) if (Math.abs(list[k] - x) < pitch - 0.01 && Math.abs(list[k + 1] - y) < pitch - 0.01) return false;
-      }
-    }
-    return true;
-  };
-  const take = (x, y) => {
-    const k = key(cell(x), cell(y));
-    const list = grid.get(k);
-    if (list) list.push(x, y); else grid.set(k, [x, y]);
-  };
-  return places.map((pl) => {
-    const cells = pl.tagW > 0 ? Math.max(1, Math.ceil((pl.tagW - size) / pitch) + 1) : 0;
-    const spots = spotsFor(pl.count * 3 + 160);
-    const sprites = [];
-    let left = Infinity;
-    let top = Infinity;
-    let right = -Infinity;
-    let bottom = -Infinity;
-    for (let k = 0; k < spots.length && sprites.length < pl.count; k++) {
-      const x = pl.x + spots[k][0] * pitch;
-      const y = pl.y + spots[k][1] * pitch;
-      if (!free(x, y)) continue;
-      take(x, y);
-      sprites.push([x - size / 2, y - size / 2]);
-      left = Math.min(left, x - size / 2); top = Math.min(top, y - size / 2);
-      right = Math.max(right, x + size / 2); bottom = Math.max(bottom, y + size / 2);
-    }
-    let tag = null;
-    for (let k = 0; cells && sprites.length && k < spots.length && !tag; k++) {
-      const x = pl.x + spots[k][0] * pitch;
-      const y = pl.y + spots[k][1] * pitch;
-      let ok = true;
-      for (let c = 0; c < cells && ok; c++) ok = free(x + c * pitch, y);
-      if (!ok) continue;
-      for (let c = 0; c < cells; c++) take(x + c * pitch, y);
-      tag = [x - size / 2, y];
-    }
-    return { ...pl, sprites, tag, box: sprites.length ? [left, top, right, bottom] : [pl.x, pl.y, pl.x, pl.y] };
-  });
-}
-
-// Does a size x size square at left, top reach inside the lens (centre c, c; radius R)?
-export function inLens(left, top, size, c, R) {
+// Does a size x size square (or size x h box) at left, top reach inside the lens (centre
+// c, c; radius R)?
+export function inLens(left, top, size, c, R, h = size) {
   const dx = Math.max(left - c, 0, c - (left + size));
-  const dy = Math.max(top - c, 0, c - (top + size));
+  const dy = Math.max(top - c, 0, c - (top + h));
   return Math.hypot(dx, dy) < R;
 }
 
-// The place whose figure is under a point (within slop px), else the nearest place
-// (pickDot). placed: [{ item, x, y, r, sprites, size }].
+// The cluster whose critter (or count label) is under a point (within slop px), else the
+// nearest (pickDot). placed: [{ item, x, y, r, sprites, size, label? }], label: [left,
+// top, width, height].
 export function pickSprite(placed, px, py, slop = 2) {
   let best = null;
   let bestD = Infinity;
+  const near = (p, x, y, w, h) => {
+    const d = Math.hypot(Math.max(x - px, 0, px - (x + w)), Math.max(y - py, 0, py - (y + h)));
+    if (d <= slop && d < bestD) { best = p; bestD = d; }
+  };
   for (const p of placed) {
     if (!(p.item.n > 0) || !p.sprites) continue;
-    for (const [sx, sy] of p.sprites) {
-      const dx = Math.max(sx - px, 0, px - (sx + p.size));
-      const dy = Math.max(sy - py, 0, py - (sy + p.size));
-      const d = Math.hypot(dx, dy);
-      if (d <= slop && d < bestD) { best = p; bestD = d; }
-    }
+    for (const [sx, sy] of p.sprites) near(p, sx, sy, p.size, p.size);
+    if (p.label) near(p, ...p.label);
   }
   return best || pickDot(placed, px, py, slop);
 }
@@ -575,7 +531,7 @@ export function loadWorld(fetchImpl = globalThis.fetch) {
 // Draw the globe in canvas. globe: the server's audience.globe (or its countries array).
 // Returns { update(globe, live), zoom(z), stop(), running, view, ... }. win and doc for
 // the tests are the page's own; now() is the clock the frames use; world() loads the map
-// outlines for the zoomed-in land; day the figures' day ('YYYY-MM-DD', else today).
+// outlines for the zoomed-in land; day the critters' day ('YYYY-MM-DD', else today).
 export function mountGlobe(canvas, geo, globe = [], {
   reduceMotion = false, live = null, win = window, doc = document, now = null, world: getWorld = loadWorld, day = null,
 } = {}) {
@@ -651,7 +607,7 @@ export function mountGlobe(canvas, geo, globe = [], {
     for (let l = level + 1; l <= 4; l++) if (lodReady(worldMap, l)) return [lodLand(worldMap, l), l];
     return [land1, 1];
   };
-  // Each figure, made once a day: seed -> { hex, color }.
+  // Each critter, made once a day: seed -> { hex, color }.
   const looks = new Map();
   const lookOf = (k, j) => {
     const seed = `${k.kind}:${k.cc}:${k.name || ''}:${j}:${today}`;
@@ -660,8 +616,19 @@ export function mountGlobe(canvas, geo, globe = [], {
     return s;
   };
 
-  // A +N label's width (px), text and padding, in its own font (set before).
-  const tagWidth = (text) => Math.ceil(ctx2.measureText?.(text)?.width || text.length * 7) + 4;
+  // The clusters for a level and globe size, made once (again when the numbers change).
+  const clusters = new Map();
+  let itemsSig = signature(items);
+  const clustersFor = (level, R) => {
+    const key = `${level}:${Math.round(R)}`;
+    let cl = clusters.get(key);
+    if (!cl) {
+      cl = markLive(clusterPlaces(items, { R: Math.round(R), level }), items);
+      if (clusters.size > 16) clusters.clear();
+      clusters.set(key, cl);
+    }
+    return cl;
+  };
 
   // Setup for the page (not the tests' bare canvas): focusable, keeps its focus when
   // clicked (app.js), a label for the place under the pointer, the zoom buttons.
@@ -716,9 +683,9 @@ export function mountGlobe(canvas, geo, globe = [], {
 
   function placeTip() {
     if (!tip) return;
-    const p = tipItem && placed.find((x) => x.item === tipItem);
+    const p = tipItem && placed.find((x) => x.item === tipItem || (tipItem.key && x.item.key === tipItem.key));
     if (!p) { tip.hidden = true; tipItem = null; return; }
-    tip.textContent = tipText(p.item, names);
+    tip.textContent = clusterText(p.item, names);
     tip.hidden = false;
     const fw = fig.clientWidth || geom.w;
     const tw = tip.offsetWidth || 0;
@@ -804,29 +771,36 @@ export function mountGlobe(canvas, geo, globe = [], {
     placeTip();
   }
 
-  // The visitors: a figure each, in a bunch round their place, biggest place first.
+  // The visitors: a critter per cluster (globe-cluster.js) with its count under it,
+  // biggest first; a small place zoomed in far may show a critter per visitor. Near the
+  // rim, where the sphere squeezes them, a cluster that would touch a bigger one is left
+  // out, and never more than the level's cap of critters (capFor) are drawn.
   function drawPeople(t, { R, c, dpr, zoom }) {
-    const spx = spritePx(zoom);
-    const size = 8 * spx;
-    const pitch = size + spx; // a figure pixel between two figures
-    const pp = Math.max(1, Math.round(spx * dpr)); // device px a figure pixel
-    const shown = budget(items.map((k) => k.n), { cap: SPRITE_CAP, perPlace: perPlace(zoom) });
-    const order = items.map((k, i) => i).sort((a, b) => items[b].n - items[a].n || a - b);
-    ctx2.font = `600 11px ${font}`;
-    const places = [];
-    for (const i of order) {
-      const k = items[i];
+    const level = clusterLevel(zoom);
+    const cl = clustersFor(level, R);
+    const zoomed = zoom >= 2;
+    const pulse = pulsesOn(liveNow);
+    const shown = [];
+    const boxes = [];
+    let critters = 0;
+    cl.forEach((k, i) => {
       const [x, y, z] = ortho(k.at[0], k.at[1], view.lon0, view.tilt);
-      if (z <= 0) continue;
+      if (z <= 0) return;
       const px = c + x * R * zoom;
       const py = c + y * R * zoom;
-      if (Math.hypot(px - c, py - c) > R + pitch * 4) continue; // outside the lens
-      const more = k.n - shown[i];
-      const tagW = more > 0 ? tagWidth(`+${count(more)}`) : 0;
-      places.push({ item: k, i, x: px, y: py, count: shown[i], tagW });
-    }
-    const laid = layoutSprites(places, { pitch, size });
-    const pulse = pulsesOn(liveNow);
+      if (Math.hypot(px - c, py - c) > R + k.r) return; // outside the lens
+      const boxOf = (f) => [px - f.w / 2 - GAP / 2, py - f.h / 2 - GAP / 2, px + f.w / 2 + GAP / 2, py + f.h / 2 + GAP / 2];
+      const free = (b) => !boxes.some((o) => b[0] < o[2] && o[0] < b[2] && b[1] < o[3] && o[1] < b[3]);
+      let f = k.spread > 1 ? groupOf(k.spread, zoomed) : footprint(k.n, zoomed);
+      let many = k.spread;
+      // A small place's group that is over the cap: one critter with its count instead.
+      if (many > 1 && critters + many > capFor(level)) { f = footprint(k.n, zoomed); many = 1; }
+      const box = boxOf(f);
+      if (!free(box) || critters + many > capFor(level)) return;
+      boxes.push(box);
+      critters += many;
+      shown.push({ k, i, x: px, y: py, f });
+    });
     // Clip to the globe: zoomed in, it is a round lens.
     ctx2.save();
     ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -836,58 +810,56 @@ export function mountGlobe(canvas, geo, globe = [], {
     ctx2.setTransform(1, 0, 0, 1, 0, 0);
     const snap = (v) => Math.round(v * dpr);
     const rings = [];
-    for (const p of laid) {
-      const k = p.item;
-      p.sprites.forEach(([sx, sy], j) => {
+    const labels = [];
+    placed = [];
+    for (const { k, i, x, y, f } of shown) {
+      const pp = Math.max(1, Math.round(f.px * dpr)); // device px a critter pixel
+      const size = f.size;
+      const sprites = f.spots
+        ? f.spots.map(([dx, dy]) => [x + dx - size / 2, y + dy - size / 2])
+        : [[x - size / 2, y - f.h / 2]];
+      sprites.forEach(([sx, sy], j) => {
         const look = lookOf(k, j);
         let lift = 0;
         if (j === 0 && k.live && pulse) {
-          const ph = reduceMotion ? 0 : (((t + p.i * 700) % PULSE_MS) + PULSE_MS) % PULSE_MS / PULSE_MS;
+          const ph = reduceMotion ? 0 : (((t + i * 700) % PULSE_MS) + PULSE_MS) % PULSE_MS / PULSE_MS;
           lift = Math.round(pp * (0.5 - 0.5 * Math.cos(2 * Math.PI * ph)));
-          rings.push([snap(sx), snap(sy), ph]);
+          rings.push([snap(sx), snap(sy), snap(sx + size) - snap(sx), ph]);
         }
         drawSprite(ctx2, look.hex, snap(sx), snap(sy) - lift, pp, look.color);
       });
-      // A live place with no figure of its own (all its visitors are in city bunches).
-      if (!p.sprites.length && k.live && pulse) rings.push([snap(p.x - size / 2), snap(p.y - size / 2), reduceMotion ? 0.35 : (((t + p.i * 700) % PULSE_MS) + PULSE_MS) % PULSE_MS / PULSE_MS]);
+      const label = !f.spots && k.n > 1 ? [x - f.lw / 2, y - f.h / 2 + size + 2, f.lw, LABEL_H_PX] : null;
+      if (label) labels.push([label, countText(k.n)]);
+      // What hover and tap can find: only critters and counts at least partly inside the lens.
+      const inside = sprites.filter(([sx, sy]) => inLens(sx, sy, size, c, R));
+      const hit = label && inLens(label[0], label[1], label[2], c, R, label[3]) ? label : null;
+      if (!inside.length && !hit) continue;
+      placed.push({ item: k, x, y, size, r: Math.max(f.w, f.h) / 2, sprites: inside, label: hit, shown: sprites.length });
     }
-    // Someone on now: a soft square ring out from the first figure; with reduced motion
-    // one still ring.
-    const sd = size * dpr;
+    // Someone on now: a soft square ring out from the critter; with reduced motion one
+    // still ring.
     ctx2.strokeStyle = hot;
     ctx2.lineWidth = Math.max(1, Math.round(dpr));
-    for (const [x, y, ph0] of rings) {
+    for (const [x, y, sd, ph0] of rings) {
       const ph = reduceMotion ? 0.35 : ph0;
       const g = Math.round((2 + ph * 8) * dpr);
       ctx2.globalAlpha = 0.5 * (1 - ph);
       ctx2.strokeRect(x - g + 0.5, y - g + 0.5, sd + 2 * g - 1, sd + 2 * g - 1);
     }
     ctx2.globalAlpha = 1;
-    // A place with more visitors than figures: +N in the next free spots of its bunch.
+    // The counts: '12', '1.2k', on a dark tag so they read over the land.
     ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx2.font = `600 11px ${font}`;
     ctx2.textBaseline = 'middle';
-    for (const p of laid) {
-      const more = p.item.n - p.sprites.length;
-      if (more <= 0 || !p.tag || !inLens(p.tag[0], p.tag[1] - 7, 14, c, R)) continue;
-      const text = `+${count(more)}`;
-      const x = Math.round(p.tag[0]) + 2;
-      const y = Math.round(p.tag[1]);
+    for (const [[lx, ly, lw, lh], text] of labels) {
+      const x = Math.round(lx);
+      const y = Math.round(ly);
       ctx2.fillStyle = tagBg;
-      ctx2.fillRect(x - 2, y - 7, tagWidth(text), 14);
+      ctx2.fillRect(x, y, lw, lh);
       ctx2.fillStyle = hot;
-      ctx2.fillText(text, x, y + 0.5);
+      ctx2.fillText(text, x + 2, y + lh / 2 + 0.5);
     }
     ctx2.restore();
-    // What hover and tap can find: only figures at least partly inside the lens.
-    placed = [];
-    for (const p of laid) {
-      const sprites = p.sprites.filter(([sx, sy]) => inLens(sx, sy, size, c, R));
-      if (!sprites.length && Math.hypot(p.x - c, p.y - c) > R) continue;
-      let r = size / 2;
-      for (const [sx, sy] of sprites) r = Math.max(r, Math.hypot(Math.max(p.x - sx, sx + size - p.x), Math.max(p.y - sy, sy + size - p.y)));
-      placed.push({ item: p.item, x: p.x, y: p.y, size, r, sprites, shown: p.sprites.length });
-    }
   }
 
   function moving(t) {
@@ -990,7 +962,7 @@ export function mountGlobe(canvas, geo, globe = [], {
       if (e.pointerType === 'mouse') {
         const p = pickSprite(placed, x, y, 2);
         if (p) touched();
-        if ((p?.item || null) !== tipItem) showTip(p);
+        if ((p?.item?.key ?? null) !== (tipItem?.key ?? null)) showTip(p);
       }
       return;
     }
@@ -1119,10 +1091,14 @@ export function mountGlobe(canvas, geo, globe = [], {
   start();
   return {
     update(next, nextLive = liveNow) {
-      const old = tipItem && `${tipItem.kind}:${tipItem.cc}:${tipItem.name || ''}`;
+      // The clusters are made again from the new numbers; an open label stays with its
+      // cluster (the same biggest place), if it is still there.
+      // Only new numbers make new clusters: a resize or a refit sends the same ones (a new
+      // globe size has its own clusters anyway).
       items = globeItems(next, geo.centres);
       liveNow = nextLive;
-      tipItem = old ? items.find((k) => `${k.kind}:${k.cc}:${k.name || ''}` === old) || null : null;
+      const sig = signature(items);
+      if (sig !== itemsSig) { itemsSig = sig; clusters.clear(); }
       redraw();
     },
     // Zoom to z (1 to ZOOM_MAX) on the middle, like the buttons.

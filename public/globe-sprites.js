@@ -147,25 +147,3 @@ export function spotsFor(n) {
   }
   return spots.slice(0, n);
 }
-
-// How many figures each place gets: all of its visitors, at most perPlace, and at most
-// cap in all (the biggest places give way first; spare room goes to the biggest).
-// counts: visitors per place -> figures per place. The rest of a place is its "+N".
-export function budget(counts, { cap = 240, perPlace = Infinity } = {}) {
-  const n = counts.map((c) => Math.max(0, Math.floor(Number.isFinite(c) ? c : 0)));
-  const want = n.map((c) => Math.min(c, perPlace));
-  const total = want.reduce((s, c) => s + c, 0);
-  if (total <= cap) return want;
-  // The largest level L with sum(min(want, L)) <= cap.
-  let lo = 0;
-  let hi = Math.max(...want);
-  while (lo < hi) {
-    const mid = Math.ceil((lo + hi) / 2);
-    if (want.reduce((s, c) => s + Math.min(c, mid), 0) <= cap) lo = mid; else hi = mid - 1;
-  }
-  const out = want.map((c) => Math.min(c, lo));
-  let left = cap - out.reduce((s, c) => s + c, 0);
-  const order = want.map((c, i) => i).filter((i) => want[i] > out[i]).sort((a, b) => want[b] - want[a] || a - b);
-  for (const i of order) { if (left <= 0) break; out[i] += 1; left -= 1; }
-  return out;
-}
