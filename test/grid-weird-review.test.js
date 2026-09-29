@@ -331,7 +331,7 @@ test('GRID card: a W: hero never cuts its number; the noun shortens (16 tiles an
   const f = heroFit({ noun: 'Macau casino revenue', num: '\u221212.3%', unit: 'a year' }, 150, 18);
   assert.equal(f.num, '\u221212.3%');
   assert.ok(f.noun === '' || f.noun.endsWith('...') || f.noun === 'Macau casino revenue');
-  assert.ok((f.noun.length + 1 + f.whole.length) * CHAR_EM * f.size <= 150);
+  assert.ok(((f.noun ? f.noun.length + 1 : 0) + f.whole.length) * CHAR_EM * f.size <= 150);
 });
 
 test('WEIRD rows: always full, for 22 or 23 tiles at 1440, 1536 and 390 px', () => {
