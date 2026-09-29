@@ -1,7 +1,10 @@
 // PRO, LOGIN, LOGOUT, GIFT and REDEEM, as card pages (kit.js cardPage). PRO for a
-// visitor: the next seat, big; the price with the plan switch in it; SUBSCRIBE; one note
-// line; what Pro gives as four facts; LOGIN, REDEEM, GIFT; + Details for what is free
-// and what is Pro and the terms as short rows. With a key: YOUR KEY, COPY and DOWNLOAD,
+// visitor: what Pro gives, shown, not listed: a live CHAT window on top (the art), the
+// price, big, with the plan switch under it, SUBSCRIBE, one note line; three small live
+// minis (every device, pings when closed, no ads: screens/pro-demo.js fills them), the
+// seat and the 3 gift codes as a bonus row; one quiet line that opens LOGIN and REDEEM;
+// + Details for what is free and what is Pro and the terms as short rows. A browser with
+// a key whose Pro is off keeps its seat, big, and REACTIVATE. With a key: YOUR KEY, COPY and DOWNLOAD,
 // the seat and the renewal as facts, and small links (GIFT, MANAGE PLAN, CANCEL, SHOW
 // KEY, LOGOUT). LOGIN and REDEEM take the key or the code in a box on the page (the
 // command forms LOGIN <key> and REDEEM <code> still work); GIFT makes gift codes.
@@ -11,6 +14,8 @@ import { cardPage, cardButton, cardLink, cardForm, cardFacts, cardRows, raw } fr
 import * as pro from '../pro.js';
 import { reloadAfterKey, takeShowKeyOnce } from '../goal.js';
 import { findCommand } from '../registry.js';
+import { avatarSvg, blank } from '../pixel-avatar.js';
+import { loadModule, loadCss, stylesOf } from '../lazy.js'; // the visitor's minis: screens/pro-demo.js, by name
 import { parsePro as parse, parseRedeem, parseLogin } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { parse, parseRedeem, parseLogin };
 
@@ -165,21 +170,33 @@ function wire(el, ctx, sel, label, fn) {
 }
 
 // ---- the PRO page --------------------------------------------------------------------
-// A visitor (or a key whose Pro is off): the seat, big, the price with the plan switch in
-// it, one button, one note line, what Pro gives as four facts, small links, + Details.
+// A visitor: the minis, the price, one button, one note line, small links, + Details
+// (visitorHtml below). A key whose Pro is off: its seat, big, the price with the plan
+// switch in it, one button, one note line, small links, + Details.
 // A key with Pro on: YOUR KEY (masked until SHOW KEY), COPY and DOWNLOAD, the seat and
 // the renewal as facts, small links. Everything else (FREE vs PRO, the terms as short
 // rows, gifts) is behind + Details.
 
-export const UP_NEXT = 'UP NEXT';
 export const YOUR_KEY = 'YOUR KEY';
-// What Pro gives, as four facts: the word big, its label small under it.
-export const PERKS = [
-  { value: 'SEAT', label: 'forever' },
-  { value: 'SYNC', label: 'every device' },
-  { value: 'CHAT', label: 'friends' },
-  { value: 'AD-FREE', label: 'no trackers' },
-];
+// The visitor's view: the kicker, the captions under the minis, the key-or-code line.
+export const KICKER = 'PRO';
+export const CAPTIONS = {
+  chat: 'Chat with friends',
+  dev: 'Every device',
+  pings: 'Pings when closed',
+  ads: 'No ads',
+  seat: 'Yours forever',
+  gifts: '3 friends get a month',
+};
+export const KEY_Q = 'Key or gift code?';
+// What each mini is, for a screen reader (the words on a mini are the picture's).
+export const MINI_LABELS = {
+  chat: 'A chat between ana and joe: a stock with its price, a screen, a GUESS score and a reply',
+  dev: 'The same watchlist on a laptop and on a phone',
+  pings: 'A phone lock screen: a price alert, then a chat message',
+  ads: 'A terminal whose sponsor line slides away',
+  gifts: '3 gift codes, 30 days of Pro each',
+};
 export const RENEW_NOTE = 'Renews until cancelled';
 export const TEST_NOTE = 'test mode, no charge';
 export const KEY_NOTE = 'Your login on any device.';
@@ -188,6 +205,13 @@ export const MANAGE = 'MANAGE PLAN';
 export const CANCEL = 'CANCEL';
 export const GIFT_AFTER = 'When the gift month ends, you can subscribe on this key and keep its seat.';
 export const PLAN_PRICE = { year: `${pro.PRICE_YEAR} a year.`, month: `Or ${pro.PRICE} a month.` };
+// The visitor's hero: the picked plan's price, the one big number.
+export const HERO_PRICE = { year: pro.PRICE_YEAR, month: pro.PRICE };
+export const HERO_LABEL = { year: `${pro.PRICE_YEAR} a year`, month: `${pro.PRICE} a month` };
+// Under it, each price once: the plan's unit, then the other plan as the switch.
+export const PLAN_UNIT = { year: 'a year', month: 'a month' };
+export const PLAN_OTHER = { year: `or ${pro.PRICE} a month`, month: `or ${pro.PRICE_YEAR} a year` };
+const otherPlan = (plan) => (plan === 'month' ? 'year' : 'month');
 export const planButton = (plan) => (plan === 'month' ? 'MONTHLY' : 'YEARLY');
 
 const isGift = (st) => st?.status === 'gift' || st?.status === 'gift_ended';
@@ -220,6 +244,37 @@ export function seatInner(h) {
 export function seatLabel(h) {
   const p = seatParts(h.seat);
   return `${h.mine ? 'Your ' : ''}${p ? p.label : 'seat'}`;
+}
+
+// A pixel avatar grown from a seed (a seat number or a name): the same seed, the same
+// face. Left half random, mirrored; the edge row and column stay off. 64 booleans.
+export function seedBits(seed) {
+  let x = 2166136261;
+  for (const ch of String(seed ?? '')) { x ^= ch.charCodeAt(0); x = Math.imul(x, 16777619) >>> 0; }
+  const next = () => { x ^= x << 13; x >>>= 0; x ^= x >>> 17; x ^= x << 5; x >>>= 0; return x; };
+  const bits = blank();
+  for (let r = 1; r < 7; r++) {
+    for (let c = 1; c < 4; c++) {
+      const on = next() % 5 < 3;
+      bits[r * 8 + c] = on;
+      bits[r * 8 + 7 - c] = on;
+    }
+  }
+  return bits;
+}
+
+// The seat card of the bonus row: a seeded avatar and SEAT 00043 (blank before it comes).
+export function seatCardInner(n) {
+  const seat = Number.isInteger(n) && n > 0 ? n : null;
+  const av = avatarSvg({ seat }, { size: 32, cls: 'pd-seat-av', bits: seat ? seedBits(seat) : blank() });
+  return `${av}<span class="pd-seat-num num">${seatInner({ mine: false, seat })}</span>`;
+}
+
+// The visitor's sub: "a year · or $42 a month". The "or ..." part is the switch (a
+// .pro3-plan, so the same click handler picks its plan).
+export function switchHtml(plan) {
+  const p = plan === 'month' ? 'month' : 'year';
+  return `<span id="pro-unit">${esc(PLAN_UNIT[p])}</span> · <button type="button" class="pro3-plan pro3-switch" id="pro-switch" data-plan="${otherPlan(p)}">${esc(PLAN_OTHER[p])}</button>`;
 }
 
 // The price, with the plan switch in it: the picked plan bright, the other one dim.
@@ -293,29 +348,77 @@ export function mainHtml({ key = null, st = null, next = null, alert = '', alert
       detailsOpen,
     });
   }
-  // A visitor, or a key whose Pro is off: something to buy.
+  // A visitor: the minis, the price and SUBSCRIBE.
+  if (!key) return visitorHtml({ next, alert, alertWarn, plan, details, detailsOpen, exists });
+  // A key whose Pro is off: something to buy, its own seat big.
   const h = heroSeat({ key, st, next });
   const label = key ? (gift ? 'SUBSCRIBE' : 'REACTIVATE') : 'SUBSCRIBE';
-  const links = key
-    ? [gift ? '' : cardLink({ label: MANAGE, id: 'pro-manage' }), reveal ? '' : cardLink({ label: 'SHOW KEY', id: 'pro-show' }), cardLink({ label: 'LOGOUT', cmd: 'LOGOUT' })]
-    : [cardLink({ label: 'LOGIN', cmd: 'LOGIN' }), cardLink({ label: 'REDEEM', cmd: 'REDEEM' }), exists('GIFT') ? cardLink({ label: 'GIFT', cmd: 'GIFT' }) : ''];
-  const perks = PERKS.map((p) => (p.value === 'CHAT' && exists('CHAT') ? { ...p, value: raw(`<a class="pro3-chat" href="${esc(q('CHAT'))}" data-cmd="CHAT">CHAT</a>`) } : p));
+  const links = [gift ? '' : cardLink({ label: MANAGE, id: 'pro-manage' }), reveal ? '' : cardLink({ label: 'SHOW KEY', id: 'pro-show' }), cardLink({ label: 'LOGOUT', cmd: 'LOGOUT' })];
   return cardPage({
     label: 'Bloombroke Pro',
     cls: 'pro-card',
     alert,
     alertWarn,
-    kicker: key ? statusText(st).toUpperCase() : UP_NEXT,
+    kicker: statusText(st).toUpperCase(),
     hero: raw(seatInner(h)),
     heroId: 'pro-seat',
     heroLabel: seatLabel(h),
     heroSize: 96,
     sub: raw(priceHtml(plan)),
     act: raw(buyButton(label, plan)),
-    note: raw(noteHtml(key ? `${RENEW_NOTE} · ${label} keeps this key, its seat and your synced lists.` : RENEW_NOTE)),
-    // With a key: the key itself once SHOW KEY is pressed, in place.
-    facts: key ? (reveal ? [{ value: raw(`<span class="pro-key" id="pro-key">${esc(reveal)}</span>`), label: YOUR_KEY }] : null) : perks,
+    note: raw(noteHtml(`${RENEW_NOTE} · ${label} keeps this key, its seat and your synced lists.`)),
+    // The key itself once SHOW KEY is pressed, in place.
+    facts: reveal ? [{ value: raw(`<span class="pro-key" id="pro-key">${esc(reveal)}</span>`), label: YOUR_KEY }] : null,
     links: links.filter(Boolean),
+    details,
+    detailsOpen,
+  });
+}
+
+// ---- the visitor's view ----------------------------------------------------------------------
+// ART: the CHAT window (a live mini) and its caption. KICKER PRO, HERO the picked plan's
+// price, SUB the plan switch, ACT SUBSCRIBE, NOTE the renewal line. MEDIA: three minis in a
+// row (every device, pings when closed, no ads), then the bonus row: the next seat and the
+// 3 gift codes. LINKS: one quiet line that opens LOGIN and REDEEM. The minis are empty
+// boxes of a fixed size here; screens/pro-demo.js draws them in the browser. Words on a
+// mini are the picture's (role="img" with a label); the captions are words.
+
+const figure = (cls, inner, caption) => `<figure class="pd-fig ${cls}">${inner}<figcaption class="pd-cap">${esc(caption)}</figcaption></figure>`;
+const mini = (id, kind) => `<div class="pd-mini pd-mini-${kind}" id="${id}" role="img" aria-label="${esc(MINI_LABELS[kind])}" inert></div>`;
+
+export function giftTicketsHtml() {
+  const ticket = '<span class="pd-ticket"><span class="pd-ticket-n num">30</span><span class="pd-ticket-u">DAYS</span></span>';
+  return `<div class="pd-gifts" role="img" aria-label="${esc(MINI_LABELS.gifts)}">${ticket.repeat(3)}</div>`;
+}
+
+export function visitorHtml({ next = null, alert = '', alertWarn = false, plan = 'year', details = '', detailsOpen = false, exists = () => true } = {}) {
+  const p = plan === 'month' ? 'month' : 'year';
+  const seat = Number.isInteger(next) && next > 0 ? next : null;
+  const seatAria = seatLabel({ mine: false, seat });
+  const tiles = `<div class="pd-tiles">${figure('pd-tile', mini('pd-dev', 'dev'), CAPTIONS.dev)}${figure('pd-tile', mini('pd-pings', 'pings'), CAPTIONS.pings)}${figure('pd-tile', mini('pd-ads', 'ads'), CAPTIONS.ads)}</div>`;
+  const bonus = `<div class="pd-bonus">${figure('pd-tile-seat', `<div class="pd-seat" id="pro-seat" role="img" aria-label="${esc(seatAria)}">${seatCardInner(seat)}</div>`, CAPTIONS.seat)}${figure('pd-tile-gifts', giftTicketsHtml(), CAPTIONS.gifts)}</div>`;
+  // One quiet line; LOGIN and REDEEM behind it (GIFT is for members).
+  const keyLinks = [exists('LOGIN') ? cardLink({ label: 'LOGIN', cmd: 'LOGIN' }) : '', exists('REDEEM') ? cardLink({ label: 'REDEEM', cmd: 'REDEEM' }) : ''].filter(Boolean).join(' ');
+  return cardPage({
+    label: 'Bloombroke Pro',
+    cls: 'pro-card pro-v4',
+    wide: true,
+    alert,
+    alertWarn,
+    art: raw(figure('pd-chat-fig', mini('pd-chat', 'chat'), CAPTIONS.chat)),
+    kicker: KICKER,
+    hero: raw(`<span id="pro-price">${esc(HERO_PRICE[p])}</span>`),
+    heroLabel: HERO_LABEL[p],
+    heroId: 'pro-hero',
+    heroSize: 60,
+    sub: raw(switchHtml(p)),
+    act: raw(buyButton('SUBSCRIBE', p)),
+    note: raw(noteHtml(RENEW_NOTE)),
+    media: raw(tiles + bonus),
+    links: [
+      cardLink({ label: KEY_Q, id: 'pro-keyq', attrs: 'aria-expanded="false" aria-controls="pro-keylinks"' }),
+      `<span class="pro-keylinks" id="pro-keylinks" hidden>${keyLinks}</span>`,
+    ],
     details,
     detailsOpen,
   });
@@ -349,7 +452,7 @@ export function detailsHtml({ gift = false } = {}) {
 // Per screen: the next seat once it arrives, the picked plan, a key to show in full.
 const views = new WeakMap();
 const viewOf = (el) => {
-  if (!views.has(el)) views.set(el, { next: null, plan: 'year', reveal: null });
+  if (!views.has(el)) views.set(el, { next: null, plan: 'year', reveal: null, demo: null, demoToken: null });
   return views.get(el);
 };
 
@@ -378,7 +481,56 @@ function setPlan(host, plan) {
   if (!b) return;
   b.dataset.plan = plan;
   b.textContent = `${b.dataset.label} ${planButton(plan)}`;
-  for (const p of host.querySelectorAll('.pro3-plan')) p.setAttribute('aria-pressed', String(p.dataset.plan === plan));
+  for (const p of host.querySelectorAll('.pro3-plan:not(.pro3-switch)')) p.setAttribute('aria-pressed', String(p.dataset.plan === plan));
+  // The visitor's switch now offers the other plan; its unit follows the hero.
+  const sw = host.querySelector('#pro-switch');
+  if (sw && PLAN_OTHER[plan]) {
+    sw.dataset.plan = otherPlan(plan);
+    sw.textContent = PLAN_OTHER[plan];
+    const unit = host.querySelector('#pro-unit');
+    if (unit) unit.textContent = PLAN_UNIT[plan];
+  }
+  // The visitor's hero is the picked plan's price.
+  const price = host.querySelector('#pro-price');
+  if (price && HERO_PRICE[plan]) {
+    price.textContent = HERO_PRICE[plan];
+    host.querySelector('#pro-hero')?.setAttribute('aria-label', HERO_LABEL[plan]);
+  }
+}
+
+// The visitor's quiet line: it gives way to LOGIN and REDEEM (their own handlers).
+function wireKeyLine(host) {
+  const q = host.querySelector('#pro-keyq');
+  const links = host.querySelector('#pro-keylinks');
+  if (!q || !links) return;
+  q.addEventListener('click', () => {
+    links.hidden = false;
+    q.setAttribute('aria-expanded', 'true');
+    q.hidden = true;
+    links.querySelector('a')?.focus();
+  });
+}
+
+// The visitor's minis (screens/pro-demo.js, loaded by name with its stylesheets): started
+// once the card is drawn, stopped on a redraw and when the screen is left.
+export const DEMO_JS = 'screens/pro-demo.js';
+function startMinis(el, host, ctx) {
+  const v = viewOf(el);
+  v.demo?.stop();
+  v.demo = null;
+  v.demoToken = null;
+  // In an embed or a DESK panel: the still pictures only (no quotes call, no timers).
+  if (ctx?.embed && host.querySelector('#pd-chat')) {
+    Promise.all([loadModule(DEMO_JS, { recover: false }), ...stylesOf(DEMO_JS).map(loadCss)])
+      .then(([m]) => { if (host.isConnected && host.querySelector('#pd-chat')) m.drawStill(host, ctx); }).catch(() => {});
+  }
+  if (ctx?.embed || !host.querySelector('#pd-chat') || !ctx?.signal) return;
+  const token = {};
+  v.demoToken = token;
+  Promise.all([loadModule(DEMO_JS, { recover: false }), ...stylesOf(DEMO_JS).map(loadCss)]).then(([m]) => {
+    if (v.demoToken !== token || ctx.signal.aborted || !host.isConnected || !host.querySelector('#pd-chat')) return;
+    v.demo = m.startDemo(host, ctx);
+  }).catch(() => { /* the page works without its minis */ });
 }
 
 // Yearly not set up on the server: monthly only, and say so.
@@ -386,11 +538,12 @@ function yearlyReady(host, v) {
   pro.getConfig().then((c) => {
     if (c.yearly || !host.isConnected) return;
     const y = host.querySelector('#pro-plan-year');
-    if (!y) return;
-    y.disabled = true;
-    y.title = YEARLY_NOT_YET;
+    const sw = host.querySelector('#pro-switch');
+    if (!y && !sw) return;
     v.plan = 'month';
     setPlan(host, 'month');
+    // The key view's year part, or the visitor's switch (now offering the year): off.
+    for (const b of [y, sw]) { if (b) { b.disabled = true; b.title = YEARLY_NOT_YET; } }
     const n = host.querySelector('#pro-year-note');
     if (n) n.hidden = false;
   });
@@ -426,6 +579,8 @@ function renderAccount(el, ctx, alert = '', plan = null, { warn = false } = {}) 
   wire(host, ctx, '#pro-manage', 'OPENING BILLING...', () => pro.openPortal());
   wire(host, ctx, '#pro-cancel', 'OPENING BILLING. CANCEL IS THERE...', () => pro.openPortal());
   if (key) wireKey(host, ctx, key);
+  wireKeyLine(host);
+  startMinis(el, host, ctx);
   const show = host.querySelector('#pro-show');
   const reveal = () => {
     v.reveal = pro.getKey();
@@ -460,7 +615,8 @@ function loadNumbers(el, ctx) {
     const h = el.querySelector('#pro-seat');
     if (h && !pro.getKey()) {
       const seat = heroSeat({ next: v.next });
-      h.innerHTML = seatInner(seat);
+      // The visitor's bonus row: the seat card, with its avatar.
+      h.innerHTML = h.classList.contains('pd-seat') ? seatCardInner(seat.seat) : seatInner(seat);
       h.setAttribute('aria-label', seatLabel(seat));
     }
   }).catch(() => {});

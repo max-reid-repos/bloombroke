@@ -291,6 +291,13 @@ export const postable = (rooms) => (Array.isArray(rooms) ? rooms.filter((r) => r
 export function postChatHtml(pro, rooms) {
   return pro && postable(rooms).length ? '<button type="button" class="chip gs-chat" aria-expanded="false">POST TO CHAT</button>' : '';
 }
+// Without Pro, where Pro members see POST TO CHAT: one quiet line, its word PRO a link to
+// the PRO screen (kit.js proLine's markup). visitor: known to have no Pro (never while that
+// is still being looked up, never in an embed).
+export const CHAT_PRO_LINE = 'PRO: compare scores with friends in CHAT.';
+export function proChatLineHtml(visitor) {
+  return visitor ? `<p class="gs-pro">${esc(CHAT_PRO_LINE).replace(/^PRO/, `<a class="pro-line-link" href="${esc(q('PRO'))}" data-cmd="PRO">PRO</a>`)}</p>` : '';
+}
 // The chats to pick from: ALL, then each chat (up to 8; ALL covers the rest).
 export function roomsPickHtml(rooms) {
   const list = postable(rooms).slice(0, 8);
@@ -379,6 +386,7 @@ export function render(el, cmd, ctx) {
         ${postChatHtml(chat?.pro, chat?.rooms)}
         <span class="gs-next">NEXT IN <span class="gs-cd">${fmtCountdown(msToNextPuzzle(Date.now()))}</span></span>
       </div>
+      ${proChatLineHtml(!ctx.embed && chat?.visitor === true)}
     </div>`;
   }
 
@@ -428,7 +436,12 @@ export function render(el, cmd, ctx) {
     chat = { pro: false, rooms: [] };
     try {
       const pro = await loadModule('pro.js');
-      if (!pro.isPro()) return;
+      if (!pro.isPro()) {
+        // A visitor: the quiet PRO line under the share buttons.
+        chat = { pro: false, rooms: [], visitor: true };
+        if (!ctx.signal.aborted && !ctx.embed && isDone()) paint();
+        return;
+      }
       const res = await fetch('/api/chat', { headers: { Accept: 'application/json', [pro.HEADER]: pro.getKey() || '' }, cache: 'no-store', signal: ctx.signal });
       if (!res.ok) return;
       const d = await res.json();

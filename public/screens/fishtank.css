@@ -33,7 +33,7 @@
 .ft-leg-btn:hover { color: var(--text); background: var(--panel-3); }
 .ft-leg-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 .ft-leg-btn[aria-pressed="true"] { color: var(--accent); background: var(--accent-tint); box-shadow: inset 0 -2px 0 var(--accent); }
-.ft-glyph { display: block; width: 26px; height: 16px; }
+.ft-glyph { display: block; width: 26px; height: 16px; image-rendering: pixelated; }
 .ft-sr { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; overflow: hidden; clip: rect(0 0 0 0); }
 .ft-sr:focus-within {
   width: auto; height: auto; max-height: calc(100% - 32px); max-width: calc(100% - 16px); left: 8px; top: 24px; z-index: 2;

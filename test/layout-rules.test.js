@@ -137,7 +137,12 @@ export const WHATIF = [
 
 // [page, html, budget]: the words above + Details, numbers, keys and codes not counted.
 export const PAGES = [
-  ['PRO visitor (test mode)', shownInTest(mainHtml({ next: 4, has: all })), 30],
+  // PRO v4 (Sep 29): the owner's copy is six captions under the minis (Chat with friends,
+  // Every device, Pings when closed, No ads, Yours forever, 3 friends get a month) and the
+  // key line (Key or gift code?), on top of the price, the button and the note:
+  // 35 in test mode, 31 in live mode. Words on a mini are the picture's (role="img").
+  ['PRO visitor (test mode)', shownInTest(mainHtml({ next: 4, has: all })), 35],
+  ['PRO visitor', mainHtml({ next: 4, has: all }), 31],
   ['PRO key', mainHtml({ key: KEY, st: ST, has: all }), 25],
   // Just bought or redeemed: the save line (the last chance to save the key); in a browser
   // that saved it, MANAGE PLAN and CANCEL too. 27 (the reviewer's call, Sep 29).
@@ -265,6 +270,7 @@ function cardCss() {
     ['bbrk.css', readFileSync('public/screens/bbrk.css', 'utf8')],
     ['sponsor.css', readFileSync('public/screens/sponsor.css', 'utf8')],
     ['pro.css', pro.slice(pro.indexOf('/* ==== PRO, LOGIN, REDEEM, GIFT: card pages'))],
+    ['pro-demo.css (the minis on PRO)', readFileSync('public/screens/pro-demo.css', 'utf8')],
     ['style.css FEEDBACK', style.slice(style.indexOf('/* FEEDBACK: a card page'), style.indexOf('.fb-hp'))],
     ['me.css', readFileSync('public/screens/me.css', 'utf8')],
     ['graveyard.css stone card', (() => { const g = readFileSync('public/screens/graveyard.css', 'utf8'); return g.slice(g.indexOf('/* ---- One stone as a card page')); })()],

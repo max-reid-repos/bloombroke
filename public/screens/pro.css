@@ -50,6 +50,8 @@
 .pro3-plan[aria-pressed="true"] { color: var(--text); text-decoration: none; cursor: default; }
 .pro3-plan:not([aria-pressed="true"]):hover { color: var(--text-2); }
 .pro3-plan:disabled { cursor: not-allowed; opacity: .6; }
+/* The visitor's switch: "or $42 a month", dim and underlined until pressed. */
+.pro3-switch:hover { color: var(--text-2); }
 .pro3-chat { color: inherit; text-decoration: underline dotted var(--rule-strong); text-underline-offset: .2em; }
 .pro3-chat:hover { color: var(--accent); text-decoration: none; }
 /* + Details: FREE, then PRO, one list under the other (the column is too narrow for
@@ -67,4 +69,56 @@
 @media (max-width: 639px) {
   /* YOUR on its own line, so SEAT 00012 stays whole on a phone. */
   .pro3-who { display: block; font-size: 24px; letter-spacing: .2em; line-height: 1.4; }
+}
+
+/* ==== PRO for a visitor (v4): what Pro gives, shown. The kit's slots as they are: the
+   CHAT window is the art, the price the hero, three minis and the bonus row the media.
+   The minis are boxes of a fixed size, so nothing moves when screens/pro-demo.js draws
+   in them (its own sheet, pro-demo.css, styles what is inside). On a desktop the chat
+   sits at the left of the price and SUBSCRIBE, so all of it is in the first view. ==== */
+.pro-v4 .card-more { max-width: var(--card-w); }
+.pd-fig { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-width: 0; margin: 0; }
+.pd-cap { font-size: 13px; color: var(--text-2); }
+.pd-mini { width: 100%; overflow: hidden; }
+.pd-chat-fig { max-width: 480px; }
+.pd-mini-chat { height: 248px; text-align: left; }
+.pro-v4 .card-media { gap: 32px; }
+.pd-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; width: 100%; }
+.pd-tile .pd-mini { height: 168px; }
+/* The bonus row: the seat card and the gift tickets, side by side, smaller than the tiles. */
+.pd-bonus { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: 24px 48px; width: 100%; }
+.pd-tile-seat, .pd-tile-gifts { width: auto; }
+.pd-seat { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 16px; border: 1px solid var(--rule-strong); background: var(--panel); }
+.pd-seat-av { flex: 0 0 auto; }
+.pd-seat-num { font-size: 18px; font-weight: 700; color: var(--text); white-space: nowrap; }
+.pd-gifts { display: flex; align-items: center; gap: 8px; height: 56px; }
+/* A ticket: a stub, a perforated line, the 30 days. */
+.pd-ticket {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 64px; height: 40px; padding: 0 0 0 12px;
+  border: 1px solid var(--accent); background: var(--accent-tint); color: var(--accent);
+}
+.pd-ticket::before { content: ''; position: absolute; top: 4px; bottom: 4px; left: 12px; border-left: 1px dashed var(--accent); }
+.pd-ticket-n { font-size: 14px; font-weight: 700; line-height: 1; }
+.pd-ticket-u { font-size: 11px; letter-spacing: .08em; line-height: 1.4; }
+/* The quiet line and the two links it opens. */
+.pro-keylinks { display: inline-flex; gap: 24px; }
+.pro-keylinks[hidden], .card-link[hidden] { display: none; }
+
+@media (min-width: 1100px) {
+  .pro-v4 { display: grid; grid-template-columns: minmax(0, 480px) minmax(0, 1fr); column-gap: 48px; }
+  .pro-v4 > .card-alert { grid-column: 1 / -1; }
+  .pro-v4 > .card-art { grid-column: 1; grid-row: 1 / span 2; align-self: center; }
+  .pro-v4 > .card-head { grid-column: 2; grid-row: 1; align-self: end; }
+  .pro-v4 > .card-cta { grid-column: 2; grid-row: 2; align-self: start; }
+  .pro-v4 > .card-alert ~ .card-art { grid-row: 2 / span 2; }
+  .pro-v4 > .card-alert ~ .card-head { grid-row: 2; }
+  .pro-v4 > .card-alert ~ .card-cta { grid-row: 3; }
+  .pro-v4 > .card-media, .pro-v4 > .card-foot { grid-column: 1 / -1; }
+}
+@media (max-width: 639px) {
+  .pd-mini-chat { height: 280px; }
+  .pd-tiles { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .pd-tile .pd-mini { max-width: 320px; margin: 0 auto; }
+  .pd-bonus { gap: 24px; }
 }
