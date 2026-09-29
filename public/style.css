@@ -266,10 +266,10 @@ kbd {
 .panel-solo { border: 1px solid var(--rule-strong); }
 /* A one-line message on a screen of its own (a notice, a panel message, the dim line
    after a notice, a "Try" row too) is no wider than 60ch, centred in the panel. A panel with a
-   table keeps its message where it was, over the table. */
-.panel-solo .panel-body:not(:has(table)) > .notice,
-.panel-solo .panel-body:not(:has(table)) > .panel-msg,
-.panel-solo .panel-body:not(:has(table)) > .notice ~ .muted { max-width: 60ch; margin-left: auto; margin-right: auto; text-align: center; }
+   table or a list keeps its message where it was, left-aligned with it. */
+.panel-solo .panel-body:not(:has(table, ul, ol)) > .notice,
+.panel-solo .panel-body:not(:has(table, ul, ol)) > .panel-msg,
+.panel-solo .panel-body:not(:has(table, ul, ol)) > .notice ~ .muted { max-width: 60ch; margin-left: auto; margin-right: auto; text-align: center; }
 .panel[hidden] { display: none; }
 
 .panel-head {

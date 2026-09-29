@@ -398,7 +398,7 @@ test('every replaced site uses the kit: usage card, empty state, the NO SUCH car
 });
 
 test('one-line messages: 60ch at most, centred on a screen of their own; the profile blurb in + Details', () => {
-  assert.match(STYLE, /\.panel-solo \.panel-body:not\(:has\(table\)\) > \.notice,\s*\.panel-solo \.panel-body:not\(:has\(table\)\) > \.panel-msg,\s*\.panel-solo \.panel-body:not\(:has\(table\)\) > \.notice ~ \.muted \{ max-width: 60ch; margin-left: auto; margin-right: auto; text-align: center; \}/);
+  assert.match(STYLE, /\.panel-solo \.panel-body:not\(:has\(table, ul, ol\)\) > \.notice,\s*\.panel-solo \.panel-body:not\(:has\(table, ul, ol\)\) > \.panel-msg,\s*\.panel-solo \.panel-body:not\(:has\(table, ul, ol\)\) > \.notice ~ \.muted \{ max-width: 60ch; margin-left: auto; margin-right: auto; text-align: center; \}/);
   assert.match(readFileSync('public/commands.css', 'utf8'), /\.profile-desc \{ max-width: 60ch;/);
   const long = 'Apple Inc. designs, manufactures and markets smartphones, personal computers, tablets, wearables and accessories worldwide. It also sells a range of related services. The company offers iPhone, a line of smartphones. It was founded in 1976 and is based in Cupertino.';
   const [lead, rest] = splitDescription(long);
@@ -427,6 +427,8 @@ test('examples: one that changes something saved goes into the command bar; one 
   for (const c of ['PF EXPORT', 'PF IMPORT', 'WATCH EXPORT', 'DESK', 'DESK 2', 'DESK WEIRD']) assert.equal(examplePlan(c), 'run', `${c}: shows (PF IMPORT alone opens the paste box)`);
   for (const f of ['public/screens/portfolio.js', 'public/screens/watch.js']) assert.match(readFileSync(f, 'utf8'), /const code = \(c\) => `<a class="code" href="\$\{esc\(q\(c\)\)\}" data-cmd="\$\{esc\(c\)\}" data-example>/, `${f}: its examples carry data-example`);
   assert.match(readFileSync('public/screens/desk.js', 'utf8'), /\['DESK', 'DESK 2', 'DESK RESET', 'DESK WEIRD'\]\.map\(\(c\) => `<a class="code"[^`]*data-example>/, 'DESK: its examples too');
+  assert.match(readFileSync('public/screens/tape.js', 'utf8'), /const link = \(c\) => `<a class="code" href="\$\{esc\(q\(c\)\)\}" data-cmd="\$\{esc\(c\)\}" data-example>/, 'TAPE: its Pro rows (TAPE ADD, TAPE RESET) too');
+  for (const c of ['TAPE RESET', 'TAPE ADD AAPL']) assert.equal(examplePlan(c), 'fill', c);
   assert.match(app, /function fillBar\(raw\) \{[\s\S]*?input\.value = clean;[\s\S]*?input\.focus\(\);/);
 });
 

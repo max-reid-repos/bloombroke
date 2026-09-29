@@ -11,7 +11,7 @@ import { usageCard } from '../kit.js';
 import { parseTapeArgs as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { parse };
 
-const link = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
+const link = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}" data-example>${esc(c)}</a>`; // saving ones prefill (app.js examplePlan)
 
 // A command typed wrong: the kit's usage card.
 export function usage(cmd) {
