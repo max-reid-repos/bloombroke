@@ -66,10 +66,11 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
       WHERE r.kind = 'group' AND m.licence_id = ? AND m.left_at IS NULL`),
     maxId: db.prepare('SELECT COALESCE(MAX(id), 0) AS n FROM chat_messages WHERE room_id = ?'),
     lastMsg: db.prepare(`SELECT * FROM chat_messages c WHERE room_id = @room AND id > @from AND ${HIDDEN} ORDER BY id DESC LIMIT 1`),
-    unreadIn: db.prepare(`SELECT COUNT(*) AS n FROM chat_messages c WHERE room_id = @room AND id > @mark AND (licence_id IS NULL OR licence_id != @lic) AND ${HIDDEN}`),
+    // Server lines (kind 'sys': "Tom 1 is driving.") are never unread.
+    unreadIn: db.prepare(`SELECT COUNT(*) AS n FROM chat_messages c WHERE room_id = @room AND id > @mark AND (licence_id IS NULL OR licence_id != @lic) AND c.kind IS NOT 'sys' AND ${HIDDEN}`),
     unreadAll: db.prepare(`SELECT COUNT(*) AS n FROM chat_messages c JOIN chat_members m ON m.room_id = c.room_id AND m.licence_id = @lic AND m.left_at IS NULL
       JOIN chat_rooms r ON r.id = c.room_id
-      WHERE c.id > MAX(m.last_read_id, m.from_id) AND (c.licence_id IS NULL OR c.licence_id != @lic)
+      WHERE c.id > MAX(m.last_read_id, m.from_id) AND (c.licence_id IS NULL OR c.licence_id != @lic) AND c.kind IS NOT 'sys'
         AND (r.kind = 'dm' OR c.licence_id IS NULL OR c.licence_id NOT IN (SELECT blocked_licence FROM chat_blocks WHERE licence_id = @lic))`),
     page: db.prepare(`SELECT c.*, l.seat, p.name FROM chat_messages c LEFT JOIN licences l ON l.id = c.licence_id
       LEFT JOIN chat_profiles p ON p.licence_id = c.licence_id
@@ -90,11 +91,13 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     guessAdd: db.prepare(`INSERT INTO chat_guess (room_id, licence_id, n, day, tries, solved, points, message_id, created_at)
       VALUES (@room, @lic, @n, @day, @tries, @solved, @points, @msg, @t)`),
     guessDay: db.prepare(`SELECT g.licence_id, g.tries, g.solved, g.created_at, l.seat, p.name FROM chat_guess g JOIN licences l ON l.id = g.licence_id
+      JOIN chat_members m ON m.room_id = g.room_id AND m.licence_id = g.licence_id AND m.left_at IS NULL
       LEFT JOIN chat_profiles p ON p.licence_id = g.licence_id
       WHERE g.room_id = @room AND g.n = @n
         AND (@filter = 0 OR g.licence_id NOT IN (SELECT blocked_licence FROM chat_blocks WHERE licence_id = @me))
       ORDER BY g.solved DESC, g.tries ASC, g.created_at ASC`),
     guessWeek: db.prepare(`SELECT g.licence_id, SUM(g.points) AS points, l.seat, p.name FROM chat_guess g JOIN licences l ON l.id = g.licence_id
+      JOIN chat_members m ON m.room_id = g.room_id AND m.licence_id = g.licence_id AND m.left_at IS NULL
       LEFT JOIN chat_profiles p ON p.licence_id = g.licence_id
       WHERE g.room_id = @room AND g.day >= @from AND g.day <= @to GROUP BY g.licence_id ORDER BY points DESC, l.seat ASC`),
     weekDone: db.prepare('SELECT 1 FROM chat_guess_weeks WHERE room_id = ? AND week = ?'),
@@ -273,8 +276,7 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
         const room = q.room.get(roomId);
         if (!room) return { message: null, notify: [] };
         const t = now();
-        const r = q.sys.run(room.id, text, t);
-        q.touch.run(t, room.id);
+        const r = q.sys.run(room.id, text, t); // not moved to the top of the list: only a server line
         return { message: messageView(q.msg.get(r.lastInsertRowid), 0), notify: activeIds(room.id) };
       });
     },
@@ -327,7 +329,6 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
         const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
         const t = now();
         const r = q.sys.run(room.id, `Last week's GUESS: ${who} won with ${top} ${top === 1 ? 'point' : 'points'}.`, t);
-        q.touch.run(t, room.id);
         return { message: messageView(q.msg.get(r.lastInsertRowid), 0), notify: activeIds(room.id) };
       });
     },

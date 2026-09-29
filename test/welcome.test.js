@@ -439,7 +439,7 @@ test('hints: the list and app.js wiring', () => {
   assert.equal(new Set(HINTS).size, HINTS.length);
   for (const h of HINTS) assert.notEqual(parseCommand(h.replace(/^Try /, '')).name, 'UNKNOWN', h);
   const app = readFileSync('public/app.js', 'utf8');
-  assert.match(app, /if \(!fromUrl\) noteTried\(\);/, 'every command run counts');
+  assert.match(app, /if \(!fromUrl && !drive\) noteTried\(\);/, 'every command run counts (a followed DRIVE screen is not yours)');
   assert.match(app, /hintsDone\(\{ historyLength: cmdHistory\.length \}\)/);
   assert.match(app, /reduced: \(\) => reduceMotion\.matches/);
   assert.match(app, /if \(glowNext && cmd\.name === 'HOME'\) glowOnce\(\);/, 'the first HOME after the card glows');

@@ -1441,9 +1441,9 @@ function boot() {
   function run(raw, { push = true, fromUrl = false, typed = false, drive = false } = {}) {
     const clean = tokenize(raw).join(' ') || DEFAULT_COMMAND;
     if (!drive) window.dispatchEvent(new Event('bb:own')); // DRIVE: your own command ends following
-    if (!fromUrl) noteTried();
+    if (!fromUrl && !drive) noteTried();
     // MENU opens the launcher over the current screen; it is not a screen of its own.
-    if (menu && !fromUrl && clean === 'MENU') {
+    if (menu && !fromUrl && !drive && clean === 'MENU') {
       if (push) remember(clean);
       histIndex = cmdHistory.length;
       input.value = '';
@@ -1493,14 +1493,20 @@ function boot() {
       // LOGIN, LOGOUT and TAPE put their screen there too, and LOGIN's key goes nowhere.
       const { url, kept } = urlFor(clean);
       const q = toQuery(url);
-      if (location.search !== q) window.history.pushState({ c: kept, d: depth() + 1 }, '', q);
-      remember(kept);
+      // DRIVE: a followed screen replaces the entry and stays out of your history and bar.
+      if (drive) window.history.replaceState({ c: kept, d: depth() }, '', q);
+      else {
+        if (location.search !== q) window.history.pushState({ c: kept, d: depth() + 1 }, '', q);
+        remember(kept);
+      }
     }
-    histIndex = cmdHistory.length;
-    input.value = '';
-    draft = '';
-    closeSuggest();
-    placeCursor();
+    if (!drive) {
+      histIndex = cmdHistory.length;
+      input.value = '';
+      draft = '';
+      closeSuggest();
+      placeCursor();
+    }
     render(clean, { fromUrl });
   }
 

@@ -142,3 +142,4 @@ html:not(.is-embed) .view > .panel.chat-panel > .panel-body { display: flex; pad
 .dv-cmd { color: var(--text); }
 .dv-btn { padding: 0; border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
 .dv-btn:hover, .dv-btn:focus-visible { text-decoration: underline; }
+.ct-confirm { margin: 0; border-width: 0 0 1px; }

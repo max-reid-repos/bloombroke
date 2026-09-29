@@ -266,3 +266,45 @@ test('copy rules: DRIVE and GUESS LEAGUE files', () => {
     assert.doesNotMatch(src, /\b(buy now|sell now|strong buy|should buy|buy signal|sell signal|price target|prize|wager|stake)\b/i, `${f}: advice or stakes`);
   }
 });
+
+// ---- review fixes ------------------------------------------------------------------------------
+
+test('fix 3: today\'s answer is not one request away; the screen sends the guesses before (p) and keeps the answer', async () => {
+  const { makeGuess, lostWith } = await import('../data/guess.js');
+  const { checkQuery, readState } = await import('../public/screens/guess.js');
+  const game = makeGuess({ getChart: async () => ({ points: [] }), getCaps: async () => ({ stocks: [] }), secret: SECRET, now: () => new Date(T0) });
+  const n = nyN(T0);
+  assert.throws(() => game.reveal(n), { code: 'today' }, 'reveal refuses today');
+  assert.equal(game.reveal(n - 1).ticker, answerOf(n - 1), 'older days still');
+  const ans = POOL.find((m) => m.ticker === answerOf(n));
+  const w = wrong(n, 6).map((t) => POOL.find((m) => m.ticker === t));
+  assert.equal(lostWith(w.slice(0, 5).map((m) => m.ticker).join(','), w[5], ans), true);
+  assert.equal(lostWith(w.slice(0, 4).map((m) => m.ticker).join(','), w[5], ans), false, 'not the last try');
+  assert.equal(checkQuery({ n: 2, rows: [] }, 'AAPL'), 'n=2&g=AAPL');
+  assert.equal(checkQuery({ n: 2, rows: [{ ticker: 'MSFT' }, { ticker: 'BRK.B' }] }, 'AAPL'), 'n=2&g=AAPL&p=MSFT%2CBRK.B');
+  const st = readState({ game: { n: 2, rows: [], answer: { ticker: 'UPS', name: 'UPS' } } });
+  assert.deepEqual(st.game.answer, { ticker: 'UPS', name: 'UPS' });
+  assert.equal(readState({ game: { n: 2, rows: [], answer: { ticker: 1 } } }).game.answer, undefined);
+  for (const f of ['public/screens/guess.js', 'public/embed-guess.js']) {
+    const src = readFileSync(f, 'utf8');
+    assert.match(src, /\/api\/guess\/check\?\$\{checkQuery\(game, pick\[0\]\)\}/, f);
+    assert.match(src, /if \(game\.answer\) \{ answer = game\.answer; return; \}/, f);
+  }
+});
+
+test('fix 12: TODAY\'S GUESS and the weekly winner count only people still in the room', async () => {
+  const s = await setup();
+  try {
+    const [a, b, c] = [s.person(), s.person(), s.person()];
+    await s.connect(a, b); await s.connect(a, c); await s.connect(b, c);
+    const g = (await a.open(b.seat, c.seat)).body.room.id;
+    const n = nyN(s.now());
+    await b.play(solvedIn(n, 1), [g]);
+    await a.play(solvedIn(n, 3), [g]);
+    await b.post(`/api/chat/rooms/${g}`, { action: 'leave' });
+    assert.deepEqual((await a.thread(g)).guess.scores.map((x) => x.seat), [a.seat]);
+    s.setNow(Date.UTC(2026, 9, 5, 14));
+    const lines = (await c.thread(g)).messages.filter((m) => m.kind === 'sys').map((m) => m.text);
+    assert.deepEqual(lines, [`Last week's GUESS: SEAT ${a.seat} won with 4 points.`], 'B left: not the winner');
+  } finally { await s.close(); }
+});

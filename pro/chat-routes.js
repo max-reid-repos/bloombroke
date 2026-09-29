@@ -319,6 +319,8 @@ export function mountChat(app, {
     const d = drives.get(id);
     if (action === 'start') {
       if (!chat.canWrite(id, lic)) return fail(res, 409, 'read_only', 'This chat is closed.');
+      // No takeover across a block, either way.
+      if (d && d.driver !== lic && chat.blockedEither(d.driver, lic)) return fail(res, 409, 'taken', 'Someone else is driving here.');
       hub.touch(lic);
       if (d?.driver !== lic) {
         const by = chat.me(lic);

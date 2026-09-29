@@ -5,7 +5,8 @@
 // card is sent to the server, 300 ms after the last change. Other screens are not sent.
 // Follower: opt-in only (FOLLOW). Each screen the driver sends goes through the router
 // like a link (app.js 'bb:drive-run': linkPlan, so nothing that changes anything runs by
-// itself). Esc, a command of your own or STOP ends following.
+// itself). Esc, a command of your own, STOP or CHAT ends following. Starting another
+// drive or follow, or logging out, tells the server the old one is over.
 // Both keep one long-poll (GET /api/chat/wait) while driving or following, and none after.
 // Zoom and drag inside a chart are not sent: only commands.
 //
@@ -17,6 +18,7 @@ import { getKey, HEADER } from './pro.js';
 export const DEBOUNCE_MS = 300;
 export const PAUSE_MS = 5000;
 export const HOLD_MS = 20_000;
+export const RECHECK_MS = 60_000; // a follower asks whether the drive is still on
 const BACKOFF_MS = 5000;
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -28,7 +30,7 @@ export function driverBarHtml(followers = 0) {
 }
 export function followBarHtml(by, cmd = '') {
   const screen = cmd ? `<span class="dv-sep">·</span><span class="dv-cmd">${esc(cmd)}</span>` : '';
-  return `<span class="dv-k">FOLLOWING</span> ${esc(who(by))}${screen}<span class="dv-sep">·</span><button type="button" class="dv-btn" data-dv="stop">ESC stops</button><span class="dv-sep">·</span><button type="button" class="dv-btn" data-dv="chat">CHAT</button>`;
+  return `<span class="dv-k">FOLLOWING</span> ${esc(who(by))}${screen}<span class="dv-sep">·</span><button type="button" class="dv-btn" data-dv="stop">ESC stops</button><span class="dv-sep">·</span><a class="dv-btn" href="?c=CHAT" data-cmd="CHAT">CHAT</a>`;
 }
 
 // A follower's events: the newest screen for this room after seq, and whether it ended.
@@ -53,6 +55,18 @@ export function pickDrive(events, room) {
   }
   return { followers, ended };
 }
+// Is the drive this follower follows still on? rooms: GET /api/chat's rooms.
+export function stillFollowing(rooms, room) {
+  const r = (rooms || []).find((x) => x.id === room);
+  return Boolean(r?.drive && !r.drive.own && r.drive.following);
+}
+// Esc belongs to following only when nothing else wants it: no text in the command bar,
+// no suggestion list or menu open, no panel maximised, no link or TAKE OVER waiting.
+export function escFree(doc) {
+  if (!doc?.querySelector) return true;
+  if (doc.getElementById?.('cmd')?.value) return false;
+  return !doc.querySelector('#suggest:not([hidden]), .menu-overlay:not([hidden]), body.has-max-panel, .link-confirm[role="alertdialog"], .ct-confirm');
+}
 // The pause before the next long-poll (the same rule as the CHAT screen's).
 export function nextPause(d, elapsed) {
   if (d?.evicted) return PAUSE_MS;
@@ -73,8 +87,8 @@ export function createDrive({ win = globalThis.window, doc = globalThis.document
 
   const changed = () => { for (const fn of subs) { try { fn(); } catch { /* a view that went away */ } } };
 
-  function api(url, { method = 'GET', body, signal } = {}) {
-    const headers = { Accept: 'application/json', [HEADER]: key() || '' };
+  function api(url, { method = 'GET', body, signal, as = null } = {}) {
+    const headers = { Accept: 'application/json', [HEADER]: as || key() || '' };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     return Promise.resolve()
       .then(() => fetchImpl(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal, cache: 'no-store' }))
@@ -114,8 +128,6 @@ export function createDrive({ win = globalThis.window, doc = globalThis.document
     e.preventDefault();
     e.stopPropagation();
     if (b.dataset.dv === 'stop') stop();
-    // CHAT from the follow bar: open the chat and keep following.
-    else if (b.dataset.dv === 'chat') win.dispatchEvent(new CustomEvent('bb:drive-run', { detail: 'CHAT' }));
   }
 
   // ---- driver: the screens ----
@@ -144,13 +156,14 @@ export function createDrive({ win = globalThis.window, doc = globalThis.document
 
   // ---- follower: the keys and own commands ----
   function onKey(e) {
-    if (!st || st.role !== 'follow' || e.key !== 'Escape' || e.defaultPrevented) return;
-    // A link waiting for Enter or Esc keeps its Esc.
-    if (doc?.querySelector?.('.link-confirm[role="alertdialog"]')) return;
+    if (!st || st.role !== 'follow' || e.key !== 'Escape' || e.defaultPrevented || !escFree(doc)) return;
     e.preventDefault();
     stop();
   }
+  // A command of your own (typed, clicked, Back, or CHAT in the bar) ends following.
   function onOwn() { if (st?.role === 'follow') stop(); }
+  // Logged out, or another key: the old drive ends, told with the key it began with.
+  function onPro() { if (st && (key() || null) !== st.key) stop(); }
   function runScreen(mine, cmd) {
     // The card rule here too: only a plain screen, never anything that changes something.
     const card = shareable(cmd);
@@ -174,6 +187,13 @@ export function createDrive({ win = globalThis.window, doc = globalThis.document
           const f = pickFollow(d?.events, mine.room, mine.seq);
           if (f.ended) { end(); return; }
           if (f.next) { mine.seq = f.next.seq; runScreen(mine, f.next.cmd); }
+          // A lost drive-end (a restart, a dropped event): ask on a quiet answer, or each minute.
+          if (!(d?.events || []).length || Date.now() - mine.checked >= RECHECK_MS) {
+            mine.checked = Date.now();
+            const list = await api('/api/chat', { signal: mine.ctl.signal });
+            if (st !== mine) return;
+            if (!stillFollowing(list?.rooms, mine.room)) { end(); return; }
+          }
         } else {
           const p = pickDrive(d?.events, mine.room);
           if (p.ended) { end(); return; }
@@ -191,9 +211,13 @@ export function createDrive({ win = globalThis.window, doc = globalThis.document
   }
 
   function begin(next) {
+    // Driving or following elsewhere: that one ends, and the server hears it.
+    const old = st;
     end();
+    if (old) tell(old);
     gen += 1;
-    st = { ...next, gen, ctl: new AbortController(), last: null, timer: 0 };
+    st = { ...next, gen, ctl: new AbortController(), last: null, timer: 0, key: key() || null, checked: Date.now() };
+    win.addEventListener('bb:pro', onPro);
     if (st.role === 'drive') win.addEventListener('bb:screen', onScreen);
     else {
       win.addEventListener('keydown', onKey, true);
@@ -214,6 +238,7 @@ export function createDrive({ win = globalThis.window, doc = globalThis.document
     win.removeEventListener('bb:screen', onScreen);
     win.removeEventListener('keydown', onKey, true);
     win.removeEventListener('bb:own', onOwn);
+    win.removeEventListener('bb:pro', onPro);
     paintBar();
     changed();
   }
@@ -222,7 +247,11 @@ export function createDrive({ win = globalThis.window, doc = globalThis.document
     const old = st;
     if (!old) return Promise.resolve();
     end();
-    return api(`/api/chat/rooms/${old.room}/drive`, { method: 'POST', body: { action: old.role === 'drive' ? 'stop' : 'unfollow' } }).catch(() => {});
+    return tell(old);
+  }
+  // STOP for a driver, UNFOLLOW for a follower; fire and forget.
+  function tell(old) {
+    return api(`/api/chat/rooms/${old.room}/drive`, { method: 'POST', body: { action: old.role === 'drive' ? 'stop' : 'unfollow' }, as: old.key }).catch(() => {});
   }
 
   return {

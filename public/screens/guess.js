@@ -56,7 +56,17 @@ export function readState(raw) {
   const g = s.game && typeof s.game === 'object' ? s.game : null;
   const okRow = (r) => r && typeof r.ticker === 'string' && typeof r.name === 'string' && Array.isArray(r.cells);
   const game = g && Number.isInteger(g.n) && Array.isArray(g.rows) ? { n: g.n, rows: g.rows.filter(okRow).slice(0, TRIES) } : null;
+  // The answer that came with the last wrong guess (today's is not revealed any other way).
+  if (game && typeof g.answer?.ticker === 'string' && typeof g.answer?.name === 'string') game.answer = { ticker: g.answer.ticker, name: g.answer.name };
   return { results, game };
+}
+
+// The check query: the puzzle, this guess, and the guesses before it (p), so the last
+// wrong one brings the answer back.
+export function checkQuery(game, ticker) {
+  const q = { n: String(game.n), g: ticker };
+  if (game.rows.length) q.p = game.rows.map((r) => r.ticker).join(',');
+  return new URLSearchParams(q).toString();
 }
 
 // A finished game goes into results (once), the oldest dropping past KEEP_RESULTS.
@@ -339,6 +349,7 @@ export function render(el, cmd, ctx) {
     if (answer) return;
     const hit = game.rows.find((r) => r.solved);
     if (hit) { answer = { ticker: hit.ticker, name: hit.name }; return; }
+    if (game.answer) { answer = game.answer; return; }
     try {
       answer = await ctx.fetchJSON(`/api/guess/reveal?${new URLSearchParams({ n: String(game.n) })}`, { signal: ctx.signal });
     } catch (err) {
@@ -400,8 +411,9 @@ export function render(el, cmd, ctx) {
     const input = playBody.querySelector('.gs-in');
     if (input) input.disabled = true;
     try {
-      const d = await ctx.fetchJSON(`/api/guess/check?${new URLSearchParams({ n: String(game.n), g: pick[0] })}`, { signal: ctx.signal });
+      const d = await ctx.fetchJSON(`/api/guess/check?${checkQuery(game, pick[0])}`, { signal: ctx.signal });
       game.rows.push({ ticker: d.guess.ticker, name: d.guess.name, cells: d.cells, solved: Boolean(d.solved) });
+      if (d.answer?.ticker) game.answer = { ticker: d.answer.ticker, name: d.answer.name };
       save();
       ctx.status('');
       if (isDone()) await finish(); else paint();

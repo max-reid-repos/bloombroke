@@ -15,8 +15,10 @@
 // 1Y MOVE (the same daily closes), SIZE (market cap from the CNBC S&P 100 batch) and the
 // first letter of the ticker. Each says where the answer is compared with the guess.
 //
-// Routes (mountGuess): /api/guess/today, /api/guess/check?n=&g=, /api/guess/reveal?n=.
-// Reveal is not enforced (the answer is one request away); that is fine for a game.
+// Routes (mountGuess): /api/guess/today, /api/guess/check?n=&g=&p=, /api/guess/reveal?n=.
+// Today's answer comes only with the last (sixth) wrong guess: check gets the five before
+// it (p) and adds the answer. Reveal gives past puzzles only, so a GUESS result posted
+// to CHAT is not one request away from the answer.
 
 import { createHmac, randomBytes } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -229,6 +231,20 @@ export function findMember(raw, pool = POOL) {
   return pool.find((m) => m.ticker === s) || pool.find((m) => m.name.toUpperCase() === s) || null;
 }
 
+// Five earlier guesses, each a different stock of the list, none the answer or this one:
+// with this wrong one, that is six tries and the game is lost.
+export function lostWith(rawPrev, g, answer, pool = POOL) {
+  const prev = String(rawPrev ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  if (prev.length !== TRIES - 1) return false;
+  const seen = new Set([g.ticker]);
+  for (const raw of prev) {
+    const m = findMember(raw, pool);
+    if (!m || seen.has(m.ticker) || m.ticker === answer.ticker) return false;
+    seen.add(m.ticker);
+  }
+  return true;
+}
+
 export class GuessError extends Error {
   constructor(status, code, message) {
     super(message);
@@ -294,7 +310,9 @@ export function makeGuess({ getChart, getCaps, secret, now = () => new Date(), p
       };
     },
 
-    async check(rawN, rawGuess) {
+    // prev: the guesses before this one, 'AAPL,MSFT' (the page has them). With five wrong
+    // ones before a sixth wrong one, the game is lost and the answer comes back too.
+    async check(rawN, rawGuess, rawPrev = '') {
       const t = today();
       const n = readN(rawN);
       if (n === null || n > t.n) throw new GuessError(400, 'usage', `Say which puzzle: n=${t.n} is today's.`);
@@ -308,17 +326,20 @@ export function makeGuess({ getChart, getCaps, secret, now = () => new Date(), p
       ]);
       const side = (m, c) => ({ ticker: m.ticker, sector: m.sector, move: oneYearMove(c), cap: capMap.get(m.ticker) ?? null });
       const solved = g.ticker === t.answer.ticker;
-      return {
+      const out = {
         n, guess: { ticker: g.ticker, name: g.name, sector: g.sector },
         cells: hintCells(side(t.answer, ac), side(g, gc)),
         solved,
       };
+      if (!solved && lostWith(rawPrev, g, t.answer, pool)) out.answer = { ticker: t.answer.ticker, name: t.answer.name, sector: t.answer.sector, sectorName: SECTORS[t.answer.sector] || t.answer.sector };
+      return out;
     },
 
     reveal(rawN) {
       const t = today();
       const n = readN(rawN);
       if (n === null || n > t.n) throw new GuessError(400, 'usage', `Puzzles run from #1 to #${t.n}.`);
+      if (n === t.n) throw new GuessError(409, 'today', 'Today\'s answer shows when the game ends.');
       const a = pickAnswer(n, secret, pool);
       return { n, ticker: a.ticker, name: a.name, sector: a.sector, sectorName: SECTORS[a.sector] || a.sector };
     },
@@ -381,7 +402,7 @@ export function mountGuess(app, { getChart, getCaps, secret = loadSecret(), now 
 
   app.get('/api/guess/today', handle(60, () => game.todayPuzzle()));
   const played = (req, d) => { try { count('guess_played', req, `guess:${d.n}`); } catch { /* never fails the game */ } return d; };
-  app.get('/api/guess/check', handle(60, async (req) => { const d = await game.check(str(req.query.n), str(req.query.g)); return d.solved ? played(req, d) : d; }));
+  app.get('/api/guess/check', handle(60, async (req) => { const d = await game.check(str(req.query.n), str(req.query.g), str(req.query.p)); return d.solved ? played(req, d) : d; }));
   app.get('/api/guess/reveal', handle(300, (req) => game.reveal(str(req.query.n))));
   return game;
 }

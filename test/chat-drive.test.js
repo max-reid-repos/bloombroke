@@ -267,7 +267,7 @@ function fakeApi(answers = {}) {
   const res = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
   const fetchImpl = (url, opts = {}) => {
     const body = opts.body ? JSON.parse(opts.body) : undefined;
-    calls.push([opts.method || 'GET', url, body]);
+    calls.push([opts.method || 'GET', url, body, opts.headers?.['X-Pro-Key']]);
     if (url.startsWith('/api/chat/wait')) {
       if (queue.length) return Promise.resolve(res(queue.shift()));
       return new Promise((resolve, reject) => {
@@ -289,6 +289,7 @@ const TOM = { seat: 1, name: 'Tom' };
 test('bars: one line each; DRIVING with the count and STOP; FOLLOWING who, the screen, ESC stops, CHAT', () => {
   assert.equal(strip(driverBarHtml(2)), 'DRIVING · 2 following · STOP');
   assert.equal(strip(followBarHtml(TOM, 'AAPL 1Y')), 'FOLLOWING Tom 1 · AAPL 1Y · ESC stops · CHAT');
+  assert.match(followBarHtml(TOM, 'AAPL'), /<a class="dv-btn" href="\?c=CHAT" data-cmd="CHAT">CHAT<\/a>/, 'fix 10: CHAT is an own command: it opens CHAT and ends following');
   assert.equal(strip(followBarHtml({ seat: 7, name: null }, '')), 'FOLLOWING SEAT 7 · ESC stops · CHAT');
   assert.match(followBarHtml({ seat: 7, name: '<b>' }, '<i>'), /&lt;b&gt; 7.*&lt;i&gt;/);
   assert.equal(who(TOM), 'Tom 1');
@@ -346,7 +347,7 @@ test('follow: opt-in; the current screen opens; each screen goes through the rou
   assert.equal(esc.defaultPrevented, true);
   assert.equal(dv.state(), null);
   await tick(5);
-  assert.deepEqual(api.calls.at(-1), ['POST', '/api/chat/rooms/9/drive', { action: 'unfollow' }]);
+  assert.deepEqual(api.calls.at(-1).slice(0, 3), ['POST', '/api/chat/rooms/9/drive', { action: 'unfollow' }]);
   const n = api.waits();
   api.push({ events: [{ type: 'drive', room: 9, cmd: 'AAPL', seq: 9 }], last: 9 });
   await tick(20);
@@ -415,7 +416,7 @@ test('driver: screens go 300 ms after the last change, only card-able ones, each
   // STOP tells the server.
   await dv.start(9);
   await dv.stop();
-  assert.deepEqual(api.calls.at(-1), ['POST', '/api/chat/rooms/9/drive', { action: 'stop' }]);
+  assert.deepEqual(api.calls.at(-1).slice(0, 3), ['POST', '/api/chat/rooms/9/drive', { action: 'stop' }]);
 });
 
 test('the page: drive.js loads with CHAT, never at startup; the CHAT loop ignores drive events', () => {
@@ -424,4 +425,155 @@ test('the page: drive.js loads with CHAT, never at startup; the CHAT loop ignore
   assert.ok(a.closure('screens/chat.js').includes('drive.js'));
   const src = readFileSync('public/screens/chat.js', 'utf8');
   assert.match(src, /d\.events\?\.some\(\(e\) => !String\(e\.type\)\.startsWith\('drive'\)\)/);
+});
+
+// ---- review fixes ------------------------------------------------------------------------------
+
+const { secretIn: serverSecret, cleanCard } = await import('../pro/chat.js');
+const { secretIn: clientSecret, takeConfirmHtml } = await import('../public/screens/chat.js');
+const { escFree, stillFollowing } = await import('../public/drive.js');
+
+test('fix 1: a new drive or follow tells the server the old one ended; so does logging out', async () => {
+  const api = fakeApi({
+    start: () => ({ drive: { by: TOM, own: true, followers: 0 }, cursor: 1 }),
+    follow: () => ({ drive: { by: TOM, cmd: null, seq: 0 }, cursor: 1 }),
+  });
+  const win = new EventTarget();
+  let k = 'KEY-A';
+  const dv = createDrive({ win, doc: null, fetchImpl: api.fetchImpl, key: () => k, shareable: attachFor });
+  const told = () => api.calls.filter((c) => c[2]?.action === 'stop' || c[2]?.action === 'unfollow').map((c) => [c[1], c[2].action, c[3]]);
+  await dv.follow(9);
+  await dv.start(7);
+  await tick(5);
+  assert.deepEqual(told(), [['/api/chat/rooms/9/drive', 'unfollow', 'KEY-A']], 'following 9 ended when driving 7 began');
+  await dv.follow(9);
+  await tick(5);
+  assert.deepEqual(told().at(-1), ['/api/chat/rooms/7/drive', 'stop', 'KEY-A'], 'driving 7 ended when following 9 began');
+  // Logout (the key is gone): the old drive ends, told with the key it began with.
+  await dv.start(7);
+  k = null;
+  win.dispatchEvent(new Event('bb:pro'));
+  await tick(5);
+  assert.equal(dv.state(), null);
+  assert.deepEqual(told().at(-1), ['/api/chat/rooms/7/drive', 'stop', 'KEY-A']);
+  // The CHAT screen stops a drive or follow before LEAVE or BLOCK in that room.
+  assert.match(readFileSync('public/screens/chat.js', 'utf8'), /if \(\(a === 'leave' \|\| a === 'block'\) && dv\.state\(\)\?\.room === r\.id\) await dv\.stop\(\);/);
+});
+
+test('fix 2: no key or gift code in a card or a driven screen, in any case or shape; server and page agree', async () => {
+  const KEY = 'BB-7K2M-ABCD-EFGH-JK3M';
+  const bad = [
+    `HELP ${KEY}`, `help ${KEY.toLowerCase()}`, 'HELP BB7K2MABCDEFGHJK3M', 'GRID AAPL 7K2MABCDEFGHJK3M', 'WHATIF 7K2M-ABCD-EFGH-JK3M',
+    'HELP BB 7K2M ABCD EFGH JK3M', 'GRID AAPL 7K2M ABCD EFGH JK3M', 'HELP 7K2M.ABCD.EFGH.JK3M', 'HELP GIFT-7K2M-ABCD-EFGH-JK3M-ABCD-EFGH-JK3M',
+    'WHATIF GIFT 7K2M ABCD EFGH JK3M ABCD EFGH JK3M', 'HELP 7K2MABCDEFGHJK3MABCDEFGHJK3M', 'NEWS ABCD-EFGH-JKLM-NPQR',
+  ];
+  const good = ['AAPL 1Y', 'COMPARE AAPL MSFT NVDA TSLA', 'HISTORY AAPL 2020-01-01 2024-12-31', 'FX 500 USD THB', 'WEIRD', 'NEWS'];
+  for (const c of bad) {
+    assert.equal(serverSecret(c), true, `server: ${c}`);
+    assert.equal(clientSecret(c), true, `page: ${c}`);
+    assert.equal(attachFor(c), null, `attach: ${c}`);
+    assert.throws(() => cleanCard({ cmd: c }, { parse: parseCommand, linkChanges }), { code: 'bad_card' }, c);
+  }
+  for (const c of good) assert.deepEqual([serverSecret(c), clientSecret(c)], [false, false], c);
+  // The route refuses it, and a follower never runs one that got through somehow.
+  const s = await setup();
+  try {
+    const { a, g } = await s.trio();
+    await a.drive(g, 'start');
+    for (const c of bad.slice(0, 4)) assert.equal((await a.cmd(g, c)).status, 400, c);
+  } finally { await s.close(); }
+  const api = fakeApi({ follow: () => ({ drive: { by: TOM, cmd: `HELP ${KEY}`, seq: 1 }, cursor: 1 }) });
+  const win = new EventTarget();
+  const ran = [];
+  win.addEventListener('bb:drive-run', (e) => ran.push(e.detail));
+  const dv = createDrive({ win, doc: null, fetchImpl: api.fetchImpl, key: () => 'K', shareable: attachFor });
+  await dv.follow(9);
+  assert.deepEqual(ran, [], 'the follower re-checks');
+  dv.end();
+});
+
+test('fix 2: a chat card with a key in it is refused', async () => {
+  const s = await setup();
+  try {
+    const { a, g } = await s.trio();
+    const r = await s.req('POST', `/api/chat/rooms/${g}/messages`, { key: a.key, body: { text: 'look', card: { cmd: 'HELP BB-7K2M-ABCD-EFGH-JK3M' } } });
+    assert.equal(r.status, 400);
+    assert.equal(r.body.error, 'bad_card');
+  } finally { await s.close(); }
+});
+
+test('fix 4: a followed screen keeps your bar, history and hints, and replaces the address', () => {
+  const app = readFileSync('public/app.js', 'utf8');
+  assert.match(app, /if \(!fromUrl && !drive\) noteTried\(\);/);
+  assert.match(app, /if \(drive\) window\.history\.replaceState\(\{ c: kept, d: depth\(\) \}, '', q\);\s+else \{\s+if \(location\.search !== q\) window\.history\.pushState\(\{ c: kept, d: depth\(\) \+ 1 \}, '', q\);\s+remember\(kept\);/);
+  assert.match(app, /if \(!drive\) \{\s+histIndex = cmdHistory\.length;\s+input\.value = '';/);
+});
+
+test('fix 5: a follower whose drive is gone (a restart, a lost event) stops on the next quiet answer', async () => {
+  let rooms = [{ id: 9, drive: { by: TOM, own: false, following: true } }];
+  const api = fakeApi({ follow: () => ({ drive: { by: TOM, cmd: null, seq: 0 }, cursor: 1 }), cmd: () => ({ rooms }) });
+  const win = new EventTarget();
+  const dv = createDrive({ win, doc: null, fetchImpl: api.fetchImpl, key: () => 'K', shareable: attachFor });
+  await dv.follow(9);
+  await tick();
+  api.push({ events: [], last: 1 });
+  await tick(10);
+  assert.ok(dv.state(), 'still on: the room still has the drive');
+  dv.end();
+  assert.equal(stillFollowing([{ id: 9, drive: { by: TOM, own: false, following: false } }], 9), false);
+  assert.equal(stillFollowing([{ id: 9 }], 9), false);
+  assert.equal(stillFollowing([], 9), false);
+  rooms = [{ id: 9 }];
+  await dv.follow(9);
+  await tick();
+  api.push({ events: [], last: 2 });
+  await tick(10);
+  assert.equal(dv.state(), null, 'the drive is gone: following ends');
+});
+
+test('fix 7: someone blocked either way with the driver cannot take over', async () => {
+  const s = await setup();
+  try {
+    const { a, b, c, g } = await s.trio();
+    await a.drive(g, 'start');
+    const ab = (await b.list()).body.rooms.find((r) => r.kind === 'dm' && r.title === `Tom ${a.seat}`).id;
+    await b.post(`/api/chat/rooms/${ab}`, { action: 'block' });
+    const r = await b.drive(g, 'start');
+    assert.deepEqual([r.status, r.body.error], [409, 'taken']);
+    assert.equal(s.chat.drives.get(g).driver, a.id);
+    assert.equal((await c.drive(g, 'start')).status, 200, 'C may take over');
+  } finally { await s.close(); }
+});
+
+test('fix 8: TAKE OVER asks first; server lines are never unread and never move a chat to the top', async () => {
+  const room = { id: 9, readOnly: false, drive: { by: TOM, own: false } };
+  assert.match(driveChipHtml(room), /data-act="take">TAKE OVER</);
+  assert.match(driveChipHtml(room, { role: 'drive', room: 9 }), />STOP</);
+  assert.equal(strip(takeConfirmHtml(TOM)), 'Take over from Tom 1? ENTER: TAKE OVER ESC: CANCEL');
+  const src = readFileSync('public/screens/chat.js', 'utf8');
+  assert.match(src, /\(e\.key === 'Enter' \|\| e\.key === 'Escape'\) && \$\('\.ct-confirm'\)/);
+  const s = await setup();
+  try {
+    const { a, b, c, g } = await s.trio();
+    const ab = (await a.list()).body.rooms.find((r) => r.kind === 'dm' && r.title === `SEAT ${b.seat}`).id;
+    await s.req('POST', `/api/chat/rooms/${ab}/messages`, { key: a.key, body: { text: 'newer' } });
+    await b.get(`/api/chat/rooms/${g}/messages`);
+    const before = (await b.list()).body.rooms.map((r) => r.id);
+    await a.drive(g, 'start');
+    await a.drive(g, 'stop');
+    const after = (await b.list()).body;
+    assert.deepEqual(after.rooms.map((r) => r.id), before, 'the group did not move up');
+    assert.equal(after.rooms.find((r) => r.id === g).unread, 0);
+    assert.equal((await c.get('/api/chat/unread')).body.count, 0, 'nothing unread for C');
+  } finally { await s.close(); }
+});
+
+test('fix 9: Esc stops following only when nothing else wants it', () => {
+  const doc = (value, sel = []) => ({ getElementById: () => ({ value }), querySelector: (q) => (sel.some((x) => q.includes(x)) ? {} : null) });
+  assert.equal(escFree(doc('')), true);
+  assert.equal(escFree(doc('AAP')), false, 'text in the command bar');
+  assert.equal(escFree(doc('', ['#suggest:not([hidden])'])), false, 'suggestions open');
+  assert.equal(escFree(doc('', ['.menu-overlay:not([hidden])'])), false, 'the menu');
+  assert.equal(escFree(doc('', ['body.has-max-panel'])), false, 'a maximised panel');
+  assert.equal(escFree(doc('', ['.ct-confirm'])), false, 'TAKE OVER asking');
 });

@@ -8,6 +8,7 @@
 // one optional card points at a screen of the terminal.
 
 import { cleanMessage } from './feedback.js';
+import { normalizeKey, normalizeGiftCode } from './licence.js';
 
 export const MAX_TEXT = 500;
 export const MAX_NAME = 16;
@@ -130,6 +131,26 @@ export function cleanSeats(list, { max = MAX_MEMBERS - 1 } = {}) {
   return seats;
 }
 
+// A Pro key or a gift code anywhere in a command (HELP BB-XXXX-..., GRID AAPL bbxxxx...,
+// WHATIF 7K2M ABCD ...): such a command is never a card and never driven. Any four groups
+// of four joined by a sign; one word, or words after BB or GIFT, that make a key or a code
+// (case and signs do not matter); and words split by spaces that make one when a digit is
+// in them (AAPL MSFT NVDA TSLA stays four tickers). public/screens/chat.js has the same.
+export function secretIn(raw) {
+  const s = String(raw ?? '').toUpperCase();
+  if (/[A-Z0-9]{4}(?:[^A-Z0-9\s][A-Z0-9]{4}){3}/.test(s)) return true;
+  const toks = s.split(/\s+/).filter(Boolean);
+  for (let i = 0; i < toks.length; i++) {
+    for (let j = i + 1; j <= Math.min(toks.length, i + 9); j++) {
+      const part = toks.slice(i, j);
+      const joined = part.join('').replace(/[^A-Z0-9]/g, '');
+      if (!normalizeKey(joined) && !normalizeGiftCode(joined)) continue;
+      if (part.length === 1 || /^(BB|GIFT)\b/.test(part[0]) || /\d/.test(joined)) return true;
+    }
+  }
+  return false;
+}
+
 // A card: { cmd, title } for a screen of the terminal, or null. parse is the terminal's
 // own parser (public/app.js parseCommand); linkChanges says whether a link to it would
 // change something saved. Throws ChatError.
@@ -141,7 +162,7 @@ export function cleanCard(card, { parse, linkChanges, titleOf = null }) {
   const cmd = typeof card.cmd === 'string' ? card.cmd.replace(/\s+/g, ' ').trim().toUpperCase() : '';
   // No link check here: the command must parse to a screen of the terminal (below), and a
   // card is a button, never a link (SAP.DE is a ticker).
-  if (!CARD_RE.test(cmd)) throw new ChatError('bad_card', 'That screen cannot be attached.');
+  if (!CARD_RE.test(cmd) || secretIn(cmd)) throw new ChatError('bad_card', 'That screen cannot be attached.');
   const head = cmd.split(' ')[0];
   const c = parse(cmd);
   if (!c || c.name === 'UNKNOWN' || c.secret || c.mutates || c.error || linkChanges(c) || CARD_DENY.includes(head) || CARD_DENY.includes(c.name)) {

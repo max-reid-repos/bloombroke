@@ -11,7 +11,7 @@
 // Pure *Html builders are exported for node:test; render() is the browser part.
 
 import { esc, panel, metaNote, fmtNum } from './markets.js';
-import { getKey, isPro, HEADER } from '../pro.js';
+import { getKey, isPro, HEADER, normalizeKey, normalizeGiftCode } from '../pro.js';
 import { parseCommand, screenTitle, linkChanges, linkPlan } from '../app.js';
 import { drive, who as driverName } from '../drive.js';
 
@@ -88,10 +88,31 @@ export function cardHtml(card) {
   return `<button type="button" class="cm-card" data-card="${esc(card.cmd)}">${title}<span class="cm-card-c">${esc(card.cmd)}</span></button>`;
 }
 
+// A Pro key or a gift code anywhere in a command (HELP BB-XXXX-..., GRID AAPL bbxxxx...,
+// WHATIF 7K2M ABCD ...): such a command is never a card and never driven. Any four groups
+// of four joined by a sign; one word, or words after BB or GIFT, that make a key or a code
+// (case and signs do not matter); and words split by spaces that make one when a digit is
+// in them (AAPL MSFT NVDA TSLA stays four tickers). pro/chat.js has the same
+// (test/chat-drive.test.js checks they agree).
+export function secretIn(raw) {
+  const s = String(raw ?? '').toUpperCase();
+  if (/[A-Z0-9]{4}(?:[^A-Z0-9\s][A-Z0-9]{4}){3}/.test(s)) return true;
+  const toks = s.split(/\s+/).filter(Boolean);
+  for (let i = 0; i < toks.length; i++) {
+    for (let j = i + 1; j <= Math.min(toks.length, i + 9); j++) {
+      const part = toks.slice(i, j);
+      const joined = part.join('').replace(/[^A-Z0-9]/g, '');
+      if (!normalizeKey(joined) && !normalizeGiftCode(joined)) continue;
+      if (part.length === 1 || /^(BB|GIFT)\b/.test(part[0]) || /\d/.test(joined)) return true;
+    }
+  }
+  return false;
+}
+
 // The screen you came from as a card, or null when it cannot be attached.
 export function attachFor(previous) {
   const cmd = String(previous || '').replace(/\s+/g, ' ').trim().toUpperCase();
-  if (!cmd || !CARD_RE.test(cmd)) return null;
+  if (!cmd || !CARD_RE.test(cmd) || secretIn(cmd)) return null;
   const c = parseCommand(cmd);
   if (!c || c.name === 'UNKNOWN' || c.secret || c.mutates || c.error || linkChanges(c)) return null;
   if (CARD_DENY.includes(cmd.split(' ')[0]) || CARD_DENY.includes(c.name)) return null;
@@ -140,11 +161,17 @@ export function messagesHtml(list, quotes = {}, now = Date.now()) {
   return out;
 }
 
-// DRIVE in the thread head: DRIVE, or STOP while you drive this room. Not in a closed chat.
+// DRIVE in the thread head: DRIVE, STOP while you drive this room, TAKE OVER while
+// someone else does (it asks first). Not in a closed chat.
 export function driveChipHtml(room, dv = null) {
   if (!room || room.readOnly) return '';
   const mine = dv?.role === 'drive' && dv.room === room.id;
+  if (!mine && room.drive && !room.drive.own) return '<button type="button" class="chip ct-drive" data-act="take">TAKE OVER</button>';
   return `<button type="button" class="chip ct-drive${mine ? ' is-on' : ''}" data-act="${mine ? 'drive-stop' : 'drive'}" aria-pressed="${mine}">${mine ? 'STOP' : 'DRIVE'}</button>`;
+}
+// TAKE OVER asks first, one line: Enter takes over, Esc keeps things as they are.
+export function takeConfirmHtml(by) {
+  return `<div class="desk-confirm ct-confirm" role="alertdialog" aria-label="Take over DRIVE" tabindex="-1"><span class="desk-confirm-text">Take over from ${esc(driverName(by))}?</span><button type="button" class="desk-btn" data-act="take-yes">ENTER: TAKE OVER</button><button type="button" class="desk-btn" data-act="take-no">ESC: CANCEL</button></div>`;
 }
 
 // The lines over the thread: someone drives (FOLLOW, or STOP while you follow), and
@@ -332,6 +359,20 @@ export function render(el, cmd, ctx) {
     act(() => startDrive(r));
     return true;
   });
+  function askTake() {
+    const r = room();
+    const x = $('.ct-extra');
+    if (!r?.drive || !x) return;
+    $('.ct-confirm')?.remove();
+    x.insertAdjacentHTML('afterbegin', takeConfirmHtml(r.drive.by));
+    $('.ct-confirm').focus();
+  }
+  function answerTake(yes) {
+    $('.ct-confirm')?.remove();
+    const r = room();
+    if (yes && r) act(() => startDrive(r));
+    else if (!coarse) $('.cc-input')?.focus();
+  }
   async function startDrive(r) {
     await dv.start(r.id);
     ctx.status('DRIVING: OPEN ANY SCREEN');
@@ -497,6 +538,8 @@ export function render(el, cmd, ctx) {
     $('.ct-menu').hidden = true;
     if (!r) return;
     if (a === 'add' || a === 'report') { inline(a); return; }
+    // Leaving or blocking ends your drive or follow here first.
+    if ((a === 'leave' || a === 'block') && dv.state()?.room === r.id) await dv.stop();
     await act(async () => {
       const d = await api(`/api/chat/rooms/${r.id}`, { method: 'POST', body: { action: a }, signal });
       if (a === 'leave') { st.open = null; st.msgs = []; ctx.status('YOU LEFT THE GROUP'); } else ctx.status(a === 'block' ? 'BLOCKED' : 'UNBLOCKED');
@@ -544,6 +587,9 @@ export function render(el, cmd, ctx) {
     if (t.dataset.menu) { menuAct(t.dataset.menu); return; }
     switch (t.dataset.act) {
       case 'drive': { const r = room(); if (r) act(() => startDrive(r)); break; }
+      case 'take': askTake(); break;
+      case 'take-yes': answerTake(true); break;
+      case 'take-no': answerTake(false); break;
       case 'drive-stop': dv.stop(); ctx.status('STOPPED DRIVING'); break;
       case 'follow': { const r = room(); if (r) act(async () => { await dv.follow(r.id); if (alive()) ctx.status('FOLLOWING'); }); break; }
       case 'unfollow': dv.stop(); ctx.status('STOPPED FOLLOWING'); break;
@@ -604,6 +650,11 @@ export function render(el, cmd, ctx) {
     if (t.classList?.contains('cc-input')) {
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); return; }
       if (e.key === 'Escape') { e.preventDefault(); document.getElementById('cmd')?.focus(); }
+      return;
+    }
+    if ((e.key === 'Enter' || e.key === 'Escape') && $('.ct-confirm') && !e.repeat && (t.closest?.('.ct-confirm') || t === document.body)) {
+      e.preventDefault();
+      answerTake(e.key === 'Enter');
       return;
     }
     if (e.key === 'Escape' && t.closest?.('.ct-inline, .ct-menu')) {

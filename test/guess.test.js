@@ -339,9 +339,18 @@ test('GUESS endpoints: today, check, reveal', async () => {
     const ahead = await get('/api/guess/check?n=3&g=AAPL');
     assert.deepEqual([ahead.status, ahead.body.error], [400, 'usage'], 'a future puzzle is a usage error, not a new puzzle');
 
-    const rev = await get('/api/guess/reveal?n=2');
-    assert.deepEqual([rev.body.ticker, rev.body.name], [answer.ticker, answer.name]);
-    assert.ok(rev.body.sectorName);
+    // Today's answer: never by reveal, only with the sixth wrong guess (the five before in p).
+    const today409 = await get('/api/guess/reveal?n=2');
+    assert.deepEqual([today409.status, today409.body.error], [409, 'today']);
+    assert.equal(miss.body.answer, undefined, 'a first miss has no answer');
+    const five = POOL.filter((m) => m.ticker !== answer.ticker && m.ticker !== wrong.ticker).slice(0, 5).map((m) => m.ticker);
+    const last = await get(`/api/guess/check?n=2&g=${wrong.ticker}&p=${five.join(',')}`);
+    assert.deepEqual([last.body.answer.ticker, last.body.answer.name], [answer.ticker, answer.name]);
+    assert.ok(last.body.answer.sectorName);
+    for (const p of [five.slice(0, 4), [...five.slice(0, 4), five[0]], [...five.slice(0, 4), answer.ticker], [...five.slice(0, 4), wrong.ticker], [...five.slice(0, 4), 'ZZZZ']]) {
+      assert.equal((await get(`/api/guess/check?n=2&g=${wrong.ticker}&p=${p.join(',')}`)).body.answer, undefined, p.join());
+    }
+    assert.equal((await get(`/api/guess/check?n=2&g=${answer.ticker}&p=${five.join(',')}`)).body.answer, undefined, 'a win needs no reveal');
     assert.equal((await get('/api/guess/reveal?n=1')).body.ticker, pickAnswer(1, SECRET).ticker, 'past puzzles too');
     assert.equal((await get('/api/guess/reveal?n=3')).status, 400, 'never a future answer');
     assert.equal((await get('/api/guess/reveal?n=abc')).status, 400);
