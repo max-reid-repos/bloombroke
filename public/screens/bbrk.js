@@ -13,7 +13,7 @@
 // screen (tested Sep 27 2026).
 
 import { esc, fmtSigned, dirOf } from './markets.js';
-import { cardPage, cardFacts, cardRows, raw } from '../kit.js';
+import { cardPage, cardFacts, cardRows, raw, fitToView } from '../kit.js';
 import { loadDots, mountGlobe, globeCaption, globeLabel } from '../globe.js';
 import { HERE_MIN } from '../here-now.js';
 
@@ -149,16 +149,24 @@ export { globeCaption, globeLabel } from '../globe.js';
 
 export function render(el, cmd, ctx) {
   el.innerHTML = bbrkHtml(null);
-  const canvas = el.querySelector('.bb-globe canvas');
-  const caption = el.querySelector('.bb-globe figcaption');
+  const fig = el.querySelector('.bb-globe');
+  const canvas = fig.querySelector('canvas');
+  const caption = fig.querySelector('figcaption');
   const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   let globe = null;
   let latest = null;
+  // The globe takes the room left in the first view (never below the fold on a desktop);
+  // again when the window or the numbers above it change size.
+  const fit = () => { fitToView(fig); globe?.update(latest?.audience?.globe || null, latest?.audience?.live ?? null); };
+  fitToView(fig);
+  document.fonts?.ready.then(() => { if (fig.isConnected) fit(); });
+  window.addEventListener('resize', fit);
   loadDots().then((geo) => {
     if (ctx.signal?.aborted || !canvas.isConnected) return;
     globe = mountGlobe(canvas, geo, latest?.audience?.globe || null, { reduceMotion: reduce, live: latest?.audience?.live ?? null });
-  }).catch(() => { el.querySelector('.bb-globe').hidden = true; });
-  ctx.signal?.addEventListener('abort', () => globe?.stop());
+  }).catch(() => { fig.hidden = true; });
+  const stop = () => { globe?.stop(); window.removeEventListener('resize', fit); };
+  ctx.signal?.addEventListener('abort', stop);
   // New numbers go into their own places, so the globe keeps turning and an open
   // + Details stays open.
   const paint = (d) => {
@@ -177,7 +185,7 @@ export function render(el, cmd, ctx) {
       const d = await ctx.fetchJSON('/api/bbrk', { signal: ctx.signal });
       latest = d;
       paint(d);
-      globe?.update(d.audience?.globe || null, d.audience?.live ?? null);
+      fit();
       ctx.updated(d.updated, false);
       ctx.status(`${BBRK}: ${STRIP}`);
     } catch (err) {
@@ -188,5 +196,5 @@ export function render(el, cmd, ctx) {
   ctx.status(`${BBRK}: ${STRIP}`);
   load();
   ctx.live(load, 60_000);
-  return () => globe?.stop();
+  return stop;
 }

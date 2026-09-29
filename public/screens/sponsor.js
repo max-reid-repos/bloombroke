@@ -10,7 +10,7 @@
 // public/sponsor-strip.js. Plain text and plain links: no pixels, no scripts, no tracking.
 
 import { esc, metaNote, q } from './markets.js';
-import { cardPage, cardButton, cardFacts, cardRows, raw } from '../kit.js';
+import { cardPage, cardButton, cardFacts, cardRows, raw, fitToView } from '../kit.js';
 import { findCommand } from '../registry.js';
 import { stripItems, loadSponsors } from '../sponsor-strip.js';
 import { loadDots, mountGlobe, globeLabel } from '../globe.js';
@@ -195,12 +195,15 @@ export function render(el, cmd, ctx) {
   ctx.status('SPONSOR: EMAIL US');
   let globe = null;
   const canvas = el.querySelector('.spon-globe canvas');
+  // The globe takes the room left in the first view (never below the fold on a desktop).
+  const fit = () => fitToView(el.querySelector('.spon-globe'));
   const paint = () => {
     const f = el.querySelector('#spon-facts');
     if (f) f.outerHTML = factsHtml(bbrk);
     const v = el.querySelector('#spon-views');
     if (v) v.textContent = viewsLine(weeklyViews(bbrk, cfg));
     canvas?.setAttribute('aria-label', globeLabel(bbrk));
+    fit();
     globe?.update(bbrk?.audience?.globe || null, bbrk?.audience?.live ?? null);
     unpoint.refresh?.(); // the new numbers may change the page's height
   };
@@ -208,7 +211,11 @@ export function render(el, cmd, ctx) {
   // request first), point at the real strip.
   let unpoint = () => {};
   let open = true;
-  ctx.onCleanup(() => { open = false; unpoint(); globe?.stop(); });
+  const refit = () => { fit(); globe?.update(bbrk?.audience?.globe || null, bbrk?.audience?.live ?? null); };
+  fit();
+  globalThis.document?.fonts?.ready.then(() => { if (open) refit(); });
+  globalThis.window?.addEventListener?.('resize', refit);
+  ctx.onCleanup(() => { open = false; unpoint(); globe?.stop(); globalThis.window?.removeEventListener?.('resize', refit); });
   // BBRK's globe: places with 3 visitors or more only (the server folds the rest).
   const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   loadDots().then((geo) => {

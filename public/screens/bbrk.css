@@ -10,8 +10,15 @@
 .bb-spark-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
 .bb-spark-dot { fill: none; stroke: var(--accent); stroke-width: 8; stroke-linecap: round; }
 
-/* ---- The globe: --globe-w, centred, square, never cut off -------------------------- */
-.bb-globe { position: relative; width: min(var(--globe-w), 100%); margin: 0 auto; text-align: center; font-size: 12px; }
+/* ---- Six facts in one row once the column is its full 880 px --------------------- */
+.bb-card { container-type: inline-size; }
+@container (min-width: 880px) {
+  .bb-card .card-facts { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+/* ---- The globe: --globe-w, or the room left in the first view (kit.js fitToView, which
+   writes --fit-w), centred, square, never cut off ------------------------------------- */
+.bb-globe { position: relative; width: min(var(--fit-w, var(--globe-w)), 100%); margin: 0 auto; text-align: center; font-size: 12px; }
 /* Drag to turn it (public/globe.js); pan-y: a mostly vertical drag still scrolls the page. */
 .bb-globe canvas {
   display: block; width: 100%; aspect-ratio: 1; cursor: grab; touch-action: pan-y; outline: 0;

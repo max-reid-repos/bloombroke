@@ -26,6 +26,7 @@
 //                                 one centred column, the slots always in this order
 //   cardButton / cardLink / cardForm / cardFacts / cardRows   the parts that go in them
 //   cardWords(html)               the words a card shows above its + Details
+//   fitToView(el)                 a globe sized to the room left in the first view
 
 import { PRESETS } from './ranges.js';
 
@@ -269,4 +270,24 @@ export function cardWords(html) {
     .filter((w) => /[A-Za-z]/.test(w))
     .filter((w) => !/^[+\-−$]?\d/.test(w))
     .filter((w) => !/^(BB|GIFT)-[A-Z0-9X.-]+$/.test(w.replace(/[.,]$/, '')));
+}
+
+// Browser only: size a card's media (the globe) to the room left in the first view, so
+// on a desktop it is never below the fold: between min and max px, written to --fit-w on
+// the element (its CSS reads it). Measured as if the page were scrolled to the top, up to
+// the dock. A phone (under 640 px) keeps its own size and scrolls. Returns the size.
+export function fitToView(el, { min = 220, max = 340, win = globalThis.window, doc = globalThis.document } = {}) {
+  if (!el?.isConnected || !win || !doc) return null;
+  if (win.matchMedia?.('(max-width: 639px)').matches) { el.style.removeProperty('--fit-w'); return null; }
+  const screen = doc.getElementById('screen');
+  const own = screen && /auto|scroll/.test(win.getComputedStyle(screen).overflowY);
+  const scrolled = own ? screen.scrollTop : (win.scrollY || 0);
+  const dock = doc.querySelector('.dock');
+  const bottom = Math.min(own ? screen.getBoundingClientRect().bottom : win.innerHeight, dock ? dock.getBoundingClientRect().top : win.innerHeight);
+  const top = el.getBoundingClientRect().top + scrolled;
+  const canvas = el.querySelector('canvas');
+  const extra = canvas ? el.offsetHeight - canvas.offsetHeight : 0; // the caption under it
+  const size = Math.max(min, Math.min(max, Math.floor(bottom - top - extra - 8)));
+  el.style.setProperty('--fit-w', `${size}px`);
+  return size;
 }

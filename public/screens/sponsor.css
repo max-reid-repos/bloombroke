@@ -16,10 +16,11 @@
 
 /* SPONSOR: a card page (kit.css, "Card pages"). YOUR AD HERE in a box like an empty ad
    slot; BBRK's globe under the numbers at --globe-w. Room at the end for the label over
-   the strip (sponsor.js pointAtStrip), so at the bottom it covers nothing. */
+   the strip (sponsor.js pointAtStrip), so at the bottom it covers nothing. On a desktop
+   the globe takes the room left in the first view (kit.js fitToView writes --fit-w). */
 .spon-card { padding-bottom: 48px; }
 .spon-slot { display: inline-block; padding: 12px 32px; border: 1px solid var(--rule-strong); background: var(--panel); }
-.spon-globe { position: relative; width: min(var(--globe-w), 100%); margin: 0 auto; text-align: center; font-size: 12px; }
+.spon-globe { position: relative; width: min(var(--fit-w, var(--globe-w)), 100%); margin: 0 auto; text-align: center; font-size: 12px; }
 .spon-globe[hidden] { display: none; }
 /* Drag to turn it (public/globe.js); pan-y: a mostly vertical drag still scrolls the page. */
 .spon-globe canvas {

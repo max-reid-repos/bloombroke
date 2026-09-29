@@ -12,6 +12,8 @@
 //   font      a font size that is not on the type scale (style.css)
 //   measure   a block of text wider than about 70 characters of its own font
 //   primary   more than one primary (solid) button
+//   fold      on a desktop size, BBRK's and SPONSOR's globe not wholly in the first view
+//             (its bottom below the scroll box's visible bottom, scrolled to the top)
 // and prints a table. --shots saves a PNG per page and size (after-<page>-<width>.png).
 // The numbers the pages show come from small fixtures below, or with --live-data from the
 // public GET routes of that site (/api/bbrk, /api/sponsors, /api/pro/seat, /api/pro/config).
@@ -82,8 +84,8 @@ async function liveData() {
 }
 
 // Runs in the page: every check, for the card on screen.
-function inPage(scale) {
-  const out = { overflow: [], crop: [], font: [], measure: [], primary: [] };
+function inPage(scale, firstView) {
+  const out = { overflow: [], crop: [], font: [], measure: [], primary: [], fold: [] };
   const de = document.documentElement;
   const screen = document.getElementById('screen');
   if (de.scrollWidth > de.clientWidth + 1) out.overflow.push(`page ${de.scrollWidth}>${de.clientWidth}`);
@@ -132,6 +134,23 @@ function inPage(scale) {
     const lines = Math.round(el.getBoundingClientRect().height / (parseFloat(s.lineHeight) || px * 1.45));
     if (w / ch > 72 && lines > 1) out.measure.push(`${el.tagName.toLowerCase()}.${el.className || ''} ${Math.round(w / ch)}ch`);
   }
+  // The first view: scrolled to the top, the globe ends above the dock and the scroll
+  // box's visible bottom.
+  if (firstView) {
+    const box = document.getElementById('screen');
+    const own = box && /auto|scroll/.test(getComputedStyle(box).overflowY);
+    if (own) box.scrollTop = 0; else window.scrollTo(0, 0);
+    const dock = document.querySelector('.dock');
+    const bottom = Math.min(own ? box.getBoundingClientRect().bottom : innerHeight, dock ? dock.getBoundingClientRect().top : innerHeight);
+    const media = card.querySelector('.card-media');
+    if (!media) out.fold.push('no media');
+    else {
+      const r = media.getBoundingClientRect();
+      if (r.bottom > bottom + 0.5) out.fold.push(`globe bottom ${Math.round(r.bottom)} > visible ${Math.round(bottom)}`);
+      const c = media.querySelector('canvas');
+      if (c) out.fold.push(...(c.getBoundingClientRect().width < 219 ? [`globe ${Math.round(c.getBoundingClientRect().width)} px, under 220`] : []));
+    }
+  }
   const primaries = [...card.querySelectorAll('.btn-solid')].filter(shown);
   if (primaries.length > 1) out.primary.push(`${primaries.length} solid buttons`);
   return out;
@@ -176,7 +195,8 @@ async function main() {
           await page.evaluate(() => { const d = document.querySelector('#screen .card-more'); if (d) { d.open = true; d.scrollIntoView({ block: 'start' }); } });
           await new Promise((r) => { setTimeout(r, 300); });
         }
-        const res = await page.evaluate(inPage, TYPE);
+        const firstView = !OPEN && w >= 1100 && ['bbrk', 'sponsor'].includes(name);
+        const res = await page.evaluate(inPage, TYPE, firstView);
         const bad = Object.entries(res).filter(([, v]) => v.length);
         if (bad.length) failed++;
         rows.push({ page: name, size: `${w}x${h}`, result: bad.length ? 'FAIL' : 'ok', notes: bad.map(([k, v]) => `${k}: ${[...new Set(v)].slice(0, 3).join('; ')}`).join(' | ') });
