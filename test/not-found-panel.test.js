@@ -13,7 +13,7 @@ import { loadGraveyard } from '../lib/og-nosuch.js';
 
 const GRAVES = loadGraveyard();
 const THLM = { id: 'THLM', name: 'TH Lehman & Co Inc', cmd: 'THLM' };
-const rowsFor = (typed, found = {}) => closestRows(typed, candidates({ found, graves: GRAVES }));
+const rowsFor = (typed, found = {}) => closestRows(typed, candidates({ found, graves: GRAVES, typed }));
 const names = (rows) => rows.map((r) => r.name);
 
 // ---- Matching ------------------------------------------------------------------------------
@@ -290,6 +290,29 @@ test('the lookup itself failed: a neutral line, never "Not a ticker", nothing on
   assert.match(app, /if \(err\.name === 'AbortError' \|\| signal\.aborted\) return;\s*lookupFailed\(view, typed\);/);
   const fn = app.slice(app.indexOf('function lookupFailed('), app.indexOf('function lookupFailed(') + 500);
   assert.match(fn, /Could not look that up\. Try again in a minute\./);
-  assert.match(fn, /setStatus\('COULD NOT LOOK THAT UP\. TRY AGAIN'\);/);
+  assert.match(fn, /setStatus\('COULD NOT LOOK THAT UP\. TRY AGAIN', 'note'\);/, 'colour 2, like the panel');
   assert.doesNotMatch(fn, /notFound|data-key|Not a ticker|'warn'/);
+});
+
+test('by-meaning command guesses never lead over a real match; typo guesses do on a tie', async () => {
+  const rows = async (typed, extra = {}) => {
+    const found = await resolveInput(typed, { search: async () => [], checkTicker: async () => false });
+    return rowsFor(typed, { ...found, symbols: [...(found.symbols || []), ...(extra.symbols || [])] });
+  };
+  // WEATHER: the resolver guesses OMENS by meaning; Tether (two letters off) is the Enter row.
+  const weather = await rows('WEATHER');
+  assert.notEqual(weather[0].cmd, 'OMENS', weather.map((r) => r.name).join(', '));
+  assert.ok(weather.some((r) => r.cmd === 'OMENS'), 'still listed');
+  // HOUSE: WAFFLE by meaning; a real ticker match (HOUS) leads.
+  const house = await rows('HOUSE', { symbols: [{ id: 'HOUS', name: 'Anywhere Real Estate Inc', cmd: 'HOUS' }] });
+  assert.equal(house[0].cmd, 'HOUS', house.map((r) => r.name).join(', '));
+  assert.ok(house.some((r) => r.cmd === 'WAFFLE'));
+  // FOO BAR: only guesses by meaning: they are the rows.
+  const foo = await rows('FOO BAR');
+  assert.ok(foo.length && foo.every((r) => r.kind === 'cmd'), foo.map((r) => r.name).join(', '));
+  // Floors: 50 a typo away (COMPAER, COMPARE), 30 by meaning (MOVESR, WHY).
+  const floors = (typed, commands) => candidates({ found: { commands }, typed }).filter((c) => c.kind === 'cmd').map((c) => c.floor);
+  assert.deepEqual(floors('COMPAER', [{ name: 'COMPARE', cmd: 'COMPARE AAPL MSFT NVDA' }]), [50]);
+  assert.deepEqual(floors('MOVESR', [{ name: 'WHY', cmd: 'WHY AAPL' }]), [30]);
+  assert.deepEqual(floors('show me financals', [{ name: 'FINANCIALS', cmd: 'FINANCIALS AAPL' }]), [50], 'a typo in any word');
 });

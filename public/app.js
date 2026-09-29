@@ -1503,7 +1503,7 @@ function boot() {
     neutralHead(typed);
     view.classList.remove('is-loading');
     view.innerHTML = panel('1', typed, '<p class="notice">Could not look that up. Try again in a minute.</p>', { cls: 'panel-solo' });
-    setStatus('COULD NOT LOOK THAT UP. TRY AGAIN');
+    setStatus('COULD NOT LOOK THAT UP. TRY AGAIN', 'note');
   }
   // NOT A TICKER (screens/nosuch.js): the closest names, tickers and graveyard stones as
   // numbered rows, or the IPO IT joke when nothing is close. A graveyard company's name

@@ -20,7 +20,7 @@ import {
 } from './graveyard.js';
 import { SP100_NAMES, OTHER_NAMES, nameKey } from '../known-tickers.js';
 import { INSTRUMENTS } from '../instruments.js';
-import { editDistance } from '../resolve.js';
+import { editDistance, fuzzyCommands } from '../resolve.js';
 import { cardLink, usageCard, raw } from '../kit.js';
 
 export { graveyardTable };
@@ -170,8 +170,11 @@ export function shortName(name) {
 // tickers, floor }. found: the resolver's rows (app.js resolveInput: the symbol search and
 // commands a typo away); graves: the graveyard's stones. The same names and tickers the
 // command bar resolves (known-tickers.js, instruments.js) are always in.
-export function candidates({ found = {}, graves = [] } = {}) {
+export function candidates({ found = {}, graves = [], typed = '' } = {}) {
   const out = new Map();
+  // The command names a typo away from a word typed (the resolver's own test).
+  const words = String(typed).toUpperCase().split(/\s+/).filter(Boolean);
+  const typo = new Set([...words, words.join('')].flatMap((w) => fuzzyCommands(w).map((c) => c.name)));
   const add = (c) => { if (c.cmd && !out.has(c.cmd)) out.set(c.cmd, c); };
   // A search row matched the words upstream: close enough to list (floor), not to lead.
   for (const s of found.symbols || []) add({ kind: 'live', id: s.id, name: shortName(s.name) || s.id, cmd: s.cmd || s.id, names: [s.name || ''], tickers: [s.id], floor: 30 });
@@ -181,9 +184,10 @@ export function candidates({ found = {}, graves = [] } = {}) {
   }
   for (const [id, ...names] of [...SP100_NAMES, ...OTHER_NAMES]) add({ kind: 'live', id, name: names[0], cmd: id, names, tickers: [id] });
   for (const i of INSTRUMENTS) add({ kind: 'live', id: i.id, name: i.name, cmd: i.id, names: [i.name, ...i.aliases], tickers: [i.id] });
-  // The resolver's command guesses (a typo away, or by what the command does: MOVESR is
-  // WHY): always listed, and first on a tie.
-  for (const c of found.commands || []) add({ kind: 'cmd', id: '', name: c.name, cmd: c.cmd, what: c.summary || '', names: [c.name], floor: 50 });
+  // The resolver's command guesses: always listed, first on a tie. A typo away (COMPAER is
+  // COMPARE) as close as a name one letter off (50); by what the command does (MOVESR is
+  // WHY, HOUSE is WAFFLE) only when nothing real is closer (30).
+  for (const c of found.commands || []) add({ kind: 'cmd', id: '', name: c.name, cmd: c.cmd, what: c.summary || '', names: [c.name], floor: typo.has(c.name) ? 50 : 30 });
   return [...out.values()];
 }
 
@@ -320,7 +324,7 @@ export async function fillPrices(el, { signal, fetchImpl = globalThis.fetch } = 
 // keys: false in a DESK panel (the desk owns the keys there; its rows still click).
 export function notFound(view, { typed, ticker = null, found = {}, info = {}, graves = [], signal, status = () => {}, keys = true, doc = globalThis.document } = {}) {
   const words = String(typed || '').trim().replace(/\s+/g, ' ');
-  const rows = closestRows(words, candidates({ found, graves }));
+  const rows = closestRows(words, candidates({ found, graves, typed: words }));
   const ipo = (info?.ipo && ipoShape(ticker)) || null;
   view.innerHTML = notFoundHtml({ typed: words, rows, ipo });
   status(...notFoundStatus(words, rows));
