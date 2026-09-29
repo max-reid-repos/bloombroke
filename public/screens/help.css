@@ -1,8 +1,6 @@
 /* help.js's own styles, loaded with it (public/lazy.js) the first time a screen that
    uses it opens; the page's always-on styles are in the stylesheets public/index.html links. */
 
-/* ==== from nav.css ==== */
-
 .help-count { font-size: 12px; white-space: nowrap; }
 .help-body { display: grid; grid-template-columns: 224px minmax(0, 1fr); gap: 32px; align-items: start; }
 .help-cats {

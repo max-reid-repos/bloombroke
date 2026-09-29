@@ -1540,7 +1540,7 @@ function boot() {
     const rows = ns ? ns.guessCount(found, typed, ticker) : 0;
     const title = info.grave ? ns.TITLE_GONE : ticker ? (ns?.TITLE_YET || 'No such ticker') : 'Unknown command';
     const extra = !ns ? {} : embed ? ns.noSuchExtra(null, none, { top })
-      : ns.noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : ns.yardPick(graves), top });
+      : ns.noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : ns.yardPick(graves.filter((g) => `GRAVEYARD ${g.ticker}` !== top?.cmd)), top });
     view.classList.remove('is-loading');
     const html = cards
       ? cards.didYouMeanHtml(typed, found, ticker, { extra: { ...extra, kicker: extra.kicker || title } })

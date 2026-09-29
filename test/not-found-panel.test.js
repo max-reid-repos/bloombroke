@@ -10,7 +10,7 @@ import { tickerForName } from '../public/known-tickers.js';
 import { didYouMeanHtml } from '../public/cards.js';
 import {
   closeness, candidates, closestRows, graveByName, stoneFor, notFoundKeys, shortName, noSuchExtra, closeMatch, withoutMatch, guessCount, didYouMeanLine,
-  keysAfterLine, wireNoSuch, yardHtml, TITLE_YET,
+  keysAfterLine, wireNoSuch, yardHtml, yardPick, TITLE_YET,
 } from '../public/screens/nosuch.js';
 import { loadGraveyard } from '../lib/og-nosuch.js';
 
@@ -181,7 +181,7 @@ test('Did you mean: Enter is wired only with the line, never on a stone card', (
   assert.match(app, /const top = ns && !info\.grave \? ns\.closeMatch\(typed, \{ found, graves \}\) : null;\s*if \(ns\) found = ns\.withoutMatch\(found, top\);/);
   assert.match(app, /view\.innerHTML = cards && top \? ns\.keysAfterLine\(html\) : html;/);
   assert.match(app, /ns\.wireNoSuch\(view, word, info, \{ status: setStatus, enter: Boolean\(top\) \}\)/);
-  assert.match(app, /yard: info\.grave \? \[\] : ns\.yardPick\(graves\)/);
+  assert.match(app, /yard: info\.grave \? \[\] : ns\.yardPick\(graves\.filter\(\(g\) => `GRAVEYARD \$\{g\.ticker\}` !== top\?\.cmd\)\)/);
   assert.doesNotMatch(app, /ns\.notFound\(/, 'the NOT A TICKER panel is gone');
 });
 
@@ -315,4 +315,15 @@ test('by-meaning command guesses never lead over a real match; typo guesses do o
   assert.deepEqual(floors('COMPAER', [{ name: 'COMPARE', cmd: 'COMPARE AAPL MSFT NVDA' }]), [50]);
   assert.deepEqual(floors('MOVESR', [{ name: 'WHY', cmd: 'WHY AAPL' }]), [30]);
   assert.deepEqual(floors('show me financals', [{ name: 'FINANCIALS', cmd: 'FINANCIALS AAPL' }]), [50], 'a typo in any word');
+});
+
+test('THE GRAVEYARD row never repeats the Did-you-mean stone (LEH under "Did you mean LEH")', () => {
+  const top = closeMatch('LEHM', { found: { symbols: [THLM] }, graves: GRAVES });
+  assert.equal(top.cmd, 'GRAVEYARD LEH');
+  // The pool app.js showDidYouMean hands yardPick: every stone but the line's.
+  const pool = GRAVES.filter((g) => `GRAVEYARD ${g.ticker}` !== top?.cmd);
+  assert.equal(pool.length, GRAVES.length - 1);
+  for (let i = 0; i < 50; i += 1) assert.ok(!yardPick(pool).some((g) => g.ticker === 'LEH'));
+  // A live match or no match keeps every stone.
+  assert.equal(GRAVES.filter((g) => `GRAVEYARD ${g.ticker}` !== closeMatch('APPLEE', { graves: GRAVES })?.cmd).length, GRAVES.length);
 });
