@@ -56,7 +56,8 @@ export function usage() {
   const ex = ['HISTORY AAPL', 'HISTORY TSLA 2024', 'HISTORY AAPL 5Y', 'HISTORY MSFT 2025-01-01 2025-06-30'];
   return usageCard({
     problem: 'HISTORY needs a ticker.',
-    format: 'HISTORY <ticker> [range | from [to]]',
+    format: 'HISTORY ticker [range | from [to]]',
+    grammar: 'HISTORY <ticker> [range | from [to]]',
     example: ex[0],
     more: ex.slice(1),
     notes: ['A range or dates are optional: a range like 5Y, dates like 2025-01-31 or a year like 2024.'],

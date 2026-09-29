@@ -15,7 +15,7 @@ import { feedbackHtml } from '../public/screens/feedback.js';
 import { notProHtml } from '../public/screens/chat.js';
 import { meHtml } from '../public/screens/me.js';
 import { usageCard, emptyState } from '../public/kit.js';
-import { didYouMeanHtml } from '../public/app.js';
+import { didYouMeanHtml, examplePlan } from '../public/app.js';
 import { affordUsage, NOT_INVESTMENTS } from '../public/screens/buy.js';
 import { cpiUsage } from '../public/screens/cpi.js';
 import { usage as loanUsage, noRateHtml } from '../public/screens/loan.js';
@@ -30,7 +30,8 @@ import { emptyAlertsHtml } from '../public/screens/alerts.js';
 import { deskEmptyHtml } from '../public/screens/desk.js';
 import { emptyHtml as chatEmptyHtml } from '../public/screens/chat.js';
 import { noSuchExtra, ipoUsage, TITLE_GONE } from '../public/screens/nosuch.js';
-import { stonePageHtml } from '../public/screens/graveyard.js';
+import { stonePageHtml, fitStone, GV_ROW } from '../public/screens/graveyard.js';
+import { wageUsage } from '../public/screens/buy.js';
 import { withArt } from '../lib/graveyard.js';
 
 const all = () => true;
@@ -116,6 +117,8 @@ export const USAGE = [
   ['WHY, not a company', notCompanyHtml('SPX')],
   ['DATA', dataUsage()],
   ['IPO IT, no word', ipoUsage()],
+  ['WAGE, no pay', wageUsage('usage')],
+  ['WAGE, a pay it cannot read', wageUsage('amount')],
 ];
 
 // The empty state (kit.js emptyState) wherever a list is empty: 20 words at most.
@@ -251,7 +254,11 @@ test('usage card: the problem, the format as code, one example that runs; the re
     assert.ok(w.length <= 15, `${name}: ${w.length} words (budget 15): ${w.join(' ')}`);
     assert.match(html, /^<section class="card card-usage"/, `${name}: the kit's usage card`);
     assert.equal((html.match(/btn-solid/g) || []).length, 1, `${name}: one example, the primary button`);
-    assert.match(html, /<div class="card-act"><a class="btn card-btn btn-solid" href="\?c=[^"]+" data-cmd="[^"]+">[^<]+<\/a><\/div>/, `${name}: the example is a command link the router runs`);
+    assert.match(html, /<div class="card-act"><a class="btn card-btn btn-solid" href="\?c=[^"]+" data-cmd="[^"]+" data-example>[^<]+<\/a><\/div>/, `${name}: the example is a command link (app.js examplePlan: run or prefill)`);
+    assert.match(html, /<h2 class="card-hero card-hero-24 num">/, `${name}: the problem at 24, not a shout`);
+    const format = /<p class="card-sub"><span class="card-format">([^<]*)<\/span><\/p>/.exec(html)?.[1] || '';
+    assert.ok(format.length <= 48, `${name}: the format in short, one line: ${format}`);
+    assert.doesNotMatch(format, /&lt;|&gt;/, `${name}: no <angle brackets> up front: ${format}`);
     // Nothing else above + Details: no kicker, note, chart, facts, media or links.
     assert.doesNotMatch(html.split('<details')[0], /card-kicker|card-note|card-chart|card-facts|card-media|card-links|class="notice"|class="muted/, `${name}: only the three slots`);
     assert.doesNotMatch(html, /style="|Format:|>Try /, `${name}: no inline style, no old "Format:" or "Try" lines`);
@@ -260,11 +267,12 @@ test('usage card: the problem, the format as code, one example that runs; the re
   const bare = usageCard({ problem: 'X needs a ticker.' });
   assert.doesNotMatch(bare, /card-sub|card-act|card-more/);
   const full = usageCard({ problem: 'X needs a ticker.', format: 'X <ticker>', example: 'X AAPL', more: ['X KO'], notes: ['One note.'] });
-  assert.match(full, /<p class="card-sub"><span class="code">X &lt;ticker&gt;<\/span><\/p>/);
+  assert.match(full, /<p class="card-sub"><span class="card-format">X &lt;ticker&gt;<\/span><\/p>/);
+  assert.match(affordUsage('AFFORD needs a price.'), /<dt class="tag">Format<\/dt><dd><span class="code card-grammar">AFFORD &lt;price&gt; \[&lt;thing&gt;\] \[&lt;n&gt; PER DAY\|WEEK\|MONTH\|YEAR\] \[FOR &lt;n&gt;Y\]<\/span>/, 'the full grammar in + Details');
   assert.match(full, /<details class="how card-more"><summary>Details<\/summary>[\s\S]*data-cmd="X KO"[\s\S]*One note\./);
   // An example that changes something (TAPE ON) is a link like any other: a link opened
   // from outside still goes through linkPlan, which asks first.
-  assert.match(tapeUsage({ error: 'usage', args: {} }), /href="\?c=TAPE\+ON" data-cmd="TAPE ON"/);
+  assert.match(tapeUsage({ error: 'usage', args: {} }), /href="\?c=TAPE\+ON" data-cmd="TAPE ON" data-example/);
 });
 
 test('empty state: a short title, one hint of 60ch at most, one action; 20 words', () => {
@@ -286,9 +294,9 @@ test('empty state: a short title, one hint of 60ch at most, one action; 20 words
   assert.match(emptyAlertsHtml(), /<details[\s\S]*ALERTS &lt;symbol&gt; &gt; &lt;level&gt;[\s\S]*ALERTS &lt;symbol&gt; &lt; &lt;level&gt;/, 'ALERTS: the two forms in + Details');
   assert.match(deskEmptyHtml(2), /class="empty desk-empty" hidden>/, 'DESK: its class and hidden, for its own wiring');
   assert.match(deskEmptyHtml(2), /data-act="add">\+ PANEL<\/button>[\s\S]*data-act="preset" data-preset=/, 'DESK: its buttons');
-  assert.match(emptyWatchHtml(), /data-cmd="WATCH RESET">STARTER LIST<\/a>/);
+  assert.match(emptyWatchHtml(), /data-cmd="WATCH RESET" data-example>STARTER LIST<\/a>/);
   // The kit: an action { label, cmd } is a command button; small is a side panel's note.
-  assert.match(emptyState({ title: 'T', action: { label: 'GO', cmd: 'HELP' } }), /<a class="btn empty-btn" href="\?c=HELP" data-cmd="HELP">GO<\/a>/);
+  assert.match(emptyState({ title: 'T', action: { label: 'GO', cmd: 'HELP' } }), /<a class="btn empty-btn" href="\?c=HELP" data-cmd="HELP" data-example>GO<\/a>/);
   assert.match(emptyState({ title: 'T', small: true }), /^<div class="empty is-small"><p class="empty-title">T<\/p><\/div>$/);
 });
 
@@ -310,7 +318,7 @@ test('NO SUCH TICKER and a GRAVEYARD stone: card pages, 30 words; every stone in
   assert.match(guesses.split('<details')[1], /Average price of a dozen eggs/);
   assert.ok(!cardWords(guesses).includes('Average'), 'the long words are in + Details (and the tooltip)');
   // A dead ticker typed on its own: the stone card, "Not anymore.", F PAY RESPECTS, the quote.
-  assert.match(grave, new RegExp(`card-kicker">${TITLE_GONE.replace(/\./g, '\\.')}</p><h2 class="card-hero card-hero-60 num">LEH</h2>`));
+  assert.match(grave, new RegExp(`card-kicker">${TITLE_GONE.replace(/\./g, '\\.')}</p><h2 class="card-hero card-hero-44 num">LEH</h2>`));
   assert.match(grave, /data-respect="LEH"><kbd>F<\/kbd> PAY RESPECTS/);
   assert.match(grave, /data-cmd="\$LEH" title="Quote: \$LEH, another listing">\$LEH<\/a>/);
   // The stone page: the facts (founded, died, peak, loss), the stone, the video and the last
@@ -321,7 +329,10 @@ test('NO SUCH TICKER and a GRAVEYARD stone: card pages, 30 words; every stone in
   assert.match(leh, /class="gv-card-video"><button type="button" class="gv-video"[\s\S]*class="gv-card-site"><a class="gv-site"/);
   assert.match(leh, /<p class="card-links"><a class="card-link" href="https:\/\/x\.com\/intent\/post[^"]*"[^>]*data-share="grave" data-via="x">SHARE ON X<\/a> <button type="button" class="card-link" data-copy="[^"]+" data-share="grave" data-via="link">COPY LINK<\/button>/);
   const more = leh.split('<details class="how card-more">')[1];
-  for (const bit of ['Lehman Brothers', 'Real estate losses, Chapter 11', 'class="gv-tl"', 'gv-cliff', 'SOURCES (', 'Esc, then F pays respects.']) assert.ok(more.includes(bit), `+ Details has ${bit}`);
+  for (const bit of ['Lehman Brothers', 'Real estate losses, Chapter 11', 'class="gv-tl"', 'SOURCES (', 'Esc, then F pays respects.']) assert.ok(more.includes(bit), `+ Details has ${bit}`);
+  // The cliff (a picture of the RIP WHATIF line) sits beside the facts, not only in + Details.
+  assert.match(leh.split('<details')[0], /<div class="gv-facts-row"><dl class="card-facts n4">[\s\S]*<\/dl><figure class="gv-cliff" title="\$1,000 at the peak \(Feb 2007\) was worth \$0 by Mar 2012"/);
+  assert.doesNotMatch(more, /gv-cliff/, 'once, by the facts');
   // Every stone and zombie in data/graveyard.json keeps to the budget, with all its art.
   for (const e of GRAVES) {
     const w = cardWords(stonePageHtml(withArt(e, ART(e)), 1234));
@@ -359,4 +370,49 @@ test('one-line messages: 60ch at most, centred on a screen of their own; the pro
   assert.equal(`${lead} ${rest}`, long, 'nothing lost');
   assert.match(descHtml(long), /^<p class="profile-desc">Apple Inc\.[^<]*<\/p><details class="how profile-more"><summary>Details<\/summary><p class="profile-desc">[^<]*Cupertino\.<\/p><\/details>$/);
   assert.equal(descHtml('Short.'), '<p class="profile-desc">Short.</p>');
+});
+
+test('examples: one that changes something saved goes into the command bar; one that shows runs', () => {
+  // Saving: an alert, the starter list, the tape switch, a wage, a watchlist add.
+  for (const c of ['ALERTS AAPL > 350', 'WATCH RESET', 'TAPE ON', 'TAPE ADD AAPL', 'WAGE 35', 'WAGE OFF', 'WATCH ADD AAPL']) assert.equal(examplePlan(c), 'fill', c);
+  // Showing: they run on a click as before.
+  for (const c of ['AFFORD 1200', 'HISTORY AAPL', 'CPI 100 2015', 'LOAN 400000 30Y', 'PROFILE AAPL', 'WHY AAPL', 'DATA CPI', 'IPO IT QXZV', 'HELP', 'EGGPRICE']) assert.equal(examplePlan(c), 'run', c);
+  // Every example the kit draws carries data-example, and app.js decides at the click.
+  for (const [name, html] of [...USAGE, ...EMPTY.filter(([n]) => !n.startsWith('DESK') && !n.startsWith('CHAT') && !n.startsWith('PORTFOLIO'))]) {
+    const examples = [between(html, '<div class="card-act">', '</div>'), between(html, '<span class="codes">', '</span>'), between(html, '<div class="empty-act">', '</div>')].join('');
+    for (const m of examples.matchAll(/<a [^>]*data-cmd="([^"]+)"[^>]*>/g)) assert.match(m[0], /data-example/, `${name}: ${m[1]}`);
+  }
+  const app = readFileSync('public/app.js', 'utf8');
+  assert.match(app, /if \(el\.hasAttribute\('data-example'\) && examplePlan\(el\.dataset\.cmd\) === 'fill'\) \{ fillBar\(el\.dataset\.cmd\); return; \}\n\s*run\(el\.dataset\.cmd\);/, 'the click handler: fill before run');
+  assert.match(app, /function fillBar\(raw\) \{[\s\S]*?input\.value = clean;[\s\S]*?input\.focus\(\);/);
+});
+
+test('GRAVEYARD stone: the media row is sized to the first view, the video the biggest', () => {
+  // A fake page: the row starts 300 px down, the dock at 671 (a 1536x730 window).
+  const row = {
+    isConnected: true, style: { props: {}, setProperty(k, v) { this.props[k] = v; }, removeProperty(k) { delete this.props[k]; } },
+    parentElement: { clientWidth: 1430 },
+    getBoundingClientRect: () => ({ top: 300 }),
+    querySelector: (q) => (['.gv-stone.has-art', '.gv-card-video', '.gv-card-site'].includes(q) ? {} : null),
+  };
+  const listeners = [];
+  const win = { matchMedia: () => ({ matches: false }), getComputedStyle: () => ({ overflowY: 'auto' }), innerHeight: 730, scrollY: 0, addEventListener: (t, f) => listeners.push(f), removeEventListener: () => listeners.pop() };
+  const doc = { getElementById: () => ({ scrollTop: 0, getBoundingClientRect: () => ({ bottom: 700 }) }), querySelector: () => ({ getBoundingClientRect: () => ({ top: 671 }) }) };
+  const stop = fitStone({ querySelector: () => row }, { win, doc });
+  assert.equal(row.style.props['--gv-h'], '363px', 'the room left: 671 - 300 - 8');
+  assert.equal(listeners.length, 1, 'again on resize');
+  stop();
+  assert.equal(listeners.length, 0);
+  // A narrow card: the width decides; the floor is 200, the ceiling 480.
+  row.parentElement.clientWidth = 800;
+  fitStone({ querySelector: () => row }, { win, doc });
+  assert.equal(row.style.props['--gv-h'], `${Math.max(GV_ROW.min, Math.floor((800 - 48) / (GV_ROW.stone + GV_ROW.video + GV_ROW.site)))}px`);
+  assert.ok(GV_ROW.video > GV_ROW.stone && GV_ROW.video > GV_ROW.site, 'the video is the widest at one height');
+  // A phone: no size, the row stacks and scrolls.
+  fitStone({ querySelector: () => row }, { win: { ...win, matchMedia: () => ({ matches: true }) }, doc });
+  assert.equal(row.style.props['--gv-h'], undefined);
+  const css = readFileSync('public/screens/graveyard.css', 'utf8');
+  for (const w of ['.gv-card-stone { flex: 0 0 auto; width: calc(var(--gv-h) * 560 / 778); }', '.gv-card-video { flex: 0 0 auto; width: calc(var(--gv-h) * 16 / 9); }', '.gv-card-site { flex: 0 0 auto; width: calc(var(--gv-h) * .9); }']) assert.ok(css.includes(w), w);
+  assert.doesNotMatch(css, /gv-page3|gv-a-stone|\.gv-page\b|gv-vcol|gv-respects/, 'the old stone page is gone');
+  assert.doesNotMatch(readFileSync('public/screens/nosuch.css', 'utf8') + readFileSync('public/nosuch.css', 'utf8'), /ns-page|ns-grave|\.ns-stone|ns-quote|\.ns-ipo\b/, 'the old NO SUCH page is gone');
 });

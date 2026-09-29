@@ -35,7 +35,8 @@ export function cpiUsage(message) {
   const [problem, ...rest] = String(message).split(/(?<=[.?]) /);
   return usageCard({
     problem,
-    format: 'CPI <amount> <year>',
+    format: 'CPI [amount] year',
+    grammar: 'CPI <amount> <year>',
     example: EXAMPLES[0],
     more: EXAMPLES.slice(1),
     notes: [rest.join(' '), 'The amount is optional and starts at $100.'],

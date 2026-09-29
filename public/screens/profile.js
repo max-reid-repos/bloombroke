@@ -9,7 +9,7 @@ export { parseTicker, parse };
 
 // A company screen without its ticker: the kit's usage card (kit.js usageCard).
 export function tickerUsage(name, examples) {
-  return usageCard({ problem: `${name} needs one ticker.`, format: `${name} <ticker>`, example: examples[0], more: examples.slice(1) });
+  return usageCard({ problem: `${name} needs one ticker.`, format: `${name} ticker`, grammar: `${name} <ticker>`, example: examples[0], more: examples.slice(1) });
 }
 
 const HELP_NOTE = raw(`Check the spelling. Type <a class="code" href="${esc(q('HELP'))}" data-cmd="HELP">HELP</a> for every command.`);

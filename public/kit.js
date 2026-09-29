@@ -27,15 +27,8 @@
 //   cardButton / cardLink / cardForm / cardFacts / cardRows   the parts that go in them
 //   cardWords(html)               the words a card shows above its + Details
 //   fitToView(el)                 a globe sized to the room left in the first view
-//
-// Two small cards every screen shares, so a mistake or an empty list reads the same
-// everywhere (test/layout-rules.test.js holds their budgets):
-//   usageCard({ problem, format, example, more, notes })   a command typed wrong: the
-//                                 problem, the format in code, one example that runs it;
-//                                 other examples and notes in + Details. 15 words at most
-//   emptyState({ title, hint, action, details })   a list with nothing in it: a short
-//                                 title, one hint (60ch at most), one button or command.
-//                                 20 words at most
+//   usageCard(...)                a command typed wrong (15 words at most)
+//   emptyState(...)               a list with nothing in it (20 words at most)
 
 import { PRESETS } from './ranges.js';
 
@@ -177,7 +170,8 @@ export function edgeFade(el) {
 // ---- Card pages ------------------------------------------------------------------------
 // One centred column, fixed slots in a fixed order, so every card page reads the same:
 //   KICKER  a small uppercase label (.tag)
-//   HERO    one thing, big: a number or a short title (heroSize 96, 60, 44 or 32 px)
+//   HERO    one thing, big: a number or a short title (heroSize 96, 60, 44 or 32 px;
+//           24 for a usage card's problem)
 //   SUB     one line under it
 //   ACT     at most one primary button (solid), one secondary (outline), or a form
 //   NOTE    one small dim line (renewal, test mode, a rule)
@@ -191,7 +185,7 @@ export function edgeFade(el) {
 export const raw = (html) => ({ html: String(html ?? '') });
 const put = (v) => (v && typeof v === 'object' && 'html' in v ? v.html : esc(v));
 const given = (v) => (v && typeof v === 'object' ? ('html' in v ? Boolean(v.html) : true) : v !== '' && v != null && v !== false);
-export const HERO_SIZES = [96, 60, 44, 32];
+export const HERO_SIZES = [96, 60, 44, 32, 24]; // 24: the usage card's problem line
 
 // A button (primary: solid; otherwise outline), a command link (cmd) or a plain link (href).
 export function cardButton({ label, primary = false, id = '', cmd = '', href = '', attrs = '', type = 'button' } = {}) {
@@ -268,34 +262,31 @@ export function cardPage({
 
 // ---- Usage card and empty state ------------------------------------------------------
 
-const codeLink = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
+// Examples carry data-example: app.js examplePlan runs a showing one, prefills a saving one.
+const codeLink = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}" data-example>${esc(c)}</a>`;
 
-// A command typed wrong. problem: what is wrong, short (the hero); format: the command's
-// shape, shown as code; example: one command that works, a button that runs it through
-// the router like any link. more: other examples; notes: [label, text] rows or plain
-// text. Both go in + Details, nothing else sits above it.
-export function usageCard({ problem, format = '', example = '', more = [], notes = [], label = 'How to type it' } = {}) {
+// A command typed wrong: problem (hero 24), format (short, one line), example (a button);
+// grammar (the full shape), more (examples) and notes ([label, text] or text) in + Details.
+export function usageCard({ problem, format = '', grammar = '', example = '', more = [], notes = [], label = 'How to type it' } = {}) {
   const rows = [
+    grammar ? ['Format', raw(`<span class="code card-grammar">${esc(grammar)}</span>`)] : null,
     more.length ? ['More examples', raw(`<span class="codes">${more.map(codeLink).join(' ')}</span>`)] : null,
     ...notes.filter(Boolean).map((n) => (Array.isArray(n) ? n : ['Note', n])),
   ].filter(Boolean);
   return cardPage({
     cls: 'card-usage', label,
-    hero: problem, heroSize: 32,
-    sub: format ? raw(`<span class="code">${esc(format)}</span>`) : '',
-    act: example ? raw(cardButton({ label: example, cmd: example, primary: true })) : '',
+    hero: problem, heroSize: 24,
+    sub: format ? raw(`<span class="card-format">${esc(format)}</span>`) : '',
+    act: example ? raw(cardButton({ label: example, cmd: example, primary: true, attrs: 'data-example' })) : '',
     details: rows.length ? raw(cardRows(rows)) : '',
   });
 }
 
-// A list with nothing in it (WATCH, ALERTS, a DESK). title: short; hint: one line, 60ch
-// at most; action: { label, cmd } (a command button) or raw(html) (a screen's own
-// buttons, like DESK's presets); details: raw(html) for the rest, behind + Details.
-// small: a note inside a side panel (no action). cls, id, hidden: for the screen's own
-// wiring.
+// An empty list: title, hint (60ch at most), action ({ label, cmd } or raw(html), DESK's
+// presets), details (+ Details). small: a side panel's note.
 export function emptyState({ title, hint = '', action = null, details = '', small = false, cls = '', id = '', hidden = false } = {}) {
   const act = action && typeof action === 'object' && 'cmd' in action
-    ? `<a class="btn empty-btn" href="${esc(q(action.cmd))}" data-cmd="${esc(action.cmd)}">${esc(action.label || action.cmd)}</a>`
+    ? `<a class="btn empty-btn" href="${esc(q(action.cmd))}" data-cmd="${esc(action.cmd)}" data-example>${esc(action.label || action.cmd)}</a>`
     : given(action) ? put(action) : '';
   return `<div class="empty${small ? ' is-small' : ''}${cls ? ` ${esc(cls)}` : ''}"${id ? ` id="${esc(id)}"` : ''}${hidden ? ' hidden' : ''}>`
     + `<p class="empty-title">${put(title)}</p>`
@@ -306,10 +297,8 @@ export function emptyState({ title, hint = '', action = null, details = '', smal
 }
 
 // The words a card shows above its + Details: tags, hidden bits and the details out;
-// numbers, prices, dates' digits, keys and codes are not words. Words drawn on a picture
-// (a tombstone's face, the certificate's stamp: role="img" or aria-hidden="true") are
-// part of the picture, not of the text to read. The word budgets
-// (test/layout-rules.test.js) count with this.
+// numbers, prices, dates' digits, keys and codes are not words, nor words on a picture
+// (role="img", aria-hidden="true"). The budgets (test/layout-rules.test.js) count with this.
 export function cardWords(html) {
   const cut = String(html).split('<details class="how card-more"')[0];
   const text = cut

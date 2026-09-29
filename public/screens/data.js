@@ -292,7 +292,7 @@ const state = { open: new Set(), cur: null };
 const KEYS_TIP = 'Down from the empty command bar (or Tab) moves in. Right or Enter opens a group, Left closes it, Space toggles, E opens all, C closes all. A click or tap opens and closes. Hover a line for its detail.';
 
 // A command typed wrong: the kit's usage card.
-export const dataUsage = () => usageCard({ problem: 'DATA takes one dataset name at most.', format: 'DATA [<dataset>]', example: 'DATA CPI' });
+export const dataUsage = () => usageCard({ problem: 'DATA takes one dataset name at most.', format: 'DATA [dataset]', grammar: 'DATA [<dataset>]', example: 'DATA CPI' });
 
 export function render(el, cmd, ctx) {
   if (cmd.error) {

@@ -67,7 +67,7 @@ export function whyMeta(d) {
 }
 
 export function notCompanyHtml(ticker) {
-  return usageCard({ problem: 'WHY works for company stocks.', format: 'WHY <ticker>', example: 'WHY AAPL', more: ['WHY TSLA'], notes: [`${ticker} has no company filings to match.`] });
+  return usageCard({ problem: 'WHY works for company stocks.', format: 'WHY ticker', grammar: 'WHY <ticker>', example: 'WHY AAPL', more: ['WHY TSLA'], notes: [`${ticker} has no company filings to match.`] });
 }
 
 export function render(el, cmd, ctx) {

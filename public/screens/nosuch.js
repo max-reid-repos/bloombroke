@@ -12,7 +12,7 @@ import { goal } from '../goal.js';
 import { setPrefill } from './feedback.js';
 import { tombstoneLine, ipoLinks, pickGraves, respectsText, IPO_STAMP, FEEDBACK_PREFILL } from '../nosuch.js';
 import {
-  loadGraveyardAll, loadRespects, flowersHtml, shareRow, wireShare, wireRespects, renderGraveyard, graveyardTable, stoneSlots,
+  loadGraveyardAll, loadRespects, flowersHtml, shareRow, wireShare, wireRespects, renderGraveyard, graveyardTable, stoneSlots, fitStone, wireVideo,
 } from './graveyard.js';
 import { cardLink, usageCard, raw } from '../kit.js';
 
@@ -125,6 +125,8 @@ export function wireNoSuch(el, word, info, { status = () => {} } = {}) {
   el.addEventListener('click', onClick);
   wireShare(el);
   const stop = info?.grave ? wireRespects(el, info.grave.ticker, { status }) : () => {};
+  const stopFit = info?.grave ? fitStone(el) : () => {}; // the stone card's media row, to the first view
+  if (info?.grave) wireVideo(el); // its video loads on a click, as on GRAVEYARD LEH
   if (info?.grave) {
     loadRespects().then((n) => {
       if (!el.isConnected) return;
@@ -135,14 +137,14 @@ export function wireNoSuch(el, word, info, { status = () => {} } = {}) {
       if (f) f.innerHTML = flowersHtml(v);
     });
   }
-  return () => { el.removeEventListener('click', onClick); stop(); };
+  return () => { el.removeEventListener('click', onClick); stop(); stopFit(); };
 }
 
 // ---- IPO IT --------------------------------------------------------------------------------
 
 // IPO IT without a word it can list: the kit's usage card.
 export function ipoUsage() {
-  return usageCard({ problem: 'IPO IT needs a made-up ticker.', format: 'IPO IT <1 to 5 letters>', example: 'IPO IT QXZV', notes: [raw(`Type <a class="code" href="${esc(q('HELP'))}" data-cmd="HELP">HELP</a> for every command.`)] });
+  return usageCard({ problem: 'IPO IT needs a made-up ticker.', format: 'IPO IT word', grammar: 'IPO IT <1 to 5 letters, A to Z>', example: 'IPO IT QXZV', notes: [raw(`Type <a class="code" href="${esc(q('HELP'))}" data-cmd="HELP">HELP</a> for every command.`)] });
 }
 
 function plainPage(el, ctx) {

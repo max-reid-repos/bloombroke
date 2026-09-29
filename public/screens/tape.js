@@ -19,7 +19,8 @@ export function usage(cmd) {
   const ex = ['TAPE ON', 'TAPE ADD AAPL', 'TAPE RESET'];
   return usageCard({
     problem: symbol ? `${cmd.args.bad} is not a ticker.` : 'Not a TAPE command.',
-    format: 'TAPE ON|OFF|RESET or TAPE ADD|REMOVE <tickers>',
+    format: 'TAPE ON|OFF|RESET, TAPE ADD ticker',
+    grammar: 'TAPE ON, TAPE OFF, TAPE ADD <tickers>, TAPE REMOVE <tickers>, TAPE RESET',
     example: symbol ? ex[1] : ex[0],
     more: ex.filter((e) => e !== (symbol ? ex[1] : ex[0])),
   });

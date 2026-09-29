@@ -6,10 +6,3 @@
 
 .ns-help { margin-top: 14px; }
 
-/* The not-found page: the text on the left, the certificate preview on the right (desk);
-   one column on a phone. */
-.ns-page > * { grid-column: 1; min-width: 0; }
-@media (min-width: 900px) {
-  .ns-page { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 440px); column-gap: 56px; align-content: start; }
-}
-

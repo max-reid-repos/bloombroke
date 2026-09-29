@@ -746,6 +746,9 @@ export function linkPlan(raw) {
   const plain = cmd.view || LINK_SCREEN[cmd.name];
   return { url: plain, show: plain, ask: { run: clean, url: plain, ...linkQuestion(cmd) } };
 }
+// An example (kit.js data-example) that changes something saved (linkPlan asks) goes into
+// the command bar for Enter ('fill'); one that only shows something runs ('run').
+export const examplePlan = (raw) => (linkPlan(raw).ask ? 'fill' : 'run');
 export const DEFAULT_TITLE = 'Bloombroke: a free market terminal. Pro $420 a year.';
 // DRIVE (drive.js): a screen from the driver opens like a link, so it never changes anything.
 export const driveTarget = (raw) => { const p = linkPlan(raw); return p.ask ? p.url : p.show; };
@@ -766,17 +769,12 @@ export function resolvedNote(command, from) {
   return `Showing ${command} (from '${String(from).toLowerCase()}')`;
 }
 
-// The ALL COMMANDS link on the NO SUCH card (the same as screens/nosuch.js HELP_LINE;
-// test/speed.test.js checks), here so the page can draw it before that module loads.
+// ALL COMMANDS on the NO SUCH card (= screens/nosuch.js HELP_LINE, test/speed.test.js).
 export const HELP_LINE = '<a class="card-link" href="?c=HELP" data-cmd="HELP">ALL COMMANDS</a>';
 
-// NO SUCH TICKER and an unknown command: one card page (kit.js cardPage). The kicker says
-// which; the hero is what was typed; one line under it; the action is the screen's own
-// (IPO IT, F PAY RESPECTS), else the best guess (key 1), else HELP; the other guesses
-// (keys 2 and 3, never the words typed) and ALL COMMANDS are the links, and what each
-// guess is goes in + Details. extra: the slots screens/nosuch.js adds (a tombstone, IPO
-// IT, THE GRAVEYARD row, "Tell us."), any of kit.js cardPage's; help: false leaves out
-// ALL COMMANDS (a tombstone has its own links).
+// NO SUCH TICKER and an unknown command: one card page. Action: the screen's own (IPO IT,
+// PAY RESPECTS), else the best guess (key 1), else HELP; other guesses (keys 2, 3) are links,
+// what each is in + Details. extra: slots from screens/nosuch.js; help: false, no ALL COMMANDS.
 export function didYouMeanHtml(typed, found = {}, ticker = null, { extra = null } = {}) {
   const rows = dymRows(found, typed, ticker);
   const x = extra || {};
@@ -1076,6 +1074,20 @@ function boot() {
   if (!embed) loadSponsors().then((cfg) => { sponsorCfg = cfg; paintPro(); });
   // --- end Pro structure ---
 
+  // A saving example: into the focused command bar (a DESK panel: the status line says it).
+  function fillBar(raw) {
+    const clean = tokenize(raw).join(' ');
+    if (embed) { setStatus(`TYPE ${clean} TO RUN IT`); return; }
+    input.value = clean;
+    draft = clean;
+    histIndex = cmdHistory.length;
+    closeSuggest();
+    input.focus();
+    input.setSelectionRange?.(clean.length, clean.length);
+    placeCursor();
+    setStatus('PRESS ENTER TO RUN IT');
+  }
+
   // --- blinking block cursor that follows the caret -------------------------
   function placeCursor() {
     const ch = measure.getBoundingClientRect().width || 9;
@@ -1334,7 +1346,6 @@ function boot() {
         <p class="muted">${escapeHtml(s.hint)}. For now, try ${alt}<a class="code" href="${toQuery('HELP')}" data-cmd="HELP">HELP</a>.</p>`, { cls: 'panel-solo' });
       setStatus(`${s.name}: COMING SOON`);
     } else {
-      // The same card as NO SUCH TICKER (didYouMeanHtml), without the look-up.
       view.innerHTML = didYouMeanHtml(cmd.input, {}, null, { extra: { details: raw(cardRows([['Tickers', raw(`A ticker is one word, like <a class="code" href="${toQuery('AAPL')}" data-cmd="AAPL">AAPL</a> or <a class="code" href="${toQuery('BRK.B')}" data-cmd="BRK.B">BRK.B</a>.`)]])) } });
       setStatus('UNKNOWN COMMAND. TYPE HELP', 'warn');
     }
@@ -1640,6 +1651,7 @@ function boot() {
         toParent({ type: 'bb:pick', c: tokenize(el.dataset.cmd).join(' ') });
         return;
       }
+      if (el.hasAttribute('data-example') && examplePlan(el.dataset.cmd) === 'fill') { fillBar(el.dataset.cmd); return; }
       run(el.dataset.cmd);
       if (!coarse) input.focus();
       return;

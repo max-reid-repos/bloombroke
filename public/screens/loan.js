@@ -51,7 +51,8 @@ export function usage(kind) {
   const title = kind === 'amount' ? 'That amount does not look right.' : kind === 'years' ? 'Pick a term from 1 to 50 years.' : kind === 'rate' ? 'Pick a rate from 0% to 30%.' : 'LOAN needs an amount.';
   return usageCard({
     problem: title,
-    format: 'LOAN <amount> [<years>Y] [<rate>%]',
+    format: 'LOAN amount [nY] [rate%]',
+    grammar: 'LOAN <amount> [<years>Y] [<rate>%]',
     example: ex[0],
     more: ex.slice(1),
     notes: ["No rate: today's average 30-year mortgage rate."],
@@ -61,7 +62,7 @@ export function usage(kind) {
 // Today's rate did not load: the same card, with your amount and term and a rate of your own.
 export function noRateHtml(a) {
   const base = `LOAN ${a.amount} ${a.years}Y`;
-  return usageCard({ problem: "Today's mortgage rate did not load.", format: `${base} <rate>%`, example: `${base} 6.5%`, notes: ['Add your own rate at the end.'] });
+  return usageCard({ problem: "Today's mortgage rate did not load.", format: `${base} rate%`, grammar: `${base} <rate>%`, example: `${base} 6.5%`, notes: ['Add your own rate at the end.'] });
 }
 
 function show(el, ctx, a, rate, source) {

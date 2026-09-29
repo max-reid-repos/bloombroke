@@ -14,8 +14,9 @@
 //             picture (role="img", aria-hidden="true": a tombstone's face) are the picture's
 //   measure   a block of text wider than about 70 characters of its own font
 //   primary   more than one primary (solid) button
-//   fold      on a desktop size, BBRK's and SPONSOR's globe not wholly in the first view
-//             (its bottom below the scroll box's visible bottom, scrolled to the top)
+//   fold      on a desktop size, BBRK's and SPONSOR's globe, or GRAVEYARD LEH's stone, video
+//             and last website, not wholly in the first view (the media's bottom below the
+//             scroll box's visible bottom, scrolled to the top)
 // and prints a table. --shots saves a PNG per page and size (after-<page>-<width>.png).
 // The numbers the pages show come from small fixtures below, or with --live-data from the
 // public GET routes of that site (/api/bbrk, /api/sponsors, /api/pro/seat, /api/pro/config).
@@ -158,7 +159,7 @@ function inPage(scale, firstView, sel) {
     if (!media) out.fold.push('no media');
     else {
       const r = media.getBoundingClientRect();
-      if (r.bottom > bottom + 0.5) out.fold.push(`globe bottom ${Math.round(r.bottom)} > visible ${Math.round(bottom)}`);
+      if (r.bottom > bottom + 0.5) out.fold.push(`media bottom ${Math.round(r.bottom)} > visible ${Math.round(bottom)}`);
       const c = media.querySelector('canvas');
       if (c) out.fold.push(...(c.getBoundingClientRect().width < 219 ? [`globe ${Math.round(c.getBoundingClientRect().width)} px, under 220`] : []));
     }
@@ -213,7 +214,7 @@ async function main() {
           await page.evaluate((s) => { const d = document.querySelector(`#screen ${s} .card-more`); if (d) { d.open = true; d.scrollIntoView({ block: 'start' }); } }, sel);
           await new Promise((r) => { setTimeout(r, 300); });
         }
-        const firstView = !OPEN && w >= 1100 && ['bbrk', 'sponsor'].includes(name);
+        const firstView = !OPEN && w >= 1100 && ['bbrk', 'sponsor', 'graveyard-leh'].includes(name);
         const res = await page.evaluate(inPage, TYPE, firstView, sel);
         const bad = Object.entries(res).filter(([, v]) => v.length);
         if (bad.length) failed++;
