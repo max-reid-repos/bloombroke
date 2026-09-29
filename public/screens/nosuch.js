@@ -10,9 +10,9 @@
 import { esc, q, panel } from './markets.js';
 import { goal } from '../goal.js';
 import { setPrefill } from './feedback.js';
-import { tombstoneLine, ipoLinks, pickGraves, respectsText, IPO_STAMP, FEEDBACK_PREFILL } from '../nosuch.js';
+import { tombstoneLine, ipoLinks, pickGraves, IPO_STAMP, FEEDBACK_PREFILL } from '../nosuch.js';
 import {
-  loadGraveyardAll, loadRespects, flowersHtml, shareRow, wireShare, wireRespects, renderGraveyard, graveyardTable, stoneSlots, fitStone, wireVideo,
+  loadGraveyardAll, loadRespects, showRespects, shareRow, wireShare, wireRespects, renderGraveyard, graveyardTable, stoneSlots, wireVideo,
 } from './graveyard.js';
 import { cardLink, usageCard, raw } from '../kit.js';
 
@@ -125,19 +125,10 @@ export function wireNoSuch(el, word, info, { status = () => {} } = {}) {
   el.addEventListener('click', onClick);
   wireShare(el);
   const stop = info?.grave ? wireRespects(el, info.grave.ticker, { status }) : () => {};
-  const stopFit = info?.grave ? fitStone(el) : () => {}; // the stone card's media row, to the first view
   if (info?.grave) wireVideo(el); // its video loads on a click, as on GRAVEYARD LEH
-  if (info?.grave) {
-    loadRespects().then((n) => {
-      if (!el.isConnected) return;
-      const v = n[info.grave.ticker] || 0;
-      const c = el.querySelector('[data-count]');
-      if (c) c.textContent = respectsText(v);
-      const f = el.querySelector('[data-flowers]');
-      if (f) f.innerHTML = flowersHtml(v);
-    });
-  }
-  return () => { el.removeEventListener('click', onClick); stop(); stopFit(); };
+  // The candles for its respects so far (the count itself shows only after F).
+  if (info?.grave) loadRespects().then((n) => { if (el.isConnected) showRespects(el, n[info.grave.ticker] || 0); });
+  return () => { el.removeEventListener('click', onClick); stop(); };
 }
 
 // ---- IPO IT --------------------------------------------------------------------------------
