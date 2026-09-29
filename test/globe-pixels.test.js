@@ -234,7 +234,7 @@ function el(tag) {
     click() { listeners.click?.({}); },
   };
 }
-function page({ reduceMotion = false, world = WORLD, scroller = null } = {}) {
+function page({ reduceMotion = false, world = WORLD } = {}) {
   let t = 0;
   let frames = [];
   let timers = [];
@@ -249,7 +249,6 @@ function page({ reduceMotion = false, world = WORLD, scroller = null } = {}) {
   });
   const fig = el('figure');
   fig.clientWidth = 300;
-  if (scroller) fig.parentElement = scroller;
   const canvas = {
     width: 0, height: 0, offsetLeft: 0, offsetTop: 0, parentElement: fig, attrs: {},
     getContext: () => ctx,
@@ -270,9 +269,9 @@ function page({ reduceMotion = false, world = WORLD, scroller = null } = {}) {
     removeEventListener: (type) => { delete winListeners[type]; },
   };
   const doc = {
-    hidden: false, activeElement: null,
-    addEventListener: (type, f) => { docListeners[type] = f; },
-    removeEventListener: (type) => { delete docListeners[type]; },
+    hidden: false, activeElement: null, documentElement: { tag: 'html' },
+    addEventListener: (type, f, opts) => { docListeners[type] = f; if (opts) docListeners[`${type}:opts`] = opts; },
+    removeEventListener: (type, f, opts) => { delete docListeners[type]; if (opts) docListeners[`${type}:removed`] = opts; },
     createElement: (tag) => el(tag),
   };
   const run = (ms) => {
@@ -414,29 +413,44 @@ test('wheel (b): at a limit in the wheel\'s direction the page scrolls: 1x zoomi
 });
 
 test('wheel (c): while the page is scrolling (the globe slid under the pointer), the wheel keeps scrolling it', () => {
-  const box = { overflowY: 'auto', parentElement: null, ...el('div') };
-  const p = page({ scroller: box });
+  const p = page();
   const g = mountGlobe(p.canvas, GEO, FIX, p.opts);
-  assert.equal(typeof box.listeners.scroll, 'function', 'listens to the box that scrolls');
-  assert.equal(typeof p.winListeners.scroll, 'function', 'and the window');
-  assert.deepEqual(p.winListeners['scroll:opts'], { passive: true });
+  // One listener on the document, in the capture phase (scroll does not bubble).
+  assert.equal(typeof p.docListeners.scroll, 'function');
+  assert.deepEqual(p.docListeners['scroll:opts'], { capture: true, passive: true });
+  const box = { contains: (n) => n === p.canvas }; // the screen or a panel the globe is in
+  const other = { contains: () => false }; // some other box: a table, the tape
+  const wheel = () => p.ev('wheel', { clientX: 150, clientY: 150, deltaY: -100 });
   p.run(1000);
-  box.listeners.scroll();
+  // Another box scrolling is not the page: the wheel zooms.
+  p.docListeners.scroll({ target: other });
   p.run(100);
-  let r = p.ev('wheel', { clientX: 150, clientY: 150, deltaY: -100 });
+  let r = wheel();
+  assert.equal(r.prevented, true, 'another box scrolling: still ours');
+  g.zoom(1);
+  // The box the globe is in scrolled: the page scrolls on.
+  p.docListeners.scroll({ target: box });
+  p.run(100);
+  r = wheel();
   assert.equal(r.prevented, false, 'just scrolled: the page scrolls on');
   assert.equal(g.view.zoom, 1);
-  p.run(400);
-  p.winListeners.scroll();
-  p.run(300);
-  assert.equal(p.ev('wheel', { clientX: 150, clientY: 150, deltaY: -100 }).prevented, false, 'the window scrolling counts too');
+  // The document itself (after a resize the window may be what scrolls) counts too.
   p.run(700);
-  r = p.ev('wheel', { clientX: 150, clientY: 150, deltaY: -100 });
-  assert.equal(r.prevented, true, 'the pointer has rested: now it zooms');
+  p.docListeners.scroll({ target: p.doc });
+  p.run(300);
+  assert.equal(wheel().prevented, false, 'the document scrolling counts');
+  p.run(700);
+  p.docListeners.scroll({ target: p.doc.documentElement });
+  p.run(300);
+  assert.equal(wheel().prevented, false, 'and the root element');
+  // The pointer has rested: now it zooms.
+  p.run(700);
+  r = wheel();
+  assert.equal(r.prevented, true, 'rested: now it zooms');
   assert.ok(g.view.zoom > 1);
   g.stop();
-  assert.equal(box.listeners.scroll, undefined, 'stop() lets go of the scroll listeners');
-  assert.equal(p.winListeners.scroll, undefined);
+  assert.equal(p.docListeners.scroll, undefined, 'stop() lets go of it');
+  assert.deepEqual(p.docListeners['scroll:removed'], { capture: true, passive: true }, 'with the same capture option');
 });
 
 test('zoomed in: it stays put (no turning by itself), a drag turns it less, the land is finer', async () => {

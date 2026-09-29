@@ -1093,15 +1093,16 @@ export function mountGlobe(canvas, geo, globe = [], {
     ['keydown', onKey], ['dblclick', onDbl], ['wheel', onWheel, { passive: false }],
   ];
   for (const [type, fn, opts] of handlers) canvas.addEventListener?.(type, fn, opts);
-  // The boxes that scroll the page around the globe (the screen, a panel) and the window.
+  // The page scrolling: one listener on the document (scroll does not bubble, so in the
+  // capture phase), counting only the page itself or a box the globe is in (the screen,
+  // a panel), whichever of them scrolls after a resize.
   let lastScroll = -Infinity;
-  const onScroll = () => { lastScroll = clock(); };
-  const scrollers = [win];
-  for (let a = canvas.parentElement; a && a !== doc.documentElement && a !== doc.body; a = a.parentElement) {
-    const oy = win.getComputedStyle?.(a)?.overflowY;
-    if (oy && /auto|scroll/.test(oy)) scrollers.push(a);
-  }
-  for (const el of scrollers) el.addEventListener?.('scroll', onScroll, { passive: true });
+  const onScroll = (e) => {
+    const t = e?.target;
+    if (t === doc || t === doc.documentElement || t?.contains?.(canvas)) lastScroll = clock();
+  };
+  const SCROLL_OPTS = { capture: true, passive: true };
+  doc.addEventListener('scroll', onScroll, SCROLL_OPTS);
 
   // ---- only while on screen and the tab is visible ----
   const onVis = () => sync();
@@ -1133,7 +1134,7 @@ export function mountGlobe(canvas, geo, globe = [], {
       io?.disconnect();
       for (const [type, fn, opts] of handlers) canvas.removeEventListener?.(type, fn, opts);
       for (const [b, fn] of buttons) b.removeEventListener?.('click', fn);
-      for (const el of scrollers) el.removeEventListener?.('scroll', onScroll, { passive: true });
+      doc.removeEventListener('scroll', onScroll, SCROLL_OPTS);
       cancel(lodTimer);
       cancel(worldRetry);
       tip?.remove?.();
