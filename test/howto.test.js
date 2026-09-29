@@ -31,7 +31,7 @@ test('GUESS how to play: the title, the goal, 3 lines, the example, a key of 3, 
   assert.equal(HOWTO.lines[0], 'Chart: its 1-year price, in %.');
   assert.equal(HOWTO.lines[1], 'Each guess gets 4 clues.');
   assert.match(HOWTO.lines[2], /Arrows point to the answer/);
-  assert.deepEqual(HOWTO.legend.map((k) => [k.cls, k.label]), [['gs-cell g-hit', 'right'], ['gs-cell g-near', 'close'], ['gs-cell g-miss', 'wrong']]);
+  assert.deepEqual(HOWTO.legend.map((k) => [k.cls, k.label]), [['gs-cell g-hit', 'hit'], ['gs-cell g-near', 'near'], ['gs-cell g-miss', 'miss']]);
   assert.equal(HOWTO.foot, 'A new stock every day at midnight New York time.');
   assert.equal(HOWTO.button, 'PLAY');
   const html = howtoHtml(howtoSlots());
@@ -40,7 +40,7 @@ test('GUESS how to play: the title, the goal, 3 lines, the example, a key of 3, 
   assert.ok(order.every((i) => i >= 0), String(order));
   assert.deepEqual(order, [...order].sort((a, b) => a - b), 'slots in order');
   // The legend line's meaning is all in the pop-up now.
-  for (const w of ['Arrows point to the answer', 'right', 'close']) assert.ok(html.includes(w), w);
+  for (const w of ['Arrows point to the answer', '>hit<', '>near<', '>miss<']) assert.ok(html.includes(w), w);
 });
 
 test('GUESS how to play: 45 visible words at most (the site\'s count), and the count', () => {
@@ -132,10 +132,12 @@ test('GUESS how to play: the stylesheet is on the scales, px only; lines stay sh
 
 test('GUESS: the legend line is now a How to play link (the legend stays in a DESK panel); howto.js loads with the screen only', () => {
   const link = howtoLinkHtml();
-  assert.match(link, /<button type="button" class="card-link gs-howto" aria-haspopup="dialog" aria-keyshortcuts="\?">How to play<\/button>/);
+  assert.match(link, /<button type="button" class="card-link gs-howto" aria-haspopup="dialog" aria-keyshortcuts="\?">How to play<\/button><span class="gs-key" aria-hidden="true">\?<\/span>/);
+  // After the game (no guess input, the focus in the command bar where ? is HELP): the link only.
+  assert.equal(howtoLinkHtml(false), '<p class="gs-legend"><button type="button" class="card-link gs-howto" aria-haspopup="dialog">How to play</button></p>');
   assert.equal(legendHtml(), `<p class="gs-legend">${LEGEND}</p>`);
   const src = readFileSync('public/screens/guess.js', 'utf8');
-  assert.ok(src.includes("${ctx.embed ? legendHtml() : howtoLinkHtml()}"), 'the link, or the legend in a DESK panel');
+  assert.ok(src.includes("${ctx.embed ? legendHtml() : howtoLinkHtml(!done)}"), 'the link, or the legend in a DESK panel');
   assert.ok(src.includes("loadModule('howto.js', { recover: false })"), 'loaded by name when the screen opens');
   assert.ok(src.includes("stylesOf('howto.js').map(loadCss)"), 'with its stylesheet');
   assert.ok(src.includes("fields: '.gs-in'"), '? in the guess input opens it (a guess never has a ?)');
@@ -179,8 +181,8 @@ function fakePage({ storage = memStorage(), consent = false, needed = false, fra
     documentElement: { classList: { contains: (c) => embed && c === 'is-embed' } },
     querySelector: (s) => (s === '.consent' ? page.consentEl : null),
     getElementById: (id) => (id === 'cmd' ? cmd : null),
-    addEventListener(t, fn) { (docListeners[t] ||= []).push(fn); },
-    removeEventListener(t, fn) { docListeners[t] = (docListeners[t] || []).filter((f) => f !== fn); },
+    addEventListener(t, fn, cap) { (docListeners[t] ||= []).push({ fn, cap: Boolean(cap) }); },
+    removeEventListener(t, fn, cap) { docListeners[t] = (docListeners[t] || []).filter((l) => l.fn !== fn || l.cap !== Boolean(cap)); },
     body: { appendChild(d) { d.connected = true; } },
     createElement(tag) {
       const ls = {};
@@ -201,10 +203,16 @@ function fakePage({ storage = memStorage(), consent = false, needed = false, fra
   page.openDialog = () => page.dialogs.find((d) => d.open && d.connected) || null;
   page.key = (key, target = el(), extra = {}) => {
     const e = { key, target, preventDefault() { e.prevented = true; }, stopPropagation() { e.stopped = true; }, ...extra };
-    for (const fn of [...(docListeners.keydown || [])]) fn(e);
+    // Capture listeners on the document first, then (unless stopped) the bubbling ones.
+    const ls = docListeners.keydown || [];
+    for (const l of ls.filter((x) => x.cap)) l.fn(e);
+    if (!e.stopped) for (const l of ls.filter((x) => !x.cap)) l.fn(e);
     return e;
   };
-  page.keyListeners = () => (docListeners.keydown || []).length;
+  page.keyListeners = () => (docListeners.keydown || []).filter((l) => l.cap).length;
+  // app.js: Esc away from a text field goes BACK a screen (a bubbling listener).
+  page.backs = 0;
+  page.doc.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.defaultPrevented) page.backs += 1; });
   page.mount = (opts = {}) => mountHowto({ key: opts.key || 'bb.test.howto', slots: howtoSlots(), fields: '.gs-in', doc: page.doc, win: page.win, needed: () => page.needed, Observer: FakeObserver, ...opts });
   return page;
 }
@@ -235,7 +243,7 @@ test('how to play: shows once by itself; PLAY closes it, stores the key and puts
     page.cmd.focus();
     h.open();
     const d2 = page.openDialog();
-    if (how === 'esc') d2.fire('keydown', { key: 'Escape', preventDefault() {}, stopPropagation() {} });
+    if (how === 'esc') page.key('Escape', d2);
     else d2.fire('click', { target: d2 });
     assert.equal(page.doc.activeElement, guessInput, how);
   }
@@ -342,14 +350,15 @@ test('how to play: Esc closes it (and never reaches the terminal); so does a cli
   const inside = { closest: () => null };
   d.fire('click', { target: inside });
   assert.ok(page.openDialog(), 'a click inside the box keeps it open');
-  const esc = { key: 'Escape', preventDefault() { esc.prevented = true; }, stopPropagation() { esc.stopped = true; } };
-  d.fire('keydown', esc);
+  assert.equal(d.attrs.tabindex, '-1', 'a click on its text keeps the focus in it');
+  const esc = page.key('Escape', inside);
   assert.equal(page.openDialog(), null, 'Esc closes it');
+  assert.equal(page.backs, 0, 'and the terminal does not go back');
   assert.equal(esc.prevented, true, 'the terminal does not go back a screen');
   assert.equal(esc.stopped, true);
   h.open();
   const d2 = page.openDialog();
-  d2.fire('keydown', { key: 'a', preventDefault() {}, stopPropagation() {} });
+  page.key('a', d2);
   assert.ok(page.openDialog(), 'other keys do nothing');
   d2.fire('click', { target: d2 });
   assert.equal(page.openDialog(), null, 'the backdrop closes it');
@@ -397,4 +406,42 @@ test('how to play: without showModal it still opens and closes', () => {
   assert.equal(h.isOpen(), false);
   assert.equal(d.connected, false);
   h.destroy();
+});
+
+test('how to play: Esc with the focus on the page (a click on its text) closes it and never goes BACK', () => {
+  const page = fakePage();
+  const h = page.mount({ key: freshKey() });
+  assert.ok(page.openDialog());
+  const body = { closest: () => null };
+  page.doc.activeElement = body;
+  const e = page.key('Escape', body);
+  assert.equal(page.openDialog(), null, 'closed');
+  assert.equal(e.prevented, true);
+  assert.equal(e.stopped, true);
+  assert.equal(page.backs, 0, 'app.js never saw it: no BACK');
+  // Closed: the Esc handler is gone, Esc is the terminal's again.
+  page.key('Escape', body);
+  assert.equal(page.backs, 1);
+  h.open();
+  h.destroy();
+  assert.equal(page.keyListeners(), 0, 'destroy removes ? and Esc');
+});
+
+test('how to play: never opened by hand on top of the WELCOME card', () => {
+  const key = freshKey();
+  const storage = memStorage();
+  markHowtoSeen(key, { localStorage: storage });
+  const page = fakePage({ storage, consent: true });
+  const h = page.mount({ key });
+  assert.equal(h.open(), false, 'the link does nothing while the card is up');
+  page.key('?');
+  assert.equal(page.openDialog(), null, 'nor ?');
+  page.consentEl = null;
+  assert.equal(h.open(), true, 'once the card is gone it opens');
+  h.destroy();
+  // Without any storage the notice always reads as needed: the link still works.
+  const bare = fakePage({ storage: blocked, needed: true });
+  const b = bare.mount({ key: freshKey(), auto: false });
+  assert.equal(b.open(), true);
+  b.destroy();
 });

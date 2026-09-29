@@ -106,16 +106,29 @@ export function mountHowto({ key, slots, auto = true, fields = '', focus = null,
   const framed = inFrame(win, doc);
   const coarse = () => { try { return Boolean(win.matchMedia?.('(pointer: coarse)').matches); } catch { return false; } };
 
+  // Never on top of the WELCOME card, opened by hand either (the link, ?). Only the card
+  // itself counts here: without any storage the notice always reads as needed, and the
+  // link must still work.
   function open() {
-    if (dead || current || framed) return false;
+    if (dead || current || framed || consentBusy(doc, () => false)) return false;
     const d = doc.createElement('dialog');
     d.className = 'howto howto-flip';
     d.setAttribute('aria-labelledby', 'howto-title');
+    d.setAttribute('tabindex', '-1'); // a click on its text keeps the focus in it
     d.innerHTML = howtoHtml(slots);
     let closed = false;
+    // Esc, wherever the focus is (a click on plain text in the pop-up can drop it to the
+    // page): caught first, on the document, so the terminal never goes back a screen.
+    const onEsc = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      shut(d, done);
+    };
     const done = () => {
       if (closed) return;
       closed = true;
+      doc.removeEventListener('keydown', onEsc, true);
       if (current?.d === d) current = null;
       d.remove();
       markHowtoSeen(key, win);
@@ -133,13 +146,7 @@ export function mountHowto({ key, slots, auto = true, fields = '', focus = null,
     d.addEventListener('click', (e) => {
       if (e.target === d || e.target?.closest?.('[data-howto-close]')) shut(d, done);
     });
-    // Esc closes it here, so it never reaches the terminal (Esc there goes back a screen).
-    d.addEventListener('keydown', (e) => {
-      if (e.key !== 'Escape') return;
-      e.preventDefault();
-      e.stopPropagation();
-      shut(d, done);
-    });
+    doc.addEventListener('keydown', onEsc, true);
     doc.body.appendChild(d);
     if (typeof d.showModal === 'function') d.showModal(); else d.setAttribute('open', '');
     return true;

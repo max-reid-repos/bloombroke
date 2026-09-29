@@ -261,9 +261,9 @@ export const HOWTO = {
     'Arrows point to the answer.',
   ],
   legend: [
-    { cls: 'gs-cell g-hit', say: 'Green', label: 'right' },
-    { cls: 'gs-cell g-near', say: 'Blue', label: 'close' },
-    { cls: 'gs-cell g-miss', say: 'Dark', label: 'wrong' },
+    { cls: 'gs-cell g-hit', say: 'Green', label: 'hit' },
+    { cls: 'gs-cell g-near', say: 'Blue', label: 'near' },
+    { cls: 'gs-cell g-miss', say: 'Dark', label: 'miss' },
   ],
   foot: 'A new stock every day at midnight New York time.',
   button: 'PLAY',
@@ -278,9 +278,11 @@ export function howtoExampleHtml(ex = HOWTO_EXAMPLE) {
     </tr></tbody></table>`;
 }
 export const howtoSlots = () => ({ ...HOWTO, example: howtoExampleHtml() });
-// Under the table, where the legend line was. The ? beside it is the key that opens it.
-export function howtoLinkHtml() {
-  return '<p class="gs-legend"><button type="button" class="card-link gs-howto" aria-haspopup="dialog" aria-keyshortcuts="?">How to play</button><span class="gs-key" aria-hidden="true">?</span></p>';
+// Under the table, where the legend line was. The ? beside it (the key that opens it)
+// only while the guess input is there: after the game the focus is in the command bar,
+// where ? is HELP.
+export function howtoLinkHtml(withKey = true) {
+  return `<p class="gs-legend"><button type="button" class="card-link gs-howto" aria-haspopup="dialog"${withKey ? ' aria-keyshortcuts="?"' : ''}>How to play</button>${withKey ? '<span class="gs-key" aria-hidden="true">?</span>' : ''}</p>`;
 }
 
 // GUESS LEAGUE: POST TO CHAT beside the share buttons, for Pro with at least one chat
@@ -383,7 +385,7 @@ export function render(el, cmd, ctx) {
   function paint() {
     const done = isDone();
     left.textContent = done ? '' : `GUESS ${game.rows.length + 1} OF ${TRIES}`;
-    playBody.innerHTML = `${done ? '' : formHtml()}${rowsHtml(game.rows)}${ctx.embed ? legendHtml() : howtoLinkHtml()}${done ? endHtml() : ''}`;
+    playBody.innerHTML = `${done ? '' : formHtml()}${rowsHtml(game.rows)}${ctx.embed ? legendHtml() : howtoLinkHtml(!done)}${done ? endHtml() : ''}`;
     if (!done && !coarse) playBody.querySelector('.gs-in')?.focus();
   }
 
