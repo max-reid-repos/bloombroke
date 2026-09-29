@@ -72,7 +72,7 @@ test('showTile: leaves a tile out and puts it back (the tile CSS sets display)',
 // The WEIRD grid on a tiny fake page: each tile node, its body, and the ctx it uses.
 function fakeGrid(answers) {
   const tiles = new Map(WEIRD_GAUGES.map((g) => [g.id, { ...fakeNode(), body: { innerHTML: '' } }]));
-  for (const t of tiles.values()) t.querySelector = (sel) => (sel === '.panel-body' ? t.body : null);
+  for (const t of tiles.values()) t.querySelector = (sel) => (sel === '.wd-body-t' ? t.body : null);
   const el = {
     innerHTML: '',
     querySelector(sel) {

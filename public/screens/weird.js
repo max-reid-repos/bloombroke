@@ -12,7 +12,8 @@ import { sparkSvg } from './economy.js';
 import { mountLines, legend } from './lines.js';
 import { fmtDate } from '../kit.js';
 import {
-  WEIRD_GAUGES, WEIRD_PERIODS, AUTO, gaugeByCommand, sourceHtml, dayLabel, monthLabel, emptyGauge,
+  WEIRD_GAUGES, WEIRD_PERIODS, AUTO, gaugeByCommand, sourceHtml, whenLine, dayLabel, monthLabel, emptyGauge,
+  heroOf, tileCreditHtml, meaningOf,
 } from './weird-gauges.js';
 import { markGaugeSponsor } from './sponsor.js'; // Sponsor hook
 import { goal } from '../goal.js'; // GOALS
@@ -29,20 +30,36 @@ export function commandForNumber(text) {
   return g ? g.command : null;
 }
 
-// One tile's inside, from a summary row (or a full gauge response). rec: add the short
-// record line (the WEIRD grid does; a DESK card keeps to the four lines).
-export function tileBody(g, d, { rec = false } = {}) {
-  if (!d) return `<p class="loading">LOADING...</p><p class="wd-src">${esc(g.command)}</p>`;
-  const bad = d.ok === false;
-  const big = bad ? (d.pending ? 'LOADING' : 'NO DATA') : d.headline;
-  // A stale value is a real past reading: shown dimmed, with its time in the source line.
-  const cls = bad ? ' is-none' : d.stale ? ' is-stale' : '';
-  const record = rec && !bad && d.record?.short ? `<p class="wd-rec" title="${esc(d.record.text)}">${esc(d.record.short)}</p>` : '';
-  return `<p class="wd-big${cls}">${esc(big)}</p>
-    <p class="wd-line">${esc(bad ? '' : d.line || '')}</p>${record}
-    <div class="wd-spark"${d.sparkFrom ? ` title="Since ${esc(monthLabel(d.sparkFrom))}, all there is"` : ''}>${!bad && Array.isArray(d.spark) && d.spark.length > 1 ? sparkSvg(d.spark, 120, 18) : ''}</div>
-    <p class="wd-src">${sourceHtml(g, d)}</p>`;
+// One tile's inside, from a summary row (or a full gauge response): the hero (a noun and
+// its number, weird-gauges.js heroOf), one short meaning line, a small line when there is
+// one, and the credit the source's licence asks for, if any. Nothing else: who and when
+// are on the gauge's own screen (and in the tile's title). rec: the record tag ("HIGH SINCE
+// JUN 2022"), which the WEIRD grid shows in the tile's kicker row, always in that place; a
+// DESK card keeps to the hero, the line, the spark and the credit.
+export function heroHtml(g, d) {
+  const x = heroOf(g, d);
+  if (!x) return '';
+  const part = (cls, t) => (t ? `<span class="${cls}">${esc(t)}</span>` : '');
+  return [part('wd-noun', x.noun), part('wd-val', x.num), part('wd-unit', x.unit)].filter(Boolean).join(' ');
 }
+export function recordTag(d) {
+  return d && d.ok !== false && d.record?.short ? `<span class="wd-rec" title="${esc(d.record.text)}">${esc(d.record.short)}</span>` : '';
+}
+export function tileBody(g, d) {
+  if (!d) return `<p class="wd-big is-none">LOADING...</p><p class="wd-line"></p><div class="wd-spark"></div>`;
+  const bad = d.ok === false;
+  // A stale value is a real past reading: shown dimmed, its time in the tile's title.
+  const cls = bad ? ' is-none' : d.stale ? ' is-stale' : '';
+  const big = bad ? esc(d.pending ? 'LOADING...' : 'NO DATA') : heroHtml(g, d);
+  const spark = !bad && Array.isArray(d.spark) && d.spark.filter(Number.isFinite).length > 1 ? sparkSvg(d.spark, 120, 18) : '';
+  const credit = bad ? '' : tileCreditHtml(g, d);
+  return `<p class="wd-big${cls}">${big}</p>
+    <p class="wd-line">${esc(bad ? '' : meaningOf(g, d))}</p>
+    <div class="wd-spark"${d.sparkFrom ? ` title="Since ${esc(monthLabel(d.sparkFrom))}, all there is"` : ''}>${spark}</div>${credit ? `<p class="wd-src">${credit}</p>` : ''}`;
+}
+
+// The tile's title (a tooltip): the gauge and when its reading is from.
+export const tileTitle = (g, d) => (d && d.ok !== false && d.asOf ? `${g.title} · ${whenLine(d, g.period)}` : g.title);
 
 // Show or leave out a tile: the tile CSS sets display, so hidden alone would not hide it.
 export function showTile(node, on) {
@@ -57,10 +74,43 @@ export const noDataCount = (rows) => (rows || []).filter((x) => x && x.ok === fa
 
 // data-num: a number and Enter in the command bar opens this tile's own screen (not the
 // tile maximised). A bare digit stays typing, so 12 can be typed. period: the grid's
-// period, carried into the gauge's own screen.
+// period, carried into the gauge's own screen. One template for every gauge: the kicker
+// (its number and name, small; the record tag at its right end), then tileBody.
 export function tile(g, i, period = null) {
   const cmd = period ? `${g.command} ${period}` : g.command;
-  return `<div class="wd-tile" data-cmd="${esc(cmd)}" data-num="${i + 1}" tabindex="0" id="wd-t-${esc(g.id)}">${panel(String(i + 1), g.command, tileBody(g, null))}</div>`;
+  return `<div class="wd-tile" data-cmd="${esc(cmd)}" data-num="${i + 1}" tabindex="0" id="wd-t-${esc(g.id)}" title="${esc(g.title)}">
+    <p class="wd-kick"><span class="wd-no">${i + 1}</span><span class="wd-name">${esc(g.command)}</span><span class="wd-tag"></span></p>
+    <div class="wd-body-t">${tileBody(g, null)}</div>
+  </div>`;
+}
+
+// ---- Rows that fill ----------------------------------------------------------------------
+// The grid is 60 narrow columns; each tile spans 60 / (the tiles in its row), so every row
+// is full: 22 tiles in 5 columns are rows of 5, 5, 4, 4 and 4, never a row with holes.
+// cols: how many 260 px tiles fit (at most 6), rows: as few as that needs, and the tiles
+// shared out so no two rows differ by more than one (the longer rows first).
+export const WD_MIN_W = 260;
+export const WD_MAX_COLS = 6;
+export function rowSizes(n, width, { min = WD_MIN_W, max = WD_MAX_COLS } = {}) {
+  if (!(n > 0)) return [];
+  const cols = Math.max(1, Math.min(max, Math.floor((width + 1) / (min + 1)) || 1));
+  const rows = Math.ceil(n / cols);
+  const base = Math.floor(n / rows);
+  const extra = n - base * rows;
+  return Array.from({ length: rows }, (_, r) => base + (r < extra ? 1 : 0));
+}
+// Each visible tile gets its span class (wd-s60, wd-s30, wd-s20, wd-s15, wd-s12, wd-s10).
+export function spanClasses(n, width, opts) {
+  return rowSizes(n, width, opts).flatMap((k) => Array.from({ length: k }, () => `wd-s${60 / k}`));
+}
+export function packGrid(gridEl) {
+  if (!gridEl?.querySelectorAll) return;
+  const tiles = [...gridEl.querySelectorAll(':scope > .wd-tile')].filter((t) => !t.hidden);
+  const spans = spanClasses(tiles.length, gridEl.clientWidth);
+  tiles.forEach((t, k) => {
+    for (const c of [...t.classList]) if (/^wd-s\d+$/.test(c)) t.classList.remove(c);
+    t.classList.add(spans[k] || 'wd-s60');
+  });
 }
 
 // ---- The period row ----------------------------------------------------------------
@@ -110,20 +160,29 @@ function grid(el, ctx, period) {
   const cmdFor = (p) => (p === AUTO ? 'WEIRD' : `WEIRD ${p}`);
   const active = period || AUTO;
   el.innerHTML = `<div class="wd-bar">${periodRow(null, active, cmdFor, { auto: true })}</div>
-    <div class="wd-grid">${WEIRD_GAUGES.map((g, i) => tile(g, i, period)).join('')}</div>`;
+    <div class="wd-scroll"><div class="wd-grid">${WEIRD_GAUGES.map((g, i) => tile(g, i, period)).join('')}</div></div>`;
   // A credit link inside a tile opens its site; it does not open the tile.
   el.querySelector('.wd-grid').addEventListener('click', (e) => {
     if (e.target.closest('a[href^="https://"]')) e.stopPropagation();
   });
   // A gauge with nothing to show (emptyGauge) is left out until it reports again. The
   // other tiles keep their numbers, so a typed number still opens the same gauge.
+  const gridEl = el.querySelector('.wd-grid');
   const fill = (d) => {
     const g = WEIRD_GAUGES.find((x) => x.id === d.id);
     const t = g && el.querySelector(`#wd-t-${g.id}`);
-    const body = t && t.querySelector('.panel-body');
-    if (body) body.innerHTML = tileBody(g, d, { rec: true });
-    if (t) showTile(t, !emptyGauge(d));
+    const body = t && t.querySelector('.wd-body-t');
+    if (body) body.innerHTML = tileBody(g, d);
+    const tag = t && t.querySelector('.wd-tag');
+    if (tag) tag.innerHTML = recordTag(d);
+    if (t) { t.title = tileTitle(g, d); showTile(t, !emptyGauge(d)); }
   };
+  // Every row full (packGrid): again when the grid changes width.
+  packGrid(gridEl);
+  let raf = 0;
+  const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => packGrid(gridEl)); }) : null;
+  ro?.observe(gridEl);
+  ctx.onCleanup(() => { ro?.disconnect(); cancelAnimationFrame(raf); });
   // Type a tile's number and press Enter to open it. The command bar finds the tile by
   // data-num; this hook covers a DESK panel, where that lookup is off.
   ctx.setCommandHook((c) => {
@@ -143,6 +202,7 @@ function grid(el, ctx, period) {
     try {
       const d = await ctx.fetchJSON(`/api/weird${period ? `?p=${period}` : ''}`, { signal: ctx.signal });
       d.gauges.forEach(fill);
+      packGrid(gridEl);
       const bar = el.querySelector('.wd-bar');
       if (bar && d.periods) bar.innerHTML = periodRow(d.periods, active, cmdFor, { auto: true });
       if (d.gauges.some((x) => x.pending) && !ctx.signal?.aborted) again = setTimeout(load, PENDING_POLL_MS);
@@ -254,7 +314,7 @@ function detail(el, g, ctx, asked) {
     const keys = firstKeys(g, d.hist);
     const chart = chartSeries(d.hist, keys).length > 0;
     body.innerHTML = `<div class="wd-top">
-        <div class="wd-head"><p class="wd-big${d.stale ? ' is-stale' : ''}">${esc(d.headline)}</p><p class="wd-line">${esc(d.line || '')}</p></div>
+        <div class="wd-head"><p class="wd-big${d.stale ? ' is-stale' : ''}">${heroHtml(g, d) || esc(d.headline)}</p><p class="wd-line">${esc(d.line || '')}</p></div>
         ${periodRow(d.periods, d.period, cmdFor)}
       </div>
       <div class="wd-main${chart ? '' : ' is-nochart'}">
