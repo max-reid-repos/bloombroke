@@ -1250,6 +1250,8 @@ function boot() {
       }
     }
     if (!embed) window.dispatchEvent(new CustomEvent('bb:screen', { detail: raw })); // DRIVE: the driver sends it
+    // GA4 (goal.js, ga4.js): a page view for this screen, from its address-bar form (never a key), cleaned again there.
+    if (!embed) window.dispatchEvent(new CustomEvent('bb:page', { detail: cmd.name === 'QUOTE' ? cmd.input : urlFor(raw).url }));
     setKeys(cmd.name === 'TICKERNEWS' ? '' : cmd.name);
     document.title = cmd.name === 'HOME' || cmd.name === 'UNKNOWN' ? DEFAULT_TITLE : `${cmd.name === 'QUOTE' ? cmd.input : fullName(cmd.input)} | Bloombroke`;
     setLabel(screenTitle(cmd).title);
@@ -1504,6 +1506,8 @@ function boot() {
       : [{ grave: null, ipo: false }, []];
     if (signal?.aborted) return;
     neutralHead(ticker || info.grave ? typed : 'Unknown command');
+    // GA4: a GRAVEYARD stone's ticker, or just UNKNOWN (never the words typed).
+    if (!embed) window.dispatchEvent(new CustomEvent('bb:page', { detail: info.grave?.ticker || 'UNKNOWN' }));
     const rows = dymRows(found, typed, ticker).length;
     const title = info.grave ? ns.TITLE_GONE : ticker ? (ns?.TITLE_YET || 'No such ticker') : 'Unknown command';
     const extra = embed || !ns ? {} : ns.noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : yard });

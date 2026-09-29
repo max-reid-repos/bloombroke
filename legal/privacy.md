@@ -12,7 +12,7 @@ Our Data Protection Officer can be reached at {{CONTACT}}. Write to this address
 
 - You can use the free terminal without an account, a name or an email address.
 - Your watchlist, portfolio, saved wage, command history and screen layouts are stored in your own browser, not on our servers, unless you turn on Pro sync.
-- We count visits with DataFast; Ahrefs Web Analytics and Cloudflare count page views without cookies. If your browser sends Global Privacy Control, we load neither DataFast nor Ahrefs Web Analytics.
+- We count visits with DataFast and Google Analytics; Ahrefs Web Analytics and Cloudflare count page views without cookies. If your browser sends Global Privacy Control, we load none of DataFast, Google Analytics and Ahrefs Web Analytics.
 - Sponsor links carry no tracking codes, and sponsors get no data from us.
 - Pro payments go through Stripe. We never see your full card number.
 - CHAT messages between Pro members are seen only by the people in that chat, unless a chat is reported, and are deleted after 30 days.
@@ -38,6 +38,7 @@ We use DataFast (datafa.st) to understand how many people visit and which screen
 - **Global Privacy Control.** If your browser sends a Global Privacy Control (GPC) signal, we do not load DataFast on any page of bloombroke.com.
 - **Feature events.** When you use certain features, such as a WHATIF result or a GUESS game, we send DataFast an event with the feature's name and, for some features, a short fixed label, such as how a result was shared. The event itself carries no personal data, but DataFast links it to the same visitor and session cookies as your visits.
 - **Ahrefs Web Analytics.** We also count page views with Ahrefs Web Analytics (analytics.ahrefs.com). It sets no cookies. It records the pages viewed, the referring page, your approximate country, and your device and browser type. Like DataFast, it is not loaded when your browser sends GPC, and it is never loaded for Pro users.
+- **Google Analytics.** We also count visits with Google Analytics, a service of Google. It sets first-party cookies named _ga and _ga_ followed by a code, which last up to two years, so that it can tell a returning browser from a new one. It records which screens you open, the referring site, your browser, device type, screen size and language, and the same feature events we send DataFast, plus one share event when you copy or share a link or image. For each screen it gets only the command's name and, for stock, chart, WHATIF and GRAVEYARD screens, the ticker or item and range, and campaign tags from the link you arrived on; never anything else you type, such as keys, gift codes, amounts, messages, usernames or email addresses. Google uses your IP address to work out your approximate location, such as your country and city. We have turned Google Signals and ad personalisation off, so this data is not linked to Google accounts and is not used for ads. Google Analytics runs for free visitors only: it starts only after you accept on the first-visit card, it is never loaded for Pro users, and it is not loaded when your browser sends GPC.
 - **Cloudflare Web Analytics.** Cloudflare, our network provider, adds its own count of page views and page load times. Cloudflare states that it does not use cookies for this and does not identify visitors. It is not affected by GPC.
 - **Our own counters.** Our server keeps daily totals of some actions, such as WHATIF results, GUESS games, feedback notes, MCP tool calls, and how many times sponsor-strip lines were shown and clicked. These are totals only, with no IP address and nothing about who did what, so we keep them even when your browser sends GPC.
 - **What we publish.** We publish aggregate visitor numbers on our BBRK screen, including visitor counts by country, from DataFast totals; a country or referring site with fewer than three visitors is not shown on its own, and we publish approximate locations: country totals, and city dots rounded to about 100 km, only for places with three or more visitors in the last seven days; never anything about a single visitor.
@@ -61,7 +62,7 @@ If you subscribe to Pro, we also process:
 
 ### Sponsors
 
-When sponsors run, sponsor lines rotate in the status line, and each is marked SPONSOR and is one plain line of text with a plain link; a WEIRD gauge may show the name of its sponsor. We add no tracking code to the link, we load no sponsor pixels or scripts, and sponsors get no data from us. Our analytics tool, DataFast, counts link clicks, including clicks on sponsor links, as part of its normal site analytics described above. We also count, in total, how many times sponsor-strip lines were shown and clicked; nothing is kept per person. The link asks your browser not to tell the sponsor which page you came from. If you click it, the sponsor's own site and its privacy policy apply.
+When sponsors run, sponsor lines rotate in the status line, and each is marked SPONSOR and is one plain line of text with a plain link; a WEIRD gauge may show the name of its sponsor. We add no tracking code to the link, we load no sponsor pixels or scripts, and sponsors get no data from us. Our analytics tool, DataFast, counts link clicks, including clicks on sponsor links, as part of its normal site analytics described above, and Google Analytics counts clicks on sponsor links as a feature event. We also count, in total, how many times sponsor-strip lines were shown and clicked; nothing is kept per person. The link asks your browser not to tell the sponsor which page you came from. If you click it, the sponsor's own site and its privacy policy apply.
 
 ### Feedback
 
@@ -96,7 +97,7 @@ We use personal data only to:
 
 By using Bloombroke, and by clicking ACCEPT on the first-visit notice, you consent to us collecting, using and disclosing your personal data as this policy describes. Where the PDPA lets us process data without consent, for example to meet a legal duty, we may rely on that instead.
 
-You can withdraw your consent at any time by writing to {{CONTACT}}. We will tell you what withdrawing means for you. For example, we cannot provide Pro without your licence record and payment data, so withdrawing consent for those means ending your subscription. You can also stop DataFast by turning on Global Privacy Control in your browser, or by blocking cookies or scripts from datafa.st; the terminal keeps working.
+You can withdraw your consent at any time by writing to {{CONTACT}}. We will tell you what withdrawing means for you. For example, we cannot provide Pro without your licence record and payment data, so withdrawing consent for those means ending your subscription. You can also stop DataFast and Google Analytics by turning on Global Privacy Control in your browser, or by blocking cookies or scripts from datafa.st and googletagmanager.com; the terminal keeps working.
 
 ## 6. Who receives your data
 
@@ -108,6 +109,7 @@ We share personal data only with these service providers, which help us run Bloo
 | Cloudflare | Network, security and delivery for every visit, DNS, page-view counts (Cloudflare Web Analytics), and routing of email sent to {{CONTACT}} | A global network, based in the United States |
 | DataFast | Visit analytics, as described in section 3 (not loaded when your browser sends GPC) | Mostly outside the EU, including the United States, as its data processing terms state |
 | Ahrefs | Page-view analytics (Ahrefs Web Analytics), as described in section 3: no cookies, not loaded when your browser sends GPC, never loaded for Pro users | Based in Singapore; its servers may be in other countries, as its own terms state |
+| Google (Google Analytics) | Visit analytics, as described in section 3: first-party cookies, Google Signals and ad personalisation off, not loaded when your browser sends GPC, never loaded for Pro users | United States, among other places |
 | Hetzner | Hosting: the server that runs Bloombroke and stores Pro data | Ashburn, Virginia, United States |
 | Google (Gmail) | The mailbox that receives email sent to {{CONTACT}} | United States, among other places |
 | Apple, Google, Mozilla, Microsoft (push services) | Only if you turn on pings: the push service of your browser's maker delivers each ping, encrypted end to end, to your device | Their own networks, mainly in the United States |

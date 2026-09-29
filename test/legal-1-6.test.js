@@ -4,6 +4,7 @@
 // message text goes only with SHOW MESSAGE TEXT, and how long each is kept; the Terms
 // say pings are best effort. Also Ahrefs Web Analytics, named next to DataFast and
 // Cloudflare. The version goes up so everyone who accepted 1.5 is asked again.
+// (1.7 since, Google Analytics: test/legal-1-7.test.js; the pins below follow its wording.)
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,13 +20,15 @@ const privacy = readFileSync('legal/privacy.md', 'utf8');
 const section = (md, n) => md.slice(md.indexOf(`## ${n}.`), md.indexOf(`## ${n + 1}.`));
 const DAY = 24 * 60 * 60 * 1000;
 
-test('legal 1.6: the version is bumped, so everyone who accepted 1.5 is asked again', () => {
-  assert.equal(TERMS_VERSION, '1.6');
-  assert.equal(LEGAL_UPDATED, '29 September 2026');
+test('legal 1.6: the version was bumped, so everyone who accepted 1.5 is asked again', () => {
+  const [major, minor] = TERMS_VERSION.split('.').map(Number);
+  assert.ok(major > 1 || (major === 1 && minor >= 6), TERMS_VERSION);
+  assert.ok(LEGAL_UPDATED);
   assert.equal(needsConsent(acceptRecord('1.5')), true);
-  assert.equal(needsConsent(acceptRecord('1.6')), false);
-  assert.match(legalPage('terms', terms), /Version 1\.6\. Last updated 29 September 2026/);
-  assert.match(legalPage('privacy', privacy), /Version 1\.6\./);
+  assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
+  const v = TERMS_VERSION.replace('.', '\\.');
+  assert.match(legalPage('terms', terms), new RegExp(`Version ${v}\\. Last updated ${LEGAL_UPDATED}`));
+  assert.match(legalPage('privacy', privacy), new RegExp(`Version ${v}\\.`));
 });
 
 test('privacy: what pings store, who delivers them, encrypted end to end, message text only when turned on', () => {
@@ -61,7 +64,7 @@ test('terms s9: pings and closed-tab alerts are best effort, can be late or miss
 });
 
 test('privacy: Ahrefs Web Analytics, next to DataFast and Cloudflare: what it records, no cookies, never for Pro, in the tables', () => {
-  assert.ok(section(privacy, 2).includes('Ahrefs Web Analytics and Cloudflare count page views without cookies. If your browser sends Global Privacy Control, we load neither DataFast nor Ahrefs Web Analytics.'));
+  assert.ok(section(privacy, 2).includes('Ahrefs Web Analytics and Cloudflare count page views without cookies. If your browser sends Global Privacy Control, we load none of DataFast, Google Analytics and Ahrefs Web Analytics.'));
   const s3 = section(privacy, 3);
   for (const must of [
     '- **Ahrefs Web Analytics.** We also count page views with Ahrefs Web Analytics (analytics.ahrefs.com).',
