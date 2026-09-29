@@ -4,7 +4,7 @@
 
 import { esc, panel, LOADING } from './markets.js';
 import { metaNote, errorHtml, tickerUsage, fmtInt, fmtMoney, fmtBigMoney, fmtDay, dash } from './company-kit.js';
-import { panelTools, moreButton, dataTable, sortRows, nextSort } from '../kit.js';
+import { panelTools, moreButton, dataTable, sortRows, nextSort, emptyState } from '../kit.js';
 import { mountBars, barsLegend } from './minibars.js';
 
 export { parseTicker as parse } from './company-kit.js';
@@ -98,7 +98,7 @@ export function render(el, cmd, ctx) {
         <div>${totalsTable(d.totals)}</div>
         <aside class="side-panel" aria-label="Insider buys and sells by month">
           <p class="side-title tag">Bought and sold by month, $ value</p>
-          ${traded ? `<div class="side-chart" id="ins-chart"></div>${barsLegend(series)}` : '<p class="side-empty">No open-market buys or sells in these months.</p>'}
+          ${traded ? `<div class="side-chart" id="ins-chart"></div>${barsLegend(series)}` : emptyState({ title: 'No open-market buys or sells in these months.', small: true, cls: 'side-empty' })}
         </aside>
       </div>`;
     if (traded) {

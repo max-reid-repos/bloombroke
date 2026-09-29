@@ -3,26 +3,9 @@
 
 /* ==== from nosuch.css ==== */
 
-.ns-ipo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 16px 0 4px; font-size: 16px; font-weight: 600; color: var(--text); }
-.ns-ipo .wi-btn.ns-ipo-btn { background: var(--accent); border-color: var(--accent); color: var(--ink); }
-.ns-ipo .wi-btn.ns-ipo-btn:hover { background: var(--text); border-color: var(--text); }
-.ns-tag { color: var(--accent); }
 .ns-ask { margin: 12px 0 0; color: var(--text-2); }
 .ns-src { margin-top: 10px; overflow-wrap: anywhere; }
 .ns-share { margin-top: 14px; }
-
-.ns-grave { display: flex; margin: 16px 0 0; }
-.ns-stone {
-  width: min(340px, 100%); padding: 44px 16px 22px; display: flex; flex-direction: column; align-items: center; text-align: center;
-  background: var(--stone); color: var(--stone-ink); border: 4px solid var(--stone-ink); border-radius: 170px 170px 6px 6px;
-  box-shadow: 0 6px 0 -2px var(--dim);
-}
-.ns-rip, .ns-hand { font-family: 'Caveat', cursive; font-weight: 700; }
-.ns-rip { font-size: 30px; line-height: 1; }
-.ns-tk { font-weight: 800; font-size: 56px; letter-spacing: -.04em; line-height: 1.05; }
-.ns-name { font-weight: 800; font-size: 16px; margin: 4px 0 8px; }
-.ns-hand { font-size: 24px; line-height: 1.1; }
-.ns-day { font-weight: 800; font-size: 16px; margin-top: 4px; }
 
 .ns-cert { margin: 4px 0 0; }
 .ns-cert img { display: block; width: 100%; max-width: 760px; height: auto; background: var(--panel-2); border: 1px solid var(--rule-strong); }
@@ -34,12 +17,7 @@
   .ns-table .ns-cell { width: 100%; }
 }
 
-@media (min-width: 900px) {
-  .ns-page > .ns-mini { grid-column: 2; grid-row: 1 / span 8; align-self: start; margin-top: 4px; }
-}
 
-.ns-quote { margin-top: 8px; }
-.ns-quote .code { color: var(--dim); }
 
 .ns-mini {
   --paper-ink: #2A1A10; --paper-red: #C23B2A;
@@ -66,3 +44,12 @@
   .ns-yard-row { gap: 8px; }
   .ns-mini-stone { width: calc((100% - 24px) / 4); height: 88px; font-size: 16px; }
 }
+
+/* The NO SUCH card (app.js didYouMeanHtml, kit.js cardPage): the certificate preview and
+   THE GRAVEYARD row in the media slot, centred. */
+.ns-media { display: flex; flex-direction: column; align-items: center; gap: 24px; width: 100%; }
+.ns-card .ns-mini { width: min(100%, 360px); margin: 0 auto; }
+.ns-card .ns-yard { margin: 0; }
+.ns-card .ns-yard-row { justify-content: center; }
+.ns-card .ns-ask { margin: 0; white-space: nowrap; }
+.ns-card .ns-ask a { color: var(--accent); }

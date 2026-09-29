@@ -2,12 +2,12 @@
 // Range pills and FROM/TO dates in the toolbar; the table is capped and a close chart
 // with the range's numbers sits beside it.
 
-import { esc, q, fmtNum, fmtPct, dirOf, panel, LOADING } from './markets.js';
+import { esc, fmtNum, fmtPct, dirOf, panel, LOADING } from './markets.js';
 import { errorHtml } from './profile.js';
 import { priceDecimals } from './quote.js';
 import { mountLines } from './lines.js';
 import { fmtDay } from './company-kit.js';
-import { toolbar, rangePills, panelTools, moreButton, dataTable, sortRows, nextSort, fmtDate } from '../kit.js';
+import { toolbar, rangePills, panelTools, moreButton, dataTable, sortRows, nextSort, fmtDate, usageCard } from '../kit.js';
 import { nyToday, FIRST_DAY } from '../ranges.js';
 import { HISTORY_RANGES, presetFrom, parseHistory as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { HISTORY_RANGES, presetFrom, parse };
@@ -51,11 +51,17 @@ export function rangeStats(rows) {
   };
 }
 
-function usage() {
+// A command typed wrong: the kit's usage card.
+export function usage() {
   const ex = ['HISTORY AAPL', 'HISTORY TSLA 2024', 'HISTORY AAPL 5Y', 'HISTORY MSFT 2025-01-01 2025-06-30'];
-  return `<p class="notice">HISTORY needs a ticker. A range or dates are optional.</p>
-    <p class="muted">Format: <span class="code">HISTORY &lt;ticker&gt; [range | from [to]]</span>, a range like 5Y, dates like 2025-01-31 or a year like 2024.</p>
-    <p class="muted examples">Try ${ex.map((e) => `<a class="code" href="${esc(q(e))}" data-cmd="${esc(e)}">${esc(e)}</a>`).join(' ')}</p>`;
+  return usageCard({
+    problem: 'HISTORY needs a ticker.',
+    format: 'HISTORY ticker [range | from [to]]',
+    grammar: 'HISTORY <ticker> [range | from [to]]',
+    example: ex[0],
+    more: ex.slice(1),
+    notes: ['A range or dates are optional: a range like 5Y, dates like 2025-01-31 or a year like 2024.'],
+  });
 }
 
 const fmtVol = (v) => (Number.isFinite(v) ? Math.round(v).toLocaleString('en-US') : '--');

@@ -13,7 +13,7 @@ import { parseWatchArgs, watchInput, WATCH_SUBCOMMANDS, loadWatchlist, saveWatch
 import { parsePfArgs, pfInput } from './portfolio.js';
 import { panel, LOADING as LOADING_LINE } from './screens/markets.js';
 import { matchInstrument, searchInstruments, instrumentById, resolveInstrument, STOCK_RE, stockSymbol } from './instruments.js';
-import { edgeFade } from './kit.js';
+import { edgeFade, cardPage, cardButton, cardLink, cardRows, raw } from './kit.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { updatedTitle } from './freshness.js';
 import { dotTitle, popoverHtml } from './provenance.js'; // Provenance: the dot's tooltip and list
@@ -746,6 +746,16 @@ export function linkPlan(raw) {
   const plain = cmd.view || LINK_SCREEN[cmd.name];
   return { url: plain, show: plain, ask: { run: clean, url: plain, ...linkQuestion(cmd) } };
 }
+// An example (kit.js data-example) that changes something saved (linkPlan asks) goes into
+// the command bar for Enter ('fill'); one that only shows something runs ('run').
+// Keys, codes, LOGIN, LOGOUT, REDEEM and GIFT always wait for Enter.
+const FILL_ONLY = new Set(['LOGIN', 'LOGOUT', 'REDEEM', 'GIFT']);
+export function examplePlan(raw) {
+  const clean = tokenize(raw).join(' ');
+  const cmd = parseCommand(clean);
+  if (cmd.secret || isSecret(clean) || FILL_ONLY.has(cmd.name) || FILL_ONLY.has(tokenize(raw)[0])) return 'fill';
+  return linkPlan(raw).ask ? 'fill' : 'run';
+}
 export const DEFAULT_TITLE = 'Bloombroke: a free market terminal. Pro $420 a year.';
 // DRIVE (drive.js): a screen from the driver opens like a link, so it never changes anything.
 export const driveTarget = (raw) => { const p = linkPlan(raw); return p.ask ? p.url : p.show; };
@@ -766,22 +776,33 @@ export function resolvedNote(command, from) {
   return `Showing ${command} (from '${String(from).toLowerCase()}')`;
 }
 
-// The last line of the "Did you mean" screen (the same as screens/nosuch.js HELP_LINE;
-// test/speed.test.js checks), here so the page can draw it before that module loads.
-export const HELP_LINE = '<p class="muted ns-help">Type <a class="code" href="?c=HELP" data-cmd="HELP">HELP</a> for every command.</p>';
+// ALL COMMANDS on the NO SUCH card (= screens/nosuch.js HELP_LINE, test/speed.test.js).
+export const HELP_LINE = '<a class="card-link" href="?c=HELP" data-cmd="HELP">ALL COMMANDS</a>';
 
-// The "Did you mean" screen: one clickable row per command or symbol (at most 3, never
-// the words typed), keys 1 to 3. extra: what goes under the rows (screens/nosuch.js:
-// a tombstone, IPO IT, "Tell us."); HELP is always the last line.
-export function didYouMeanHtml(typed, found = {}, ticker = null, { extra = '' } = {}) {
+// NO SUCH TICKER and an unknown command: one card page. Action: the screen's own (IPO IT,
+// PAY RESPECTS), else the best guess (key 1), else HELP; other guesses (keys 2, 3) are links,
+// what each is in + Details. extra: slots from screens/nosuch.js; help: false, no ALL COMMANDS.
+export function didYouMeanHtml(typed, found = {}, ticker = null, { extra = null } = {}) {
   const rows = dymRows(found, typed, ticker);
-  const lead = ticker
-    ? `No ticker called <span class="code">${escapeHtml(ticker)}</span>.`
-    : `Nothing called <span class="code">${escapeHtml(typed)}</span>.`;
-  const list = rows.length
-    ? `<h3 class="hs-h">Did you mean</h3><ol class="hc-list dym-list">${rows.map(([cmd, what], i) => `<li class="hc-row hc-row-fn"><a class="hc-name code" href="${toQuery(cmd)}" data-cmd="${escapeHtml(cmd)}" data-key="${i + 1}">${escapeHtml(cmd)}</a><span class="hc-sum">${escapeHtml(what || '')}</span></li>`).join('')}</ol>`
-    : '';
-  return `<p class="notice">${lead}</p>${list}${extra}${HELP_LINE}`;
+  const x = extra || {};
+  const tip = (what) => (what ? ` title="${escapeHtml(what)}"` : '');
+  const lead = !x.act && rows.length ? rows[0] : null;
+  const act = x.act || raw(lead
+    ? cardButton({ label: lead[0], cmd: lead[0], primary: true, attrs: `data-key="1"${tip(lead[1])}` })
+    : cardButton({ label: 'HELP', cmd: 'HELP', primary: true }));
+  const guesses = rows.slice(lead ? 1 : 0).map(([cmd, what], i) => cardLink({ label: cmd, cmd, attrs: `data-key="${i + (lead ? 2 : 1)}"${tip(what)}` }));
+  const links = [...(x.links || []), ...guesses, ...((x.act || lead) && x.help !== false ? [HELP_LINE] : [])];
+  const kicker = x.kicker || (ticker ? 'No such ticker. Yet.' : 'Unknown command');
+  const shown = ticker ? `$${ticker}` : typed;
+  const sub = x.sub || (lead ? 'Did you mean this?' : 'Check the spelling.');
+  const guessRows = rows.filter(([, what]) => what).map(([cmd, what]) => [cmd, what]);
+  const more = (guessRows.length ? cardRows(guessRows) : '') + (x.details?.html || '');
+  return cardPage({
+    ...x,
+    cls: `ns-card${x.cls ? ` ${x.cls}` : ''}`, label: x.label || kicker,
+    kicker, hero: x.hero || shown, heroSize: x.heroSize || (shown.length <= 7 ? 60 : shown.length <= 16 ? 44 : 32),
+    sub, act, links, details: more ? raw(more) : '',
+  });
 }
 
 function boot() {
@@ -1060,6 +1081,20 @@ function boot() {
   if (!embed) loadSponsors().then((cfg) => { sponsorCfg = cfg; paintPro(); });
   // --- end Pro structure ---
 
+  // A saving example: into the focused command bar (a DESK panel: the status line says it).
+  function fillBar(raw) {
+    const clean = tokenize(raw).join(' ');
+    if (embed) { setStatus(`TYPE ${clean} TO RUN IT`); return; }
+    input.value = clean;
+    draft = clean;
+    histIndex = cmdHistory.length;
+    closeSuggest();
+    input.focus();
+    input.setSelectionRange?.(clean.length, clean.length);
+    placeCursor();
+    setStatus('PRESS ENTER TO RUN IT');
+  }
+
   // --- blinking block cursor that follows the caret -------------------------
   function placeCursor() {
     const ch = measure.getBoundingClientRect().width || 9;
@@ -1318,9 +1353,7 @@ function boot() {
         <p class="muted">${escapeHtml(s.hint)}. For now, try ${alt}<a class="code" href="${toQuery('HELP')}" data-cmd="HELP">HELP</a>.</p>`, { cls: 'panel-solo' });
       setStatus(`${s.name}: COMING SOON`);
     } else {
-      view.innerHTML = panel('1', 'Unknown command', `
-        <p class="notice">Unknown command. Type <a href="${toQuery('HELP')}" data-cmd="HELP">HELP</a>.</p>
-        <p class="muted">You typed <span class="code">${escapeHtml(cmd.input)}</span>. A ticker is one word, like <a class="code" href="${toQuery('AAPL')}" data-cmd="AAPL">AAPL</a> or <a class="code" href="${toQuery('BRK.B')}" data-cmd="BRK.B">BRK.B</a>.</p>`, { cls: 'panel-solo' });
+      view.innerHTML = didYouMeanHtml(cmd.input, {}, null, { extra: { details: raw(cardRows([['Tickers', raw(`A ticker is one word, like <a class="code" href="${toQuery('AAPL')}" data-cmd="AAPL">AAPL</a> or <a class="code" href="${toQuery('BRK.B')}" data-cmd="BRK.B">BRK.B</a>.`)]])) } });
       setStatus('UNKNOWN COMMAND. TYPE HELP', 'warn');
     }
   }
@@ -1444,9 +1477,9 @@ function boot() {
     neutralHead(ticker || info.grave ? typed : 'Unknown command');
     const rows = dymRows(found, typed, ticker).length;
     const title = info.grave ? ns.TITLE_GONE : ticker ? (ns?.TITLE_YET || 'No such ticker') : 'Unknown command';
-    const extra = embed || !ns ? '' : ns.noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : yard });
+    const extra = embed || !ns ? {} : ns.noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : yard });
     view.classList.remove('is-loading');
-    view.innerHTML = panel('1', title, didYouMeanHtml(typed, found, ticker, { extra }), { cls: 'panel-solo', bodyCls: 'ns-page' });
+    view.innerHTML = didYouMeanHtml(typed, found, ticker, { extra: { ...extra, kicker: extra.kicker || title } });
     if (!embed && ns) cleanups.push(ns.wireNoSuch(view, word, info, { status: setStatus }));
     if (info.grave) setStatus(`${info.grave.ticker}: ${info.grave.what.toUpperCase()}`, 'warn');
     else setStatus(rows ? 'NOT FOUND. PICK ONE BELOW, OR TYPE HELP' : ticker ? 'NO SUCH TICKER. TYPE HELP' : 'UNKNOWN COMMAND. TYPE HELP', 'warn');
@@ -1623,6 +1656,11 @@ function boot() {
       // the other panels in its link group instead.
       if (embed && embedLinked && !TICKER_SCREENS.includes(parseCommand(currentCmd).name) && tickerOf(el.dataset.cmd, parseCommand)) {
         toParent({ type: 'bb:pick', c: tokenize(el.dataset.cmd).join(' ') });
+        return;
+      }
+      if (el.hasAttribute('data-example') && examplePlan(el.dataset.cmd) === 'fill') {
+        // A key press (Enter on the link) would reach the bar and run it: fill after it.
+        if (e.detail === 0) setTimeout(() => fillBar(el.dataset.cmd), 0); else fillBar(el.dataset.cmd);
         return;
       }
       run(el.dataset.cmd);

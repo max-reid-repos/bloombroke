@@ -8,10 +8,10 @@ import {
   loadWatchlist, saveWatchlist, isDefaultList, addIds, removeIds, moveItem, exportText,
   sortRows, parseSymbols, DEFAULT_WATCHLIST, MAX_WATCH,
 } from '../watchlist.js';
-import { toolbar } from '../kit.js';
+import { toolbar, emptyState } from '../kit.js';
 
 const SORT_KEY = 'bb.watch.sort';
-const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
+const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}" data-example>${esc(c)}</a>`; // an example: saving ones prefill (app.js examplePlan)
 
 // Quotes for a list of symbols, in the order asked. Missing ones come back as null.
 export async function fetchQuotes(ctx, ids) {
@@ -176,6 +176,9 @@ function readSort(store) {
   return s && typeof s.key === 'string' && (s.dir === 'asc' || s.dir === 'desc') ? s : { key: null, dir: null };
 }
 
+// An empty list: the kit's empty state, and one button back to the starter list (WATCH RESET).
+export const emptyWatchHtml = () => emptyState({ title: 'The watchlist is empty.', hint: 'Add symbols above, like AAPL MSFT GOLD.', action: { label: 'STARTER LIST', cmd: 'WATCH RESET' } });
+
 export function render(el, cmd, ctx) {
   const a = cmd.args || { action: 'show' };
   let list = loadWatchlist(ctx.store);
@@ -234,7 +237,7 @@ export function render(el, cmd, ctx) {
 
   function draw() {
     if (!list.length) {
-      body.innerHTML = `<p class="panel-msg wl-empty">The watchlist is empty. Add symbols above, like AAPL MSFT GOLD, or go back to the starter list: ${code('WATCH RESET')}</p>`;
+      body.innerHTML = emptyWatchHtml();
       return;
     }
     const rows = sortRows(list.map((id) => ({ id, quote: byId[id] || null })), sort.key, sort.dir);

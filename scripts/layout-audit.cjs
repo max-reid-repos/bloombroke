@@ -1,19 +1,22 @@
 #!/usr/bin/env node
-// Layout audit of the card pages (kit.js cardPage) in a real browser. Not part of
-// npm test: run it against a local dev server.
+// Layout audit of the card pages (kit.js cardPage), the usage card (usageCard) and the
+// empty state (emptyState) in a real browser. Not part of npm test: run it against a
+// local dev server.
 //
 //   PORT=3021 node server.js &
 //   node scripts/layout-audit.cjs [--base=http://127.0.0.1:3021] [--shots=DIR] [--live-data=https://bloombroke.com]
 //                                 [--only=bbrk,pro] [--open]
 //
-// For each card page at 1536x730, 1920x1080 and 390x844 (real scrollbars), it fails on:
+// For each page at 1536x730, 1920x1080 and 390x844 (real scrollbars), it fails on:
 //   overflow  the page or the screen scrolls sideways
 //   crop      a chart or globe cut off (outside its scroll area, or clipped), or not square
-//   font      a font size that is not on the type scale (style.css)
+//   font      a font size that is not on the type scale (style.css); words drawn on a
+//             picture (role="img", aria-hidden="true": a tombstone's face) are the picture's
 //   measure   a block of text wider than about 70 characters of its own font
 //   primary   more than one primary (solid) button
-//   fold      on a desktop size, BBRK's and SPONSOR's globe not wholly in the first view
-//             (its bottom below the scroll box's visible bottom, scrolled to the top)
+//   fold      on a desktop size, BBRK's and SPONSOR's globe, or GRAVEYARD LEH's stone, video
+//             and last website, not wholly in the first view (the media's bottom below the
+//             scroll box's visible bottom, scrolled to the top)
 // and prints a table. --shots saves a PNG per page and size (after-<page>-<width>.png).
 // The numbers the pages show come from small fixtures below, or with --live-data from the
 // public GET routes of that site (/api/bbrk, /api/sponsors, /api/pro/seat, /api/pro/config).
@@ -71,11 +74,16 @@ const FIX = {
   '/api/live': { here: 3 },
 };
 
-// [name, command, { key, type }]: type: typed into the command bar (a link never runs LOGIN).
+// [name, command, { key, type, sel, ls }]: type: typed into the command bar (a link never
+// runs LOGIN); sel: what to audit (default the card page, .card); ls: localStorage to set
+// first (an empty watchlist).
 const PAGES = [
   ['bbrk', 'BBRK'], ['sponsor', 'SPONSOR'], ['pro', 'PRO'], ['pro-key', 'PRO', { key: true }],
   ['login', 'LOGIN', { type: true }], ['redeem', 'REDEEM'], ['gift', 'GIFT'], ['feedback', 'FEEDBACK'], ['chat', 'CHAT'],
   ['me', 'ME'], ['me-pro', 'ME', { key: true }],
+  // Part A: NO SUCH TICKER at an unknown ticker, a GRAVEYARD stone, a usage card, two empty lists.
+  ['nosuch', '$QXZVW'], ['graveyard-leh', 'GRAVEYARD LEH'], ['afford-usage', 'AFFORD X'],
+  ['watch-empty', 'WATCH', { sel: '.empty', ls: { 'bb.watch': '[]' } }], ['alerts-empty', 'ALERTS', { sel: '.empty' }],
 ].filter(([n]) => !ONLY || ONLY.split(',').includes(n));
 
 async function liveData() {
@@ -89,14 +97,14 @@ async function liveData() {
 }
 
 // Runs in the page: every check, for the card on screen.
-function inPage(scale, firstView) {
+function inPage(scale, firstView, sel) {
   const out = { overflow: [], crop: [], font: [], measure: [], primary: [], fold: [] };
   const de = document.documentElement;
   const screen = document.getElementById('screen');
   if (de.scrollWidth > de.clientWidth + 1) out.overflow.push(`page ${de.scrollWidth}>${de.clientWidth}`);
   if (screen && screen.scrollWidth > screen.clientWidth + 1) out.overflow.push(`screen ${screen.scrollWidth}>${screen.clientWidth}`);
-  const card = document.querySelector('#screen .card');
-  if (!card) { out.crop.push('no .card on screen'); return out; }
+  const card = document.querySelector(`#screen ${sel}`);
+  if (!card) { out.crop.push(`no ${sel} on screen`); return out; }
   const shut = (el) => { const d = el.closest('details:not([open])'); return Boolean(d) && !el.closest('summary'); };
   const shown = (el) => { const r = el.getBoundingClientRect(); return !shut(el) && r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
   // Media: inside every clipping or scrolling box above it, and square when it is a globe.
@@ -129,7 +137,7 @@ function inPage(scale, firstView) {
   const ctx = document.createElement('canvas').getContext('2d');
   for (const el of card.querySelectorAll('*')) {
     const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
-    if (!own || !shown(el)) continue;
+    if (!own || !shown(el) || el.closest('[role="img"], [aria-hidden="true"]')) continue;
     const s = getComputedStyle(el);
     const px = parseFloat(s.fontSize);
     if (!scale.includes(px)) out.font.push(`${el.tagName.toLowerCase()}.${el.className || ''} ${px}px`);
@@ -151,7 +159,7 @@ function inPage(scale, firstView) {
     if (!media) out.fold.push('no media');
     else {
       const r = media.getBoundingClientRect();
-      if (r.bottom > bottom + 0.5) out.fold.push(`globe bottom ${Math.round(r.bottom)} > visible ${Math.round(bottom)}`);
+      if (r.bottom > bottom + 0.5) out.fold.push(`media bottom ${Math.round(r.bottom)} > visible ${Math.round(bottom)}`);
       const c = media.querySelector('canvas');
       if (c) out.fold.push(...(c.getBoundingClientRect().width < 219 ? [`globe ${Math.round(c.getBoundingClientRect().width)} px, under 220`] : []));
     }
@@ -173,16 +181,17 @@ async function main() {
         const context = await browser.createBrowserContext(); // its own storage: no key left over
         const page = await context.newPage();
         await page.setViewport({ width: w, height: h, deviceScaleFactor: 1 });
-        await page.evaluateOnNewDocument((key, status, legal, me) => {
+        await page.evaluateOnNewDocument((key, status, legal, me, ls) => {
           try {
             localStorage.setItem('bb.consent', JSON.stringify({ version: legal, acceptedAt: new Date().toISOString() }));
+            for (const [k, v] of Object.entries(ls || {})) localStorage.setItem(k, v);
             if (key) {
               localStorage.setItem('bb.pro.key', JSON.stringify(key));
               localStorage.setItem('bb.pro.status', JSON.stringify({ ...status, checked: Date.now() }));
               localStorage.setItem('bb.me', JSON.stringify({ seat: me.seat, username: me.username, color: me.color, avatar: me.avatar }));
             }
           } catch { /* none */ }
-        }, opts.key ? KEY : null, FIX['/api/pro/status'], LEGAL, FIX['/api/me']);
+        }, opts.key ? KEY : null, FIX['/api/pro/status'], LEGAL, FIX['/api/me'], opts.ls || {});
         await page.setRequestInterception(true);
         page.on('request', (req) => {
           const u = new URL(req.url());
@@ -192,7 +201,8 @@ async function main() {
           else req.continue();
         });
         await page.goto(`${BASE}/?c=${encodeURIComponent(opts.type ? 'PRO' : cmd)}`, { waitUntil: 'domcontentloaded', timeout: 45000 });
-        await page.waitForSelector('#screen .card', { timeout: 15000 }).catch(() => {});
+        const sel = opts.sel || '.card';
+        await page.waitForSelector(`#screen ${sel}`, { timeout: 15000 }).catch(() => {});
         if (opts.type) {
           await page.click('#cmd');
           await page.keyboard.type(cmd);
@@ -201,11 +211,11 @@ async function main() {
         }
         await new Promise((r) => { setTimeout(r, 2000); });
         if (OPEN) {
-          await page.evaluate(() => { const d = document.querySelector('#screen .card-more'); if (d) { d.open = true; d.scrollIntoView({ block: 'start' }); } });
+          await page.evaluate((s) => { const d = document.querySelector(`#screen ${s} .card-more`); if (d) { d.open = true; d.scrollIntoView({ block: 'start' }); } }, sel);
           await new Promise((r) => { setTimeout(r, 300); });
         }
-        const firstView = !OPEN && w >= 1100 && ['bbrk', 'sponsor'].includes(name);
-        const res = await page.evaluate(inPage, TYPE, firstView);
+        const firstView = !OPEN && w >= 1100 && ['bbrk', 'sponsor', 'graveyard-leh'].includes(name);
+        const res = await page.evaluate(inPage, TYPE, firstView, sel);
         const bad = Object.entries(res).filter(([, v]) => v.length);
         if (bad.length) failed++;
         rows.push({ page: name, size: `${w}x${h}`, result: bad.length ? 'FAIL' : 'ok', notes: bad.map(([k, v]) => `${k}: ${[...new Set(v)].slice(0, 3).join('; ')}`).join(' | ') });
@@ -220,8 +230,8 @@ async function main() {
     await browser.close();
   }
   const pad = (s, n) => String(s).padEnd(n);
-  console.log(`${pad('PAGE', 10)}${pad('SIZE', 11)}${pad('RESULT', 8)}NOTES`);
-  for (const r of rows) console.log(`${pad(r.page, 10)}${pad(r.size, 11)}${pad(r.result, 8)}${r.notes}`);
+  console.log(`${pad('PAGE', 15)}${pad('SIZE', 11)}${pad('RESULT', 8)}NOTES`);
+  for (const r of rows) console.log(`${pad(r.page, 15)}${pad(r.size, 11)}${pad(r.result, 8)}${r.notes}`);
   console.log(`\n${rows.length - failed} of ${rows.length} pass. Type scale: ${TYPE.join(' ')}.`);
   process.exitCode = failed ? 1 : 0;
 }

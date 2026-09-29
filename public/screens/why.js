@@ -6,7 +6,7 @@
 
 import { esc, fmtNum, fmtPct, dirOf, panel, LOADING, metaNote, nyTime } from './markets.js';
 import { errorHtml, tickerUsage, fmtDay, dash } from './company-kit.js';
-import { dataTable } from '../kit.js';
+import { dataTable, usageCard } from '../kit.js';
 import { safeHref, shortSource } from './news.js';
 import { sessionHtml } from '../provenance.js';
 import { goal } from '../goal.js'; // GOALS
@@ -67,8 +67,7 @@ export function whyMeta(d) {
 }
 
 export function notCompanyHtml(ticker) {
-  return `<p class="notice">WHY works for company stocks. ${esc(ticker)} has no company filings to match.</p>
-    <p class="muted examples">Try <a class="code" href="?c=WHY+AAPL" data-cmd="WHY AAPL">WHY AAPL</a> <a class="code" href="?c=WHY+TSLA" data-cmd="WHY TSLA">WHY TSLA</a></p>`;
+  return usageCard({ problem: 'WHY works for company stocks.', format: 'WHY ticker', grammar: 'WHY <ticker>', example: 'WHY AAPL', more: ['WHY TSLA'], notes: [`${ticker} has no company filings to match.`] });
 }
 
 export function render(el, cmd, ctx) {

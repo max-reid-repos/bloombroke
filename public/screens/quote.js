@@ -7,6 +7,7 @@ import { rangeChart, priceDecimals } from './chart.js';
 import { freshTag, lastTradeLine } from '../freshness.js';
 import { rangeLabel } from '../ranges.js';
 import { instrumentById } from '../instruments.js';
+import { usageCard } from '../kit.js';
 
 // The line chart moved to chart.js; these re-exports keep old imports working.
 export { niceTicks, chartSvg, mountChart, fmtXFor, fmtHoverFor, priceDecimals } from './chart.js';
@@ -119,6 +120,11 @@ export function metaLine(d) {
   return [ex, d.currency, KIND_META[d.kind] || d.type].filter(Boolean).join('  ');
 }
 
+// A range or dates typed wrong: the kit's usage card.
+export function rangeUsage(ticker, error) {
+  const [problem, ...rest] = String(RANGE_ERRORS[error] || RANGE_ERRORS.usage).split(/(?<=[.?]) /);
+  return usageCard({ problem, format: `${ticker} [range | from to | FROM day]`, example: `${ticker} 5Y`, more: [`${ticker} 2020-01-01 2024-12-31`, `${ticker} FROM 2020-01-01`], notes: [rest.join(' ')] });
+}
 const RANGE_ERRORS = {
   date: 'That date does not exist. Dates look like 2020-01-31.',
   order: 'FROM has to be before TO.',
@@ -129,9 +135,7 @@ const RANGE_ERRORS = {
 export function render(el, cmd, ctx) {
   const { ticker } = cmd.args;
   if (cmd.args.error) {
-    el.innerHTML = panel('1', ticker, `
-      <p class="notice">${esc(RANGE_ERRORS[cmd.args.error] || RANGE_ERRORS.usage)}</p>
-      <p class="muted examples">Try ${[`${ticker} 5Y`, `${ticker} 2020-01-01 2024-12-31`, `${ticker} FROM 2020-01-01`].map((c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`).join(' ')}</p>`, { cls: 'panel-solo' });
+    el.innerHTML = panel('1', ticker, rangeUsage(ticker, cmd.args.error), { cls: 'panel-solo' });
     ctx.status(`${ticker}: CHECK THE DATES`, 'warn');
     return;
   }

@@ -1,8 +1,8 @@
 // FX: convert an amount between two currencies, with a 30 day chart of the rate.
 
-import { esc, q, fmtPct, dirOf, panel, LOADING } from './markets.js';
+import { esc, fmtPct, dirOf, panel, LOADING } from './markets.js';
 import { mountChart } from './quote.js';
-import { toolbar } from '../kit.js';
+import { toolbar, usageCard, raw } from '../kit.js';
 
 const MINUS = '−';
 
@@ -62,17 +62,17 @@ export function fxFormCommand(amount, from, to) {
   return `FX ${flipAmount(n)} ${f} ${t}`;
 }
 
-function examplesHtml(examples) {
-  return examples.map((e) => `<a class="code" href="${esc(q(e))}" data-cmd="${esc(e)}">${esc(e)}</a>`).join(' ');
-}
-
 const DEFAULT_EXAMPLES = ['FX 500 USD THB', 'FX 100 EUR USD', 'FX 20000 JPY GBP', 'FX USD CAD'];
 
+// Typed wrong, or a currency we do not know: the kit's usage card. detail (html, a list
+// of currencies) goes in + Details.
+export function fxUsage(title, detail = '', examples = null) {
+  const ex = examples?.length ? examples : DEFAULT_EXAMPLES;
+  const [problem, ...rest] = String(title).split(/(?<=[.?]) /);
+  return usageCard({ problem, format: 'FX [amount] from to', grammar: 'FX <amount> <from> <to> (the amount is optional)', example: ex[0], more: ex.slice(1), notes: [rest.join(' '), detail ? raw(detail) : ''] });
+}
 function errorView(el, title, detail, examples) {
-  el.innerHTML = panel('1', 'FX', `
-    <p class="notice">${esc(title)}</p>
-    ${detail ? `<p class="muted">${detail}</p>` : ''}
-    <p class="muted examples">Try ${examplesHtml(examples || DEFAULT_EXAMPLES)}</p>`, { cls: 'panel-solo' });
+  el.innerHTML = panel('1', 'FX', fxUsage(title, detail, examples), { cls: 'panel-solo' });
 }
 
 export const FX_SOURCE = 'Source: ECB reference rates, published once a working day (DAILY), not live prices. A rate between two currencies other than the euro is calculated from their euro rates. Not financial advice.';
@@ -86,11 +86,11 @@ export function render(el, cmd, ctx) {
   const a = cmd.args || {};
   if (cmd.error) {
     const title = cmd.error === 'code'
-      ? 'Currencies are three letter codes, like USD or EUR.'
+      ? 'Use three-letter codes, like USD or EUR.'
       : cmd.error === 'amount'
         ? 'That amount does not look right. Use digits, up to 1,000,000,000,000.'
         : 'FX needs an amount and two currencies.';
-    errorView(el, title, 'Format: <span class="code">FX &lt;amount&gt; &lt;from&gt; &lt;to&gt;</span>. The amount is optional.', null);
+    errorView(el, title, '', null);
     ctx.status('FX: CHECK THE FORMAT', 'warn');
     return;
   }

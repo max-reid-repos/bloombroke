@@ -7,16 +7,23 @@ import { esc, q, panel } from './markets.js';
 import * as pro from '../pro.js';
 import { instrumentById } from '../instruments.js';
 import { mountTape, parseTapeSwitch } from '../tape.js';
+import { usageCard } from '../kit.js';
 import { parseTapeArgs as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { parse };
 
-const link = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
+const link = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}" data-example>${esc(c)}</a>`; // saving ones prefill (app.js examplePlan)
 
-function usage(cmd) {
-  const title = cmd.error === 'symbol' ? `${cmd.args.bad} is not a ticker.` : 'TAPE takes ON, OFF, ADD, REMOVE or RESET.';
-  return `<p class="notice">${esc(title)}</p>
-    <p class="muted">Format: <span class="code">TAPE ON</span>, <span class="code">TAPE OFF</span>, <span class="code">TAPE ADD &lt;tickers&gt;</span>, <span class="code">TAPE REMOVE &lt;tickers&gt;</span> or <span class="code">TAPE RESET</span>.</p>
-    <p class="muted examples">Try ${['TAPE ON', 'TAPE ADD AAPL', 'TAPE RESET'].map(link).join(' ')}</p>`;
+// A command typed wrong: the kit's usage card.
+export function usage(cmd) {
+  const symbol = cmd.error === 'symbol';
+  const ex = ['TAPE ON', 'TAPE ADD AAPL', 'TAPE RESET'];
+  return usageCard({
+    problem: symbol ? `${cmd.args.bad} is not a ticker.` : 'Not a TAPE command.',
+    format: 'TAPE ON|OFF|RESET, TAPE ADD ticker',
+    grammar: 'TAPE ON, TAPE OFF, TAPE ADD <tickers>, TAPE REMOVE <tickers>, TAPE RESET',
+    example: symbol ? ex[1] : ex[0],
+    more: ex.filter((e) => e !== (symbol ? ex[1] : ex[0])),
+  });
 }
 
 function listHtml(list, custom) {

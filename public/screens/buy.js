@@ -5,6 +5,7 @@
 
 import { esc, q, fmtNum, panel } from './markets.js';
 import { AFFORD_EXAMPLE } from '../afford.js';
+import { usageCard } from '../kit.js';
 
 export const INVEST_RATE = 0.08;
 export const TITLE = 'Can I afford it?';
@@ -61,11 +62,25 @@ export function readWage(store) {
 const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
 const EXAMPLES = ['AFFORD 1200', 'AFFORD 1200 BIKE 2 PER WEEK', 'AFFORD 90 3 TIMES A MONTH FOR 2Y', 'AFFORD 4.50 1 PER DAY FOR 1Y', 'AFFORD 30000 FOR 8Y'];
 
-function errorView(el, message, tryIt = false) {
-  el.innerHTML = panel('1', TITLE, `
-    <p class="notice">${esc(message)}${tryIt ? ` Try: ${code(AFFORD_EXAMPLE)}` : ''}</p>
-    <p class="muted">Format: <span class="code">AFFORD &lt;price&gt; [&lt;thing&gt;] [&lt;n&gt; PER DAY|WEEK|MONTH|YEAR] [FOR &lt;n&gt;Y]</span>. Starts at once a week for 3 years.</p>
-    <p class="muted examples">Try ${EXAMPLES.map(code).join(' ')}</p>`, { cls: 'panel-solo' });
+// A command typed wrong: the kit's usage card. The first sentence of the message is the
+// problem; the rest, the other examples and the default go in + Details. withFormat:
+// false when the words were fine but the thing is not (an investment).
+export const AFFORD_FORMAT = 'AFFORD price [thing] [n PER DAY] [FOR nY]';
+export const AFFORD_GRAMMAR = 'AFFORD <price> [<thing>] [<n> PER DAY|WEEK|MONTH|YEAR] [FOR <n>Y]';
+export function affordUsage(message, { withFormat = true } = {}) {
+  const [problem, ...rest] = String(message).split(/(?<=[.?]) /);
+  return usageCard({
+    problem,
+    format: withFormat ? AFFORD_FORMAT : '',
+    grammar: AFFORD_GRAMMAR,
+    example: EXAMPLES[0],
+    more: [AFFORD_EXAMPLE, ...EXAMPLES.slice(1)],
+    notes: [rest.join(' '), 'Starts at once a week for 3 years.'],
+  });
+}
+
+function errorView(el, message, opts) {
+  el.innerHTML = panel('1', TITLE, affordUsage(message, opts), { cls: 'panel-solo' });
 }
 
 // The hourly pay typed in AFFORD's own field: "35", "$35", "1,200.50". Same limits as
@@ -124,12 +139,20 @@ export function buyHtml(r, share = '') {
   ${share}`;
 }
 
+// WAGE typed wrong: the kit's usage card. WAGE 35 saves a wage, so a click puts it in the
+// command bar (kit.js data-example); WAGE OFF, in + Details, too.
+export function wageUsage(error) {
+  return usageCard({
+    problem: error === 'amount' ? 'That wage does not look right.' : 'WAGE needs your hourly pay.',
+    format: 'WAGE hourly-pay', grammar: 'WAGE <per hour>', example: 'WAGE 35', more: ['WAGE OFF'],
+    notes: ['WAGE OFF forgets it. It stays in this browser only.'],
+  });
+}
+
 function renderWage(el, cmd, ctx) {
   const { wage, show, clear } = cmd.args;
   if (cmd.error) {
-    el.innerHTML = panel('1', 'Wage', `
-      <p class="notice">${cmd.error === 'amount' ? 'That wage does not look right.' : 'WAGE needs your hourly pay.'}</p>
-      <p class="muted">Format: <span class="code">WAGE &lt;per hour&gt;</span>, like ${code('WAGE 35')}. ${code('WAGE OFF')} forgets it.</p>`, { cls: 'panel-solo' });
+    el.innerHTML = panel('1', 'Wage', wageUsage(cmd.error), { cls: 'panel-solo' });
     ctx.status('WAGE: CHECK THE FORMAT', 'warn');
     return;
   }
@@ -156,7 +179,7 @@ export function render(el, cmd, ctx) {
       times: 'How often? Use a number from 1 to 1,000.',
       years: 'For how long? Use 1 to 100 years, like FOR 3Y.',
     }[cmd.error] || 'Check the format.';
-    errorView(el, msg, cmd.error === 'usage');
+    errorView(el, msg, { withFormat: cmd.error !== 'investment' });
     ctx.status(cmd.error === 'investment' ? 'AFFORD: THINGS YOU BUY, NOT INVESTMENTS' : 'AFFORD: CHECK THE FORMAT', 'warn');
     return;
   }
