@@ -296,18 +296,18 @@ const HEAVY = synth(10000, 500);
 test('mounted: nearby places are one critter with a count; the far side is hidden; zoom in and they split', () => {
   const p = page();
   const g = mountGlobe(p.canvas, GEO, FIX, p.opts);
-  // It starts facing the US: New York, Chicago and the rest of the US are one cluster at
-  // 1x, named after Chicago (the biggest), counting all 20; Japan is behind.
+  // It starts facing the US. At 1x Chicago and the rest of the US (11 degrees apart) are
+  // one critter, named after Chicago (the biggest), counting 14; New York is its own.
+  // Japan is behind.
   const at1 = g.placed.filter((x) => x.item.n > 0);
-  assert.equal(at1.length, 1);
-  const us = at1[0];
-  assert.equal(us.item.name, 'Chicago');
-  assert.equal(us.item.n, 20);
+  assert.deepEqual(at1.map((x) => `${x.item.name || x.item.cc} ${x.item.n}`).sort(), ['Chicago 14', 'New York 6']);
+  const us = at1.find((x) => x.item.name === 'Chicago');
   assert.equal(us.size, 24, '10 to 99 visitors: 3 px a pixel');
-  assert.ok(p.draws.text.includes('20'), 'its count beside it');
+  assert.ok(p.draws.text.includes('14') && p.draws.text.includes('6'), 'each count under its critter');
+  assert.ok(us.label[1] >= us.sprites[0][1] + us.size, 'under it');
   const [sx, sy] = us.sprites[0];
   p.ev('pointermove', { clientX: sx + 8, clientY: sy + 8 });
-  assert.equal(g.tip, 'Chicago, New York and 1 more place · 20 visitors this week');
+  assert.equal(g.tip, 'Chicago, United States · 14 visitors this week');
   // Face Chicago and zoom in to 3x: they split, one critter a place.
   p.doc.activeElement = p.canvas;
   for (const key of ['ArrowUp', 'ArrowUp', 'ArrowUp', 'ArrowRight']) p.ev('keydown', { key });

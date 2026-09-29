@@ -7,7 +7,9 @@
 // and globe size, never per frame. Two clusters are always far enough apart that their
 // boxes (critter and count label, north up, with MARGIN to spare for the globe's tilt)
 // cannot overlap at the level's smallest zoom near the middle of the globe; near the
-// rim, where the sphere squeezes them, globe.js hides the smaller of two that touch. There are never more than CRITTER_CAP critters in one view: when a
+// rim, where the sphere squeezes them, globe.js hides the smaller of two that touch.
+// A level's clusters are also at least MIN_SEPS of the globe's radius apart, and one view
+// never holds more than its CAPS critters (15 at 1x, up to CRITTER_CAP from 3x): when a
 // level would put more in a lens, it is made again with more room between clusters.
 // Pure: node:test imports it.
 
@@ -16,12 +18,14 @@ import { spotsFor } from './globe-sprites.js';
 const RAD = Math.PI / 180;
 
 export const CLUSTER_ZOOMS = [1, 1.5, 2, 3, 4, 5, 6]; // a level each; the last is ZOOM_MAX
-export const CRITTER_CAP = 40; // critters in one view, at most
+export const CRITTER_CAP = 40; // critters in one view, at most, at any zoom
+export const CAPS = [15, 20, 25, 40, 40, 40, 40]; // ... and at each level
+export const MIN_SEPS = [0.18, 0.16, 0.14, 0.12, 0.11, 0.1, 0.1]; // clusters' centres at least this many globe radii apart
+export const capFor = (level) => CAPS[Math.max(0, Math.min(CAPS.length - 1, level))];
 export const SPREAD_ZOOM = 5; // from here a place of 2 to SPREAD_MAX visitors may show them all
 export const SPREAD_MAX = 9;
-export const GAP = 4; // px between two clusters' boxes
-export const MIN_SEP = 0.3; // clusters' centres at least this many globe radii apart (the cap)
-export const MARGIN = 1.15; // boxes count this much bigger when clusters are made
+export const GAP = 3; // px between two clusters' boxes
+export const MARGIN = 1.1; // boxes count this much bigger when clusters are made
 export const LABEL_CH = 7; // px a character of the count label (11 px monospace), and 4 of padding
 export const LABEL_H = 14;
 
@@ -32,7 +36,7 @@ export function clusterLevel(zoom) {
   return l;
 }
 
-// The count by a critter: 12, 999, 1.2k, 12k, 1.2M.
+// The count under a critter: 12, 999, 1.2k, 12k, 1.2M.
 export function countText(n) {
   const v = Math.max(0, Math.round(n));
   if (v < 1000) return String(v);
@@ -46,14 +50,15 @@ export function countText(n) {
 export const tierPx = (n, zoomed = false) => (n >= 100 ? 4 : n >= 10 ? 3 : 2) + (zoomed ? 1 : 0);
 
 // What a cluster of n takes on the screen: its critter (size px square, pixel px), the
-// count label beside it (lw px wide, none for 1), and the box of both, w by h, centred on
-// the place; r the box's half diagonal.
+// count label just under it (lw px wide, none for 1), and the box of both, w by h,
+// centred on the place; r the box's half diagonal. Under, not beside: the box stays
+// narrow, so places east and west of each other (most of them) keep their own critters.
 export function footprint(n, zoomed = false) {
   const px = tierPx(n, zoomed);
   const size = 8 * px;
   const lw = n > 1 ? countText(n).length * LABEL_CH + 4 : 0;
-  const w = size + (lw ? 2 + lw : 0);
-  const h = Math.max(size, LABEL_H);
+  const w = Math.max(size, lw);
+  const h = size + (lw ? 2 + LABEL_H : 0);
   return { px, size, lw, w, h, r: Math.hypot(w, h) / 2 };
 }
 
@@ -121,7 +126,8 @@ export function clusterPlaces(items, { R, level }) {
   if (!(R > 0) || !list.length) return [];
   const sizes = new Map();
   const fOf = (n) => { let f = sizes.get(n); if (!f) { f = footprint(n, zoomed); sizes.set(n, f); } return f; };
-  let sep = MIN_SEP;
+  const cap = capFor(level);
+  let sep = MIN_SEPS[Math.max(0, Math.min(MIN_SEPS.length - 1, level))];
   let out = [];
   for (let round = 0; round < 12; round++) {
     const minD = (sep * R) / perRad; // radians
@@ -195,7 +201,7 @@ export function clusterPlaces(items, { R, level }) {
       most = Math.max(most, inView);
     }
     out = cl;
-    if (most <= CRITTER_CAP) break;
+    if (most <= cap) break;
     sep *= 1.25;
   }
   // Zoomed in far: a place alone with a few visitors shows them all, in a tight group,
@@ -211,7 +217,7 @@ export function clusterPlaces(items, { R, level }) {
       if (!roomy) continue;
       let inView = 0;
       for (const o of out) if (dot(o.v, c.v) >= cosLens) inView += o === c ? c.n : o.spread;
-      if (inView > CRITTER_CAP) continue;
+      if (inView > cap) continue;
       c.spread = c.n;
       c.f = g;
     }

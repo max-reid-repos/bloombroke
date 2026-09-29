@@ -26,7 +26,7 @@
 import { HERE_MIN } from './here-now.js';
 import { project, LAT_TOP, LAT_BOTTOM } from './screens/worldmap-geo.js';
 import { draw as drawSprite, spriteHex, colorFor, dayKey } from './globe-sprites.js';
-import { clusterPlaces, clusterLevel, markLive, footprint, groupOf, countText, CRITTER_CAP, GAP } from './globe-cluster.js';
+import { clusterPlaces, clusterLevel, markLive, footprint, groupOf, countText, capFor, GAP } from './globe-cluster.js';
 
 export const DOTS_URL = new URL('./geo/globe-dots.json', import.meta.url).href;
 export const WORLD_URL = new URL('./geo/world-110m.json', import.meta.url).href;
@@ -764,10 +764,10 @@ export function mountGlobe(canvas, geo, globe = [], {
     placeTip();
   }
 
-  // The visitors: a critter per cluster (globe-cluster.js) with its count beside it,
+  // The visitors: a critter per cluster (globe-cluster.js) with its count under it,
   // biggest first; a small place zoomed in far may show a critter per visitor. Near the
   // rim, where the sphere squeezes them, a cluster that would touch a bigger one is left
-  // out, and never more than CRITTER_CAP critters are drawn.
+  // out, and never more than the level's cap of critters (capFor) are drawn.
   function drawPeople(t, { R, c, dpr, zoom }) {
     const level = clusterLevel(zoom);
     const cl = clustersFor(level, R);
@@ -785,7 +785,7 @@ export function mountGlobe(canvas, geo, globe = [], {
       const f = k.spread > 1 ? groupOf(k.spread, zoomed) : footprint(k.n, zoomed);
       const box = [px - f.w / 2 - GAP / 2, py - f.h / 2 - GAP / 2, px + f.w / 2 + GAP / 2, py + f.h / 2 + GAP / 2];
       if (boxes.some((o) => box[0] < o[2] && o[0] < box[2] && box[1] < o[3] && o[1] < box[3])) return;
-      if (critters + k.spread > CRITTER_CAP) return;
+      if (critters + k.spread > capFor(level)) return;
       boxes.push(box);
       critters += k.spread;
       shown.push({ k, i, x: px, y: py, f });
@@ -806,7 +806,7 @@ export function mountGlobe(canvas, geo, globe = [], {
       const size = f.size;
       const sprites = f.spots
         ? f.spots.map(([dx, dy]) => [x + dx - size / 2, y + dy - size / 2])
-        : [[x - f.w / 2, y - size / 2]];
+        : [[x - size / 2, y - f.h / 2]];
       sprites.forEach(([sx, sy], j) => {
         const look = lookOf(k, j);
         let lift = 0;
@@ -817,7 +817,7 @@ export function mountGlobe(canvas, geo, globe = [], {
         }
         drawSprite(ctx2, look.hex, snap(sx), snap(sy) - lift, pp, look.color);
       });
-      const label = !f.spots && k.n > 1 ? [x - f.w / 2 + size + 2, y - LABEL_H_PX / 2, f.lw, LABEL_H_PX] : null;
+      const label = !f.spots && k.n > 1 ? [x - f.lw / 2, y - f.h / 2 + size + 2, f.lw, LABEL_H_PX] : null;
       if (label) labels.push([label, countText(k.n)]);
       // What hover and tap can find: only critters at least partly inside the lens.
       const inside = sprites.filter(([sx, sy]) => inLens(sx, sy, size, c, R));
