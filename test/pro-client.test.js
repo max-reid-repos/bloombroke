@@ -143,7 +143,8 @@ test('PRO screen copy: the save line, the key file, the mask, the free-user line
   assert.match(terms, /\$42 USD a month/);
   assert.match(terms, /renews automatically every month or every year/);
   assert.match(terms, /\$420 USD a year/);
-  assert.match(terms, /Cancel any time: type PRO and press MANAGE/);
+  assert.match(terms, /Cancel any time: type PRO and press CANCEL/);
+  assert.match(txt, /press MANAGE PLAN or CANCEL/);
   assert.ok(BUY_TERMS.includes('If we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month or year.'));
   assert.equal(OPERATOR, 'Run by Bloombroke.');
   assert.equal(CONTACT, 'hello@bloombroke.com');

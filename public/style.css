@@ -1,5 +1,6 @@
 /* Bloombroke: ice blue on black. A dense, instant market terminal.
-   Spacing scale: 2 4 6 8 12 16 24 32. Type scale: 11 12 13 14 16 18 24 32 44. */
+   Spacing scale: 2 4 6 8 12 16 24 32 48. Type scale: 11 12 13 14 16 18 24 32 44 60 96.
+   (48, 60 and 96 are for the card pages only: kit.css, "Card pages".) */
 
 :root {
   /* Surfaces: near-black with a hint of blue, lighter as they rise */
@@ -36,6 +37,11 @@
   /* Every row shares one centred content column. Bar backgrounds stay full-bleed;
      only their contents are inset. 100% resolves against each element's own width. */
   --maxw: 1440px;
+  /* Card pages (kit.css cardPage): one centred column, text pages and BBRK, and the
+     globe, sized so it is never cut off on a 730 px high screen. */
+  --card-w: 640px;
+  --card-w-wide: 880px;
+  --globe-w: min(340px, 40vh);
   --inset: max(var(--gutter), calc((100% - var(--maxw)) / 2));
   --topbar-h: 30px;
   --cmd-h: 40px;
@@ -1212,6 +1218,10 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .status-sponsor.is-spot .spon-item, .status-sponsor.is-spot .sponsor-k { color: var(--text); }
 @keyframes spon-spot { from { box-shadow: 0 0 0 3px var(--accent-tint); } to { box-shadow: none; } }
 @media (prefers-reduced-motion: reduce) { .status-sponsor.is-spot { animation: none; } }
+/* While SPONSOR points at it, the outlined strip is never an empty frame: no slide in
+   (it starts below the frame), and a line of its own if it has none. */
+.status-sponsor.is-spot.is-sliding .spon-item { animation: none; }
+.status-sponsor.is-spot:empty::before { content: 'YOUR LINE HERE'; color: var(--text); }
 .status-sponsor[hidden] { display: none; }
 .status-sponsor .sponsor-k { margin-right: 2ch; color: var(--faint); letter-spacing: .12em; }
 .status-sponsor a { color: var(--text-2); }

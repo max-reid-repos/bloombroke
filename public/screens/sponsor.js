@@ -1,18 +1,19 @@
-// SPONSOR: three things, big. YOUR AD HERE, with the real strip at the bottom outlined and
-// a small label above it, and BBRK's globe of visitor places, big, under the fine print
-// (the page scrolls to it); one live line
-// of our own numbers (/api/bbrk: DataFast audience and the strip inventory) and what one
-// line would get a week; the email, and BBRK for all the numbers. The numbers and the
-// globe's dots come again every minute while the tab is visible (the shell's ctx.live).
+// SPONSOR: a card page (kit.js cardPage). YOUR AD HERE, big; one line of what a line
+// would get a week; EMAIL (the one primary button) and BBRK NUMBERS; the rule line; three
+// of our own numbers (/api/bbrk: our analytics and the strip inventory); BBRK's globe of
+// visitor places under them, at --globe-w. The rest is behind + Details. While SPONSOR
+// is open the real strip at the bottom is outlined, with a small label above it. The
+// numbers and the globe's dots come again every minute while the tab is visible (the
+// shell's ctx.live).
 // Also the browser side of the sponsor config (/api/sponsors, from data/sponsors.json via
 // lib/sponsors.js), and the "SPONSORED BY" note on a WEIRD gauge. The strip itself is
 // public/sponsor-strip.js. Plain text and plain links: no pixels, no scripts, no tracking.
 
 import { esc, metaNote, q } from './markets.js';
+import { cardPage, cardButton, cardFacts, cardRows, raw } from '../kit.js';
 import { findCommand } from '../registry.js';
 import { stripItems, loadSponsors } from '../sponsor-strip.js';
-import { loadDots, mountGlobe, globeCaption, globeLabel } from '../globe.js';
-import { HERE_MIN } from '../here-now.js';
+import { loadDots, mountGlobe, globeLabel } from '../globe.js';
 import { isPro } from '../pro.js'; // no SPONSORED BY on screen for Pro
 
 export { loadSponsors }; // the config, asked once per page load: the status line needs it at startup
@@ -23,12 +24,12 @@ export const MAILTO = `mailto:${CONTACT}?subject=${encodeURIComponent(SUBJECT)}`
 export const HERO = 'YOUR AD HERE';
 export const POINT = '↓ this line, every screen';
 export const REFRESH_MS = 60_000;
-export const PHONE_MQ = '(max-width: 639px)'; // sponsor.css's phone layout
+export const PHONE_MQ = '(max-width: 639px)'; // kit.css's phone layout
 export const FINE = 'One rotating line. No tracking. No finance products. Hidden for Pro.';
 
 const fin = (v) => typeof v === 'number' && Number.isFinite(v);
 const count = (v) => v.toLocaleString('en-US');
-// DataFast country names, short enough for one line. Any other name as it comes.
+// Country names from our analytics, short enough for one line. Any other name as it comes.
 const SHORT = { 'United States': 'US', 'United States of America': 'US', 'United Kingdom': 'UK', 'United Arab Emirates': 'UAE' };
 
 // 429 -> '7 min', 40 -> '40 s'. Unknown: '-- min'.
@@ -37,17 +38,18 @@ export function visitLen(sec) {
   return sec < 60 ? `${Math.round(sec)} s` : `${Math.round(sec / 60)} min`;
 }
 
-// The live line, as parts: '243 page views this week', '8 min visits', '60% US'. Each is
-// -- when missing. Visitors right now are in the globe's caption, from 2 only.
-export function proofParts(b) {
+// Three of our own numbers, as card facts: page views this week, visit length, the top
+// country. Each is -- when missing.
+export function sponFacts(b) {
   const a = b?.audience || {};
-  const parts = [];
   const d7 = a.pageviews?.d7;
-  parts.push(`${fin(d7) && d7 >= 0 ? count(d7) : '--'} page views this week`);
-  parts.push(`${visitLen(a.avgVisitSec)} visits`);
   const top = Array.isArray(a.countries) ? a.countries[0] : null;
-  parts.push(top?.name && fin(top.pct) ? `${Math.round(top.pct)}% ${SHORT[top.name] || top.name}` : '-- top country');
-  return parts;
+  const known = top?.name && fin(top.pct);
+  return [
+    { value: fin(d7) && d7 >= 0 ? count(d7) : '--', label: 'PAGE VIEWS, 7D' },
+    { value: visitLen(a.avgVisitSec), label: 'VISITS' },
+    { value: known ? `${Math.round(top.pct)}%` : '--', label: known ? (SHORT[top.name] || top.name) : 'TOP COUNTRY' },
+  ];
 }
 
 // Paid lines already in rotation (a non-Pro visitor's strip). House lines do not count:
@@ -78,9 +80,8 @@ export function viewsLine(n) {
   return n === null || n === undefined ? 'Your line: -- views a week' : `Your line: about ${count(n)} views a week`;
 }
 
-export function proofHtml(b, cfg) {
-  const parts = proofParts(b).map((p) => `<span class="spon-part">${esc(p)}</span>`).join('<span class="spon-dot" aria-hidden="true"> · </span>');
-  return `<p class="spon-live">${parts}</p><p class="spon-views">${esc(viewsLine(weeklyViews(b, cfg)))}</p>`;
+export function factsHtml(b) {
+  return cardFacts(sponFacts(b), { id: 'spon-facts' });
 }
 
 // A WEIRD gauge's title strip: SPONSORED BY <name>, or '' when the gauge has no sponsor.
@@ -103,27 +104,37 @@ export function markGaugeSponsor(metaEl, id, { pro = isPro } = {}) {
   });
 }
 
-// b: /api/bbrk (null while it loads: --). cfg: /api/sponsors. has: whether a command exists.
-// The globe's caption on SPONSOR: live now only from 2 (1 is most likely the viewer), like
-// N HERE NOW in the top bar.
-export function sponCaption(b) {
-  const live = b?.audience?.live;
-  return globeCaption(Number.isInteger(live) && live >= HERE_MIN ? b : null);
+// What + Details holds: where the line runs, how "your line" is counted, the WEIRD
+// gauges, where the numbers come from.
+export function detailsHtml(exists) {
+  const weird = exists('WEIRD') ? raw(`<a class="spon-weird" href="${esc(q('WEIRD'))}" data-cmd="WEIRD">Or a WEIRD gauge</a>: your name in its title strip.`) : '';
+  return cardRows([
+    ['Where', 'The line at the bottom of every screen, for everyone without Pro.'],
+    ['Your line', 'Last 7 days of strip views, shared with the paid lines, rounded down.'],
+    weird ? ['Gauges', weird] : null,
+    ['Numbers', 'Visitors: our analytics. Strip: our server counters.'],
+  ]);
 }
 
+// b: /api/bbrk (null while it loads: --). cfg: /api/sponsors. has: whether a command exists.
 export function sponsorHtml({ has, bbrk = null, cfg = null } = {}) {
   const exists = has || ((c) => Boolean(findCommand(c)));
-  const bbrkBtn = exists('BBRK') ? `<a class="spon-mail spon-bbrk" href="${esc(q('BBRK'))}" data-cmd="BBRK">BBRK NUMBERS</a>` : '';
-  const weird = exists('WEIRD')
-    ? ` <a class="spon-weird" href="${esc(q('WEIRD'))}" data-cmd="WEIRD">Or a WEIRD gauge</a>` : '';
-  return `<section class="spon-page" aria-label="Sponsor">
-    <h2 class="spon-hero">${esc(HERO)}</h2>
-    <div id="spon-proof" class="spon-proof">${proofHtml(bbrk, cfg)}</div>
-    <p class="spon-act"><a class="spon-mail" href="${esc(MAILTO)}">EMAIL ${esc(CONTACT)}</a>${bbrkBtn}</p>
-    ${weird ? `<p class="spon-more">${weird.trim()}</p>` : ''}
-    <p class="spon-fine">${esc(FINE)}</p>
-    <figure class="spon-globe"><canvas role="img" aria-label="${esc(globeLabel(bbrk))}"></canvas><figcaption class="dim">${esc(sponCaption(bbrk))}</figcaption></figure>
-  </section>`;
+  const act = cardButton({ label: `EMAIL ${CONTACT}`, primary: true, href: MAILTO })
+    + (exists('BBRK') ? cardButton({ label: 'BBRK NUMBERS', cmd: 'BBRK' }) : '');
+  return cardPage({
+    label: 'Sponsor',
+    wide: true,
+    cls: 'spon-card',
+    hero: raw(`<span class="spon-slot">${esc(HERO)}</span>`),
+    heroSize: 96,
+    sub: viewsLine(weeklyViews(bbrk, cfg)),
+    subId: 'spon-views',
+    act: raw(act),
+    note: FINE,
+    facts: factsHtml(bbrk),
+    media: raw(`<figure class="spon-globe"><canvas role="img" aria-label="${esc(globeLabel(bbrk))}"></canvas></figure>`),
+    details: raw(detailsHtml(exists)),
+  });
 }
 
 // The real strip at the bottom, while SPONSOR is open: outlined (a short glow first; still
@@ -184,11 +195,11 @@ export function render(el, cmd, ctx) {
   ctx.status('SPONSOR: EMAIL US');
   let globe = null;
   const canvas = el.querySelector('.spon-globe canvas');
-  const caption = el.querySelector('.spon-globe figcaption');
   const paint = () => {
-    const h = el.querySelector('#spon-proof');
-    if (h) h.innerHTML = proofHtml(bbrk, cfg);
-    if (caption) caption.textContent = sponCaption(bbrk);
+    const f = el.querySelector('#spon-facts');
+    if (f) f.outerHTML = factsHtml(bbrk);
+    const v = el.querySelector('#spon-views');
+    if (v) v.textContent = viewsLine(weeklyViews(bbrk, cfg));
     canvas?.setAttribute('aria-label', globeLabel(bbrk));
     globe?.update(bbrk?.audience?.globe || null, bbrk?.audience?.live ?? null);
     unpoint.refresh?.(); // the new numbers may change the page's height

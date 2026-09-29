@@ -83,3 +83,83 @@
   .dt th, .dt td { padding: 0 8px; }
   .toolbar { flex-wrap: wrap; }
 }
+
+/* ---- Card pages (kit.js cardPage) -------------------------------------------------
+   The screens that are one thing, not a table: BBRK, SPONSOR, PRO, LOGIN, REDEEM,
+   GIFT, FEEDBACK, CHAT without Pro. One centred column; the slots always in the same
+   order (kicker, hero, sub | action, note | chart | facts | media | links, + Details).
+   The rules, so no card page invents its own:
+   - sizes from the type scale in style.css (11 12 14 16 18 24 32 44 60 96), spaces from
+     its spacing scale; 32 between groups, 8 inside a group (a group gap is >= 2x);
+   - text colours: --text (the main thing), --text-2 (second), --dim (third). Nothing else;
+   - weights: 400, and 700 for the hero only; labels are .tag (11 px uppercase, --dim);
+   - one primary (solid) button at most; lines of words no wider than 60ch;
+   - the column is --card-w (text pages) or --card-w-wide (BBRK, SPONSOR). */
+.card {
+  display: flex; flex-direction: column; align-items: center; gap: 32px;
+  width: 100%; max-width: var(--card-w); margin: 0 auto; padding: 32px 0;
+  text-align: center;
+}
+.card-wide { max-width: var(--card-w-wide); }
+.card-head, .card-cta, .card-foot { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
+.card-alert { max-width: 60ch; font-size: 14px; color: var(--text); }
+.card-alert.warn { color: var(--down); }
+.card-kicker { letter-spacing: .2em; }
+.card-hero { font-weight: 700; line-height: 1; letter-spacing: -.02em; color: var(--text); white-space: nowrap; }
+.card-hero-96 { font-size: 96px; }
+.card-hero-60 { font-size: 60px; }
+.card-hero-44 { font-size: 44px; line-height: 1.1; white-space: normal; }
+.card-hero-32 { font-size: 32px; letter-spacing: .04em; line-height: 1.2; white-space: normal; overflow-wrap: anywhere; user-select: all; }
+.card-sub { max-width: 60ch; font-size: 18px; color: var(--text-2); }
+.card-sub .up { color: var(--up); }
+.card-sub .down { color: var(--down); }
+.card-act { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; width: 100%; }
+.btn.card-btn { display: inline-flex; align-items: center; justify-content: center; height: 40px; padding: 0 24px; font-size: 14px; letter-spacing: .08em; white-space: nowrap; text-decoration: none; }
+.btn.card-btn:disabled { opacity: .5; cursor: wait; }
+.card-note { max-width: 60ch; font-size: 12px; color: var(--dim); }
+.card-note [hidden] { display: none; }
+.card-chart { position: relative; width: 100%; }
+.card-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px 16px; width: 100%; }
+.card-facts.n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.card-facts.n4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.card-fact { display: flex; flex-direction: column-reverse; gap: 4px; min-width: 0; }
+.card-fact dd { margin: 0; font-size: 24px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-media { display: flex; flex-direction: column; align-items: center; width: 100%; }
+/* Links: a row that wraps between links, never inside one. */
+.card-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 24px; font-size: 12px; letter-spacing: .06em; color: var(--dim); }
+.card-link { padding: 0; border: 0; background: none; font: inherit; color: var(--dim); white-space: nowrap; cursor: pointer; }
+.card-link:hover, .card-link:focus-visible { color: var(--text); text-decoration: none; }
+/* + Details: WHATIF's .how toggle; what it holds reads left to right. */
+.card-more { width: 100%; margin-top: 0; }
+.card-details { margin-top: 12px; text-align: left; }
+.card-rows { display: grid; gap: 8px; width: 100%; margin: 0 0 12px; }
+.card-row { display: grid; grid-template-columns: 16ch minmax(0, 1fr); gap: 16px; align-items: baseline; }
+.card-row dd { margin: 0; font-size: 14px; color: var(--text-2); }
+.card-row a { color: var(--accent); }
+/* A form in the action slot: one input and its button. */
+.card-form { display: flex; gap: 8px; width: 100%; max-width: 480px; }
+.card-input {
+  flex: 1 1 auto; min-width: 0; height: 40px; padding: 0 12px;
+  border: 1px solid var(--rule-strong); border-radius: 0; background: var(--bg);
+  color: var(--text); font-family: var(--font); font-size: 16px; text-transform: uppercase;
+}
+.card-input::placeholder { color: var(--dim); }
+.card-input:focus { border-color: var(--accent); outline: 0; }
+
+/* Below the desktop layout, and on a short desktop screen, the biggest hero steps down
+   and the groups sit closer, so a card fits a 730 px high window. */
+@media (max-width: 1099px), (max-height: 800px) {
+  .card { gap: 24px; padding: 24px 0; }
+  .card-hero-96 { font-size: 60px; }
+}
+@media (max-width: 639px) {
+  .card { gap: 24px; padding: 16px 0; }
+  .card-hero-96, .card-hero-60 { font-size: 44px; }
+  .card-hero-44 { font-size: 32px; }
+  .card-hero-32 { font-size: 24px; }
+  .card-sub { font-size: 16px; }
+  .card-facts.n4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card-fact dd { font-size: 18px; }
+  .card-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .card-form { flex-direction: column; }
+}

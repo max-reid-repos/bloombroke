@@ -15,7 +15,8 @@ import {
 import { mountEmbeds } from '../lib/embed-pages.js';
 import { stripItems, mountStrip } from '../public/sponsor-strip.js';
 import { countOnly, stripShownBatch } from '../public/goal.js';
-import { bbrkHtml, heroChange, visitTime, topLine, globeCaption, globeLabel, SOURCE, STRIP, INVENTORY } from '../public/screens/bbrk.js';
+import { bbrkHtml, heroChange, visitTime, topLine, globeCaption, globeLabel, bbrkCaption, chartSvg, mrrFact, SOURCE, STRIP, KICKER, INVENTORY } from '../public/screens/bbrk.js';
+import { cardWords } from '../public/kit.js';
 import { ortho, dotRadius, startLon, mountGlobe } from '../public/globe.js';
 import { build as buildDots, rings } from '../scripts/build-globe-dots.js';
 import { snap as buildSnap } from '../scripts/build-cities.js';
@@ -459,20 +460,45 @@ const FULL = {
 const text = (html) => html.replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/g, ' ');
 const words = (html) => text(html).split(/\s+/).filter((w) => /[A-Za-z]/.test(w)).length;
 
-test('BBRK screen: visitors hero, audience, sponsor inventory, MRR; no game counts', () => {
+test('BBRK screen: a card: visitors hero, the chart, six facts, the globe; the rest behind Details', () => {
   const html = bbrkHtml(FULL);
-  assert.match(html, /<span class="q-last">412<\/span>/);
-  assert.match(html, /\+35 \+9\.28%/);
-  assert.match(html, /vs yesterday, same time/);
-  assert.match(html, /class="spark"/);
-  for (const s of ['3,180', '11,890', '1m 37s', '31%', '68%', '$0 (test mode)', 'United States 41% · Germany 6%', 'x.com 23%', '1,840', '12,950', '390', '160']) assert.ok(html.includes(s), s);
+  assert.match(html, /<h2 class="card-hero card-hero-60 num" id="bb-hero">412<\/h2>/);
+  assert.match(html, /visitors today · <span class="num up">\+35<\/span> vs same time yesterday/);
+  assert.match(html, /class="bb-spark"/);
+  for (const s of ['3,180', '11,890', '1m 37s', '31%', '68%', '$0', 'MRR, TEST MODE', 'United States 41% · Germany 6%', 'x.com 23%', '1,840', '12,950', '390', '160']) assert.ok(html.includes(s), s);
   for (const [, label] of INVENTORY) assert.ok(html.includes(label), label);
   assert.doesNotMatch(html, /WHATIF|GUESS|video|share/i);
-  assert.ok(html.includes(SOURCE));
-  assert.equal(SOURCE, 'Visitors: DataFast. Strip, embeds, MCP: our server counters. Days in New York time.');
+  assert.equal(SOURCE, 'Visitors: our analytics. Strip, embeds, MCP: our server counters. Days in New York time.');
+  assert.doesNotMatch(html, /DataFast/, 'no data vendor on screen');
   assert.equal(STRIP, 'OUR OWN SITE NUMBERS. NOT A SECURITY. NOT FOR SALE.');
-  const total = words(html) + words(STRIP) + words(globeCaption(FULL)) + 2;
-  assert.ok(total < 90, `${total} words`);
+  assert.equal(KICKER, 'BBRK · OUR OWN SITE NUMBERS');
+  // The slots in order: kicker, hero, sub, chart, facts, globe, then + Details.
+  const at = (x) => html.indexOf(x);
+  const order = ['card-kicker', 'id="bb-hero"', 'id="bb-sub"', 'id="bb-chart"', 'id="bb-facts"', 'class="bb-globe"', 'card-more'];
+  for (let i = 1; i < order.length; i++) assert.ok(at(order[i - 1]) >= 0 && at(order[i - 1]) < at(order[i]), `${order[i - 1]} before ${order[i]}`);
+  // Countries, referrers, the counters and the sources are in Details, not above it.
+  const [top, details] = html.split('<details class="how card-more"');
+  for (const x of ['United States 41% · Germany 6%', 'x.com 23%', '1,840', SOURCE]) {
+    assert.ok(details.includes(x), x);
+    assert.ok(!top.includes(x), `${x} not above Details`);
+  }
+  assert.match(top, /3 here now|7 here now/);
+  assert.equal(bbrkCaption(FULL), '7 here now · top: United States 41%');
+  assert.equal(bbrkCaption({ audience: { live: 1, countries: [] } }), '7D by place', 'one here now is most likely the viewer');
+  assert.deepEqual(mrrFact('MRR $0 (test mode)'), { value: '$0', label: 'MRR, TEST MODE' });
+  assert.deepEqual(mrrFact(null), { value: '--', label: 'MRR' });
+  const w = cardWords(html);
+  assert.ok(w.length <= 25, `${w.length} words: ${w.join(' ')}`);
+});
+
+test('BBRK chart: across the column, no axes, a dot on the last day; nothing without two days', () => {
+  const svg = chartSvg([0, 0, 18, 37, 19, 15]);
+  assert.match(svg, /^<svg class="bb-spark" viewBox="0 0 300 96" preserveAspectRatio="none" role="img" aria-label="Visitors a day, last 6 days\. Latest day: 15\.">/);
+  assert.match(svg, /class="bb-spark-line"[^>]*vector-effect="non-scaling-stroke"/);
+  assert.match(svg, /class="bb-spark-dot" d="M300\.0 /, 'the dot on the last day, at the right edge');
+  assert.doesNotMatch(svg, /<text|axis/);
+  assert.equal(chartSvg([5]), '');
+  assert.equal(chartSvg(null), '');
 });
 
 test('BBRK screen: -- for everything missing, and nothing breaks', () => {
@@ -485,6 +511,8 @@ test('BBRK screen: -- for everything missing, and nothing breaks', () => {
   assert.equal(globeLabel(FULL), 'Globe of visitors by country, last 7 days: US 1,310, other 45.');
   assert.deepEqual(heroChange(null, 3), { text: '--', dir: 'flat' });
   assert.deepEqual(heroChange(2, 0), { text: '+2', dir: 'up' });
+  assert.deepEqual(heroChange(15, 15), { text: '±0', dir: 'flat' }, 'never 0 0.00%');
+  assert.doesNotMatch(bbrkHtml(null), /0\.00%/);
   assert.equal(visitTime(42), '42s');
   assert.equal(visitTime(null), '--');
   assert.equal(topLine([]), '--');

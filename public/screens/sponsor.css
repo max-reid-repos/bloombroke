@@ -14,20 +14,12 @@
   .wd-tile .panel-body { min-height: 0; padding: 6px 8px; }
 }
 
-/* SPONSOR: three things, big, centred; the big globe under the fine print, the page
-   scrolls to it. Room at the end for the label over the strip (sponsor.js pointAtStrip),
-   so at the bottom it covers nothing. */
-.spon-page {
-  display: flex; flex-direction: column; align-items: center; gap: 18px;
-  padding: 28px 0 48px; text-align: center;
-}
-.spon-hero {
-  margin: 0; padding: .14em .36em; border: 1px solid var(--rule-strong); background: var(--panel);
-  font-size: clamp(44px, 7vw, 104px); font-weight: 800; line-height: 1.05; letter-spacing: -.02em; color: var(--text);
-  white-space: nowrap;
-}
-/* BBRK's globe, big, under the fine print, its caption under it. */
-.spon-globe { position: relative; flex: 0 0 auto; width: min(640px, 100%); margin: 10px 0 0; text-align: center; font-size: 12px; }
+/* SPONSOR: a card page (kit.css, "Card pages"). YOUR AD HERE in a box like an empty ad
+   slot; BBRK's globe under the numbers at --globe-w. Room at the end for the label over
+   the strip (sponsor.js pointAtStrip), so at the bottom it covers nothing. */
+.spon-card { padding-bottom: 48px; }
+.spon-slot { display: inline-block; padding: 12px 32px; border: 1px solid var(--rule-strong); background: var(--panel); }
+.spon-globe { position: relative; width: min(var(--globe-w), 100%); margin: 0 auto; text-align: center; font-size: 12px; }
 .spon-globe[hidden] { display: none; }
 /* Drag to turn it (public/globe.js); pan-y: a mostly vertical drag still scrolls the page. */
 .spon-globe canvas {
@@ -38,30 +30,13 @@
 .spon-globe canvas:focus-visible { box-shadow: 0 0 0 1px var(--accent); border-radius: 50%; }
 /* The label of the dot under the pointer: 'Tokyo · 12 this week'. */
 .spon-globe .globe-tip {
-  position: absolute; z-index: 2; padding: 1px 6px; pointer-events: none; transform: translateY(-100%);
+  position: absolute; z-index: 2; padding: 2px 6px; pointer-events: none; transform: translateY(-100%);
   background: var(--panel); border: 1px solid var(--rule-strong); color: var(--text); font-size: 11px; white-space: nowrap;
 }
 .spon-globe .globe-tip[hidden] { display: none; }
-.spon-globe figcaption { margin-top: 6px; letter-spacing: .04em; white-space: nowrap; }
-.spon-proof { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.spon-live { margin: 0; font-size: clamp(18px, 2.2vw, 30px); font-weight: 600; line-height: 1.3; color: var(--text); }
-.spon-part { white-space: nowrap; }
-.spon-dot { color: var(--faint); }
-.spon-views { margin: 0; font-size: 15px; color: var(--text-2); }
-.spon-act { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 8px 20px; margin: 4px 0 0; }
-.spon-mail {
-  display: inline-block; padding: 9px 18px; border: 1px solid var(--accent); color: var(--accent);
-  font-size: 15px; font-weight: 600; letter-spacing: .06em; white-space: nowrap;
-}
-.spon-mail:hover, .spon-mail:focus-visible { background: var(--accent); color: var(--ink); text-decoration: none; }
-/* The one extra link: small and dim, below the main words. */
-.spon-more { margin: -6px 0 0; }
-.spon-weird { font-size: 11px; color: var(--dim); opacity: .8; white-space: nowrap; }
-.spon-weird:hover { color: var(--text); }
-.spon-fine { margin: 0; font-size: 12px; color: var(--dim); }
 /* The label just above the real strip (sponsor.js pointAtStrip), while SPONSOR is open. */
 .spon-point {
-  position: fixed; z-index: 30; padding: 1px 6px; pointer-events: none;
+  position: fixed; z-index: 30; padding: 2px 6px; pointer-events: none;
   background: var(--accent); color: var(--ink); font-size: 11px; font-weight: 600; letter-spacing: .06em; white-space: nowrap;
 }
 .spon-point[hidden] { display: none; }
@@ -69,15 +44,8 @@
 @media (max-width: 639px) {
   /* The page scrolls on a phone: room at the end for the label over the strip, so at the
      bottom (the only place the label shows, sponsor.js pointAtStrip) it covers nothing. */
-  .spon-page { gap: 14px; padding-top: 8px; padding-bottom: 44px; }
-  .spon-hero { font-size: clamp(36px, 11.5vw, 56px); }
-  /* On a phone the globe, under the fine print too, is as wide as the page. */
-  .spon-globe { align-self: stretch; width: auto; margin: 4px 0 0; }
-  .spon-globe canvas { width: 100%; }
-  /* One part a line on a phone, so a line never ends on a dot. */
-  .spon-live { display: flex; flex-direction: column; gap: 2px; font-size: 20px; }
-  .spon-dot { display: none; }
-  .spon-views { font-size: 14px; }
+  .spon-card { padding-bottom: 48px; }
+  .spon-slot { padding: 8px 16px; }
 }
 
 /* A WEIRD gauge with a sponsor: SPONSORED BY in its title strip. */

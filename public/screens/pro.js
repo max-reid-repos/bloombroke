@@ -1,10 +1,13 @@
-// PRO, LOGIN, LOGOUT, GIFT and REDEEM. PRO is the seat, big: the next seat number (or
-// yours), the price, SUBSCRIBE (yearly first, monthly one click away), one live line,
-// three perks, and + DETAILS for what is free and what is Pro and the full terms. The key
-// after checkout; for a logged in browser the status, MANAGE, SHOW KEY and LOGOUT. GIFT
-// makes gift codes; REDEEM uses one.
+// PRO, LOGIN, LOGOUT, GIFT and REDEEM, as card pages (kit.js cardPage). PRO for a
+// visitor: the next seat, big; the price with the plan switch in it; SUBSCRIBE; one note
+// line; what Pro gives as four facts; LOGIN, REDEEM, GIFT; + Details for what is free
+// and what is Pro and the terms as short rows. With a key: YOUR KEY, COPY and DOWNLOAD,
+// the seat and the renewal as facts, and small links (GIFT, MANAGE PLAN, CANCEL, SHOW
+// KEY, LOGOUT). LOGIN and REDEEM take the key or the code in a box on the page (the
+// command forms LOGIN <key> and REDEEM <code> still work); GIFT makes gift codes.
 
-import { esc, q, panel, LOADING, metaNote } from './markets.js';
+import { esc, q, LOADING } from './markets.js';
+import { cardPage, cardButton, cardLink, cardForm, cardFacts, cardRows, raw } from '../kit.js';
 import * as pro from '../pro.js';
 import { reloadAfterKey, takeShowKeyOnce } from '../goal.js';
 import { findCommand } from '../registry.js';
@@ -48,15 +51,13 @@ export const DEMO_BANNER = 'Demo checkout. No real money. Use card 4242 4242 424
 export const BUY_TERMS = [
   EXPERIMENTAL_LINE,
   `${pro.PRICE} USD a month or ${pro.PRICE_YEAR} USD a year, charged by Stripe. It renews automatically every month or every year, as you picked, until you cancel.`,
-  'Cancel any time: type PRO and press MANAGE. Pro stays on to the end of the month or year you paid for.',
+  'Cancel any time: type PRO and press CANCEL. Pro stays on to the end of the month or year you paid for.',
   SHUTDOWN_LINE,
 ];
 export const YEARLY_NOT_YET = 'Yearly is not available yet. Monthly is.';
 
 // Gifts: the rules in one place, for GIFT and REDEEM.
 export const GIFT_RULES = 'Each paid Pro licence can make up to 3 gift codes. A code gives a friend Pro for 30 days, free, with no card, and a seat of their own. A code works once and expires 90 days after it was made if nobody uses it. A gift licence cannot make gift codes.';
-export const GIFT_SHOWN_ONCE = 'Copy it now and send it to your friend. We keep only a hash, so it is not shown again.';
-export const REDEEM_HOW = 'Type REDEEM followed by the code, like REDEEM GIFT-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX. The code never goes in the address bar.';
 
 const link = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
 
@@ -72,7 +73,7 @@ export function keyFileText(key) {
     '',
     SAVE_LINE,
     'To log in: open https://bloombroke.com and type LOGIN followed by the key.',
-    'To manage billing or cancel: type PRO, then press MANAGE.',
+    'To manage billing or cancel: type PRO, then press MANAGE PLAN or CANCEL.',
     '',
     `${OPERATOR} Contact ${CONTACT}.`,
     '',
@@ -111,11 +112,12 @@ function rowsHtml(rows) {
   }).join('');
 }
 
-// The breakdown: FREE and PRO side by side (stacked on a phone), then the price.
-export function offerHtml() {
+// The breakdown: FREE and PRO side by side (stacked on a phone), under the rule and the
+// price (price: false in + Details, where the price is a row of its own).
+export function offerHtml({ price = true } = {}) {
   return `<div class="money">
     <div class="pro-head"><p class="fx-from">${esc(RULE)}</p>
-      <p class="hero num pro-price"><span class="hero-value">${esc(pro.PRICE)}</span><span class="hero-unit">A MONTH</span><span class="hero-unit pro-or">OR</span><span class="hero-value">${esc(pro.PRICE_YEAR)}</span><span class="hero-unit">A YEAR</span></p></div>
+      ${price ? `<p class="hero num pro-price"><span class="hero-value">${esc(pro.PRICE)}</span><span class="hero-unit">A MONTH</span><span class="hero-unit pro-or">OR</span><span class="hero-value">${esc(pro.PRICE_YEAR)}</span><span class="hero-unit">A YEAR</span></p>` : ''}</div>
     <div class="pro-cols">
       <section class="pro-col" aria-label="Free"><h3 class="pro-col-h">FREE</h3><ul class="pro-list">${rowsHtml(FREE_ROWS)}</ul></section>
       <section class="pro-col" aria-label="Pro"><h3 class="pro-col-h">PRO</h3><ul class="pro-list">${rowsHtml(PRO_ROWS)}</ul></section>
@@ -148,23 +150,6 @@ function download(name, text) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// The full key, big, with COPY and DOWNLOAD.
-function showKey(host, key, ctx, { saved = true } = {}) {
-  host.innerHTML = `<div class="pro-key-box">
-    <p class="pro-key num" id="pro-key">${esc(key)}</p>
-    <p class="pro-actions"><button type="button" class="btn" id="pro-copy">COPY</button> <button type="button" class="btn" id="pro-dl">DOWNLOAD</button></p>
-    <p class="notice">${esc(SAVE_LINE)}</p>
-    ${saved ? '' : '<p class="muted">This browser could not save it, so copy it now.</p>'}
-  </div>`;
-  host.querySelector('#pro-copy').addEventListener('click', async () => {
-    const ok = await copyText(key);
-    ctx.status(ok ? 'KEY COPIED' : 'SELECT THE KEY AND COPY IT', ok ? '' : 'warn');
-  });
-  host.querySelector('#pro-dl').addEventListener('click', () => {
-    download('bloombroke-pro-key.txt', keyFileText(key));
-    ctx.status('SAVED BLOOMBROKE-PRO-KEY.TXT');
-  });
-}
 
 function wire(el, ctx, sel, label, fn) {
   const b = el.querySelector(sel);
@@ -179,24 +164,33 @@ function wire(el, ctx, sel, label, fn) {
   });
 }
 
-// ---- the PRO page: the seat, big ----------------------------------------------------
-// One huge seat number (the next one, or yours), the price with a small yearly/monthly
-// switch in it, one button, one live line of our own numbers, three perks, one dim line
-// of what is coming, one row of small links, and one dim test-mode line. Everything
-// else (FREE vs PRO, the full buying terms, gifts, the footnote) is behind + DETAILS.
+// ---- the PRO page --------------------------------------------------------------------
+// A visitor (or a key whose Pro is off): the seat, big, the price with the plan switch in
+// it, one button, one note line, what Pro gives as four facts, small links, + Details.
+// A key with Pro on: YOUR KEY (masked until SHOW KEY), COPY and DOWNLOAD, the seat and
+// the renewal as facts, small links. Everything else (FREE vs PRO, the terms as short
+// rows, gifts) is behind + Details.
 
 export const UP_NEXT = 'UP NEXT';
-export const PERKS = ['Your seat number, forever.', 'Your setup on every device.', 'No ads. No trackers.'];
-export const TEST_LINE = 'Test mode: no card is charged yet.';
+export const YOUR_KEY = 'YOUR KEY';
+// What Pro gives, as four facts: the word big, its label small under it.
+export const PERKS = [
+  { value: 'SEAT', label: 'forever' },
+  { value: 'SYNC', label: 'every device' },
+  { value: 'CHAT', label: 'friends' },
+  { value: 'AD-FREE', label: 'no trackers' },
+];
+export const RENEW_NOTE = 'Renews until cancelled';
+export const TEST_NOTE = 'test mode, no charge';
+export const KEY_NOTE = 'Your login on any device.';
 export const GIFT_ACTION = 'GIFT A FRIEND A MONTH';
-export const DETAILS_OPEN = '+ DETAILS';
-export const DETAILS_CLOSE = '- DETAILS';
+export const MANAGE = 'MANAGE PLAN';
+export const CANCEL = 'CANCEL';
+export const GIFT_AFTER = 'When the gift month ends, you can subscribe on this key and keep its seat.';
 export const PLAN_PRICE = { year: `${pro.PRICE_YEAR} a year.`, month: `Or ${pro.PRICE} a month.` };
 export const planButton = (plan) => (plan === 'month' ? 'MONTHLY' : 'YEARLY');
 
 const isGift = (st) => st?.status === 'gift' || st?.status === 'gift_ended';
-const DOT = '<span class="pro3-dot" aria-hidden="true"> · </span>';
-const fin = (v) => typeof v === 'number' && Number.isFinite(v);
 
 // SEAT 00043 as parts: the zeros in front dim, so a low number stands out. null: unknown.
 export function seatParts(n) {
@@ -213,148 +207,160 @@ export function heroSeat({ key = null, st = null, next = null } = {}) {
   return { mine: false, seat: Number.isInteger(next) ? next : null };
 }
 
-// The seat itself: YOUR SEAT 00012 or SEAT 00043.
-export function seatH2(h) {
+// 00043 with the zeros dim; ----- when unknown.
+export function seatNum(n) {
+  const p = seatParts(n);
+  return p ? `<span class="pro3-zero">${esc(p.lead)}</span>${esc(p.digits)}` : '<span class="pro3-zero">-----</span>';
+}
+
+// The seat itself, inside the hero: YOUR SEAT 00012 or SEAT 00043.
+export function seatInner(h) {
+  return `${h.mine ? '<span class="pro3-who">YOUR </span>' : ''}<span class="pro3-word">SEAT </span>${seatNum(h.seat)}`;
+}
+export function seatLabel(h) {
   const p = seatParts(h.seat);
-  const num = p ? `<span class="pro3-zero">${esc(p.lead)}</span>${esc(p.digits)}` : '<span class="pro3-zero">-----</span>';
-  const who = h.mine ? '<span class="pro3-who">YOUR </span>' : '';
-  return `<h2 class="pro3-seat num" id="pro-seat" aria-label="${esc(`${h.mine ? 'Your ' : ''}${p ? p.label : 'seat'}`)}">${who}<span class="pro3-word">SEAT </span>${num}</h2>`;
-}
-
-// UP NEXT over the next seat; your own seat needs no label.
-export function heroHtml(h) {
-  return `${h.mine ? '' : `<p class="pro3-kicker">${esc(UP_NEXT)}</p>`}${seatH2(h)}`;
-}
-
-// 417 -> '7 min', 40 -> '40 s'.
-export function visitLen(sec) {
-  return sec < 60 ? `${Math.round(sec)} s` : `${Math.round(sec / 60)} min`;
-}
-
-// The one live line, from /api/bbrk only (DataFast, our own site): '70 visitors this week
-// · 7 min average visit'. Only the parts that are known; '' when neither is. Never a
-// seat count (in test mode those are demo checkouts).
-export function proofLine(b) {
-  const a = b?.audience || {};
-  const parts = [];
-  const v = a.visitors?.d7;
-  if (Number.isInteger(v) && v > 0) parts.push(`${v.toLocaleString('en-US')} ${v === 1 ? 'visitor' : 'visitors'} this week`);
-  if (fin(a.avgVisitSec) && a.avgVisitSec > 0) parts.push(`${visitLen(a.avgVisitSec)} average visit`);
-  return parts.join(' · ');
-}
-
-// The live line as HTML: each part kept whole, so a phone breaks only between them.
-export function proofInner(b) {
-  const t = proofLine(b);
-  return t ? t.split(' · ').map((x) => `<span class="pro3-part">${esc(x)}</span>`).join(DOT) : '';
+  return `${h.mine ? 'Your ' : ''}${p ? p.label : 'seat'}`;
 }
 
 // The price, with the plan switch in it: the picked plan bright, the other one dim.
 function priceHtml(plan) {
   const b = (p) => `<button type="button" class="pro3-plan" id="pro-plan-${p}" data-plan="${p}" aria-pressed="${plan === p}">${esc(PLAN_PRICE[p])}</button>`;
-  return `<p class="pro3-price">${b('year')} ${b('month')}</p>`;
+  return `${b('year')} ${b('month')}`;
 }
 
-const buyButton = (label, plan) => `<button type="button" class="pro3-buy" id="pro-sub" data-plan="${plan}" data-label="${esc(label)}">${esc(label)} ${planButton(plan)}</button>`;
-const smallLink = (c, label = c) => `<a class="pro3-link" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(label)}</a>`;
-const smallBtn = (id, label) => `<button type="button" class="pro3-link" id="${id}">${esc(label)}</button>`;
+const buyButton = (label, plan) => cardButton({ label: `${label} ${planButton(plan)}`, primary: true, id: 'pro-sub', attrs: `data-plan="${plan}" data-label="${esc(label)}"` });
+// The note line: what it says, then the test-mode part and the yearly note, both hidden
+// until the server says so (showTest, yearlyReady).
+const noteHtml = (text) => `${esc(text)}<span id="pro-test" hidden> · ${esc(TEST_NOTE)}</span><span id="pro-year-note" hidden> · ${esc(YEARLY_NOT_YET)}</span>`;
+
+// A key's facts: the seat, and when it renews or ends.
+export function keyFacts(st, now = Date.now()) {
+  const facts = [{ value: raw(seatNum(Number.isInteger(st?.seat) ? st.seat : null)), label: 'SEAT' }];
+  if (st?.status === 'gift' && st.giftUntil && pro.statusActive(st, now)) facts.push({ value: day(st.giftUntil), label: 'GIFT MONTH UNTIL' });
+  else if (st?.status === 'active' || st?.status === 'trialing') {
+    const end = st.cancelAt || (st.cancelAtPeriodEnd ? st.currentPeriodEnd : null);
+    const when = st.interval === 'year' ? dayYear : day;
+    if (end) facts.push({ value: when(end), label: 'ENDS, NO RENEWAL' });
+    else if (st.currentPeriodEnd) facts.push({ value: when(st.currentPeriodEnd), label: st.interval === 'year' ? 'RENEWS YEARLY' : 'RENEWS MONTHLY' });
+  }
+  return facts;
+}
+
+// A line under YOUR KEY only when something needs saying: a failed payment, a demo key.
+function keySub(st) {
+  if (st?.status === 'past_due' || st?.status === 'demo') return raw(`<span class="${st.status === 'past_due' ? 'down' : ''}">${esc(statusText(st))}</span>`);
+  return '';
+}
 
 // The main block. key/st: this browser's licence (none: a visitor). next: the next seat.
-// bbrk: /api/bbrk for the live line. note: a notice on top (LOGIN, LOGOUT). has: whether
-// a command exists (tests).
-export function mainHtml({ key = null, st = null, next = null, bbrk = null, note = '', plan = 'year', has } = {}) {
+// plan: the picked plan. alert: a line on top (after LOGIN, LOGOUT, checkout).
+// reveal: the full key to show (just bought or redeemed, or SHOW KEY); else it is masked.
+// has: whether a command exists (tests). detailsOpen: keep + Details open on a redraw.
+export function mainHtml({ key = null, st = null, next = null, alert = '', alertWarn = false, plan = 'year', reveal = null, has, detailsOpen = false } = {}) {
   const exists = has || ((c) => Boolean(findCommand(c)));
   const on = key ? pro.statusActive(st) : false;
   const gift = isGift(st);
-  const n = note ? `<p class="notice pro3-note">${esc(note)}</p>` : '';
-  let status = '';
-  let price = '';
-  let action = '';
-  let under = '';
-  const links = [];
-  if (!key) {
-    price = priceHtml(plan);
-    action = buyButton('SUBSCRIBE', plan);
-    links.push(smallLink('LOGIN'), smallLink('REDEEM'));
-    if (exists('GIFT')) links.push(smallLink('GIFT'));
-  } else {
-    status = `<p class="pro3-status ${on ? 'up' : 'down'}">${esc(statusText(st))}</p>`;
-    if (on && gift) under = '<p class="pro3-under">When the gift month ends, you can subscribe on this key and keep its seat.</p>';
-    else if (on && st?.canGift) action = `<a class="pro3-buy" href="${esc(q('GIFT'))}" data-cmd="GIFT">${esc(GIFT_ACTION)}</a>`;
-    else if (on) action = '<button type="button" class="pro3-buy" id="pro-manage">MANAGE</button>';
-    else {
-      price = priceHtml(plan);
-      action = buyButton(gift ? 'SUBSCRIBE' : 'REACTIVATE', plan);
-      under = `<p class="pro3-under">${gift ? 'SUBSCRIBE' : 'REACTIVATE'} keeps this key, its seat and your synced lists.</p>`;
-    }
-    if (!gift && !action.includes('pro-manage')) links.push(smallBtn('pro-manage', 'MANAGE'));
-    links.push(smallBtn('pro-show', 'SHOW KEY'), smallLink('LOGOUT'));
+  const details = raw(detailsHtml());
+  if (key && (on || reveal)) {
+    const ending = Boolean(st?.cancelAt || st?.cancelAtPeriodEnd);
+    const links = [];
+    if (on && !gift && st?.canGift && exists('GIFT')) links.push(cardLink({ label: GIFT_ACTION, cmd: 'GIFT' }));
+    if (!gift) links.push(cardLink({ label: MANAGE, id: 'pro-manage' }));
+    if (on && !gift && !ending) links.push(cardLink({ label: CANCEL, id: 'pro-cancel' }));
+    if (!reveal) links.push(cardLink({ label: 'SHOW KEY', id: 'pro-show' }));
+    links.push(cardLink({ label: 'LOGOUT', cmd: 'LOGOUT' }));
+    return cardPage({
+      label: 'Your Pro key',
+      cls: 'pro-card',
+      alert,
+      alertWarn,
+      kicker: YOUR_KEY,
+      hero: raw(`<span class="pro-key" id="pro-key">${esc(reveal || maskKey(key.slice(-4)))}</span>`),
+      heroSize: 32,
+      sub: keySub(st),
+      act: raw(cardButton({ label: 'COPY', primary: true, id: 'pro-copy' }) + cardButton({ label: 'DOWNLOAD', id: 'pro-dl' })),
+      note: KEY_NOTE,
+      facts: keyFacts(st),
+      links,
+      details,
+      detailsOpen,
+    });
   }
-  links.push(`<button type="button" class="pro3-link pro3-more" id="pro-more" aria-expanded="false" aria-controls="pro-details">${esc(DETAILS_OPEN)}</button>`);
-  // The live line only where there is something to buy.
-  const proof = price ? `<p class="pro3-proof" id="pro-proof">${proofInner(bbrk)}</p>` : '';
-  const chat = exists('CHAT') ? smallLink('CHAT') : 'CHAT';
-  return `${n}<div class="pro3-top">${heroHtml(heroSeat({ key, st, next }))}${status}${price}</div>
-    ${action ? `<p class="pro3-act">${action}</p><p class="pro3-year-note" id="pro-year-note" hidden>${esc(YEARLY_NOT_YET)}</p>` : ''}${under}
-    ${proof}
-    <ul class="pro3-perks">${PERKS.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
-    <p class="pro3-soon">${chat} with Pro friends. Coming: closed-tab alerts.</p>
-    <p class="pro3-links">${links.join(DOT)}</p>
-    <div id="pro-shown"></div>`;
-}
-
-// Behind + DETAILS: the breakdown, the full buying terms, gifts, and the footnote.
-export function detailsHtml() {
-  return `${offerHtml()}
-    <p class="pro-demo" id="pro-demo" role="note" hidden>${esc(DEMO_BANNER)}</p>
-    <ul class="pro-terms">${BUY_TERMS.map((t) => `<li>${esc(t)}</li>`).join('')}
-      <li>Subscribing means you agree to the <a href="/terms">Terms</a>. Bloombroke gives information only, not investment advice.</li>
-      <li>${esc(GIFT_RULES)}</li></ul>
-    <p class="footnote">Your key is your login. There is no email or password. ${esc(OPERATOR)} Contact <a href="mailto:${CONTACT}">${CONTACT}</a>. Not financial advice.</p>`;
-}
-
-// Per screen: the next seat and /api/bbrk once they arrive, the picked plan.
-const views = new WeakMap();
-const viewOf = (el) => {
-  if (!views.has(el)) views.set(el, { next: null, bbrk: null, plan: 'year' });
-  return views.get(el);
-};
-
-// The page around the main block. second: the key panel after checkout. The test-mode
-// line starts hidden and shows once the server says test mode (page below).
-export function pageHtml(second = '') {
-  return `<section class="pro3" aria-label="Bloombroke Pro">
-    ${second ? `<div class="pro3-second">${second}</div>` : ''}
-    <div class="pro3-main" id="pro-account"></div>
-    <p class="pro3-fine" id="pro-test" hidden>${esc(TEST_LINE)}</p>
-    <div class="pro3-details" id="pro-details" hidden>${detailsHtml()}</div>
-  </section>`;
-}
-
-function page(el, second = '') {
-  el.innerHTML = pageHtml(second);
-  // Test mode: say so on the page (dim) and in DETAILS (with the test card).
-  pro.getConfig().then((c) => {
-    if (c.mode !== 'test' || !el.isConnected) return;
-    for (const id of ['#pro-test', '#pro-demo']) { const b = el.querySelector(id); if (b) b.hidden = false; }
+  // A visitor, or a key whose Pro is off: something to buy.
+  const h = heroSeat({ key, st, next });
+  const label = key ? (gift ? 'SUBSCRIBE' : 'REACTIVATE') : 'SUBSCRIBE';
+  const links = key
+    ? [gift ? '' : cardLink({ label: MANAGE, id: 'pro-manage' }), cardLink({ label: 'SHOW KEY', id: 'pro-show' }), cardLink({ label: 'LOGOUT', cmd: 'LOGOUT' })]
+    : [cardLink({ label: 'LOGIN', cmd: 'LOGIN' }), cardLink({ label: 'REDEEM', cmd: 'REDEEM' }), exists('GIFT') ? cardLink({ label: 'GIFT', cmd: 'GIFT' }) : ''];
+  const perks = PERKS.map((p) => (p.value === 'CHAT' && exists('CHAT') ? { ...p, value: raw(`<a class="pro3-chat" href="${esc(q('CHAT'))}" data-cmd="CHAT">CHAT</a>`) } : p));
+  return cardPage({
+    label: 'Bloombroke Pro',
+    cls: 'pro-card',
+    alert,
+    alertWarn,
+    kicker: key ? statusText(st).toUpperCase() : UP_NEXT,
+    hero: raw(seatInner(h)),
+    heroId: 'pro-seat',
+    heroLabel: seatLabel(h),
+    heroSize: 96,
+    sub: raw(priceHtml(plan)),
+    act: raw(buyButton(label, plan)),
+    note: raw(noteHtml(key ? `${label} keeps this key, its seat and your synced lists.` : RENEW_NOTE)),
+    facts: key ? null : perks,
+    links: links.filter(Boolean),
+    details,
+    detailsOpen,
   });
 }
 
-// + DETAILS opens and closes the rest, in place.
-function wireDetails(el) {
-  const b = el.querySelector('#pro-more');
-  const d = el.querySelector('#pro-details');
-  if (!b || !d) return;
-  const set = (open) => {
-    d.hidden = !open;
-    b.setAttribute('aria-expanded', String(open));
-    b.textContent = open ? DETAILS_CLOSE : DETAILS_OPEN;
-    el.querySelector('.pro3')?.classList.toggle('is-open', open);
-  };
-  set(!d.hidden);
-  b.addEventListener('click', () => {
-    set(d.hidden);
-    if (!d.hidden) d.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+// + Details: what is free and what is Pro, then the terms as short rows (the full wording
+// is in the Terms), gifts, and the test card in test mode.
+export const TERMS_ROWS = [
+  ['Price', `${pro.PRICE} a month or ${pro.PRICE_YEAR} a year, in USD, charged by Stripe.`],
+  ['Renewal', 'Every month or every year, as you picked, until you cancel.'],
+  ['Cancel', 'Any time: type PRO and press CANCEL.'],
+  ['After cancel', 'Pro stays on to the end of the month or year you paid for.'],
+  ['Experiment', 'Bloombroke is an experiment and may close at short notice.'],
+  ['Shutdown', 'We cancel all subscriptions and refund the unused days of the month or year.'],
+  ['Gifts', 'Each paid licence makes up to 3 codes: 30 days of Pro each.'],
+  ['Gift codes', 'Free, no card, their own seat. Work once. Expire unused after 90 days.'],
+  ['Gift licences', 'Cannot make gift codes.'],
+  ['Login', 'Your key is your login. There is no email or password.'],
+];
+export function detailsHtml() {
+  return `${offerHtml({ price: false })}
+    <p class="pro-demo" id="pro-demo" role="note" hidden>${esc(DEMO_BANNER)}</p>
+    ${cardRows([
+    ...TERMS_ROWS,
+    ['Terms', raw('Subscribing means you agree to the <a href="/terms">Terms</a>.')],
+    ['Not advice', 'Bloombroke gives information only, not investment advice.'],
+    ['Operator', raw(`${esc(OPERATOR)} Contact <a href="mailto:${CONTACT}">${CONTACT}</a>.`)],
+  ])}`;
+}
+
+// Per screen: the next seat once it arrives, the picked plan, a key to show in full.
+const views = new WeakMap();
+const viewOf = (el) => {
+  if (!views.has(el)) views.set(el, { next: null, plan: 'year', reveal: null });
+  return views.get(el);
+};
+
+// The page: a line for checkout news on top, then the card.
+export function pageHtml() {
+  return '<div class="pro-page"><div id="pro-claim"></div><div id="pro-account"></div></div>';
+}
+
+function page(el) {
+  el.innerHTML = pageHtml();
+  const v = viewOf(el);
+  v.reveal = null;
+}
+
+// Test mode: say so in the note and, with the test card, in + Details.
+function showTest(el) {
+  pro.getConfig().then((c) => {
+    if (c.mode !== 'test' || !el.isConnected) return;
+    for (const id of ['#pro-test', '#pro-demo']) { const b = el.querySelector(id); if (b) b.hidden = false; }
   });
 }
 
@@ -382,44 +388,65 @@ function yearlyReady(host, v) {
   });
 }
 
-function renderAccount(el, ctx, note, plan) {
+// COPY and DOWNLOAD take the whole key, even while it shows masked.
+function wireKey(host, ctx, key) {
+  host.querySelector('#pro-copy')?.addEventListener('click', async () => {
+    const ok = await copyText(key);
+    ctx.status(ok ? 'KEY COPIED' : 'SELECT THE KEY AND COPY IT', ok ? '' : 'warn');
+  });
+  host.querySelector('#pro-dl')?.addEventListener('click', () => {
+    download('bloombroke-pro-key.txt', keyFileText(key));
+    ctx.status('SAVED BLOOMBROKE-PRO-KEY.TXT');
+  });
+}
+
+function renderAccount(el, ctx, alert = '', plan = null, { warn = false } = {}) {
   const v = viewOf(el);
   if (plan) v.plan = plan;
   const host = el.querySelector('#pro-account');
-  host.innerHTML = mainHtml({ key: pro.getKey(), st: pro.getStatus(), next: v.next, bbrk: v.bbrk, note, plan: v.plan });
-  wireDetails(el);
+  if (!host) return;
+  const key = v.reveal || pro.getKey();
+  const detailsOpen = Boolean(host.querySelector('.card-more')?.open);
+  host.innerHTML = mainHtml({ key, st: pro.getStatus(), next: v.next, alert, alertWarn: warn, plan: v.plan, reveal: v.reveal, detailsOpen });
+  showTest(el);
   for (const p of host.querySelectorAll('.pro3-plan')) {
     p.addEventListener('click', () => { v.plan = p.dataset.plan; setPlan(host, v.plan); });
   }
   wire(host, ctx, '#pro-sub', 'OPENING CHECKOUT...', () => pro.startCheckout(host.querySelector('#pro-sub').dataset.plan));
   yearlyReady(host, v);
+  // MANAGE PLAN and CANCEL: the same Stripe billing portal, where cancel lives.
   wire(host, ctx, '#pro-manage', 'OPENING BILLING...', () => pro.openPortal());
+  wire(host, ctx, '#pro-cancel', 'OPENING BILLING. CANCEL IS THERE...', () => pro.openPortal());
+  if (key) wireKey(host, ctx, key);
   const show = host.querySelector('#pro-show');
-  const reveal = () => { showKey(host.querySelector('#pro-shown'), pro.getKey(), ctx); show.remove(); };
+  const reveal = () => {
+    v.reveal = pro.getKey();
+    if (!v.reveal) return;
+    const k = host.querySelector('#pro-key');
+    if (k) k.textContent = v.reveal;
+    show?.remove();
+    // A key with Pro off shows the seat, not the key: draw the key view.
+    if (!k) renderAccount(el, ctx);
+  };
   if (show) show.addEventListener('click', reveal);
   // Back from a reload after REDEEM (reloadAfterKey): the new key once more, to save.
   if (show && pro.getKey() && takeShowKeyOnce()) reveal();
 }
 
-// The next seat (for a visitor) and our own numbers (for the live line), once each. They
-// fill in place; a screen that was redrawn since picks them up from the view.
+// The next seat (for a visitor), once. It fills in place; a screen that was redrawn since
+// picks it up from the view.
 function loadNumbers(el, ctx) {
   const v = viewOf(el);
-  if (!ctx?.fetchJSON) return;
-  const opts = { signal: ctx.signal };
-  if (!pro.getKey()) {
-    ctx.fetchJSON('/api/pro/seat', opts).then((d) => {
-      if (!Number.isInteger(d?.next) || !el.isConnected) return;
-      v.next = d.next;
-      const h = el.querySelector('#pro-seat');
-      if (h && !pro.getKey()) h.outerHTML = seatH2(heroSeat({ next: v.next }));
-    }).catch(() => {});
-  }
-  ctx.fetchJSON('/api/bbrk', opts).then((d) => {
-    if (!el.isConnected) return;
-    v.bbrk = d;
-    const p = el.querySelector('#pro-proof');
-    if (p) p.innerHTML = proofInner(d);
+  if (!ctx?.fetchJSON || pro.getKey()) return;
+  ctx.fetchJSON('/api/pro/seat', { signal: ctx.signal }).then((d) => {
+    if (!Number.isInteger(d?.next) || !el.isConnected) return;
+    v.next = d.next;
+    const h = el.querySelector('#pro-seat');
+    if (h && !pro.getKey()) {
+      const seat = heroSeat({ next: v.next });
+      h.innerHTML = seatInner(seat);
+      h.setAttribute('aria-label', seatLabel(seat));
+    }
   }).catch(() => {});
 }
 
@@ -431,20 +458,20 @@ function claimInto(el, ctx, sessionId) {
   pro.claim(sessionId).then((d) => {
     if (!el.isConnected) return;
     pro.clearPending();
+    host.innerHTML = '';
     if (d.reactivated) {
-      host.innerHTML = '<p class="notice">Pro is on again, on the same key. Your synced lists are still here.</p>';
-      renderAccount(el, ctx);
+      renderAccount(el, ctx, 'Pro is on again, on the same key. Your synced lists are still here.');
       ctx.status('PRO: ACTIVE AGAIN');
       return;
     }
-    showKey(host, d.key, ctx, { saved: d.saved });
-    renderAccount(el, ctx, 'Welcome to Pro. You are logged in on this browser.');
+    viewOf(el).reveal = d.key;
+    renderAccount(el, ctx, d.saved ? 'Welcome to Pro. You are logged in on this browser.' : 'This browser could not save your key, so copy it now.', null, { warn: !d.saved });
     ctx.status('PRO: ACTIVE. SAVE YOUR KEY');
   }).catch((err) => {
     if (!el.isConnected) return;
     if (err.code === 'expired' || err.code === 'not_found' || err.code === 'bad_session') pro.clearPending();
     const retry = err.code === 'not_paid' || err.code === 'unavailable' || err.code === 'network' || err.code === 'rate_limited';
-    host.innerHTML = `<p class="notice">${esc(err.message)}</p>${retry ? '<p class="pro-actions"><button type="button" class="btn" id="pro-retry">TRY AGAIN</button></p>' : ''}`;
+    host.innerHTML = `<p class="card-alert warn">${esc(err.message)}</p>${retry ? `<p class="card-act">${cardButton({ label: 'TRY AGAIN', primary: true, id: 'pro-retry' })}</p>` : ''}`;
     const b = host.querySelector('#pro-retry');
     if (b) b.addEventListener('click', () => claimInto(el, ctx, sessionId));
     ctx.status('PRO: KEY NOT READY', 'warn');
@@ -454,7 +481,7 @@ function claimInto(el, ctx, sessionId) {
 export function render(el, cmd, ctx) {
   const pending = pro.pendingCheckout();
   if (pending && cmd.name === 'PRO') {
-    page(el, panel('2', 'Your key', '<div id="pro-claim"></div>'));
+    page(el);
     renderAccount(el, ctx);
     loadNumbers(el, ctx);
     claimInto(el, ctx, pending);
@@ -477,31 +504,83 @@ export function render(el, cmd, ctx) {
   }
 }
 
+// ---- a box for the key or the code -------------------------------------------------------
+// The value is read from the box and handed to the same calls as LOGIN <key> and
+// REDEEM <code>: it never goes into the address bar or the command history.
+function wireForm(el, formId, fn) {
+  const form = el.querySelector(`#${formId}`);
+  const input = form?.querySelector('input');
+  if (!form || !input) return;
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const value = input.value.trim();
+    if (!value) { input.focus(); return; }
+    input.value = '';
+    fn(value);
+  });
+  // Esc hands the keyboard back to the command bar.
+  form.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); document.getElementById('cmd')?.focus(); }
+  });
+  const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  if (!coarse) setTimeout(() => { if (input.isConnected) input.focus(); }, 0);
+}
+
+// ---- LOGIN ---------------------------------------------------------------------------------
+
+export const LOGIN_NOTE = 'Your key is your login. No email, no password.';
+export const LOGIN_BAD = 'That does not look like a key. A key looks like BB-XXXX-XXXX-XXXX-XXXX.';
+
+export function loginHtml({ alert = '', warn = false } = {}) {
+  return cardPage({
+    label: 'Log in with your key',
+    cls: 'pro-card',
+    alert,
+    alertWarn: warn,
+    kicker: 'PRO',
+    hero: 'Log in',
+    heroSize: 44,
+    act: raw(cardForm({ id: 'login-form', inputId: 'login-key', label: 'Your key', placeholder: 'BB-XXXX-XXXX-XXXX-XXXX', button: 'LOGIN', maxlength: 40 })),
+    note: LOGIN_NOTE,
+    links: [cardLink({ label: 'PRO', cmd: 'PRO' }), cardLink({ label: 'REDEEM', cmd: 'REDEEM' })],
+  });
+}
+
+function loginForm(el, ctx, alert = '', warn = false) {
+  const host = el.querySelector('#pro-account');
+  host.innerHTML = loginHtml({ alert, warn });
+  // A gift code in the box redeems it, as LOGIN <code> does.
+  wireForm(host, 'login-form', (value) => (pro.normalizeGiftCode(value) && !pro.normalizeKey(value) ? redeemInto(el, ctx, value) : loginInto(el, ctx, value)));
+}
+
+function loginInto(el, ctx, key) {
+  const host = el.querySelector('#pro-account');
+  host.innerHTML = LOADING;
+  ctx.status('CHECKING YOUR KEY...');
+  pro.login(key).then((st) => {
+    if (!el.isConnected) return;
+    renderAccount(el, ctx, st.active ? 'Logged in. Your watchlist, portfolio and tape now sync.' : 'Logged in, but Pro is not active on this key.');
+    ctx.status(st.active ? 'PRO: LOGGED IN' : 'PRO: NOT ACTIVE', st.active ? '' : 'warn');
+    reloadAfterKey(); // DataFast was running before the key: stop it now
+  }).catch((err) => {
+    if (!el.isConnected) return;
+    loginForm(el, ctx, err.message, true);
+    ctx.status('LOGIN FAILED', 'warn');
+  });
+}
+
 // LOGIN <key>
 export const loginCommand = {
   parse: parseLogin,
   render(el, cmd, ctx) {
     page(el);
-    loadNumbers(el, ctx);
-    const host = el.querySelector('#pro-account');
     if (cmd.args?.gift) { redeemInto(el, ctx, cmd.args.gift); return; }
     if (cmd.error || cmd.args?.show) {
-      renderAccount(el, ctx, cmd.error ? 'That does not look like a key. A key looks like BB-XXXX-XXXX-XXXX-XXXX.' : 'Type LOGIN followed by your key, like LOGIN BB-XXXX-XXXX-XXXX-XXXX.');
-      ctx.status(cmd.error ? 'LOGIN: CHECK THE KEY' : 'LOGIN: TYPE YOUR KEY', cmd.error ? 'warn' : '');
+      loginForm(el, ctx, cmd.error ? LOGIN_BAD : '', Boolean(cmd.error));
+      ctx.status(cmd.error ? 'LOGIN: CHECK THE KEY' : 'LOGIN: PASTE YOUR KEY', cmd.error ? 'warn' : '');
       return;
     }
-    host.innerHTML = LOADING;
-    ctx.status('CHECKING YOUR KEY...');
-    pro.login(cmd.args.key).then((st) => {
-      if (!el.isConnected) return;
-      renderAccount(el, ctx, st.active ? 'Logged in. Your watchlist, portfolio and tape now sync.' : 'Logged in, but Pro is not active on this key.');
-      ctx.status(st.active ? 'PRO: LOGGED IN' : 'PRO: NOT ACTIVE', st.active ? '' : 'warn');
-      reloadAfterKey(); // DataFast was running before the key: stop it now
-    }).catch((err) => {
-      if (!el.isConnected) return;
-      renderAccount(el, ctx, err.message);
-      ctx.status('LOGIN FAILED', 'warn');
-    });
+    loginInto(el, ctx, cmd.args.key);
   },
 };
 
@@ -519,22 +598,51 @@ export const logoutCommand = {
 
 // ---- REDEEM ------------------------------------------------------------------------------
 
-// Use a gift code on this browser: the new key, big, with COPY and DOWNLOAD.
+export const REDEEM_NOTE = '30 days of Pro. Free, no card.';
+export const GIFT_ROWS = [
+  ['Codes', 'Each paid Pro licence can make up to 3 gift codes.'],
+  ['A code gives', 'Pro for 30 days, free, with no card, and a seat of their own.'],
+  ['Once', 'A code works once.'],
+  ['Expiry', '90 days after it was made, if nobody uses it.'],
+  ['Gift licences', 'A gift licence cannot make gift codes.'],
+];
+
+export function redeemHtml({ alert = '', warn = false } = {}) {
+  return cardPage({
+    label: 'Redeem a gift code',
+    cls: 'pro-card',
+    alert,
+    alertWarn: warn,
+    kicker: 'REDEEM',
+    hero: 'Got a gift code?',
+    heroSize: 44,
+    act: raw(cardForm({ id: 'redeem-form', inputId: 'redeem-code', label: 'Gift code', placeholder: 'GIFT-XXXX-XXXX-...', button: 'REDEEM', maxlength: 60 })),
+    note: REDEEM_NOTE,
+    details: raw(cardRows([...GIFT_ROWS, ['Command', 'REDEEM and the code works too. The code never goes in the address bar.']])),
+  });
+}
+
+function redeemForm(el, ctx, alert = '', warn = false) {
+  const host = el.querySelector('#pro-account');
+  host.innerHTML = redeemHtml({ alert, warn });
+  wireForm(host, 'redeem-form', (code) => redeemInto(el, ctx, code));
+}
+
+// Use a gift code on this browser: the new key, in full, with COPY and DOWNLOAD.
 function redeemInto(el, ctx, code) {
   const host = el.querySelector('#pro-account');
   host.innerHTML = LOADING;
   ctx.status('CHECKING THE GIFT CODE...');
   pro.redeem(code).then((d) => {
     if (!el.isConnected) return;
-    host.innerHTML = '<div id="pro-gift-key"></div><div id="pro-gift-account"></div>';
-    showKey(host.querySelector('#pro-gift-key'), d.key, ctx, { saved: d.saved });
     const until = d.giftUntil ? day(d.giftUntil) : '--';
-    host.querySelector('#pro-gift-account').innerHTML = `<p class="notice">Your gift month of Pro runs until ${esc(until)}. You are logged in on this browser.</p>`;
+    viewOf(el).reveal = d.key;
+    renderAccount(el, ctx, `Your gift month of Pro runs until ${until}. You are logged in on this browser.${d.saved ? '' : ' This browser could not save your key, so copy it now.'}`);
     ctx.status('PRO: GIFT MONTH ACTIVE. SAVE YOUR KEY');
     reloadAfterKey({ showKey: true }); // DataFast was running before the key: stop it now
   }).catch((err) => {
     if (!el.isConnected) return;
-    host.innerHTML = `<p class="notice">${esc(err.message)}</p><p class="muted">${esc(REDEEM_HOW)}</p>`;
+    redeemForm(el, ctx, err.message, true);
     ctx.status(err.code === 'has_key' ? 'REDEEM: LOG OUT FIRST' : 'REDEEM FAILED', 'warn');
   });
 }
@@ -545,16 +653,16 @@ export const redeemCommand = {
   render(el, cmd, ctx) {
     page(el);
     if (cmd.args?.code) { redeemInto(el, ctx, cmd.args.code); return; }
-    const host = el.querySelector('#pro-account');
-    const note = cmd.args?.error ? 'That does not look like a gift code.' : 'Got a gift code? Redeem it here.';
-    host.innerHTML = `<p class="notice">${esc(note)}</p><p class="muted">${esc(REDEEM_HOW)}</p><p class="muted">${esc(GIFT_RULES)}</p>`;
-    ctx.status(cmd.args?.error ? 'REDEEM: CHECK THE CODE' : 'REDEEM: TYPE THE CODE', cmd.args?.error ? 'warn' : '');
+    redeemForm(el, ctx, cmd.args?.error ? 'That does not look like a gift code.' : '', Boolean(cmd.args?.error));
+    ctx.status(cmd.args?.error ? 'REDEEM: CHECK THE CODE' : 'REDEEM: PASTE THE CODE', cmd.args?.error ? 'warn' : '');
   },
 };
 
 // ---- GIFT --------------------------------------------------------------------------------
 
 const GIFT_STATE = { unused: 'UNUSED', redeemed: 'REDEEMED', expired: 'EXPIRED' };
+export const GIFT_NOTE = 'Friends use it with REDEEM.';
+export const GIFT_ONCE_NOTE = 'Shown once. Copy it and send it to your friend.';
 
 // older: redeemed codes whose records were deleted after 12 months, shown as a count.
 export function giftRowsHtml(gifts, fmt = dayYear, older = 0) {
@@ -566,6 +674,38 @@ export function giftRowsHtml(gifts, fmt = dayYear, older = 0) {
   }).join('')}</ul>${note}`;
 }
 
+const giftDetails = () => raw(cardRows([...GIFT_ROWS, ['Why once', 'We keep only a hash of a code, so it is not shown again.']]));
+
+// d: /api/pro/gifts ({ gifts, left, canGift, older }). shown: a code just made, in full.
+export function giftHtml(d, { shown = null, why = '' } = {}) {
+  const canMake = d.canGift && d.left > 0;
+  const list = d.gifts.length || d.older ? raw(`<div class="pro-gifts">${giftRowsHtml(d.gifts, dayYear, d.older || 0)}</div>`) : '';
+  if (shown) {
+    return cardPage({
+      label: 'Your gift code', cls: 'pro-card', kicker: 'YOUR GIFT CODE',
+      hero: raw(`<span class="pro-key" id="gift-code">${esc(shown)}</span>`), heroSize: 32,
+      act: raw(cardButton({ label: 'COPY', primary: true, id: 'gift-copy' })),
+      note: GIFT_ONCE_NOTE, media: list, details: giftDetails(),
+    });
+  }
+  return cardPage({
+    label: 'Gift a month of Pro', cls: 'pro-card', kicker: 'GIFT',
+    hero: `${d.left} OF 3`, heroSize: 60, sub: 'gift codes left',
+    act: canMake ? raw(cardButton({ label: 'MAKE A GIFT CODE', primary: true, id: 'gift-make' })) : '',
+    note: canMake ? GIFT_NOTE : why,
+    media: list, details: giftDetails(),
+  });
+}
+
+export function giftLoggedOutHtml() {
+  return cardPage({
+    label: 'Gift a month of Pro', cls: 'pro-card', kicker: 'GIFT',
+    hero: 'Gift a month', heroSize: 44, sub: 'Gift codes come with paid Pro.',
+    act: raw(cardButton({ label: 'LOGIN', primary: true, cmd: 'LOGIN' }) + cardButton({ label: 'PRO', cmd: 'PRO' })),
+    details: giftDetails(),
+  });
+}
+
 function giftPage(el, ctx, shown = null) {
   const host = el.querySelector('#gift-body');
   host.innerHTML = LOADING;
@@ -575,12 +715,7 @@ function giftPage(el, ctx, shown = null) {
     let why = '';
     if (!d.canGift) why = pro.getStatus()?.status === 'gift' || pro.getStatus()?.status === 'gift_ended' ? 'A gift licence cannot make gift codes.' : 'Gift codes come with an active paid Pro subscription.';
     else if (!d.left) why = 'You have made 3 gift codes. A code that expires unused frees its place.';
-    host.innerHTML = `${shown ? `<div class="pro-key-box"><p class="pro-key num" id="gift-code">${esc(shown)}</p>
-        <p class="pro-actions"><button type="button" class="btn" id="gift-copy">COPY</button></p><p class="notice">${esc(GIFT_SHOWN_ONCE)}</p></div>` : ''}
-      ${giftRowsHtml(d.gifts, dayYear, d.older || 0)}
-      ${canMake ? `<p class="pro-actions"><button type="button" class="btn btn-solid" id="gift-make">MAKE A GIFT CODE</button></p>` : `<p class="muted">${esc(why)}</p>`}`;
-    const meta = el.querySelector('#gift-meta');
-    if (meta) meta.innerHTML = metaNote(`${d.left} OF 3 LEFT`);
+    host.innerHTML = giftHtml(d, { shown, why });
     const copy = host.querySelector('#gift-copy');
     if (copy) copy.addEventListener('click', async () => { const ok = await copyText(shown); ctx.status(ok ? 'GIFT CODE COPIED' : 'SELECT THE CODE AND COPY IT', ok ? '' : 'warn'); });
     wire(host, ctx, '#gift-make', 'MAKING A GIFT CODE...', async () => {
@@ -592,7 +727,7 @@ function giftPage(el, ctx, shown = null) {
     if (!shown) ctx.status(canMake ? `GIFT: ${d.left} OF 3 LEFT` : 'GIFT: NONE TO MAKE');
   }).catch((err) => {
     if (!el.isConnected) return;
-    host.innerHTML = `<p class="notice">${esc(err.message)}</p>`;
+    host.innerHTML = cardPage({ cls: 'pro-card', kicker: 'GIFT', alert: err.message, alertWarn: true });
     ctx.status('GIFT: NOT AVAILABLE', 'warn');
   });
 }
@@ -600,10 +735,9 @@ function giftPage(el, ctx, shown = null) {
 // GIFT: your codes and MAKE A GIFT CODE.
 export const giftCommand = {
   render(el, cmd, ctx) {
-    el.innerHTML = `<div class="stack">${panel('1', 'Gift a month of Pro', '<div id="gift-body"></div>', { metaId: 'gift-meta' })}
-      ${panel('2', 'How gifts work', `<p class="muted">${esc(GIFT_RULES)}</p><p class="muted">Your friend types ${link('REDEEM')} and the code.</p>`)}</div>`;
+    el.innerHTML = '<div class="pro-page" id="gift-body"></div>';
     if (!pro.getKey()) {
-      el.querySelector('#gift-body').innerHTML = `<p class="notice">Gift codes come with an active paid Pro subscription.</p><p class="muted">Type ${link('LOGIN')} with your key, or see ${link('PRO')}.</p>`;
+      el.querySelector('#gift-body').innerHTML = giftLoggedOutHtml();
       ctx.status('GIFT: LOG IN FIRST');
       return;
     }
