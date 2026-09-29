@@ -188,17 +188,16 @@ function stockWords(toks) {
   return toks.map((w) => (STOCK_RE.test(w) ? stockId(w) : w));
 }
 
-// The dim "Stock: $GOLD" hint for a plain word that is also a listed stock (GOLD opens
-// spot gold, M opens MARKETS): the $ command that opens the stock, or null.
+// The dim "Stock: $GOLD" hint for a plain word that opens a price and is also a listed
+// stock (GOLD opens spot gold, not Gold.com): the $ command that opens the stock, or null.
+// Only there: a word that opens a screen of the site (HELP, M for MARKETS, DESK, CHAT,
+// IPOS, LOAN, GIFT) means that screen, so no "Stock: $HELP" ($HELP still opens the stock).
 // raw: the words as typed; cmd: what they parsed to.
 export function stockHintFor(raw, cmd) {
   const toks = tokenize(raw);
   const head = toks[0];
-  if (!head || !SHADOWED_TICKERS.has(head) || !cmd || cmd.name === 'UNKNOWN') return null;
-  // DESK: no hint (in its tool bar it read as a panel's "Stock: $DESK").
-  if (cmd.name === 'DESK') return null;
+  if (!head || !SHADOWED_TICKERS.has(head) || cmd?.name !== 'QUOTE' || cmd.error) return null;
   // The word alone, or a named instrument's chart with its period (GOLD 5Y).
-  if (toks.length > 1 && !(cmd.name === 'QUOTE' && !cmd.error)) return null;
   return [`$${head}`, ...toks.slice(1)].join(' ');
 }
 
@@ -1320,7 +1319,7 @@ function boot() {
       const draw = (mod) => {
         const fn = mod.render(view, cmd, ctx);
         if (typeof fn === 'function') cleanups.push(fn);
-        // A plain word that is also a stock (GOLD, M, HELP): "Stock: $GOLD" in the title strip.
+        // A price word that is also a stock (GOLD, DOW): "Stock: $GOLD" in the title strip.
         const hint = embed ? null : stockHintFor(raw, cmd);
         if (hint) cleanups.push(showStockHint(view, hint));
         // --- TRENDING: count this ticker screen (public/trending.js, loaded here); not in DESK panels, not before the notice ---

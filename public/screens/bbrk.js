@@ -77,10 +77,11 @@ export function chartSvg(values, { w = 300, h = 96 } = {}) {
     + `<path class="bb-spark-dot" d="M${lx.toFixed(1)} ${ly.toFixed(1)} h0" vector-effect="non-scaling-stroke"/></svg>`;
 }
 
-// 'MRR $0 (test mode)' -> { value: '$0', label: 'MRR, TEST MODE' }.
-export function mrrFact(mrr) {
+// 'MRR $0 (test mode)' -> '$0, test mode': a row in + Details, never a tile up front
+// (while checkout is in test mode it is a note for us, not a number for visitors). null: no row.
+export function mrrText(mrr) {
   const m = /^MRR (\S+)(?: \((.+)\))?$/.exec(String(mrr || ''));
-  return m ? { value: m[1], label: `MRR${m[2] ? `, ${m[2].toUpperCase()}` : ''}` } : { value: '--', label: 'MRR' };
+  return m ? `${m[1]}${m[2] ? `, ${m[2]}` : ''}` : null;
 }
 
 export function factsOf(d) {
@@ -92,7 +93,6 @@ export function factsOf(d) {
     { value: visitTime(a.avgVisitSec), label: 'AVG VISIT' },
     { value: pct(a.returningPct), label: 'RETURNING' },
     { value: pct(a.desktopPct), label: 'DESKTOP' },
-    mrrFact(d?.mrr),
   ];
 }
 
@@ -116,7 +116,7 @@ export function detailsHtml(d) {
     <thead><tr><th scope="col"><span class="offscreen">Sponsor inventory</span></th><th scope="col" class="num">Today</th><th scope="col" class="num">7D</th></tr></thead>
     <tbody>${invRows}</tbody>
   </table>`
-    + cardRows([['Sources', SOURCE], ['BBRK', 'Not a security. Not for sale.']]);
+    + cardRows([...(mrrText(d?.mrr) ? [['MRR', mrrText(d.mrr)]] : []), ['Sources', SOURCE], ['BBRK', 'Not a security. Not for sale.']]);
 }
 
 export function globeHtml(d) {

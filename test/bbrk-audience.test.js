@@ -15,7 +15,7 @@ import {
 import { mountEmbeds } from '../lib/embed-pages.js';
 import { stripItems, mountStrip } from '../public/sponsor-strip.js';
 import { countOnly, stripShownBatch } from '../public/goal.js';
-import { bbrkHtml, heroChange, visitTime, topLine, globeCaption, globeLabel, bbrkCaption, chartSvg, mrrFact, SOURCE, STRIP, KICKER, INVENTORY } from '../public/screens/bbrk.js';
+import { bbrkHtml, heroChange, visitTime, topLine, globeCaption, globeLabel, bbrkCaption, chartSvg, mrrText, SOURCE, STRIP, KICKER, INVENTORY } from '../public/screens/bbrk.js';
 import { cardWords } from '../public/kit.js';
 import { ortho, dotRadius, startLon, mountGlobe } from '../public/globe.js';
 import { build as buildDots, rings } from '../scripts/build-globe-dots.js';
@@ -460,12 +460,12 @@ const FULL = {
 const text = (html) => html.replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/g, ' ');
 const words = (html) => text(html).split(/\s+/).filter((w) => /[A-Za-z]/.test(w)).length;
 
-test('BBRK screen: a card: visitors hero, the chart, six facts, the globe; the rest behind Details', () => {
+test('BBRK screen: a card: visitors hero, the chart, five facts, the globe; the rest (MRR too) behind Details', () => {
   const html = bbrkHtml(FULL);
   assert.match(html, /<h2 class="card-hero card-hero-60 num" id="bb-hero">412<\/h2>/);
   assert.match(html, /visitors today · <span class="num up">\+35<\/span> vs same time yesterday/);
   assert.match(html, /class="bb-spark"/);
-  for (const s of ['3,180', '11,890', '1m 37s', '31%', '68%', '$0', 'MRR, TEST MODE', 'United States 41% · Germany 6%', 'x.com 23%', '1,840', '12,950', '390', '160']) assert.ok(html.includes(s), s);
+  for (const s of ['3,180', '11,890', '1m 37s', '31%', '68%', 'United States 41% · Germany 6%', 'x.com 23%', '1,840', '12,950', '390', '160']) assert.ok(html.includes(s), s);
   for (const [, label] of INVENTORY) assert.ok(html.includes(label), label);
   assert.doesNotMatch(html, /WHATIF|GUESS|video|share/i);
   assert.equal(SOURCE, 'Visitors: our analytics. Strip, embeds, MCP: our server counters. Days in New York time.');
@@ -478,15 +478,20 @@ test('BBRK screen: a card: visitors hero, the chart, six facts, the globe; the r
   for (let i = 1; i < order.length; i++) assert.ok(at(order[i - 1]) >= 0 && at(order[i - 1]) < at(order[i]), `${order[i - 1]} before ${order[i]}`);
   // Countries, referrers, the counters and the sources are in Details, not above it.
   const [top, details] = html.split('<details class="how card-more"');
-  for (const x of ['United States 41% · Germany 6%', 'x.com 23%', '1,840', SOURCE, 'Not a security. Not for sale.']) {
+  for (const x of ['United States 41% · Germany 6%', 'x.com 23%', '1,840', SOURCE, 'Not a security. Not for sale.', '<dt class="tag">MRR</dt><dd>$0, test mode</dd>']) {
     assert.ok(details.includes(x), x);
     assert.ok(!top.includes(x), `${x} not above Details`);
   }
   assert.match(top, /3 here now|7 here now/);
   assert.equal(bbrkCaption(FULL), '7 here now · top: United States 41%');
   assert.equal(bbrkCaption({ audience: { live: 1, countries: [] } }), '7D by place', 'one here now is most likely the viewer');
-  assert.deepEqual(mrrFact('MRR $0 (test mode)'), { value: '$0', label: 'MRR, TEST MODE' });
-  assert.deepEqual(mrrFact(null), { value: '--', label: 'MRR' });
+  // MRR: a row in + Details, never a tile (no TEST MODE up front); no MRR, no row.
+  assert.doesNotMatch(top, /MRR|TEST MODE/i);
+  assert.equal((top.match(/<dt class="tag">/g) || []).length, 5, 'five facts');
+  assert.equal(mrrText('MRR $0 (test mode)'), '$0, test mode');
+  assert.equal(mrrText('MRR $120'), '$120');
+  assert.equal(mrrText(null), null);
+  assert.doesNotMatch(bbrkHtml({ ...FULL, mrr: null }), />MRR</);
   const w = cardWords(html);
   assert.ok(w.length <= 25, `${w.length} words: ${w.join(' ')}`);
 });
