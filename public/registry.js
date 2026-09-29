@@ -107,6 +107,12 @@ export const REGISTRY = [
     name: 'MENU', category: 'News and info', summary: 'Every command by category, in a quick overlay (Ctrl+K)',
     syntax: 'MENU', examples: ['MENU'], keywords: ['launcher', 'navigate', 'find', 'categories'],
   },
+  // --- EMBED (screens/embed.js; the pages are lib/embed-pages.js) ---
+  {
+    name: 'EMBED', category: 'News and info', summary: 'Put GUESS or a WHATIF result on your own site: the code to copy',
+    syntax: 'EMBED [GUESS|WHATIF <list>]', examples: ['EMBED', 'EMBED GUESS', 'EMBED WHATIF IPHONE6'], keywords: ['embed', 'iframe', 'widget', 'blog', 'newsletter', 'website', 'share', 'code'],
+  },
+  // --- end EMBED ---
 
   // --- Stocks and companies -----------------------------------------------------------
   {

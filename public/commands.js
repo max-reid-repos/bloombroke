@@ -11,7 +11,7 @@ import { lazyScreen as lazy } from './lazy.js';
 import {
   parseTicker, parseCompare, parseHistory, parseTickerNews, parseBonds, parseFxMatrix, parseEarnings, parseCalendar,
   parseLoan, parseCompound, parsePro, parseTapeArgs, parseLogin, parseData, parseSectors, sectorsCmd,
-  parseGrid, gridCmd,
+  parseGrid, gridCmd, parseEmbed,
 } from './command-args.js';
 import { parse as parseNewsTab } from './screens/news.js'; // NEWS is on HOME: loaded at startup anyway
 import { parseAlertArgs } from './alerts.js'; // ALERTS: the watcher runs on every page anyway
@@ -58,6 +58,7 @@ export const EXTRA = [
   { name: 'BBRK', screen: lazy('screens/bbrk.js') }, // BBRK: our own site numbers, not a security
   { name: 'MCP', screen: lazy('screens/mcp.js') }, // MCP: hook an AI app up to Bloombroke (lib/mcp/)
   { name: 'HOLIDAYS', screen: lazy('screens/holidays.js') }, // HOLIDAYS: US market closures, next 12 months
+  { name: 'EMBED', screen: lazy('screens/embed.js'), parse: parseEmbed, takesArgs: true }, // EMBED: the code for GUESS or a WHATIF on your own site
 ];
 
 // Screens (lazy, see lazy.js) by internal name.

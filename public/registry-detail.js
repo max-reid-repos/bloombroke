@@ -53,6 +53,7 @@ export const DETAIL = {
   'SPLITS': { source: 'Exchange calendars', delay: 'Hourly' },
   'EXDIV': { options: [['<day>', 'A date, like 2026-10-01']], source: 'Exchange calendars', delay: 'Hourly' },
   'HOLIDAYS': { source: 'NYSE holiday calendar, built in', delay: 'None' },
+  'EMBED': { options: [['GUESS', "Today's mystery chart, playable"], ['WHATIF <list>', 'A WHATIF result card, like WHATIF IPHONE6']], source: 'Built in', delay: 'None' },
   'SCREEN': { options: [['SECTOR <name>', 'TECH, FINANCE, ENERGY ...'], ['MCAP PRICE CHG VOL', 'With > < >= <=, like MCAP>10B'], ['PE DIV', 'P/E and dividend yield, like PE<30'], ['SORT <column>', 'Sort, then HIGH or LOW'], ['GAINERS LOSERS', 'Presets']], source: 'Market data provider', delay: 'Delayed' },
   'WATCH': { options: [['ADD <symbols>', 'Add one or more'], ['REMOVE <symbols>', 'Take them off'], ['CLEAR', 'Empty the list'], ['EXPORT', 'Copy the list as text'], ['IMPORT <list>', 'Paste a list back']], source: 'Saved in this browser; prices live', delay: 'Marked RT or DLY' },
   'PORTFOLIO': { options: [['ADD <ticker> <shares> @ <cost>', 'Record a buy'], ['SELL <ticker> <shares>', 'Record a sale'], ['REMOVE <ticker>', 'Drop a holding'], ['EXPORT', 'Copy as CSV'], ['IMPORT', 'Paste a CSV back']], source: 'Saved in this browser; prices live', delay: 'Every 15 seconds' },
