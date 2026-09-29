@@ -1,6 +1,6 @@
 // Terminal fixes 2 (Sep 29): the adopted rules A to C, the ticker screen (a range on
 // every change, WHY second, the E / D / N key, quiet dates), NEWS (sources once, hour
-// rules, "Since your last visit") and what a filled button means.
+// rules, "Before your last visit") and what a filled button means.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,9 +8,9 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { FUNCTION_BAR, tickerStripHtml } from '../public/app.js';
 import { changeTag, flagKeyHtml } from '../public/screens/chart.js';
-import { quoteHtml, changeWhen } from '../public/screens/quote.js';
+import { quoteHtml, changeWhen, sessionTz } from '../public/screens/quote.js';
 import {
-  newsList, sourceToggles, hourOf, readSeen, writeSeen, newestTime, SINCE_LINE, SEEN_KEY, TAB_SOURCES,
+  newsList, sourceToggles, hourOf, readSeen, writeSeen, newestTime, VISIT_LINE, SEEN_KEY, TAB_SOURCES,
 } from '../public/screens/news.js';
 import { mainHtml } from '../public/screens/pro.js';
 import { feedbackHtml } from '../public/screens/feedback.js';
@@ -33,6 +33,22 @@ test('rule A: the quote\'s change says "today" (or the day it is from)', () => {
   assert.equal(changeWhen({ asOf: '2026-09-28' }, now), 'on Mon', 'a date-only quote');
   assert.equal(changeWhen({ asOf: '2026-09-01T20:00:00Z' }, now), 'on Sep 1', 'older than a week: the date');
   assert.equal(changeWhen({ asOf: null }, now), '', 'no time, no label');
+  // Crypto has no day: its change is a rolling 24 hours.
+  assert.equal(changeWhen({ ticker: 'BTC', kind: 'crypto', asOf: '2026-09-29T14:39:00Z' }, now), '24h');
+  assert.equal(changeWhen({ ticker: 'ETH', kind: 'crypto', asOf: '2026-09-27T03:00:00Z' }, now), '24h', 'on a Sunday too');
+  // FX: New York's day, like US stocks.
+  assert.equal(sessionTz({ ticker: 'EURUSD', kind: 'fx' }), 'America/New_York');
+  assert.equal(changeWhen({ ticker: 'EURUSD', kind: 'fx', asOf: '2026-09-29T14:38:00Z' }, now), 'today');
+  assert.equal(changeWhen({ ticker: 'USDJPY', kind: 'fx', asOf: '2026-09-25T20:59:00Z' }, new Date('2026-09-27T15:00:00Z')), 'on Fri', 'a Sunday: Friday\'s move');
+  // A non-US index: its own exchange's day. The Nikkei closed at 15:00 Tokyo on Tue Sep 29
+  // (06:00 UTC); at 01:00 Tokyo on Wed Sep 30 (still Tue in New York) that is not today.
+  assert.equal(sessionTz({ ticker: 'N225', kind: 'index' }), 'Asia/Tokyo');
+  const nikkei = { ticker: 'N225', kind: 'index', asOf: '2026-09-29T06:00:00Z' };
+  assert.equal(changeWhen(nikkei, new Date('2026-09-29T12:00:00Z')), 'today', '21:00 in Tokyo, the same day');
+  assert.equal(changeWhen(nikkei, new Date('2026-09-29T16:00:00Z')), 'on Tue', 'past midnight in Tokyo');
+  assert.equal(changeWhen({ ticker: 'FTSE', kind: 'index', asOf: '2026-09-29T15:35:00Z' }, new Date('2026-09-29T23:30:00Z')), 'on Tue', '00:30 in London is the next day');
+  assert.equal(changeWhen({ ticker: '7203.T', kind: 'stock', asOf: '2026-09-29T06:00:00Z' }, new Date('2026-09-29T16:00:00Z')), 'on Tue', 'a Tokyo listing by its suffix');
+  assert.equal(changeWhen({ ticker: 'SPX', kind: 'index', asOf: '2026-09-29T20:00:00Z' }, new Date('2026-09-30T02:00:00Z')), 'today', '22:00 in New York');
   const html = quoteHtml({ ticker: 'AAPL', name: 'Apple Inc.', kind: 'stock', last: 333.06, change: -5.34, changePct: -1.58, currency: 'USD', asOf: new Date().toISOString() });
   assert.match(html, /<p class="q-chg num down">[−-]5\.34 [−-]1\.58%<span class="q-chg-when dim">today<\/span><\/p>/);
 });
@@ -42,6 +58,7 @@ test('rule A: the chart\'s change says its range: 1Y, TODAY, IN VIEW', () => {
   assert.equal(changeTag({ range: { range: 'MAX' } }), 'MAX');
   assert.equal(changeTag({ range: { range: '1D' }, today: true }), 'TODAY');
   assert.equal(changeTag({ range: { range: '1D' }, today: false }), '1D', 'a 1D chart of a day that is over');
+  assert.equal(changeTag({ range: { range: '1D' }, today: true, rolling: true }), '1D', 'crypto: a rolling window, not today');
   assert.equal(changeTag({ range: { range: '1Y' }, zoomed: true }), 'IN VIEW');
   assert.equal(changeTag({ range: { from: '2020-01-01', to: '2024-12-31' } }), 'IN VIEW');
   assert.equal(changeTag({ range: { range: '1Y' }, fetchWin: { from: '2026-01-01', to: '2026-03-01' } }), 'IN VIEW');
@@ -50,6 +67,10 @@ test('rule A: the chart\'s change says its range: 1Y, TODAY, IN VIEW', () => {
   const chart = src('public/screens/chart.js');
   assert.match(chart, /<span class="ch-k ch-tag">\$\{esc\(tag\)\}<\/span>\$\{c\.parts\.map/);
   assert.match(chart, /opts\.quote === 'external' && atLatest \? '' :/);
+  // "Today" is asked at each render, never kept from when the chart was made.
+  assert.match(chart, /const today = \(\) => nyToday\(\);/);
+  assert.doesNotMatch(chart, /const today = nyToday\(\);|const todayDate = new Date\(\);/);
+  assert.match(chart, /rolling: inst\?\.kind === 'crypto', today: model\.info\[model\.info\.length - 1\]\?\.day === today\(\)/);
 });
 
 // ---- The ticker screen ---------------------------------------------------------------------
@@ -128,16 +149,16 @@ test('NEWS: a thin rule at each hour, the hour a small dim label; the day for ol
   assert.match(ruleOf(STYLE, '.news-hour-l'), /color: var\(--dim\)/);
 });
 
-test('NEWS: "Since your last visit": one line above the older stories', () => {
+test('NEWS: "Before your last visit": one line above the older stories', () => {
   const at = (since) => newsList(LIST, { hours: true, since, now: NOW });
   const html = at('2026-09-29T14:00:00Z');
   assert.equal((html.match(/class="news-since"/g) || []).length, 1);
-  assert.match(html, new RegExp(`>B<[\\s\\S]*<li class="news-since" role="separator"><span class="news-since-l">${SINCE_LINE}</span></li>\\s*<li class="news-row"[^>]*>[\\s\\S]*>C<`));
+  assert.match(html, new RegExp(`>B<[\\s\\S]*<li class="news-since" role="separator"><span class="news-since-l">${VISIT_LINE}</span></li>\\s*<li class="news-row"[^>]*>[\\s\\S]*>C<`));
   assert.doesNotMatch(html, /news-hour-l num">09:00</, 'the line takes the place of the hour rule it falls on');
   assert.doesNotMatch(at('2026-09-29T15:00:00Z'), /news-since/, 'nothing new: no line');
   assert.doesNotMatch(at('2026-09-20T00:00:00Z'), /news-since/, 'all new: no line');
   assert.doesNotMatch(at(null), /news-since/, 'a first visit: no line');
-  assert.equal(SINCE_LINE, 'Since your last visit');
+  assert.equal(VISIT_LINE, 'Before your last visit');
 });
 
 test('NEWS: the newest time seen, kept per tab; storage that fails is no line, never an error', () => {
@@ -177,16 +198,22 @@ const cssFiles = () => {
   walk('public');
   return out;
 };
-// "You are here": an active, on, pressed, selected, current or open state, a focus, or a
-// panel strip's label. Anything else filled ice blue must be on this list: not buttons.
-const HERE = /is-active|is-on|aria-(pressed|selected|expanded)="true"|aria-current|:focus|panel-label|stage-label|desk-label/;
+// "You are here": an active, on, pressed, selected, current or open state, or a panel
+// strip's label. A focus is not exempt as such: the one focus fill is named below.
+// Anything else filled ice blue must be on the list: none of them is a button.
+const HERE = /is-active|is-on|aria-(pressed|selected|expanded)="true"|aria-current|panel-label|stage-label|desk-label/;
 const NOT_BUTTONS = new Set([
+  '.ft-sr:focus-within a:focus', // FISHTANK: the search result the keys are on (where you are)
   '.fresh-dot', '.cursor', '.boot-cursor', // the data dot and the command bar's cursor
-  '.cl-n', '.news-new', '.chat-badge', '.status-alerts', '.al-state.is-fired', // counts and states
-  '.news-since::after', // the "Since your last visit" rule
+  '.cl-n', '.news-new', '.chat-badge', '.al-state.is-fired', // counts and states, not buttons
+  '.news-since::after', // the "Before your last visit" rule
   '.gv-play', '.spon-point', // a video's play mark; the label pointing at the strip
-  '.dp-link[data-link="blue"]::after', '.dp-btn:hover', '.desk-btn:hover', // DESK (its own pass)
+  '.dp-link[data-link="blue"]::after', '.desk[data-editing="true"] .dp-resize', // DESK: a colour swatch, the resize grip
 ]);
+// An ice blue fill however it is written: the token (--accent, --here, with a fallback or
+// in a gradient), the hex, or the hsl at more than a tint (--accent-tint is .1).
+const ICE = /var\(--(accent|here)\s*[,)]|#6ccbff\b|hsla?\(\s*201\s*,\s*100%\s*,\s*71%\s*(\)|,\s*(0?\.[3-9]\d*|1(\.0+)?)\s*\))/i;
+const iceFill = (body) => [...body.matchAll(/(?:^|;)\s*background(?:-color|-image)?\s*:\s*([^;]+)/g)].some((m) => ICE.test(m[1]));
 
 test('rule C: a primary button is white (--primary), ice blue fills only where you are', () => {
   assert.match(STYLE, /--primary: var\(--text\);/);
@@ -196,15 +223,28 @@ test('rule C: a primary button is white (--primary), ice blue fills only where y
   const bad = [];
   for (const f of cssFiles()) {
     for (const [sel, body] of rules(src(f))) {
-      if (!/background(-color)?:\s*var\(--(accent|here)[,)]/.test(body)) continue;
+      if (!iceFill(body)) continue;
       for (const one of sel.split(',').map((x) => x.trim())) if (!HERE.test(one) && !NOT_BUTTONS.has(one)) bad.push(`${f}: ${one}`);
     }
   }
   assert.deepEqual(bad, [], 'blue fill is for "you are here" only');
+  // The scan sees every way of writing it.
+  for (const body of ['background: var(--accent)', 'background: var(--accent, #6CCBFF)', 'color: x; background-color: #6ccbff', 'background: hsl(201, 100%, 71%)', 'background: hsla(201, 100%, 71%, .8)', 'background: linear-gradient(90deg, var(--accent), transparent)', 'background-image: linear-gradient(var(--here) 50%, transparent 50%)']) assert.ok(iceFill(body), body);
+  for (const body of ['background: var(--accent-tint)', 'background: hsla(201, 100%, 71%, .1)', 'color: var(--accent)', 'border-color: var(--accent)']) assert.ok(!iceFill(body), body);
+  // Buttons that were blue: the ALERTS flag is an outline, DESK's keys tint on hover.
+  assert.match(ruleOf(STYLE, '.status-alerts'), /border: 1px solid var\(--accent\); background: var\(--accent-tint\); color: var\(--accent\);/);
+  assert.match(ruleOf(STYLE, '.desk-btn:hover'), /background: var\(--accent-tint\)/);
+  assert.match(ruleOf(src('public/screens/desk.css'), '.dp-btn:hover'), /background: var\(--accent-tint\)/);
   // No button makes its own primary fill: the one-off ones use the token.
-  for (const [f, sel] of [['public/style.css', '.wi-run'], ['public/style.css', '.pf-btn'], ['public/style.css', '.wi-btn:first-child'], ['public/legal.css', '.consent-accept']]) {
+  for (const [f, sel] of [['public/style.css', '.wi-run'], ['public/style.css', '.wi-btn:first-child'], ['public/legal.css', '.consent-accept']]) {
     assert.match(ruleOf(src(f), sel), /background: var\(--primary[,)]/, `${f} ${sel}`);
   }
+  // .pf-btn is an outline unless the page makes it its one action with .btn-solid.
+  assert.match(ruleOf(STYLE, '.pf-btn'), /background: transparent;/);
+  const pf = src('public/screens/portfolio.js');
+  assert.match(pf, /<a class="pf-btn btn-solid" download="bloombroke-portfolio\.csv"/, 'DOWNLOAD CSV: the PF EXPORT page\'s one action');
+  assert.match(pf, /<button type="submit" class="pf-btn btn-solid">REPLACE HOLDINGS<\/button>/, 'PF IMPORT\'s one action');
+  assert.match(src('public/screens/guess.js'), /class="pf-btn btn-solid gs-copy">COPY RESULT</);
   // An outline tints on hover, never fills blue.
   assert.match(ruleOf(src('public/commands.css'), '.btn:hover'), /background: var\(--accent-tint\)/);
   // The chart's dates and every input: never a filled look.

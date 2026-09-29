@@ -486,11 +486,12 @@ export function filingFlags(filings, days, bar) {
 }
 
 // Rule A (kit.css): every change says what range it is over. The chart's own change:
-// TODAY on a whole 1D chart of today (1D on a day that is over), the preset on any other
-// (1Y, 5D, MAX), IN VIEW after a zoom or with typed dates (the dates are in the bar).
-export function changeTag({ range = null, zoomed = false, fetchWin = null, today = false } = {}) {
+// TODAY on a whole 1D chart of today (1D on a day that is over, and on crypto, which
+// has no day: a rolling window), the preset on any other (1Y, 5D, MAX), IN VIEW after a
+// zoom or with typed dates (the dates are in the bar).
+export function changeTag({ range = null, zoomed = false, fetchWin = null, today = false, rolling = false } = {}) {
   if (zoomed || fetchWin || range?.from || !range?.range) return 'IN VIEW';
-  if (range.range === '1D' && today) return 'TODAY';
+  if (range.range === '1D' && today && !rolling) return 'TODAY';
   return range.range;
 }
 
@@ -539,8 +540,9 @@ export function rangeChart(root, ctx, opts) {
   let hoverI = null;
   let flagHover = null;
   let model = null;
-  const today = nyToday();
-  const todayDate = new Date();
+  // Today, asked each time (never kept from when the chart was made: a page left open
+  // overnight moves on to the new day).
+  const today = () => nyToday();
 
   const cmdFor = (r, cmp = compare) => [symbol, rangeWords({ ...r, compare: cmp })].filter(Boolean).join(' ');
   // Decimals from the latest price (a MAX chart from 1980 starts under a dollar).
@@ -585,7 +587,7 @@ export function rangeChart(root, ctx, opts) {
     if (compact()) return `<div class="ch-bar"><nav class="tabs ch-tabs" aria-label="Chart range">${tabs}</nav></div>`;
     const per = periodMenu({
       cur: data?.bar || barFor(w), merged: data?.merged || 1, open: perOpen, id: perId,
-      range: !range.from && !fetchWin ? range.range || '1Y' : null, today: todayDate,
+      range: !range.from && !fetchWin ? range.range || '1Y' : null, today: new Date(),
     });
     const chips = compare.map((s, k) => {
       const c = cmpData.get(s);
@@ -689,7 +691,7 @@ export function rangeChart(root, ctx, opts) {
     let pad = 0;
     const sessionSym = isStock || (inst?.us && inst.kind === 'index' && !inst.allDay);
     const last = info[info.length - 1];
-    if (oneDay && sessionSym && last.day === today) {
+    if (oneDay && sessionSym && last.day === today()) {
       const end = data.ext ? 20 * 60 : 16 * 60;
       pad = Math.max(0, (end - last.mins) / (BAR_MS[bar] / 60_000));
     }
@@ -831,7 +833,7 @@ export function rangeChart(root, ctx, opts) {
       // then the chart's line is its change only, unless the window ends in the past.
       const atLatest = i1 === model.points.length - 1 && !fetchWin?.to && !range.to;
       const last = opts.quote === 'external' && atLatest ? '' : `<span class="ch-k">LAST</span> <span class="ch-v">${esc(fmtY(st.last))}</span> `;
-      const tag = changeTag({ range, zoomed, fetchWin, today: model.info[model.info.length - 1]?.day === today });
+      const tag = changeTag({ range, zoomed, fetchWin, rolling: inst?.kind === 'crypto', today: model.info[model.info.length - 1]?.day === today() });
       l1.innerHTML = `${last}<span class="ch-k ch-tag">${esc(tag)}</span>${c.parts.map((t) => ` <span class="ch-c ${c.dir}">${esc(t)}</span>`).join('')}${sess ? ` <span class="ch-k">${sess}</span>` : ''}`;
     }
     if (tight) { l2.innerHTML = ''; return; }
@@ -1020,7 +1022,7 @@ export function rangeChart(root, ctx, opts) {
     // The bars in hand still draw this window well: no request.
     if (covered && count >= 20 && count <= 3000 && (data.bar === want || (fits(data.bar) && !userBar))) return;
     if (covered && data.bar === want) return;
-    const { from, to } = windowDays(t0, t1, today);
+    const { from, to } = windowDays(t0, t1, today());
     fetchWin = { from, to };
     viewWin = { t0, t1 };
     if (userBar && !fits(userBar)) userBar = null;
@@ -1063,12 +1065,13 @@ export function rangeChart(root, ctx, opts) {
     const ti = root.querySelector('input[name="to"]');
     const f = parseDateBox(fi.value);
     const t = parseDateBox(ti.value);
-    fi.classList.toggle('is-bad', !f || f > today);
+    const day = today();
+    fi.classList.toggle('is-bad', !f || f > day);
     ti.classList.toggle('is-bad', !t || (f && t <= f));
     if (!f || !t) { ctx.status?.('DATES LOOK LIKE 09/25/2026', 'warn'); return; }
-    if (f > today) { ctx.status?.('FROM IS IN THE FUTURE', 'warn'); return; }
+    if (f > day) { ctx.status?.('FROM IS IN THE FUTURE', 'warn'); return; }
     if (t <= f) { ctx.status?.('FROM HAS TO BE BEFORE TO', 'warn'); return; }
-    setRange({ from: f, to: t >= today ? null : t });
+    setRange({ from: f, to: t >= day ? null : t });
   }
 
   // ---- The bar period grid ------------------------------------------------------------

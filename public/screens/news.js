@@ -187,13 +187,46 @@ export function liveNews({ body, meta = null, metaHtml = () => '', ctx, marker =
   let streaming = false;
   const EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
   let listening = false;
-  const paintMeta = () => { if (meta) meta.innerHTML = `${newBadge(counter.count)}${marker ? liveMarker(streaming) : ''}${metaHtml()}`; };
+  // The strip in three slots (display: contents, so the strip's gaps stay): the badge,
+  // the LIVE marker and the rest (NEWS: the source toggles). Each is repainted on its
+  // own, so clearing the badge on the reader's first pointerdown or key never replaces
+  // the toggle being pressed. The rest is rebuilt only when it changes, and a toggle
+  // that had the focus gets it back.
+  let rest = null;
+  const slot = (name) => {
+    let el = meta.querySelector(`.news-slot-${name}`);
+    if (!el) {
+      meta.innerHTML = '<span class="news-slot news-slot-badge"></span><span class="news-slot news-slot-live"></span><span class="news-slot news-slot-rest"></span>';
+      rest = null;
+      el = meta.querySelector(`.news-slot-${name}`);
+    }
+    return el;
+  };
+  const paintBadge = () => { if (meta) slot('badge').innerHTML = newBadge(counter.count); };
+  const paintLive = () => { if (meta) slot('live').innerHTML = marker ? liveMarker(streaming) : ''; };
+  const focusKey = (el) => {
+    if (!el?.classList) return null;
+    if (el.classList.contains('news-src-one')) return '.news-src-one';
+    return el.dataset?.value ? `button[data-value="${el.dataset.value}"]:not(.news-src-one)` : null;
+  };
+  function paintRest() {
+    if (!meta) return;
+    const box = slot('rest');
+    const html = metaHtml();
+    if (html === rest) return;
+    const act = globalThis.document?.activeElement;
+    const key = act && meta.contains?.(act) ? focusKey(act) : null;
+    box.innerHTML = html;
+    rest = html;
+    if (key) box.querySelector(key)?.focus();
+  }
+  const paintMeta = () => { paintBadge(); paintLive(); paintRest(); };
   function clear() {
     if (!counter.count) return;
     counter.clear();
     clearTimeout(timer);
     stopListening();
-    paintMeta();
+    paintBadge();
   }
   function stopListening() {
     if (!listening) return;
@@ -230,7 +263,7 @@ export function liveNews({ body, meta = null, metaHtml = () => '', ctx, marker =
   function setLive(on) {
     if (streaming === Boolean(on)) return;
     streaming = Boolean(on);
-    paintMeta();
+    paintLive();
   }
   return { show, paintMeta, clear, setLive };
 }
@@ -315,7 +348,7 @@ export function newsStream({ tabs, onItems, onState = () => {}, ctx = {}, ES = g
   return { get live() { return live; }, get gaveUp() { return gaveUp; } };
 }
 
-// ---- Hour rules and "Since your last visit" (NEWS only; the HOME box stays plain) ------
+// ---- Hour rules and "Before your last visit" (NEWS only; the HOME box stays plain) ------
 
 // A row's hour for the rules between hours: today "h:14" (label 14:00), an older day
 // "d:2026-09-24" (label SEP 24), New York time. null for no time.
@@ -328,7 +361,7 @@ export function hourOf(iso, now = new Date()) {
   return { key: `h:${h}`, label: `${h}:00` };
 }
 
-export const SINCE_LINE = 'Since your last visit';
+export const VISIT_LINE = 'Before your last visit';
 export const SEEN_KEY = 'bb.news.seen';
 export const SEEN_MS = 10_000; // the list on show this long counts as seen
 
@@ -365,7 +398,7 @@ export function writeSeen(store, tab, iso) {
 }
 
 // items -> <ol class="news">. Options (NEWS only): hours, a thin rule with the hour as a
-// small dim label between two hours; since, the time seen last visit: one line "Since
+// small dim label between two hours; since, the time seen last visit: one line "Before
 // your last visit" above the older stories (only with newer ones above it).
 export function newsList(items, { hours = false, since = null, now = new Date() } = {}) {
   const list = dedupeNews(items).filter((n) => safeHref(n.link));
@@ -382,7 +415,7 @@ export function newsList(items, { hours = false, since = null, now = new Date() 
     const filing = 'ticker' in n;
     let before = '';
     const hr = hours ? hourOf(n.time, now) : null;
-    if (i === sinceAt) before = `<li class="news-since" role="separator"><span class="news-since-l">${esc(SINCE_LINE)}</span></li>`;
+    if (i === sinceAt) before = `<li class="news-since" role="separator"><span class="news-since-l">${esc(VISIT_LINE)}</span></li>`;
     else if (hr && prevHour && hr.key !== prevHour) before = `<li class="news-hour" aria-hidden="true"><span class="news-hour-l num">${esc(hr.label)}</span></li>`;
     if (hr) prevHour = hr.key;
     return `${before}<li class="news-row${filing && !n.ticker ? ' is-dim' : ''}" data-k="${esc(newsKey(n))}">
@@ -418,7 +451,7 @@ export function render(el, cmd, ctx) {
   const live = liveNews({ body, meta: metaEl, metaHtml: () => sourceToggles(sources, src, tab), ctx, marker: true });
   const tabs = segmented(NEWS_TABS.map((t) => ({ label: t, cmd: tabCommand(t) })), tab, { label: 'News tab' });
 
-  // "Since your last visit": the newest time seen last visit (fixed for this visit), and
+  // "Before your last visit": the newest time seen last visit (fixed for this visit), and
   // the newest seen now, kept when the reader leaves NEWS, hides the page, or has had the
   // list on show for SEEN_MS.
   const since = readSeen(ctx.store, tab);
@@ -440,11 +473,8 @@ export function render(el, cmd, ctx) {
     sources = [...new Set(data.sources.map(shortSource))];
     if (!sources.includes(src)) src = 'ALL';
     const items = dedupeNews(filterNews(data.items, src));
-    // A toggle in the strip that had the focus keeps it through the repaint.
-    const focused = metaEl.contains(document.activeElement) ? document.activeElement.className : null;
     bar.innerHTML = toolbar({ left: tabs, label: 'News' });
     live.show(data.items, items, items.length ? newsList(items, { hours: true, since }) : '<p class="panel-msg">NO DATA</p>');
-    if (focused) metaEl.querySelector(focused.includes('news-src-one') ? '.news-src-one' : '.seg-item.is-active')?.focus();
     newest = newestTime([{ time: newest }, ...data.items]);
     if (!seenTimer) seenTimer = setTimeout(remember, SEEN_MS);
   }

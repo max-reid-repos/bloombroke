@@ -55,6 +55,7 @@ export class El {
   matches(sel) { return splitList(sel).some((one) => matchOne(this, one.trim())); }
   querySelectorAll(sel) { return [...this.all()].filter((e) => e.matches(sel)); }
   querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
+  contains(n) { for (; n; n = n.parent) if (n === this) return true; return false; }
   closest(sel) { let n = this; while (n instanceof El) { if (n.matches(sel)) return n; n = n.parent; } return null; }
 }
 // Commas outside brackets and parentheses.

@@ -774,13 +774,15 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .news-time .nt-s { display: none; }
 .news-src { color: var(--dim); font-size: 11px; letter-spacing: .04em; } /* the third colour: the strip has the sources (rule B) */
 /* NEWS: a thin rule between two hours, the hour a small dim label on it; one line where
-   the stories since the last visit end (news.js newsList). */
+   the stories from before the last visit start (news.js newsList). */
 .news-hour, .news-since { display: flex; align-items: center; gap: 8px; height: 16px; padding: 0 10px; }
 .news-hour::after, .news-since::after { content: ''; flex: 1 1 auto; height: 1px; background: var(--rule-strong); }
 .news-hour-l { font-size: 11px; letter-spacing: .06em; color: var(--dim); }
 .news-since { height: 20px; }
 .news-since::after { background: var(--accent); }
 .news-since-l { font-size: 12px; letter-spacing: .04em; color: var(--accent); }
+/* The strip's slots (news.js liveNews): repainted one by one, no box of their own. */
+.news-slot { display: contents; }
 /* The source toggles in the title strip: the kit's segmented, strip height. A phone gets
    one button that steps through them instead. */
 .news-srcs { display: flex; align-items: center; }
@@ -1046,10 +1048,11 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .wl-export input:focus, .pf-export textarea:focus, .pf-import textarea:focus { outline: 1px solid var(--accent); outline-offset: 0; }
 .pf-btn {
   display: inline-flex; align-items: center; height: 24px; padding: 0 12px;
-  border: 1px solid var(--primary); background: var(--primary); color: var(--ink);
+  border: 1px solid var(--accent); background: transparent; color: var(--accent);
   font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .1em; cursor: pointer; white-space: nowrap;
 }
-.pf-btn:hover { text-decoration: none; background: var(--primary-hover); border-color: var(--primary-hover); }
+/* An outline by default; the page's one action adds .btn-solid for the white fill (rule C). */
+.pf-btn:hover { text-decoration: none; background: var(--accent-tint); }
 .wl-empty, .pf-empty { padding: 10px; line-height: 2; }
 .wl-empty .code, .pf-empty .code { margin: 0 4px; }
 
@@ -1081,7 +1084,7 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
   border: 1px solid var(--rule-strong); background: transparent; color: var(--text-2);
   font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .08em; cursor: pointer; white-space: nowrap;
 }
-.desk-btn:hover { color: var(--ink); background: var(--accent); border-color: var(--accent); }
+.desk-btn:hover { color: var(--accent); background: var(--accent-tint); border-color: var(--accent); } /* a key tints (rule C) */
 
 .dp { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); outline: 1px solid var(--rule-strong); }
 .dp.is-focused { box-shadow: inset 0 0 0 1px var(--accent); z-index: 1; }
@@ -1248,10 +1251,11 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 /* --- ALERTS (price and gauge alerts) -------------------------------------------- */
 .status-alerts {
   margin-left: auto; height: 16px; padding: 0 6px;
-  border: 0; background: var(--accent); color: var(--ink);
-  font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .08em; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent-tint); color: var(--accent);
+  font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .08em; line-height: 14px; cursor: pointer;
 }
-.status-alerts:hover { background: var(--text); }
+/* A button, so an outline (rule C): it tints, never fills. */
+.status-alerts:hover { color: var(--text); border-color: var(--text); }
 .status-alerts[hidden] { display: none; }
 /* --- end ALERTS ----------------------------------------------------------------- */
 

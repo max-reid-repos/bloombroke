@@ -185,7 +185,7 @@ export function render(el, cmd, ctx) {
     if (!warn) savePortfolio(ctx.store, holdings);
   } else if (a.action === 'export') {
     const csv = toCsv(holdings);
-    extra = `<div class="pf-export"><textarea readonly rows="${Math.min(8, holdings.length + 1)}" aria-label="Your holdings as CSV" data-own-focus>${esc(csv)}</textarea><a class="pf-btn" download="bloombroke-portfolio.csv" href="data:text/csv;charset=utf-8,${encodeURIComponent(csv)}">DOWNLOAD CSV</a></div>`;
+    extra = `<div class="pf-export"><textarea readonly rows="${Math.min(8, holdings.length + 1)}" aria-label="Your holdings as CSV" data-own-focus>${esc(csv)}</textarea><a class="pf-btn btn-solid" download="bloombroke-portfolio.csv" href="data:text/csv;charset=utf-8,${encodeURIComponent(csv)}">DOWNLOAD CSV</a></div>`;
     msg = holdings.length ? 'Copying your holdings as CSV...' : 'No holdings to export.';
     if (holdings.length) {
       ctx.copy(csv).then((ok) => {
