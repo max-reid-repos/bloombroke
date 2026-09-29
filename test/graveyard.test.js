@@ -11,10 +11,11 @@ import { nosuchMeta, stoneDescription, tombstoneTree, makeNoSuchCards, parseBloc
 import { securityHeaders } from '../lib/embed.js';
 import { sitemapUrls, graveyardSitemapUrls } from '../lib/seo.js';
 import { parseCommand } from '../public/app.js';
+import { wireNoSuch } from '../public/screens/nosuch.js';
 import { stoneYears, respectsText, onThisDayLine, ytEmbed, periodText, sectionOf, SECTIONS, siteCaption, timelinePoints, cliffOf, GRAVEYARD_VIEWS } from '../public/nosuch.js';
 import {
   stoneHtml, stonePageHtml, stoneSlots, stoneFacts, peakLineHtml, moreLinks, siteLabel, candlesHtml, candlesFor, MAX_CANDLES, revealText, engraving, shortName, diedVerb,
-  rowsOf, rowHtml, plotHtml, cemeteryHtml, heroPick, heroLine, stepGrid, liveHtml, loadLive, tipText, HINT, ROWS, wireRespects, showRespects,
+  rowsOf, rowHtml, plotHtml, cemeteryHtml, heroPick, heroLine, stepGrid, liveHtml, loadLive, tipText, HINT, STONE_HINT, ROWS, wireRespects, showRespects,
   graveyardTable, onThisDayHtml, sourcesHtml, pageSources, sceneKeys, respectStatus, timelineHtml,
 } from '../public/screens/graveyard.js';
 
@@ -326,7 +327,11 @@ test('cemetery: the sky band opens LATEST, or ON THIS DAY only on a real anniver
   assert.equal(heroPick([], '2026-09-15'), null);
   const html = cemeteryHtml(rowsOf(real.stones, real.zombies), { stone: '/s.webp', yard: '/img/graveyard/cemetery-empty.webp' }, latest);
   assert.match(html, /<div class="gv-sky">\s*<img class="gv-sky-art" src="\/img\/graveyard\/cemetery-empty\.webp" width="1536" height="1024" alt="">/, 'the band is cut from the painting');
-  assert.match(html, /<a class="gv-hero" href="\?c=GRAVEYARD\+NKLA" data-cmd="GRAVEYARD NKLA" data-hero>\s*<span class="tag gv-kicker">Latest<\/span>\s*<span class="gv-hero-line"><span class="gv-hero-name">Nikola<\/span> · NKLA · filed 2025 <kbd>Enter<\/kbd><\/span>/);
+  assert.match(html, /<a class="gv-hero" href="\?c=GRAVEYARD\+NKLA" data-cmd="GRAVEYARD NKLA" data-hero>\s*<span class="tag gv-kicker">Latest<\/span>\s*<span class="gv-hero-line"><span class="gv-hero-name">Nikola<\/span> · NKLA · filed 2025 <kbd data-enter title="Enter in the empty command bar opens it">Enter<\/kbd><\/span>/);
+  // The badge follows the stone Enter opens (the sky band's by default).
+  const gsrc = readFileSync(new URL('../public/screens/graveyard.js', import.meta.url), 'utf8');
+  assert.match(gsrc, /if \(badge\) badge\.hidden = on !== heroAt;/);
+  assert.match(gsrc, /pick\(heroAt, \{ scroll: false \}\);/, 'the sky band\'s stone is picked from the start');
   // The verbs for each way to die.
   assert.deepEqual(['Filed for bankruptcy', 'Bought by Microsoft', 'Seized, sold to JPMorgan', 'Bank closed by regulators', 'Taken private', 'Shut down', 'Announced shutdown', 'Delisted from Nasdaq', 'Core business sold to Verizon'].map((what) => diedVerb({ what })),
     ['filed', 'bought out', 'seized', 'seized', 'went private', 'shut down', 'shut down', 'delisted', 'bought out']);
@@ -352,6 +357,11 @@ test('cemetery: CAME BACK row: a one-line name, the years, the live price; no nu
   assert.equal(liveHtml(gm, { last: 79.84, changePct: 1.2 }), '<span class="num">$79.84</span> <span class="num up">+1.20%</span>');
   assert.equal(liveHtml(gm, null), '');
   assert.equal(liveHtml(gm, { last: null }), '', 'no price, no numbers');
+  // A stale quote never looks live: dim, with the day of its last trade, no change.
+  assert.equal(liveHtml(gm, { last: 79.84, changePct: 1.2, stale: true, asOf: '2026-09-26T16:00:00.000-0400' }), '<span class="gv-stale"><span class="num">$79.84</span> on 26 Sep</span>');
+  assert.equal(liveHtml(amr, { last: 13.48, changePct: -0.3, stale: true, asOf: '2026-09-26' }), '<span class="gv-stale">AAL <span class="num">$13.48</span> on 26 Sep</span>');
+  assert.equal(liveHtml(gm, { last: 79.84, stale: true }), '', 'stale without a day: nothing');
+  assert.doesNotMatch(liveHtml(gm, { last: 79.84, changePct: 1.2, stale: true, asOf: '2026-09-26' }), /up|down|%/);
   // One /api/quotes call; a failure leaves the slots empty.
   const slots = new Map(real.zombies.filter((z) => z.tradesAs).map((z) => [z.tradesAs, { innerHTML: '' }]));
   const el = { isConnected: true, querySelector: (s) => slots.get(/data-live="([A-Z]+)"/.exec(s)?.[1]) || null };
@@ -380,7 +390,8 @@ test('cemetery: ZOMBIES is an alias for the CAME BACK row; the separate screen a
 });
 
 test('cemetery: arrows move, Enter opens, TABLE lists; the hover shows respects only above zero', () => {
-  assert.equal(HINT, 'arrows move · Enter opens · TABLE lists');
+  assert.equal(HINT, 'Enter opens · Esc, then arrows move · TABLE lists');
+  assert.equal(STONE_HINT, 'Esc, then F pays respects · Esc back');
   const src = readFileSync(new URL('../public/screens/graveyard.js', import.meta.url), 'utf8');
   assert.match(src, /ctx\.status\(HINT\);/);
   assert.doesNotMatch(src, /ESC THEN ARROWS/);
@@ -506,7 +517,7 @@ test('stone page: respects hidden at zero; F lights a candle and reveals the cou
     if (saved.document === undefined) delete globalThis.document; else globalThis.document = saved.document;
   }
   const src = readFileSync(new URL('../public/screens/graveyard.js', import.meta.url), 'utf8');
-  assert.match(src, /ctx\.status\('F pays respects · Esc back'\);/);
+  assert.match(src, /ctx\.status\(STONE_HINT\);/);
 });
 
 test('router: GRAVEYARD views and stones', () => {
@@ -523,6 +534,11 @@ test('ON THIS DAY rows and the table', () => {
   assert.ok(t.indexOf('GRAVEYARD BBI') < t.indexOf('GRAVEYARD LEH'), 'most mourned first');
   const n = graveyardTable(DATA.stones, {}, {});
   assert.ok(n.indexOf('GRAVEYARD BBI') < n.indexOf('GRAVEYARD LEH'), 'newest first');
+  // Respects: the count above zero, an empty cell at zero (never "0").
+  const cells = (html) => [...html.matchAll(/<td class="num ns-what">([^<]*)<\/td>/g)].map((m) => m[1]);
+  assert.deepEqual(cells(n), ['', ''], 'zero: empty cells');
+  assert.deepEqual(cells(graveyardTable(DATA.stones, { LEH: 1234 }, {})), ['', '1,234']);
+  assert.deepEqual(cells(graveyardTable(DATA.stones, { LEH: 0, BBI: -1 }, {})), ['', '']);
   const g = graveyardTable(loadGraveyardData().stones, {}, { grouped: true });
   const heads = [...g.matchAll(/<tr class="gv-sec"><th scope="rowgroup" colspan="6">([^<]+)</g)].map((m) => m[1]);
   assert.deepEqual(heads, ['BOUGHT OUT', 'RECENT', '2008 CRISIS', 'DOT-COM'], 'grouped by the same sections');
@@ -651,6 +667,28 @@ test('scene keys: never while the command bar has the focus (F, FX, T, TSLA, arr
     assert.equal(ev.defaultPrevented && ev.stopped, true, `${k} on the scene`);
   }
   assert.deepEqual(used, ['F', 'T', 'ArrowUp', 'Enter']);
+  // Enter in the EMPTY bar opens the stone picked (the cemetery's barEnter); with text in the
+  // bar, or its suggestion list open, Enter runs the bar; F in the bar is typing.
+  const q = fakePage();
+  const opened = [];
+  const stopQ = sceneKeys(q.scene, () => false, { doc: q.doc, barEnter: () => { opened.push('stone'); return true; } });
+  let ev = q.press('Enter');
+  assert.equal(ev.defaultPrevented && ev.stopped, true, 'Enter from the empty bar opens the stone');
+  assert.deepEqual(opened, ['stone']);
+  q.bar.value = 'AAPL';
+  ev = q.press('Enter');
+  assert.equal(ev.defaultPrevented || ev.stopped, false, 'Enter with text runs the text');
+  q.bar.value = '';
+  for (const ch of 'FX') { ev = q.press(ch); assert.equal(ev.defaultPrevented || ev.stopped, false, `${ch} in the bar is typing`); }
+  ev = q.press('F');
+  assert.equal(ev.defaultPrevented, false, 'F in the empty bar types F');
+  stopQ();
+  const list = { hidden: false };
+  const doc2 = { ...q.doc, getElementById: (id) => (id === 'cmd' ? q.bar : id === 'suggest' ? list : null) };
+  const stop2 = sceneKeys(q.scene, () => false, { doc: doc2, barEnter: () => { opened.push('again'); return true; } });
+  assert.equal(q.press('Enter').defaultPrevented, false, 'a suggestion open: Enter picks it, as always');
+  assert.deepEqual(opened, ['stone'], 'nothing opened with the list open');
+  stop2();
   const x = p.press('x', p.scene);
   assert.equal(x.defaultPrevented, false, 'other keys still go to the bar');
   const field = { closest: () => ({}) };
@@ -667,4 +705,31 @@ test('scene keys: the stone, cemetery and table screens use them; hints in the s
   assert.equal((src.match(/sceneKeys\(el,/g) || []).length, 3, 'stone (with respects), cemetery, table');
   assert.match(src, /\['Keys', 'Esc, then F pays respects\.'\]/, 'the stone card says it in + Details');
   assert.match(src, /if \(ev\.key === 't' \|\| ev\.key === 'T'\) \{ ctx\.run\('GRAVEYARD TABLE'\); return true; \}/, 'T lists');
+});
+
+test('the LEH card (NO SUCH): wireNoSuch lights the candles but never writes a count before F', async () => {
+  const leh = withArt(loadGraveyardData().stones.find((e) => e.ticker === 'LEH'), { stone: '/img/graveyard/stone.webp', doodles: ['LEH'] });
+  const reveal = { hidden: true, textContent: '' };
+  const candles = { innerHTML: '' };
+  const el = {
+    isConnected: true, dataset: {}, classList: { add() {} },
+    querySelector: (sel) => ({ '[data-reveal]': reveal, '[data-candles]': candles }[sel] || null),
+    querySelectorAll: () => [], addEventListener() {}, removeEventListener() {},
+  };
+  const saved = { fetch: globalThis.fetch, document: globalThis.document };
+  try {
+    globalThis.document = { getElementById: () => null, addEventListener() {}, removeEventListener() {} };
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ counts: { LEH: 12 } }) });
+    const stop = wireNoSuch(el, 'LEH', { grave: leh });
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal((candles.innerHTML.match(/<svg class="gv-candle/g) || []).length, 12, 'the candles for what others paid');
+    assert.equal(reveal.hidden, true, 'the count stays hidden');
+    assert.equal(reveal.textContent, '', 'no count written');
+    stop();
+  } finally {
+    globalThis.fetch = saved.fetch;
+    if (saved.document === undefined) delete globalThis.document; else globalThis.document = saved.document;
+  }
+  const src = readFileSync(new URL('../public/screens/nosuch.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /data-count|respectsText/, 'no count text in NO SUCH');
 });

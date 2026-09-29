@@ -343,8 +343,11 @@ export function stonePageHtml(e, n = 0) {
 // while the command bar does NOT have the focus: typing F, FX, T or TSLA, and arrow-key
 // history, always go to the bar. Esc in an empty bar moves the focus to the scene (a second
 // Esc goes back a screen as usual), and so does a click or tap on the scene. onKey(ev)
-// returns true when it used the key. Returns a cleanup.
-export function sceneKeys(scene, onKey, { doc = globalThis.document } = {}) {
+// returns true when it used the key. barEnter (the cemetery): Enter in the EMPTY bar (no
+// suggestion list open) calls it, and when it returns true the key is used, as NOT A
+// TICKER's panel does; Enter with text in the bar still runs that text. Never F or any
+// other letter from the bar (FX, FISHTANK, FEEDBACK). Returns a cleanup.
+export function sceneKeys(scene, onKey, { doc = globalThis.document, barEnter = null } = {}) {
   scene.tabIndex = -1;
   scene.dataset.ownFocus = '';
   scene.classList.add('gv-scene');
@@ -354,6 +357,10 @@ export function sceneKeys(scene, onKey, { doc = globalThis.document } = {}) {
     const bar = doc.getElementById?.('cmd');
     if (t === bar || t?.id === 'cmd') {
       const listOpen = doc.getElementById?.('suggest') && !doc.getElementById('suggest').hidden;
+      if (barEnter && ev.key === 'Enter' && !t.value && !listOpen && !ev.defaultPrevented && !ev.isComposing && !ev.repeat && scene.isConnected !== false) {
+        if (barEnter() === true) { ev.preventDefault(); ev.stopPropagation(); }
+        return;
+      }
       if (ev.key === 'Escape' && !t.value && !listOpen && !ev.defaultPrevented && scene.isConnected !== false) {
         ev.preventDefault();
         scene.focus?.({ preventScroll: true });
@@ -407,7 +414,10 @@ export function wireRespects(el, ticker, { status = () => {} } = {}) {
 // first, and the CAME BACK row (the companies that died and came back, with their live
 // price where they trade today). The rows wrap; the panel ends after the last one.
 export const ROWS = [...['RECENT', 'CRISIS', 'DOTCOM', 'BOUGHT'].map((id) => SECTIONS.find((x) => x.id === id)), { id: 'BACK', label: 'CAME BACK' }];
-export const HINT = 'arrows move · Enter opens · TABLE lists';
+// The command bar has the focus after every run: Enter in the empty bar opens the stone
+// picked (the sky band's by default); the arrows need Esc first (sceneKeys).
+export const HINT = 'Enter opens · Esc, then arrows move · TABLE lists';
+export const STONE_HINT = 'Esc, then F pays respects · Esc back';
 
 // The rows with their stones, newest first in each; empty rows left out.
 export function rowsOf(entries = [], zombies = []) {
@@ -432,15 +442,22 @@ function skyHtml(hero, bg) {
       ${bg ? `<img class="gv-sky-art" src="${esc(bg)}" width="1536" height="1024" alt="">` : ''}
       ${e ? `<a class="gv-hero" href="${esc(q(`GRAVEYARD ${e.ticker}`))}" data-cmd="${esc(`GRAVEYARD ${e.ticker}`)}" data-hero>
         <span class="tag gv-kicker">${esc(hero.kicker)}</span>
-        <span class="gv-hero-line"><span class="gv-hero-name">${esc(e.name)}</span> · ${esc(e.ticker)} · ${esc(`${diedVerb(e)} ${year(e.date)}`)} <kbd>Enter</kbd></span>
+        <span class="gv-hero-line"><span class="gv-hero-name">${esc(e.name)}</span> · ${esc(e.ticker)} · ${esc(`${diedVerb(e)} ${year(e.date)}`)} <kbd data-enter title="Enter in the empty command bar opens it">Enter</kbd></span>
       </a>` : ''}
     </div>`;
 }
 
 // The live price where a company that came back trades today: '$79.84 -1.01%' ('AAL
 // $12.30 +0.4%' when that is another ticker). Nothing without a price.
+// A stale quote (quote.stale) never looks live: the price dim, with its last trade's day
+// ('$1.72 on 26 Sep'), and no change; without a readable day, nothing.
 export function liveHtml(e, quote) {
   if (!e?.tradesAs || !quote || !Number.isFinite(quote.last)) return '';
+  if (quote.stale) {
+    const day = /^(\d{4}-\d{2}-\d{2})/.exec(String(quote.asOf || ''))?.[1];
+    if (!day) return '';
+    return `<span class="gv-stale">${e.tradesAs !== e.ticker ? `${esc(e.tradesAs)} ` : ''}<span class="num">$${esc(fmtNum(quote.last))}</span> on ${esc(dayText(day).replace(/ \d{4}$/, ''))}</span>`;
+  }
   const dir = quote.changePct > 0 ? 'up' : quote.changePct < 0 ? 'down' : '';
   const pct = Number.isFinite(quote.changePct) ? ` <span class="num${dir ? ` ${dir}` : ''}">${esc(fmtPct(quote.changePct))}</span>` : '';
   return `${e.tradesAs !== e.ticker ? `${esc(e.tradesAs)} ` : ''}<span class="num">$${esc(fmtNum(quote.last))}</span>${pct}`;
@@ -517,13 +534,24 @@ function renderCemetery(el, data, ctx, { at = '' } = {}) {
     cls: 'panel-solo gv-panel', meta: `${metaNote(`${all.length} STONES`)} · ${code('GRAVEYARD TABLE', 'TABLE')}`,
   });
   const plots = [...el.querySelectorAll('.gv-plot')];
+  const heroAt = hero ? all.indexOf(hero.e) : -1;
+  const badge = el.querySelector('[data-enter]');
   let on = -1;
-  const pick = (i) => {
+  // The stone Enter opens: the sky band's by default. Its badge shows only while it is.
+  const pick = (i, { scroll = true } = {}) => {
     if (i < 0 || i >= plots.length) return;
     plots[on]?.classList.remove('is-on');
     on = i;
     plots[on].classList.add('is-on');
-    plots[on].scrollIntoView?.({ block: 'nearest' });
+    if (badge) badge.hidden = on !== heroAt;
+    if (scroll) plots[on].scrollIntoView?.({ block: 'nearest' });
+  };
+  pick(heroAt, { scroll: false });
+  const open = () => {
+    const e = on >= 0 ? all[on] : hero?.e;
+    if (!e) return false;
+    ctx.run(`GRAVEYARD ${e.ticker}`);
+    return true;
   };
   const places = () => plots.map((p) => { const r = p.getBoundingClientRect(); return { x: r.left, y: r.top }; });
   loadRespects(ctx.signal).then((fresh) => {
@@ -532,21 +560,11 @@ function renderCemetery(el, data, ctx, { at = '' } = {}) {
   });
   loadLive(el, data.zombies, { signal: ctx.signal });
   ctx.onCleanup(sceneKeys(el, (ev) => {
-    if (ev.key.startsWith('Arrow')) {
-      // The first arrow picks the stone the sky band names; then they walk.
-      if (on < 0) pick(Math.max(0, all.indexOf(hero?.e)));
-      else pick(stepGrid(places(), on, ev.key));
-      return true;
-    }
-    if (ev.key === 'Enter' && !ev.target.closest?.('a, button')) {
-      const e = on >= 0 ? all[on] : hero?.e;
-      if (!e) return false;
-      ctx.run(`GRAVEYARD ${e.ticker}`);
-      return true;
-    }
+    if (ev.key.startsWith('Arrow')) { pick(stepGrid(places(), on, ev.key)); return true; }
+    if (ev.key === 'Enter' && !ev.target.closest?.('a, button')) return open();
     if (ev.key === 't' || ev.key === 'T') { ctx.run('GRAVEYARD TABLE'); return true; }
     return false;
-  }));
+  }, { barEnter: open }));
   // GRAVEYARD ZOMBIES: the CAME BACK row, its first stone picked.
   if (at === 'BACK') {
     const row = el.querySelector('#gv-row-BACK');
@@ -571,7 +589,7 @@ export function graveyardTable(list, n = {}, { mourned = false, grouped = false 
       <td class="ns-cell">${esc(e.name)}</td>
       <td class="ns-what ns-cell dim">${esc(e.what)}</td>
       <td class="num">${esc(dayText(e.date))}</td>
-      <td class="num ns-what">${esc((n[e.ticker] || 0).toLocaleString('en-US'))}</td>
+      <td class="num ns-what">${n[e.ticker] > 0 ? esc(n[e.ticker].toLocaleString('en-US')) : ''}</td>
       <td class="ns-srccol">${ext(e.src[0], srcHost(e.src[0]))}</td>
     </tr>`;
   const body = grouped
@@ -607,7 +625,7 @@ function renderStone(el, e, ctx) {
   loadRespects(ctx.signal).then((n) => { if (el.isConnected) showRespects(el, n[e.ticker] || 0); });
   ctx.onCleanup(wireRespects(el, e.ticker, { status: ctx.status }));
   goal('graveyard_seen', null, { once: e.ticker });
-  ctx.status('F pays respects · Esc back');
+  ctx.status(STONE_HINT);
 }
 
 export function renderGraveyard(el, cmd, ctx) {
