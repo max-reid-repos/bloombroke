@@ -7,12 +7,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  encode, decode, draw, spriteHex, PALETTE, colorFor, dayKey, spotsFor, budget, hash,
+  encode, decode, draw, spriteHex, PALETTE, colorFor, dayKey, spotsFor, hash,
 } from '../public/globe-sprites.js';
 import {
-  mountGlobe, clampZoom, zoomAt, unortho, ortho, wheelFactor, overGlobe, levelFor, spritePx, perPlace, layoutSprites,
-  pickSprite, lodLand, lodReady, inLens, LOD_WAIT_MS, WORLD_RETRY_MS, landOf, worldDots, wrapLon, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, SPRITE_CAP, PLACE_Z1, TILT, IDLE_MS,
+  mountGlobe, clampZoom, zoomAt, unortho, ortho, wheelFactor, overGlobe, levelFor,
+  pickSprite, lodLand, lodReady, inLens, LOD_WAIT_MS, WORLD_RETRY_MS, landOf, worldDots, wrapLon, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, TILT, IDLE_MS,
 } from '../public/globe.js';
+import { groupOf, CRITTER_CAP } from '../public/globe-cluster.js';
 
 const WORLD = JSON.parse(readFileSync('public/geo/world-110m.json', 'utf8'));
 const GEO = JSON.parse(readFileSync('public/geo/globe-dots.json', 'utf8'));
@@ -104,7 +105,7 @@ test('draw(): whole pixels, one rectangle per run of lit pixels, at the given si
 
 // ---- where they go ------------------------------------------------------------------------
 
-test('a bunch: grid spots nearest first, never two figures on one another (up to 20 and past)', () => {
+test('a small place\'s group: grid spots nearest first, never two critters on one another', () => {
   for (let n = 1; n <= 20; n++) {
     const s = spotsFor(n);
     assert.equal(s.length, n);
@@ -112,59 +113,26 @@ test('a bunch: grid spots nearest first, never two figures on one another (up to
     assert.ok(s.every((p) => p.every(Number.isInteger)), 'whole grid steps');
     assert.deepEqual(s[0], [0, 0], 'the first on the place itself');
     for (let i = 1; i < n; i++) assert.ok(Math.hypot(...s[i]) >= Math.hypot(...s[i - 1]) - 1e-9, 'nearest first');
-    // Laid out: no two figures overlap, and the bunch is tight.
-    const [laid] = layoutSprites([{ x: 100, y: 100, count: n }], { pitch: 18, size: 16 });
-    assert.equal(laid.sprites.length, n);
+    const g = groupOf(n, true);
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
-        const [a, b] = [laid.sprites[i], laid.sprites[j]];
-        assert.ok(Math.abs(a[0] - b[0]) >= 16 || Math.abs(a[1] - b[1]) >= 16, `n=${n}: ${i} and ${j} overlap`);
+        const [a, b] = [g.spots[i], g.spots[j]];
+        assert.ok(Math.abs(a[0] - b[0]) >= g.size || Math.abs(a[1] - b[1]) >= g.size, `n=${n}: ${i} and ${j} overlap`);
       }
     }
-    assert.ok(laid.box[2] - laid.box[0] <= 18 * (Math.ceil(Math.sqrt(n)) + 1), `n=${n}: tight`);
+    for (const [x, y] of g.spots) assert.ok(Math.abs(x) + g.size / 2 <= g.w / 2 + 1e-9 && Math.abs(y) + g.size / 2 <= g.h / 2 + 1e-9, 'inside its box, centred on the place');
   }
 });
 
-test('bunches next to each other: none of their figures overlap; the smaller goes round the bigger', () => {
-  // Tokyo and Yokohama, a pixel apart at 1x; three more places close by.
-  const places = [{ x: 100, y: 100, count: 9 }, { x: 101, y: 101, count: 3 }, { x: 120, y: 95, count: 12 }, { x: 60, y: 130, count: 5 }, { x: 100, y: 100, count: 20 }];
-  const laid = layoutSprites(places, { pitch: 18, size: 16 });
-  const all = laid.flatMap((p, k) => p.sprites.map((s) => [...s, k]));
-  assert.equal(all.length, 49, 'every figure placed');
-  for (let i = 0; i < all.length; i++) {
-    for (let j = i + 1; j < all.length; j++) {
-      const [a, b] = [all[i], all[j]];
-      assert.ok(Math.abs(a[0] - b[0]) >= 17.99 || Math.abs(a[1] - b[1]) >= 17.99, `${a} and ${b}`);
-    }
-  }
-  assert.deepEqual(laid[0].sprites[0], [92, 92], 'the biggest first place keeps its middle');
-  // Hover a figure: its own place, even inside the other's bunch.
-  const placed = laid.map((p, k) => ({ item: { n: p.count, k }, x: p.x, y: p.y, r: 10, size: 16, sprites: p.sprites }));
-  const [sx, sy] = laid[1].sprites[0];
-  assert.equal(pickSprite(placed, sx + 8, sy + 8).item.k, 1);
+test('hover and tap: the critter or its count under the pointer, else the nearest cluster', () => {
+  const placed = [
+    { item: { n: 12, k: 0 }, x: 100, y: 100, r: 20, size: 24, sprites: [[80, 88]], label: [106, 93, 18, 14] },
+    { item: { n: 3, k: 1 }, x: 160, y: 100, r: 20, size: 16, sprites: [[140, 92]], label: [158, 93, 11, 14] },
+  ];
+  assert.equal(pickSprite(placed, 90, 95).item.k, 0, 'the critter');
+  assert.equal(pickSprite(placed, 120, 100).item.k, 0, 'its count');
+  assert.equal(pickSprite(placed, 160, 100).item.k, 1);
   assert.equal(pickSprite(placed, 400, 400), null);
-});
-
-test('the cap: at most 240 figures in all, the biggest places give way first; the rest is +N', () => {
-  assert.equal(SPRITE_CAP, 240);
-  assert.deepEqual(budget([5, 3, 0]), [5, 3, 0], 'room for all');
-  const counts = [500, 300, 120, 40, 9, 3];
-  const b = budget(counts, { cap: SPRITE_CAP });
-  assert.equal(b.reduce((s, x) => s + x, 0), SPRITE_CAP);
-  assert.deepEqual(b.slice(3), [40, 9, 3], 'small places keep all theirs');
-  assert.ok(b[0] >= b[1] && b[1] >= b[2] && b[2] > 40, `${b}`);
-  assert.ok(b[0] - b[2] <= 1, 'the big ones share the rest evenly');
-  const more = counts.map((c, i) => c - b[i]);
-  assert.ok(more[0] > 0 && more[5] === 0, '+N only on the big ones');
-  // Per place at this zoom, then the cap.
-  assert.deepEqual(budget([38, 15, 9, 3], { perPlace: 9 }), [9, 9, 9, 3]);
-  assert.deepEqual(budget([1000], { cap: 240, perPlace: 9 }), [9]);
-  assert.equal(budget(Array(100).fill(10), { cap: 240 }).reduce((s, x) => s + x, 0), 240);
-  assert.deepEqual(budget([NaN, -3, 2.7]), [0, 0, 2]);
-  assert.equal(perPlace(1), PLACE_Z1);
-  assert.ok(perPlace(2) === PLACE_Z1 * 4 && perPlace(6) >= SPRITE_CAP, 'zoomed in, a place shows more');
-  assert.equal(spritePx(1), 2, '2 px a pixel at 1x: a 16 px figure');
-  assert.ok(spritePx(3) === 3 && spritePx(6) === 4, 'a little bigger zoomed in');
 });
 
 // ---- zoom -----------------------------------------------------------------------------------
@@ -309,41 +277,75 @@ const FIX = {
   ],
 };
 const tick = () => new Promise((r) => { setImmediate(r); });
+// 10,000 visitors in 500 places round ten busy cities (whole degrees, like the server's).
+function synth(visitors, places, seed = 7) {
+  let a = seed;
+  const r = () => { a = (a * 1103515245 + 12345) % 2147483648; return a / 2147483648; };
+  const hubs = [[-74, 41], [-122, 38], [0, 52], [13, 53], [140, 36], [77, 28], [-46, -23], [151, -34], [37, 56], [-99, 25]];
+  const out = [];
+  for (let i = 0; i < places; i++) {
+    const h = hubs[i % hubs.length];
+    out.push({ kind: 'city', cc: `C${i % 40}`, name: `Place ${i}`, at: [Math.round(h[0] + (r() - 0.5) * 40), Math.round(h[1] + (r() - 0.5) * 24)], n: 1, live: i % 97 === 0 });
+  }
+  let left = visitors - places;
+  for (let i = 0; left > 0; i = (i + 1) % places) { const k = Math.min(left, Math.ceil(r() * r() * 60)); out[i].n += k; left -= k; }
+  return out;
+}
+const HEAVY = synth(10000, 500);
 
-test('mounted: a figure per visitor on the near side, the far side hidden, +N past a place\'s share', () => {
+test('mounted: nearby places are one critter with a count; the far side is hidden; zoom in and they split', () => {
   const p = page();
   const g = mountGlobe(p.canvas, GEO, FIX, p.opts);
-  // It starts facing the US: New York, Chicago and the rest of the US; Japan is behind.
-  const names = g.placed.filter((x) => x.item.n > 0).map((x) => x.item.name || x.item.cc).sort();
-  assert.deepEqual(names, ['Chicago', 'New York', 'US']);
-  const chicago = g.placed.find((x) => x.item.name === 'Chicago');
-  assert.equal(chicago.shown, PLACE_Z1, 'at most PLACE_Z1 figures a place at 1x');
-  assert.equal(chicago.size, 16, '8 pixels of 2 px');
-  assert.ok(!p.draws.text.includes('+0'), 'no +0');
-  assert.equal(g.placed.find((x) => x.item.name === 'New York').shown, 6);
-  // Hover a figure of New York: its label.
-  const ny = g.placed.find((x) => x.item.name === 'New York');
-  const [sx, sy] = ny.sprites[ny.sprites.length - 1];
+  // It starts facing the US: New York, Chicago and the rest of the US are one cluster at
+  // 1x, named after Chicago (the biggest), counting all 20; Japan is behind.
+  const at1 = g.placed.filter((x) => x.item.n > 0);
+  assert.equal(at1.length, 1);
+  const us = at1[0];
+  assert.equal(us.item.name, 'Chicago');
+  assert.equal(us.item.n, 20);
+  assert.equal(us.size, 24, '10 to 99 visitors: 3 px a pixel');
+  assert.ok(p.draws.text.includes('20'), 'its count beside it');
+  const [sx, sy] = us.sprites[0];
   p.ev('pointermove', { clientX: sx + 8, clientY: sy + 8 });
-  assert.equal(g.tip, 'New York · 6 visitors this week');
-  // Turn half way round: now Japan.
+  assert.equal(g.tip, 'Chicago, New York and 1 more place · 20 visitors this week');
+  // Face Chicago and zoom in to 3x: they split, one critter a place.
   p.doc.activeElement = p.canvas;
+  for (const key of ['ArrowUp', 'ArrowUp', 'ArrowUp', 'ArrowRight']) p.ev('keydown', { key });
+  g.zoom(3);
+  p.run(50);
+  const at3 = g.placed.filter((x) => x.item.n > 0).map((x) => `${x.item.name || x.item.cc} ${x.item.n}`).sort();
+  assert.deepEqual(at3, ['Chicago 9', 'New York 6', 'US 5']);
+  g.zoom(1);
+  // Turn half way round: now Japan, Tokyo and Yokohama as one.
   for (let i = 0; i < 12; i++) p.ev('keydown', { key: 'ArrowRight' });
-  const back = g.placed.filter((x) => x.item.n > 0).map((x) => x.item.name || x.item.cc).sort();
-  assert.deepEqual(back, ['Tokyo', 'Yokohama'], 'the far side is hidden');
+  const back = g.placed.filter((x) => x.item.n > 0);
+  assert.deepEqual(back.map((x) => x.item.places.map((k) => k.name).sort()), [['Tokyo', 'Yokohama']], 'the far side is hidden');
+  assert.equal(back[0].item.live, true, 'Japan is live (its visitors are all in its cities): the cluster is');
   g.stop();
 });
 
-test('mounted: 240 figures at most, the biggest places show +N', () => {
+test('mounted: at most 40 critters in view and none on another, at every zoom, with 10,000 visitors', () => {
   const p = page();
-  const big = { countries: [{ cc: 'US', visitors: 900, rest: 100 }], cities: [
-    { name: 'New York', cc: 'US', at: [-74, 41], visitors: 400 }, { name: 'Chicago', cc: 'US', at: [-88, 42], visitors: 300 }, { name: 'Boston', cc: 'US', at: [-71, 42], visitors: 100 },
-  ] };
-  const g = mountGlobe(p.canvas, GEO, big, p.opts);
-  g.zoom(6);
-  const total = g.placed.reduce((s, x) => s + x.shown, 0);
-  assert.ok(total <= SPRITE_CAP, `${total}`);
-  assert.ok(p.draws.text.some((s) => /^\+\d+$/.test(s)), '+N drawn');
+  const heavy = { countries: [], cities: HEAVY.map((k) => ({ name: k.name, cc: k.cc, at: k.at, visitors: k.n, live: k.live })) };
+  const g = mountGlobe(p.canvas, GEO, heavy, p.opts);
+  for (const z of [1, 1.5, 2, 2.5, 3, 4, 5, 6]) {
+    for (const turn of [0, 60, 150]) {
+      g.zoom(1);
+      p.doc.activeElement = p.canvas;
+      for (let i = 0; i < turn / 15; i++) p.ev('keydown', { key: 'ArrowRight' });
+      g.zoom(z);
+      p.run(40);
+      const critters = g.placed.reduce((s, x) => s + x.shown, 0);
+      assert.ok(critters <= CRITTER_CAP, `${z}x: ${critters} critters`);
+      const rects = g.placed.flatMap((x) => [...x.sprites.map(([l, t]) => [l, t, x.size, x.size]), ...(x.label ? [x.label] : [])]);
+      for (let i = 0; i < rects.length; i++) {
+        for (let j = i + 1; j < rects.length; j++) {
+          const [a, b] = [rects[i], rects[j]];
+          assert.ok(!(a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3]), `${z}x, turned ${turn}: ${a} and ${b} overlap`);
+        }
+      }
+    }
+  }
   g.stop();
 });
 
@@ -537,14 +539,10 @@ test('zoomed in: hover finds only figures inside the lens', () => {
   assert.equal(inLens(152, 100, 16, 100, 50), false);
   assert.equal(inLens(140, 140, 16, 100, 50), false, 'the corner');
   const p = page();
-  // 300 visitors in the middle of the view (it starts facing the US at tilt 18): at 6x
-  // their bunch is far bigger than the lens.
-  const big = { countries: [{ cc: 'US', visitors: 400, rest: 100 }], cities: [{ name: 'Mid', cc: 'US', at: [-99, 18], visitors: 300 }] };
-  const g = mountGlobe(p.canvas, GEO, big, p.opts);
-  g.zoom(6);
+  const heavy = { countries: [], cities: HEAVY.map((k) => ({ name: k.name, cc: k.cc, at: k.at, visitors: k.n })) };
+  const g = mountGlobe(p.canvas, GEO, heavy, p.opts);
+  g.zoom(3);
   p.run(50);
-  const mid = g.placed.find((x) => x.item.name === 'Mid');
-  assert.ok(mid.shown > mid.sprites.length, `${mid.shown} laid out, ${mid.sprites.length} in the lens`);
   const c = 150;
   const R = 144;
   let n = 0;
