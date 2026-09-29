@@ -256,8 +256,8 @@ export const HOWTO = {
   title: 'How to play',
   goal: `Find the mystery stock in ${TRIES} guesses.`,
   lines: [
-    'Chart: 1 year of its price, in %.',
-    '4 clues per guess: sector, 1-year move, size, first letter.',
+    'Chart: its 1-year price, in %.',
+    'Each guess gets 4 clues.',
     'Arrows point to the answer.',
   ],
   legend: [
@@ -268,9 +268,11 @@ export const HOWTO = {
   foot: 'A new stock every day at midnight New York time.',
   button: 'PLAY',
 };
-// The example row: the real cells of the table, under no header.
+// The example row: the real cells of the table, under the table's own column labels.
 export function howtoExampleHtml(ex = HOWTO_EXAMPLE) {
-  return `<table class="gs-table gs-howto-ex" aria-label="An example guess: ${esc(ex.ticker)}, ${esc(ex.name)}"><tbody><tr class="gs-row">
+  return `<table class="gs-table gs-howto-ex" aria-label="An example guess: ${esc(ex.ticker)}, ${esc(ex.name)}">
+    <thead><tr><th scope="col" class="gs-g"><span class="offscreen">Guess</span></th>${HEADS.map((h) => `<th scope="col">${h}</th>`).join('')}</tr></thead>
+    <tbody><tr class="gs-row">
       <th scope="row" class="gs-g"><span class="gs-tk">${esc(ex.ticker)}</span></th>
       ${ex.cells.map(cellHtml).join('')}
     </tr></tbody></table>`;
@@ -330,7 +332,9 @@ export function render(el, cmd, ctx) {
     .then(([m]) => {
       if (ctx.signal.aborted) return null;
       const played = Object.keys(state.results).length > 0 || Boolean(state.game?.rows?.length);
-      const h = m.mountHowto({ key: HOWTO_KEY, slots: howtoSlots(), auto: !played, fields: '.gs-in' });
+      // On close the focus goes to the guess input (the next thing to do is guess); after
+      // the game, to the command bar.
+      const h = m.mountHowto({ key: HOWTO_KEY, slots: howtoSlots(), auto: !played, fields: '.gs-in', focus: () => playBody.querySelector('.gs-in:not(:disabled)') });
       ctx.onCleanup?.(() => h.destroy());
       return h;
     }, () => null);

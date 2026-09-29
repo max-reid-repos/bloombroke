@@ -72,8 +72,10 @@
 @media (pointer: coarse) { .gs-key { display: none; } }
 /* The example row in the pop-up: the table's own cells, as tiles; a dark cell gets an
    edge so it reads as a tile on the pop-up's panel. */
-.gs-howto-ex .gs-g { width: 16%; }
+.gs-howto-ex .gs-g { width: 12%; }
 .gs-howto-ex th, .gs-howto-ex td { border-bottom: 0; }
+/* Its labels are the table's header, set a little tighter so FIRST LETTER fits whole. */
+.gs-howto-ex thead th { padding: 0 4px; letter-spacing: .02em; }
 .howto .gs-cell.g-miss { box-shadow: inset 0 0 0 1px var(--rule-strong); }
 @media (max-width: 639px) {
   .gs-table .gs-g { width: 18%; }

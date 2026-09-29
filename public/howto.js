@@ -16,8 +16,8 @@
 //   mountHowto(opts)   wires it to a screen: it opens by itself once (a key in
 //     localStorage, set when it closes), never over the WELCOME card, never in a DESK
 //     panel or any other frame; ? opens it again, but not while typing in the command
-//     bar. Esc, a click on the backdrop and the button close it; the focus goes back to
-//     the command bar.
+//     bar. Esc, a click on the backdrop and the button close it; the focus then goes to
+//     focus() (the screen's own input) or else the command bar, never on a touch screen.
 
 import { consentNeeded } from './consent.js';
 
@@ -97,9 +97,9 @@ export function isHowtoKey(e, fields = '') {
 }
 
 // ---- the pop-up on a screen ---------------------------------------------------------------
-// opts: { key, slots, auto (open once by itself), fields, doc, win, needed (the notice is
-// still needed: consent.js) }. -> { open(), close(), destroy(), isOpen() }.
-export function mountHowto({ key, slots, auto = true, fields = '', doc = document, win = window, needed = () => consentNeeded({ win }), Observer } = {}) {
+// opts: { key, slots, auto (open once by itself), fields, focus (-> the element to focus
+// on close), doc, win, needed (the notice is still needed: consent.js) }. -> { open(), close(), destroy(), isOpen() }.
+export function mountHowto({ key, slots, auto = true, fields = '', focus = null, doc = document, win = window, needed = () => consentNeeded({ win }), Observer } = {}) {
   let current = null; // { d, done } while it is open
   let dead = false;
   let stopWait = null;
@@ -119,9 +119,13 @@ export function mountHowto({ key, slots, auto = true, fields = '', doc = documen
       if (current?.d === d) current = null;
       d.remove();
       markHowtoSeen(key, win);
-      // Back to the command bar (on a touch screen nothing, so no keyboard pops up).
-      const bar = doc.getElementById('cmd');
-      if (!coarse() && bar && typeof bar.focus === 'function') bar.focus();
+      // The focus goes where the player acts next: focus() (GUESS: its guess input), else
+      // the command bar. On a touch screen nowhere, so no keyboard pops up.
+      if (coarse()) return;
+      let to = null;
+      try { to = typeof focus === 'function' ? focus() : null; } catch { to = null; }
+      if (!to || typeof to.focus !== 'function') to = doc.getElementById('cmd');
+      if (to && typeof to.focus === 'function') to.focus();
     };
     current = { d, done };
     d.addEventListener('close', done);

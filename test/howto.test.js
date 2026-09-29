@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { howtoHtml, mountHowto, isHowtoKey, howtoSeen, markHowtoSeen, inFrame, consentBusy, afterConsent, MAX_LINES } from '../public/howto.js';
-import { HOWTO, HOWTO_KEY, HOWTO_EXAMPLE, howtoSlots, howtoExampleHtml, howtoLinkHtml, cellHtml, LEGEND, legendHtml, TRIES } from '../public/screens/guess.js';
+import { HOWTO, HOWTO_KEY, HOWTO_EXAMPLE, howtoSlots, howtoExampleHtml, howtoLinkHtml, cellHtml, rowsHtml, LEGEND, legendHtml, TRIES } from '../public/screens/guess.js';
 import { hintCells, fmtMove, fmtCap, POOL } from '../data/guess.js';
 import { cardWords } from '../public/kit.js';
 
@@ -28,8 +28,8 @@ test('GUESS how to play: the title, the goal, 3 lines, the example, a key of 3, 
   assert.equal(TRIES, 6);
   assert.equal(HOWTO.lines.length, 3);
   assert.equal(MAX_LINES, 3);
-  assert.match(HOWTO.lines[0], /1 year of its price, in %/);
-  assert.match(HOWTO.lines[1], /4 clues per guess: sector, 1-year move, size, first letter/);
+  assert.equal(HOWTO.lines[0], 'Chart: its 1-year price, in %.');
+  assert.equal(HOWTO.lines[1], 'Each guess gets 4 clues.');
   assert.match(HOWTO.lines[2], /Arrows point to the answer/);
   assert.deepEqual(HOWTO.legend.map((k) => [k.cls, k.label]), [['gs-cell g-hit', 'right'], ['gs-cell g-near', 'close'], ['gs-cell g-miss', 'wrong']]);
   assert.equal(HOWTO.foot, 'A new stock every day at midnight New York time.');
@@ -47,9 +47,9 @@ test('GUESS how to play: 45 visible words at most (the site\'s count), and the c
   const html = howtoHtml(howtoSlots());
   const words = visibleWords(html);
   assert.ok(words.length <= 45, `${words.length} words: ${words.join(' ')}`);
-  assert.equal(words.length, 45, `the count reported: ${words.join(' ')}`);
+  assert.equal(words.length, 44, `the count reported: ${words.join(' ')}`);
   // Counting every number and sign too, for the record.
-  assert.equal(allTokens(html).length, 52, allTokens(html).join(' '));
+  assert.equal(allTokens(html).length, 51, allTokens(html).join(' '));
   // Screen-reader words and the arrows are not on show.
   assert.ok(!words.includes('Answer') && !words.includes('Green:'), words.join(' '));
 });
@@ -73,6 +73,12 @@ test('GUESS how to play: the example is a real row, graded as data/guess.js grad
   assert.match(ex, /↑/);
   assert.match(ex, /↓/);
   assert.match(ex, /<span class="gs-tk">KO<\/span>/);
+  // Labelled like the real table: its own header row, the same four labels.
+  const head = /<thead>([\s\S]*?)<\/thead>/.exec(ex)[1];
+  assert.deepEqual([...head.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map((m) => m[1]), ['SECTOR', '1Y MOVE', 'SIZE', 'FIRST LETTER']);
+  const real = /<thead>([\s\S]*?)<\/thead>/.exec(rowsHtml([]))[1];
+  for (const h of ['SECTOR', '1Y MOVE', 'SIZE', 'FIRST LETTER']) assert.ok(real.includes(`<th scope="col">${h}</th>`), h);
+  assert.ok(ex.indexOf('<thead>') < ex.indexOf('<tbody>'), 'labels above the cells');
 });
 
 test('GUESS how to play: markup and copy rules (no inline sizes, one primary button, no em dash, no emoji, no brand word)', () => {
@@ -133,6 +139,7 @@ test('GUESS: the legend line is now a How to play link (the legend stays in a DE
   assert.ok(src.includes("loadModule('howto.js', { recover: false })"), 'loaded by name when the screen opens');
   assert.ok(src.includes("stylesOf('howto.js').map(loadCss)"), 'with its stylesheet');
   assert.ok(src.includes("fields: '.gs-in'"), '? in the guess input opens it (a guess never has a ?)');
+  assert.ok(src.includes("focus: () => playBody.querySelector('.gs-in:not(:disabled)')"), 'on close the focus goes to the guess input');
   assert.equal(HOWTO_KEY, 'bb.guess.howto');
   // Never on the page from the start.
   const app = readFileSync('public/app.js', 'utf8');
@@ -205,10 +212,11 @@ const button = (d) => ({ closest: (s) => (s === '[data-howto-close]' ? {} : null
 let n = 0;
 const freshKey = () => `bb.test${(n += 1)}.howto`;
 
-test('how to play: shows once by itself; PLAY closes it, stores the key and puts the focus in the command bar', () => {
+test('how to play: shows once by itself; PLAY closes it, stores the key and puts the focus in the guess input', () => {
   const key = freshKey();
   const page = fakePage();
-  const h = page.mount({ key });
+  const guessInput = { focus() { page.doc.activeElement = guessInput; } };
+  const h = page.mount({ key, focus: () => guessInput });
   const d = page.openDialog();
   assert.ok(d, 'open on the first visit');
   assert.equal(d.tag, 'dialog');
@@ -220,9 +228,24 @@ test('how to play: shows once by itself; PLAY closes it, stores the key and puts
   assert.equal(page.openDialog(), null, 'PLAY closes it');
   assert.equal(d.connected, false, 'and it leaves the page');
   assert.ok(page.storage.getItem(key), 'the key is stored');
-  assert.equal(page.doc.activeElement, page.cmd, 'the focus is back in the command bar');
+  assert.equal(page.doc.activeElement, guessInput, 'the focus is in the guess input: the next thing is a guess');
   assert.equal(h.isOpen(), false);
+  // Esc and the backdrop too.
+  for (const how of ['esc', 'backdrop']) {
+    page.cmd.focus();
+    h.open();
+    const d2 = page.openDialog();
+    if (how === 'esc') d2.fire('keydown', { key: 'Escape', preventDefault() {}, stopPropagation() {} });
+    else d2.fire('click', { target: d2 });
+    assert.equal(page.doc.activeElement, guessInput, how);
+  }
   h.destroy();
+  // No guess input (the game is over): the command bar.
+  const over = fakePage();
+  const h3 = over.mount({ key: freshKey(), focus: () => null });
+  h3.close();
+  assert.equal(over.doc.activeElement, over.cmd);
+  h3.destroy();
   // The next visit: not by itself.
   const again = fakePage({ storage: page.storage });
   again.mount({ key });
