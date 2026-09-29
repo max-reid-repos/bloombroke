@@ -5,7 +5,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildAssets, hashIndex, serveAssets, preloadTags, HASH_LEN } from '../lib/assets.js';
-import { parseCommand, screenFor, screenFiles, SHEET_ORDER, HELP_LINE, FKEYS } from '../public/app.js';
+import { parseCommand, screenFor, screenFiles, SHEET_ORDER, FKEYS } from '../public/app.js';
+import { HELP_LINE } from '../public/cards.js';
 import { EXTRA } from '../public/commands.js';
 import { COMPANY } from '../public/company.js';
 import { MARKETS_EXTRA } from '../public/commands-markets.js';
@@ -117,6 +118,7 @@ test('startup: the page loads the shell, HOME and MARKETS, never another screen'
     'screens/intraday.js', 'screens/size-guard.js', 'screens/news.js']);
   assert.deepEqual(screens.filter((r) => !allowed.has(r)), [], 'no other screen module at startup');
   assert.ok(!shell.includes('registry-detail.js'), 'HELP\'s long text is not at startup');
+  for (const f of ['cards.js', 'menu.js', 'hints.js', 'here-now.js', 'chat-badge.js', 'trending.js']) assert.ok(!shell.includes(f), `${f} comes in after the first screen`);
   assert.ok(shell.length <= 45, `${shell.length} modules at startup`);
   const bytes = shell.reduce((n, r) => n + a.files.get(r).body.length, 0);
   assert.ok(bytes < 600_000, `${bytes} bytes of JS at startup`);

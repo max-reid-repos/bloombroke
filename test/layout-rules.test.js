@@ -15,7 +15,8 @@ import { feedbackHtml } from '../public/screens/feedback.js';
 import { notProHtml } from '../public/screens/chat.js';
 import { meHtml } from '../public/screens/me.js';
 import { usageCard, emptyState } from '../public/kit.js';
-import { didYouMeanHtml, examplePlan } from '../public/app.js';
+import { examplePlan } from '../public/app.js';
+import { didYouMeanHtml } from '../public/cards.js';
 import { affordUsage, NOT_INVESTMENTS } from '../public/screens/buy.js';
 import { cpiUsage } from '../public/screens/cpi.js';
 import { usage as loanUsage, noRateHtml } from '../public/screens/loan.js';
@@ -392,8 +393,10 @@ test('every replaced site uses the kit: usage card, empty state, the NO SUCH car
   }
   const app = src('public/app.js');
   assert.doesNotMatch(app, /Unknown command\. Type <a/, 'the unknown-command screen is the NO SUCH card');
-  assert.match(app, /view\.innerHTML = didYouMeanHtml\(cmd\.input, \{\}, null/);
-  assert.match(app, /view\.innerHTML = didYouMeanHtml\(typed, found, ticker,/);
+  // The NO SUCH card is in cards.js, loaded on first use (not in the startup JS).
+  assert.match(app, /drawCard\(view, signal, \(c\) => c\.unknownHtml\(cmd\.input\)/);
+  assert.match(app, /\? cards\.didYouMeanHtml\(typed, found, ticker,/);
+  assert.doesNotMatch(app, /from '\.\/cards\.js'/, 'cards.js is never a static import of app.js');
   assert.match(src('public/screens/graveyard.js'), /el\.innerHTML = stonePageHtml\(e, n\);/, 'GRAVEYARD LEH is the stone card');
 });
 

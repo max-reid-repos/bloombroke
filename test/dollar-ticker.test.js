@@ -5,8 +5,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseCommand, stockId, stockHintFor, tickerToCheck, tickerFunctions, toQuery, fromQuery, urlFor,
-  suggest, stockRows, symbolSuggestions, completeFrom, didYouMeanHtml,
+  suggest, stockRows, symbolSuggestions, completeFrom,
 } from '../public/app.js';
+import { didYouMeanHtml } from '../public/cards.js';
 import { resolveInput } from '../public/resolve.js';
 import { SHADOWED_TICKERS } from '../public/known-tickers.js';
 import { normalizeTicker, tickerSource, companyTicker, makeQuotes } from '../data/quotes.js';
