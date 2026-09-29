@@ -14,7 +14,8 @@ import {
 import { ENDED_KEEP_MS } from './store.js';
 
 const PREVIEW = 60;
-export const SWEEP_MAX_SHARE = 0.2; // sweepNames: more than this share of names would go: stop
+export const SWEEP_MAX_SHARE = 0.2; // sweepNames: more than this share of names would go...
+export const SWEEP_MAX_FEW = 3; // ...and more than this many: stop
 export const EXPORT_MAX_MESSAGES = 20000;
 // In a group, messages from someone you blocked are hidden for you (@filter = 1 in a
 // group, 0 in a DM, which turns read-only instead). @me is the reader.
@@ -443,14 +444,14 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     // display name, or one that became a command word) go back to SEAT 42. Like any name
     // given up, it is locked 30 days for others; its licence may pick a valid name at once
     // (a clearing is not one of its 3 changes a day). A broken check must not wipe good
-    // names: when a plain name like Alice fails, or more than 20% would go, nothing is
-    // cleared. Returns { cleared, total, aborted } (aborted: why, or null).
+    // names: when a plain name like Alice fails, or more than 3 and more than 20% would
+    // go, nothing is cleared (one bad name in a small database still goes). Returns { cleared, total, aborted } (aborted: why, or null).
     sweepNames() {
       return tx(db, () => {
         const rows = q.allNames.all();
         if (!usernameOk('Alice')) return { cleared: 0, total: rows.length, aborted: 'the name check refuses a plain name' };
         const bad = rows.filter((r) => !usernameOk(r.username));
-        if (bad.length && bad.length > rows.length * SWEEP_MAX_SHARE) return { cleared: 0, total: rows.length, aborted: `${bad.length} of ${rows.length} names would go` };
+        if (bad.length > SWEEP_MAX_FEW && bad.length > rows.length * SWEEP_MAX_SHARE) return { cleared: 0, total: rows.length, aborted: `${bad.length} of ${rows.length} names would go` };
         const t = now();
         let cleared = 0;
         for (const r of bad) {

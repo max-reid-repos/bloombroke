@@ -557,18 +557,26 @@ test('money: a REACTIVATE checkout opened before a delete makes a new licence, n
   } finally { await s.close(); }
 });
 
-test('start-up name check: more than 20% of names would go: nothing is cleared, and it is logged', () => {
-  const db = openDb(':memory:');
-  ['Graveyard', 'News', 'Amy', 'Zed'].forEach((u, i) => {
-    db.prepare("INSERT INTO licences (key_hash, last4, status, created_at, updated_at, seat) VALUES (?, 'AAAA', 'active', 1, 1, ?)").run(`s${i}`, i + 1);
-    db.prepare('INSERT INTO chat_profiles (licence_id, username, updated_at) VALUES (?, ?, 1)').run(i + 1, u);
-  });
-  const errors = [];
-  const store = createStore(db, { aesKey: AES });
-  mountChat(express(), { db, store, parse: parseCommand, linkChanges, log: { log() {}, error: (...a) => errors.push(a.join(' ')) }, sweepMs: 0 });
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM chat_profiles WHERE username IS NOT NULL').get().n, 4, 'nothing cleared');
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM name_releases').get().n, 0);
-  assert.match(errors.join(), /name sweep stopped, nothing cleared: 2 of 4 names would go/);
+test('start-up name check: one bad name of a few is cleared; more than 3 and over 20% stops it', () => {
+  const run = (names) => {
+    const db = openDb(':memory:');
+    names.forEach((u, i) => {
+      db.prepare("INSERT INTO licences (key_hash, last4, status, created_at, updated_at, seat) VALUES (?, 'AAAA', 'active', 1, 1, ?)").run(`s${i}`, i + 1);
+      db.prepare('INSERT INTO chat_profiles (licence_id, username, updated_at) VALUES (?, ?, 1)').run(i + 1, u);
+    });
+    const errors = [];
+    mountChat(express(), { db, store: createStore(db, { aesKey: AES }), parse: parseCommand, linkChanges, log: { log() {}, error: (...a) => errors.push(a.join(' ')) }, sweepMs: 0 });
+    const left = db.prepare('SELECT COUNT(*) AS n FROM chat_profiles WHERE username IS NOT NULL').get().n;
+    const locked = db.prepare('SELECT COUNT(*) AS n FROM name_releases').get().n;
+    return { left, locked, errors: errors.join() };
+  };
+  // 1 bad of 4 (25%, but only 1): cleared and locked.
+  const small = run(['Graveyard', 'Amy', 'Zed', 'Kim']);
+  assert.deepEqual([small.left, small.locked, small.errors], [3, 1, '']);
+  // 5 bad of 10 (more than 3 and over 20%): nothing cleared, logged.
+  const many = run(['Graveyard', 'News', 'Markets', 'Weird', 'Help', 'Amy', 'Zed', 'Kim', 'Lou', 'Max']);
+  assert.deepEqual([many.left, many.locked], [10, 0], 'nothing cleared');
+  assert.match(many.errors, /name sweep stopped, nothing cleared: 5 of 10 names would go/);
   assert.equal(usernameOk('Alice'), true, 'the known-good name the sweep checks first');
 });
 
