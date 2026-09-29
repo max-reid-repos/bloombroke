@@ -51,7 +51,7 @@ export const DEMO_BANNER = 'Demo checkout. No real money. Use card 4242 4242 424
 export const BUY_TERMS = [
   EXPERIMENTAL_LINE,
   `${pro.PRICE} USD a month or ${pro.PRICE_YEAR} USD a year, charged by Stripe. It renews automatically every month or every year, as you picked, until you cancel.`,
-  'Cancel any time: type PRO and press CANCEL. Pro stays on to the end of the month or year you paid for.',
+  'Cancel any time: type PRO and press MANAGE PLAN or CANCEL. Pro stays on to the end of the month or year you paid for.',
   SHUTDOWN_LINE,
 ];
 export const YEARLY_NOT_YET = 'Yearly is not available yet. Monthly is.';
@@ -260,13 +260,18 @@ export function mainHtml({ key = null, st = null, next = null, alert = '', alert
   const exists = has || ((c) => Boolean(findCommand(c)));
   const on = key ? pro.statusActive(st) : false;
   const gift = isGift(st);
-  const details = raw(detailsHtml());
-  if (key && (on || reveal)) {
+  const details = raw(detailsHtml({ gift: st?.status === 'gift' }));
+  // A key whose status is known and off keeps the buy view (SHOW KEY shows the key in it).
+  const off = Boolean(key && st && !on);
+  // Billing needs the key saved in this browser (a key just bought that could not be
+  // saved is shown, but MANAGE PLAN and CANCEL would have nothing to send).
+  const billing = !reveal || Boolean(pro.getKey());
+  if (key && !off && (on || reveal)) {
     const ending = Boolean(st?.cancelAt || st?.cancelAtPeriodEnd);
     const links = [];
     if (on && !gift && st?.canGift && exists('GIFT')) links.push(cardLink({ label: GIFT_ACTION, cmd: 'GIFT' }));
-    if (!gift) links.push(cardLink({ label: MANAGE, id: 'pro-manage' }));
-    if (on && !gift && !ending) links.push(cardLink({ label: CANCEL, id: 'pro-cancel' }));
+    if (!gift && billing) links.push(cardLink({ label: MANAGE, id: 'pro-manage' }));
+    if (on && !gift && !ending && billing) links.push(cardLink({ label: CANCEL, id: 'pro-cancel' }));
     if (!reveal) links.push(cardLink({ label: 'SHOW KEY', id: 'pro-show' }));
     links.push(cardLink({ label: 'LOGOUT', cmd: 'LOGOUT' }));
     return cardPage({
@@ -279,7 +284,7 @@ export function mainHtml({ key = null, st = null, next = null, alert = '', alert
       heroSize: 32,
       sub: keySub(st),
       act: raw(cardButton({ label: 'COPY', primary: true, id: 'pro-copy' }) + cardButton({ label: 'DOWNLOAD', id: 'pro-dl' })),
-      note: KEY_NOTE,
+      note: reveal ? SAVE_LINE : KEY_NOTE, // just bought or redeemed: the last chance to save it
       facts: keyFacts(st),
       links,
       details,
@@ -290,7 +295,7 @@ export function mainHtml({ key = null, st = null, next = null, alert = '', alert
   const h = heroSeat({ key, st, next });
   const label = key ? (gift ? 'SUBSCRIBE' : 'REACTIVATE') : 'SUBSCRIBE';
   const links = key
-    ? [gift ? '' : cardLink({ label: MANAGE, id: 'pro-manage' }), cardLink({ label: 'SHOW KEY', id: 'pro-show' }), cardLink({ label: 'LOGOUT', cmd: 'LOGOUT' })]
+    ? [gift ? '' : cardLink({ label: MANAGE, id: 'pro-manage' }), reveal ? '' : cardLink({ label: 'SHOW KEY', id: 'pro-show' }), cardLink({ label: 'LOGOUT', cmd: 'LOGOUT' })]
     : [cardLink({ label: 'LOGIN', cmd: 'LOGIN' }), cardLink({ label: 'REDEEM', cmd: 'REDEEM' }), exists('GIFT') ? cardLink({ label: 'GIFT', cmd: 'GIFT' }) : ''];
   const perks = PERKS.map((p) => (p.value === 'CHAT' && exists('CHAT') ? { ...p, value: raw(`<a class="pro3-chat" href="${esc(q('CHAT'))}" data-cmd="CHAT">CHAT</a>`) } : p));
   return cardPage({
@@ -305,8 +310,9 @@ export function mainHtml({ key = null, st = null, next = null, alert = '', alert
     heroSize: 96,
     sub: raw(priceHtml(plan)),
     act: raw(buyButton(label, plan)),
-    note: raw(noteHtml(key ? `${label} keeps this key, its seat and your synced lists.` : RENEW_NOTE)),
-    facts: key ? null : perks,
+    note: raw(noteHtml(key ? `${RENEW_NOTE} · ${label} keeps this key, its seat and your synced lists.` : RENEW_NOTE)),
+    // With a key: the key itself once SHOW KEY is pressed, in place.
+    facts: key ? (reveal ? [{ value: raw(`<span class="pro-key" id="pro-key">${esc(reveal)}</span>`), label: YOUR_KEY }] : null) : perks,
     links: links.filter(Boolean),
     details,
     detailsOpen,
@@ -318,7 +324,7 @@ export function mainHtml({ key = null, st = null, next = null, alert = '', alert
 export const TERMS_ROWS = [
   ['Price', `${pro.PRICE} a month or ${pro.PRICE_YEAR} a year, in USD, charged by Stripe.`],
   ['Renewal', 'Every month or every year, as you picked, until you cancel.'],
-  ['Cancel', 'Any time: type PRO and press CANCEL.'],
+  ['Cancel', 'Any time: type PRO and press MANAGE PLAN or CANCEL.'],
   ['After cancel', 'Pro stays on to the end of the month or year you paid for.'],
   ['Experiment', 'Bloombroke is an experiment and may close at short notice.'],
   ['Shutdown', 'We cancel all subscriptions and refund the unused days of the month or year.'],
@@ -327,8 +333,8 @@ export const TERMS_ROWS = [
   ['Gift licences', 'Cannot make gift codes.'],
   ['Login', 'Your key is your login. There is no email or password.'],
 ];
-export function detailsHtml() {
-  return `${offerHtml({ price: false })}
+export function detailsHtml({ gift = false } = {}) {
+  return `${gift ? cardRows([['After the gift', GIFT_AFTER]]) : ''}${offerHtml({ price: false })}
     <p class="pro-demo" id="pro-demo" role="note" hidden>${esc(DEMO_BANNER)}</p>
     ${cardRows([
     ...TERMS_ROWS,
@@ -425,7 +431,7 @@ function renderAccount(el, ctx, alert = '', plan = null, { warn = false } = {}) 
     const k = host.querySelector('#pro-key');
     if (k) k.textContent = v.reveal;
     show?.remove();
-    // A key with Pro off shows the seat, not the key: draw the key view.
+    // A key with Pro off: its key goes into the same view (the price and REACTIVATE stay).
     if (!k) renderAccount(el, ctx);
   };
   if (show) show.addEventListener('click', reveal);
@@ -540,7 +546,7 @@ export function loginHtml({ alert = '', warn = false } = {}) {
     kicker: 'PRO',
     hero: 'Log in',
     heroSize: 44,
-    act: raw(cardForm({ id: 'login-form', inputId: 'login-key', label: 'Your key', placeholder: 'BB-XXXX-XXXX-XXXX-XXXX', button: 'LOGIN', maxlength: 40 })),
+    act: raw(cardForm({ id: 'login-form', inputId: 'login-key', label: 'Your key', placeholder: 'BB-XXXX-XXXX-XXXX-XXXX', button: 'LOGIN', maxlength: 80 })),
     note: LOGIN_NOTE,
     links: [cardLink({ label: 'PRO', cmd: 'PRO' }), cardLink({ label: 'REDEEM', cmd: 'REDEEM' })],
   });

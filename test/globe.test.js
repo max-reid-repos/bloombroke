@@ -321,6 +321,7 @@ test('SPONSOR and BBRK: the globe under the numbers, in the first view, centred,
     const src = readFileSync(f, 'utf8');
     assert.match(src, /fitToView\(/, f);
     assert.match(src, /addEventListener\?*\.?\('resize', \w+\)/, `${f}: on resize`);
+    assert.match(src, /requestAnimationFrame\(/, `${f}: once a frame`);
     assert.match(src, /removeEventListener\?*\.?\('resize', \w+\)/, `${f}: and let go`);
   }
   assert.match(bb, /\.bb-globe canvas \{[^}]*aspect-ratio: 1;/);

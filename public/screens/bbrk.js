@@ -116,7 +116,7 @@ export function detailsHtml(d) {
     <thead><tr><th scope="col"><span class="offscreen">Sponsor inventory</span></th><th scope="col" class="num">Today</th><th scope="col" class="num">7D</th></tr></thead>
     <tbody>${invRows}</tbody>
   </table>`
-    + cardRows([['Sources', SOURCE]]);
+    + cardRows([['Sources', SOURCE], ['BBRK', 'Not a security. Not for sale.']]);
 }
 
 export function globeHtml(d) {
@@ -158,14 +158,16 @@ export function render(el, cmd, ctx) {
   // The globe takes the room left in the first view (never below the fold on a desktop);
   // again when the window or the numbers above it change size.
   const fit = () => { fitToView(fig); globe?.update(latest?.audience?.globe || null, latest?.audience?.live ?? null); };
+  let frame = 0; // a resize fits once a frame, not once an event
+  const onResize = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; fit(); }); };
   fitToView(fig);
   document.fonts?.ready.then(() => { if (fig.isConnected) fit(); });
-  window.addEventListener('resize', fit);
+  window.addEventListener('resize', onResize);
   loadDots().then((geo) => {
     if (ctx.signal?.aborted || !canvas.isConnected) return;
     globe = mountGlobe(canvas, geo, latest?.audience?.globe || null, { reduceMotion: reduce, live: latest?.audience?.live ?? null });
   }).catch(() => { fig.hidden = true; });
-  const stop = () => { globe?.stop(); window.removeEventListener('resize', fit); };
+  const stop = () => { globe?.stop(); window.removeEventListener('resize', onResize); cancelAnimationFrame(frame); };
   ctx.signal?.addEventListener('abort', stop);
   // New numbers go into their own places, so the globe keeps turning and an open
   // + Details stays open.

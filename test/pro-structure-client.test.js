@@ -362,6 +362,7 @@ test('feedback screen: the form, the counter, the email label, thanks, the mail 
   assert.match(html, /type="submit" class="btn card-btn btn-solid" id="fb-send" title="Ctrl\+Enter sends">SEND</);
   assert.equal((html.match(/btn-solid/g) || []).length, 1, 'one primary button');
   assert.equal(STATUS, 'FEEDBACK: NO IP ADDRESS STORED. CTRL+ENTER SENDS');
+  assert.match(html, /hello@bloombroke\.com<\/a>\. No IP address stored\.<\/p>/, 'on the page too');
   assert.match(html, /name="website"[^>]*tabindex="-1"/, 'the honeypot is out of the tab order');
   assert.match(html, /Or email <a href="mailto:hello@bloombroke\.com">hello@bloombroke\.com<\/a>/);
   assert.equal(THANKS, 'Thanks. We read every one.');

@@ -33,7 +33,9 @@ const shownInTest = (html) => html.replace('<span id="pro-test" hidden>', '<span
 export const PAGES = [
   ['PRO visitor (test mode)', shownInTest(mainHtml({ next: 4, has: all })), 30],
   ['PRO key', mainHtml({ key: KEY, st: ST, has: all }), 25],
-  ['PRO key, just bought', mainHtml({ key: KEY, st: ST, reveal: KEY, has: all }), 25],
+  // Just bought or redeemed: the save line (the last chance to save the key); in a browser
+  // that saved it, MANAGE PLAN and CANCEL too. 27 (the reviewer's call, Sep 29).
+  ['PRO key, just bought', mainHtml({ key: KEY, st: ST, reveal: KEY, has: all }), 27],
   ['BBRK', bbrkHtml(BBRK), 25],
   ['BBRK loading', bbrkHtml(null), 25],
   ['SPONSOR', sponsorHtml({ has: all, bbrk: BBRK, cfg: { lines: [], house: [{ text: 'x', cmd: 'SPONSOR' }] } }), 30],
@@ -42,7 +44,7 @@ export const PAGES = [
   ['GIFT, logged out', giftLoggedOutHtml(), 15],
   ['GIFT', giftHtml({ gifts: [], left: 3, canGift: true }), 15],
   ['GIFT, a code made', giftHtml({ gifts: [], left: 2, canGift: true }, { shown: 'GIFT-ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-2345' }), 15],
-  ['FEEDBACK', feedbackHtml(), 15],
+  ['FEEDBACK', feedbackHtml(), 19], // 15 + "No IP address stored." (the reviewer's call, Sep 29)
   ['CHAT without Pro', notProHtml(), 15],
 ];
 

@@ -1,5 +1,6 @@
 /* Shared screen parts (see kit.js). Same tokens and scales as style.css:
-   spacing 2 4 6 8 12 16 24 32, type 11 12 13 14 16 18 24. */
+   spacing 2 4 6 8 12 16 24 32 (48 for card pages), type 11 12 13 14 16 18 24
+   (32 44 60 96 for card pages). */
 
 /* ---- Clickable things look clickable ------------------------------------- */
 [data-cmd], button, summary, label[for], .th-sort { cursor: pointer; }
@@ -89,8 +90,9 @@
    GIFT, FEEDBACK, CHAT without Pro. One centred column; the slots always in the same
    order (kicker, hero, sub | action, note | chart | facts | media | links, + Details).
    The rules, so no card page invents its own:
-   - sizes from the type scale in style.css (11 12 14 16 18 24 32 44 60 96), spaces from
-     its spacing scale; 32 between groups, 8 inside a group (a group gap is >= 2x);
+   - sizes from the type scale in style.css (11 12 13 14 16 18 24 32 44 60 96), spaces
+     from its spacing scale (2 4 6 8 12 16 24 32 48); 32 between groups (24 on a short or
+     narrow window), 8 inside a group (a group gap is >= 2x);
    - text colours: --text (the main thing), --text-2 (second), --dim (third). Nothing else;
    - weights: 400, and 700 for the hero only; labels are .tag (11 px uppercase, --dim);
    - one primary (solid) button at most; lines of words no wider than 60ch;
@@ -109,7 +111,7 @@
 .card-hero-96 { font-size: 96px; }
 .card-hero-60 { font-size: 60px; }
 .card-hero-44 { font-size: 44px; line-height: 1.1; white-space: normal; }
-.card-hero-32 { font-size: 32px; letter-spacing: .04em; line-height: 1.2; white-space: normal; overflow-wrap: anywhere; user-select: all; }
+.card-hero-32 { font-size: 32px; letter-spacing: .04em; line-height: 1.2; white-space: normal; overflow-wrap: anywhere; }
 .card-sub { max-width: 60ch; font-size: 18px; color: var(--text-2); }
 .card-sub .up { color: var(--up); }
 .card-sub .down { color: var(--down); }
@@ -122,6 +124,7 @@
 .card-note [hidden] { display: none; }
 .card-chart { position: relative; width: 100%; }
 .card-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px 16px; width: 100%; }
+.card-facts.n1 { grid-template-columns: minmax(0, 1fr); }
 .card-facts.n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .card-facts.n4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .card-fact { display: flex; flex-direction: column-reverse; gap: 4px; min-width: 0; }

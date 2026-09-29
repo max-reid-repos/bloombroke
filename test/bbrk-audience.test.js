@@ -478,7 +478,7 @@ test('BBRK screen: a card: visitors hero, the chart, six facts, the globe; the r
   for (let i = 1; i < order.length; i++) assert.ok(at(order[i - 1]) >= 0 && at(order[i - 1]) < at(order[i]), `${order[i - 1]} before ${order[i]}`);
   // Countries, referrers, the counters and the sources are in Details, not above it.
   const [top, details] = html.split('<details class="how card-more"');
-  for (const x of ['United States 41% · Germany 6%', 'x.com 23%', '1,840', SOURCE]) {
+  for (const x of ['United States 41% · Germany 6%', 'x.com 23%', '1,840', SOURCE, 'Not a security. Not for sale.']) {
     assert.ok(details.includes(x), x);
     assert.ok(!top.includes(x), `${x} not above Details`);
   }

@@ -212,10 +212,12 @@ export function render(el, cmd, ctx) {
   let unpoint = () => {};
   let open = true;
   const refit = () => { fit(); globe?.update(bbrk?.audience?.globe || null, bbrk?.audience?.live ?? null); };
+  let frame = 0; // a resize fits once a frame, not once an event
+  const onResize = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; if (open) refit(); }); };
   fit();
   globalThis.document?.fonts?.ready.then(() => { if (open) refit(); });
-  globalThis.window?.addEventListener?.('resize', refit);
-  ctx.onCleanup(() => { open = false; unpoint(); globe?.stop(); globalThis.window?.removeEventListener?.('resize', refit); });
+  globalThis.window?.addEventListener?.('resize', onResize);
+  ctx.onCleanup(() => { open = false; unpoint(); globe?.stop(); globalThis.window?.removeEventListener?.('resize', onResize); if (frame) cancelAnimationFrame(frame); });
   // BBRK's globe: places with 3 visitors or more only (the server folds the rest).
   const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   loadDots().then((geo) => {

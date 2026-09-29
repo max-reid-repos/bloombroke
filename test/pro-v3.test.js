@@ -15,7 +15,7 @@ import { parseCommand, urlFor } from '../public/app.js';
 import { cardWords } from '../public/kit.js';
 import {
   mainHtml, pageHtml, detailsHtml, heroSeat, seatParts, keyFacts, planButton,
-  UP_NEXT, YOUR_KEY, PERKS, GIFT_ACTION, MANAGE, CANCEL, KEY_NOTE, RENEW_NOTE, TEST_NOTE, TERMS_ROWS, BUY_TERMS, DEMO_BANNER,
+  UP_NEXT, YOUR_KEY, PERKS, GIFT_ACTION, GIFT_AFTER, MANAGE, CANCEL, KEY_NOTE, RENEW_NOTE, TEST_NOTE, TERMS_ROWS, BUY_TERMS, DEMO_BANNER,
   render, loginCommand, logoutCommand, giftCommand, redeemCommand,
 } from '../public/screens/pro.js';
 
@@ -138,6 +138,27 @@ test('key view: Pro sees YOUR KEY, COPY and DOWNLOAD, its own seat and renewal, 
   assert.match(src, /wire\(host, ctx, '#pro-cancel', '[^']*', \(\) => pro\.openPortal\(\)\);/);
 });
 
+test('just bought, SHOW KEY on a key with Pro off, a gift month, billing only with a saved key', () => {
+  const st = { status: 'active', seat: 12, canGift: true, interval: 'year', currentPeriodEnd: new Date(Date.UTC(2027, 8, 27, 12)).toISOString() };
+  const bought = mainHtml({ key: KEY, st, reveal: KEY, has: all });
+  assert.match(bought, /<p class="card-note">Save this key\. It is your login on any device\.<\/p>/, 'the last chance to save it');
+  assert.doesNotMatch(bought, /pro-manage|pro-cancel/, 'no key saved in this browser (node has none): nothing for billing to send');
+  assert.match(mainHtml({ key: KEY, st, has: all }), /<p class="card-note">Your login on any device\.<\/p>/);
+  // A key with Pro off: SHOW KEY puts the key into the same view; the price and REACTIVATE stay.
+  const off = mainHtml({ key: KEY, st: { status: 'canceled', seat: 7 }, reveal: KEY, has: all });
+  assert.match(off, /id="pro-sub"[^>]*>REACTIVATE YEARLY</);
+  assert.match(off, /<dl class="card-facts n1"><div class="card-fact"><dt class="tag">YOUR KEY<\/dt><dd class="num"><span class="pro-key" id="pro-key">BB-7KQ2-M9XD-HT4P-WZ3C<\/span><\/dd><\/div><\/dl>/);
+  assert.doesNotMatch(off, /pro-show/);
+  assert.match(off, /Renews until cancelled · REACTIVATE keeps this key/);
+  assert.match(mainHtml({ key: KEY, st: { status: 'gift_ended', seat: 9 }, has: all }), /Renews until cancelled · SUBSCRIBE keeps this key/);
+  // A gift month: what happens after it, in Details.
+  const gift = mainHtml({ key: KEY, st: { status: 'gift', seat: 9, giftUntil: new Date(Date.now() + 5 * 864e5).toISOString() }, has: all });
+  assert.ok(gift.split('<details')[1].includes(GIFT_AFTER));
+  assert.ok(!detailsHtml().includes(GIFT_AFTER));
+  // A pasted gift code with spaces fits the LOGIN box.
+  assert.match(readFileSync('public/screens/pro.js', 'utf8'), /button: 'LOGIN', maxlength: 80 \}/);
+});
+
 test('key facts: the seat, and renews, ends or the gift month', () => {
   const end = new Date(Date.UTC(2026, 10, 3, 12)).toISOString();
   const label = (st) => keyFacts(st, Date.UTC(2026, 9, 1)).map((f) => f.label);
@@ -202,12 +223,12 @@ test('note and test mode: one dim line on the page; Details keeps every term as 
   // Every fact of the buying terms is still there, short: price, renewal, cancel, the
   // paid period, the experiment, the shutdown refund, gifts, login, not advice, operator.
   const text = d.replace(/<[^>]+>/g, ' ');
-  for (const x of ['$42 a month or $420 a year', 'Stripe', 'until you cancel', 'type PRO and press CANCEL', 'end of the month or year you paid for',
+  for (const x of ['$42 a month or $420 a year', 'Stripe', 'until you cancel', 'type PRO and press MANAGE PLAN or CANCEL', 'end of the month or year you paid for',
     'experiment', 'short notice', 'refund the unused days', 'up to 3 codes', '30 days', 'no card', 'their own seat', 'Work once', '90 days',
     'Cannot make gift codes', 'no email or password', 'not investment advice', 'Run by Bloombroke.', 'hello@bloombroke.com']) assert.ok(text.includes(x), x);
   for (const [, t] of TERMS_ROWS) assert.ok(t.split(/\s+/).length <= 14, `${t}: 14 words or fewer`);
   // The full wording stays exported (and in the Terms).
-  assert.match(BUY_TERMS.join(' '), /Cancel any time: type PRO and press CANCEL\./);
+  assert.match(BUY_TERMS.join(' '), /Cancel any time: type PRO and press MANAGE PLAN or CANCEL\./);
   // The page shows the test bits only when the server says test mode.
   assert.match(readFileSync('public/screens/pro.js', 'utf8'), /if \(c\.mode !== 'test' \|\| !el\.isConnected\) return;/);
 });

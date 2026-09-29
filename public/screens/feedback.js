@@ -51,7 +51,7 @@ export function feedbackHtml() {
     hero: raw(`<span id="fb-q">${esc(PROMPT)}</span>`),
     heroSize: 32,
     act: raw(`<div id="fb-body" class="fb-body">${formHtml()}</div>`),
-    note: raw(`Or email <a href="mailto:${CONTACT}">${CONTACT}</a>`),
+    note: raw(`Or email <a href="mailto:${CONTACT}">${CONTACT}</a>. No IP address stored.`),
   });
 }
 
