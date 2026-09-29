@@ -35,6 +35,23 @@
   background: var(--panel); border: 1px solid var(--rule-strong); color: var(--text); font-size: 11px; white-space: nowrap;
 }
 .spon-globe .globe-tip[hidden] { display: none; }
+/* Zoom (public/globe.js): +, - and back to 1x, small and quiet, in the top right corner
+   the round globe leaves empty (an L: 1x beside +, - under it, so no button is on the
+   globe even at 220 px). Out of the flow, so fitToView's sizing is unchanged. */
+.spon-globe .globe-zoom {
+  position: absolute; top: 0; right: 0; z-index: 1; display: grid; gap: 2px;
+  grid-template-columns: 20px 20px; grid-template-areas: "reset in" ". out";
+}
+.spon-globe .globe-zoom-btn {
+  width: 20px; height: 20px; padding: 0; border: 1px solid var(--rule-strong); background: var(--bg);
+  color: var(--dim); font: inherit; font-size: 11px; line-height: 1; cursor: pointer;
+}
+.spon-globe .globe-zoom-btn[data-zoom="in"] { grid-area: in; }
+.spon-globe .globe-zoom-btn[data-zoom="out"] { grid-area: out; }
+.spon-globe .globe-zoom-btn[data-zoom="reset"] { grid-area: reset; }
+.spon-globe .globe-zoom-btn:hover { color: var(--text); border-color: var(--dim); }
+.spon-globe .globe-zoom-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.spon-globe .globe-zoom-btn[aria-disabled="true"] { opacity: .4; cursor: default; }
 /* The label just above the real strip (sponsor.js pointAtStrip), while SPONSOR is open. */
 .spon-point {
   position: fixed; z-index: 30; padding: 2px 6px; pointer-events: none;
