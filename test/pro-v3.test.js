@@ -188,14 +188,28 @@ test('hero: a lapsed key keeps its seat and gets REACTIVATE; a gift month shows 
 // ---- the price, the button, the plan -------------------------------------------------------
 
 test('yearly first: PRO and PRO YEARLY lead with yearly, PRO MONTHLY with monthly', () => {
+  // A visitor (PRO v4): each price once, the hero the plan's amount, the sub its unit and
+  // the other plan as the switch.
   const html = mainHtml({ next: 43, has: all });
-  assert.match(html, /id="pro-plan-year" data-plan="year" aria-pressed="true">\$420 a year\.</);
-  assert.match(html, /id="pro-plan-month" data-plan="month" aria-pressed="false">Or \$42 a month\.</);
+  assert.match(html, /<span id="pro-price">\$420<\/span><\/h2><p class="card-sub"><span id="pro-unit">a year<\/span> · <button type="button" class="pro3-plan pro3-switch" id="pro-switch" data-plan="month">or \$42 a month<\/button><\/p>/);
   assert.match(html, /class="btn card-btn btn-solid" id="pro-sub" data-plan="year" data-label="SUBSCRIBE">SUBSCRIBE YEARLY</);
   assert.equal((html.match(/btn-solid/g) || []).length, 1, 'one button');
+  assert.equal((html.split('<details')[0].replace(/<[^>]+>/g, ' ').match(/\$420/g) || []).length, 1, '$420 once above Details');
+  assert.equal((html.split('<details')[0].replace(/<[^>]+>/g, ' ').match(/\$42\b/g) || []).length, 1, '$42 once above Details');
   const month = mainHtml({ next: 43, plan: 'month', has: all });
   assert.match(month, /id="pro-sub" data-plan="month" data-label="SUBSCRIBE">SUBSCRIBE MONTHLY</);
-  assert.match(month, /id="pro-plan-month" data-plan="month" aria-pressed="true"/);
+  assert.match(month, /<span id="pro-price">\$42<\/span><\/h2><p class="card-sub"><span id="pro-unit">a month<\/span> · <button [^>]*id="pro-switch" data-plan="year">or \$420 a year<\/button>/);
+  // A key with Pro off keeps the v3 switch: both prices, the picked one pressed.
+  const off = mainHtml({ key: ['BB', '7KQ2', 'M9XD', 'HT4P', 'WZ3C'].join('-'), st: { status: 'canceled', seat: 7 }, has: all });
+  assert.match(off, /id="pro-plan-year" data-plan="year" aria-pressed="true">\$420 a year\.</);
+  assert.match(off, /id="pro-plan-month" data-plan="month" aria-pressed="false">Or \$42 a month\.</);
+  // The switch: the same click handler (it reads the plan when clicked); setPlan turns the
+  // switch around and leaves it out of aria-pressed; yearly not ready turns it off.
+  const src = readFileSync('public/screens/pro.js', 'utf8');
+  assert.match(src, /for \(const p of host\.querySelectorAll\('\.pro3-plan'\)\) \{\s*p\.addEventListener\('click', \(\) => \{ v\.plan = p\.dataset\.plan; setPlan\(host, v\.plan\); \}\);/);
+  assert.match(src, /sw\.dataset\.plan = otherPlan\(plan\);\s*sw\.textContent = PLAN_OTHER\[plan\];/);
+  assert.match(src, /querySelectorAll\('\.pro3-plan:not\(\.pro3-switch\)'\)/);
+  assert.match(src, /for \(const b of \[y, sw\]\) \{ if \(b\) \{ b\.disabled = true; b\.title = YEARLY_NOT_YET; \} \}/);
   assert.equal(planButton('year'), 'YEARLY');
   assert.equal(planButton('month'), 'MONTHLY');
   assert.deepEqual(parseCommand('PRO').args, {});
@@ -238,7 +252,7 @@ test('note and test mode: one dim line on the page; Details keeps every term as 
 test('few words: the visitor view within its budget (test/layout-rules.test.js), 25 with a key; no visitors line', () => {
   const visitor = mainHtml({ next: 43, has: all }).replace('<span id="pro-test" hidden>', '<span id="pro-test">');
   const w = cardWords(visitor);
-  assert.ok(w.length <= 37, `${w.length} words: ${w.join(' ')}`);
+  assert.ok(w.length <= 35, `${w.length} words: ${w.join(' ')}`);
   assert.doesNotMatch(visitor, /visitors this week|average visit|pro-proof/, 'that line lives on SPONSOR and BBRK');
   // PRO v4: LOGIN and REDEEM behind one quiet line; GIFT is for members.
   assert.match(visitor, /id="pro-keylinks" hidden><a class="card-link" href="\?c=LOGIN" data-cmd="LOGIN">LOGIN<\/a> <a class="card-link" href="\?c=REDEEM" data-cmd="REDEEM">REDEEM<\/a><\/span>/);

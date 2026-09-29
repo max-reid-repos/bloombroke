@@ -50,6 +50,8 @@
 .pro3-plan[aria-pressed="true"] { color: var(--text); text-decoration: none; cursor: default; }
 .pro3-plan:not([aria-pressed="true"]):hover { color: var(--text-2); }
 .pro3-plan:disabled { cursor: not-allowed; opacity: .6; }
+/* The visitor's switch: "or $42 a month", dim and underlined until pressed. */
+.pro3-switch:hover { color: var(--text-2); }
 .pro3-chat { color: inherit; text-decoration: underline dotted var(--rule-strong); text-underline-offset: .2em; }
 .pro3-chat:hover { color: var(--accent); text-decoration: none; }
 /* + Details: FREE, then PRO, one list under the other (the column is too narrow for

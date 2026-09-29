@@ -187,7 +187,7 @@ export const CAPTIONS = {
   seat: 'Yours forever',
   gifts: '3 friends get a month',
 };
-export const KEY_Q = 'Have a key or gift code?';
+export const KEY_Q = 'Key or gift code?';
 // What each mini is, for a screen reader (the words on a mini are the picture's).
 export const MINI_LABELS = {
   chat: 'A chat between ana and joe: a stock with its price, a screen, a GUESS score and a reply',
@@ -207,6 +207,10 @@ export const PLAN_PRICE = { year: `${pro.PRICE_YEAR} a year.`, month: `Or ${pro.
 // The visitor's hero: the picked plan's price, the one big number.
 export const HERO_PRICE = { year: pro.PRICE_YEAR, month: pro.PRICE };
 export const HERO_LABEL = { year: `${pro.PRICE_YEAR} a year`, month: `${pro.PRICE} a month` };
+// Under it, each price once: the plan's unit, then the other plan as the switch.
+export const PLAN_UNIT = { year: 'a year', month: 'a month' };
+export const PLAN_OTHER = { year: `or ${pro.PRICE} a month`, month: `or ${pro.PRICE_YEAR} a year` };
+const otherPlan = (plan) => (plan === 'month' ? 'year' : 'month');
 export const planButton = (plan) => (plan === 'month' ? 'MONTHLY' : 'YEARLY');
 
 const isGift = (st) => st?.status === 'gift' || st?.status === 'gift_ended';
@@ -263,6 +267,13 @@ export function seatCardInner(n) {
   const seat = Number.isInteger(n) && n > 0 ? n : null;
   const av = avatarSvg({ seat }, { size: 32, cls: 'pd-seat-av', bits: seat ? seedBits(seat) : blank() });
   return `${av}<span class="pd-seat-num num">${seatInner({ mine: false, seat })}</span>`;
+}
+
+// The visitor's sub: "a year · or $42 a month". The "or ..." part is the switch (a
+// .pro3-plan, so the same click handler picks its plan).
+export function switchHtml(plan) {
+  const p = plan === 'month' ? 'month' : 'year';
+  return `<span id="pro-unit">${esc(PLAN_UNIT[p])}</span> · <button type="button" class="pro3-plan pro3-switch" id="pro-switch" data-plan="${otherPlan(p)}">${esc(PLAN_OTHER[p])}</button>`;
 }
 
 // The price, with the plan switch in it: the picked plan bright, the other one dim.
@@ -399,7 +410,7 @@ export function visitorHtml({ next = null, alert = '', alertWarn = false, plan =
     heroLabel: HERO_LABEL[p],
     heroId: 'pro-hero',
     heroSize: 60,
-    sub: raw(priceHtml(p)),
+    sub: raw(switchHtml(p)),
     act: raw(buyButton('SUBSCRIBE', p)),
     note: raw(noteHtml(RENEW_NOTE)),
     media: raw(tiles + bonus),
@@ -469,7 +480,15 @@ function setPlan(host, plan) {
   if (!b) return;
   b.dataset.plan = plan;
   b.textContent = `${b.dataset.label} ${planButton(plan)}`;
-  for (const p of host.querySelectorAll('.pro3-plan')) p.setAttribute('aria-pressed', String(p.dataset.plan === plan));
+  for (const p of host.querySelectorAll('.pro3-plan:not(.pro3-switch)')) p.setAttribute('aria-pressed', String(p.dataset.plan === plan));
+  // The visitor's switch now offers the other plan; its unit follows the hero.
+  const sw = host.querySelector('#pro-switch');
+  if (sw && PLAN_OTHER[plan]) {
+    sw.dataset.plan = otherPlan(plan);
+    sw.textContent = PLAN_OTHER[plan];
+    const unit = host.querySelector('#pro-unit');
+    if (unit) unit.textContent = PLAN_UNIT[plan];
+  }
   // The visitor's hero is the picked plan's price.
   const price = host.querySelector('#pro-price');
   if (price && HERO_PRICE[plan]) {
@@ -513,11 +532,12 @@ function yearlyReady(host, v) {
   pro.getConfig().then((c) => {
     if (c.yearly || !host.isConnected) return;
     const y = host.querySelector('#pro-plan-year');
-    if (!y) return;
-    y.disabled = true;
-    y.title = YEARLY_NOT_YET;
+    const sw = host.querySelector('#pro-switch');
+    if (!y && !sw) return;
     v.plan = 'month';
     setPlan(host, 'month');
+    // The key view's year part, or the visitor's switch (now offering the year): off.
+    for (const b of [y, sw]) { if (b) { b.disabled = true; b.title = YEARLY_NOT_YET; } }
     const n = host.querySelector('#pro-year-note');
     if (n) n.hidden = false;
   });

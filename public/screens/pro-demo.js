@@ -156,18 +156,28 @@ export function pingsHtml(pings, now = Date.now(), fresh = false) {
 // ---- no ads ------------------------------------------------------------------------------
 
 export const HOUSE_LINE = { kind: 'house', label: 'AD', text: 'This line is for rent. No tracking, no pop-ups.', cmd: 'SPONSOR' };
-// on: the sponsor line is there; leaving: it slides away; entering: it slides back in.
-export function adsHtml({ on = true, leaving = false, entering = false } = {}) {
-  return '<div class="pd-term"><div class="pd-term-top"><i></i><i></i><i></i></div>'
-    + '<div class="pd-term-body"><span class="pd-term-panel is-wide"></span><span class="pd-term-panel"></span><span class="pd-term-panel"></span></div>'
-    + `<div class="pd-term-status"><span class="pd-term-msg">READY</span><span class="pd-term-spon spon-strip${leaving ? ' pd-out' : entering ? ' pd-in' : ''}">${on ? itemHtml(HOUSE_LINE) : ''}</span></div></div>`;
+// The status line's legal part, as the page has it (index.html #status-legal).
+export const LEGAL_LINE = ['Not financial advice', 'Terms'];
+// A small terminal: a chart line and a few rows, so it reads as the terminal, and the real
+// status line at the bottom. state: 'ad' (the AD line), 'leaving' (it slides away),
+// 'clean' (the legal line only), 'struck' (a still picture: the AD line struck through).
+// entering: the line comes in.
+export function adsHtml({ state = 'ad', entering = false } = {}) {
+  const body = '<div class="pd-term-body">'
+    + '<span class="pd-term-panel is-chart"><svg class="pd-term-line" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,32 12,28 22,30 34,20 46,24 58,14 70,18 82,8 100,12"/></svg></span>'
+    + `<span class="pd-term-panel is-rows">${'<i></i>'.repeat(4)}</span></div>`;
+  const move = state === 'leaving' ? ' pd-out' : entering ? ' pd-in' : '';
+  const line = state === 'clean'
+    ? `<span class="pd-term-legal${move}">${esc(LEGAL_LINE[0])}<span class="pd-term-sep" aria-hidden="true">·</span><span class="pd-term-link">${esc(LEGAL_LINE[1])}</span></span>`
+    : `<span class="pd-term-spon spon-strip${move}${state === 'struck' ? ' pd-struck' : ''}">${itemHtml(HOUSE_LINE)}</span>`;
+  return `<div class="pd-term"><div class="pd-term-top"><i></i><i></i><i></i></div>${body}<div class="pd-term-status">${line}</div></div>`;
 }
 
 // ---- the player --------------------------------------------------------------------------
 
 // tracks: [{ frames, delay(i): ms before frame i, hold: ms after the last frame, draw(i,
-// animate), alive(): still on the page }]. Frame 0 is drawn at once; reduce: only the last
-// frame, and no timer at all. Each track loops on its own. Waits while the tab is hidden;
+// animate), alive(): still on the page, still(): the picture for reduced motion (else the
+// last frame) }]. Frame 0 is drawn at once; reduce: only the still, and no timer at all. Each track loops on its own. Waits while the tab is hidden;
 // stop() clears every timer and listener, and so does the signal.
 export function play(tracks, { reduce = false, timers = globalThis, doc = globalThis.document, signal = null } = {}) {
   const pending = new Map();
@@ -208,7 +218,7 @@ export function play(tracks, { reduce = false, timers = globalThis, doc = global
   }
   if (signal?.aborted) { stopped = true; return ctl; }
   if (reduce) {
-    tracks.forEach((t) => t.draw(t.frames - 1, false));
+    tracks.forEach((t) => (t.still ? t.still() : t.draw(t.frames - 1, false)));
     stopped = true;
     return ctl;
   }
@@ -262,12 +272,15 @@ export function demoTracks(els, { byId = {}, ids = FALLBACK_WATCH, now = () => D
     });
   }
   if (els.ads) {
-    // 0: the line; 1: it slides away; 2: a clean status line.
+    // 0: the AD line (about 2 s); 1: it slides away; 2: the clean line (about 2 s), again.
+    // Reduced motion: the AD line struck through, so a still picture says "no ads".
+    const STATES = ['ad', 'leaving', 'clean'];
     tracks.push({
       frames: 3,
-      delay: (i) => (i === 1 ? 2400 : 400),
-      hold: 3200,
-      draw: (i, animate) => { els.ads.innerHTML = adsHtml({ on: i < 2, leaving: i === 1, entering: animate && i === 0 }); },
+      delay: (i) => (i === 1 ? 2000 : 400),
+      hold: 2000,
+      draw: (i, animate) => { els.ads.innerHTML = adsHtml({ state: STATES[i], entering: animate && i !== 1 }); },
+      still: () => { els.ads.innerHTML = adsHtml({ state: 'struck' }); },
       alive: alive(els.ads),
     });
   }

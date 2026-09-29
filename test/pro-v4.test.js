@@ -41,8 +41,9 @@ function fakeTimers() {
       if (!q.size) return false;
       const min = Math.min(...[...q.values()].map((t) => t.ms));
       const due = [...q.entries()].filter(([, t]) => t.ms === min);
-      for (const [id, t] of due) { q.delete(id); t.fn(); }
-      for (const t of q.values()) t.ms -= min;
+      for (const [id] of due) q.delete(id);
+      for (const t of q.values()) t.ms -= min; // time passes for the others, not for new ones
+      for (const [, t] of due) t.fn();
       return true;
     },
   };
@@ -177,10 +178,43 @@ test('every device: the visitor own watchlist (4 at most), AAPL NVDA TSLA when e
 
 test('no ads: the real sponsor line (the house line), then it slides away and leaves a clean line', () => {
   assert.equal(HOUSE_LINE.text, JSON.parse(readFileSync('data/sponsors.json', 'utf8')).house[1].text);
-  assert.match(adsHtml({ on: true }), /<a class="spon-item" href="\?c=SPONSOR" data-cmd="SPONSOR"><span class="sponsor-k">AD<\/span><span class="spon-text">This line is for rent\. No tracking, no pop-ups\.<\/span><\/a>/);
-  assert.match(adsHtml({ on: true, leaving: true }), /spon-strip pd-out/);
-  assert.doesNotMatch(adsHtml({ on: false }), /spon-item/);
-  assert.match(adsHtml({ on: false }), /READY/);
+  assert.match(adsHtml({ state: 'ad' }), /<a class="spon-item" href="\?c=SPONSOR" data-cmd="SPONSOR"><span class="sponsor-k">AD<\/span><span class="spon-text">This line is for rent\. No tracking, no pop-ups\.<\/span><\/a>/);
+  assert.match(adsHtml({ state: 'leaving' }), /spon-strip pd-out/);
+  // The clean line: the status line's own legal words, no AD.
+  const clean = adsHtml({ state: 'clean', entering: true });
+  assert.doesNotMatch(clean, /spon-item/);
+  assert.match(clean, /<span class="pd-term-legal pd-in">Not financial advice<span class="pd-term-sep" aria-hidden="true">·<\/span><span class="pd-term-link">Terms<\/span><\/span>/);
+  assert.match(readFileSync('public/index.html', 'utf8'), /<span class="legal-line">Not financial advice<\/span>[^]*?>Terms<\/a>/, 'the same words as the real status line');
+  // A terminal with something in it: a chart line and rows.
+  assert.match(clean, /<polyline points=/);
+  assert.equal((clean.match(/<i><\/i>/g) || []).length, 7, 'three window dots and four rows');
+  // The still picture: the AD line struck through.
+  assert.match(adsHtml({ state: 'struck' }), /class="pd-term-spon spon-strip pd-struck"><a class="spon-item"/);
+  assert.match(readFileSync('public/screens/pro-demo.css', 'utf8'), /\.pd-struck \.spon-item \{ text-decoration: line-through;/);
+});
+
+test('no ads timing: the AD line about 2 s, it slides away, the clean line about 2 s, again', async () => {
+  const root = fakeRoot();
+  const timers = fakeTimers();
+  const d = startDemo(root, ctxWith(), { reduce: false, timers, doc: fakeDoc() });
+  await flush();
+  const ads = () => root.els['#pd-ads'].innerHTML;
+  const adsTimer = () => [...timers.q.values()].find((t) => t.ms === 2000 && /spon-item/.test(ads()));
+  assert.match(ads(), /spon-item/);
+  assert.ok(adsTimer(), 'the AD line stays about 2 s');
+  const seen = ['ad'];
+  let cleanHold = false;
+  for (let i = 0; i < 60 && seen.length < 5; i++) {
+    timers.step();
+    const s = /pd-out/.test(ads()) ? 'leaving' : /pd-term-legal/.test(ads()) ? 'clean' : 'ad';
+    if (seen[seen.length - 1] !== s) {
+      seen.push(s);
+      if (s === 'clean') cleanHold = [...timers.q.values()].some((t) => t.ms === 2000);
+    }
+  }
+  assert.deepEqual(seen, ['ad', 'leaving', 'clean', 'ad', 'leaving'], seen.join());
+  assert.ok(cleanHold, 'the clean line stays about 2 s');
+  d.stop();
 });
 
 // ---- the player: motion, pause, clean up -------------------------------------------------
@@ -240,7 +274,7 @@ test('reduced motion: each mini shows its last frame and no timer runs', async (
   assert.equal((phone.match(/<tr class="row-link"/g) || []).length, 3);
   assert.match(root.els['#pd-pings'].innerHTML, /NVDA above 190[^]*|New message/);
   assert.equal((root.els['#pd-pings'].innerHTML.match(/class="pd-note"/g) || []).length, 2);
-  assert.doesNotMatch(root.els['#pd-ads'].innerHTML, /spon-item/, 'the clean status line');
+  assert.match(root.els['#pd-ads'].innerHTML, /pd-struck"><a class="spon-item"/, 'the AD line struck through');
   assert.equal(demo.player.pending, 0);
   // And the CSS keeps the slide off too.
   assert.match(readFileSync('public/screens/pro-demo.css', 'utf8'), /@media \(prefers-reduced-motion: reduce\) \{\s*\.pd-in, \.pd-out \{ animation: none; \}/);
@@ -339,8 +373,8 @@ test('visitor view: the kit slots in order, the price the only big number, one p
   assert.match(visitorHtml({ next: null }), /-----/);
   // The words: the budget of test/layout-rules.test.js.
   const w = cardWords(html.replace('<span id="pro-test" hidden>', '<span id="pro-test">'));
-  assert.equal(w.length, 37, w.join(' '));
-  assert.equal(cardWords(html).length, 33);
+  assert.equal(w.length, 35, w.join(' '));
+  assert.equal(cardWords(html).length, 31);
   // + Details keeps FREE and PRO and the terms.
   const d = html.split('<details')[1];
   assert.match(d, />FREE</);

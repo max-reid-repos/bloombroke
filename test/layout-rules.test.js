@@ -118,10 +118,10 @@ export const CARDS_B = [
 export const PAGES = [
   // PRO v4 (Sep 29): the owner's copy is six captions under the minis (Chat with friends,
   // Every device, Pings when closed, No ads, Yours forever, 3 friends get a month) and the
-  // key line (Have a key or gift code?), on top of the price, the button and the note:
-  // 37 in test mode, 33 in live mode. Words on a mini are the picture's (role="img").
-  ['PRO visitor (test mode)', shownInTest(mainHtml({ next: 4, has: all })), 37],
-  ['PRO visitor', mainHtml({ next: 4, has: all }), 33],
+  // key line (Key or gift code?), on top of the price, the button and the note:
+  // 35 in test mode, 31 in live mode. Words on a mini are the picture's (role="img").
+  ['PRO visitor (test mode)', shownInTest(mainHtml({ next: 4, has: all })), 35],
+  ['PRO visitor', mainHtml({ next: 4, has: all }), 31],
   ['PRO key', mainHtml({ key: KEY, st: ST, has: all }), 25],
   // Just bought or redeemed: the save line (the last chance to save the key); in a browser
   // that saved it, MANAGE PLAN and CANCEL too. 27 (the reviewer's call, Sep 29).
