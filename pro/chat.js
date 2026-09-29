@@ -356,8 +356,8 @@ export function createHub({ now = () => Date.now(), waitMs = WAIT_MS, perLicence
 export const DRIVE_IDLE_MS = 10 * 60 * 1000; // no screen sent for 10 minutes: it stops
 export const DRIVE_GONE_MS = 60 * 1000; // the driver's page stopped listening: it stops
 export const DRIVE_CMDS_PER_MIN = 60;
-export const drivingLine = (who) => `${who} is driving.`;
-export const stoppedLine = (who) => `${who} stopped.`;
+export const drivingLine = (who) => `${who} is live.`;
+export const stoppedLine = (who) => `${who} ended live.`;
 
 export function createDrives({ now = () => Date.now() } = {}) {
   const rooms = new Map(); // room id -> { driver, by, cmd, seq, at, followers: Set }

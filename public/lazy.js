@@ -43,12 +43,14 @@ const pending = new Map(); // rel -> Promise<module>
 const ready = new Map(); // rel -> module, once loaded
 
 // The module, loaded once. Rejects if it cannot load (after asking for a reload).
-export function loadModule(rel) {
+// recover: false for an optional extra (HERE NOW, the chat badge, hints, TRENDING, the
+// menu): it just rejects, and the page carries on without it, never reloading.
+export function loadModule(rel, { recover: canRecover = true } = {}) {
   let p = pending.get(rel);
   if (!p) {
     p = import(assetUrl(rel)).then((m) => { ready.set(rel, m); return m; }, (err) => {
       pending.delete(rel);
-      recover(err);
+      if (canRecover) recover(err);
       throw err;
     });
     pending.set(rel, p);

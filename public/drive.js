@@ -1,9 +1,10 @@
-// DRIVE: friends' terminals follow the screens you open, live. Loaded with the CHAT
-// screen (never at startup); once loaded it keeps working on every screen.
+// DRIVE (GO LIVE on screen): friends' terminals follow the screens you open, live (they
+// WATCH). Loaded with the CHAT screen (never at startup); once loaded it keeps working on
+// every screen. On screen: GO LIVE, LIVE, WATCH, WATCHING; in the code: drive, follow.
 //
 // Driver: every screen the router draws (app.js sends 'bb:screen') that could be a chat
 // card is sent to the server, 300 ms after the last change. Other screens are not sent.
-// Follower: opt-in only (FOLLOW). Each screen the driver sends goes through the router
+// Follower: opt-in only (WATCH). Each screen the driver sends goes through the router
 // like a link (app.js 'bb:drive-run': linkPlan, so nothing that changes anything runs by
 // itself). Esc, a command of your own, STOP or CHAT ends following. Starting another
 // drive or follow, or logging out, tells the server the old one is over.
@@ -31,13 +32,13 @@ export function whoHtml(by) {
   return p.name ? `${av} ${nameHtml(p)} <span class="dim">#${esc(p.seat ?? '--')}</span>` : `${av} ${esc(who(p))}`;
 }
 
-// One line each, on every screen while driving or following.
+// One line each, on every screen while live or watching.
 export function driverBarHtml(followers = 0) {
-  return `<span class="dv-k">DRIVING</span><span class="dv-sep">·</span><span class="num">${Number(followers) || 0}</span> following<span class="dv-sep">·</span><button type="button" class="dv-btn" data-dv="stop">STOP</button>`;
+  return `<span class="dv-k">LIVE</span><span class="dv-sep">·</span><span class="num">${Number(followers) || 0}</span> watching<span class="dv-sep">·</span><button type="button" class="dv-btn" data-dv="stop">STOP</button>`;
 }
 export function followBarHtml(by, cmd = '') {
   const screen = cmd ? `<span class="dv-sep">·</span><span class="dv-cmd">${esc(cmd)}</span>` : '';
-  return `<span class="dv-k">FOLLOWING</span> ${whoHtml(by)}${screen}<span class="dv-sep">·</span><button type="button" class="dv-btn" data-dv="stop">ESC stops</button><span class="dv-sep">·</span><a class="dv-btn" href="?c=CHAT" data-cmd="CHAT">CHAT</a>`;
+  return `<span class="dv-k">WATCHING</span> ${whoHtml(by)}${screen}<span class="dv-sep">·</span><button type="button" class="dv-btn" data-dv="stop">ESC stops</button><span class="dv-sep">·</span><a class="dv-btn" href="?c=CHAT" data-cmd="CHAT">CHAT</a>`;
 }
 
 // A follower's events: the newest screen for this room after seq, and whether it ended.
@@ -270,7 +271,7 @@ export function createDrive({ win = globalThis.window, doc = globalThis.document
       const d = await api(`/api/chat/rooms/${room}/drive`, { method: 'POST', body: { action: 'start' } });
       begin({ role: 'drive', room, by: d.drive?.by || null, cmd: null, seq: 0, followers: d.drive?.followers || 0, cursor: Number(d.cursor) || 0 });
     },
-    // FOLLOW: opt-in. Opens the driver's current screen, if there is one yet.
+    // WATCH (follow): opt-in. Opens the driver's current screen, if there is one yet.
     async follow(room) {
       const d = await api(`/api/chat/rooms/${room}/drive`, { method: 'POST', body: { action: 'follow' } });
       const mine = begin({ role: 'follow', room, by: d.drive.by, cmd: null, seq: Number(d.drive.seq) || 0, followers: 0, cursor: Number(d.cursor) || 0 });

@@ -1232,6 +1232,13 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .seat { font-size: 11px; font-weight: 600; letter-spacing: .12em; color: var(--accent); white-space: nowrap; }
 .seat:hover { text-decoration: none; color: var(--text); }
 .seat[hidden] { display: none; }
+/* A long username gives way first (an ellipsis), so the seat never runs into the clock;
+   the avatar and the #seat number stay whole. */
+.seat-name { display: inline-block; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+/* A phone: 8 characters of the name at most; under 430 px only the avatar and #seat have
+   room beside the clock (and under 380 px the seat gives way, below). */
+@media (max-width: 639px) { .seat-name { max-width: 8ch; } }
+@media (max-width: 429px) { .seat-name { display: none; } }
 /* CHAT 2 by the seat (chat-badge.js): unread chats, Pro only. */
 .chat-badge { font-size: 11px; font-weight: 700; letter-spacing: .08em; padding: 0 4px; background: var(--accent); color: var(--ink); white-space: nowrap; }
 .chat-badge:hover { text-decoration: none; background: var(--text); }

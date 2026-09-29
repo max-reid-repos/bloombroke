@@ -3,7 +3,7 @@
 
 import { esc, fmtNum, panel, metaNote, LOADING } from './markets.js';
 import { mountLines, legend } from './lines.js';
-import { usageCard } from '../kit.js';
+import { usageCard, cardPage } from '../kit.js';
 import { MAX_LOAN, parseMoney, takeYears, parseLoan as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { MAX_LOAN, parseMoney, takeYears, parse };
 
@@ -65,21 +65,28 @@ export function noRateHtml(a) {
   return usageCard({ problem: "Today's mortgage rate did not load.", format: `${base} rate%`, grammar: `${base} <rate>%`, example: `${base} 6.5%`, notes: ['Add your own rate at the end.'] });
 }
 
+// The answer, a card page in the first panel: the monthly payment (hero), what was asked
+// (sub), where the rate comes from (note), and the totals as facts.
+export function loanResultHtml(a, rate, source, res = amortize(a.amount, rate, a.years)) {
+  const payText = usd(res.payment, 2);
+  return cardPage({
+    cls: 'loan-card', label: 'Loan payment',
+    hero: payText, heroSize: payText.length <= 10 ? 60 : 44,
+    sub: `A month, for ${usd(a.amount)} over ${fmtNum(a.years, a.years % 1 ? 1 : 0)} years at ${fmtNum(rate, 2)}%.`,
+    note: source,
+    facts: [
+      { value: usd(res.totalInterest), label: 'Total interest', cls: 'down' },
+      { value: usd(res.totalPaid), label: 'Total paid' },
+      { value: `${fmtNum((res.totalInterest / res.totalPaid) * 100, 1)}%`, label: 'Interest share' },
+      { value: String(Math.round(a.years * 12)), label: 'Payments' },
+    ],
+  });
+}
+
 function show(el, ctx, a, rate, source) {
   const res = amortize(a.amount, rate, a.years);
-  const payText = usd(res.payment, 2);
   el.innerHTML = `<div class="stack">
-    ${panel('1', 'Loan', `<div class="money">
-      <p class="fx-from"><span class="num">${esc(usd(a.amount))}</span> over ${esc(fmtNum(a.years, a.years % 1 ? 1 : 0))} years at <span class="num">${esc(fmtNum(rate, 2))}%</span></p>
-      <p class="hero num${payText.length > 13 ? ' is-long' : ''}"><span class="hero-value">${esc(payText)}</span><span class="hero-unit">A MONTH</span></p>
-      <p class="fx-to dim">${esc(source)}</p>
-      <dl class="stats stats-row">
-        <div class="stat"><dt>Total interest</dt><dd class="num down">${esc(usd(res.totalInterest))}</dd></div>
-        <div class="stat"><dt>Total paid</dt><dd class="num">${esc(usd(res.totalPaid))}</dd></div>
-        <div class="stat"><dt>Interest share</dt><dd class="num">${esc(fmtNum((res.totalInterest / res.totalPaid) * 100, 1))}%</dd></div>
-        <div class="stat"><dt>Payments</dt><dd class="num">${Math.round(a.years * 12)}</dd></div>
-      </dl>
-    </div>`, { meta: `FIXED RATE, MONTHLY · ${metaNote('PRINCIPAL AND INTEREST ONLY, NO TAX, INSURANCE OR FEES')}` })}
+    ${panel('1', 'Loan', loanResultHtml(a, rate, source, res), { meta: `FIXED RATE, MONTHLY · ${metaNote('PRINCIPAL AND INTEREST ONLY, NO TAX, INSURANCE OR FEES')}` })}
     <div class="chart-by-year">
     ${panel('2', 'Balance and interest paid', `<div class="chart-host" id="ln-chart"></div><div id="ln-legend"></div>`, { metaId: 'ln-meta', bodyCls: 'flush' })}
     ${panel('3', 'By year', `<table class="grid-table loan-table">

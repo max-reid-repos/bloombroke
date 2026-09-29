@@ -1,11 +1,13 @@
 // AFFORD: "Can I afford it?" For things people buy (a bike, a laptop), never investments.
-// Cost per use, hours of work, what the money would grow to at an assumed rate, and a
-// verdict stamp. WAGE saves an hourly wage in this browser so AFFORD can show hours.
+// A card page (kit.js cardPage): the cost per use big, one line of what was typed, the
+// facts (uses, hours of work, what the money would grow to at an assumed rate), and the
+// verdict stamp as the picture; how it is worked out in + Details. WAGE saves an hourly
+// wage in this browser so AFFORD can show hours (also a card).
 // (The command was called BUY until September 2026.)
 
 import { esc, q, fmtNum, panel } from './markets.js';
 import { AFFORD_EXAMPLE } from '../afford.js';
-import { usageCard } from '../kit.js';
+import { usageCard, cardPage, cardButton, cardForm, cardLink, cardRows, raw } from '../kit.js';
 
 export const INVEST_RATE = 0.08;
 export const TITLE = 'Can I afford it?';
@@ -59,7 +61,6 @@ export function readWage(store) {
   return Number.isFinite(w) && w > 0 ? w : null;
 }
 
-const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
 const EXAMPLES = ['AFFORD 1200', 'AFFORD 1200 BIKE 2 PER WEEK', 'AFFORD 90 3 TIMES A MONTH FOR 2Y', 'AFFORD 4.50 1 PER DAY FOR 1Y', 'AFFORD 30000 FOR 8Y'];
 
 // A command typed wrong: the kit's usage card. The first sentence of the message is the
@@ -92,51 +93,48 @@ export function readWageInput(text) {
   return Number.isFinite(n) && n > 0 && n <= 100000 ? n : null;
 }
 
-// The share row: a link to this exact AFFORD, on X or copied.
+// The share links: a link to this exact AFFORD, on X or copied (the card's LINKS row).
 export function affordShare(r, input, origin) {
   const url = `${origin}/${q(input)}`;
   const text = `${r.label ? `${r.label}, ` : ''}${fmtMoney(r.price)}, used ${howOften(r.times, r.unit)} for ${yearsWord(r.years)}: ${fmtMoney(r.costPerUse)} per use. Verdict: ${r.verdict}.`;
-  return `<div class="wi-share buy-share">
-      <a class="wi-btn" href="${esc(`https://x.com/intent/post?${new URLSearchParams({ text, url })}`)}" target="_blank" rel="noopener noreferrer">SHARE ON X</a>
-      <button type="button" class="wi-btn" data-copy="${esc(url)}">COPY LINK</button>
-    </div>`;
+  return cardLink({ label: 'SHARE ON X', href: `https://x.com/intent/post?${new URLSearchParams({ text, url })}`, attrs: 'target="_blank" rel="noopener noreferrer"' })
+    + ' ' + cardLink({ label: 'COPY LINK', attrs: `data-copy="${esc(url)}"` });
 }
 
-export function buyHtml(r, share = '') {
-  const size = fmtMoney(r.costPerUse).length > 12 ? ' is-long' : '';
-  // No wage saved: a field for it right here, not a command to go and type.
-  const hours = r.hours === null
-    ? `<dd><form class="add-form wage-form" data-own-focus autocomplete="off"><input class="add-in add-num" name="wage" type="text" inputmode="decimal" maxlength="12" placeholder="Hourly pay" aria-label="Your hourly pay, USD, to see hours of work"><button type="submit" class="chip add-btn">SHOW HOURS</button></form></dd>`
-    : `<dd class="num">${esc(fmtNum(r.hours, r.hours < 10 ? 1 : 0))} h</dd>`;
-  const how = [
-    `Uses: ${howOften(r.times, r.unit)} for ${yearsWord(r.years)} is ${plain(r.uses)} uses.`,
-    `Cost per use: ${fmtMoney(r.price)} divided by ${plain(r.uses)} uses is ${fmtMoney(r.costPerUse)}.`,
-    r.hours === null
-      ? 'Hours of work: save your hourly pay with WAGE and AFFORD divides the price by it.'
-      : `Hours of work: ${fmtMoney(r.price)} divided by ${fmtMoney(r.wage)} an hour is ${fmtNum(r.hours, 1)} hours, before tax.`,
-    `Invested instead: ${fmtMoney(r.price)} growing ${Math.round(r.rate * 100)}% a year, compounded, for ${yearsWord(r.years)} is ${fmtMoney(r.invested)}. The ${Math.round(r.rate * 100)}% is an assumption, not a forecast or a promise. Real returns go up and down.`,
-    'Verdict: WORTH IT under $2 a use, SLEEP ON IT under $10 a use, SKIP IT at $10 or more. A rule of thumb for things you buy, not investments.',
+// How each number is worked out, for + Details.
+function howRows(r) {
+  const pct = Math.round(r.rate * 100);
+  return [
+    ['Uses', `${howOften(r.times, r.unit).replace(/^./, (c) => c.toUpperCase())} for ${yearsWord(r.years)} is ${plain(r.uses)} uses.`],
+    ['Cost per use', `${fmtMoney(r.price)} divided by ${plain(r.uses)} uses is ${fmtMoney(r.costPerUse)}.`],
+    ['Hours of work', r.hours === null
+      ? 'Save your hourly pay (the field above, or WAGE) and AFFORD divides the price by it.'
+      : `${fmtMoney(r.price)} divided by ${fmtMoney(r.wage)} an hour is ${fmtNum(r.hours, 1)} hours, before tax.`],
+    ['Invested instead', `${fmtMoney(r.price)} growing ${pct}% a year, compounded, for ${yearsWord(r.years)} is ${fmtMoney(r.invested)}. The ${pct}% is an assumption, not a forecast or a promise. Real returns go up and down.`],
+    ['Verdict', 'WORTH IT under $2 a use, SLEEP ON IT under $10 a use, SKIP IT at $10 or more. A rule of thumb for things you buy, not investments.'],
   ];
-  return `<div class="buy">
-    <div class="buy-main">
-      <p class="fx-from">${r.label ? `${esc(r.label)}: ` : ''}<span class="num">${esc(fmtMoney(r.price))}</span>, used ${esc(howOften(r.times, r.unit))} for ${esc(yearsWord(r.years))}, costs</p>
-      <p class="hero num${size}"><span class="hero-value">${esc(fmtMoney(r.costPerUse))}</span><span class="hero-unit">PER USE</span></p>
-      <dl class="stats buy-stats">
-        <div class="stat"><dt>Total uses</dt><dd class="num">${esc(fmtNum(r.uses, Number.isInteger(r.uses) ? 0 : 1))}</dd></div>
-        <div class="stat"><dt>Hours of work</dt>${hours}</div>
-        <div class="stat"><dt>If invested instead</dt><dd class="num"><span>${esc(fmtMoney(r.invested))} in ${esc(yearsWord(r.years))} at ${Math.round(r.rate * 100)}%/yr</span></dd></div>
-      </dl>
-    </div>
-    <div class="buy-side">
-      <p class="stamp stamp-${r.verdictKey}" role="img" aria-label="Verdict: ${r.verdict}"><span class="stamp-k">VERDICT</span><span class="stamp-v">${r.verdict}</span></p>
-      <p class="stamp-line">${esc(r.line)}</p>
-      <details class="how">
-        <summary>How is this calculated?</summary>
-        <ul class="how-list">${how.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
-      </details>
-    </div>
-  </div>
-  ${share}`;
+}
+
+// The result: the cost per use (hero), what was typed (sub), a field for the hourly pay
+// when none is saved (not a command to go and type), the facts, the verdict stamp and its
+// line (the picture), the share links, and the working in + Details.
+export function buyHtml(r, share = '') {
+  const hero = `${fmtMoney(r.costPerUse)} a use`;
+  const hours = r.hours === null ? '--' : `${fmtNum(r.hours, r.hours < 10 ? 1 : 0)} h`;
+  return cardPage({
+    cls: 'buy-card', label: TITLE,
+    hero, heroSize: hero.length <= 14 ? 60 : 44,
+    sub: `${r.label ? `${r.label}: ` : ''}${fmtMoney(r.price)}, used ${howOften(r.times, r.unit)} for ${yearsWord(r.years)}.`,
+    act: r.hours === null ? raw(cardForm({ id: 'wage-form', inputId: 'wage-in', label: 'Your hourly pay, USD, to see hours of work', placeholder: 'Hourly pay', button: 'SHOW HOURS', maxlength: 12, inputMode: 'decimal' })) : '',
+    facts: [
+      { value: fmtNum(r.uses, Number.isInteger(r.uses) ? 0 : 1), label: 'Total uses' },
+      { value: hours, label: 'Hours of work' },
+      { value: fmtMoney(r.invested), label: `If invested, ${Math.round(r.rate * 100)}%/yr` },
+    ],
+    media: raw(`<div class="buy-verdict"><p class="stamp stamp-${r.verdictKey}" role="img" aria-label="Verdict: ${r.verdict}"><span class="stamp-k">VERDICT</span><span class="stamp-v">${r.verdict}</span></p><p class="stamp-line">${esc(r.line)}</p></div>`),
+    links: share ? [share] : [],
+    details: raw(cardRows(howRows(r))),
+  });
 }
 
 // WAGE typed wrong: the kit's usage card. WAGE 35 saves a wage, so a click puts it in the
@@ -146,6 +144,24 @@ export function wageUsage(error) {
     problem: error === 'amount' ? 'That wage does not look right.' : 'WAGE needs your hourly pay.',
     format: 'WAGE hourly-pay', grammar: 'WAGE <per hour>', example: 'WAGE 35', more: ['WAGE OFF'],
     notes: ['WAGE OFF forgets it. It stays in this browser only.'],
+  });
+}
+
+// WAGE saved, shown or cleared: a small card. now: the wage in this browser, or null.
+export function wageHtml(now, { show = false, clear = false } = {}) {
+  if (now === null) {
+    return cardPage({
+      cls: 'wage-card', label: 'Wage',
+      hero: clear ? 'Wage cleared' : 'No wage saved', heroSize: 44,
+      act: raw(cardButton({ label: 'WAGE 35', cmd: 'WAGE 35', primary: true, attrs: 'data-example' })),
+      note: 'Save your hourly pay and AFFORD shows the hours of work.',
+    });
+  }
+  return cardPage({
+    cls: 'wage-card', label: 'Wage',
+    hero: `${fmtMoney(now)} an hour`, heroSize: 44,
+    act: raw(cardButton({ label: 'AFFORD 1200', cmd: 'AFFORD 1200', primary: true, attrs: 'data-example' })),
+    note: show ? 'Your saved wage. It stays in this browser only.' : 'Saved in this browser only. AFFORD now shows the hours of work.',
   });
 }
 
@@ -159,12 +175,7 @@ function renderWage(el, cmd, ctx) {
   if (clear) ctx.store.set(WAGE_KEY, null);
   else if (!show) ctx.store.set(WAGE_KEY, wage);
   const now = readWage(ctx.store);
-  const msg = now === null
-    ? (clear ? 'Wage cleared.' : 'No wage saved yet.')
-    : `${show ? 'Your wage' : 'Saved'}: ${fmtMoney(now)} an hour.`;
-  el.innerHTML = panel('1', 'Wage', `
-    <p class="notice">${esc(msg)}</p>
-    <p class="muted">${now === null ? `Type ${code('WAGE 35')} to save one.` : `AFFORD now shows the hours of work. Try ${code('AFFORD 1200')}.`} It stays in this browser only.</p>`, { cls: 'panel-solo' });
+  el.innerHTML = wageHtml(now, { show, clear });
   ctx.status(now === null ? 'WAGE: NONE SAVED' : `WAGE: ${fmtMoney(now)}/HR`);
 }
 
@@ -185,13 +196,10 @@ export function render(el, cmd, ctx) {
   }
   const r = buyMaths(cmd.args, { wage: readWage(ctx.store) });
   const origin = typeof location !== 'undefined' ? location.origin : '';
-  el.innerHTML = panel('1', TITLE, buyHtml(r, affordShare(r, cmd.input, origin)), {
-    cls: 'panel-solo',
-    meta: esc(`${r.label ? `${r.label.toUpperCase()}  ` : ''}${fmtMoney(r.price)}  ${plain(r.times)} PER ${r.unit}  ${yearsWord(r.years).toUpperCase()}`),
-  });
-  el.querySelector('.wage-form')?.addEventListener('submit', (e) => {
+  el.innerHTML = buyHtml(r, affordShare(r, cmd.input, origin));
+  el.querySelector('#wage-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
-    const wage = readWageInput(e.currentTarget.elements.wage.value);
+    const wage = readWageInput(el.querySelector('#wage-in')?.value);
     if (wage === null) { ctx.status('TYPE YOUR HOURLY PAY, LIKE 35', 'warn'); return; }
     ctx.store.set(WAGE_KEY, wage);
     render(el, cmd, ctx);

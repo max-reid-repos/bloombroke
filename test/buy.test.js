@@ -82,8 +82,8 @@ test('AFFORD formats and HTML', () => {
   const html = buyHtml(buyMaths({ price: 1200, times: 1, unit: 'WEEK', years: 3 }));
   assert.match(html, /stamp-sleep/);
   assert.match(html, /SLEEP ON IT/);
-  assert.match(html, /class="add-form wage-form"[\s\S]*placeholder="Hourly pay"/);
-  assert.match(html, /How is this calculated\?/);
+  assert.match(html, /<form class="card-form" id="wage-form"[\s\S]*placeholder="Hourly pay"/, 'no wage saved: a field for it right here');
+  assert.match(html, /<details class="how card-more"><summary>Details<\/summary>[\s\S]*Cost per use[\s\S]*not a forecast or a promise/, 'how it is worked out, in + Details');
   assert.doesNotMatch(html, /\bBUY\b/);
   assert.doesNotMatch(html, /style=/);
   assert.doesNotMatch(html, /\u2014/, 'no em dashes');
@@ -130,7 +130,7 @@ test('AFFORD errors say what works, and only mention investments for investments
   assert.match(el.innerHTML, /<a class="code"[^>]*>AFFORD 1200 2 PER WEEK FOR 3Y<\/a>/);
   assert.doesNotMatch(el.innerHTML, /investment/i);
   renderBuy(el, parseCommand('AFFORD 1200 BIKE'), ctx);
-  assert.match(el.innerHTML, /Bike: <span class="num">\$1,200<\/span>/);
+  assert.match(el.innerHTML, /<p class="card-sub">Bike: \$1,200, used once a week for 3 years\.<\/p>/);
   renderBuy(el, parseCommand('AFFORD 1200 AAPL'), ctx);
   assert.match(el.innerHTML, /does not assess investments/);
 });

@@ -115,7 +115,7 @@ test('drive: start posts a line; takeover; STOP posts a line; only a member; lin
     assert.deepEqual(r.body.drive, { by: { seat: a.seat, name: 'Tom', color: null, avatar: null }, own: true, following: false, followers: 0 });
     assert.ok(r.body.cursor > 0);
     let lines = (await b.msgs(g)).filter((m) => m.kind === 'sys').map((m) => m.text);
-    assert.deepEqual(lines, [`Tom #${a.seat} is driving.`]);
+    assert.deepEqual(lines, [`Tom #${a.seat} is live.`]);
     // B sees the offer on the room; A sees own.
     const bRoom = (await b.list()).body.rooms.find((x) => x.id === g);
     assert.deepEqual(bRoom.drive, { by: { seat: a.seat, name: 'Tom', color: null, avatar: null }, own: false, following: false });
@@ -134,7 +134,7 @@ test('drive: start posts a line; takeover; STOP posts a line; only a member; lin
     assert.equal((await b.list()).body.rooms.find((x) => x.id === g).drive.followers, 0, 'C followed A, not B');
     assert.equal((await b.drive(g, 'stop')).status, 200);
     lines = (await c.msgs(g)).filter((m) => m.kind === 'sys').map((m) => m.text);
-    assert.deepEqual(lines, [`Tom #${a.seat} is driving.`, `SEAT ${b.seat} is driving.`, `SEAT ${b.seat} stopped.`]);
+    assert.deepEqual(lines, [`Tom #${a.seat} is live.`, `SEAT ${b.seat} is live.`, `SEAT ${b.seat} ended live.`]);
     assert.equal((await c.list()).body.rooms.find((x) => x.id === g).drive, undefined);
     // Screens are never messages.
     const rows = s.db.prepare('SELECT body FROM chat_messages').all().map((x) => x.body);
@@ -231,7 +231,7 @@ test('drive: stops after 10 minutes without a screen, or 60 s after the driver s
     s.advance(DRIVE_IDLE_MS);
     s.chat.sweep();
     assert.equal(s.chat.drives.get(g), null);
-    assert.equal((await c.msgs(g)).filter((m) => m.kind === 'sys').at(-1).text, `Tom #${a.seat} stopped.`);
+    assert.equal((await c.msgs(g)).filter((m) => m.kind === 'sys').at(-1).text, `Tom #${a.seat} ended live.`);
     cancelA(); cancelB();
     // The driver's page gone for 60 s: stopped.
     await a.drive(g, 'start');
@@ -251,7 +251,7 @@ test('drive: stops after 10 minutes without a screen, or 60 s after the driver s
 // ---- the browser side (public/drive.js, the app.js hooks, the CHAT screen) -----------------
 
 const { createDrive, driverBarHtml, followBarHtml, pickFollow, pickDrive, nextPause, who, PAUSE_MS } = await import('../public/drive.js');
-const { attachFor, headHtml, extraHtml, driveChipHtml, messagesHtml } = await import('../public/screens/chat.js');
+const { attachFor, headHtml, extraHtml, driveChipHtml, messagesHtml, LIVE_WORDS } = await import('../public/screens/chat.js');
 const { driveTarget } = await import('../public/app.js');
 const { readFileSync } = await import('node:fs');
 const { buildAssets } = await import('../lib/assets.js');
@@ -286,11 +286,11 @@ function fakeApi(answers = {}) {
 }
 const TOM = { seat: 1, name: 'Tom' };
 
-test('bars: one line each; DRIVING with the count and STOP; FOLLOWING who, the screen, ESC stops, CHAT', () => {
-  assert.equal(strip(driverBarHtml(2)), 'DRIVING · 2 following · STOP');
-  assert.equal(strip(followBarHtml(TOM, 'AAPL 1Y')), 'FOLLOWING Tom #1 · AAPL 1Y · ESC stops · CHAT');
+test('bars: one line each; LIVE with the count and STOP; WATCHING who, the screen, ESC stops, CHAT', () => {
+  assert.equal(strip(driverBarHtml(2)), 'LIVE · 2 watching · STOP');
+  assert.equal(strip(followBarHtml(TOM, 'AAPL 1Y')), 'WATCHING Tom #1 · AAPL 1Y · ESC stops · CHAT');
   assert.match(followBarHtml(TOM, 'AAPL'), /<a class="dv-btn" href="\?c=CHAT" data-cmd="CHAT">CHAT<\/a>/, 'fix 10: CHAT is an own command: it opens CHAT and ends following');
-  assert.equal(strip(followBarHtml({ seat: 7, name: null }, '')), 'FOLLOWING SEAT 7 · ESC stops · CHAT');
+  assert.equal(strip(followBarHtml({ seat: 7, name: null }, '')), 'WATCHING SEAT 7 · ESC stops · CHAT');
   assert.match(followBarHtml({ seat: 7, name: '<b>' }, '<i>'), /&lt;b&gt;.*#7.*&lt;i&gt;/);
   assert.equal(who(TOM), 'Tom #1');
   assert.deepEqual(pickFollow([{ type: 'drive', room: 9, cmd: 'A', seq: 2 }, { type: 'drive', room: 9, cmd: 'B', seq: 3 }, { type: 'drive', room: 8, cmd: 'C', seq: 9 }], 9, 1), { next: { cmd: 'B', seq: 3 }, ended: false });
@@ -301,16 +301,20 @@ test('bars: one line each; DRIVING with the count and STOP; FOLLOWING who, the s
   assert.equal(nextPause({ events: [{}] }, 0), 0);
 });
 
-test('the CHAT thread: DRIVE in the head (STOP while you drive), the offer line with FOLLOW, server lines', () => {
+test('the CHAT thread: GO LIVE in the head (STOP while you are live), the offer line with WATCH, server lines', () => {
   const room = { id: 9, kind: 'group', title: 'Ann 2', members: [], readOnly: false };
-  assert.match(headHtml(room), /data-act="drive" aria-pressed="false">DRIVE</);
+  assert.match(headHtml(room), /data-act="drive" aria-pressed="false">GO LIVE</);
   assert.match(headHtml(room, { role: 'drive', room: 9 }), /data-act="drive-stop" aria-pressed="true">STOP</);
-  assert.match(headHtml(room, { role: 'drive', room: 4 }), />DRIVE</, 'driving another room');
-  assert.equal(driveChipHtml({ ...room, readOnly: true }), '', 'a closed chat has no DRIVE');
+  assert.match(headHtml(room, { role: 'drive', room: 4 }), />GO LIVE</, 'live in another room');
+  assert.equal(driveChipHtml({ ...room, readOnly: true }), '', 'a closed chat has no GO LIVE');
+  assert.match(headHtml({ ...room, drive: { by: TOM, own: false, following: false } }), /data-act="take">TAKE OVER</, 'someone else is live: TAKE OVER');
+  assert.doesNotMatch(headHtml(room) + extraHtml({ ...room, drive: { by: TOM, own: false } }), />(DRIVE|FOLLOW)</, 'the old names are gone from the screen');
   assert.equal(extraHtml(room), '');
   const driven = { ...room, drive: { by: TOM, own: false, following: false } };
-  assert.equal(strip(extraHtml(driven)), 'Tom #1 is driving. FOLLOW');
-  assert.equal(strip(extraHtml(driven, { role: 'follow', room: 9 })), 'Following Tom #1. STOP');
+  assert.equal(strip(extraHtml(driven)), 'Tom #1 is live. WATCH');
+  assert.equal(strip(extraHtml(driven, { role: 'follow', room: 9 })), 'Watching Tom #1. STOP');
+  // Typed with a chat open: GO LIVE, and DRIVE still works.
+  assert.deepEqual(LIVE_WORDS, ['GO LIVE', 'DRIVE']);
   assert.equal(extraHtml({ ...room, drive: { by: TOM, own: true } }), '', 'your own drive: the bar says it');
   const html = messagesHtml([{ id: 1, kind: 'sys', seat: null, text: 'Tom 1 is driving.', at: Date.now() }]);
   assert.match(html, /class="cm cm-sys".*<span class="cm-body">Tom 1 is driving\.<\/span>/);
@@ -456,7 +460,7 @@ test('fix 1: a new drive or follow tells the server the old one ended; so does l
   await tick(5);
   assert.equal(told().length, n, 'the same drive again never stops itself');
   assert.equal(dv.state().role, 'drive');
-  assert.match(readFileSync('public/screens/chat.js', 'utf8'), /if \(now\?\.role === 'drive' && now\.room === r\.id\) \{ ctx\.status\('DRIVING: OPEN ANY SCREEN'\); return true; \}/);
+  assert.match(readFileSync('public/screens/chat.js', 'utf8'), /if \(now\?\.role === 'drive' && now\.room === r\.id\) \{ ctx\.status\('LIVE: OPEN ANY SCREEN'\); return true; \}/);
   // Logout (the key is gone): the old drive ends, told with the key it began with.
   await dv.start(7);
   k = null;

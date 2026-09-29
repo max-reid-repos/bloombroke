@@ -66,7 +66,7 @@ export const DETAIL = {
   'PRO': { options: [['YEARLY', 'The $420 a year plan (the default)'], ['MONTHLY', 'Lead with the $42 a month plan']], source: 'Built in', delay: 'None' },
   'GIFT': { source: 'Built in', delay: 'None' },
   'REDEEM': { options: [['<code>', 'The gift code, GIFT-XXXX-.... It never goes in the address bar']], source: 'Built in', delay: 'None' },
-  'CHAT': { options: [['<seat>', 'Chat with that seat. The first time, they get a request'], ['@<username>', 'The same, by username (set yours in ME)'], ['<seat> <seat> ...', 'A group of your contacts, up to 8 people']], source: 'Messages between Pro members, deleted after 30 days', delay: 'Live' },
+  'CHAT': { options: [['<seat>', 'Chat with that seat. The first time, they get a request'], ['@<username>', 'The same, by username (set yours in ME)'], ['<seat> <seat> ...', 'A group of your contacts, up to 8 people'], ['GO LIVE', 'Typed with a chat open: the people in it can WATCH the screens you open, live. DRIVE works too']], source: 'Messages between Pro members, deleted after 30 days', delay: 'Live' },
   'ME': { options: [['SETTINGS', 'The same screen'], ['ACCOUNT', 'The same screen']], source: 'Built in; your profile is stored with your Pro licence, device settings in this browser', delay: 'None' },
   'LOGIN': { options: [['<key>', 'Your Pro key, BB-XXXX-XXXX-XXXX-XXXX. It never goes in the address bar']], source: 'Built in', delay: 'None' },
   'LOGOUT': { source: 'Built in', delay: 'None' },

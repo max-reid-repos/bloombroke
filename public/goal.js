@@ -14,6 +14,8 @@
 // after the page loaded (LOGIN, REDEEM) finds DataFast already running: the page reloads
 // (reloadAfterKey) so it stops at once. Cloudflare may still inject its own analytics
 // beacon; that is outside this code.
+// Ahrefs Web Analytics (page views only, no goals) loads through exactly the same gates
+// as DataFast (analyticsBlocked): never with GPC, never for Pro, never in a DESK panel.
 // once: a key (the result, the puzzle number). The same goal with the same key is sent
 // once per browser tab session (sessionStorage 'bb.goals'); without storage, every time.
 
@@ -74,6 +76,12 @@ export const DATAFAST = {
   domain: 'bloombroke.com',
 };
 
+// Ahrefs Web Analytics: its script, async, with the site's public id as data-key.
+export const AHREFS = {
+  src: 'https://analytics.ahrefs.com/analytics.js',
+  site: 'PRP692zzb4D3HwxC/FRBpA', // public: every visitor's browser gets it; the script's data-key
+};
+
 // The licence key's storage name (public/pro.js LS.key; a test keeps them the same).
 export const PRO_KEY_STORAGE = 'bb.pro.key';
 const PRO_PENDING_STORAGE = 'bb.pro.session';
@@ -101,7 +109,7 @@ export function proKeyPresent({ local, session, loc } = {}) {
 // showKey: the PRO screen shows the key once after the reload (a REDEEM's new key).
 // True when it reloads. Never throws.
 export const SHOW_KEY_ONCE = 'bb.pro.showkey';
-const THIRD_PARTY = 'script[src^="https://datafa.st/"], script[src*="cloudflareinsights.com"]';
+const THIRD_PARTY = 'script[src^="https://datafa.st/"], script[src^="https://analytics.ahrefs.com/"], script[src*="cloudflareinsights.com"]';
 export function reloadAfterKey({ doc = globalThis.document, loc = globalThis.location, session, showKey = false } = {}) {
   try {
     if (!doc?.querySelector?.(THIRD_PARTY) || !loc?.replace) return false;
@@ -143,14 +151,24 @@ export function cleanProps(name, props) {
   return out;
 }
 
-// Add the DataFast script once: not with GPC on, not for Pro (proKeyPresent), not inside
-// a DESK panel (a desk of panels is one visit), not twice. A queue stands in until the
+// The gates every analytics script passes (DataFast and Ahrefs alike): not without a
+// page, not with GPC on, not for Pro (proKeyPresent), not inside a DESK panel (a desk of
+// panels is one visit). True when the script must not load. Never throws.
+export function analyticsBlocked({ doc, nav, win, pro = proKeyPresent } = {}) {
+  try {
+    if (!doc || !win || gpcOn(nav)) return true;
+    if (pro()) return true;
+    return Boolean(doc.documentElement?.classList?.contains('is-embed'));
+  } catch {
+    return true;
+  }
+}
+
+// Add the DataFast script once, past the gates above. A queue stands in until the
 // script loads.
 export function loadDataFast({ doc = globalThis.document, nav = globalThis.navigator, win = globalThis.window, pro = proKeyPresent } = {}) {
   try {
-    if (!doc || !win || gpcOn(nav)) return false;
-    if (pro()) return false;
-    if (doc.documentElement?.classList?.contains('is-embed')) return false;
+    if (analyticsBlocked({ doc, nav, win, pro })) return false;
     if (doc.querySelector('script[src^="https://datafa.st/"]')) return false;
     if (typeof win.datafast !== 'function') {
       const q = function datafastQueue(...args) {
@@ -164,6 +182,26 @@ export function loadDataFast({ doc = globalThis.document, nav = globalThis.navig
     s.src = DATAFAST.src;
     s.setAttribute('data-website-id', DATAFAST.websiteId);
     s.setAttribute('data-domain', DATAFAST.domain);
+    doc.head.appendChild(s);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Add the Ahrefs Web Analytics script once, past the same gates as DataFast, and only on
+// bloombroke.com itself. async, with its data-key.
+export function loadAhrefs({ doc = globalThis.document, nav = globalThis.navigator, win = globalThis.window, pro = proKeyPresent } = {}) {
+  try {
+    if (analyticsBlocked({ doc, nav, win, pro })) return false;
+    // Only on the site itself (DataFast's data-domain): never on localhost, a test server
+    // or a copy of the page elsewhere.
+    if (win.location?.hostname !== DATAFAST.domain) return false;
+    if (doc.querySelector('script[src^="https://analytics.ahrefs.com/"]')) return false;
+    const s = doc.createElement('script');
+    s.async = true;
+    s.src = AHREFS.src;
+    s.setAttribute('data-key', AHREFS.site);
     doc.head.appendChild(s);
     return true;
   } catch {
@@ -233,5 +271,5 @@ export function stripShownBatch({ send = (n) => countOnly('strip_shown', n), max
   };
 }
 
-// In a page (the terminal and the legal pages), load DataFast unless GPC says no.
-if (typeof window !== 'undefined' && typeof document !== 'undefined') loadDataFast();
+// In a page (the terminal and the legal pages), load DataFast and Ahrefs unless a gate says no.
+if (typeof window !== 'undefined' && typeof document !== 'undefined') { loadDataFast(); loadAhrefs(); }

@@ -6,14 +6,14 @@
 // (lazy.js), and the key bar's screens are fetched ahead once the page is idle.
 import * as homeScreen from './screens/home.js';
 import * as marketsScreen from './screens/markets.js';
-import { lazyScreen as lazy, screenNow, loadScreen, loadModule, cssReady, prefetch, setStyleOrder, stylesOf, onReload } from './lazy.js';
+import { lazyScreen as lazy, screenNow, loadScreen, loadModule, loadedModule, cssReady, prefetch, setStyleOrder, stylesOf, onReload } from './lazy.js';
 import { parseHelp, parseFinancialsCommand, parseFinancialsArgs, parseRedeem } from './command-args.js';
 import { parseScreenCommand, parseScreenArgs } from './screener.js';
 import { parseWatchArgs, watchInput, WATCH_SUBCOMMANDS, loadWatchlist, saveWatchlist, toggleId } from './watchlist.js';
 import { parsePfArgs, pfInput } from './portfolio.js';
 import { panel, LOADING as LOADING_LINE } from './screens/markets.js';
 import { matchInstrument, searchInstruments, instrumentById, resolveInstrument, STOCK_RE, stockSymbol } from './instruments.js';
-import { edgeFade, cardPage, cardButton, cardLink, cardRows, raw } from './kit.js';
+import { edgeFade } from './kit-core.js'; // the card pages (kit.js) and the shell's own (cards.js) load later
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { updatedTitle } from './freshness.js';
 import { dotTitle, popoverHtml } from './provenance.js'; // Provenance: the dot's tooltip and list
@@ -23,10 +23,8 @@ import { avatarSvg, nameHtml } from './pixel-avatar.js'; // ME: your avatar and 
 // --- Pro structure: GIFT, REDEEM, CHAT, SPONSOR, FEEDBACK ---
 import { stripItems, mountStrip, loadSponsors } from './sponsor-strip.js';
 import { countOnly, stripShownBatch } from './goal.js'; // BBRK: sponsor strip shown and clicked
-import { mountHereNow } from './here-now.js'; // N HERE NOW by the clock (GET /api/live)
 // --- end Pro structure ---
 import { ensureConsent, consentNeeded, loadWelcome } from './consent.js';
-import { startHints, hintsDone, triedCount, countTried, HINT_STOP } from './hints.js'; // rolling hints in the command bar
 import { parseDeskArgs, isEmbedSearch, tickerOf, TICKER_SCREENS } from './desk-layout.js';
 import { COMPANY_SCREENS, COMPANY_TAKES_ARGS, matchCompany } from './company.js';
 import { MARKETS_SCREENS, MARKETS_TAKES_ARGS, matchMarkets } from './commands-markets.js';
@@ -34,14 +32,11 @@ import { WEIRD_SCREENS, matchWeird } from './commands-weird.js';
 import { matchNoSuch, dymRows } from './nosuch.js'; // NO SUCH TICKER. YET.: GRAVEYARD, IPO IT
 import { LISTED, ALIASES, FUNCTION_BAR, TICKER_FUNCTIONS, findCommand } from './registry.js';
 import { tapeOn, setTapeOn, mountTape, tapeItems } from './tape.js';
-import { createMenu } from './menu.js';
 import { compactEmbed } from './embed.js';
 import { parseAffordArgs } from './afford.js';
 import { resolveInput } from './resolve.js';
 import { tickerForName, LISTED_TICKERS, SHADOWED_TICKERS } from './known-tickers.js';
-import { sendSeen, countsAsOpen } from './trending.js'; // TRENDING
 import { startAlerts } from './alerts.js'; // ALERTS: the watcher
-import { mountChatBadge } from './chat-badge.js'; // CHAT 2 by the seat: unread chats (Pro)
 import './goal.js'; // GOALS: loads DataFast unless Global Privacy Control is on
 
 export { FUNCTION_BAR, TICKER_FUNCTIONS };
@@ -307,6 +302,9 @@ export function parseCommand(raw, depth = 0) {
     const args = parseAffordArgs(rest);
     return { name: 'AFFORD', args, error: args.error, input: ['AFFORD', ...rest].join(' ') };
   }
+  // GO LIVE outside a chat (in one, CHAT's own hook takes it first): a small card that
+  // says how. Only the exact words: GO and $GO stay the stock.
+  if (toks.join(' ') === 'GO LIVE' && tokenize(raw)[0] === 'GO') return { name: 'LIVEHINT', input: 'GO LIVE' }; // not a command of its own
   // BUY was renamed AFFORD: typed, it says so; an old link (?c=BUY+...) opens AFFORD.
   if (head === 'BUY') {
     return { name: 'RENAMED', args: { from: 'BUY', to: ['AFFORD', ...rest].join(' ') }, input: ['BUY', ...rest].join(' ') };
@@ -510,7 +508,7 @@ export function seatHtml(me, seat) {
   const p = { seat: n, name: me?.username || null, color: me?.color ?? null, avatar: me?.avatar || null };
   const av = avatarSvg(p, { size: 16, cls: 'seat-av' });
   if (!p.name) return `${av} SEAT ${pad}`;
-  return `${av} ${nameHtml(p)} <span class="seat-n dim">#${pad}</span>`;
+  return `${av} ${nameHtml(p, { cls: 'seat-name' })} <span class="seat-n dim">#${pad}</span>`;
 }
 // 'CHAT 3' -> 3, 'CHAT 99+' -> 99, '' -> 0.
 export const badgeCount = (t) => Number((/\d+/.exec(String(t ?? '')) || ['0'])[0]);
@@ -776,33 +774,33 @@ export function resolvedNote(command, from) {
   return `Showing ${command} (from '${String(from).toLowerCase()}')`;
 }
 
-// ALL COMMANDS on the NO SUCH card (= screens/nosuch.js HELP_LINE, test/speed.test.js).
-export const HELP_LINE = '<a class="card-link" href="?c=HELP" data-cmd="HELP">ALL COMMANDS</a>';
+// The card pages the shell draws itself (NO SUCH, an unknown command, a link that wants
+// to change a saved list, RENAMED, COMING SOON, did not load) are in cards.js, loaded on
+// first use and fetched ahead once the page is idle. Also here-now.js, chat-badge.js and
+// trending.js come in after the first screen: none of them is needed to draw it.
+const CARDS = 'cards.js';
+// The optional extras above (and the menu): a file that does not load never reloads the page.
+const OPTIONAL = { recover: false };
 
-// NO SUCH TICKER and an unknown command: one card page. Action: the screen's own (IPO IT,
-// PAY RESPECTS), else the best guess (key 1), else HELP; other guesses (keys 2, 3) are links,
-// what each is in + Details. extra: slots from screens/nosuch.js; help: false, no ALL COMMANDS.
-export function didYouMeanHtml(typed, found = {}, ticker = null, { extra = null } = {}) {
-  const rows = dymRows(found, typed, ticker);
-  const x = extra || {};
-  const tip = (what) => (what ? ` title="${escapeHtml(what)}"` : '');
-  const lead = !x.act && rows.length ? rows[0] : null;
-  const act = x.act || raw(lead
-    ? cardButton({ label: lead[0], cmd: lead[0], primary: true, attrs: `data-key="1"${tip(lead[1])}` })
-    : cardButton({ label: 'HELP', cmd: 'HELP', primary: true }));
-  const guesses = rows.slice(lead ? 1 : 0).map(([cmd, what], i) => cardLink({ label: cmd, cmd, attrs: `data-key="${i + (lead ? 2 : 1)}"${tip(what)}` }));
-  const links = [...(x.links || []), ...guesses, ...((x.act || lead) && x.help !== false ? [HELP_LINE] : [])];
-  const kicker = x.kicker || (ticker ? 'No such ticker. Yet.' : 'Unknown command');
-  const shown = ticker ? `$${ticker}` : typed;
-  const sub = x.sub || (lead ? 'Did you mean this?' : 'Check the spelling.');
-  const guessRows = rows.filter(([, what]) => what).map(([cmd, what]) => [cmd, what]);
-  const more = (guessRows.length ? cardRows(guessRows) : '') + (x.details?.html || '');
-  return cardPage({
-    ...x,
-    cls: `ns-card${x.cls ? ` ${x.cls}` : ''}`, label: x.label || kicker,
-    kicker, hero: x.hero || shown, heroSize: x.heroSize || (shown.length <= 7 ? 60 : shown.length <= 16 ? 44 : 32),
-    sub, act, links, details: more ? raw(more) : '',
-  });
+// The menu (Ctrl+K) loads on first use. load() -> Promise<menu>. While it loads, each
+// toggle flips whether it should open and cancel() (Esc) says no; when it arrives it
+// opens only if still wanted. A load that fails leaves the page as it is.
+export function lazyMenu(load) {
+  let real = null;
+  let want = false;
+  let loading = null;
+  const start = () => {
+    loading ||= Promise.resolve().then(load).then((m) => { real = m; if (want) m.open(); want = false; return m; }, () => { loading = null; want = false; return null; });
+    return loading;
+  };
+  return {
+    open() { if (real) real.open(); else { want = true; start(); } },
+    toggle() { if (real) real.toggle(); else { want = !want; start(); } },
+    cancel() { want = false; },
+    isOpen: () => Boolean(real?.isOpen()),
+    get pending() { return want; },
+    ready: () => start(),
+  };
 }
 
 function boot() {
@@ -845,15 +843,23 @@ function boot() {
 
   // --- rolling hints: "Try GRAVEYARD"... in the empty bar, until 3 commands have run --
   // Paused while typing, and on a phone while the bar has focus (hints.js).
+  // hints.js comes in after the first screen (it is not needed to draw it).
   let hints = null;
-  let tried = triedCount();
-  if (!embed && !hintsDone({ historyLength: cmdHistory.length })) {
-    hints = startHints({ input, paused: () => input.value !== '' || (coarse && document.activeElement === input), reduced: () => reduceMotion.matches });
+  let h = null; // hints.js, once in
+  let tried = 0;
+  if (!embed) {
+    loadModule('hints.js', OPTIONAL).then((mod) => {
+      h = mod;
+      tried = h.triedCount();
+      if (!hints && !h.hintsDone({ historyLength: cmdHistory.length })) {
+        hints = h.startHints({ input, paused: () => input.value !== '' || (coarse && document.activeElement === input), reduced: () => reduceMotion.matches });
+      }
+    }, () => {});
   }
   function noteTried() {
-    if (!hints) return;
-    tried = countTried(undefined, tried);
-    if (tried >= HINT_STOP) { hints.stop(); hints = null; }
+    if (!hints || !h) return;
+    tried = h.countTried(undefined, tried);
+    if (tried >= h.HINT_STOP) { hints.stop(); hints = null; }
   }
   // --- the first HOME after the welcome card: the command bar glows once (welcome.css) --
   let glowNext = false;
@@ -970,8 +976,10 @@ function boot() {
     });
   }
 
-  // --- menu (Ctrl+K) -----------------------------------------------------------
-  const menu = embed ? null : createMenu({ onClose: () => { if (!coarse) input.focus(); } });
+  // --- menu (Ctrl+K): menu.js comes in on first use (and ahead once the page is idle) ---
+  const menu = embed ? null : lazyMenu(() => loadModule('menu.js', OPTIONAL).then((m) => m.createMenu({ onClose: () => { if (!coarse) input.focus(); } })));
+  // Esc while menu.js is still coming: it does not open when it arrives.
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') menu?.cancel(); }, true);
   $('menu-btn').addEventListener('click', (e) => { e.stopPropagation(); menu?.open(); });
   window.addEventListener('bb:run', (e) => run(String(e.detail || ''), { typed: true }));
 
@@ -1290,10 +1298,18 @@ function boot() {
       // A link that changes saved lists never runs by itself: ask first. (A DESK preset
       // asks on the desk itself, and only over panels of your own.)
       const [title, what] = SAVED_LIST[cmd.name] || SAVED_LIST.WATCH;
-      view.innerHTML = panel('1', title, `
-        <p class="notice">This link wants to change your ${what}.</p>
-        <p class="muted">It runs <span class="code">${escapeHtml(cmd.input)}</span> on the list saved in this browser.</p>
-        <p class="examples"><button type="button" class="pf-btn" data-cmd="${escapeHtml(cmd.input)}">RUN IT</button> <a class="code" href="${toQuery(cmd.view)}" data-cmd="${escapeHtml(cmd.view)}">No, just show ${escapeHtml(cmd.view)}</a></p>`, { cls: 'panel-solo' });
+      drawCard(view, signal, (c) => c.linkConfirmHtml({ title, what, input: cmd.input, view: cmd.view }), title);
+      // Esc (the command bar empty, nothing else open) just shows the plain screen: it never
+      // runs the link. RUN IT is the only way to change the list.
+      const escShows = (e) => {
+        if (e.key !== 'Escape' || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || linkAsk || menu?.isOpen() || !list.hidden) return;
+        if (e.target === input ? input.value.trim() : e.target.closest?.('input, select, textarea')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        run(cmd.view);
+      };
+      document.addEventListener('keydown', escShows, true);
+      cleanups.push(() => document.removeEventListener('keydown', escShows, true));
       setStatus('CONFIRM TO CHANGE YOUR SAVED LIST', 'warn');
     } else if (entry) {
       setStatus('LOADING...');
@@ -1303,8 +1319,11 @@ function boot() {
         // A plain word that is also a stock (GOLD, M, HELP): "Stock: $GOLD" in the title strip.
         const hint = embed ? null : stockHintFor(raw, cmd);
         if (hint) cleanups.push(showStockHint(view, hint));
-        // --- TRENDING: count this ticker screen (public/trending.js); not in DESK panels, not before the notice ---
-        if (countsAsOpen(cmd, { embed, consentPending: consentNeeded() })) sendSeen(cmd.args.ticker);
+        // --- TRENDING: count this ticker screen (public/trending.js, loaded here); not in DESK panels, not before the notice ---
+        if (!embed && cmd.name === 'QUOTE' && cmd.args?.ticker) {
+          const consentPending = consentNeeded();
+          loadModule('trending.js', OPTIONAL).then((t) => { if (t.countsAsOpen(cmd, { embed, consentPending })) t.sendSeen(cmd.args.ticker); }, () => {});
+        }
         // --- end TRENDING ---
       };
       const styles = stylesFor(entry);
@@ -1328,7 +1347,8 @@ function boot() {
           clearTimeout(waiting);
           if (signal.aborted) return;
           view.classList.remove('is-loading');
-          view.innerHTML = panel('1', screenTitle(cmd).title, '<p class="notice">This screen did not load. Reload the page to get the latest version.</p>', { cls: 'panel-solo' });
+          drawCard(view, signal, (c) => c.notLoadedHtml(), screenTitle(cmd).title)
+            .then(() => view.querySelector('[data-reload]')?.addEventListener('click', () => window.location.reload()));
           setStatus('THE SCREEN DID NOT LOAD. TRY AGAIN', 'warn');
         });
       }
@@ -1341,21 +1361,30 @@ function boot() {
         return;
       }
       const example = to === 'AFFORD' ? 'AFFORD 1200' : to;
-      view.innerHTML = panel('1', 'Renamed', `
-        <p class="notice">${escapeHtml(RENAMED_NOTE)}</p>
-        <p class="muted">Try <a class="code" href="${toQuery(example)}" data-cmd="${escapeHtml(example)}">${escapeHtml(example)}</a>.</p>`, { cls: 'panel-solo' });
+      drawCard(view, signal, (c) => c.renamedHtml(example), 'Renamed');
       setStatus('BUY IS NOW AFFORD');
+    } else if (cmd.name === 'LIVEHINT') {
+      drawCard(view, signal, (c) => c.liveHintHtml(), 'GO LIVE');
+      setStatus('GO LIVE: OPEN A CHAT FIRST');
     } else if (cmd.name === 'SOON') {
       const s = cmd.args.soon;
-      const alt = s.ticker ? `<a class="code" href="${toQuery(s.ticker)}" data-cmd="${escapeHtml(s.ticker)}">${escapeHtml(s.ticker)}</a> or ` : '';
-      view.innerHTML = panel('1', s.name, `
-        <p class="notice">${escapeHtml(s.name)} is coming soon.</p>
-        <p class="muted">${escapeHtml(s.hint)}. For now, try ${alt}<a class="code" href="${toQuery('HELP')}" data-cmd="HELP">HELP</a>.</p>`, { cls: 'panel-solo' });
+      drawCard(view, signal, (c) => c.soonHtml(s), s.name);
       setStatus(`${s.name}: COMING SOON`);
     } else {
-      view.innerHTML = didYouMeanHtml(cmd.input, {}, null, { extra: { details: raw(cardRows([['Tickers', raw(`A ticker is one word, like <a class="code" href="${toQuery('AAPL')}" data-cmd="AAPL">AAPL</a> or <a class="code" href="${toQuery('BRK.B')}" data-cmd="BRK.B">BRK.B</a>.`)]])) } });
+      drawCard(view, signal, (c) => c.unknownHtml(cmd.input), 'Unknown command');
       setStatus('UNKNOWN COMMAND. TYPE HELP', 'warn');
     }
+  }
+
+  // A card page of the shell's own (cards.js): at once when the file is in, else when it
+  // comes. If it cannot load, one line under title (nothing on it runs). Resolves when drawn.
+  const NOT_LOADED = '<p class="notice">This did not load. Reload the page to get the latest version.</p>';
+  function drawCard(view, signal, html, title) {
+    const now = loadedModule(CARDS);
+    if (now) { view.innerHTML = html(now); return Promise.resolve(); }
+    return loadModule(CARDS).then((c) => { if (!signal.aborted) view.innerHTML = html(c); }, () => {
+      if (!signal.aborted) view.innerHTML = panel('1', title, NOT_LOADED, { cls: 'panel-solo' });
+    });
   }
 
   // The dim "Stock: $GOLD" link in the first panel's title strip, nothing more. Screens
@@ -1468,7 +1497,7 @@ function boot() {
     const toks = tokenize(typed);
     const word = ticker || (toks.length === 1 ? toks[0] : null);
     // NO SUCH TICKER. YET. (screens/nosuch.js) loads with its stylesheet the first time.
-    const ns = await loadScreen(lazy(NOSUCH), stylesFor(lazy(NOSUCH))).catch(() => null);
+    const [ns, cards] = await Promise.all([loadScreen(lazy(NOSUCH), stylesFor(lazy(NOSUCH))).catch(() => null), loadModule(CARDS).catch(() => null)]);
     if (signal?.aborted) return;
     const [info, yard] = word && !embed && ns
       ? await Promise.all([ns.noSuchInfo(word, { signal }), ns.yardPick(signal)])
@@ -1479,7 +1508,9 @@ function boot() {
     const title = info.grave ? ns.TITLE_GONE : ticker ? (ns?.TITLE_YET || 'No such ticker') : 'Unknown command';
     const extra = embed || !ns ? {} : ns.noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : yard });
     view.classList.remove('is-loading');
-    view.innerHTML = didYouMeanHtml(typed, found, ticker, { extra: { ...extra, kicker: extra.kicker || title } });
+    view.innerHTML = cards
+      ? cards.didYouMeanHtml(typed, found, ticker, { extra: { ...extra, kicker: extra.kicker || title } })
+      : panel('1', title, NOT_LOADED, { cls: 'panel-solo' });
     if (!embed && ns) cleanups.push(ns.wireNoSuch(view, word, info, { status: setStatus }));
     if (info.grave) setStatus(`${info.grave.ticker}: ${info.grave.what.toUpperCase()}`, 'warn');
     else setStatus(rows ? 'NOT FOUND. PICK ONE BELOW, OR TYPE HELP' : ticker ? 'NO SUCH TICKER. TYPE HELP' : 'UNKNOWN COMMAND. TYPE HELP', 'warn');
@@ -1782,8 +1813,10 @@ function boot() {
   if (!embed) {
     tick();
     setInterval(tick, 1000);
-    mountHereNow($('here-now'), { timer: liveTimer });
-    mountChatBadge($('chat-badge'), { timer: liveTimer });
+    // N HERE NOW by the clock (GET /api/live) and CHAT 2 by the seat (unread chats, Pro):
+    // their files come in after the first screen.
+    loadModule('here-now.js', OPTIONAL).then((m) => m.mountHereNow($('here-now'), { timer: liveTimer }), () => {});
+    loadModule('chat-badge.js', OPTIONAL).then((m) => m.mountChatBadge($('chat-badge'), { timer: liveTimer }), () => {});
     // CHAT SOUND (ME): a soft beep when the unread count by the seat goes up.
     const badge = $('chat-badge');
     let unread = badgeCount(badge?.textContent);
@@ -1964,6 +1997,8 @@ function boot() {
     whenIdle(() => {
       FKEYS.forEach((k) => prefetchScreen(parseCommand(k.cmd).name));
       prefetch(NOSUCH);
+      prefetch(CARDS);
+      prefetch('menu.js');
       stylesOf(NOSUCH).forEach(prefetch);
     }, { timeout: 5000 });
   }

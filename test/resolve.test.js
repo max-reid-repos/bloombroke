@@ -6,7 +6,8 @@ import { resolveInput, splitWords, strongMatch, commandForWord, needsTicker, fuz
 import { tickerForName, SP100_NAMES, KNOWN_TICKERS } from '../public/known-tickers.js';
 import { SP100 } from '../data/sp100.js';
 import { findCommand, PHRASES } from '../public/registry.js';
-import { parseCommand, screenTitle, fullName, tickerToCheck, didYouMeanHtml, resolvedNote, DEFAULT_TITLE, BOOT_LINES } from '../public/app.js';
+import { parseCommand, screenTitle, fullName, tickerToCheck, resolvedNote, DEFAULT_TITLE, BOOT_LINES } from '../public/app.js';
+import { didYouMeanHtml } from '../public/cards.js';
 import { resolveTopic } from '../public/screens/help.js';
 import { consentKey } from '../public/consent.js';
 

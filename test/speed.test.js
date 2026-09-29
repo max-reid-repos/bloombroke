@@ -5,7 +5,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildAssets, hashIndex, serveAssets, preloadTags, HASH_LEN } from '../lib/assets.js';
-import { parseCommand, screenFor, screenFiles, SHEET_ORDER, HELP_LINE, FKEYS } from '../public/app.js';
+import { parseCommand, screenFor, screenFiles, SHEET_ORDER, FKEYS, lazyMenu } from '../public/app.js';
+import { HELP_LINE } from '../public/cards.js';
 import { EXTRA } from '../public/commands.js';
 import { COMPANY } from '../public/company.js';
 import { MARKETS_EXTRA } from '../public/commands-markets.js';
@@ -117,6 +118,9 @@ test('startup: the page loads the shell, HOME and MARKETS, never another screen'
     'screens/intraday.js', 'screens/size-guard.js', 'screens/news.js']);
   assert.deepEqual(screens.filter((r) => !allowed.has(r)), [], 'no other screen module at startup');
   assert.ok(!shell.includes('registry-detail.js'), 'HELP\'s long text is not at startup');
+  for (const f of ['cards.js', 'menu.js', 'hints.js', 'here-now.js', 'chat-badge.js', 'trending.js']) assert.ok(!shell.includes(f), `${f} comes in after the first screen`);
+  // The card pages (kit.js) too: startup modules take the toolbar, table and date parts from kit-core.js.
+  assert.ok(!shell.includes('kit.js') && shell.includes('kit-core.js'), 'kit.js (the card pages) is not at startup');
   assert.ok(shell.length <= 45, `${shell.length} modules at startup`);
   const bytes = shell.reduce((n, r) => n + a.files.get(r).body.length, 0);
   assert.ok(bytes < 600_000, `${bytes} bytes of JS at startup`);
@@ -152,6 +156,69 @@ test('lazy.js: names resolve next to it without a manifest, and load once', asyn
   assert.equal(typeof (await loadScreen(lazyScreen('screens/nosuch.js', (m) => m.NOSUCH_SCREENS.GRAVEYARD))).render, 'function', 'a picked one');
 });
 
+test('lazy.js: an optional extra that fails to load never reloads the page; a screen does', async () => {
+  const reloads = [];
+  const store = {};
+  const saved = { window: globalThis.window, sessionStorage: globalThis.sessionStorage };
+  globalThis.window = { location: { reload: () => reloads.push(1) } };
+  globalThis.sessionStorage = { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); } };
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    await assert.rejects(loadModule('no-such-extra.js', { recover: false }));
+    assert.equal(reloads.length, 0, 'recover: false: no reload, the page carries on');
+    await assert.rejects(loadModule('screens/no-such-screen.js'));
+    assert.equal(reloads.length, 1, 'a screen that fails still reloads once for a newer build');
+  } finally {
+    globalThis.window = saved.window;
+    globalThis.sessionStorage = saved.sessionStorage;
+    console.warn = warn;
+  }
+  // The five optional extras in app.js load with { recover: false }.
+  const app = readFileSync(path.join(PUBLIC, 'app.js'), 'utf8');
+  assert.match(app, /const OPTIONAL = \{ recover: false \};/);
+  for (const f of ['here-now.js', 'chat-badge.js', 'hints.js', 'trending.js', 'menu.js']) assert.ok(app.includes(`loadModule('${f}', OPTIONAL)`), f);
+  assert.ok(!/loadModule\('(here-now|chat-badge|hints|trending|menu)\.js'\)/.test(app), 'none without it');
+});
+
+test('menu: while menu.js loads, each Ctrl+K flips whether it opens, and Esc cancels', async () => {
+  const made = () => { const m = { opened: 0, open() { this.opened += 1; this.on = true; }, toggle() { this.on = !this.on; }, isOpen() { return Boolean(this.on); } }; return m; };
+  const deferred = () => { let resolve; const p = new Promise((r) => { resolve = r; }); return { p, resolve }; };
+  // One Ctrl+K: it opens when the file arrives.
+  let d = deferred(); let real = made(); let loads = 0;
+  let menu = lazyMenu(() => { loads += 1; return d.p; });
+  menu.toggle();
+  assert.equal(menu.isOpen(), false, 'not yet');
+  d.resolve(real); await d.p; await new Promise((r) => setImmediate(r));
+  assert.equal(real.opened, 1);
+  assert.equal(menu.isOpen(), true);
+  menu.toggle();
+  assert.equal(menu.isOpen(), false, 'then a plain toggle');
+  // Two Ctrl+K before it arrives: it stays shut; one load only.
+  d = deferred(); real = made(); loads = 0;
+  menu = lazyMenu(() => { loads += 1; return d.p; });
+  menu.toggle(); menu.toggle();
+  d.resolve(real); await new Promise((r) => setImmediate(r));
+  assert.equal(real.opened, 0, 'opened and closed again: shut');
+  assert.equal(loads, 1);
+  // Ctrl+K then Esc before it arrives: shut.
+  d = deferred(); real = made();
+  menu = lazyMenu(() => d.p);
+  menu.toggle(); menu.cancel();
+  d.resolve(real); await new Promise((r) => setImmediate(r));
+  assert.equal(real.opened, 0, 'Esc cancelled the pending open');
+  // A load that fails leaves the page as it is, and the next Ctrl+K tries again.
+  let fail = true; real = made();
+  menu = lazyMenu(() => (fail ? Promise.reject(new Error('offline')) : Promise.resolve(real)));
+  menu.toggle(); await new Promise((r) => setImmediate(r));
+  assert.equal(menu.isOpen(), false);
+  fail = false; menu.toggle(); await new Promise((r) => setImmediate(r));
+  assert.equal(real.opened, 1);
+  const app = readFileSync(path.join(PUBLIC, 'app.js'), 'utf8');
+  assert.match(app, /const menu = embed \? null : lazyMenu\(\(\) => loadModule\('menu\.js', OPTIONAL\)/);
+  assert.match(app, /document\.addEventListener\('keydown', \(e\) => \{ if \(e\.key === 'Escape'\) menu\?\.cancel\(\); \}, true\);/);
+});
+
 test('startup index: the parser reads every command without loading a screen', () => {
   assert.deepEqual(WEIRD_GAUGE_COMMANDS, WEIRD_GAUGES.map((g) => g.command), 'the gauge list matches the gauges');
   assert.equal(parseCommand('SECTORS ytd map').input, 'SECTORS YTD MAP');
@@ -179,6 +246,13 @@ test('registry: HELP\'s long text is its own file, whole again in Node', () => {
 test('did you mean: the help line is the same as the NO SUCH screen\'s', async () => {
   const ns = await import('../public/screens/nosuch.js');
   assert.equal(HELP_LINE, ns.HELP_LINE);
+});
+
+test('stylesheets: a sheet already in the page\'s bundle is never loaded again by a lazy module', () => {
+  const a = buildAssets(tree({ 'app.js': "import './core.js';\n", 'core.js': '', 'kit.js': "export * from './core.js';\n", 'kit.css': '.k{}', 'screens/w.js': "import '../kit.js';\n", 'screens/w.css': '.w{}' }), { bundles: { 'base.css': ['kit.css'] } });
+  assert.deepEqual(a.stylesOf('screens/w.js', 'app.js'), ['screens/w.css'], 'kit.css is in base.css: not again, last in the cascade');
+  const b = buildAssets(PUBLIC, { bundles: { 'base.css': ['kit.css'] } });
+  for (const [rel, list] of Object.entries(b.lazyStyles('app.js'))) assert.ok(!list.includes('kit.css'), rel);
 });
 
 test('stylesheets: each sheet sits beside its module and is in the stacking order', () => {

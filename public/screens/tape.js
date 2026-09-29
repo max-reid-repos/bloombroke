@@ -1,4 +1,4 @@
-// TAPE: the ticker tape as a screen (and a DESK panel).
+// TAPE: the ticker tape as a screen (a small card page) and as a DESK panel (just the tape).
 //   TAPE              the tape, and whether it shows on every screen
 //   TAPE ON | OFF     show or hide it above the status line on every screen (free)
 //   TAPE ADD AAPL, TAPE REMOVE AAPL, TAPE RESET   your own tape (Pro)
@@ -7,7 +7,7 @@ import { esc, q, panel } from './markets.js';
 import * as pro from '../pro.js';
 import { instrumentById } from '../instruments.js';
 import { mountTape, parseTapeSwitch } from '../tape.js';
-import { usageCard } from '../kit.js';
+import { usageCard, cardPage, cardButton, cardRows, raw } from '../kit.js';
 import { parseTapeArgs as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { parse };
 
@@ -28,31 +28,33 @@ export function usage(cmd) {
 
 function listHtml(list, custom) {
   const items = list.map((s) => `<li class="pro-row"><a class="pro-feat code" href="${esc(q(s))}" data-cmd="${esc(s)}">${esc(s)}</a><span class="pro-text">${esc(instrumentById(s)?.name || '')}</span></li>`).join('');
-  return `<p class="fx-from">${custom ? 'Your tape' : 'The standard tape'}: ${list.length} of ${pro.MAX_TAPE}.</p><ul class="pro-list">${items}</ul>`;
+  return `<div class="tape-list"><p class="fx-from">${custom ? 'Your tape' : 'The standard tape'}: ${list.length} of ${pro.MAX_TAPE}.</p><ul class="pro-list">${items}</ul></div>`;
 }
 
-// On every screen, or not: the free switch.
-function switchHtml(on) {
-  const tab = (label, active) => `<a class="seg-item${active ? ' is-active' : ''}" href="${esc(q(`TAPE ${label}`))}" data-cmd="TAPE ${label}"${active ? ' aria-current="true"' : ''}>${label}</a>`;
-  return `<div class="tape-set">
-      <p class="tape-state">The tape is ${on ? 'on' : 'off'} on every screen.</p>
-      <nav class="seg" aria-label="Tape on every screen">${tab('ON', on)}${tab('OFF', !on)}</nav>
-      <p class="muted">When it is on, it sits above the status line. To keep it in one place instead, add a DESK panel with the command <span class="code">TAPE</span>.</p>
-    </div>`;
-}
-
-// What is on it: the Pro list, or one line on Pro for everyone else.
-function contentsHtml(note, kind) {
-  const noteHtml = note ? `<p class="notice${kind === 'warn' ? ' warn' : ''}">${esc(note)}</p>` : '';
-  if (!pro.isPro()) return `${noteHtml}<p class="muted">${esc(pro.PRO_ONLY)} Type ${link('PRO')}.</p>`;
-  const custom = pro.getTape();
-  return `${noteHtml}${listHtml(custom || pro.DEFAULT_TAPE, Boolean(custom))}
-    <p class="muted">Add with ${link('TAPE ADD AAPL')}, take off with <span class="code">TAPE REMOVE &lt;ticker&gt;</span>, back to the standard tape with ${link('TAPE RESET')}.</p>`;
+// The screen, a small card page (kit.js cardPage): TAPE ON or OFF (hero), one line, the
+// one switch (a direct button: it changes the setting, as asked), the moving tape (and a
+// Pro user's list) as the media; the DESK tip, adding and removing, and the Pro note in
+// + Details. note: what the last TAPE ADD/REMOVE/RESET did (kind 'warn' for a problem).
+export function tapeHtml({ on = false, isPro = false, custom = null, note = '', kind = '' } = {}) {
+  const yours = isPro
+    ? raw(`Add with ${link('TAPE ADD AAPL')}, take off with <span class="code">TAPE REMOVE &lt;ticker&gt;</span>, back to the standard tape with ${link('TAPE RESET')}.`)
+    : raw(`${esc(pro.PRO_ONLY)} Type ${link('PRO')}.`);
+  return cardPage({
+    cls: 'tape-card', label: 'Ticker tape',
+    alert: note, alertWarn: kind === 'warn',
+    hero: on ? 'TAPE ON' : 'TAPE OFF', heroSize: 60,
+    sub: on ? 'It sits above the status line on every screen.' : 'Turn it on to see it on every screen.',
+    act: raw(cardButton({ label: on ? 'TURN OFF' : 'TURN ON', cmd: on ? 'TAPE OFF' : 'TAPE ON', primary: true })),
+    media: raw(`<div class="tape tape-panel"><div class="tape-track"></div></div>${isPro ? listHtml(custom || pro.DEFAULT_TAPE, Boolean(custom)) : ''}`),
+    details: raw(cardRows([
+      ['Desk', raw('To keep it in one place instead, add a DESK panel with the command <span class="code">TAPE</span>.')],
+      ['Your tape', yours],
+    ])),
+  });
 }
 
 function show(el, ctx, note = '', kind = '') {
-  el.innerHTML = panel('1', 'Ticker tape', `<div class="tape tape-panel"><div class="tape-track"></div></div>${switchHtml(ctx.tapeOn())}`, { cls: 'panel-solo', bodyCls: 'flush' })
-    + panel('2', 'What is on it', contentsHtml(note, kind), { cls: 'panel-solo tape-contents', meta: 'PRO' });
+  el.innerHTML = tapeHtml({ on: ctx.tapeOn(), isPro: pro.isPro(), custom: pro.getTape(), note, kind });
   return mountTape(el.querySelector('.tape-track'), { load: ctx.loadTape, live: ctx.liveTimer, toQuery: ctx.toQuery, escape: esc });
 }
 

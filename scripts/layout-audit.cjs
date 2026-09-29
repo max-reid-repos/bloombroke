@@ -74,9 +74,10 @@ const FIX = {
   '/api/live': { here: 3 },
 };
 
-// [name, command, { key, type, sel, ls }]: type: typed into the command bar (a link never
-// runs LOGIN); sel: what to audit (default the card page, .card); ls: localStorage to set
-// first (an empty watchlist).
+// [name, command, { key, type, sel, ls, link }]: type: typed into the command bar (a link
+// never runs LOGIN); sel: what to audit (default the card page, .card); ls: localStorage to
+// set first (an empty watchlist); link: a command that changes a saved list, put in the
+// address bar and run with Enter in the empty bar (how the link-confirm card shows).
 const PAGES = [
   ['bbrk', 'BBRK'], ['sponsor', 'SPONSOR'], ['pro', 'PRO'], ['pro-key', 'PRO', { key: true }],
   ['login', 'LOGIN', { type: true }], ['redeem', 'REDEEM'], ['gift', 'GIFT'], ['feedback', 'FEEDBACK'], ['chat', 'CHAT'],
@@ -84,6 +85,9 @@ const PAGES = [
   // Part A: NO SUCH TICKER at an unknown ticker, a GRAVEYARD stone, a usage card, two empty lists.
   ['nosuch', '$QXZVW'], ['graveyard-leh', 'GRAVEYARD LEH'], ['afford-usage', 'AFFORD X'],
   ['watch-empty', 'WATCH', { sel: '.empty', ls: { 'bb.watch': '[]' } }], ['alerts-empty', 'ALERTS', { sel: '.empty' }],
+  // Part B: the result screens, MCP, the link confirm and TAPE (SPONSOR is above).
+  ['afford', 'AFFORD 1200 BIKE 2 PER WEEK'], ['cpi', 'CPI 100 2015'], ['loan', 'LOAN 400000 30Y 6.5%'], ['mcp', 'MCP'],
+  ['link-confirm', 'WATCH', { link: 'WATCH ADD AAPL', sel: '.link-card' }], ['tape', 'TAPE'],
 ].filter(([n]) => !ONLY || ONLY.split(',').includes(n));
 
 async function liveData() {
@@ -137,7 +141,8 @@ function inPage(scale, firstView, sel) {
   const ctx = document.createElement('canvas').getContext('2d');
   for (const el of card.querySelectorAll('*')) {
     const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
-    if (!own || !shown(el) || el.closest('[role="img"], [aria-hidden="true"]')) continue;
+    // The moving ticker tape (TAPE's media) keeps the look it has above the status line.
+    if (!own || !shown(el) || el.closest('[role="img"], [aria-hidden="true"], .tape-track')) continue;
     const s = getComputedStyle(el);
     const px = parseFloat(s.fontSize);
     if (!scale.includes(px)) out.font.push(`${el.tagName.toLowerCase()}.${el.className || ''} ${px}px`);
@@ -197,12 +202,18 @@ async function main() {
           const u = new URL(req.url());
           const fix = u.origin === new URL(BASE).origin && req.method() === 'GET' ? FIX[u.pathname] : null;
           if (fix && !((u.pathname === '/api/pro/status' || u.pathname === '/api/me') && !opts.key)) req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(fix) });
-          else if (/datafa\.st|cloudflareinsights/.test(u.host)) req.abort();
+          else if (/datafa\.st|ahrefs\.com|cloudflareinsights/.test(u.host)) req.abort();
           else req.continue();
         });
         await page.goto(`${BASE}/?c=${encodeURIComponent(opts.type ? 'PRO' : cmd)}`, { waitUntil: 'domcontentloaded', timeout: 45000 });
         const sel = opts.sel || '.card';
         await page.waitForSelector(`#screen ${sel}`, { timeout: 15000 }).catch(() => {});
+        if (opts.link) {
+          await page.evaluate((c) => { history.replaceState(history.state, '', `?c=${encodeURIComponent(c)}`); }, opts.link);
+          await page.click('#cmd');
+          await page.keyboard.press('Enter');
+          await page.waitForSelector(`#screen ${sel}`, { timeout: 15000 }).catch(() => {});
+        }
         if (opts.type) {
           await page.click('#cmd');
           await page.keyboard.type(cmd);

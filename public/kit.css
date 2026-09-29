@@ -129,7 +129,11 @@
 .card-facts.n4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .card-fact { display: flex; flex-direction: column-reverse; gap: 4px; min-width: 0; }
 .card-fact dd { margin: 0; font-size: 24px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-fact dd.up { color: var(--up); }
+.card-fact dd.down { color: var(--down); }
 .card-media { display: flex; flex-direction: column; align-items: center; width: 100%; }
+/* Art: a small drawing above the head (SPONSOR's terminal), the column's width at most. */
+.card-art { display: flex; justify-content: center; width: 100%; }
 /* Links: a row that wraps between links, never inside one. */
 .card-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 24px; font-size: 12px; letter-spacing: .06em; color: var(--dim); }
 .card-link { padding: 0; border: 0; background: none; font: inherit; color: var(--dim); white-space: nowrap; cursor: pointer; }
@@ -193,3 +197,14 @@
 .empty > .card-more { max-width: 60ch; }
 .empty.is-small { padding: 8px 0; }
 .empty.is-small .empty-title { font-size: 12px; font-weight: 400; color: var(--dim); }
+
+/* ---- Card pages on result screens (Cards B): AFFORD, CPI, LOAN, WAGE, MCP, TAPE -----
+   The kit's slots as they are; only what a screen's own media needs. */
+/* AFFORD: the verdict stamp (style.css .stamp) and its line are the picture. */
+.buy-verdict { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.buy-verdict .stamp-line { margin-top: 0; }
+/* CPI's answer sits in a flush panel under its form: room at the sides. */
+.cpi-card { padding-left: 16px; padding-right: 16px; }
+/* TAPE: the moving tape (and a Pro list) run the width of the card; the list reads left. */
+.tape-card .card-media { align-items: stretch; gap: 16px; }
+.tape-card .tape-list { text-align: left; }
