@@ -162,6 +162,30 @@ export async function forgetDevice(key) {
   try { await turnOffDevice({ key }); } catch { /* the browser still unsubscribed */ }
 }
 
+// LOGIN with another key on a browser that has pings: the old licence lets go of it
+// (unsubscribe with the OLD key), and the new licence takes it only when that licence
+// has pings on (its settings); otherwise the browser unsubscribes. The alerts flag
+// follows the new licence's ALERTS setting. Returns true when the browser still pings.
+export async function switchKey(oldKey, newKey) {
+  const sub = await currentSub();
+  if (!sub || !oldKey || !newKey || oldKey === newKey) return false;
+  setAlertsFlag(false);
+  try { await api('/api/push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint }, key: oldKey }); } catch { /* the old key may be gone: the browser unsubscribes or moves below */ }
+  try {
+    const prefs = await api('/api/push/prefs', { key: newKey });
+    if (!prefs?.chat && !prefs?.alerts) throw new Error('pings off for this key');
+    await api('/api/push/subscribe', { method: 'POST', body: sub.toJSON(), key: newKey });
+    if (prefs.alerts) {
+      setAlertsFlag(true);
+      syncAlerts(undefined, { force: true }).catch(() => {});
+    }
+    return true;
+  } catch {
+    try { await sub.unsubscribe(); } catch { /* already gone */ }
+    return false;
+  }
+}
+
 // NEW KEY here: the server dropped every device, this one too. Subscribe it again on
 // the new key when it had pings.
 export async function afterNewKey() {

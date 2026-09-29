@@ -73,7 +73,7 @@ async function setup({ config = FAKE_VAPID, quotes = {} } = {}) {
   const chat = mountChat(app, {
     db, store, mode: 'test', parse: parseCommand, linkChanges, now, log: quiet, sweepMs: 0,
     guess: limits.guess, limits: chatLimits(now), meLimitsFor: meLimits(now), hub,
-    onMessage: (m) => push.onMessage(m), onAccountDelete: (id) => push.wipe(id),
+    onMessage: (m) => push.onMessage(m), onAccountDelete: (id) => push.wipe(id), pingsOf: (id) => push.exportOf(id),
   });
   store.onKeyChange((id) => push.forgetDevices(id));
   const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
@@ -579,6 +579,26 @@ test('TEST: one ping to every device, 3 an hour, none without a device', async (
     assert.equal(third.status, 429);
     await s.push.sender.drain();
     assert.equal(s.fake.sent[0].body.b, 'Test ping. Pings work on this device.');
+  } finally { await s.close(); }
+});
+
+test('DOWNLOAD MY DATA: devices by push service and date only, the ping settings, the copy of the alerts', async () => {
+  const s = await setup();
+  try {
+    const a = s.person();
+    await s.pinged(a, { chat: true, alerts: true });
+    await a.subscribe(sub(5, 'updates.push.services.mozilla.com'));
+    await a.alerts([{ id: 'x1', sym: 'AAPL', op: '>', level: 350, state: 'waiting' }, { id: 'x2', sym: 'MSFT', op: '<', level: 300, state: 'triggered' }]);
+    const r = await s.req('POST', '/api/me/export', { key: a.key });
+    assert.equal(r.status, 200);
+    const d = JSON.parse(r.text);
+    const at = new Date(s.now()).toISOString();
+    assert.deepEqual(d.pings, {
+      devices: [{ push_service: 'fcm.googleapis.com', added: at, last_ping: null }, { push_service: 'updates.push.services.mozilla.com', added: at, last_ping: null }],
+      settings: { chat: true, alerts: true, show_text: false },
+      alerts: [{ symbol: 'AAPL', op: '>', level: 350, added: at, fired: null }, { symbol: 'MSFT', op: '<', level: 300, added: at, fired: at }],
+    });
+    assert.ok(!r.text.includes('fake-device') && !r.text.includes(FAKE_P256DH) && !r.text.includes(FAKE_AUTH), 'no address, no keys');
   } finally { await s.close(); }
 });
 

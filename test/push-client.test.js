@@ -11,8 +11,11 @@ import path from 'node:path';
 import { meHtml, deviceHtml, pingsHtml, keyDataHtml, PING_HINTS, PING_ROWS } from '../public/screens/me.js';
 import { cardWords } from '../public/kit.js';
 import {
-  supportOf, hintOf, isIos, isStandalone, keyBytes, serverAlerts, alertsSig, syncAlerts, ALERTS_FLAG, SIG_KEY, IOS_HINT, DENIED_HINT, UNSUPPORTED_HINT,
+  supportOf, hintOf, isIos, isStandalone, keyBytes, serverAlerts, alertsSig, syncAlerts, switchKey, ALERTS_FLAG, SIG_KEY, IOS_HINT, DENIED_HINT, UNSUPPORTED_HINT,
 } from '../public/push.js';
+import { topLine, PUSH_LINE, PUSH_FLAG } from '../public/screens/alerts.js';
+import { HONEST_LINE } from '../public/alerts.js';
+import { pingsFollowKey } from '../public/screens/pro.js';
 import { startAlerts, ALERTS_KEY } from '../public/alerts.js';
 import { PRO_ROWS, LIVE, shownRows } from '../public/screens/pro.js';
 import { buildAssets, serveAssets } from '../lib/assets.js';
@@ -179,6 +182,69 @@ test('alert sync: sent when the list changes, not for a new price; the server sa
     assert.equal(await syncAlerts([quote], { now: 1 }), false);
     assert.equal(b.calls.length, 0, 'closed-tab alerts off: nothing leaves the browser');
   } finally { b.restore(); }
+});
+
+test('ALERTS top line: says the device is pinged while closed-tab alerts are on here; one line', () => {
+  const store = (v) => ({ get: (k, d) => (k === PUSH_FLAG && v !== undefined ? v : d) });
+  assert.equal(topLine(store(true)), 'Alerts also ping this device when the tab is closed.');
+  assert.equal(PUSH_LINE, 'Alerts also ping this device when the tab is closed.');
+  assert.equal(topLine(store(undefined)), HONEST_LINE);
+  assert.equal(topLine(store(false)), HONEST_LINE);
+  assert.equal(PUSH_FLAG, ALERTS_FLAG, 'the flag ME and push.js set');
+  assert.ok(PUSH_LINE.length <= 60);
+});
+
+// LOGIN with another key: a browser with a subscription and per-URL server answers.
+function switchBrowser({ prefs = { chat: true, alerts: true, show_text: false }, prefsStatus = 200, sub = true } = {}) {
+  const b = fakeBrowser({ flag: true, key: 'BB-NEWK-EYAB-CDEF-GHJK' });
+  const s = { endpoint: 'https://fcm.googleapis.com/fcm/send/fake', gone: false, toJSON() { return { endpoint: this.endpoint, keys: { p256dh: 'P', auth: 'A' } }; }, async unsubscribe() { this.gone = true; return true; } };
+  globalThis.navigator = { serviceWorker: { getRegistration: async () => ({ pushManager: { getSubscription: async () => (sub ? s : null) } }) } };
+  globalThis.fetch = async (url, opts) => {
+    b.calls.push({ url, method: opts.method, key: opts.headers['X-Pro-Key'], body: opts.body ? JSON.parse(opts.body) : null });
+    const status = url === '/api/push/prefs' ? prefsStatus : 200;
+    const body = url === '/api/push/prefs' ? prefs : url === '/api/push/alerts' ? { ok: true, on: true } : { ok: true };
+    return { ok: status < 300, status, json: async () => body };
+  };
+  return { ...b, sub: s };
+}
+
+test('LOGIN with another key: the old key lets the browser go; the new key takes it when its pings are on', async () => {
+  let b = switchBrowser();
+  try {
+    assert.equal(await switchKey('BB-OLDK-EYAB-CDEF-GHJK', 'BB-NEWK-EYAB-CDEF-GHJK'), true);
+    const calls = b.calls.map((c) => `${c.method} ${c.url} ${c.key}`);
+    assert.deepEqual(calls.slice(0, 3), ['POST /api/push/unsubscribe BB-OLDK-EYAB-CDEF-GHJK', 'GET /api/push/prefs BB-NEWK-EYAB-CDEF-GHJK', 'POST /api/push/subscribe BB-NEWK-EYAB-CDEF-GHJK']);
+    assert.equal(b.calls[0].body.endpoint, 'https://fcm.googleapis.com/fcm/send/fake');
+    assert.equal(b.sub.gone, false);
+    assert.equal(b.store.get(ALERTS_FLAG), 'true', 'the new key has closed-tab alerts on');
+  } finally { b.restore(); }
+  b = switchBrowser({ prefs: { chat: false, alerts: false, show_text: false } });
+  try {
+    assert.equal(await switchKey('BB-OLDK-EYAB-CDEF-GHJK', 'BB-NEWK-EYAB-CDEF-GHJK'), false);
+    assert.ok(!b.calls.some((c) => c.url === '/api/push/subscribe'), 'not subscribed for a key with pings off');
+    assert.equal(b.sub.gone, true, 'the browser unsubscribes');
+    assert.equal(b.store.has(ALERTS_FLAG), false, 'the tab notifies again');
+  } finally { b.restore(); }
+  b = switchBrowser({ prefsStatus: 402 });
+  try {
+    assert.equal(await switchKey('BB-OLDK-EYAB-CDEF-GHJK', 'BB-NEWK-EYAB-CDEF-GHJK'), false);
+    assert.equal(b.sub.gone, true, 'no Pro on the new key: unsubscribed');
+  } finally { b.restore(); }
+  b = switchBrowser({ sub: false });
+  try {
+    assert.equal(await switchKey('BB-OLDK-EYAB-CDEF-GHJK', 'BB-NEWK-EYAB-CDEF-GHJK'), false);
+    assert.equal(b.calls.length, 0, 'no pings on this browser: nothing to do');
+  } finally { b.restore(); }
+  // The LOGIN screen's hook: only a real change of key, only where pings can be.
+  const load = async () => ({ switchKey: async () => true });
+  const nav = { serviceWorker: {} };
+  assert.equal(await pingsFollowKey(null, 'BB-NEWK-EYAB-CDEF-GHJK', { nav, load }), false, 'no key before');
+  assert.equal(await pingsFollowKey('BB-SAME-EYAB-CDEF-GHJK', 'BB-SAME-EYAB-CDEF-GHJK', { nav, load }), false, 'the same key');
+  assert.equal(await pingsFollowKey('BB-OLDK-EYAB-CDEF-GHJK', 'BB-NEWK-EYAB-CDEF-GHJK', { nav: {}, load }), false, 'no service worker');
+  assert.equal(await pingsFollowKey('BB-OLDK-EYAB-CDEF-GHJK', 'BB-NEWK-EYAB-CDEF-GHJK', { nav, load }), true);
+  const slow = async () => ({ switchKey: () => new Promise(() => {}) });
+  assert.equal(await pingsFollowKey('BB-OLDK-EYAB-CDEF-GHJK', 'BB-NEWK-EYAB-CDEF-GHJK', { nav, load: slow, waitMs: 20 }), false, 'never holds LOGIN more than a moment');
+  assert.match(readFileSync('public/screens/pro.js', 'utf8'), /const old = pro\.getKey\(\); \/\/ PINGS[^\n]*\n  pro\.login\(key\)\.then\(async \(st\) => \{\n    await pingsFollowKey\(old\);/);
 });
 
 // ---- the in-tab watcher stands down ------------------------------------------------------------------

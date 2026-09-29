@@ -86,7 +86,7 @@ export function mountChat(app, {
   db, store, guess = createLimiter({ max: 20, windowMs: 15 * MIN }), mode = 'live', publicUrl = 'https://bloombroke.com',
   getQuote = async () => null, parse, linkChanges, titleOf = null, now = () => Date.now(), limits = chatLimits(now),
   hub = createHub({ now }), stampMs = STAMP_MS, log = console, guessSecret = null, sweepMs = DRIVE_SWEEP_MS,
-  meLimitsFor = meLimits(now), onMessage = null, onAccountDelete = null,
+  meLimitsFor = meLimits(now), onMessage = null, onAccountDelete = null, pingsOf = null,
 }) {
   if (!parse || !linkChanges) throw new Error('mountChat needs the terminal parser');
   const chat = createChatStore(db, { now });
@@ -447,7 +447,7 @@ export function mountChat(app, {
     try { onAccountDelete?.(licId); } catch (err) { log.error('[me] pings', err?.message); }
   };
   mountMe(app, {
-    db, store, chat, hub, guess, mode, publicUrl, now, log, limits: meLimitsFor, onDelete,
+    db, store, chat, hub, guess, mode, publicUrl, now, log, limits: meLimitsFor, onDelete, pingsOf,
   });
   return { chat, hub, drives, sweep, purge: (t) => chat.purge(t) };
 }

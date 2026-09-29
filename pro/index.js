@@ -59,10 +59,10 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
       db, store, guess: limits.guess, mode: se.mode, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', config: pushConfig(env, log), getQuoteList, log,
     });
     // CHAT: /api/chat, active Pro keys only (pro/chat-routes.js). A new message may ping;
-    // DELETE MY ACCOUNT takes the push rows too.
+    // DELETE MY ACCOUNT takes the push rows too, and DOWNLOAD MY DATA lists them.
     const chat = mountChat(app, {
       db, store, guess: limits.guess, mode: se.mode, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', getQuote, parse: parseCommand, linkChanges, titleOf: (c) => screenTitle(c).title, log,
-      onMessage: (m) => push.onMessage(m), onAccountDelete: (id) => push.wipe(id),
+      onMessage: (m) => push.onMessage(m), onAccountDelete: (id) => push.wipe(id), pingsOf: (id) => push.exportOf(id),
     });
     // NEW KEY logs out every device, so no device gets pings for this licence any more.
     store.onKeyChange((id) => { try { push.forgetDevices(id); } catch (err) { log.error('[push] new key', err.message); } });

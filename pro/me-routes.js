@@ -49,7 +49,7 @@ const iso = (ms) => (Number.isFinite(ms) ? new Date(ms).toISOString() : null);
 
 export function mountMe(app, {
   store, chat, hub = null, guess = createLimiter({ max: 20, windowMs: 15 * MIN }), mode = 'live', publicUrl = 'https://bloombroke.com',
-  now = () => Date.now(), log = console, limits = meLimits(now), db, onDelete = () => {},
+  now = () => Date.now(), log = console, limits = meLimits(now), db, onDelete = () => {}, pingsOf = null,
 }) {
   const fail = (res, status, error, message) => res.status(status).json({ error, message });
   const limited = (res, r, message = 'Too many tries. Wait a few minutes and try again.') => {
@@ -139,6 +139,10 @@ export function mountMe(app, {
       chat: chat.exportOf(lic.id),
       gift_codes: gifts,
     };
+    // PINGS (pro/push.js): devices by push service and date, settings, the alert copy.
+    if (pingsOf) {
+      try { out.pings = pingsOf(lic.id); } catch (err) { log.error('[me] pings export', err?.message); }
+    }
     res.set('Content-Disposition', 'attachment; filename="bloombroke-my-data.json"');
     res.type('application/json').send(JSON.stringify(out, null, 2));
   });

@@ -256,6 +256,17 @@ export function createPushStore(db, { now = () => Date.now() } = {}) {
         return list.length;
       });
     },
+    // DOWNLOAD MY DATA: each device as its push service's host name and when it was
+    // added (never the address or the keys), the settings, and the copy of the alerts.
+    exportOf(lic) {
+      const iso = (ms) => (Number.isFinite(ms) ? new Date(ms).toISOString() : null);
+      const host = (e) => { try { return new URL(e).hostname; } catch { return null; } };
+      return {
+        devices: q.subsOf.all(lic).map((r) => ({ push_service: host(r.endpoint), added: iso(r.created_at), last_ping: iso(r.last_ok_at) })),
+        settings: this.prefs(lic),
+        alerts: q.alertsOf.all(lic).map((r) => ({ symbol: r.symbol, op: r.op, level: r.level, added: iso(r.created_at), fired: iso(r.fired_at) })),
+      };
+    },
     waitingAlerts: () => q.waiting.all(),
     armAlert: (id) => q.arm.run(id),
     fireAlert: (id, t) => Number(q.fire.run(t, id).changes) === 1,
@@ -314,7 +325,7 @@ export function mountPush(app, {
 }) {
   const push = createPushStore(db, { now });
   const base = {
-    enabled: false, store: push, sender: null, alerts: null, onMessage: () => 0,
+    enabled: false, store: push, sender: null, alerts: null, onMessage: () => 0, exportOf: (lic) => push.exportOf(lic),
     forgetDevices: (lic) => push.forgetDevices(lic), wipe: (lic) => push.wipe(lic), purge: (t) => push.purge(t),
   };
   const fail = (res, status, error, message) => res.status(status).json({ error, message });

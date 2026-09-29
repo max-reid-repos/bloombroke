@@ -569,11 +569,24 @@ function loginForm(el, ctx, alert = '', warn = false) {
   wireForm(host, 'login-form', (value) => (pro.normalizeGiftCode(value) && !pro.normalizeKey(value) ? redeemInto(el, ctx, value) : loginInto(el, ctx, value)));
 }
 
+// PINGS: LOGIN with another key on a browser that has pings (public/push.js switchKey).
+// At most 3 seconds, and before the reload that stops DataFast.
+export async function pingsFollowKey(oldKey, newKey = pro.getKey(), { nav = globalThis.navigator, load = () => import('../push.js'), waitMs = 3000 } = {}) {
+  if (!oldKey || !newKey || oldKey === newKey || !nav?.serviceWorker) return false;
+  let timer;
+  try {
+    const m = await load();
+    return await Promise.race([m.switchKey(oldKey, newKey), new Promise((r) => { timer = setTimeout(r, waitMs, false); })]);
+  } catch { return false; } finally { clearTimeout(timer); }
+}
+
 function loginInto(el, ctx, key) {
   const host = el.querySelector('#pro-account');
   host.innerHTML = LOADING;
   ctx.status('CHECKING YOUR KEY...');
-  pro.login(key).then((st) => {
+  const old = pro.getKey(); // PINGS: the key this browser had
+  pro.login(key).then(async (st) => {
+    await pingsFollowKey(old);
     if (!el.isConnected) return;
     renderAccount(el, ctx, st.active ? 'Logged in. Your watchlist, portfolio and tape now sync.' : 'Logged in, but Pro is not active on this key.');
     ctx.status(st.active ? 'PRO: LOGGED IN' : 'PRO: NOT ACTIVE', st.active ? '' : 'warn');
