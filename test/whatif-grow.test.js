@@ -261,7 +261,7 @@ test('EMBED copies the right one-line snippet', () => {
   assert.match(whatif, /d\.cert && !d\.mine \? `<button type="button" class="wi-mi" role="menuitem" data-embed=/, 'no EMBED on MY results');
   assert.match(whatif, /if \(ok\) goal\('whatif_embed', \{ kind: 'whatif' \}, \{ once: b\.dataset\.embed \}\);/);
   const guess = readFileSync(new URL('../public/screens/guess.js', import.meta.url), 'utf8');
-  assert.match(guess, /class="chip gs-embed"[^>]*>EMBED<\/button>/);
+  assert.match(guess, /class="card-link gs-link gs-embed"[^>]*>EMBED<\/button>/, 'a text link beside COPY RESULT');
   assert.match(guess, /ctx\.copy\(guessEmbedSnippet\(\)\)/);
 });
 

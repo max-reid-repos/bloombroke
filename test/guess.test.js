@@ -206,8 +206,8 @@ test('GUESS countdown: to the next New York midnight, clock changes included', (
   assert.equal(msToNextPuzzle(at('2026-11-01T04:00:00Z')), 25 * 3_600_000);
   // 8 Mar 2026: clocks go forward, the day is 23 hours.
   assert.equal(msToNextPuzzle(at('2026-03-08T05:00:00Z')), 23 * 3_600_000);
-  assert.equal(fmtCountdown(3_723_000), '01:02:03');
-  assert.equal(fmtCountdown(-5), '00:00:00');
+  assert.equal(fmtCountdown(3_723_000), '1 h 3 m', 'hours and minutes (test/guess-review.test.js)');
+  assert.equal(fmtCountdown(-5), '0 h 0 m');
 });
 
 test('GUESS screen parts: the chart has % and months only, rows show every try', () => {
