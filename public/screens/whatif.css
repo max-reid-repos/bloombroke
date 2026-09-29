@@ -98,10 +98,11 @@
    the sentence (sub), SHARE and its menu (act), the note, the race (chart), the list of
    things when there are two or more (media), REPLAY and CHANGE PICKS (links), + Details.
    Sizes on the type and spacing scales (style.css); colours from its palette. */
-.wi-result .card-art { max-width: 100%; }
-/* While the race runs only the certificate and the chart move: the sentence and the list
-   wait for the end (their room is kept, so nothing jumps). */
-.wi-result.is-racing .card-sub, .wi-result.is-racing .wi-receipt { visibility: hidden; }
+.wi-result .card-art { max-width: 100%; overflow-x: clip; } /* the seal's stamp and the sticker never scroll the page sideways */
+/* While the race runs only the certificate and the chart move: the sentence, the list and
+   (in + Details) the table and the worst drops wait for the end (their room is kept, so
+   nothing jumps). */
+.wi-result.is-racing .card-sub, .wi-result.is-racing .wi-receipt, .wi-result.is-racing .wi-drop { visibility: hidden; }
 .wi-result .card-sub { color: var(--text); }
 .wi-line { display: block; }
 /* SHARE: one primary button; its menu opens under it, over what follows. */

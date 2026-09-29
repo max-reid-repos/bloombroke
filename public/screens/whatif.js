@@ -220,6 +220,32 @@ export function chipLabels(items) {
   const first = `${names[0].split(' ')[0]} `;
   return names.every((n) => n.startsWith(first) && n.length > first.length) ? names.map((n) => n.slice(first.length)) : names;
 }
+// A chip picked: that model instead (add: false), or added or dropped (add: true). The
+// last one picked stays (the family card drops the family). ids: the family's models in
+// order; on: the picked ones. Returns the picked ones after, in the family's order.
+export function chipPick(ids, on, id, { add = false } = {}) {
+  const set = new Set(on);
+  if (!add) return [id];
+  if (!set.has(id)) set.add(id);
+  else if (set.size > 1) set.delete(id);
+  return ids.filter((x) => set.has(x));
+}
+// A key on a chip: what it does. i: the chip it is on, n: how many there are.
+export function chipKey(key, { shift = false, i = 0, n = 1 } = {}) {
+  const go = (j) => ({ go: Math.max(0, Math.min(n - 1, j)) });
+  switch (key) {
+    case 'ArrowRight': return go(i + 1);
+    case 'ArrowLeft': return go(i - 1);
+    case 'Home': return go(0);
+    case 'End': return go(n - 1);
+    case ' ': return { pick: true, add: shift };
+    case 'Enter': return { run: true };
+    case 'Escape': case 'ArrowUp': return { back: true };
+    case '[': return { shelf: -1 };
+    case ']': return { shelf: 1 };
+    default: return null;
+  }
+}
 // The year and price a picked card shows.
 const pickedMeta = (p) => `${p.date.slice(0, 4)} ${fmtUsd(p.price)}`;
 
@@ -263,7 +289,7 @@ export function familyCardHtml(fam, picks) {
 export function chipsHtml(fam, picks) {
   const labels = chipLabels(fam.items);
   const start = Math.max(0, fam.items.findIndex((p) => picks.has(p.id)));
-  return `<span class="tag wi-chips-label">${esc(fam.name)}</span><span class="wi-chips-row" role="group" aria-label="${esc(`${fam.name}: which model`)}" data-chips="${esc(fam.fam)}">${fam.items.map((p, i) => `<button type="button" class="chip wi-chip" data-chip="${esc(p.id)}" aria-pressed="${picks.has(p.id)}" tabindex="${i === start ? 0 : -1}" title="${esc(`${p.name}: ${pickedMeta(p)}`)}">${esc(labels[i])} <span class="wi-chip-y num">${esc(p.date.slice(0, 4))}</span></button>`).join('')}</span>`;
+  return `<span class="tag wi-chips-label">${esc(fam.name)}</span><span class="wi-chips-row" role="group" aria-label="${esc(`${fam.name}: which model`)}" data-chips="${esc(fam.fam)}">${fam.items.map((p, i) => `<button type="button" class="chip wi-chip" data-chip="${esc(p.id)}" aria-pressed="${picks.has(p.id)}" tabindex="${i === start ? 0 : -1}" title="${esc(`${p.name}: ${pickedMeta(p)}`)}" aria-label="${esc(`${p.name}, ${p.date.slice(0, 4)}`)}">${esc(labels[i])} <span class="wi-chip-y num">${esc(p.date.slice(0, 4))}</span></button>`).join('')}</span>`;
 }
 
 // The YOUR OWN card (first on every shelf) and a card per purchase of your own.
@@ -409,14 +435,9 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
   function chooseChip(id, { add = false } = {}) {
     const fam = fams.get(famOpen);
     if (!fam) return;
-    const on = fam.items.filter((p) => picks.has(p.id));
-    if (add) {
-      if (!picks.has(id)) picks.set(id, '');
-      else if (on.length > 1) picks.delete(id);
-    } else {
-      fam.items.forEach((p) => { if (p.id !== id) picks.delete(p.id); });
-      picks.set(id, '');
-    }
+    const ids = fam.items.map((p) => p.id);
+    const after = chipPick(ids, ids.filter((x) => picks.has(x)), id, { add });
+    ids.forEach((x) => { if (!after.includes(x)) picks.delete(x); else if (!picks.has(x)) picks.set(x, ''); });
     drawFam(fam);
     drawChips(id);
     refresh();
@@ -572,20 +593,14 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
       c.focus({ preventScroll: true });
       c.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     };
-    const back = () => { const r = list.querySelector(`[data-fam="${famOpen}"]`); if (r) focusRow(rows.indexOf(r)); };
-    const keys = {
-      ArrowRight: () => go(i + 1),
-      ArrowLeft: () => go(i - 1),
-      Home: () => go(0),
-      End: () => go(chips.length - 1),
-      ' ': () => chooseChip(chip.dataset.chip, { add: e.shiftKey }),
-      Enter: () => runPicks(),
-      Escape: back,
-      ArrowUp: back,
-      '[': () => moveShelf(-1),
-      ']': () => moveShelf(1),
-    };
-    if (keys[e.key]) { e.preventDefault(); e.stopPropagation(); keys[e.key](); }
+    const act = chipKey(e.key, { shift: e.shiftKey, i, n: chips.length });
+    if (!act) return;
+    e.preventDefault(); e.stopPropagation();
+    if ('go' in act) go(act.go);
+    else if (act.pick) chooseChip(chip.dataset.chip, { add: act.add });
+    else if (act.run) runPicks();
+    else if (act.back) { const r = list.querySelector(`[data-fam="${famOpen}"]`); if (r) focusRow(rows.indexOf(r)); }
+    else if (act.shelf) moveShelf(act.shelf);
   });
 
   // [ and ] also work from the shelf tabs.
@@ -711,35 +726,42 @@ export function shareHtml(d, links, video = '') {
 }
 
 // Opens and closes the menu: a click or Down opens it, Esc closes it (the focus back on
-// SHARE), a click outside or a choice closes it.
-function setupShare(el, ctx, key) {
+// SHARE), a click outside, Tab or a choice closes it. Up, Down, Home and End move in it.
+// While it is open, Esc is caught first on the document (capture), wherever the focus is
+// (Safari leaves it on the page after a click), so it never reaches the app's own Esc.
+// doc: the document (a test passes a small fake).
+export function setupShare(el, ctx, key, { doc = globalThis.document } = {}) {
   const btn = el.querySelector('#wi-share-btn');
   const menu = el.querySelector('#wi-menu');
   if (!btn || !menu) return;
   const items = () => [...menu.querySelectorAll('.wi-mi:not(.is-off)')];
+  const onEsc = (e) => {
+    if (e.key !== 'Escape' || menu.hidden) return;
+    e.preventDefault(); e.stopPropagation();
+    close(true);
+  };
   const open = (focus) => {
     menu.hidden = false;
     btn.setAttribute('aria-expanded', 'true');
+    doc.addEventListener('keydown', onEsc, true);
     if (focus) items()[0]?.focus();
   };
-  const close = (refocus) => {
+  function close(refocus) {
+    doc.removeEventListener('keydown', onEsc, true);
     if (menu.hidden) return;
     menu.hidden = true;
     btn.setAttribute('aria-expanded', 'false');
     if (refocus) btn.focus();
-  };
+  }
   btn.addEventListener('click', (e) => { if (menu.hidden) open(e.detail === 0); else close(false); });
   btn.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); open(true); }
-    else if (e.key === 'Escape' && !menu.hidden) { e.preventDefault(); e.stopPropagation(); close(true); }
   });
   menu.addEventListener('keydown', (e) => {
     const list = items();
-    const i = list.indexOf(document.activeElement);
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault(); e.stopPropagation();
-      list[(i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length]?.focus();
-    } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(true); }
+    const i = list.indexOf(doc.activeElement);
+    const to = { ArrowDown: (i + 1) % list.length, ArrowUp: (i - 1 + list.length) % list.length, Home: 0, End: list.length - 1 }[e.key];
+    if (to !== undefined) { e.preventDefault(); e.stopPropagation(); list[to]?.focus(); }
     else if (e.key === 'Tab') close(false);
   });
   menu.addEventListener('click', (e) => {
@@ -748,8 +770,8 @@ function setupShare(el, ctx, key) {
     if (e.target.closest('.wi-mi:not(.is-off)')) setTimeout(() => close(false), 0);
   });
   const outside = (e) => { if (!menu.hidden && !e.target.closest?.('.wi-sharebox')) close(false); };
-  document.addEventListener('click', outside, true);
-  ctx.onCleanup?.(() => document.removeEventListener('click', outside, true));
+  doc.addEventListener('click', outside, true);
+  ctx.onCleanup?.(() => { doc.removeEventListener('click', outside, true); doc.removeEventListener('keydown', onEsc, true); });
 }
 
 // ---- Result ---------------------------------------------------------------------
@@ -774,8 +796,9 @@ export function niceDay(iso) {
 // "Apple Inc." -> "Apple": the company as people say it.
 export const shortCompany = (c) => String(c || '').replace(/,?\s+(Inc\.?|Corp\.?|Corporation|Ltd\.?|plc)$/i, '').trim();
 
-// The short note under SHARE; the full small print (HINDSIGHT_NOTE) is first in + Details.
-export const RESULT_NOTE = 'Hindsight. Not a recommendation.';
+// The short note under SHARE, always in view (legal: the past-returns caution stays up
+// front); the full small print (HINDSIGHT_NOTE) is first in + Details.
+export const RESULT_NOTE = 'Hindsight. Past returns do not predict future ones.';
 
 // The one sentence under the certificate: what was paid, when, and what it is worth now
 // as the maker's stock. What was bought is on the certificate, so it is not said again.
@@ -847,7 +870,7 @@ function detailsHtml(d, { table = false } = {}) {
     d.replay?.cpi?.gap || '', // a month BLS never published (Oct 2025), carried forward
   ].filter(Boolean);
   return `${table ? tableHtml(d) : ''}
-      <ul class="how-list">${small.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+      <ul class="how-list">${small.map((l) => `<li${/^Worst drop/.test(l) ? ' class="wi-drop"' : ''}>${esc(l)}</li>`).join('')}</ul>
       <p class="how-h">How it is calculated</p>
       <ul class="how-list">
         <li>Shares: the price you paid, divided by the stock's split-adjusted close on the day you bought it (or the last trading day before).</li>
@@ -900,9 +923,10 @@ export function replayHtml(d) {
   return `<div class="wi-replay"><canvas class="wr-canvas" role="img" aria-label="${esc(label)}"></canvas></div>`;
 }
 
-function setupReplay(el, d, ctx) {
+// onEnd: when the race ends (at once with reduced motion, or with no race at all).
+function setupReplay(el, d, ctx, { onEnd = () => {} } = {}) {
   const box = el.querySelector('.wi-replay');
-  if (!box) return;
+  if (!box) { onEnd(); return; }
   const pts = d.replay.points;
   const card = el.querySelector('.wi-result');
   const cert = el.querySelector('.wi-cert');
@@ -924,6 +948,7 @@ function setupReplay(el, d, ctx) {
     onFrame: show,
     onDone: () => {
       card?.classList.remove('is-racing');
+      onEnd();
       if (!cert) return;
       cert.classList.remove('is-racing', 'is-behind', 'is-stamped');
       void cert.offsetWidth; // restart the stamp
@@ -1002,7 +1027,9 @@ export function render(el, cmd, ctx) {
       el.innerHTML = panel('1', WHATIF_TITLE, resultHtml(d, { key, links, mine: plan.mine, video: videoHtml(d) }), { cls: 'panel-solo wi-panel' });
       sizeCert(el);
       setupShare(el, ctx, key);
-      setupReplay(el, d, ctx);
+      // The status line says the multiple when the race ends, not before (one amount at a time).
+      ctx.status('');
+      setupReplay(el, d, ctx, { onEnd: () => ctx.status(`WHATIF: ${fmtX(d.total.multiple)}${d.stale ? ' (LAST KNOWN PRICES)' : ''}`, d.stale ? 'warn' : '') });
       el.querySelector('[data-copy]')?.addEventListener('click', async (e) => {
         const ok = await copyText(e.currentTarget.dataset.copy);
         ctx.status(ok ? 'LINK COPIED' : 'COPY THE LINK FROM THE ADDRESS BAR', ok ? '' : 'warn');
@@ -1015,7 +1042,6 @@ export function render(el, cmd, ctx) {
         ctx.status(ok ? 'EMBED CODE COPIED' : 'COULD NOT COPY', ok ? '' : 'warn');
         if (ok) goal('whatif_embed', { kind: 'whatif' }, { once: b.dataset.embed });
       });
-      ctx.status(`WHATIF: ${fmtX(d.total.multiple)}${d.stale ? ' (LAST KNOWN PRICES)' : ''}`, d.stale ? 'warn' : '');
       goal('whatif_run', undefined, { once: key });
     });
   }).catch((err) => {

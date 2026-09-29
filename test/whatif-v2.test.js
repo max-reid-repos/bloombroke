@@ -14,7 +14,7 @@ import { normalizeWhatif, certModel, DOODLES } from '../data/whatif-cert.js';
 import { getCert, whatifPng } from '../lib/og.js';
 import {
   planWhatif, shelvesOf, shelfItems, SHELVES, SHELF_WORDS, dropRange, riskLine, dropList, replayHtml, cardHtml, commandFor,
-  videoHtml, shareHtml, shareLinks, resultSentence, resultHtml, fmtUsd, niceMonth, niceDay, shortCompany,
+  videoHtml, shareHtml, shareLinks, resultSentence, resultHtml, fmtUsd, niceMonth, niceDay, shortCompany, setupShare, chipKey, chipPick, chipsHtml, shelfCards,
   HINDSIGHT_NOTE, RESULT_NOTE, PICKER_INTRO, PICKER_KEYS,
 } from '../public/screens/whatif.js';
 import { parseMine } from '../public/whatif-mine.js';
@@ -464,6 +464,11 @@ test('replay block: the chart alone, its lines named on it; SAVE VIDEO in the SH
   assert.deepEqual(LINE_KEYS, ['stock', 'jar', 'spent']);
   assert.deepEqual(labelYs([40, 44, 100], { gap: 12, top: 10, bottom: 110 }), [40, 52, 100]);
   assert.deepEqual(labelYs([100, 5, 108], { gap: 12, top: 10, bottom: 110 }), [98, 10, 110], 'kept inside, still 12 apart');
+  // A short chart (less room than 3 names need): the top one stays inside, in order.
+  const short = labelYs([20, 21, 22], { gap: 12, top: 10, bottom: 30 });
+  assert.ok(short[0] < short[1] && short[1] < short[2], String(short));
+  assert.deepEqual(short.map((y, i) => (i ? y - short[i - 1] : 12)), [12, 12, 12], '12 apart even then');
+  assert.equal(short[2], 30, 'the lowest at the bottom');
   // SAVE VIDEO where the browser can, one plain line where it cannot.
   assert.equal(videoHtml(d, 'webcodecs'), '<button type="button" class="wi-mi" role="menuitem" data-video>Save video</button>');
   assert.match(videoHtml(d, null), /Saving a video needs Chrome, Edge or Safari\./);
@@ -509,6 +514,9 @@ test('WHATIF result: a split card page, the certificate the hero, one sentence, 
   const mac = await screen(['BIGMAC:10Y']);
   mac.cert = certModel(mac, liveCatalog, 'WHATIF BIGMAC:10Y');
   assert.match(resultSentence(mac), /^You paid \$[\d,]+ since [A-Z][a-z]{2} \d{4}\. As McDonald's stock it is worth \$[\d,]+ today\.$/);
+  // A catalogue habit that ended (a range typed): from and to, not "since".
+  const ended = await screen(['BIGMAC:2015-2020']);
+  assert.match(resultSentence(ended), /^You paid \$[\d,]+, Jan 2015 to Dec 2020\. As McDonald's stock it is worth \$[\d,]+ today\.$/);
   const mix = await screen(['IPHONE6', 'LATTE:3Y']);
   mix.cert = certModel(mix, liveCatalog, 'WHATIF IPHONE6 LATTE:3Y');
   assert.match(resultSentence(mix), /^You paid \$[\d,]+ in all\. As stock in 2 companies they are worth \$[\d,]+ today\.$/);
@@ -541,7 +549,14 @@ test('WHATIF result: a split card page, the certificate the hero, one sentence, 
   assert.match(resultHtml({ ...phone, cert: null }, { key: 'WHATIF IPHONE6' }), /^<section class="card wi-result"/);
   // The race: only the certificate and the chart move; the sentence and the list wait.
   const css = readFileSync('public/screens/whatif.css', 'utf8');
-  assert.ok(css.includes('.wi-result.is-racing .card-sub, .wi-result.is-racing .wi-receipt { visibility: hidden; }'));
+  assert.ok(css.includes('.wi-result.is-racing .card-sub, .wi-result.is-racing .wi-receipt, .wi-result.is-racing .wi-drop { visibility: hidden; }'));
+  assert.match(more, /<li class="wi-drop">Worst drop along the way/, 'the worst drop in + Details waits for the end too');
+  assert.match(css, /\.wi-result \.card-art \{ max-width: 100%; overflow-x: clip; \}/, 'the stamp and the sticker never scroll the page sideways');
+  // The status line says the multiple when the race ends, not while it runs.
+  const js = readFileSync('public/screens/whatif.js', 'utf8');
+  assert.match(js, /ctx\.status\(''\);\n\s+setupReplay\(el, d, ctx, \{ onEnd: \(\) => ctx\.status\(`WHATIF: \$\{fmtX\(d\.total\.multiple\)\}/);
+  assert.equal((js.match(/ctx\.status\(`WHATIF: \$\{fmtX/g) || []).length, 1);
+  assert.match(js, /if \(!box\) \{ onEnd\(\); return; \}/, 'no race: at once');
   const src = readFileSync('public/screens/whatif.js', 'utf8');
   assert.match(src, /const replay = \(\) => \{\n\s+card\?\.classList\.add\('is-racing'\);/, 'REPLAY races the same way');
   assert.match(src, /onDone: \(\) => \{\n\s+card\?\.classList\.remove\('is-racing'\);/, 'the end (or reduced motion, at once) shows them');
@@ -551,6 +566,126 @@ test('WHATIF result: a split card page, the certificate the hero, one sentence, 
   assert.equal(PICKER_INTRO, 'Pick what you bought. See what the stock would be worth now.');
   assert.equal(PICKER_KEYS, 'SPACE PICK · ENTER RUN');
   assert.doesNotMatch(src, /In the stock, that is|hero-unit">TODAY|How is this calculated\?|Notes and sources<\/summary>/);
+});
+
+// ---- SHARE menu, chips, copy ----------------------------------------------------------
+
+// A small fake of what setupShare touches: SHARE, the menu, its items and the document.
+function shareFake() {
+  const on = () => ({
+    ls: {},
+    addEventListener(t, f, c) { (this.ls[`${t}${c ? ':c' : ''}`] ||= []).push(f); },
+    removeEventListener(t, f, c) { const k = `${t}${c ? ':c' : ''}`; this.ls[k] = (this.ls[k] || []).filter((x) => x !== f); },
+    fire(t, e, c) { for (const f of [...(this.ls[`${t}${c ? ':c' : ''}`] || [])]) f(e); return e; },
+    count(t, c) { return (this.ls[`${t}${c ? ':c' : ''}`] || []).length; },
+  });
+  const doc = { ...on(), activeElement: null };
+  const node = (extra) => ({ ...on(), focus() { doc.activeElement = this; }, closest: () => null, hasAttribute: () => false, ...extra });
+  const items = ['Post on X', 'Save video', 'Download image', 'Copy link', 'Embed'].map((name) => node({ name, closest(s) { return s === '.wi-sharebox' || s === '.wi-mi:not(.is-off)' ? this : null; } }));
+  const btn = node({ attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, closest(s) { return s === '.wi-sharebox' ? this : null; } });
+  const menu = node({ hidden: true, querySelectorAll: () => items });
+  const el = { querySelector: (s) => ({ '#wi-share-btn': btn, '#wi-menu': menu })[s] || null };
+  const cleanups = [];
+  const ctx = { onCleanup: (f) => cleanups.push(f) };
+  const key = (k, extra = {}) => ({ key: k, stopped: false, prevented: false, stopPropagation() { this.stopped = true; }, preventDefault() { this.prevented = true; }, ...extra });
+  return { doc, items, btn, menu, el, ctx, cleanups, key };
+}
+
+test('SHARE menu: keys and clicks; Esc is caught first while it is open, wherever the focus is', async () => {
+  const f = shareFake();
+  setupShare(f.el, f.ctx, 'WHATIF IPHONE6', { doc: f.doc });
+  // Opened from the keyboard (a click with no pointer): the first item has the focus.
+  f.btn.fire('click', { detail: 0 });
+  assert.equal(f.menu.hidden, false);
+  assert.equal(f.btn.attrs['aria-expanded'], 'true');
+  assert.equal(f.doc.activeElement.name, 'Post on X');
+  // Up, Down, Home and End move in it (and wrap).
+  for (const [k, want] of [['ArrowUp', 'Embed'], ['ArrowDown', 'Post on X'], ['End', 'Embed'], ['Home', 'Post on X'], ['ArrowDown', 'Save video']]) {
+    const e = f.menu.fire('keydown', f.key(k));
+    assert.equal(f.doc.activeElement.name, want, k);
+    assert.ok(e.stopped && e.prevented, `${k} stays in the menu`);
+  }
+  // Esc on the document, capture phase (Safari: the focus on the page): stopped, closed, focus on SHARE.
+  assert.equal(f.doc.count('keydown', true), 1, 'listening while open');
+  f.doc.activeElement = null;
+  const esc = f.doc.fire('keydown', f.key('Escape'), true);
+  assert.ok(esc.stopped && esc.prevented, 'Esc never reaches the app');
+  assert.equal(f.menu.hidden, true);
+  assert.equal(f.btn.attrs['aria-expanded'], 'false');
+  assert.equal(f.doc.activeElement, f.btn);
+  assert.equal(f.doc.count('keydown', true), 0, 'removed on close');
+  // Opened with the mouse: the focus stays; a click outside closes it.
+  f.doc.activeElement = null;
+  f.btn.fire('click', { detail: 1 });
+  assert.equal(f.menu.hidden, false);
+  assert.equal(f.doc.activeElement, null);
+  f.doc.fire('click', { target: f.btn }, true);
+  assert.equal(f.menu.hidden, false, 'a click on SHARE is not outside');
+  f.doc.fire('click', { target: { closest: () => null } }, true);
+  assert.equal(f.menu.hidden, true);
+  assert.equal(f.doc.count('keydown', true), 0);
+  // Down on SHARE opens it at the first item; Tab closes it; a click on SHARE again too.
+  f.btn.fire('keydown', f.key('ArrowDown'));
+  assert.equal(f.menu.hidden, false);
+  assert.equal(f.doc.activeElement.name, 'Post on X');
+  f.menu.fire('keydown', f.key('Tab'));
+  assert.equal(f.menu.hidden, true);
+  f.btn.fire('click', { detail: 1 });
+  f.btn.fire('click', { detail: 1 });
+  assert.equal(f.menu.hidden, true, 'SHARE toggles');
+  // A choice closes it (after the item's own handler ran).
+  f.btn.fire('click', { detail: 1 });
+  f.menu.fire('click', { target: f.items[3] });
+  assert.equal(f.menu.hidden, false);
+  await new Promise((r) => { setTimeout(r, 5); });
+  assert.equal(f.menu.hidden, true);
+  // Closed: Esc is left alone. Leaving the screen removes every listener.
+  const later = f.doc.fire('keydown', f.key('Escape'), true);
+  assert.equal(later.stopped, false);
+  f.btn.fire('click', { detail: 1 });
+  f.cleanups.forEach((c) => c());
+  assert.equal(f.doc.count('keydown', true), 0);
+  assert.equal(f.doc.count('click', true), 0);
+});
+
+test('model chips: the keys, and a pick is that model; Shift adds or drops; the last one stays', () => {
+  const n = 18;
+  assert.deepEqual(chipKey('ArrowRight', { i: 6, n }), { go: 7 });
+  assert.deepEqual(chipKey('ArrowRight', { i: 17, n }), { go: 17 }, 'stops at the end');
+  assert.deepEqual(chipKey('ArrowLeft', { i: 0, n }), { go: 0 });
+  assert.deepEqual(chipKey('Home', { i: 6, n }), { go: 0 });
+  assert.deepEqual(chipKey('End', { i: 6, n }), { go: 17 });
+  assert.deepEqual(chipKey(' ', { i: 6, n }), { pick: true, add: false });
+  assert.deepEqual(chipKey(' ', { shift: true, i: 6, n }), { pick: true, add: true });
+  assert.deepEqual(chipKey('Enter'), { run: true });
+  assert.deepEqual(chipKey('Escape'), { back: true });
+  assert.deepEqual(chipKey('ArrowUp'), { back: true });
+  assert.deepEqual([chipKey('['), chipKey(']')], [{ shelf: -1 }, { shelf: 1 }]);
+  assert.equal(chipKey('a'), null, 'other keys pass');
+  const ids = ['iphone5', 'iphone6', 'iphone7'];
+  assert.deepEqual(chipPick(ids, ['iphone6'], 'iphone7'), ['iphone7'], 'this model instead');
+  assert.deepEqual(chipPick(ids, ['iphone6'], 'iphone6'), ['iphone6'], 'the one picked stays');
+  assert.deepEqual(chipPick(ids, ['iphone7'], 'iphone5', { add: true }), ['iphone5', 'iphone7'], 'added, in the family order');
+  assert.deepEqual(chipPick(ids, ['iphone5', 'iphone7'], 'iphone7', { add: true }), ['iphone5'], 'dropped');
+  assert.deepEqual(chipPick(ids, ['iphone5'], 'iphone5', { add: true }), ['iphone5'], 'the last one stays');
+  // The chip reads short; its tooltip and label keep the whole name.
+  const cat = { products: liveCatalog.products.map(({ short, ...p }) => ({ ...p, kind: 'once' })), recurring: [] };
+  const html = chipsHtml(shelfCards(cat, 'GADGETS').find((c) => c.fam === 'IPHONE'), new Map());
+  assert.match(html, /title="iPhone 3G \(on contract\): 2008 \$199\.00" aria-label="iPhone 3G \(on contract\), 2008">3G <span class="wi-chip-y num">2008<\/span>/);
+  assert.match(html, />12 <span class="wi-chip-y num">2020<\/span>/);
+});
+
+test('WHATIF copy: no em dash, no emoji, no brand word, no advice in the screen\'s own words', () => {
+  const src = readFileSync('public/screens/whatif.js', 'utf8');
+  const strings = [...src.matchAll(/'((?:[^'\\\n]|\\.)*)'|`((?:[^`\\]|\\.)*)`/g)].map((m) => m[1] ?? m[2]).filter((t) => /[A-Za-z]{3}/.test(t));
+  assert.ok(strings.length > 50, 'the strings are read');
+  for (const t of [src, ...strings]) {
+    assert.doesNotMatch(t, /\u2014/, 'em dash');
+    assert.doesNotMatch(t, /\p{Extended_Pictographic}/u, 'emoji');
+    assert.doesNotMatch(t, new RegExp(['bloom', 'berg'].join(''), 'i'), 'brand word');
+  }
+  for (const t of strings) assert.doesNotMatch(t, /\b(you should|we recommend|buy now|invest in)\b/i, t.slice(0, 80));
+  assert.doesNotMatch(src, /Yahoo|Polygon|Finnhub|Alpha Vantage|Twelve Data/i, 'no data vendor on screen');
 });
 
 // ---- The share image still renders ------------------------------------------------------

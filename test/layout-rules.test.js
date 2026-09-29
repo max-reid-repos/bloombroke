@@ -128,6 +128,7 @@ export async function whatifPage(tokens) {
   d.cert = certModel(d, WHATIF_CATALOG, command);
   return whatifHtml(d, { key: command, links: whatifLinks(d.cert, 'https://bloombroke.com'), video: whatifVideo(d, 'webcodecs') });
 }
+export const WHATIF_WORDS = 24;
 const WI_LIST = /<div class="card-media"><div class="wi-receipt">[\s\S]*?<\/table>\s*<\/div><\/div>/;
 export const WHATIF = [
   ['WHATIF IPHONE6', await whatifPage(['IPHONE6'])],
@@ -165,7 +166,9 @@ export const PAGES = [
   ['ME, Pro ended', meHtml({ key: KEY, st: { ...ST, status: 'canceled' }, has: all }), 20],
   ...NOSUCH.map(([name, html]) => [name, html, 30]),
   ...CARDS_B.map(([name, html, budget]) => [name, html, budget]),
-  ...WHATIF.map(([name, html]) => [name, html, 20]),
+  // WHATIF: 20, plus the four words of the legal note that stays in view ("Past returns do
+  // not predict future ones": the reviewer's call, Sep 29, conservative on the caution).
+  ...WHATIF.map(([name, html]) => [name, html, WHATIF_WORDS]),
 ];
 
 // The usage card (kit.js usageCard) wherever a command is typed wrong: 15 words at most.
@@ -618,7 +621,7 @@ test('split card: the art beside the other slots from 1100 px, one column below;
   assert.match(kit, /@media \(max-width: 1099px\), \(max-height: 800px\) \{\n  \.card, \.card-col \{ gap: 24px; \}/);
 });
 
-test('WHATIF: every result keeps to 20 words, the certificate is the picture, one SHARE', async () => {
+test('WHATIF: every result keeps to its budget (24 words), the certificate is the picture, one SHARE', async () => {
   for (const [name, html] of WHATIF) {
     assert.match(html, /^<section class="card card-split wi-result"/, `${name}: a split card page`);
     assert.match(html, /<div class="card-art"><figure class="wi-cert[^"]*" role="img" aria-label="A certificate: /, `${name}: the certificate is the art, its words the picture's`);
@@ -629,6 +632,6 @@ test('WHATIF: every result keeps to 20 words, the certificate is the picture, on
   const each = [...WHATIF_CATALOG.products.map((p) => [p.id.toUpperCase()]), ...WHATIF_CATALOG.recurring.map((r) => [`${r.id.toUpperCase()}:10Y`])];
   for (const tokens of [...each, ['IPHONE6', 'IPHONE8'], ['MODELS', 'BIGMAC:5Y', 'BETTING:3Y', 'PS5']]) {
     const w = cardWords((await whatifPage(tokens)).replace(WI_LIST, ''));
-    assert.ok(w.length <= 20, `WHATIF ${tokens.join(' ')}: ${w.length} words: ${w.join(' ')}`);
+    assert.ok(w.length <= WHATIF_WORDS, `WHATIF ${tokens.join(' ')}: ${w.length} words: ${w.join(' ')}`);
   }
 });

@@ -80,7 +80,7 @@ test('WHATIF copy is hindsight, never advice', () => {
     assert.doesNotMatch(line, /\bshould\b/i, line);
     assert.doesNotMatch(line, /usually|always|will (grow|rise)/i, line);
   }
-  assert.equal(RESULT_NOTE, 'Hindsight. Not a recommendation.');
+  assert.equal(RESULT_NOTE, 'Hindsight. Past returns do not predict future ones.', 'the past-returns caution stays in view');
   assert.equal(HINDSIGHT_NOTE, 'Hindsight only. Past returns do not predict future returns. Not a recommendation.');
   assert.equal(OG_NOTE, HINDSIGHT_NOTE, 'the share image carries the same small print');
 });
