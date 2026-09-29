@@ -299,7 +299,11 @@ test('ME: a command with SETTINGS and ACCOUNT; the top bar seat opens it', () =>
   // The seat: avatar, username in its colour, #00002; SEAT 00002 without a name.
   const top = seatHtml({ username: 'Tom', color: 1, avatar: null }, 2);
   assert.match(top, /^<svg class="px-av seat-av"[^>]*data-nc="1">/);
-  assert.match(top, /<\/svg> <span data-nc="1">Tom<\/span> <span class="seat-n dim">#00002<\/span>$/);
+  assert.match(top, /<\/svg> <span class="seat-name" data-nc="1">Tom<\/span> <span class="seat-n dim">#00002<\/span>$/);
+  // A long name gives way (an ellipsis) before the seat runs into the clock; the avatar and #seat stay.
+  const css = readFileSync('public/style.css', 'utf8');
+  assert.match(css, /\.seat-name \{ display: inline-block; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; \}/);
+  assert.match(css, /@media \(max-width: 639px\) \{ \.seat-name \{ max-width: 8ch; \} \}/);
   assert.match(seatHtml(null, 2), /<\/svg> SEAT 00002$/);
   assert.match(seatHtml({ username: '<i>x</i>' }, 2), /&lt;i&gt;x&lt;\/i&gt;/);
   assert.equal(badgeCount('CHAT 3'), 3);

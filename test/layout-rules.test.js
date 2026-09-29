@@ -294,7 +294,7 @@ test('copy rules on the card pages: no em dash, no emoji, no brand word, no ambe
     assert.doesNotMatch(html, /DataFast|Yahoo|Polygon|Finnhub|Alpha Vantage|Twelve Data|Nasdaq Data/i, `${name}: a data vendor on screen`);
   }
   for (const f of ['public/kit.js', 'public/kit.css', 'public/screens/bbrk.css', 'public/screens/sponsor.css', 'public/screens/pro.css', 'public/screens/feedback.js', 'public/screens/welcome.css', 'public/screens/me.js', 'public/screens/me.css', 'public/pixel-avatar.js',
-    'public/cards.js', 'public/screens/buy.js', 'public/screens/cpi.js', 'public/screens/loan.js', 'public/screens/mcp.js', 'public/screens/tape.js', 'public/screens/sponsor.js', 'public/drive.js']) {
+    'public/cards.js', 'public/kit-core.js', 'public/screens/buy.js', 'public/screens/cpi.js', 'public/screens/loan.js', 'public/screens/mcp.js', 'public/screens/tape.js', 'public/screens/sponsor.js', 'public/drive.js']) {
     const src = readFileSync(f, 'utf8');
     assert.doesNotMatch(src, /—/, `${f}: em dash`);
     assert.doesNotMatch(src, brand, `${f}: brand word`);

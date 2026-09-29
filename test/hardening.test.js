@@ -451,3 +451,52 @@ test('reloadAfterKey: reloads to PRO only when DataFast or a beacon runs in the 
   assert.equal(takeShowKeyOnce(session), false, 'once');
   assert.equal(reloadAfterKey({ doc: { querySelector() { throw new Error('x'); } }, loc, session }), false, 'never throws');
 });
+
+// ---- Ahrefs Web Analytics: the same gates as DataFast ----------------------------------------
+
+test('Ahrefs: loaded for a free visitor (async, its data-key); never with GPC, for Pro, in a DESK panel, or twice', async () => {
+  const { loadAhrefs, loadDataFast, analyticsBlocked, AHREFS, reloadAfterKey } = await import('../public/goal.js');
+  const fakeDoc = ({ embed = false, present = '' } = {}) => ({
+    head: { kids: [], appendChild(n) { this.kids.push(n); } },
+    documentElement: { classList: { contains: (c) => embed && c === 'is-embed' } },
+    querySelector: (sel) => (present && sel.includes(present) ? {} : null),
+    createElement: (tag) => ({ tag, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; } }),
+  });
+  const doc = fakeDoc();
+  assert.equal(loadAhrefs({ doc, nav: {}, win: {}, pro: () => false }), true);
+  const s = doc.head.kids[0];
+  assert.equal(s.src, 'https://analytics.ahrefs.com/analytics.js');
+  assert.equal(s.async, true);
+  assert.equal(s.attrs['data-key'], AHREFS.site);
+  assert.match(AHREFS.site, /^[\w/+]{16,}$/);
+  // The gates, one by one: each stops Ahrefs exactly where it stops DataFast.
+  const cases = [
+    ['GPC', { nav: { globalPrivacyControl: true }, pro: () => false }],
+    ['Pro', { nav: {}, pro: () => true }],
+    ['a DESK panel', { nav: {}, pro: () => false, embed: true }],
+  ];
+  for (const [name, c] of cases) {
+    const d = fakeDoc({ embed: c.embed });
+    assert.equal(loadAhrefs({ doc: d, nav: c.nav, win: {}, pro: c.pro }), false, name);
+    assert.equal(d.head.kids.length, 0, `${name}: no script tag`);
+    assert.equal(loadDataFast({ doc: fakeDoc({ embed: c.embed }), nav: c.nav, win: {}, pro: c.pro }), false, `${name}: DataFast too`);
+    assert.equal(analyticsBlocked({ doc: d, nav: c.nav, win: {}, pro: c.pro }), true, name);
+  }
+  assert.equal(loadAhrefs({ doc: fakeDoc({ present: 'analytics.ahrefs.com' }), nav: {}, win: {}, pro: () => false }), false, 'never twice');
+  assert.equal(loadAhrefs({ doc: undefined, nav: {}, win: undefined }), false);
+  // Both load on a page, from the same place.
+  const { readFileSync } = await import('node:fs');
+  assert.match(readFileSync('public/goal.js', 'utf8'), /\{ loadDataFast\(\); loadAhrefs\(\); \}/);
+  // A key that lands later reloads the page when Ahrefs alone runs, so it stops for Pro.
+  const loc = { replaced: null, replace(u) { this.replaced = u; } };
+  assert.equal(reloadAfterKey({ doc: { querySelector: (q) => (q.includes('analytics.ahrefs.com') ? {} : null) }, loc, session: null }), true);
+  assert.equal(loc.replaced, '/?c=PRO');
+});
+
+test('CSP: Ahrefs may load its script and send page views, nothing wider', async () => {
+  const { securityHeaders } = await import('../lib/embed.js');
+  const dirs = securityHeaders()['Content-Security-Policy'].split('; ');
+  assert.ok(dirs.includes("script-src 'self' https://datafa.st https://analytics.ahrefs.com https://static.cloudflareinsights.com"));
+  assert.ok(dirs.includes("connect-src 'self' https://datafa.st https://analytics.ahrefs.com https://cloudflareinsights.com"));
+  assert.ok(!dirs.some((d) => /ahrefs\.com\/|\*\.ahrefs/.test(d)), 'the origin only');
+});

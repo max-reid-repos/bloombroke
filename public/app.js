@@ -13,7 +13,7 @@ import { parseWatchArgs, watchInput, WATCH_SUBCOMMANDS, loadWatchlist, saveWatch
 import { parsePfArgs, pfInput } from './portfolio.js';
 import { panel, LOADING as LOADING_LINE } from './screens/markets.js';
 import { matchInstrument, searchInstruments, instrumentById, resolveInstrument, STOCK_RE, stockSymbol } from './instruments.js';
-import { edgeFade } from './kit.js'; // the card pages the shell draws itself are in cards.js (lazy)
+import { edgeFade } from './kit-core.js'; // the card pages (kit.js) and the shell's own (cards.js) load later
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { updatedTitle } from './freshness.js';
 import { dotTitle, popoverHtml } from './provenance.js'; // Provenance: the dot's tooltip and list
@@ -505,7 +505,7 @@ export function seatHtml(me, seat) {
   const p = { seat: n, name: me?.username || null, color: me?.color ?? null, avatar: me?.avatar || null };
   const av = avatarSvg(p, { size: 16, cls: 'seat-av' });
   if (!p.name) return `${av} SEAT ${pad}`;
-  return `${av} ${nameHtml(p)} <span class="seat-n dim">#${pad}</span>`;
+  return `${av} ${nameHtml(p, { cls: 'seat-name' })} <span class="seat-n dim">#${pad}</span>`;
 }
 // 'CHAT 3' -> 3, 'CHAT 99+' -> 99, '' -> 0.
 export const badgeCount = (t) => Number((/\d+/.exec(String(t ?? '')) || ['0'])[0]);

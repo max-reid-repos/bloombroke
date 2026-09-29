@@ -525,9 +525,9 @@ test('delete: drives end quietly, the name leaves the server lines, no request r
     assert.equal((await a.del()).status, 200);
     assert.equal(s.chat.drives.get(ab), null, 'the drive ended');
     const lines = s.db.prepare("SELECT body FROM chat_messages WHERE kind = 'sys' ORDER BY id").all().map((r) => r.body);
-    assert.ok(!lines.some((l) => /stopped/.test(l)), 'no "stopped" line');
+    assert.ok(!lines.some((l) => /stopped|ended live/.test(l)), 'no "ended live" line');
     assert.ok(!lines.some((l) => l.includes(`Tom #${a.seat} `) || l.includes(`Tom #${a.seat},`)), lines.join(' | '));
-    assert.ok(lines.includes(`SEAT ${a.seat} is driving.`));
+    assert.ok(lines.includes(`SEAT ${a.seat} is live.`));
     assert.ok(lines.includes(`Last week's GUESS: SEAT ${a.seat}, Bee #${b.seat} and SEAT 9 won with 9 points.`));
     assert.ok(lines.includes(`Tom #${a.seat}1 is driving.`), 'another seat that starts with the same digits is left alone');
     // A deleted account has no Pro to chat with: a request to its seat is not kept.

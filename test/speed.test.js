@@ -119,6 +119,8 @@ test('startup: the page loads the shell, HOME and MARKETS, never another screen'
   assert.deepEqual(screens.filter((r) => !allowed.has(r)), [], 'no other screen module at startup');
   assert.ok(!shell.includes('registry-detail.js'), 'HELP\'s long text is not at startup');
   for (const f of ['cards.js', 'menu.js', 'hints.js', 'here-now.js', 'chat-badge.js', 'trending.js']) assert.ok(!shell.includes(f), `${f} comes in after the first screen`);
+  // The card pages (kit.js) too: startup modules take the toolbar, table and date parts from kit-core.js.
+  assert.ok(!shell.includes('kit.js') && shell.includes('kit-core.js'), 'kit.js (the card pages) is not at startup');
   assert.ok(shell.length <= 45, `${shell.length} modules at startup`);
   const bytes = shell.reduce((n, r) => n + a.files.get(r).body.length, 0);
   assert.ok(bytes < 600_000, `${bytes} bytes of JS at startup`);
@@ -181,6 +183,13 @@ test('registry: HELP\'s long text is its own file, whole again in Node', () => {
 test('did you mean: the help line is the same as the NO SUCH screen\'s', async () => {
   const ns = await import('../public/screens/nosuch.js');
   assert.equal(HELP_LINE, ns.HELP_LINE);
+});
+
+test('stylesheets: a sheet already in the page\'s bundle is never loaded again by a lazy module', () => {
+  const a = buildAssets(tree({ 'app.js': "import './core.js';\n", 'core.js': '', 'kit.js': "export * from './core.js';\n", 'kit.css': '.k{}', 'screens/w.js': "import '../kit.js';\n", 'screens/w.css': '.w{}' }), { bundles: { 'base.css': ['kit.css'] } });
+  assert.deepEqual(a.stylesOf('screens/w.js', 'app.js'), ['screens/w.css'], 'kit.css is in base.css: not again, last in the cascade');
+  const b = buildAssets(PUBLIC, { bundles: { 'base.css': ['kit.css'] } });
+  for (const [rel, list] of Object.entries(b.lazyStyles('app.js'))) assert.ok(!list.includes('kit.css'), rel);
 });
 
 test('stylesheets: each sheet sits beside its module and is in the stacking order', () => {

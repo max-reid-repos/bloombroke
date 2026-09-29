@@ -2,7 +2,7 @@
 // as they come (the news hub); while the stream is down the list is polled every minute.
 
 import { esc, panel, LOADING } from './markets.js';
-import { toolbar, segmented } from '../kit.js';
+import { toolbar, segmented } from '../kit-core.js'; // not kit.js: the card pages stay out of the startup JS
 
 const SHORT = {
   CNBC: 'CNBC', MarketWatch: 'MKTW', 'Yahoo Finance': 'YHOO', 'Federal Reserve': 'FED', BLS: 'BLS', 'SEC EDGAR': 'SEC',

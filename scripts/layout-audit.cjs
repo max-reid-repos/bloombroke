@@ -202,7 +202,7 @@ async function main() {
           const u = new URL(req.url());
           const fix = u.origin === new URL(BASE).origin && req.method() === 'GET' ? FIX[u.pathname] : null;
           if (fix && !((u.pathname === '/api/pro/status' || u.pathname === '/api/me') && !opts.key)) req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(fix) });
-          else if (/datafa\.st|cloudflareinsights/.test(u.host)) req.abort();
+          else if (/datafa\.st|ahrefs\.com|cloudflareinsights/.test(u.host)) req.abort();
           else req.continue();
         });
         await page.goto(`${BASE}/?c=${encodeURIComponent(opts.type ? 'PRO' : cmd)}`, { waitUntil: 'domcontentloaded', timeout: 45000 });

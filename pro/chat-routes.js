@@ -345,7 +345,7 @@ export function mountChat(app, {
     if (action === 'start') {
       if (!chat.canWrite(id, lic)) return fail(res, 409, 'read_only', 'This chat is closed.');
       // No takeover across a block, either way.
-      if (d && d.driver !== lic && chat.blockedEither(d.driver, lic)) return fail(res, 409, 'taken', 'Someone else is driving here.');
+      if (d && d.driver !== lic && chat.blockedEither(d.driver, lic)) return fail(res, 409, 'taken', 'Someone else is live here.');
       hub.touch(lic);
       if (d?.driver !== lic) {
         const by = chat.me(lic);
@@ -357,12 +357,12 @@ export function mountChat(app, {
       return res.json({ drive: driveView(id, lic), cursor: hub.cursor() });
     }
     if (action === 'stop') {
-      if (!d || d.driver !== lic) return fail(res, 409, 'not_driver', 'You are not driving here.');
+      if (!d || d.driver !== lic) return fail(res, 409, 'not_driver', 'You are not live here.');
       endDrive(id);
       return res.json({ ok: true });
     }
     if (action === 'follow') {
-      if (!d || d.driver === lic || chat.blockedEither(d.driver, lic)) return fail(res, 409, 'no_drive', 'Nobody is driving here now.');
+      if (!d || d.driver === lic || chat.blockedEither(d.driver, lic)) return fail(res, 409, 'no_drive', 'Nobody is live here now.');
       drives.follow(id, lic);
       hub.touch(lic);
       countTo(id, d);
@@ -380,7 +380,7 @@ export function mountChat(app, {
       const hit = limits.drive.hit(`lic:${lic}`);
       if (!hit.ok) return limited(res, hit, 'That is a lot of screens for one minute. Slow down a little.');
       const d = drives.get(id);
-      if (!d || d.driver !== lic) return fail(res, 409, 'not_driver', 'You are not driving here.');
+      if (!d || d.driver !== lic) return fail(res, 409, 'not_driver', 'You are not live here.');
       // The card rule: a known screen that changes nothing and holds no secret.
       const card = cleanCard({ cmd: req.body?.cmd }, { parse, linkChanges, titleOf });
       if (!chat.canWrite(id, lic)) { endDrive(id); return fail(res, 409, 'not_driver', 'This chat is closed.'); }

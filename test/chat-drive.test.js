@@ -115,7 +115,7 @@ test('drive: start posts a line; takeover; STOP posts a line; only a member; lin
     assert.deepEqual(r.body.drive, { by: { seat: a.seat, name: 'Tom', color: null, avatar: null }, own: true, following: false, followers: 0 });
     assert.ok(r.body.cursor > 0);
     let lines = (await b.msgs(g)).filter((m) => m.kind === 'sys').map((m) => m.text);
-    assert.deepEqual(lines, [`Tom #${a.seat} is driving.`]);
+    assert.deepEqual(lines, [`Tom #${a.seat} is live.`]);
     // B sees the offer on the room; A sees own.
     const bRoom = (await b.list()).body.rooms.find((x) => x.id === g);
     assert.deepEqual(bRoom.drive, { by: { seat: a.seat, name: 'Tom', color: null, avatar: null }, own: false, following: false });
@@ -134,7 +134,7 @@ test('drive: start posts a line; takeover; STOP posts a line; only a member; lin
     assert.equal((await b.list()).body.rooms.find((x) => x.id === g).drive.followers, 0, 'C followed A, not B');
     assert.equal((await b.drive(g, 'stop')).status, 200);
     lines = (await c.msgs(g)).filter((m) => m.kind === 'sys').map((m) => m.text);
-    assert.deepEqual(lines, [`Tom #${a.seat} is driving.`, `SEAT ${b.seat} is driving.`, `SEAT ${b.seat} stopped.`]);
+    assert.deepEqual(lines, [`Tom #${a.seat} is live.`, `SEAT ${b.seat} is live.`, `SEAT ${b.seat} ended live.`]);
     assert.equal((await c.list()).body.rooms.find((x) => x.id === g).drive, undefined);
     // Screens are never messages.
     const rows = s.db.prepare('SELECT body FROM chat_messages').all().map((x) => x.body);
@@ -231,7 +231,7 @@ test('drive: stops after 10 minutes without a screen, or 60 s after the driver s
     s.advance(DRIVE_IDLE_MS);
     s.chat.sweep();
     assert.equal(s.chat.drives.get(g), null);
-    assert.equal((await c.msgs(g)).filter((m) => m.kind === 'sys').at(-1).text, `Tom #${a.seat} stopped.`);
+    assert.equal((await c.msgs(g)).filter((m) => m.kind === 'sys').at(-1).text, `Tom #${a.seat} ended live.`);
     cancelA(); cancelB();
     // The driver's page gone for 60 s: stopped.
     await a.drive(g, 'start');
