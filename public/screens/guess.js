@@ -365,7 +365,7 @@ export function render(el, cmd, ctx) {
           placeholder="Type a company or ticker" aria-label="Your guess: an S&P 100 ticker or company" role="combobox" aria-autocomplete="list" aria-controls="gs-sug" aria-expanded="false">
         <ul id="gs-sug" class="gs-sug" role="listbox" hidden></ul>
       </div>
-      <button type="submit" class="chip gs-go">GUESS</button>
+      <button type="submit" class="chip gs-go btn-solid">GUESS</button>
     </form>`;
   }
 
@@ -380,7 +380,7 @@ export function render(el, cmd, ctx) {
       ${who}
       ${statsHtml(s)}
       <div class="gs-share">
-        <button type="button" class="pf-btn gs-copy">COPY RESULT</button>
+        <button type="button" class="pf-btn btn-solid gs-copy">COPY RESULT</button>
         <a class="chip gs-x" href="${esc(shareOnX(shareText(game.n, game.rows, solved())))}" target="_blank" rel="noopener">SHARE ON X</a>
         <button type="button" class="chip gs-embed" title="Copy one line of HTML that puts today's GUESS on your site">EMBED</button>
         ${postChatHtml(chat?.pro, chat?.rooms)}

@@ -79,7 +79,7 @@ test('registry: every example parses and runs its own command', () => {
 });
 
 test('registry feeds the command bar, the function bar and ticker-first grammar', () => {
-  assert.deepEqual(FUNCTION_BAR, ['CHART', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS', 'OPTIONS', 'INSIDERS', 'OWNERS', 'FILINGS', 'SHORTS', 'BEATS', 'VALUE', 'WHY']);
+  assert.deepEqual(FUNCTION_BAR, ['CHART', 'WHY', 'NEWS', 'FINANCIALS', 'PROFILE', 'HISTORY', 'DIVIDENDS', 'OPTIONS', 'INSIDERS', 'OWNERS', 'FILINGS', 'SHORTS', 'BEATS', 'VALUE']);
   for (const fn of ['CHART', 'NEWS', 'EARNINGS', 'COMPARE', 'WATCH', 'INSIDERS']) assert.ok(TICKER_FUNCTIONS.includes(fn), fn);
   assert.equal(parseCommand('AAPL EARNINGS').name, 'SOON');
   const names = COMMANDS.map((c) => c.name);

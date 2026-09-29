@@ -140,7 +140,7 @@ function importBox() {
     <textarea id="pf-csv" rows="6" spellcheck="false" placeholder="ticker,shares,cost&#10;AAPL,10,150&#10;MSFT,5,300"></textarea>
     <div class="pf-import-row">
       <label class="pf-file">Or pick a .csv file <input type="file" accept=".csv,text/csv,text/plain"></label>
-      <button type="submit" class="pf-btn">REPLACE HOLDINGS</button>
+      <button type="submit" class="pf-btn btn-solid">REPLACE HOLDINGS</button>
     </div>
   </form>`;
 }

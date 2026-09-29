@@ -49,7 +49,7 @@
 .me-dev-k, .me-dk { letter-spacing: .2em; }
 .me-set { display: grid; grid-template-columns: 12ch minmax(0, 1fr); gap: 16px; align-items: center; }
 .me-set .chip { justify-self: start; cursor: pointer; }
-.me-set .chip[aria-pressed="true"] { color: var(--ink); background: var(--text-2); border-color: var(--text-2); }
+.me-set .chip[aria-pressed="true"] { color: var(--ink); background: var(--here); border-color: var(--here); }
 
 /* + Details, PINGS: the three settings (a wider label column: ALERTS WHEN THE TAB IS
    CLOSED), TEST, and the line for a browser that cannot have pings yet. */

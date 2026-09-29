@@ -143,7 +143,7 @@
   border: 1px solid var(--accent); background: transparent; color: var(--accent);
   font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .1em; cursor: pointer;
 }
-.btn:hover { background: var(--accent); color: var(--ink); }
+.btn:hover { background: var(--accent-tint); color: var(--accent); } /* an outline tints, never fills (kit.css rule C) */
 .dv-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 420px); gap: 24px; }
 .dv-stats { margin-top: 12px; max-width: 420px; }
 .dv-years { border: 1px solid var(--rule); }
@@ -209,7 +209,7 @@
 .co-chips::-webkit-scrollbar { display: none; }
 .co-chip { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 10px; border-right: 1px solid var(--rule); color: var(--dim); font-size: 11px; font-weight: 600; letter-spacing: .08em; white-space: nowrap; }
 .co-chip:hover { text-decoration: none; color: var(--text); background: var(--panel-3); }
-.co-chip.is-active { color: var(--ink); background: var(--text-2); }
+.co-chip.is-active { color: var(--ink); background: var(--here); }
 .co-count { color: var(--faint); font-weight: 400; }
 .co-chip.is-active .co-count { color: var(--ink); }
 .co-noname { color: var(--text-2); }

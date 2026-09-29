@@ -14,6 +14,8 @@
 //             picture (role="img", aria-hidden="true": a tombstone's face) are the picture's
 //   measure   a block of text wider than about 70 characters of its own font
 //   primary   more than one primary (solid) button
+//   small     (reported, not failing yet: phase 2) rule D, on a phone readable text under
+//             13 px; a tracked uppercase label may be 12
 //   fold      on a desktop size, BBRK's and SPONSOR's globe, or GRAVEYARD LEH's stone, video
 //             and last website, not wholly in the first view (the media's bottom below the
 //             scroll box's visible bottom, scrolled to the top); for WHATIF, at every size,
@@ -107,7 +109,7 @@ async function liveData() {
 
 // Runs in the page: every check, for the card on screen.
 function inPage(scale, firstView, sel, fold) {
-  const out = { overflow: [], crop: [], font: [], measure: [], primary: [], fold: [] };
+  const out = { overflow: [], crop: [], font: [], measure: [], primary: [], fold: [], small: [] };
   const de = document.documentElement;
   const screen = document.getElementById('screen');
   if (de.scrollWidth > de.clientWidth + 1) out.overflow.push(`page ${de.scrollWidth}>${de.clientWidth}`);
@@ -151,6 +153,11 @@ function inPage(scale, firstView, sel, fold) {
     const s = getComputedStyle(el);
     const px = parseFloat(s.fontSize);
     if (!scale.includes(px)) out.font.push(`${el.tagName.toLowerCase()}.${el.className || ''} ${px}px`);
+    if (innerWidth < 640 && px < 13) {
+      const text = el.textContent.trim();
+      const label = px >= 12 && parseFloat(s.letterSpacing) > 0 && (s.textTransform === 'uppercase' || text === text.toUpperCase());
+      if (!label) out.small.push(`${el.tagName.toLowerCase()}.${el.className || ''} ${px}px`);
+    }
     ctx.font = `${s.fontWeight} ${s.fontSize} ${s.fontFamily}`;
     const ch = ctx.measureText('0').width || px * 0.6;
     const w = el.getBoundingClientRect().width;
@@ -237,9 +244,10 @@ async function main() {
         }
         const firstView = !OPEN && w >= 1100 && ['bbrk', 'sponsor', 'graveyard-leh'].includes(name);
         const res = await page.evaluate(inPage, TYPE, firstView, sel, OPEN ? [] : opts.fold || []);
-        const bad = Object.entries(res).filter(([, v]) => v.length);
+        const bad = Object.entries(res).filter(([k, v]) => v.length && k !== 'small');
         if (bad.length) failed++;
-        rows.push({ page: name, size: `${w}x${h}`, result: bad.length ? 'FAIL' : 'ok', notes: bad.map(([k, v]) => `${k}: ${[...new Set(v)].slice(0, 3).join('; ')}`).join(' | ') });
+        const notes = [...bad, ...(res.small.length ? [['small (not failing yet)', res.small]] : [])];
+        rows.push({ page: name, size: `${w}x${h}`, result: bad.length ? 'FAIL' : 'ok', notes: notes.map(([k, v]) => `${k}: ${[...new Set(v)].slice(0, 3).join('; ')}`).join(' | ') });
         if (SHOTS) {
           fs.mkdirSync(SHOTS, { recursive: true });
           await page.screenshot({ path: path.join(SHOTS, `after-${name}-${w}${OPEN ? '-details' : ''}.png`) });

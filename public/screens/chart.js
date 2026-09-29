@@ -449,8 +449,9 @@ export function stripItems(points, spec, { fmtY, bp = false, hover = null, bar =
 //   label, hostCls, compact (HOME: one header line and the range row only).
 //   quote: 'external' when the screen passes its quote with setQuote(); otherwise a 1D
 //   chart fetches the quote itself for the previous close.
-// Header, line 1: LAST 341.07  +84.12  +32.78% for the visible window (a 1D chart from
-// the previous close). Line 2: the window's high, low, average close and volume, or under
+// Header, line 1: LAST 341.07  1Y +84.12  +32.78% for the visible window (a 1D chart from
+// the previous close), the change labelled by its range (changeTag); no LAST on the
+// instrument screen, whose quote panel shows the price. Line 2: the window's high, low, average close and volume, or under
 // the crosshair the bar's time, O H L C, volume and change from the window start.
 const DAY_MS = 86_400_000;
 const STYLE_KEY = 'bb.chart.style';
@@ -482,6 +483,25 @@ export function filingFlags(filings, days, bar) {
     ...f, hint: f.url ? 'CLICK N FOR THE SEC FILING' : '', line: `${f.text} ${isoToWhen(f.date)}`,
   }));
   return mergeFlags(placed.reverse(), 'FILINGS');
+}
+
+// Rule A (kit.css): every change says what range it is over. The chart's own change:
+// TODAY on a whole 1D chart of today (1D on a day that is over), the preset on any other
+// (1Y, 5D, MAX), IN VIEW after a zoom or with typed dates (the dates are in the bar).
+export function changeTag({ range = null, zoomed = false, fetchWin = null, today = false } = {}) {
+  if (zoomed || fetchWin || range?.from || !range?.range) return 'IN VIEW';
+  if (range.range === '1D' && today) return 'TODAY';
+  return range.range;
+}
+
+// The key to the markers under the chart, one dim line: only the kinds on it. N is a
+// headline on intraday bars and another 8-K filing on daily bars and longer.
+const FLAG_WORDS = { E: 'earnings', D: 'ex-dividend' };
+export function flagKeyHtml(flags, { intraday = false } = {}) {
+  const kinds = new Set((flags || []).map((f) => f.kind));
+  const words = { ...FLAG_WORDS, N: intraday ? 'headline' : 'company filing' };
+  const items = ['E', 'D', 'N'].filter((k) => kinds.has(k)).map((k) => `<span class="ch-key-m is-${k}">${k}</span> ${words[k]}`);
+  return items.join(' <span class="ch-sep" aria-hidden="true">·</span> ');
 }
 
 export const nextChartStyle = (style) => (style === 'candle' ? 'line' : 'candle');
@@ -594,11 +614,12 @@ export function rangeChart(root, ctx, opts) {
     </div>`;
   }
 
-  root.innerHTML = `<div class="ch-bar"></div><div class="ch-head"><p class="ch-l1 num"></p><p class="ch-l2 num"></p></div><div class="chart-host ${opts.hostCls || ''}">${LOADING}</div>`;
+  root.innerHTML = `<div class="ch-bar"></div><div class="ch-head"><p class="ch-l1 num"></p><p class="ch-l2 num"></p></div><div class="chart-host ${opts.hostCls || ''}">${LOADING}</div><p class="ch-key" aria-label="Chart markers" hidden></p>`;
   root.classList.toggle('is-compact', compactOpt);
   const host = root.querySelector('.chart-host');
   const l1 = root.querySelector('.ch-l1');
   const l2 = root.querySelector('.ch-l2');
+  const keyLine = root.querySelector('.ch-key');
   // A focused date box keeps its focus and what was typed; the bar period button and
   // its grid cells keep their focus.
   const focusKey = (el) => {
@@ -752,6 +773,14 @@ export function rangeChart(root, ctx, opts) {
     fillDates();
     paintChips();
     paintMeta();
+    paintKey();
+  }
+
+  // The E / D / N key under the chart (none on a compact chart: it has no markers).
+  function paintKey() {
+    const html = model && !compact() ? flagKeyHtml(model.flags, { intraday: model.intraday }) : '';
+    keyLine.innerHTML = html;
+    keyLine.hidden = !html;
   }
 
   // ---- Header strip ------------------------------------------------------------------
@@ -798,7 +827,12 @@ export function rangeChart(root, ctx, opts) {
       l1.innerHTML = `<span class="ch-k">${esc(model.whenAt(hi))}</span> <span class="ch-v">${esc(fmtY(p.v))}</span> <span class="${c.dir}">${esc(c.parts[c.parts.length - 1])}</span>`;
     } else {
       const c = chgText(st.base, st.last);
-      l1.innerHTML = `<span class="ch-k">LAST</span> <span class="ch-v">${esc(fmtY(st.last))}</span>${c.parts.map((t) => ` <span class="ch-c ${c.dir}">${esc(t)}</span>`).join('')}${sess ? ` <span class="ch-k">${sess}</span>` : ''}`;
+      // The screen's quote panel already shows the latest price (rule A: one number):
+      // then the chart's line is its change only, unless the window ends in the past.
+      const atLatest = i1 === model.points.length - 1 && !fetchWin?.to && !range.to;
+      const last = opts.quote === 'external' && atLatest ? '' : `<span class="ch-k">LAST</span> <span class="ch-v">${esc(fmtY(st.last))}</span> `;
+      const tag = changeTag({ range, zoomed, fetchWin, today: model.info[model.info.length - 1]?.day === today });
+      l1.innerHTML = `${last}<span class="ch-k ch-tag">${esc(tag)}</span>${c.parts.map((t) => ` <span class="ch-c ${c.dir}">${esc(t)}</span>`).join('')}${sess ? ` <span class="ch-k">${sess}</span>` : ''}`;
     }
     if (tight) { l2.innerHTML = ''; return; }
     const sep = '<span class="ch-sep" aria-hidden="true">·</span>';

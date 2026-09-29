@@ -315,43 +315,141 @@ export function newsStream({ tabs, onItems, onState = () => {}, ctx = {}, ES = g
   return { get live() { return live; }, get gaveUp() { return gaveUp; } };
 }
 
-export function newsList(items) {
-  const rows = dedupeNews(items).map((n) => {
+// ---- Hour rules and "Since your last visit" (NEWS only; the HOME box stays plain) ------
+
+// A row's hour for the rules between hours: today "h:14" (label 14:00), an older day
+// "d:2026-09-24" (label SEP 24), New York time. null for no time.
+export function hourOf(iso, now = new Date()) {
+  const d = new Date(iso);
+  if (!iso || Number.isNaN(d.getTime())) return null;
+  const day = (x) => x.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  if (day(d) !== day(now)) return { key: `d:${day(d)}`, label: fmtNewsTime(iso, now) };
+  const h = d.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', hourCycle: 'h23' });
+  return { key: `h:${h}`, label: `${h}:00` };
+}
+
+export const SINCE_LINE = 'Since your last visit';
+export const SEEN_KEY = 'bb.news.seen';
+export const SEEN_MS = 10_000; // the list on show this long counts as seen
+
+// The newest story's time on a list ('' for none).
+export function newestTime(items) {
+  let best = '';
+  let bt = -Infinity;
+  for (const n of items || []) {
+    const t = Date.parse(n?.time);
+    if (Number.isFinite(t) && t > bt) { bt = t; best = n.time; }
+  }
+  return best;
+}
+
+// The newest time seen on a tab in this browser, or null. store: { get, set } (ctx.store,
+// or a stub); any failure (private mode, blocked storage) is no line, never an error.
+export function readSeen(store, tab) {
+  try {
+    const all = store?.get?.(SEEN_KEY, null);
+    const v = all && typeof all === 'object' ? all[tab] : null;
+    return typeof v === 'string' && Number.isFinite(Date.parse(v)) ? v : null;
+  } catch { return null; }
+}
+export function writeSeen(store, tab, iso) {
+  if (!iso) return;
+  try {
+    const all = store?.get?.(SEEN_KEY, null);
+    const next = { ...(all && typeof all === 'object' ? all : {}) };
+    const old = Date.parse(next[tab]);
+    if (Number.isFinite(old) && old >= Date.parse(iso)) return;
+    next[tab] = iso;
+    store?.set?.(SEEN_KEY, next);
+  } catch { /* storage unavailable: no line next time */ }
+}
+
+// items -> <ol class="news">. Options (NEWS only): hours, a thin rule with the hour as a
+// small dim label between two hours; since, the time seen last visit: one line "Since
+// your last visit" above the older stories (only with newer ones above it).
+export function newsList(items, { hours = false, since = null, now = new Date() } = {}) {
+  const list = dedupeNews(items).filter((n) => safeHref(n.link));
+  const sinceT = since ? Date.parse(since) : NaN;
+  let sinceAt = -1;
+  if (Number.isFinite(sinceT)) {
+    const i = list.findIndex((n) => !(Date.parse(n.time) > sinceT));
+    if (i > 0) sinceAt = i;
+  }
+  let prevHour = null;
+  const rows = list.map((n, i) => {
     const href = safeHref(n.link);
-    if (!href) return '';
     const src = shortSource(n.source);
     const filing = 'ticker' in n;
-    return `<li class="news-row${filing && !n.ticker ? ' is-dim' : ''}" data-k="${esc(newsKey(n))}">
-      ${newsTimeHtml(n.time)}
-      <span class="news-src" title="${esc(n.source || '')}">${esc(src)}</span>
+    let before = '';
+    const hr = hours ? hourOf(n.time, now) : null;
+    if (i === sinceAt) before = `<li class="news-since" role="separator"><span class="news-since-l">${esc(SINCE_LINE)}</span></li>`;
+    else if (hr && prevHour && hr.key !== prevHour) before = `<li class="news-hour" aria-hidden="true"><span class="news-hour-l num">${esc(hr.label)}</span></li>`;
+    if (hr) prevHour = hr.key;
+    return `${before}<li class="news-row${filing && !n.ticker ? ' is-dim' : ''}" data-k="${esc(newsKey(n))}">
+      ${newsTimeHtml(n.time, now)}
+      <span class="news-src dim" title="${esc(n.source || '')}">${esc(src)}</span>
       ${filing ? filingCell(n, href) : `<a class="news-title" href="${esc(href)}" target="_blank" rel="noopener noreferrer" title="${esc(n.title)}">${esc(n.title)}</a>`}
     </li>`;
   }).join('');
   return `<ol class="news">${rows}</ol>`;
 }
 
+// The source toggles, once, in the panel's title strip (rule B): ALL and each feed on a
+// wide screen; on a phone one button that steps to the next source. One source (SEC,
+// WSB) or no list yet: the tab's sources as quiet words.
+export function sourceToggles(sources, src, tab) {
+  if (!sources || sources.length < 2) return `<span class="news-srcs-t">${esc(TAB_SOURCES[tab] || '')}</span>`;
+  const all = ['ALL', ...sources];
+  const next = all[(all.indexOf(src) + 1) % all.length] || 'ALL';
+  return `<span class="news-srcs">${segmented(all.map((x) => ({ label: x, value: x })), src, { label: 'Source' })}</span>`
+    + `<button type="button" class="news-src-one" data-value="${esc(next)}" aria-label="Source ${esc(src)}, press for ${esc(next)}">SOURCE ${esc(src)}</button>`;
+}
+
 export function render(el, cmd, ctx) {
   const tab = NEWS_TABS.includes(cmd.args?.tab) ? cmd.args.tab : 'MARKETS';
-  el.innerHTML = panel('1', 'News', `<div class="news-bar">${LOADING}</div><div class="news-body"></div>`, { cls: 'panel-solo', metaId: 'news-meta', bodyCls: 'flush', meta: esc(TAB_SOURCES[tab]) });
+  el.innerHTML = panel('1', 'News', `<div class="news-bar">${LOADING}</div><div class="news-body"></div>`, { cls: 'panel-solo', metaId: 'news-meta', bodyCls: 'flush', meta: sourceToggles(null, 'ALL', tab) });
   const bar = el.querySelector('.news-bar');
   const body = el.querySelector('.news-body');
-  const live = liveNews({ body, meta: el.querySelector('#news-meta'), metaHtml: () => esc(TAB_SOURCES[tab]), ctx, marker: true });
+  const metaEl = el.querySelector('#news-meta');
   let data = null;
   let pending = []; // pushed before the first list came
   let src = 'ALL';
+  let sources = [];
+  const live = liveNews({ body, meta: metaEl, metaHtml: () => sourceToggles(sources, src, tab), ctx, marker: true });
   const tabs = segmented(NEWS_TABS.map((t) => ({ label: t, cmd: tabCommand(t) })), tab, { label: 'News tab' });
+
+  // "Since your last visit": the newest time seen last visit (fixed for this visit), and
+  // the newest seen now, kept when the reader leaves NEWS, hides the page, or has had the
+  // list on show for SEEN_MS.
+  const since = readSeen(ctx.store, tab);
+  let newest = '';
+  let seenTimer = null;
+  const remember = () => writeSeen(ctx.store, tab, newest);
+  const onHide = () => { if (document.hidden) remember(); };
+  document.addEventListener('visibilitychange', onHide);
+  globalThis.addEventListener?.('pagehide', remember);
+  ctx.onCleanup?.(() => {
+    clearTimeout(seenTimer);
+    remember();
+    document.removeEventListener('visibilitychange', onHide);
+    globalThis.removeEventListener?.('pagehide', remember);
+  });
 
   function paint() {
     if (!data) return;
-    const sources = [...new Set(data.sources.map(shortSource))];
+    sources = [...new Set(data.sources.map(shortSource))];
     if (!sources.includes(src)) src = 'ALL';
     const items = dedupeNews(filterNews(data.items, src));
-    const pick = sources.length > 1 ? segmented([{ label: 'ALL', value: 'ALL' }, ...sources.map((x) => ({ label: x, value: x }))], src, { label: 'Source' }) : '';
-    bar.innerHTML = toolbar({ left: tabs, right: pick, label: 'News' });
-    live.show(data.items, items, items.length ? newsList(items) : '<p class="panel-msg">NO DATA</p>');
+    // A toggle in the strip that had the focus keeps it through the repaint.
+    const focused = metaEl.contains(document.activeElement) ? document.activeElement.className : null;
+    bar.innerHTML = toolbar({ left: tabs, label: 'News' });
+    live.show(data.items, items, items.length ? newsList(items, { hours: true, since }) : '<p class="panel-msg">NO DATA</p>');
+    if (focused) metaEl.querySelector(focused.includes('news-src-one') ? '.news-src-one' : '.seg-item.is-active')?.focus();
+    newest = newestTime([{ time: newest }, ...data.items]);
+    if (!seenTimer) seenTimer = setTimeout(remember, SEEN_MS);
   }
 
-  bar.addEventListener('click', (e) => {
+  metaEl.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-value]');
     if (!b) return;
     src = b.dataset.value;

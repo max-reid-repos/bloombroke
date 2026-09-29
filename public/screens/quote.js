@@ -66,6 +66,20 @@ export function changeText(d) {
   return `${fmtSigned(d.change, decimalsOf(d))} ${fmtPct(d.changePct)}`;
 }
 
+// What the change is over (rule A, kit.css): "today" when the last trade is from today in
+// New York, else the day it is from ("on Fri", "on Sep 12" when older than a week).
+const NY = 'America/New_York';
+const nyDay = (t) => new Date(t).toLocaleDateString('en-CA', { timeZone: NY });
+export function changeWhen(d, now = new Date()) {
+  const raw = String(d?.asOf || '');
+  const t = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T12:00:00Z` : raw);
+  if (!Number.isFinite(t)) return '';
+  if (nyDay(t) === nyDay(now)) return 'today';
+  const days = (Date.parse(`${nyDay(now)}T12:00:00Z`) - Date.parse(`${nyDay(t)}T12:00:00Z`)) / 86_400_000;
+  const opts = days > 0 && days < 7 ? { weekday: 'short' } : { month: 'short', day: 'numeric' };
+  return `on ${new Date(t).toLocaleDateString('en-US', { timeZone: NY, ...opts })}`;
+}
+
 // The name, once: "Gold COMEX (Dec'26)", not "Gold Gold COMEX (Dec'26)". A short label
 // that the full name does not already start with stays in front of it.
 export function titleHtml(d) {
@@ -88,7 +102,7 @@ export function showExtended(d) {
   return true;
 }
 
-function quoteHtml(d) {
+export function quoteHtml(d) {
   const dec = decimalsOf(d);
   const dir = dirOf(isYield(d) ? Math.round(d.change * 1000) : d.change);
   const ext = showExtended(d)
@@ -100,7 +114,7 @@ function quoteHtml(d) {
     <div class="q-main">
       <p class="q-name">${title}</p>
       <p class="q-hero num"><span class="q-last${tick(`q:${d.ticker}:last`, d.last)}">${fmtNum(d.last, dec)}</span><span class="q-ccy">${esc(unit)}</span>${freshTag(d)}</p>
-      <p class="q-chg num ${dir}">${esc(changeText(d))}</p>
+      <p class="q-chg num ${dir}">${esc(changeText(d))}${changeWhen(d) ? `<span class="q-chg-when dim">${esc(changeWhen(d))}</span>` : ''}</p>
       ${ext}
       <p class="q-asof dim">${lastTradeLine(d)}${d.stale ? ' (LAST KNOWN)' : ''}</p>
     </div>

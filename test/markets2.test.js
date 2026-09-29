@@ -380,7 +380,7 @@ test('router: the new commands parse, keep a clean URL, and sit in HELP', () => 
   }
   assert.equal(suggest('OPTIONS ')[0].usage, true);
   assert.equal(suggest('OPT')[0].value, 'OPTIONS ');
-  assert.equal(FUNCTION_BAR.indexOf('OPTIONS'), 6, 'OPTIONS is key 7 on the stock function bar');
+  assert.equal(FUNCTION_BAR.indexOf('OPTIONS'), 7, 'OPTIONS is key 8 on the stock function bar');
   assert.equal(tickerFunctions('AAPL').find((f) => f.fn === 'OPTIONS').ready, true);
 });
 

@@ -12,7 +12,7 @@
   font-family: var(--font); font-size: 11px; letter-spacing: .08em; cursor: pointer;
 }
 .wm-tog:hover { color: var(--text); background: var(--panel-3); }
-.wm-tog.is-on { color: var(--ink); background: var(--text-2); border-color: var(--text-2); }
+.wm-tog.is-on { color: var(--ink); background: var(--here); border-color: var(--here); }
 .wm-tog:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 .wm-read { margin: 6px 0 4px; min-height: 1.5em; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
 .wm-read b { color: var(--text); font-weight: 600; margin-right: 4px; }

@@ -108,7 +108,7 @@ export const REGISTRY = [
     syntax: 'BREADTH', examples: ['BREADTH'], keywords: ['advance', 'decline', 'up', 'down', 'participation'],
   },
   {
-    name: 'NEWS', category: 'Markets', summary: 'Headlines that move markets, or about one company', takesTicker: true, bar: 2,
+    name: 'NEWS', category: 'Markets', summary: 'Headlines that move markets, or about one company', takesTicker: true, bar: 3,
     syntax: 'NEWS [MACRO|SEC|WIRES|WSB|<ticker>]', examples: ['NEWS', 'NEWS AAPL', 'TSLA NEWS', 'NEWS MACRO', 'NEWS SEC', 'NEWS WIRES', 'NEWS WSB'],
     keywords: ['headlines', 'stories', 'articles', 'press', 'press releases', 'fed', 'bls', '8-k', 'wires', 'reddit', 'wallstreetbets', 'wsb'],
   },
@@ -125,49 +125,49 @@ export const REGISTRY = [
     keywords: ['grammar', 'function', 'ticker first'],
   },
   {
-    name: 'PROFILE', category: 'Stocks and companies', summary: 'What a company does, where it is, its website', takesTicker: true, bar: 4,
+    name: 'PROFILE', category: 'Stocks and companies', summary: 'What a company does, where it is, its website', takesTicker: true, bar: 5,
     syntax: 'PROFILE <ticker>', examples: ['PROFILE AAPL', 'PROFILE KO'], keywords: ['about', 'description', 'business', 'company', 'website', 'sector'],
   },
   {
-    name: 'VALUE', category: 'Stocks and companies', summary: 'P/E, dividend yield, margins, debt and the 52 week range', takesTicker: true, bar: 13,
+    name: 'VALUE', category: 'Stocks and companies', summary: 'P/E, dividend yield, margins, debt and the 52 week range', takesTicker: true, bar: 14,
     syntax: 'VALUE <ticker>', examples: ['VALUE AAPL', 'VALUE JPM'], keywords: ['valuation', 'pe', 'p/e', 'ratio', 'margin', 'debt', 'fundamentals', 'cheap'],
   },
   {
-    name: 'FINANCIALS', category: 'Stocks and companies', summary: 'Income, balance sheet and cash flow from SEC filings', takesTicker: true, bar: 3,
+    name: 'FINANCIALS', category: 'Stocks and companies', summary: 'Income, balance sheet and cash flow from SEC filings', takesTicker: true, bar: 4,
     syntax: 'FINANCIALS <ticker> [BALANCE|CASHFLOW] [QUARTERLY]', examples: ['FINANCIALS AAPL', 'FINANCIALS MSFT BALANCE'],
     keywords: ['income', 'revenue', 'profit', 'balance sheet', 'cash flow', 'statements', 'sales', 'earnings'],
   },
   {
-    name: 'DIVIDENDS', category: 'Stocks and companies', summary: 'Dividend yield and every payment', takesTicker: true, bar: 6,
+    name: 'DIVIDENDS', category: 'Stocks and companies', summary: 'Dividend yield and every payment', takesTicker: true, bar: 7,
     syntax: 'DIVIDENDS <ticker>', examples: ['DIVIDENDS PEP', 'DIVIDENDS AAPL'], keywords: ['dividend', 'yield', 'payout', 'income', 'payments'],
   },
   {
-    name: 'BEATS', category: 'Stocks and companies', summary: 'Reported EPS against the consensus estimate', takesTicker: true, bar: 12,
+    name: 'BEATS', category: 'Stocks and companies', summary: 'Reported EPS against the consensus estimate', takesTicker: true, bar: 13,
     syntax: 'BEATS <ticker>', examples: ['BEATS AAPL', 'BEATS KO'], keywords: ['earnings', 'eps', 'surprise', 'estimate', 'consensus', 'miss'],
   },
   {
-    name: 'INSIDERS', category: 'Stocks and companies', summary: 'What officers and directors bought and sold', takesTicker: true, bar: 8,
+    name: 'INSIDERS', category: 'Stocks and companies', summary: 'What officers and directors bought and sold', takesTicker: true, bar: 9,
     syntax: 'INSIDERS <ticker>', examples: ['INSIDERS AAPL', 'INSIDERS NVDA'], keywords: ['insider', 'form 4', 'executives', 'directors', 'buying', 'selling'],
   },
   {
-    name: 'OWNERS', category: 'Stocks and companies', summary: 'The biggest funds holding a stock, from 13F filings', takesTicker: true, bar: 9,
+    name: 'OWNERS', category: 'Stocks and companies', summary: 'The biggest funds holding a stock, from 13F filings', takesTicker: true, bar: 10,
     syntax: 'OWNERS <ticker>', examples: ['OWNERS AAPL', 'OWNERS KO'], keywords: ['holders', 'institutions', 'funds', '13f', 'ownership', 'shareholders'],
   },
   {
-    name: 'FILINGS', category: 'Stocks and companies', summary: 'Latest SEC filings, with links to sec.gov', takesTicker: true, bar: 10,
+    name: 'FILINGS', category: 'Stocks and companies', summary: 'Latest SEC filings, with links to sec.gov', takesTicker: true, bar: 11,
     syntax: 'FILINGS <ticker> [10-K|10-Q|8-K|4|ALL]', examples: ['FILINGS AAPL', 'FILINGS TSLA 8-K'], keywords: ['sec', 'edgar', '10-k', 'annual report', 'documents'],
   },
   {
-    name: 'SHORTS', category: 'Stocks and companies', summary: 'Short interest and days to cover, twice a month', takesTicker: true, bar: 11,
+    name: 'SHORTS', category: 'Stocks and companies', summary: 'Short interest and days to cover, twice a month', takesTicker: true, bar: 12,
     syntax: 'SHORTS <ticker>', examples: ['SHORTS AAPL', 'SHORTS TSLA'], keywords: ['short interest', 'short sellers', 'squeeze', 'days to cover'],
   },
   // WHY
   {
-    name: 'WHY', category: 'Stocks and companies', summary: 'The 10 biggest daily moves of the last year, and what came out each day', takesTicker: true, bar: 14,
+    name: 'WHY', category: 'Stocks and companies', summary: 'The 10 biggest daily moves of the last year, and what came out each day', takesTicker: true, bar: 2,
     syntax: 'WHY <ticker>', examples: ['WHY AAPL', 'AAPL WHY', 'WHY TSLA'], keywords: ['moves', 'biggest moves', 'jump', 'drop', 'crash', 'spike', 'what happened', 'filings'],
   },
   {
-    name: 'OPTIONS', category: 'Stocks and companies', summary: 'Option chain: calls and puts by strike', takesTicker: true, bar: 7,
+    name: 'OPTIONS', category: 'Stocks and companies', summary: 'Option chain: calls and puts by strike', takesTicker: true, bar: 8,
     syntax: 'OPTIONS <ticker> [<expiry>]', examples: ['OPTIONS AAPL', 'AAPL OPTIONS', 'OPTIONS SPY'], keywords: ['calls', 'puts', 'chain', 'strike', 'derivatives', 'implied volatility'],
   },
 
@@ -186,7 +186,7 @@ export const REGISTRY = [
     keywords: ['board', 'dashboard', 'multi chart', 'many charts', 'tiles', 'small multiples', 'sparklines', 'overview', 'my board', 'share'],
   },
   {
-    name: 'HISTORY', category: 'Charts', summary: 'Daily prices for any dates, with a CSV download', takesTicker: true, bar: 5,
+    name: 'HISTORY', category: 'Charts', summary: 'Daily prices for any dates, with a CSV download', takesTicker: true, bar: 6,
     syntax: 'HISTORY <ticker> [<from> [<to>]]', examples: ['HISTORY AAPL', 'HISTORY TSLA 2024'], keywords: ['historical', 'prices', 'csv', 'download', 'close', 'data'],
   },
   // --- GUESS (screens/guess.js, data/guess.js) ---

@@ -107,7 +107,7 @@
 }
 .pd-key:hover { background: var(--panel-3); color: var(--text); }
 .pd-key-n { color: var(--dim); font-weight: 400; }
-.pd-key[aria-selected="true"] { background: var(--accent); color: var(--ink); }
+.pd-key[aria-selected="true"] { background: var(--here); color: var(--ink); }
 .pd-key[aria-selected="true"] .pd-key-n { color: var(--ink); }
 
 @media (min-width: 1100px) {
