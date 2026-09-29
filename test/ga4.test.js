@@ -6,7 +6,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { cleanCommand, cleanUrl, cleanPath, cleanReferrer, cleanUtm, pageFor, startGa4, shareMethod, contentType, SITE } from '../public/ga4.js';
-import { loadGa4, goal, GA4, GA_EVENTS, GA_SHARE_GOALS, GOALS, reloadAfterKey, analyticsBlocked } from '../public/goal.js';
+import { loadGa4, goal, GA4, GA_EVENTS, GA_SHARE_GOALS, GOALS, reloadAfterKey, analyticsBlocked, gaConsented, gaConsentGiven, GA_CONSENT_KEY } from '../public/goal.js';
+import { normalizeKey, normalizeGiftCode } from '../public/pro.js';
+import { CONSENT_KEY, commitWelcome, consentStore, acceptRecord } from '../public/consent.js';
+import { TERMS_VERSION } from '../public/legal-version.js';
 import { securityHeaders } from '../lib/embed.js';
 import { buildAssets } from '../lib/assets.js';
 
@@ -94,7 +97,10 @@ test('startGa4: set before config, no automatic page view, Signals and ad person
   assert.equal(win.dataLayer[0][0], 'js');
   // The landing link's campaign tag rides on the first page view (and the set before it).
   assert.deepEqual(c[0], ['set', { page_location: `${SITE}/?c=AAPL+1Y&utm_source=x`, page_referrer: 'https://www.google.com/', page_title: 'AAPL 1Y | Bloombroke' }]);
-  assert.deepEqual(c[1], ['config', 'G-N4VN8PCJXK', { send_page_view: false, allow_google_signals: false, allow_ad_personalization_signals: false }]);
+  assert.deepEqual(c[1], ['config', 'G-N4VN8PCJXK', {
+    send_page_view: false, allow_google_signals: false, allow_ad_personalization_signals: false,
+    page_location: `${SITE}/?c=AAPL+1Y&utm_source=x`, page_referrer: 'https://www.google.com/', page_title: 'AAPL 1Y | Bloombroke',
+  }], 'the clean page in config itself too');
   assert.deepEqual(c[3], ['event', 'page_view', { page_location: `${SITE}/?c=AAPL+1Y&utm_source=x`, page_referrer: 'https://www.google.com/', page_title: 'AAPL 1Y | Bloombroke' }]);
   // gtag.js reads arguments objects, not arrays.
   assert.equal(Object.prototype.toString.call(win.dataLayer[1]), '[object Arguments]');
@@ -194,13 +200,45 @@ test('utm: the four campaign tags, lower-cased and short, in order; anything els
   assert.equal(cleanUrl('/?c=AAPL&utm_source=x'), `${SITE}/?c=AAPL`, 'a referrer or an address alone never keeps them');
 });
 
+test('utm: never a key or gift code shape, whatever the separator or case', () => {
+  const bad = [
+    'bbabcdefghjkmnpqrs', 'abcdefghjkmnpqrs', 'bbabcdefghjkmnpqr2', 'bb7abcdefghjkmnpq', 'x-bbabcdefghjkmnpqrs',
+    'abcd-efgh-jkmn', 'abcd.efgh.jkmn', 'abcd_efgh_jkmn', 'promo_abcd-efgh-jkmn', 'abcd-efgh-jkmn-pqrs',
+    'giftabcdefghjkmnpqrstuvwxyz23456789', 'abcdefghjkmnpqrstuvwxyz23456', 'gift-abcd-efgh', 'bb.7k2m.9qxr',
+    'BB-7K2M-9QXR-4TYP-ABCD', 'bb 7k2m 9qxr 4typ abcd', 'blackfridaydeals', 'ab.cdef.ghjk.mnpq.rs', 'a-bcdefghjkmnpqrs',
+  ];
+  for (const v of bad) assert.equal(cleanUtm(`?utm_content=${encodeURIComponent(v)}`), '', v);
+  // Every value pro.js would take as a key or a gift code is dropped (pro.js itself decides).
+  const alpha = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let seed = 7;
+  const pick = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return alpha[seed % alpha.length]; };
+  const chunk = (n) => Array.from({ length: n }, pick).join('');
+  const seps = ['-', '.', '_', ''];
+  let checked = 0;
+  for (let i = 0; i < 400; i++) {
+    const sep = seps[i % 4];
+    const key = [i % 2 ? 'BB' : '', chunk(4), chunk(4), chunk(4), chunk(4)].filter(Boolean).join(sep);
+    const gift = [i % 3 ? 'GIFT' : '', ...Array.from({ length: 7 }, () => chunk(4))].filter(Boolean).join(sep);
+    for (const v of [key, gift, key.toLowerCase(), gift.toLowerCase()]) {
+      const asPro = v.replace(/[._]/g, '-');
+      if (normalizeKey(asPro) || normalizeGiftCode(asPro) || normalizeKey(v) || normalizeGiftCode(v)) {
+        checked += 1;
+        assert.equal(cleanUtm(`?utm_content=${v}`), '', v);
+      }
+    }
+  }
+  assert.ok(checked > 1000, `${checked} values pro.js accepts`);
+  // Real campaign tags still pass.
+  for (const ok of ['x.com', 'newsletter', 'oct-launch', 'launch2026', 'v1.2_a', 'spring_sale_2026', 'ig-story-3', 'reddit_r_stocks']) assert.equal(cleanUtm(`?utm_content=${ok}`), `utm_content=${ok}`, ok);
+});
+
 test('utm: on the first page view of a visit only; later views and the referrer are tag-free', () => {
   const href = 'https://bloombroke.com/?c=GUESS&utm_source=x.com&utm_medium=social&utm_campaign=oct-launch&utm_content=BB-7K2M-9QXR-4TYP-ABCD&gclid=abc&fbclid=def';
   const { win, doc } = fakePage({ href });
   // The terminal rewrote the address before GA4 ran; goal.js kept the landing search.
   win.location.search = '?c=GUESS';
   const run = startGa4({ win, doc, id: GA4.id, state: { page: null, early: [], search: new URL(href).search } });
-  assert.equal(calls(win)[0][1].page_location, `${SITE}/?c=GUESS&utm_source=x.com&utm_medium=social&utm_campaign=oct-launch`, 'the set before config');
+  assert.equal(calls(win)[0][1].page_location, `${SITE}/?utm_source=x.com&utm_medium=social&utm_campaign=oct-launch`, 'the set before config: HOME until the screen shows');
   run.page('GUESS');
   run.page('GUESS'); // the same screen again: no second view
   run.page('WHATIF IPHONE6');
@@ -225,7 +263,7 @@ test('utm: goal.js keeps the landing search when it arms GA4, before the termina
   win.location.search = '?c=AAPL&utm_source=launch';
   const state = freshState();
   let later = null;
-  assert.equal(loadGa4({ doc, nav: {}, win, pro: () => false, state, later: (fn) => { later = fn; }, start: ga4Module }), true);
+  assert.equal(loadGa4({ doc, nav: {}, win, pro: () => false, state, later: (fn) => { later = fn; }, start: ga4Module, consented: () => true }), true);
   assert.equal(state.search, '?c=AAPL&utm_source=launch');
   win.location.search = '?c=AAPL';
   win.fire('bb:page', 'AAPL');
@@ -233,6 +271,75 @@ test('utm: goal.js keeps the landing search when it arms GA4, before the termina
   await new Promise((r) => { setTimeout(r, 50); });
   win.fire('bb:page', 'MARKETS');
   assert.deepEqual(calls(win).filter((a) => a[1] === 'page_view').map((a) => a[2].page_location), [`${SITE}/?c=AAPL&utm_source=launch`, `${SITE}/?c=MARKETS`]);
+});
+
+test('startGa4: before the terminal shows a screen, the first set is HOME, never the landing ?c= words', () => {
+  const { win, doc } = fakePage({ href: 'https://bloombroke.com/?c=CHAT+%40alice+hello+my+plan' });
+  startGa4({ win, doc, id: GA4.id, state: { page: null, early: [] } });
+  const c = calls(win);
+  assert.deepEqual(c[0], ['set', { page_location: `${SITE}/`, page_referrer: '', page_title: 'Bloombroke' }]);
+  assert.equal(c[1][2].page_location, `${SITE}/`);
+  assert.deepEqual(leaks(win), []);
+});
+
+// ---- consent: GA4 starts only after the first-visit card is accepted -------------------------
+
+test('consent: no GA4 before ACCEPT, GA4 right after ACCEPT in the same visit, a stale version never counts', async () => {
+  assert.equal(GA_CONSENT_KEY, CONSENT_KEY);
+  const mem = (rec) => { const m = rec ? { [CONSENT_KEY]: JSON.stringify(rec) } : {}; return { getItem: (k) => m[k] ?? null, setItem: (k, v) => { m[k] = v; }, removeItem: (k) => { delete m[k]; } }; };
+  assert.equal(gaConsented({ local: mem(acceptRecord(TERMS_VERSION)), session: null }), true);
+  assert.equal(gaConsented({ local: mem(null), session: mem(acceptRecord(TERMS_VERSION)) }), true, 'sessionStorage when localStorage has none');
+  assert.equal(gaConsented({ local: mem(acceptRecord('1.6')), session: mem(null) }), false, 'a stale version');
+  assert.equal(gaConsented({ local: mem({ version: TERMS_VERSION }), session: null }), false, 'no time');
+  assert.equal(gaConsented({ local: { getItem() { throw new Error('blocked'); } }, session: null }), false);
+  assert.equal(gaConsented({ local: null, session: null }), false);
+
+  // Stale acceptance: nothing loads; the card's ACCEPT starts it.
+  const { doc, win, kids } = loaderPage();
+  win.location.search = '?c=GUESS&utm_source=launch';
+  const state = freshState();
+  let later = null;
+  const local = mem(acceptRecord('1.6'));
+  const opts = { doc, nav: {}, win, pro: () => false, state, later: (fn) => { later = fn; }, start: ga4Module, consented: () => gaConsented({ local, session: null }) };
+  assert.equal(loadGa4(opts), false, 'no load before accept');
+  assert.equal(later, null);
+  assert.equal(state.on, false);
+  assert.equal(kids.length, 0);
+  win.fire('bb:page', 'GUESS'); // the screen behind the card
+  // ACCEPT (commitWelcome stores the record, then calls gaConsentGiven).
+  local.setItem(CONSENT_KEY, JSON.stringify(acceptRecord(TERMS_VERSION)));
+  gaConsentGiven(state);
+  assert.equal(state.on, true);
+  assert.equal(typeof later, 'function', 'armed right after accept');
+  later();
+  await new Promise((r) => { setTimeout(r, 50); });
+  assert.ok(state.run);
+  assert.equal(kids.length, 1);
+  assert.deepEqual(calls(win).filter((a) => a[1] === 'page_view').map((a) => a[2].page_location), [`${SITE}/?c=GUESS&utm_source=launch`], 'the screen shown before accept, with the landing tags');
+  gaConsentGiven(state); // once only
+  assert.equal(kids.length, 1);
+
+  // A later visit, accepted: it loads by itself.
+  const p2 = loaderPage();
+  let later2 = null;
+  assert.equal(loadGa4({ doc: p2.doc, nav: {}, win: p2.win, pro: () => false, state: freshState(), later: (fn) => { later2 = fn; }, start: ga4Module, consented: () => gaConsented({ local, session: null }) }), true);
+  assert.equal(typeof later2, 'function');
+  // The default check reads the real storage: none in Node, so no load.
+  const p3 = loaderPage();
+  assert.equal(loadGa4({ doc: p3.doc, nav: {}, win: p3.win, pro: () => false, state: freshState(), later() {}, start: ga4Module }), false);
+});
+
+test('consent: commitWelcome calls gaConsentGiven after it stores the record; DataFast and Ahrefs do not wait', () => {
+  const src = readFileSync('public/consent.js', 'utf8');
+  assert.match(src, /store\.set\(acceptRecord\(version, now\(\)\)\);\n  gaConsentGiven\(\);/);
+  const store = consentStore({ local: null, session: null });
+  assert.equal(commitWelcome({ cmd: 'GUESS' }, { store, goalOpts: { win: {}, nav: {}, fetchImpl: null } }), 'GUESS', 'never throws without GA4');
+  const goalSrc = readFileSync('public/goal.js', 'utf8');
+  for (const fn of ['loadDataFast', 'loadAhrefs']) {
+    const at = goalSrc.indexOf(`export function ${fn}(`);
+    const body = goalSrc.slice(at, goalSrc.indexOf('\n}\n', at));
+    assert.ok(body.length > 50 && !/consent/i.test(body), `${fn} has no consent gate`);
+  }
 });
 
 // ---- the loader: the same gates as DataFast and Ahrefs --------------------------------------
@@ -262,7 +369,7 @@ test('loadGa4: on bloombroke.com for a free visitor, after the first screen; the
   const { doc, win, kids } = loaderPage();
   const state = freshState();
   let later = null;
-  assert.equal(loadGa4({ doc, nav: {}, win, pro: () => false, state, later: (fn) => { later = fn; }, start: ga4Module }), true);
+  assert.equal(loadGa4({ doc, nav: {}, win, pro: () => false, state, later: (fn) => { later = fn; }, start: ga4Module, consented: () => true }), true);
   assert.equal(kids.length, 0, 'nothing loads before the first screen');
   win.fire('bb:page', 'CHART AAPL 1Y');
   assert.equal(state.page, 'CHART AAPL 1Y');
@@ -283,7 +390,7 @@ test('loadGa4: on bloombroke.com for a free visitor, after the first screen; the
   win.fire('bb:page', 'LOGIN BB-7K2M-9QXR-4TYP-ABCD');
   assert.equal(calls(win).filter((a) => a[1] === 'page_view').at(-1)[2].page_location, `${SITE}/?c=LOGIN`);
   assert.deepEqual(leaks(win), []);
-  assert.equal(loadGa4({ doc, nav: {}, win, pro: () => false, state, later() {}, start: ga4Module }), false, 'never twice');
+  assert.equal(loadGa4({ doc, nav: {}, win, pro: () => false, state, later() {}, start: ga4Module, consented: () => true }), false, 'never twice');
 });
 
 test('loadGa4: never with GPC, for Pro, in a DESK panel, off bloombroke.com, on /embed/*, or when a key lands before it runs', async () => {
@@ -299,7 +406,7 @@ test('loadGa4: never with GPC, for Pro, in a DESK panel, off bloombroke.com, on 
   for (const [name, c] of cases) {
     const { doc, win, kids } = loaderPage(c.page);
     let later = null;
-    assert.equal(loadGa4({ doc, nav: c.nav || {}, win, pro: c.pro || (() => false), state: freshState(), later: (fn) => { later = fn; }, start: ga4Module }), false, name);
+    assert.equal(loadGa4({ doc, nav: c.nav || {}, win, pro: c.pro || (() => false), state: freshState(), later: (fn) => { later = fn; }, start: ga4Module, consented: () => true }), false, name);
     assert.equal(later, null, `${name}: nothing scheduled`);
     assert.equal(kids.length, 0, `${name}: no script`);
   }
@@ -309,7 +416,7 @@ test('loadGa4: never with GPC, for Pro, in a DESK panel, off bloombroke.com, on 
   const { doc, win, kids } = loaderPage();
   const state = freshState();
   let later = null;
-  assert.equal(loadGa4({ doc, nav: {}, win, pro: () => pro, state, later: (fn) => { later = fn; }, start: ga4Module }), true);
+  assert.equal(loadGa4({ doc, nav: {}, win, pro: () => pro, state, later: (fn) => { later = fn; }, start: ga4Module, consented: () => true }), true);
   pro = true;
   later();
   await new Promise((r) => { setTimeout(r, 20); });

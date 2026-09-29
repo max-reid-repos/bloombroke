@@ -29,8 +29,9 @@ test('privacy: Google Analytics in the short version, with the analytics, in the
     '- **Google Analytics.** We also count visits with Google Analytics, a service of Google.',
     'It sets first-party cookies named _ga and _ga_ followed by a code, which last up to two years',
     'For each screen it gets only the command\'s name and, for stock, chart, WHATIF and GRAVEYARD screens, the ticker or item and range, and campaign tags from the link you arrived on; never anything else you type, such as keys, gift codes, amounts, messages, usernames or email addresses.',
+    'and the same feature events we send DataFast, plus one share event when you copy or share a link or image.',
     'We have turned Google Signals and ad personalisation off, so this data is not linked to Google accounts and is not used for ads.',
-    'Google Analytics runs for free visitors only: it is never loaded for Pro users, and it is not loaded when your browser sends GPC.',
+    'Google Analytics runs for free visitors only: it starts only after you accept on the first-visit card, it is never loaded for Pro users, and it is not loaded when your browser sends GPC.',
   ]) assert.ok(s3.includes(must), must);
   const at = s3.indexOf('**Google Analytics.**');
   assert.ok(at > s3.indexOf('**Ahrefs Web Analytics.**') && at < s3.indexOf('**Cloudflare Web Analytics.**'), 'with the other analytics');
@@ -43,7 +44,8 @@ test('privacy: Google Analytics in the short version, with the analytics, in the
 test('privacy: what the policy promises matches the code (config, gates, host)', () => {
   const goal = readFileSync('public/goal.js', 'utf8');
   const ga4 = readFileSync('public/ga4.js', 'utf8');
-  assert.match(ga4, /gtag\('config', id, \{ send_page_view: false, allow_google_signals: false, allow_ad_personalization_signals: false \}\)/);
+  assert.match(ga4, /gtag\('config', id, \{\s+send_page_view: false, allow_google_signals: false, allow_ad_personalization_signals: false,/);
+  assert.match(goal, /if \(!consented\(\)\) \{/, 'GA4 waits for the first-visit card');
   assert.match(goal, /export function loadGa4[\s\S]*?if \(analyticsBlocked\(\{ doc, nav, win, pro \}\)\) return false;/);
 });
 

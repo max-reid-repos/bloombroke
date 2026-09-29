@@ -1,7 +1,13 @@
 // Google Analytics 4: page views with clean addresses, the goals goal.js mirrors, and one
 // share count. goal.js (loadGa4) loads this file after the first screen, past the same
 // gates as DataFast and Ahrefs (analyticsBlocked: GPC, Pro, a DESK panel), only on
-// bloombroke.com and never on an /embed/* page.
+// bloombroke.com, never on an /embed/* page, and only once the visitor has accepted the
+// current Terms on the first-visit card.
+//
+// GA4 ADMIN MUST MATCH: in the property's web data stream, Enhanced measurement (all of
+// it, and above all "page changes based on browser history events") and user-provided
+// data collection stay OFF. This code sends every page view itself, with a clean address;
+// a history-change page view from Google would carry the raw address bar instead.
 //
 // Clean addresses: Google never sees the page's own address. Every page view, and every
 // event after it (gtag 'set'), carries page_location = https://bloombroke.com + a known
@@ -90,12 +96,23 @@ export function cleanPath(pathname) {
 // Campaign tags kept on the first page view of a visit, in this order.
 export const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'];
 const UTM_VALUE = /^[a-z0-9._-]{1,40}$/;
-// Never a tag, even when it fits UTM_VALUE: a licence key or gift code (BB-XXXX-...,
-// GIFT-XXXX-..., four-character groups without the prefix, any separator, or run
-// together: 16 or more letters and digits in a row with two digits or more) or a Stripe
-// id (cs_live_, sk_test_, whsec_).
-const UTM_SECRET = /(?:bb|gift)(?:[-._][a-z0-9]{4}){2,}|(?:[a-z0-9]{4}[-._]){3}[a-z0-9]{4}|(?:^|[^a-z0-9])(?:cs|sk|rk|pk)_(?:live|test)_|whsec_/;
-const secretTag = (v) => UTM_SECRET.test(v) || (v.match(/[a-z0-9]{16,}/g) || []).some((run) => (run.match(/\d/g) || []).length >= 2);
+// Never a tag, even when it fits UTM_VALUE: anything shaped like a licence key or gift
+// code, or a Stripe id. Dropped when:
+//  - it has 3 or more groups of 4 letters or digits joined by - . or _ (abcd-efgh-jkmn),
+//    or BB / GIFT then 2 or more such groups;
+//  - it has 16 or more letters and digits in a row (a key or gift code run together);
+//  - without its - . _ and spaces it is 16 letters and digits, or BB + 16, or 28, or
+//    GIFT + 28: every value public/pro.js normalizeKey or normalizeGiftCode accepts
+//    (test/ga4.test.js checks this against pro.js itself; pro.js is not imported here, as
+//    it would bring its data modules to every page GA4 runs on);
+//  - it holds a Stripe id prefix (cs_live_, sk_test_, whsec_).
+const UTM_SECRET = /(?:^|[^a-z0-9])[a-z0-9]{4}(?:[-._][a-z0-9]{4}){2,}(?![a-z0-9])|(?:bb|gift)(?:[-._][a-z0-9]{4}){2,}|[a-z0-9]{16,}|(?:^|[^a-z0-9])(?:cs|sk|rk|pk)_(?:live|test)_|whsec_/;
+export function secretTag(v) {
+  const s = String(v).toLowerCase();
+  if (UTM_SECRET.test(s)) return true;
+  const bare = s.replace(/[\s._-]/g, '');
+  return /^(?:bb)?[a-z0-9]{16}$/.test(bare) || /^(?:gift)?[a-z0-9]{28}$/.test(bare);
+}
 
 // A landing page's search -> a query string of only the four campaign tags (UTM_KEYS,
 // in that order), each lower-cased and a short plain tag, else left out; '' for none.
@@ -234,10 +251,14 @@ export function startGa4({ win, doc, id, state = { page: null, early: [] }, bloc
     };
 
     // Before config: the clean address, so nothing automatic ever carries the real one.
-    const first = pageFor({ path, command: state.page ?? new URLSearchParams(win.location?.search || '').get('c'), utm });
+    // The terminal's screen once shown; before that, HOME (never the landing ?c= words).
+    const first = pageFor({ path, command: state.page ?? '', utm });
     gtag('js', new Date());
     gtag('set', { page_location: first.location, page_referrer: referrer, page_title: first.title });
-    gtag('config', id, { send_page_view: false, allow_google_signals: false, allow_ad_personalization_signals: false });
+    gtag('config', id, {
+      send_page_view: false, allow_google_signals: false, allow_ad_personalization_signals: false,
+      page_location: first.location, page_referrer: referrer, page_title: first.title,
+    });
     // The terminal's first screen: the one it showed (bb:page), or the next one it shows.
     if (!terminal) page(null);
     else if (state.page != null) page(state.page);

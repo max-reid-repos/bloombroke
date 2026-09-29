@@ -17,12 +17,16 @@
 // Ahrefs Web Analytics (page views only, no goals) loads through exactly the same gates
 // as DataFast (analyticsBlocked): never with GPC, never for Pro, never in a DESK panel.
 // Google Analytics 4 (loadGa4, public/ga4.js) too, and only on bloombroke.com, never on
-// /embed/*, after the first screen. It gets clean page views (the command word, and for
+// /embed/*, only after the visitor accepted the current Terms on the first-visit card
+// (gaConsented; ACCEPT or START in this visit arms it at once: gaConsentGiven), after the
+// first screen. It gets clean page views (the command word, and for
 // stock, chart, WHATIF and GRAVEYARD screens the ticker or item, and on the first page
 // view only the link's utm_source/medium/campaign/content tags; nothing else), the goals
 // in GA_EVENTS, and one 'share' event for every share button.
 // once: a key (the result, the puzzle number). The same goal with the same key is sent
 // once per browser tab session (sessionStorage 'bb.goals'); without storage, every time.
+
+import { TERMS_VERSION } from './legal-version.js';
 
 export const GOALS = [
   'whatif_run', 'whatif_video', 'whatif_embed', 'whatif_share',
@@ -119,7 +123,7 @@ export const GA_SHARE_GOALS = ['whatif_share', 'whatif_video', 'whatif_embed', '
 
 // GA4 in this page: on once loadGa4 passed the gates; page and early hold the last
 // screen shown and the goals sent before ga4.js runs; run is ga4.js's { page, event }.
-const gaState = { on: false, page: null, early: [], run: null, search: '' };
+const gaState = { on: false, page: null, early: [], run: null, search: '', listening: false, waiting: null };
 function gaSend(event, params, state = gaState) {
   if (!state.on) return false;
   if (state.run) return state.run.event(event, params);
@@ -255,6 +259,33 @@ export function loadAhrefs({ doc = globalThis.document, nav = globalThis.navigat
   }
 }
 
+// Has this browser accepted the current Terms on the first-visit card? The record
+// public/consent.js stores (CONSENT_KEY, localStorage, else sessionStorage) with this
+// TERMS_VERSION and a real time. A stale version, none, or no storage: false. GA4 only;
+// DataFast and Ahrefs do not wait for it.
+export const GA_CONSENT_KEY = 'bb.consent'; // public/consent.js CONSENT_KEY (a test keeps them the same)
+export function gaConsented({ local, session, version = TERMS_VERSION } = {}) {
+  for (const pick of [() => (local === undefined ? globalThis.localStorage : local), () => (session === undefined ? globalThis.sessionStorage : session)]) {
+    try {
+      const raw = pick()?.getItem?.(GA_CONSENT_KEY);
+      if (!raw) continue;
+      const r = JSON.parse(raw);
+      if (r && r.version === version && Number.isFinite(Date.parse(r.acceptedAt))) return true;
+    } catch { /* no storage, or a bad record */ }
+  }
+  return false;
+}
+
+// ACCEPT or START on the first-visit card (consent.js commitWelcome): a GA4 that waited
+// for consent in this page starts now. Never throws.
+export function gaConsentGiven(state = gaState) {
+  try {
+    const go = state.waiting;
+    state.waiting = null;
+    if (typeof go === 'function') go();
+  } catch { /* GA4 stays off */ }
+}
+
 // Add Google Analytics 4 past the same gates as DataFast and Ahrefs, only on
 // bloombroke.com itself and never on an /embed/* page, after the first screen (the page's
 // load event, then an idle moment), so start-up does not change. The gates are asked
@@ -268,18 +299,29 @@ function afterFirstScreen(win, fn) {
 export function loadGa4({
   doc = globalThis.document, nav = globalThis.navigator, win = globalThis.window, pro = proKeyPresent,
   state = gaState, later = (fn) => afterFirstScreen(win, fn), start = () => import('./ga4.js'),
+  consented = () => gaConsented(),
 } = {}) {
   try {
     if (analyticsBlocked({ doc, nav, win, pro })) return false;
     if (win.location?.hostname !== DATAFAST.domain) return false;
     if (/^\/embed(\/|$)/i.test(win.location?.pathname || '')) return false;
     if (state.on || doc.querySelector(GA_SCRIPT)) return false;
+    // Before consent too: the screen shown and the landing link's campaign tags (read
+    // before the terminal rewrites the address), kept in this page only, sent nowhere.
+    if (!state.listening) {
+      state.listening = true;
+      state.search = win.location?.search || '';
+      win.addEventListener('bb:page', (e) => {
+        const c = typeof e?.detail === 'string' ? e.detail : null;
+        if (state.run) state.run.page(c); else state.page = c;
+      });
+    }
+    if (!consented()) {
+      // Not accepted yet: ACCEPT or START on the card starts it (gaConsentGiven).
+      state.waiting = () => loadGa4({ doc, nav, win, pro, state, later, start, consented: () => true });
+      return false;
+    }
     state.on = true;
-    state.search = win.location?.search || ''; // the landing link's campaign tags, before the terminal rewrites the address
-    win.addEventListener('bb:page', (e) => {
-      const c = typeof e?.detail === 'string' ? e.detail : null;
-      if (state.run) state.run.page(c); else state.page = c;
-    });
     const blocked = () => analyticsBlocked({ doc, nav, win, pro });
     later(() => {
       if (blocked()) { state.on = false; return; }
