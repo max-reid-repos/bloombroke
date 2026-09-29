@@ -43,6 +43,8 @@ const CHROME = process.env.CHROME || path.join(os.homedir(), '.cache/puppeteer/c
 // The type scale (style.css's header); 13 is the body size.
 const css = fs.readFileSync(path.join(__dirname, '../public/style.css'), 'utf8');
 const TYPE = (/Type scale: ([\d ]+)/.exec(css)?.[1] || '').trim().split(/\s+/).map(Number);
+// The legal version the first-visit notice asks for (public/legal-version.js), accepted up front.
+const LEGAL = /TERMS_VERSION = '([\d.]+)'/.exec(fs.readFileSync(path.join(__dirname, '../public/legal-version.js'), 'utf8'))?.[1] || '1.5';
 
 const SIZES = [[1536, 730], [1920, 1080], [390, 844]];
 const KEY = 'BB-TEST-TEST-TEST-TEST'.replace(/T/g, 'Q'); // looks like a key, is not one
@@ -64,6 +66,8 @@ const FIX = {
   '/api/pro/seat': { next: 4 },
   '/api/pro/config': { mode: 'test', open: true, price: 4200, currency: 'usd', yearly: true, yearPrice: 42000 },
   '/api/pro/status': { active: true, status: 'active', last4: 'QESQ', seat: 3, interval: 'year', currentPeriodEnd: YEAR, cancelAtPeriodEnd: false, canGift: true },
+  // ME: a made-up profile (the longest username there can be).
+  '/api/me': { seat: 3, username: 'Abcdefghijklmno', color: 2, avatar: null, status: { active: true, status: 'active', seat: 3, interval: 'year', currentPeriodEnd: YEAR, cancelAtPeriodEnd: false, canGift: true } },
   '/api/live': { here: 3 },
 };
 
@@ -71,6 +75,7 @@ const FIX = {
 const PAGES = [
   ['bbrk', 'BBRK'], ['sponsor', 'SPONSOR'], ['pro', 'PRO'], ['pro-key', 'PRO', { key: true }],
   ['login', 'LOGIN', { type: true }], ['redeem', 'REDEEM'], ['gift', 'GIFT'], ['feedback', 'FEEDBACK'], ['chat', 'CHAT'],
+  ['me', 'ME'], ['me-pro', 'ME', { key: true }],
 ].filter(([n]) => !ONLY || ONLY.split(',').includes(n));
 
 async function liveData() {
@@ -168,17 +173,21 @@ async function main() {
         const context = await browser.createBrowserContext(); // its own storage: no key left over
         const page = await context.newPage();
         await page.setViewport({ width: w, height: h, deviceScaleFactor: 1 });
-        await page.evaluateOnNewDocument((key, status) => {
+        await page.evaluateOnNewDocument((key, status, legal, me) => {
           try {
-            localStorage.setItem('bb.consent', JSON.stringify({ version: '1.4', acceptedAt: new Date().toISOString() }));
-            if (key) { localStorage.setItem('bb.pro.key', JSON.stringify(key)); localStorage.setItem('bb.pro.status', JSON.stringify({ ...status, checked: Date.now() })); }
+            localStorage.setItem('bb.consent', JSON.stringify({ version: legal, acceptedAt: new Date().toISOString() }));
+            if (key) {
+              localStorage.setItem('bb.pro.key', JSON.stringify(key));
+              localStorage.setItem('bb.pro.status', JSON.stringify({ ...status, checked: Date.now() }));
+              localStorage.setItem('bb.me', JSON.stringify({ seat: me.seat, username: me.username, color: me.color, avatar: me.avatar }));
+            }
           } catch { /* none */ }
-        }, opts.key ? KEY : null, FIX['/api/pro/status']);
+        }, opts.key ? KEY : null, FIX['/api/pro/status'], LEGAL, FIX['/api/me']);
         await page.setRequestInterception(true);
         page.on('request', (req) => {
           const u = new URL(req.url());
           const fix = u.origin === new URL(BASE).origin && req.method() === 'GET' ? FIX[u.pathname] : null;
-          if (fix && !(u.pathname === '/api/pro/status' && !opts.key)) req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(fix) });
+          if (fix && !((u.pathname === '/api/pro/status' || u.pathname === '/api/me') && !opts.key)) req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(fix) });
           else if (/datafa\.st|cloudflareinsights/.test(u.host)) req.abort();
           else req.continue();
         });

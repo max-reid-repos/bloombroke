@@ -3,6 +3,7 @@
 // STRIPE_PRICE_ID_YEARLY for yearly), never from the client. The client only picks the plan.
 
 import Stripe from 'stripe';
+import { isDeletedLicence } from './store.js';
 
 export const STRIPE_API_VERSION = '2026-08-26.dahlia';
 
@@ -63,8 +64,8 @@ export function isPaidSession(s) {
 }
 
 export const TERMS_MESSAGE = 'I agree to the [Terms](https://bloombroke.com/terms) and understand Bloombroke gives information only, not investment advice.';
-export const SUBMIT_MESSAGE = 'Auto-renews monthly at $42 USD. Cancel any time in MANAGE; access continues to the end of the paid month.';
-export const SUBMIT_MESSAGE_YEARLY = 'Auto-renews yearly at $420 USD. Cancel any time in MANAGE; access continues to the end of the paid year.';
+export const SUBMIT_MESSAGE = 'Auto-renews monthly at $42 USD. Cancel any time: type ME and press CANCEL; access continues to the end of the paid month.';
+export const SUBMIT_MESSAGE_YEARLY = 'Auto-renews yearly at $420 USD. Cancel any time: type ME and press CANCEL; access continues to the end of the paid year.';
 
 // The plans a buyer can pick. The price id for each comes from the environment.
 export const PLANS = { month: { cents: 4200 }, year: { cents: 42000 } };
@@ -129,7 +130,9 @@ export async function licenceFromSession(session, { store, stripe, log = console
   const sub = await stripe.subscriptions.retrieve(subId);
   const accepted = termsAcceptedAt(session, at);
   const licenceId = reactivateLicenceId(session);
-  const target = licenceId ? store.findById(licenceId) : null;
+  // A licence deleted in ME since this checkout opened is no target: a new licence is made.
+  const found = licenceId ? store.findById(licenceId) : null;
+  const target = found && !isDeletedLicence(found) ? found : null;
   // Already known (a resent event, a reloaded success page): only the status is read
   // again below. Nothing is cancelled or refunded, and no licence moves.
   const known = Boolean(store.findBySubscription(subId) || store.findBySession(session.id));

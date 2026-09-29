@@ -257,7 +257,7 @@ test('checkout: subscription mode, server price, no promo codes, no tax, fixed U
   assert.deepEqual(p.metadata, { site: 'bloombroke', product: 'pro' });
   assert.deepEqual(p.consent_collection, { terms_of_service: 'required' });
   assert.equal(p.custom_text.terms_of_service_acceptance.message, 'I agree to the [Terms](https://bloombroke.com/terms) and understand Bloombroke gives information only, not investment advice.');
-  assert.equal(p.custom_text.submit.message, 'Auto-renews monthly at $42 USD. Cancel any time in MANAGE; access continues to the end of the paid month.');
+  assert.equal(p.custom_text.submit.message, 'Auto-renews monthly at $42 USD. Cancel any time: type ME and press CANCEL; access continues to the end of the paid month.');
 
   const s = await setup();
   try {

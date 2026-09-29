@@ -65,15 +65,17 @@ The service, its software, design, text, the Bloombroke name and logo, and the s
 
 - **Price.** Pro costs USD 42 a month, or USD 420 a year, plus any tax that applies. You choose monthly or yearly at checkout. The price shown at checkout is the price you pay. If you subscribed at an earlier price, you keep that price while your subscription stays active.
 - **Renewal.** A monthly subscription renews automatically every month, and a yearly subscription renews automatically every year. We charge your payment method at the start of each period until you cancel.
-- **Cancelling.** You can cancel at any time: type PRO and press MANAGE, which opens the Stripe billing portal. Cancelling stops future renewals. Pro keeps working until the end of the period you have already paid for.
+- **Cancelling.** You can cancel at any time: type ME (or PRO) and press CANCEL, which opens the Stripe billing portal. Cancelling stops future renewals. Pro keeps working until the end of the period you have already paid for.
 - **Refunds.** Payments are not refundable, and we do not refund part-used periods, except where this section or the law says otherwise. If we discontinue the service, we will cancel all subscriptions and refund the unused part of the current period. If two subscriptions start on the same licence key at the same time, for example from two open checkout pages, we keep the one that started last, cancel the other one and refund its latest payment in full.
 - **Price changes.** We will give you at least 30 days' notice of a price change before it applies to your subscription. If you do not want to pay the new price, cancel before it starts.
 - **Payments.** Payments are processed by Stripe. Stripe's own terms and privacy policy apply to your payment. We do not see or store your full card number.
 - **Taxes.** Prices may not include taxes such as GST, VAT or sales tax. Where we must charge tax, it is added at checkout.
-- **Licence key.** Pro is tied to a licence key. Keep it secret: anyone who has it can use your Pro access and your synced data. We may replace or revoke a key that has been shared, published or misused.
+- **Licence key.** Pro is tied to a licence key. Keep it secret: anyone who has it can use your Pro access and your synced data. We may replace or revoke a key that has been shared, published or misused. NEW KEY in ME gives your licence a new key at once: the old key stops working on every device, and your seat, plan, chats and synced data stay with the new one. Anyone who has your key can also make a new key or delete your account in ME. If that happens, write to us at {{CONTACT}}.
 - **Failed payments.** If a payment fails, Pro may stop working until the payment goes through.
 - **Gift months.** While your paid Pro subscription is active, you can make up to 3 gift codes with the GIFT command over the life of your licence. A code that expires unused no longer counts toward the 3. Each code gives one person Pro for 30 days, free, with no card and no charge, on a new licence key of their own. A code works only once, only while the paid subscription that made it is active, and expires if it is not used within 90 days after it was made. A gift month does not renew: it ends by itself after 30 days, and the person can then subscribe on the same key. A licence from a gift code cannot make gift codes. Gift codes have no cash value.
 - **Seat numbers.** Each licence has a seat number, shown as SEAT and five digits. Seat numbers are given in the order licences are made and are never reused. A seat number is for display only: it is not a login, it gives no access to Pro, and it cannot be chosen, changed or transferred. Other Pro members can type it to send you a CHAT request (section 10).
+- **Usernames, colours and avatars.** In ME you can choose a username, a name colour and a pixel avatar, which other Pro members see in CHAT. They are chosen by you. They must not pretend to be anyone else, a person, a company or us, and must not be offensive. We may reset a username or an avatar that breaks this. Other Pro members can type your username to send you a CHAT request, like your seat number. A username you give up cannot be taken by anyone else for 30 days. Your seat number never changes.
+- **Deleting your account.** You can delete your account yourself in ME once no subscription on it will renew: cancel first. Deleting it removes your username, avatar, settings, synced data and chats and makes your key stop working. It does not refund anything, and we keep the licence record as the Privacy Policy says.
 
 Nothing in this section limits any right you have under the law that cannot be limited, including under the Consumer Protection (Fair Trading) Act 2003.
 
@@ -85,6 +87,7 @@ CHAT carries private messages between Pro members who added each other by seat n
 - **Rules.** Do not use CHAT for paid tips or signals, pump schemes, spam, harassment or anything illegal. Links, images and files are not allowed. Section 6 applies to CHAT too.
 - **Reports.** You can report any chat you are in. If a chat is reported, we may read the reported messages. We may close CHAT or Pro access for anyone who breaks these rules, as section 12 describes.
 - **Deletion.** Messages are deleted after 30 days. Blocking someone closes your private chat with them.
+- **Names.** People in CHAT show with their username, colour and avatar from ME, and always with their seat number, so nobody can pass for another seat. The rules for them are in section 9.
 
 ## 11. Changes to the service
 

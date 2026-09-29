@@ -274,6 +274,8 @@ export function mainHtml({ key = null, st = null, next = null, alert = '', alert
     if (on && !gift && !ending && billing) links.push(cardLink({ label: CANCEL, id: 'pro-cancel' }));
     if (!reveal) links.push(cardLink({ label: 'SHOW KEY', id: 'pro-show' }));
     links.push(cardLink({ label: 'LOGOUT', cmd: 'LOGOUT' }));
+    // ME: your username, avatar and settings, and CANCEL there too.
+    if (on && exists('ME')) links.push(cardLink({ label: 'ME', cmd: 'ME' }));
     return cardPage({
       label: 'Your Pro key',
       cls: 'pro-card',
@@ -437,6 +439,14 @@ function renderAccount(el, ctx, alert = '', plan = null, { warn = false } = {}) 
   if (show) show.addEventListener('click', reveal);
   // Back from a reload after REDEEM (reloadAfterKey): the new key once more, to save.
   if (show && pro.getKey() && takeShowKeyOnce()) reveal();
+}
+
+// ME: NEW KEY and SHOW KEY open this screen's key view in ME's place: the key in full,
+// COPY and DOWNLOAD, the save line, and the same links as PRO.
+export function keyView(el, ctx, key, alert = '', { warn = false } = {}) {
+  page(el);
+  viewOf(el).reveal = key;
+  renderAccount(el, ctx, alert, null, { warn });
 }
 
 // The next seat (for a visitor), once. It fills in place; a screen that was redrawn since

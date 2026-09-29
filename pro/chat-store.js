@@ -9,10 +9,14 @@
 import { tx } from './db.js';
 import {
   ChatError, label, KEEP_MS, REPORT_KEEP_MS, MAX_MEMBERS, MAX_OUT, PAGE, SNAPSHOT, DAY_MS, MAX_GROUPS_DAY,
+  NAME_TAKEN, usernameOk, MAX_NAME_CHANGES, RELEASE_MS,
 } from './chat.js';
 import { ENDED_KEEP_MS } from './store.js';
 
 const PREVIEW = 60;
+export const SWEEP_MAX_SHARE = 0.2; // sweepNames: more than this share of names would go...
+export const SWEEP_MAX_FEW = 3; // ...and more than this many: stop
+export const EXPORT_MAX_MESSAGES = 20000;
 // In a group, messages from someone you blocked are hidden for you (@filter = 1 in a
 // group, 0 in a DM, which turns read-only instead). @me is the reader.
 const HIDDEN = '(@filter = 0 OR c.licence_id IS NULL OR c.licence_id NOT IN (SELECT blocked_licence FROM chat_blocks WHERE licence_id = @me))';
@@ -24,6 +28,9 @@ const ENDED = `(
   (status IN ('canceled', 'unpaid') AND ended_at IS NOT NULL AND ended_at <= @before)
   OR (gift_expires_at IS NOT NULL AND stripe_subscription_id IS NULL AND gift_expires_at <= @before)
 )`;
+
+// A person as everyone sees them: seat, username, colour, avatar. Never a licence id.
+export const who = (r) => ({ seat: r.seat ?? null, name: r.name || null, color: Number.isInteger(r.color) ? r.color : null, avatar: r.avatar || null });
 
 function preview(m) {
   const t = String(m.body || '').split('\n')[0].trim() || m.card_title || m.card_cmd || '';
@@ -46,9 +53,20 @@ export function groupTitle(labels, max = 40) {
 export function createChatStore(db, { now = () => Date.now() } = {}) {
   const q = {
     licBySeat: db.prepare('SELECT id, seat FROM licences WHERE seat = ?'),
-    seatOf: db.prepare('SELECT l.seat, p.name FROM licences l LEFT JOIN chat_profiles p ON p.licence_id = l.id WHERE l.id = ?'),
-    setName: db.prepare(`INSERT INTO chat_profiles (licence_id, name, updated_at) VALUES (?, ?, ?)
-      ON CONFLICT (licence_id) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at`),
+    seatOf: db.prepare('SELECT l.seat, p.username AS name, p.color AS color, p.avatar AS avatar FROM licences l LEFT JOIN chat_profiles p ON p.licence_id = l.id WHERE l.id = ?'),
+    // ME: the profile row (migrations/015_profiles.sql).
+    profileOf: db.prepare('SELECT * FROM chat_profiles WHERE licence_id = ?'),
+    profileMake: db.prepare('INSERT OR IGNORE INTO chat_profiles (licence_id, updated_at) VALUES (?, ?)'),
+    profileSet: db.prepare(`UPDATE chat_profiles SET username = @username, color = @color, avatar = @avatar,
+      name_changes = @changes, name_window = @window, updated_at = @t WHERE licence_id = @lic`),
+    nameOwner: db.prepare('SELECT licence_id FROM chat_profiles WHERE lower(username) = lower(?) AND username IS NOT NULL'),
+    nameLocked: db.prepare('SELECT 1 FROM name_releases WHERE name_key = ? AND released_at > ? AND (licence_id IS NULL OR licence_id != ?) LIMIT 1'),
+    release: db.prepare('INSERT INTO name_releases (name_key, licence_id, released_at) VALUES (?, ?, ?)'),
+    oldReleases: db.prepare('DELETE FROM name_releases WHERE released_at <= ?'),
+    allNames: db.prepare('SELECT licence_id, username FROM chat_profiles WHERE username IS NOT NULL'),
+    dropName: db.prepare('UPDATE chat_profiles SET username = NULL WHERE licence_id = ?'),
+    licByName: db.prepare(`SELECT l.id, l.seat FROM chat_profiles p JOIN licences l ON l.id = p.licence_id
+      WHERE lower(p.username) = lower(?) AND p.username IS NOT NULL`),
     dm: db.prepare("SELECT * FROM chat_rooms WHERE dm_key = ?"),
     room: db.prepare('SELECT * FROM chat_rooms WHERE id = ?'),
     newRoom: db.prepare('INSERT INTO chat_rooms (kind, dm_key, created_by, created_at, last_at) VALUES (?, ?, ?, ?, ?)'),
@@ -58,7 +76,7 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     join: db.prepare(`INSERT INTO chat_members (room_id, licence_id, joined_at, from_id) VALUES (@room, @lic, @t, @from)
       ON CONFLICT (room_id, licence_id) DO UPDATE SET left_at = NULL, joined_at = @t, from_id = @from, last_read_id = 0`),
     leave: db.prepare('UPDATE chat_members SET left_at = ? WHERE room_id = ? AND licence_id = ? AND left_at IS NULL'),
-    members: db.prepare(`SELECT m.licence_id, l.seat, p.name FROM chat_members m JOIN licences l ON l.id = m.licence_id
+    members: db.prepare(`SELECT m.licence_id, l.seat, p.username AS name, p.color AS color, p.avatar AS avatar FROM chat_members m JOIN licences l ON l.id = m.licence_id
       LEFT JOIN chat_profiles p ON p.licence_id = m.licence_id WHERE m.room_id = ? AND m.left_at IS NULL ORDER BY m.joined_at, m.licence_id`),
     myRooms: db.prepare(`SELECT r.*, m.from_id, m.last_read_id FROM chat_rooms r JOIN chat_members m ON m.room_id = r.id
       WHERE m.licence_id = ? AND m.left_at IS NULL ORDER BY r.last_at DESC, r.id DESC LIMIT ${MAX_ROOMS}`),
@@ -72,13 +90,13 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
       JOIN chat_rooms r ON r.id = c.room_id
       WHERE c.id > MAX(m.last_read_id, m.from_id) AND (c.licence_id IS NULL OR c.licence_id != @lic) AND c.kind IS NOT 'sys'
         AND (r.kind = 'dm' OR c.licence_id IS NULL OR c.licence_id NOT IN (SELECT blocked_licence FROM chat_blocks WHERE licence_id = @lic))`),
-    page: db.prepare(`SELECT c.*, l.seat, p.name FROM chat_messages c LEFT JOIN licences l ON l.id = c.licence_id
+    page: db.prepare(`SELECT c.*, l.seat, p.username AS name, p.color AS color, p.avatar AS avatar FROM chat_messages c LEFT JOIN licences l ON l.id = c.licence_id
       LEFT JOIN chat_profiles p ON p.licence_id = c.licence_id
       WHERE c.room_id = @room AND c.id > @from AND c.id < @before AND ${HIDDEN} ORDER BY c.id DESC LIMIT @limit`),
-    after: db.prepare(`SELECT c.*, l.seat, p.name FROM chat_messages c LEFT JOIN licences l ON l.id = c.licence_id
+    after: db.prepare(`SELECT c.*, l.seat, p.username AS name, p.color AS color, p.avatar AS avatar FROM chat_messages c LEFT JOIN licences l ON l.id = c.licence_id
       LEFT JOIN chat_profiles p ON p.licence_id = c.licence_id
       WHERE c.room_id = @room AND c.id > MAX(@from, @after) AND ${HIDDEN} ORDER BY c.id ASC LIMIT @limit`),
-    snapshot: db.prepare(`SELECT c.*, l.seat, p.name FROM chat_messages c LEFT JOIN licences l ON l.id = c.licence_id
+    snapshot: db.prepare(`SELECT c.*, l.seat, p.username AS name, p.color AS color, p.avatar AS avatar FROM chat_messages c LEFT JOIN licences l ON l.id = c.licence_id
       LEFT JOIN chat_profiles p ON p.licence_id = c.licence_id
       WHERE c.room_id = @room AND c.id > @from ORDER BY c.id DESC LIMIT @limit`),
     read: db.prepare('UPDATE chat_members SET last_read_id = MAX(last_read_id, ?) WHERE room_id = ? AND licence_id = ?'),
@@ -90,13 +108,13 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     guessHas: db.prepare('SELECT 1 FROM chat_guess WHERE room_id = ? AND licence_id = ? AND n = ?'),
     guessAdd: db.prepare(`INSERT INTO chat_guess (room_id, licence_id, n, day, tries, solved, points, message_id, created_at)
       VALUES (@room, @lic, @n, @day, @tries, @solved, @points, @msg, @t)`),
-    guessDay: db.prepare(`SELECT g.licence_id, g.tries, g.solved, g.created_at, l.seat, p.name FROM chat_guess g JOIN licences l ON l.id = g.licence_id
+    guessDay: db.prepare(`SELECT g.licence_id, g.tries, g.solved, g.created_at, l.seat, p.username AS name, p.color AS color, p.avatar AS avatar FROM chat_guess g JOIN licences l ON l.id = g.licence_id
       JOIN chat_members m ON m.room_id = g.room_id AND m.licence_id = g.licence_id AND m.left_at IS NULL
       LEFT JOIN chat_profiles p ON p.licence_id = g.licence_id
       WHERE g.room_id = @room AND g.n = @n
         AND (@filter = 0 OR g.licence_id NOT IN (SELECT blocked_licence FROM chat_blocks WHERE licence_id = @me))
       ORDER BY g.solved DESC, g.tries ASC, g.created_at ASC`),
-    guessWeek: db.prepare(`SELECT g.licence_id, SUM(g.points) AS points, l.seat, p.name FROM chat_guess g JOIN licences l ON l.id = g.licence_id
+    guessWeek: db.prepare(`SELECT g.licence_id, SUM(g.points) AS points, l.seat, p.username AS name, p.color AS color, p.avatar AS avatar FROM chat_guess g JOIN licences l ON l.id = g.licence_id
       JOIN chat_members m ON m.room_id = g.room_id AND m.licence_id = g.licence_id AND m.left_at IS NULL
       LEFT JOIN chat_profiles p ON p.licence_id = g.licence_id
       WHERE g.room_id = @room AND g.day >= @from AND g.day <= @to GROUP BY g.licence_id ORDER BY points DESC, l.seat ASC`),
@@ -104,7 +122,7 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     weekMark: db.prepare('INSERT OR IGNORE INTO chat_guess_weeks (room_id, week, created_at) VALUES (?, ?, ?)'),
     oldGuess: db.prepare('DELETE FROM chat_guess WHERE created_at <= ?'),
     oldWeeks: db.prepare('DELETE FROM chat_guess_weeks WHERE created_at <= ?'),
-    msg: db.prepare(`SELECT c.*, l.seat, p.name FROM chat_messages c LEFT JOIN licences l ON l.id = c.licence_id
+    msg: db.prepare(`SELECT c.*, l.seat, p.username AS name, p.color AS color, p.avatar AS avatar FROM chat_messages c LEFT JOIN licences l ON l.id = c.licence_id
       LEFT JOIN chat_profiles p ON p.licence_id = c.licence_id WHERE c.id = ?`),
     // requests
     request: db.prepare('SELECT * FROM chat_requests WHERE from_licence = ? AND to_seat = ?'),
@@ -112,7 +130,7 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     closeRequest: db.prepare('UPDATE chat_requests SET closed_at = ? WHERE from_licence = ? AND to_seat = ? AND closed_at IS NULL'),
     dropRequest: db.prepare('DELETE FROM chat_requests WHERE from_licence = ? AND to_seat = ?'),
     outCount: db.prepare('SELECT COUNT(*) AS n FROM chat_requests WHERE from_licence = ? AND created_at > ?'),
-    in: db.prepare(`SELECT r.from_licence, r.created_at, l.seat, p.name FROM chat_requests r JOIN licences l ON l.id = r.from_licence
+    in: db.prepare(`SELECT r.from_licence, r.created_at, l.seat, p.username AS name, p.color AS color, p.avatar AS avatar FROM chat_requests r JOIN licences l ON l.id = r.from_licence
       LEFT JOIN chat_profiles p ON p.licence_id = r.from_licence
       WHERE r.to_seat = @seat AND r.closed_at IS NULL AND r.created_at > @since
         AND NOT EXISTS (SELECT 1 FROM chat_blocks b WHERE b.licence_id = @lic AND b.blocked_licence = r.from_licence)
@@ -145,11 +163,22 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     requestsTo: db.prepare('DELETE FROM chat_requests WHERE to_seat = ?'),
     guess: db.prepare('DELETE FROM chat_guess WHERE licence_id = ?'),
     blocks: db.prepare('DELETE FROM chat_blocks WHERE licence_id = ? OR blocked_licence = ?'),
+    reportsBy: db.prepare('DELETE FROM chat_reports WHERE reporter = ?'),
   };
+  // DOWNLOAD MY DATA and DELETE MY ACCOUNT (ME).
+  q.blocksOf = db.prepare('SELECT blocked_licence FROM chat_blocks WHERE licence_id = ? ORDER BY created_at');
+  q.sentBy = db.prepare(`SELECT room_id, body, card_cmd, tickers_json, kind, created_at FROM chat_messages WHERE licence_id = ? AND created_at > ? ORDER BY id LIMIT ${EXPORT_MAX_MESSAGES}`);
+  // DELETE MY ACCOUNT: the name in the server's own lines ("Tom #1 is driving.", last week's
+  // GUESS winner) becomes SEAT 1. A label is always followed by a space or a comma there.
+  q.unname = db.prepare(`UPDATE chat_messages SET body = replace(replace(body, @label || ' ', @seat || ' '), @label || ',', @seat || ',')
+    WHERE kind = 'sys' AND (instr(body, @label || ' ') > 0 OR instr(body, @label || ',') > 0)`);
+  q.guessBy = db.prepare('SELECT room_id, n, day, tries, solved, points FROM chat_guess WHERE licence_id = ? ORDER BY created_at');
+  q.forgetOldName = db.prepare('UPDATE chat_profiles SET name = NULL WHERE licence_id = ?');
+  q.orphanReleases = db.prepare('UPDATE name_releases SET licence_id = NULL WHERE licence_id = ?');
 
   const person = (licId) => {
     const r = q.seatOf.get(licId);
-    return r ? { seat: r.seat, name: r.name || null } : null;
+    return r ? who(r) : null;
   };
   const isBlocked = (a, b) => Boolean(q.blocked.get(a, b));
   const eitherBlocked = (a, b) => isBlocked(a, b) || isBlocked(b, a);
@@ -189,7 +218,7 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
 
   function roomView(room, lic, m) {
     const members = q.members.all(room.id);
-    const people = members.map((x) => ({ seat: x.seat, name: x.name || null }));
+    const people = members.map(who);
     const others = members.filter((x) => x.licence_id !== lic).map((x) => label(x.seat, x.name));
     let title;
     let blockedByMe = false;
@@ -223,6 +252,8 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
       id: c.id,
       seat: c.seat ?? null,
       name: c.name || null,
+      color: c.color ?? null,
+      avatar: c.avatar || null,
       own: c.licence_id === lic,
       text: c.body,
       card: c.card_cmd ? { cmd: c.card_cmd, title: c.card_title || c.card_cmd } : null,
@@ -258,6 +289,40 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     if (!x) return null;
     const members = q.members.all(x.room.id);
     return readOnly(x.room, lic, members) ? null : { ...x, members };
+  }
+
+  // CHAT 42 or CHAT @name, one person: open the DM, accept their request, or send ours.
+  // target: { id, seat } or null (no such seat or name); seat: where a request goes (null
+  // for a name nobody has). Inside a transaction. The same answer for every target in
+  // every state: the limits come first, for anyone, so a 429 never tells a seat or a name
+  // with Pro from one without, or from one that does not exist.
+  function openOne(lic, me, target, seat, { allowRequest, isActive }) {
+    if (target) {
+      const dm = liveDm(lic, target.id);
+      if (dm) return { room: dm.id, notify: [] };
+      // Asking for someone you blocked is taking the block back.
+      q.unblock.run(lic, target.id);
+      // Their request to you: only a live one (not ignored, under 30 days old).
+      const theirs = q.request.get(target.id, me.seat);
+      if (theirs && !theirs.closed_at && theirs.created_at > requestSince() && !isBlocked(target.id, lic)) {
+        const room = makeDm(lic, target.id);
+        q.dropRequest.run(target.id, me.seat);
+        q.dropRequest.run(lic, target.seat);
+        return { room: room.id, accepted: true, notify: [lic, target.id] };
+      }
+    }
+    if (Number(q.outCount.get(lic, requestSince()).n) >= MAX_OUT) {
+      throw new ChatError('too_many_requests', `You have ${MAX_OUT} requests waiting. Wait for some answers first.`, 429);
+    }
+    if (!allowRequest()) throw new ChatError('rate_limited', 'That is a lot of requests for one day. Try again tomorrow.', 429);
+    // A request is only kept for a seat that has Pro now.
+    if (!target || !isActive(target.id)) return { sent: true, seat, notify: [] };
+    const existing = q.request.get(lic, seat);
+    if (existing && existing.created_at > requestSince()) return { sent: true, seat, notify: [] };
+    if (existing) q.dropRequest.run(lic, seat); // expired: start again
+    q.addRequest.run(lic, seat, now());
+    const notify = isBlocked(target.id, lic) ? [] : [target.id];
+    return { sent: true, seat, notify };
   }
 
   const api = {
@@ -311,7 +376,7 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
       const x = memberOf(roomId, lic);
       if (!x) return [];
       return q.guessDay.all({ room: x.room.id, n, filter: x.room.kind === 'group' ? 1 : 0, me: lic })
-        .map((g) => ({ seat: g.seat, name: g.name || null, tries: g.tries, solved: Boolean(g.solved), own: g.licence_id === lic }));
+        .map((g) => ({ ...who(g), tries: g.tries, solved: Boolean(g.solved), own: g.licence_id === lic }));
     },
     // Last week's winner line, once per room: { week, from, to } (New York dates, Mon to
     // Sun). Posts "Last week's GUESS: Ann 2 won with 11 points." when anyone scored, and
@@ -333,9 +398,119 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
       });
     },
 
-    setName(lic, name) {
-      q.setName.run(lic, name, now());
-      return person(lic);
+    // ---- ME: username, colour, avatar ----
+    profile(lic) {
+      const r = q.profileOf.get(lic);
+      return { username: r?.username || null, color: Number.isInteger(r?.color) ? r.color : null, avatar: r?.avatar || null };
+    },
+
+    // patch: { username?, color?, avatar? }, already cleaned (pro/chat.js); a key that is
+    // there changes. A new username must be free whatever the case and not locked (given
+    // up by someone else in the last 30 days); 3 changes a day. The name given up is
+    // locked for 30 days. Returns the person (seat, name, color, avatar). Throws ChatError.
+    setProfile(lic, patch = {}) {
+      return tx(db, () => {
+        const t = now();
+        q.profileMake.run(lic, t);
+        const cur = q.profileOf.get(lic);
+        const next = { username: cur.username || null, color: Number.isInteger(cur.color) ? cur.color : null, avatar: cur.avatar || null };
+        let changes = Number(cur.name_changes) || 0;
+        let window = Number.isFinite(cur.name_window) ? cur.name_window : null;
+        const name = 'username' in patch ? (patch.username || null) : next.username;
+        if (name !== next.username) {
+          // The first username write retires the old display name (before migration 015).
+          if (cur.name !== null && cur.name !== undefined) q.forgetOldName.run(lic);
+          if (window === null || t - window >= DAY_MS) { window = t; changes = 0; }
+          if (changes >= MAX_NAME_CHANGES) throw new ChatError('name_limit', `A username can change ${MAX_NAME_CHANGES} times a day. Try again tomorrow.`, 429);
+          if (name) {
+            const owner = q.nameOwner.get(name);
+            if ((owner && owner.licence_id !== lic) || q.nameLocked.get(name.toLowerCase(), t - RELEASE_MS, lic)) throw new ChatError('taken', NAME_TAKEN, 409);
+          }
+          // Given up (not only a new case of the same name): locked for everyone else.
+          if (next.username && (!name || name.toLowerCase() !== next.username.toLowerCase())) q.release.run(next.username.toLowerCase(), lic, t);
+          next.username = name;
+          changes += 1;
+        }
+        if ('color' in patch) next.color = patch.color;
+        if ('avatar' in patch) next.avatar = patch.avatar;
+        try {
+          q.profileSet.run({ ...next, changes, window, t, lic });
+        } catch (err) {
+          if (/UNIQUE/i.test(String(err?.message))) throw new ChatError('taken', NAME_TAKEN, 409);
+          throw err;
+        }
+        return person(lic);
+      });
+    },
+
+    // At start-up: usernames that break a rule now (a name carried over from the old
+    // display name, or one that became a command word) go back to SEAT 42. Like any name
+    // given up, it is locked 30 days for others; its licence may pick a valid name at once
+    // (a clearing is not one of its 3 changes a day). A broken check must not wipe good
+    // names: when a plain name like Alice fails, or more than 3 and more than 20% would
+    // go, nothing is cleared (one bad name in a small database still goes). Returns { cleared, total, aborted } (aborted: why, or null).
+    sweepNames() {
+      return tx(db, () => {
+        const rows = q.allNames.all();
+        if (!usernameOk('Alice')) return { cleared: 0, total: rows.length, aborted: 'the name check refuses a plain name' };
+        const bad = rows.filter((r) => !usernameOk(r.username));
+        if (bad.length > SWEEP_MAX_FEW && bad.length > rows.length * SWEEP_MAX_SHARE) return { cleared: 0, total: rows.length, aborted: `${bad.length} of ${rows.length} names would go` };
+        const t = now();
+        let cleared = 0;
+        for (const r of bad) {
+          q.release.run(r.username.toLowerCase(), r.licence_id, t);
+          cleared += Number(q.dropName.run(r.licence_id).changes);
+        }
+        return { cleared, total: rows.length, aborted: null };
+      });
+    },
+
+    // CHAT @name: like CHAT 42, with the same answer whether the name exists or not.
+    openName(lic, name, { allowRequest = () => true, isActive = () => true } = {}) {
+      const me = person(lic);
+      return tx(db, () => {
+        const target = q.licByName.get(name) || null;
+        if (target && target.id === lic) throw new ChatError('self', 'That is your own name.');
+        return openOne(lic, me, target, target ? target.seat : null, { allowRequest, isActive });
+      });
+    },
+
+    // DOWNLOAD MY DATA: what CHAT holds about this licence. Other people only as seat and
+    // username. Requests you sent are left out (a list would tell which seats have Pro).
+    exportOf(lic) {
+      const t = now();
+      const rooms = q.myRooms.all(lic).map((r) => ({ id: r.id, view: roomView(r, lic, r) }));
+      const titleOf = new Map(rooms.map((r) => [r.id, r.view.title]));
+      const contacts = rooms.filter((r) => r.view.kind === 'dm').map((r) => person(otherOf(q.room.get(r.id).dm_key, lic)))
+        .filter(Boolean).map((p) => ({ seat: p.seat, username: p.name }));
+      const blocked = q.blocksOf.all(lic).map((b) => person(b.blocked_licence)).filter(Boolean).map((p) => ({ seat: p.seat, username: p.name }));
+      const messages = q.sentBy.all(lic, t - KEEP_MS).map((m) => {
+        let tickers = [];
+        try { tickers = m.tickers_json ? JSON.parse(m.tickers_json) : []; } catch { tickers = []; }
+        return { at: new Date(m.created_at).toISOString(), chat: titleOf.get(m.room_id) || null, text: m.body, card: m.card_cmd || null, tickers, kind: m.kind || 'message' };
+      });
+      const guess = q.guessBy.all(lic).map((g) => ({ n: g.n, day: g.day, tries: g.tries, solved: Boolean(g.solved), points: g.points, chat: titleOf.get(g.room_id) || null }));
+      return { contacts, blocked, chats: rooms.map((r) => ({ kind: r.view.kind, title: r.view.title })), messages, guess };
+    },
+
+    // DELETE MY ACCOUNT: every CHAT row of this licence goes (the profile, its username
+    // locked for 30 days with nobody able to take it back, the messages it sent, its
+    // rooms, requests, blocks, GUESS results and the reports it made). No transaction of
+    // its own: the route runs it inside one with the licence changes. Returns a count.
+    wipeAccount(lic) {
+      const t = now();
+      const p = q.profileOf.get(lic);
+      const seat = q.seatOf.get(lic)?.seat;
+      if (p?.username) q.release.run(p.username.toLowerCase(), null, t);
+      if (p?.username && Number.isInteger(seat)) q.unname.run({ label: label(seat, p.username), seat: `SEAT ${seat}` });
+      q.orphanReleases.run(lic);
+      let rows = Number(del.profile.run(lic).changes) + Number(del.messages.run(lic).changes) + Number(del.members.run(lic).changes)
+        + Number(del.requestsFrom.run(lic).changes) + Number(del.blocks.run(lic, lic).changes) + Number(del.guess.run(lic).changes)
+        + Number(del.reportsBy.run(lic).changes) + (Number.isInteger(seat) ? Number(del.requestsTo.run(seat).changes) : 0);
+      rows += Number(q.dmsOf.run({ id: String(lic) }).changes);
+      q.emptyRooms.run();
+      q.leftGroups.run();
+      return rows;
     },
 
     // CHAT 42 (one seat): open the DM, accept their request, or send ours.
@@ -350,37 +525,7 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
       if (!list.length) throw new ChatError('self', 'That is your own seat.');
       if (list.length === 1) {
         const seat = list[0];
-        return tx(db, () => {
-          const target = q.licBySeat.get(seat);
-          if (target) {
-            const dm = liveDm(lic, target.id);
-            if (dm) return { room: dm.id, notify: [] };
-            // Asking for a seat you blocked is taking the block back.
-            q.unblock.run(lic, target.id);
-            // Their request to you: only a live one (not ignored, under 30 days old).
-            const theirs = q.request.get(target.id, me.seat);
-            if (theirs && !theirs.closed_at && theirs.created_at > requestSince() && !isBlocked(target.id, lic)) {
-              const room = makeDm(lic, target.id);
-              q.dropRequest.run(target.id, me.seat);
-              q.dropRequest.run(lic, seat);
-              return { room: room.id, accepted: true, notify: [lic, target.id] };
-            }
-          }
-          // The same answer for every seat in every state: the limits come first, for
-          // any seat, so a 429 never tells a seat with Pro from one without.
-          if (Number(q.outCount.get(lic, requestSince()).n) >= MAX_OUT) {
-            throw new ChatError('too_many_requests', `You have ${MAX_OUT} requests waiting. Wait for some answers first.`, 429);
-          }
-          if (!allowRequest()) throw new ChatError('rate_limited', 'That is a lot of requests for one day. Try again tomorrow.', 429);
-          // A request is only kept for a seat that has Pro now.
-          if (!target || !isActive(target.id)) return { sent: true, seat, notify: [] };
-          const existing = q.request.get(lic, seat);
-          if (existing && existing.created_at > requestSince()) return { sent: true, seat, notify: [] };
-          if (existing) q.dropRequest.run(lic, seat); // expired: start again
-          q.addRequest.run(lic, seat, now());
-          const notify = isBlocked(target.id, lic) ? [] : [target.id];
-          return { sent: true, seat, notify };
-        });
+        return tx(db, () => openOne(lic, me, q.licBySeat.get(seat) || null, seat, { allowRequest, isActive }));
       }
       if (list.length + 1 > MAX_MEMBERS) throw new ChatError('too_many', `A group has ${MAX_MEMBERS} people at most, you included.`);
       return tx(db, () => {
@@ -416,7 +561,7 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     // without Pro is not kept, so a list would tell you which seats have Pro.
     requests(lic) {
       const me = person(lic);
-      return { in: q.in.all({ seat: me.seat, lic, since: requestSince() }).map((r) => ({ seat: r.seat, name: r.name || null, at: r.created_at })) };
+      return { in: q.in.all({ seat: me.seat, lic, since: requestSince() }).map((r) => ({ ...who(r), at: r.created_at })) };
     },
 
     // ACCEPT, IGNORE or BLOCK the request from this seat.
@@ -558,13 +703,17 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
         const ended = q.endedIds.all({ before: t - ENDED_KEEP_MS });
         let rows = 0;
         for (const l of ended) {
+          // Their username is given up: locked 30 days, and this licence may take it back.
+          const p = q.profileOf.get(l.id);
+          if (p?.username) q.release.run(p.username.toLowerCase(), l.id, t);
           rows += Number(del.profile.run(l.id).changes) + Number(del.members.run(l.id).changes) + Number(del.messages.run(l.id).changes)
             + Number(del.requestsFrom.run(l.id).changes) + Number(del.blocks.run(l.id, l.id).changes) + Number(del.guess.run(l.id).changes)
             + (Number.isInteger(l.seat) ? Number(del.requestsTo.run(l.seat).changes) : 0);
           rows += Number(q.dmsOf.run({ id: String(l.id) }).changes); // their DMs, with the messages (cascade)
         }
         const rooms = Number(q.emptyRooms.run().changes) + Number(q.leftGroups.run().changes);
-        return { messages, requests, reports, guess, ended: rows, rooms };
+        const names = Number(q.oldReleases.run(t - RELEASE_MS).changes);
+        return { messages, requests, reports, guess, ended: rows, rooms, names };
       });
     },
   };

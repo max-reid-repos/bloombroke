@@ -51,9 +51,9 @@ test('registry: CHAT is Pro; no example sends a request to a real seat; HELP exp
   const e = findCommand('CHAT');
   assert.equal(e.category, 'Pro');
   assert.deepEqual(e.examples, ['CHAT'], 'a click on an example must never message seat 42');
-  assert.equal(e.syntax, 'CHAT [seat ...]');
+  assert.equal(e.syntax, 'CHAT [seat ...|@username]');
   const { DETAIL } = await import('../public/registry-detail.js');
-  assert.equal(DETAIL.CHAT.options.length, 2);
+  assert.equal(DETAIL.CHAT.options.length, 3, 'a seat, a username (ME), a group');
   assert.match(DETAIL.CHAT.source, /deleted after 30 days/);
 });
 
@@ -95,6 +95,8 @@ test('cards: a box with title and command; attach only a plain screen you came f
 // ---- list and thread -------------------------------------------------------------------------
 
 const ME = { seat: 42, name: 'Tom' };
+// The avatar is an inline SVG (pixel-avatar.js); the words around it are what these check.
+const noSvg = (html) => html.replace(/<svg[\s\S]*?<\/svg> ?/g, '');
 const ROOMS = [
   { id: 5, kind: 'dm', title: 'Ann 88', members: [{ seat: 42, name: 'Tom' }, { seat: 88, name: 'Ann' }], readOnly: false, unread: 2, last: { at: 1, preview: 'hi', own: false }, blockedByMe: false },
   { id: 9, kind: 'group', title: 'Ann 88, SEAT 105', members: [{ seat: 42, name: 'Tom' }, { seat: 88, name: 'Ann' }, { seat: 105, name: null }], readOnly: false, unread: 0, last: { at: 1, preview: 'ok', own: true } },
@@ -102,7 +104,9 @@ const ROOMS = [
 
 test('list: YOU and NAME, requests with ACCEPT IGNORE BLOCK, rooms with previews and unread; sent requests are not listed', () => {
   const html = listHtml({ me: ME, requests: { in: [{ seat: 7, name: null, at: 1 }] }, rooms: ROOMS }, 9);
-  assert.match(html, /<span class="cl-k">YOU<\/span><span class="cm-who is-own">Tom <span class="cm-seat">42<\/span><\/span><button type="button" class="chip cl-name" data-act="name">NAME<\/button>/);
+  // ME: YOU with your avatar, username in its colour and #42; NAME opens ME.
+  assert.match(noSvg(html), /<span class="cl-k">YOU<\/span><span class="cm-who is-own"><span data-nc="2">Tom<\/span> <span class="cm-seat">#42<\/span><\/span><a class="chip cl-name" href="\?c=ME" data-cmd="ME">NAME<\/a>/);
+  assert.match(html, /<svg class="px-av cm-av" viewBox="0 0 8 8" width="16" height="16" shape-rendering="crispEdges"/);
   assert.match(html, /SEAT <span class="cm-seat">7<\/span>.*data-req="7" data-do="accept">ACCEPT<.*data-do="ignore">IGNORE<.*data-do="block">BLOCK</s);
   assert.match(html, /class="cl-room is-unread" data-room="5">/);
   assert.match(html, /class="cl-room is-open" data-room="9" aria-current="true"/);
@@ -111,7 +115,8 @@ test('list: YOU and NAME, requests with ACCEPT IGNORE BLOCK, rooms with previews
   assert.match(html, /You: ok/);
   assert.doesNotMatch(html, /SENT/, 'a list of sent requests would tell which seats have Pro');
   assert.ok(html.indexOf('ACCEPT') < html.indexOf('data-room'), 'requests first');
-  assert.equal(whoHtml(88, 'SEAT 1'), '<span class="cm-who">SEAT 1 <span class="cm-seat">88</span></span>', 'the real seat always shows');
+  assert.equal(noSvg(whoHtml(88, 'SEAT 1')), '<span class="cm-who"><span data-nc="0">SEAT 1</span> <span class="cm-seat">#88</span></span>', 'the real seat always shows');
+  assert.match(whoHtml(88, 'Ann', false, { color: 5, avatar: 'ff00ff00ff00ff00' }), /data-nc="5"><rect[^>]*\/><path fill="currentColor" d="M0 0h8v1h-8z/, 'their colour and their own pixels');
 });
 
 test('thread: dense lines, a day row where the day changes, own name marked', () => {
@@ -119,7 +124,7 @@ test('thread: dense lines, a day row where the day changes, own name marked', ()
   const m = (id, at, own, t) => ({ id, seat: own ? 42 : 88, name: own ? 'Tom' : 'Ann', own, text: t, card: null, tickers: [], at });
   const html = messagesHtml([m(1, new Date(2026, 8, 27, 9, 5).getTime(), false, 'yo'), m(2, new Date(2026, 8, 28, 14, 2).getTime(), true, 'hey'), m(3, new Date(2026, 8, 28, 14, 3).getTime(), false, 'sup')], {}, now);
   assert.deepEqual([...html.matchAll(/class="cm-day" role="separator">([^<]+)</g)].map((x) => x[1]), ['SEP 27', 'TODAY']);
-  assert.match(html, /<span class="cm-t">14:02<\/span><span class="cm-who is-own">Tom <span class="cm-seat">42<\/span><\/span><span class="cm-body"><span class="cm-text">hey<\/span><\/span>/);
+  assert.match(noSvg(html), /<span class="cm-t">14:02<\/span><span class="cm-who is-own"><span data-nc="2">Tom<\/span> <span class="cm-seat">#42<\/span><\/span><span class="cm-body"><span class="cm-text">hey<\/span><\/span>/);
   assert.equal(dayLabel(new Date(2025, 0, 3).getTime(), now), 'JAN 3 2025');
 });
 
@@ -128,7 +133,7 @@ test('thread head and composer: the menu per kind; closed chats have no composer
   assert.deepEqual([...headHtml({ ...ROOMS[0], blockedByMe: true }).matchAll(/data-menu="(\w+)">(\w+)</g)].map((x) => x[2]), ['UNBLOCK', 'REPORT']);
   assert.deepEqual([...headHtml(ROOMS[1]).matchAll(/data-menu="(\w+)">(\w+)</g)].map((x) => x[2]), ['ADD', 'LEAVE', 'REPORT']);
   assert.deepEqual([...headHtml({ ...ROOMS[1], readOnly: true }).matchAll(/data-menu="(\w+)">(\w+)</g)].map((x) => x[2]), ['LEAVE', 'REPORT']);
-  assert.match(headHtml(ROOMS[1]), /<span class="ct-members">Tom 42, Ann 88, SEAT 105<\/span>/);
+  assert.match(headHtml(ROOMS[1]), /<span class="ct-members">Tom #42, Ann #88, SEAT 105<\/span>/);
   assert.equal(composerHtml({ ...ROOMS[0], readOnly: true }), `<p class="ct-closed muted">${CLOSED}</p>`);
   const c = composerHtml(ROOMS[0], { cmd: 'AAPL 1Y', title: 'AAPL 1Y' });
   assert.match(c, /data-act="attach" aria-pressed="false" title="Attach this screen">\+ AAPL 1Y<\/button><textarea class="cc-input" rows="1" maxlength="500"/);

@@ -329,9 +329,14 @@ export const REGISTRY = [
   },
   {
     name: 'CHAT', category: 'Pro', summary: 'Private chat with friends who have Pro, by seat number',
-    syntax: 'CHAT [seat ...]', examples: ['CHAT'], keywords: ['chat', 'message', 'talk', 'private', 'friends', 'group', 'seat'],
+    syntax: 'CHAT [seat ...|@username]', examples: ['CHAT'], keywords: ['chat', 'message', 'talk', 'private', 'friends', 'group', 'seat'],
   },
   // --- end Pro structure ---
+  // --- ME (screens/me.js): profile and settings ---
+  {
+    name: 'ME', aliases: ['SETTINGS', 'ACCOUNT'], category: 'Pro', summary: 'You: username, colour, pixel avatar, your plan and cancel, this device, your key and data',
+    syntax: 'ME', examples: ['ME'], keywords: ['profile', 'settings', 'account', 'username', 'avatar', 'colour', 'color', 'cancel', 'subscription', 'start screen', 'clock', 'delete', 'export'],
+  },
   {
     name: 'LOGIN', category: 'Pro', summary: 'Use your Pro key on this device',
     syntax: 'LOGIN <key>', examples: ['LOGIN'], keywords: ['sign in', 'key', 'account', 'device'],

@@ -1,5 +1,6 @@
 // Pro storage: licences, processed Stripe events and synced documents.
 
+import { randomBytes } from 'node:crypto';
 import { tx } from './db.js';
 import {
   generateKey, hashKey, last4, encryptReveal, decryptReveal, REVEAL_MS,
@@ -30,6 +31,11 @@ export function giftState(g, t) {
   if (g.redeemed_at) return 'redeemed';
   return t >= g.expires_at ? 'expired' : 'unused';
 }
+
+// DELETE MY ACCOUNT (pro/me-routes.js) replaces the key hash with this prefix and 64 random
+// hex characters: no key can match it, and the licence is never a target again.
+export const DELETED_PREFIX = 'deleted:';
+export const isDeletedLicence = (lic) => Boolean(lic) && String(lic.key_hash || '').startsWith(DELETED_PREFIX);
 
 export class GiftError extends Error {
   constructor(code, message) {
@@ -118,9 +124,18 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
     docs: db.prepare('SELECT name, data, updated_at FROM sync_docs WHERE licence_id = ? ORDER BY name'),
     // PRO's hero: the seat the next licence would get. A number only, nothing else read.
     nextSeat: db.prepare(`SELECT ${NEXT_SEAT} AS n`),
+    // DELETE MY ACCOUNT (pro/me-routes.js): the synced documents, the codes nobody used,
+    // and a key hash no key can ever have (a SHA-256 hash is 64 hex characters).
+    closeDocs: db.prepare('DELETE FROM sync_docs WHERE licence_id = ?'),
+    closeGifts: db.prepare('DELETE FROM gift_codes WHERE giver_licence_id = ? AND redeemed_at IS NULL'),
+    closeKey: db.prepare("UPDATE licences SET key_hash = ?, last4 = '----', reveal_ciphertext = NULL, updated_at = ? WHERE id = ?"),
     docPut: db.prepare(`INSERT INTO sync_docs (licence_id, name, data, updated_at) VALUES (?, ?, ?, ?)
       ON CONFLICT (licence_id, name) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`),
   };
+
+  // Told the licence id after its key changed (NEW KEY): CHAT ends that licence's open
+  // long-polls at once, so a device on the old key hears 401 on its next call.
+  const keyListeners = new Set();
 
   function setStatus(id, status, at = now()) {
     q.status.run(status, status, at, null, status, now(), now(), id);
@@ -157,7 +172,10 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
           const licence = existing.status === status ? q.byId.get(existing.id) : setStatus(existing.id, status);
           return { licence, created: false };
         }
-        const target = licenceId ? q.byId.get(licenceId) : null;
+        // A REACTIVATE checkout opened before its licence was deleted: a new licence with a
+        // fresh key, never a subscription on a deleted one.
+        const found = licenceId ? q.byId.get(licenceId) : null;
+        const target = found && !isDeletedLicence(found) ? found : null;
         if (target) {
           const t = now();
           q.attach.run(subscriptionId, status, status, t, customerId || null, termsAcceptedAt || null, version, live, t, target.id);
@@ -285,7 +303,7 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
 
     // A lost key: give the licence a new one. The old key stops working at once.
     rotateKey(licenceId) {
-      return tx(db, () => {
+      const out = tx(db, () => {
         if (!q.byId.get(licenceId)) throw new Error('no such licence');
         let key;
         let hash;
@@ -293,6 +311,22 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
         q.rotate.run(hash, last4(key), now(), licenceId);
         return { key, licence: q.byId.get(licenceId) };
       });
+      for (const fn of keyListeners) { try { fn(licenceId); } catch { /* a listener's own problem */ } }
+      return out;
+    },
+    // fn(licenceId) after a key changed. Returns a function that stops it.
+    onKeyChange(fn) { keyListeners.add(fn); return () => keyListeners.delete(fn); },
+
+    // DELETE MY ACCOUNT: the synced documents and the unused gift codes go, and the key
+    // stops working (its hash is replaced by one no key can match). The licence row stays
+    // (seat, dates, Stripe ids): the 5-year record rule. No transaction of its own: the
+    // route runs it inside one with the CHAT rows. Returns counts.
+    closeAccount(licenceId) {
+      if (!q.byId.get(licenceId)) throw new Error('no such licence');
+      const docs = Number(q.closeDocs.run(licenceId).changes);
+      const gifts = Number(q.closeGifts.run(licenceId).changes);
+      q.closeKey.run(`${DELETED_PREFIX}${randomBytes(32).toString('hex')}`, now(), licenceId);
+      return { docs, gifts };
     },
 
     isEventProcessed(id) { return Boolean(q.eventSeen.get(id)); },

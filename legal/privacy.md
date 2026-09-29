@@ -16,6 +16,7 @@ Our Data Protection Officer can be reached at {{CONTACT}}. Write to this address
 - Sponsor links carry no tracking codes, and sponsors get no data from us.
 - Pro payments go through Stripe. We never see your full card number.
 - CHAT messages between Pro members are seen only by the people in that chat, unless a chat is reported, and are deleted after 30 days.
+- In ME you can download your data and delete your account yourself, at any time, as well as by writing to us.
 - We do not use your data to train AI models, we do not sell it, and we do not send marketing messages.
 
 ## 3. What we collect and why
@@ -28,7 +29,7 @@ Our Data Protection Officer can be reached at {{CONTACT}}. Write to this address
 - **Pay respects.** On a GRAVEYARD stone, pay respects (the F key or its button) adds one to a total for that stone. The totals are aggregate counts per stone, with no IP address and nothing about who paid them. Your IP address is held only in the rate limiter, for the one minute window above. So that each stone gets at most one respect from you a day, our server also keeps a coded copy (a salted hash) of your IP address and the stone in memory until the end of that New York day, with a new salt each day, and never writes it to disk.
 - **Videos on GRAVEYARD stones.** A stone page shows our own drawing in place of a video, and nothing is loaded from YouTube or Google until you press play. When you press play on a GRAVEYARD video, the video is loaded from YouTube (Google) in its privacy-enhanced mode (youtube-nocookie.com), and Google receives your IP address and device data under its own privacy policy.
 - **Error logs.** When something breaks, our server writes an error message to its logs. These messages do not contain your IP address, and we aim to delete them within 14 days.
-- **Your browser storage.** The terminal saves some things in your browser's local storage so they are there next time: your watchlist, portfolio, saved wage, recent commands, screen layouts, your acceptance of these terms (with its version and time) and, for Pro, your licence key. This data stays on your device. We cannot see it unless you use Pro sync. You can delete it at any time by clearing this site's data in your browser.
+- **Your browser storage.** The terminal saves some things in your browser's local storage so they are there next time: your watchlist, portfolio, saved wage, recent commands, screen layouts, your acceptance of these terms (with its version and time), the settings you choose in ME for this device (start screen, clock, chat sound) and, for Pro, your licence key. This data stays on your device. We cannot see it unless you use Pro sync. You can delete it at any time by clearing this site's data in your browser.
 
 ### Analytics
 
@@ -45,7 +46,11 @@ We use DataFast (datafa.st) to understand how many people visit and which screen
 If you subscribe to Pro, we also process:
 
 - **Your licence record.** A one-way hash of your licence key and its last four characters (never the key in plain text), your Stripe customer ID, subscription ID and checkout session ID, your subscription status and its dates, whether you pay monthly or yearly, your seat number, and the time you accepted the Terms at checkout. We show your seat number to you on your own screen. For 24 hours after checkout we also keep an encrypted copy of your key so the success page can show it to you; after that it is deleted.
-- **Synced data.** If you use sync, the watchlist, portfolio, ticker tape and DESK layouts in your browser are stored on our server, linked to your licence, so they can appear on your other devices.
+- **Synced data.** If you use sync, the watchlist, portfolio, ticker tape, DESK layouts and your ME device settings in your browser are stored on our server, linked to your licence, so they can appear on your other devices.
+- **ME.** If you choose them in ME, we store your username, your name colour (one of 8) and your pixel avatar (an 8x8 picture you draw, stored as 16 characters), with your licence. The people you chat with see them. When you change or clear your username, or delete your account, we keep the old name for 30 days so that nobody else can take it at once, with which licence gave it up (until the account is deleted), and then delete it. We also count how many times your username changed in the last day, to keep to 3.
+- **NEW KEY.** NEW KEY in ME gives your licence a new key. We replace the stored hash and last four characters with the new key's, and the old key stops working at once. Nothing else changes.
+- **DOWNLOAD MY DATA.** In ME you can download, as one JSON file, your seat, username, colour and avatar, your plan and its dates, your synced data, your chat contacts, blocks and chats (other people only as seat and username), the messages you sent that still exist, your GUESS results in chats and the state of the gift codes you made. It never holds your key, its hash or any Stripe ID.
+- **DELETE MY ACCOUNT.** In ME you can delete your account once no subscription on it will renew. We then delete your username (it stays locked for 30 days, and nobody can take it back), colour, avatar, synced data including your settings, your CHAT membership, the messages and chat requests you sent (except copies inside reports others made, kept as section 8 says), your blocks, the reports you made, your GUESS results and your unused gift codes, and we make your key unusable. We keep the licence record (seat number, Stripe IDs and dates) for the 5 years in section 8, for payment and refund records.
 - **Payment data.** Stripe collects your name, email address, billing address and card details. Stripe tells us your email address, name, billing country, the brand and last four digits of your card and your payment history, which we use to run your subscription, send receipts and deal with problems. We do not receive your full card number.
 
 ### Gift codes
@@ -63,7 +68,7 @@ If you send feedback with the FEEDBACK command, we store your message, your emai
 
 ### CHAT
 
-If you use CHAT, a Pro feature, we store your seat number, the display name you choose, which seats you asked to chat with and who asked you, who you chat with and who you blocked, the groups you are in, and your messages with the time they were sent. When a message names a $TICKER, we also store that ticker's price at the moment you sent it, so the chat can show the move since. A message is shown only to the people in that chat. We do not read messages or use them for anything else: our server only checks each one for links, which are not allowed, and for $TICKERs. The exception is a report: when you or someone else reports a chat, we store a copy of the last 20 messages of that chat, who reported it, the seats in it and the reason given, and we read that copy to deal with the report. We keep messages for 30 days, then delete them. If you post a GUESS result to a chat, we store its score with the message, and the lines CHAT posts itself (who started or stopped DRIVE, last week's GUESS winner) are stored like messages; all of them are deleted after 30 days. With DRIVE, the screens you open go live to the people following you: the server keeps only your current screen, in memory, while you drive, and stores none of them.
+If you use CHAT, a Pro feature, we store your seat number, the username, colour and avatar you choose in ME, which seats you asked to chat with and who asked you, who you chat with and who you blocked, the groups you are in, and your messages with the time they were sent. When a message names a $TICKER, we also store that ticker's price at the moment you sent it, so the chat can show the move since. A message is shown only to the people in that chat. We do not read messages or use them for anything else: our server only checks each one for links, which are not allowed, and for $TICKERs. The exception is a report: when you or someone else reports a chat, we store a copy of the last 20 messages of that chat, who reported it, the seats in it and the reason given, and we read that copy to deal with the report. We keep messages for 30 days, then delete them. If you post a GUESS result to a chat, we store its score with the message, and the lines CHAT posts itself (who started or stopped DRIVE, last week's GUESS winner) are stored like messages; all of them are deleted after 30 days. With DRIVE, the screens you open go live to the people following you: the server keeps only your current screen, in memory, while you drive, and stores none of them.
 
 ### When you contact us
 
@@ -115,7 +120,7 @@ Our server and several providers are outside Singapore, so your personal data is
 | Ticker counter | A coded copy of your browser tab's random number and of your IP address, with the tickers opened, for one hour; after that only the count per ticker, for 24 hours. All in memory, never on disk. |
 | Error logs on our server | We aim to delete them within 14 days. |
 | Records kept by Cloudflare, DataFast and Google | For the periods in their own policies. |
-| Pro licence record | The hash and last four characters of your key, your seat number, your Stripe IDs and the dates are kept while your licence exists and for 5 years after your subscription is cancelled, for payment and refund records, and then deleted. A licence whose subscription is unpaid or overdue is kept until the subscription is cancelled. |
+| Pro licence record | The hash and last four characters of your key, your seat number, your Stripe IDs and the dates are kept while your licence exists and for 5 years after your subscription is cancelled, for payment and refund records, and then deleted. A licence whose subscription is unpaid or overdue is kept until the subscription is cancelled. If you delete your account in ME, the record stays for the same time, with a key that no longer works. |
 | Synced data | Deleted 30 days after your subscription ends, or sooner if you ask. |
 | Encrypted copy of your key | Deleted as soon as your browser has saved the key, and at the latest 25 hours after checkout. |
 | Payment records | Records of payments that tax and company law require us to keep, such as invoices, are kept for as long as that law requires, normally five years, and are held mainly in Stripe. |
@@ -124,7 +129,10 @@ Our server and several providers are outside Singapore, so your personal data is
 | Feedback | Up to 12 months, then deleted. |
 | Chat messages | Deleted 30 days after they were sent. Chat requests are deleted after 30 days too. |
 | Chat reports | Up to 12 months, then deleted. |
-| Chat name, contacts and blocks | Deleted 30 days after your Pro ends, or sooner if you ask. |
+| Chat contacts and blocks | Deleted 30 days after your Pro ends, at once when you delete your account in ME, or sooner if you ask. |
+| Username, colour and avatar | Deleted 30 days after your Pro ends, at once when you delete your account in ME, or sooner if you ask. |
+| A username you gave up | Kept 30 days so nobody else takes it at once, then deleted. |
+| ME device settings | In your browser until you clear it. For Pro, the synced copy follows the synced data rule above, and goes at once when you delete your account in ME. |
 | Emails | For as long as we need them to deal with your message, and then deleted, unless we need to keep them for a legal reason. |
 | Our own counters | Daily totals only. They contain no personal data. |
 | Your browser storage | Until you clear it. We have no control over it. |
@@ -136,6 +144,8 @@ You may ask us:
 - for a copy of the personal data we hold about you, and how it has been used or disclosed in the past year;
 - to correct personal data that is wrong or incomplete;
 - to delete your Pro data before the end of the 30-day period.
+
+You can also do the first and the last yourself in ME: DOWNLOAD MY DATA gives you a copy of what we hold about you, and DELETE MY ACCOUNT deletes it, as section 3 describes.
 
 Write to {{CONTACT}}. We may need to check that you are who you say you are, for example by asking you to prove you hold the licence key. We will reply within 30 days, or tell you within that time when we will reply. We may charge a reasonable fee for a copy of your data, and we will tell you the fee first. There are some cases where the PDPA lets us refuse a request, and we will explain if that happens.
 

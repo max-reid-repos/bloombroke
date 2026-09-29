@@ -40,7 +40,7 @@ for (const [name, phrases] of Object.entries(PHRASES)) {
   for (const p of phrases) Array.isArray(p) ? addPhrase(p[0], name, p[1]) : addPhrase(p, name);
 }
 for (const c of LISTED) {
-  if (c.pattern || c.soon) continue;
+  if (c.pattern || c.soon || FILLER.has(c.name.toLowerCase())) continue; // ME: "show me AAPL" keeps me as filler
   if (!PHRASE_INDEX.has(c.name.toLowerCase())) addPhrase(c.name, c.name);
 }
 

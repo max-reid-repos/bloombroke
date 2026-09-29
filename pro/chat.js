@@ -2,16 +2,19 @@
 // keeps the rows, pro/chat-routes.js mounts /api/chat.
 //
 // The rules: a seat number is a public address (never a credential: every route takes
-// the key). A name is optional, 16 characters at most, and always shown with the seat,
-// so nobody can pass for someone else: Tom 42. Messages are text up to 500 characters,
+// the key). A username is optional (set in ME), unique, and always shown with the seat,
+// so nobody can pass for someone else: Tom #42. Messages are text up to 500 characters,
 // no links, no images, no files; each $TICKER (up to 3) gets the price at send time;
 // one optional card points at a screen of the terminal.
 
+import { RegExpMatcher, englishDataset, englishRecommendedTransformers } from 'obscenity';
 import { cleanMessage } from './feedback.js';
 import { normalizeKey, normalizeGiftCode } from './licence.js';
+import { REGISTRY } from '../public/registry.js';
 
 export const MAX_TEXT = 500;
-export const MAX_NAME = 16;
+export const MAX_NAME = 15;
+export const MIN_NAME = 3;
 export const MAX_REASON = 200;
 export const MAX_MEMBERS = 8;
 export const MAX_TICKERS = 3;
@@ -24,14 +27,17 @@ export const KEEP_MS = 30 * DAY_MS; // messages and requests
 export const REPORT_KEEP_MS = 365 * DAY_MS; // reports: 12 months
 export const SNAPSHOT = 20; // messages copied into a report
 
-export const NAME_RE = /^[A-Za-z0-9 ._-]{1,16}$/;
+// A username: 3 to 15 of A-Z a-z 0-9 _, starting with a letter (ME, CHAT @name).
+export const USERNAME_RE = /^[A-Za-z][A-Za-z0-9_]{2,14}$/;
+// The words to type CHAT @name: @ and the username shape, any case.
+export const AT_NAME_RE = /^@([A-Za-z][A-Za-z0-9_]{2,14})$/;
 export const SEAT_RE = /^\d{1,9}$/;
 // A $TICKER in a message: the STOCK_RE shape, upper case, not glued to a word.
 export const TICKER_WORD_RE = /(^|[^A-Za-z0-9$])\$([A-Z]{1,5}(?:\.[A-Z]{1,2})?)(?![A-Za-z0-9])/g;
 // A card is a terminal command: these characters only (S&P 500, MCAP>10B, EUR/USD, $GOLD).
 export const CARD_RE = /^[A-Z0-9 .$&%<>=:/+-]{1,60}$/;
 // Screens a card may never point at: account, chat itself, feedback.
-export const CARD_DENY = ['HOME', 'CHAT', 'PRO', 'LOGIN', 'LOGOUT', 'REDEEM', 'GIFT', 'FEEDBACK', 'IDEA'];
+export const CARD_DENY = ['HOME', 'CHAT', 'PRO', 'LOGIN', 'LOGOUT', 'REDEEM', 'GIFT', 'FEEDBACK', 'IDEA', 'ME'];
 export const NO_LINKS = 'No links. Attach a screen instead.';
 
 export class ChatError extends Error {
@@ -42,8 +48,8 @@ export class ChatError extends Error {
   }
 }
 
-// 'Tom 42' or 'SEAT 42'.
-export const label = (seat, name) => (name ? `${name} ${seat}` : `SEAT ${seat}`);
+// 'Tom #42' or 'SEAT 42'.
+export const label = (seat, name) => (name ? `${name} #${seat}` : `SEAT ${seat}`);
 
 // ---- text ------------------------------------------------------------------------------
 
@@ -106,16 +112,75 @@ export function checkText(raw, { hasCard = false } = {}) {
 
 // ---- names, seats, cards ---------------------------------------------------------------
 
-// A display name, or null to go back to SEAT 42. Throws ChatError.
-export function cleanName(v) {
+// ---- usernames (ME) ---------------------------------------------------------------------
+// Words nobody may take: staff-like words, anything that reads as a seat (SEAT, BB and
+// digits), and every command word of the terminal (a name must never look like a command).
+export const RESERVED = ['admin', 'support', 'bloombroke', 'staff', 'mod', 'pro', 'chat', 'seat', 'official', 'root', 'system', 'help', 'me'];
+const COMMAND_WORDS = new Set(REGISTRY.flatMap((c) => [c.name, ...(c.aliases || [])]).map((w) => String(w).toLowerCase()));
+// Staff-like names: bloombroke anywhere; admin, support, staff, official and moderator as
+// a whole word of the name (Stafford, Staffan and Badminton are fine), and any word that
+// starts with admin.
+export const STAFF_WORDS = ['admin', 'support', 'staff', 'official', 'moderator'];
+// A name's words: split on _, digits and a lower-case letter followed by a capital
+// (SupportTeam: support, team; admin_tom: admin, tom), lower case.
+export const nameTokens = (name) => String(name).split(/[_\d]+|(?<=[a-z])(?=[A-Z])/).filter(Boolean).map((t) => t.toLowerCase());
+export function staffLike(name) {
+  if (/bloombroke/i.test(String(name))) return true;
+  return nameTokens(name).some((t) => STAFF_WORDS.includes(t) || t.startsWith('admin'));
+}
+export const NAME_TAKEN = 'That name is taken. Pick another.';
+export const MAX_NAME_CHANGES = 3; // a day
+export const RELEASE_MS = 30 * DAY_MS; // a name given up is locked this long
+export const NAME_BAD = 'Pick another name.';
+
+let matcher = null;
+const profanity = () => { matcher ||= new RegExpMatcher({ ...englishDataset.build(), ...englishRecommendedTransformers }); return matcher; };
+function obscene(name) {
+  try {
+    const m = profanity();
+    const low = name.toLowerCase();
+    return m.hasMatch(low) || m.hasMatch(low.replace(/_/g, ' ')) || m.hasMatch(low.replace(/_/g, ''));
+  } catch { return true; } // a broken check refuses
+}
+
+// A reserved word, a command word, a seat look-alike or a bad word: true.
+export function reservedName(name) {
+  const low = String(name).toLowerCase();
+  if (RESERVED.includes(low) || COMMAND_WORDS.has(low)) return true;
+  if (/^bb\d/.test(low) || /^seat[\d_]*$/.test(low) || /^\d+$/.test(low)) return true;
+  // Staff-like words: support_team, TheAdmin, BloombrokeHQ (not Stafford or Badminton).
+  if (staffLike(name)) return true;
+  return obscene(low);
+}
+
+// Every rule on one name: true when it may be a username.
+export const usernameOk = (v) => typeof v === 'string' && USERNAME_RE.test(v) && !reservedName(v);
+
+// A username from a body, or null to go back to SEAT 42. Shown as typed; unique whatever
+// the case (the store checks). Throws ChatError.
+export function cleanUsername(v) {
   if (v === null || v === undefined) return null;
-  if (typeof v !== 'string') throw new ChatError('bad_name', 'Send { name }.');
-  const s = cleanMessage(v).replace(/\s+/g, ' ').trim();
+  if (typeof v !== 'string') throw new ChatError('bad_name', 'Send { username }.');
+  const s = cleanMessage(v).trim();
   if (!s) return null;
-  if (s.length > MAX_NAME) throw new ChatError('bad_name', `A name is ${MAX_NAME} characters at most.`);
-  if (!NAME_RE.test(s)) throw new ChatError('bad_name', 'Letters, numbers, spaces and . _ - only.');
-  if (/seat/i.test(s) || /^[\d .]+$/.test(s)) throw new ChatError('bad_name', 'Pick a name that is not a seat number.');
+  if (s.length < MIN_NAME || s.length > MAX_NAME || !/^[A-Za-z0-9_]+$/.test(s)) throw new ChatError('bad_name', `A username is ${MIN_NAME} to ${MAX_NAME} letters, numbers or _.`);
+  if (!/^[A-Za-z]/.test(s)) throw new ChatError('bad_name', 'A username starts with a letter.');
+  if (reservedName(s)) throw new ChatError('bad_name', NAME_BAD);
   return s;
+}
+
+// A name colour: 0 to 7 (style.css --name-0 .. --name-7), or null for the default.
+export function cleanColor(v) {
+  if (v === null) return null;
+  if (!Number.isInteger(v) || v < 0 || v > 7) throw new ChatError('bad_color', 'A colour is a number from 0 to 7.');
+  return v;
+}
+
+// A pixel avatar: 16 hex characters (8x8 pixels, row by row), or null for initials.
+export function cleanAvatar(v) {
+  if (v === null) return null;
+  if (typeof v !== 'string' || !/^[0-9a-fA-F]{16}$/.test(v)) throw new ChatError('bad_avatar', 'An avatar is 16 hex characters.');
+  return v.toLowerCase();
 }
 
 // Seat numbers from a body: 1 to 7, whole, positive, each once.

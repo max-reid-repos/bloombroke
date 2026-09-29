@@ -11,7 +11,7 @@ import { revealKeyFrom } from '../pro/licence.js';
 import { createLimiter } from '../pro/ratelimit.js';
 import { mountChat, chatLimits } from '../pro/chat-routes.js';
 import {
-  createHub, hasLink, tickersIn, cleanText, cleanName, cleanCard, cleanSeats, checkText, label, NO_LINKS, CARD_DENY, CARD_RE, TICKER_WORD_RE,
+  createHub, hasLink, tickersIn, cleanText, cleanUsername, cleanCard, cleanSeats, checkText, label, NO_LINKS, CARD_DENY, CARD_RE, TICKER_WORD_RE,
   KEEP_MS, REPORT_KEEP_MS, MAX_TEXT,
 } from '../pro/chat.js';
 import { groupTitle } from '../pro/chat-store.js';
@@ -96,7 +96,7 @@ test('access: no key, a wrong key and an inactive key are refused; writes need t
     const ok = await a.list();
     assert.equal(ok.status, 200);
     assert.equal(ok.cache, 'no-store');
-    assert.deepEqual(ok.body.me, { seat: a.seat, name: null });
+    assert.deepEqual(ok.body.me, { seat: a.seat, name: null, color: null, avatar: null });
     const cross = await s.req('POST', '/api/chat/open', { key: a.key, body: { seats: [99] }, origin: false });
     assert.equal(cross.status, 403);
     assert.equal(cross.body.error, 'cross_origin');
@@ -134,7 +134,7 @@ test('access: no answer ever holds a key, a key hash or a licence id', async () 
       assert.doesNotMatch(res.text, /licence|key_hash|last4/);
     }
     const members = (await a.list()).body.rooms.flatMap((r) => r.members);
-    for (const m of members) assert.deepEqual(Object.keys(m).sort(), ['name', 'seat']);
+    for (const m of members) assert.deepEqual(Object.keys(m).sort(), ['avatar', 'color', 'name', 'seat']);
   } finally { await s.close(); }
 });
 
@@ -427,7 +427,7 @@ test('cards: a screen of the terminal only; never HOME, CHAT, PRO, LOGIN, a key,
     'BB-AAAA-BBBB-CCCC-DDDD', 'NOT A COMMAND AT ALL', 'AAPL<script>', 'https://x.co', 'x'.repeat(61), '']) {
     assert.throws(() => cleanCard({ cmd, title: 't' }, deps), { code: 'bad_card' }, cmd);
   }
-  assert.deepEqual(CARD_DENY, ['HOME', 'CHAT', 'PRO', 'LOGIN', 'LOGOUT', 'REDEEM', 'GIFT', 'FEEDBACK', 'IDEA']);
+  assert.deepEqual(CARD_DENY, ['HOME', 'CHAT', 'PRO', 'LOGIN', 'LOGOUT', 'REDEEM', 'GIFT', 'FEEDBACK', 'IDEA', 'ME']); // ME: your own account screen, never a card or a driven screen
   assert.ok(CARD_RE.test('S&P 500 1Y') && CARD_RE.test('SCREEN MCAP>10B') && CARD_RE.test('$GOLD 5Y') && CARD_RE.test('FX EUR/USD'));
   const s = await setup();
   try {
@@ -471,26 +471,26 @@ test('unread: counts messages from others and requests; reading the room clears 
   } finally { await s.close(); }
 });
 
-test('names: 16 characters, plain letters, always shown with the seat', async () => {
-  assert.equal(cleanName('  Tom   Lee '), 'Tom Lee');
-  assert.equal(cleanName(''), null);
-  assert.equal(cleanName(null), null);
-  for (const bad of ['x'.repeat(17), 'Tom<3', 'Seat 1', 'SEAT', '42', 5]) assert.throws(() => cleanName(bad), { code: 'bad_name' }, String(bad));
-  assert.equal(cleanName('Tom\u202e'), 'Tom', 'bidi characters are taken out');
-  assert.equal(label(42, 'Tom'), 'Tom 42');
+test('names: the username of ME (PUT /api/chat/me is its alias), always shown with the seat', async () => {
+  assert.equal(cleanUsername('  Tom_Lee '), 'Tom_Lee');
+  assert.equal(cleanUsername(''), null);
+  assert.equal(cleanUsername(null), null);
+  for (const bad of ['x'.repeat(16), 'Tom Lee', 'Tom<3', 'Seat1', 'SEAT', '42', 'ab', 5]) assert.throws(() => cleanUsername(bad), { code: 'bad_name' }, String(bad));
+  assert.equal(cleanUsername('Tom\u202e'), 'Tom', 'bidi characters are taken out');
+  assert.equal(label(42, 'Tom'), 'Tom #42');
   assert.equal(label(42, null), 'SEAT 42');
-  assert.equal(groupTitle(['Tom 42', 'Ann 88', 'SEAT 105', 'Bob 7', 'Kim 99', 'Lee 12']), 'Tom 42, Ann 88, SEAT 105, Bob 7, Kim 99 +1');
+  assert.equal(groupTitle(['Tom #42', 'Ann #88', 'SEAT 105', 'Bob #7', 'Kim #99', 'Lee #12']), 'Tom #42, Ann #88, SEAT 105, Bob #7 +2');
   const s = await setup();
   try {
     const [a, b] = [s.person(), s.person()];
     const room = await s.connect(a, b);
     const r = await a.put('/api/chat/me', { name: 'Tom' });
-    assert.deepEqual(r.body.me, { seat: a.seat, name: 'Tom' });
+    assert.deepEqual(r.body.me, { seat: a.seat, name: 'Tom', color: null, avatar: null });
     assert.equal((await a.put('/api/chat/me', { name: 'x'.repeat(20) })).status, 400);
-    assert.equal((await b.list()).body.rooms[0].title, `Tom ${a.seat}`);
+    assert.equal((await b.list()).body.rooms[0].title, `Tom #${a.seat}`);
     await a.say(room, 'hi');
     assert.equal((await b.get(`/api/chat/rooms/${room}/messages`)).body.messages[0].name, 'Tom');
-    assert.deepEqual((await a.put('/api/chat/me', { name: '' })).body.me, { seat: a.seat, name: null });
+    assert.deepEqual((await a.put('/api/chat/me', { name: '' })).body.me, { seat: a.seat, name: null, color: null, avatar: null });
   } finally { await s.close(); }
 });
 
