@@ -338,16 +338,42 @@ function didYouMean({ from = '', parts, phrases, symbols, unsure, fnNames, stock
 }
 
 // "what is P/E", "define yield", "explain bid ask": the words asked about (the P/E), or
-// null. Null too when the words are a command, a listed ticker, an instrument or a
-// company name, so "what is the VIX" and "what is AAPL" still open the quote. app.js
-// then opens WHATIS <words> only if whatis-terms.js knows them (loaded then, not at startup).
-const ASK_RE = /^(?:what\s+is|what\s+are|what's|whats|define|explain|meaning\s+of)\s+(.+?)[?!.]*$/i;
+// null. app.js opens WHATIS <words> only if whatis-terms.js knows them (loaded then, not
+// at startup), and only after the resolver found no screen for the words (resolveOrAsk).
+// Null when the words are a command, a listed ticker, an instrument or a company name
+// ("what is the VIX", "what is AAPL" open the quote). After "what is" / "what are", null
+// too when they name a screen that runs without a ticker ("what is the exchange rate" is
+// FX, "what is gdp" ECONOMY): only "define", "explain" and "meaning of" ask for the words
+// themselves there.
+const ASK_RE = /^(what\s+is|what\s+are|what's|whats|define|explain|meaning\s+of)\s+(.+?)[?!.]*$/i;
+const runsAlone = (name) => { const c = findCommand(name); return Boolean(c && c.name !== 'WHATIS' && !c.hidden && !needsTicker(c)); };
 export function whatisAsk(raw) {
   const m = ASK_RE.exec(String(raw ?? '').trim().replace(/\s+/g, ' '));
   if (!m) return null;
-  const words = m[1].replace(/^(?:an?|the)\s+/i, '').trim();
+  const words = m[2].replace(/^(?:an?|the)\s+/i, '').trim();
   if (!words || words.length > 60) return null;
   const up = words.toUpperCase().replace(/^\$/, '');
-  if (words.startsWith('$') || findCommand(up) || LISTED_TICKERS.has(up) || resolveInstrument(up)?.id === up || tickerForName(words)) return null;
+  if (words.startsWith('$') || LISTED_TICKERS.has(up) || resolveInstrument(up)?.id === up || tickerForName(words)) return null;
+  const c = findCommand(up);
+  if (c && c.name !== 'WHATIS') return null;
+  const explicit = !/^what/i.test(m[1]);
+  if (!explicit) {
+    const phrased = PHRASE_INDEX.get(nameKey(words)) || PHRASE_INDEX.get(nameKey(`${m[2]}`)) || [];
+    if (phrased.some((p) => runsAlone(p.name))) return null;
+    if (resolveInstrument(up.replace(/[\s/-]+/g, ''))) return null; // BOND VOLATILITY is MOVEINDEX
+  }
   return words;
+}
+
+// The command bar's lookup with WHATIS in it: the resolver's screen when it is sure of
+// one that runs (not HELP <command>), else WHATIS <words> for "what is <term>" when
+// isTerm(words) (async: app.js loads the terms then), else the resolver's answer.
+export async function resolveOrAsk(raw, deps = {}, { isTerm = async () => false } = {}) {
+  const found = await resolveInput(raw, deps);
+  if (found.confident && !/^HELP\b/.test(found.command)) return found;
+  const ask = whatisAsk(raw);
+  if (ask && await isTerm(ask)) {
+    return { confident: true, from: found.from, command: `WHATIS ${ask.toUpperCase().split(/\s+/).join(' ')}`, whatis: true };
+  }
+  return found;
 }

@@ -34,7 +34,7 @@ import { LISTED, ALIASES, FUNCTION_BAR, TICKER_FUNCTIONS, findCommand } from './
 import { tapeOn, setTapeOn, mountTape, tapeItems } from './tape.js';
 import { compactEmbed } from './embed.js';
 import { parseAffordArgs } from './afford.js';
-import { resolveInput, whatisAsk } from './resolve.js';
+import { resolveOrAsk } from './resolve.js';
 import { tickerForName, LISTED_TICKERS, SHADOWED_TICKERS } from './known-tickers.js';
 import { startAlerts } from './alerts.js'; // ALERTS: the watcher
 import './goal.js'; // GOALS: loads DataFast unless Global Privacy Control is on
@@ -1478,27 +1478,16 @@ function boot() {
         if (ok !== false && info?.grave && info.wins) { await showDidYouMean(view, typed, {}, ticker, signal, { quote: true }); return; }
         if (ok !== false) { render(raw, { fromUrl, checked: true }); return; }
       }
-      // "what is P/E", "define yield": WHATIS, when its terms know the words (and they are
-      // not a command or a known ticker, resolve.js whatisAsk).
-      const ask = ticker ? null : whatisAsk(raw);
-      if (ask) {
-        const terms = await loadModule(WHATIS_TERMS).catch(() => null);
-        if (signal.aborted) return;
-        if (terms?.findTerm(ask)) {
-          const c = `WHATIS ${tokenize(ask).join(' ')}`;
-          replaceUrl(c);
-          render(c, { fromUrl, checked: true, note: resolvedNote(c, typed) });
-          return;
-        }
-      }
       let searchDown = false;
-      const found = await resolveInput(raw, {
+      // The resolver first; "what is P/E", "define yield" open WHATIS only when it found
+      // no screen that runs (resolve.js resolveOrAsk), and its terms know the words.
+      const found = await resolveOrAsk(raw, {
         // The resolver treats a failed search as no rows: remember it, so "Not a ticker"
         // is never said when the lookup itself did not work.
         search: (text) => searchSymbols(text, signal).catch((e) => { if (e.name !== 'AbortError') searchDown = true; throw e; }),
         checkTicker: (t) => checkTicker(t, signal),
         stockId,
-      });
+      }, { isTerm: (w) => (ticker ? false : loadModule(WHATIS_TERMS).then((m) => Boolean(m.findTerm(w)), () => false)) });
       if (signal.aborted) return;
       if (found.confident) {
         replaceUrl(found.command);

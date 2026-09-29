@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { TERMS, findTerm, closestTerms, suggestTerms, COMMON, linksIn, plainText, wordCount, termKey } from '../public/whatis-terms.js';
 import { render, termHtml, listHtml, unknownHtml, whatisView, definitionHtml, sortedTerms, FEEDBACK_PREFILL, echo, MAX_ECHO } from '../public/screens/whatis.js';
 import { statRows, statLabel, statsHtml } from '../public/screens/quote.js';
-import { resolveInput, whatisAsk } from '../public/resolve.js';
+import { resolveInput, resolveOrAsk, whatisAsk } from '../public/resolve.js';
 import { cardWords } from '../public/kit.js';
 import { parseCommand, screenFor } from '../public/app.js';
 import { findCommand, commandGroups, START_HERE, REGISTRY } from '../public/registry.js';
@@ -254,14 +254,17 @@ test('WHATIS: glossary and jargon in the bar open WHATIS', async () => {
 
 test('WHATIS: "what is <term>" asks WHATIS; the VIX, AAPL, WHAT and IS stay quotes', () => {
   const asks = { 'what is P/E': 'P/E', 'What is a bond?': 'bond', 'define yield': 'yield', 'explain bid ask': 'bid ask', "what's EPS": 'EPS',
-    'whats short interest': 'short interest', 'meaning of basis point': 'basis point', 'what is volatility': 'volatility' };
+    'whats short interest': 'short interest', 'meaning of basis point': 'basis point', 'define GDP': 'GDP', 'explain the yield curve': 'yield curve' };
   for (const [typed, words] of Object.entries(asks)) {
     assert.equal(whatisAsk(typed), words, typed);
     assert.ok(findTerm(words), `${typed}: a term`);
     assert.equal(parseCommand(typed).name, 'UNKNOWN', `${typed}: looked up (app.js lookUp), never a quote of WHAT`);
   }
   // A command, a listed ticker, an instrument or a company name wins.
-  for (const typed of ['what is the vix', 'what is VIX', 'what is AAPL', 'what is apple', 'what is gold', 'what is CPI', 'what is $EPS', 'define HELP']) {
+  for (const typed of ['what is the vix', 'what is VIX', 'what is AAPL', 'what is apple', 'what is gold', 'what is CPI', 'what is $EPS', 'define HELP',
+    // After "what is", a screen that runs without a ticker keeps its words.
+    'what is the exchange rate', 'what is the yield curve', 'what is the treasury curve', 'what is gdp', 'what are bond yields', 'what are market holidays',
+    'what is early close', 'what is cryptocurrency', 'what is volatility', 'what is bond volatility', 'what is ex-dividend', 'what is IPO', 'what are stock splits']) {
     assert.equal(whatisAsk(typed), null, typed);
   }
   for (const typed of ['what', 'is', 'WHAT IS', 'whatever is', 'what is']) assert.equal(whatisAsk(typed), null, typed);
@@ -278,12 +281,63 @@ test('WHATIS: "what is the vix" and "what is AAPL" still resolve to quotes', asy
   assert.deepEqual(await resolveInput('what is AAPL', deps).then((r) => [r.confident, r.command]), [true, 'AAPL']);
 });
 
-test('WHATIS: app.js asks WHATIS before the resolver, with the terms loaded only then', () => {
+test('WHATIS: app.js looks words up with resolveOrAsk, the terms loaded only then', () => {
   const src = readFileSync('public/app.js', 'utf8');
-  const at = src.indexOf('const ask = ticker ? null : whatisAsk(raw);');
-  assert.ok(at > 0 && at < src.indexOf('const found = await resolveInput(raw, {'), 'WHATIS is asked first');
+  assert.match(src, /const found = await resolveOrAsk\(raw, \{/);
+  assert.doesNotMatch(src, /await resolveInput\(/, 'one lookup path');
   assert.match(src, /const WHATIS_TERMS = 'whatis-terms\.js';/);
-  assert.match(src.slice(at, at + 600), /loadModule\(WHATIS_TERMS\)[\s\S]*terms\?\.findTerm\(ask\)[\s\S]*render\(c, \{ fromUrl, checked: true/);
+  assert.match(src, /isTerm: \(w\) => \(ticker \? false : loadModule\(WHATIS_TERMS\)\.then\(\(m\) => Boolean\(m\.findTerm\(w\)\)/);
+});
+
+// Regression: before WHATIS (2459d58), "what is <x>" for a WHATIS term or alias opened a
+// screen in 102 cases (the fixture, from that commit's resolver with no symbol search).
+// Each still opens exactly that screen; the rest (HELP <command> or did-you-mean) opens
+// WHATIS now.
+const isTerm = async (w) => Boolean(findTerm(w));
+// What the app opens for typed words: the parser first, then the lookup (app.js lookUp).
+const route = async (typed) => { const p = parseCommand(typed); return p.name !== 'UNKNOWN' ? { command: p.input } : resolveOrAsk(typed, deps, { isTerm }); };
+const BASE_ROUTES = JSON.parse(readFileSync('test/fixtures/whatis-base-routes.json', 'utf8'));
+test('WHATIS: every "what is <term>" that opened a screen before still opens it', async () => {
+  assert.ok(Object.keys(BASE_ROUTES).length >= 100);
+  for (const [typed, command] of Object.entries(BASE_ROUTES)) {
+    assert.equal((await route(typed)).command, command, typed);
+  }
+  const named = {
+    'what is the exchange rate': 'FX', 'what is the yield curve': 'CURVE', 'what is the treasury curve': 'CURVE', 'what is gdp': 'ECONOMY',
+    'what is the spot price': 'SPOT', 'what are bond yields': 'BONDS', 'what are market holidays': 'HOLIDAYS', 'what is early close': 'HOLIDAYS',
+    'what is cryptocurrency': 'CRYPTO', 'what is volatility': 'VIX', 'what is bond volatility': 'MOVEINDEX', 'what is ex-dividend': 'EXDIV',
+    'what is IPO': 'IPOS', 'what are stock splits': 'SPLITS', 'early close': 'HOLIDAYS',
+    'ex-dividend': 'EXDIV', 'stock splits': 'SPLITS', 'bond volatility': 'MOVEINDEX',
+  };
+  for (const [typed, command] of Object.entries(named)) {
+    const r = await route(typed);
+    assert.equal(r.command, command, typed);
+    assert.ok(!r.whatis, `${typed}: not WHATIS`);
+  }
+  // Bare words the parser reads first stay as they were at 2459d58: IPO is a ticker (a
+  // quote; the IPOS screen is "what is IPO" or IPOS), MARKET HOLIDAYS is MARKETS.
+  assert.deepEqual(await route('IPO'), { command: 'IPO' });
+  assert.deepEqual(await route('market holidays'), { command: 'MARKETS' });
+  assert.equal(parseCommand('IPO').name, 'QUOTE');
+});
+
+test('WHATIS: "what is <term>" with no screen of its own opens WHATIS; "define" always asks', async () => {
+  const cases = {
+    'what is P/E': 'WHATIS P/E', 'what is a bond': 'WHATIS BOND', 'what is short interest': 'WHATIS SHORT INTEREST', 'what are basis points': 'WHATIS BASIS POINTS',
+    "what's EPS?": 'WHATIS EPS', 'define GDP': 'WHATIS GDP', 'explain the yield curve': 'WHATIS YIELD CURVE', 'meaning of ex-dividend': 'WHATIS EX-DIVIDEND',
+  };
+  for (const [typed, command] of Object.entries(cases)) {
+    const r = await resolveOrAsk(typed, deps, { isTerm });
+    assert.equal(r.command, command, typed);
+    assert.equal(r.whatis, true, typed);
+    assert.ok(findTerm(parseCommand(command).args.words), typed);
+  }
+  // Not a term: the resolver's own answer (did-you-mean), never WHATIS.
+  const none = await resolveOrAsk('what is ebitda', deps, { isTerm });
+  assert.equal(none.confident, false);
+  assert.ok(!none.whatis);
+  // A ticker never becomes WHATIS, whatever the terms say.
+  assert.equal((await resolveOrAsk('what is AAPL', deps, { isTerm: async () => true })).command, 'AAPL');
 });
 
 test('QUOTE: in embed mode (a DESK panel) the stats labels stay plain', () => {
