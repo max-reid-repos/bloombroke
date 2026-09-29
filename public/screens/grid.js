@@ -1,7 +1,8 @@
-// GRID: a board of up to 16 mini charts. Numbers first: each tile's current value is the
-// biggest thing on it, its change over the range next to it, then a light line with its
-// high and low marked (H 237.40, L 164.10). /api/grid (lib/grid.js) sends every tile of a
-// board in one answer; the words it takes are in command-args.js (parseGrid).
+// GRID: a board of up to 16 mini charts. One tile template: the symbol and its short
+// name, one number, its change as coloured text (never boxed), and a small line (or "no
+// chart yet"). The high and the low are on hover (the tile's title) and in the full chart.
+// /api/grid (lib/grid.js) sends every tile of a board in one answer; the words it takes
+// are in command-args.js (parseGrid).
 //
 //   GRID                   your last board, else the starter board (1D)
 //   GRID NVDA AMD INTC 1Y  those tiles over 1Y
@@ -12,20 +13,25 @@
 // /api/grid again every REFETCH_MS for the real bars (1-minute on 1D, 5-minute on 5D).
 // Both go through the shell's ctx.live (paused while the tab is hidden or a DESK panel
 // is off screen), never two at once, and skip a turn after an error (guarded). BBRK's
-// "here now" comes from /api/live every minute. CPI, W: and RIP: tiles do not tick.
+// "here now" is the top bar's own number (here-now.js), taken when the tile loads and each
+// time the top bar gets a new one; /api/live is asked only while the top bar has none. CPI, W: and RIP: tiles do not tick.
 //
-// The range chips above the board switch every tile in place (the URL follows); STARTER
-// brings the starter board back. A click or Enter opens a tile's own screen; arrows move
-// between tiles; Delete removes
-// one; / swaps its word; C copies the board's link; the + tile adds one. On a phone the
-// tiles are one-line rows: a tap opens the row into the full tile, with OPEN. In a DESK
-// panel (embed) the board alone fills the panel: no chips, no + tile, no note.
+// The strip: the range chips switch every tile in place (the URL follows); STARTER brings
+// the starter board back; COPY LINK and POST ON X are text links; + TILE and EDIT sit at
+// its right end, like DESK's + PANEL and EDIT. + TILE goes to the + tile's input. EDIT
+// shows every tile's x (remove), and a click on a tile swaps its word. A click or Enter
+// opens a tile's own screen; arrows move between tiles; Alt+Arrows move the tile itself;
+// Delete removes one; / swaps its word; C copies the board's link. On a phone the tiles
+// are two to a row, the long name left out. "Prices may be delayed." is said once, in the
+// panel's title strip. In a DESK panel (embed) the board alone fills the panel: no strip,
+// no + tile, no note.
 // Free for everyone. The link is the save: the whole board is in the URL. This browser
 // keeps the last board (LAST_KEY); with Pro it syncs like DESK layouts (pro.js SYNC_DOCS).
 
 import { esc, q, fmtNum, fmtPct, dirOf } from './markets.js';
 import { PRESETS, nyToday } from '../ranges.js';
 import { GRID_LAST_KEY } from '../pro.js';
+import { HERE_MIN, latestHere, onHere } from '../here-now.js';
 import {
   parseGrid as parse, gridCmd, gridItem, isGridStarter,
   GRID_MAX, GRID_RANGE, GRID_STARTER, GRID_RANGE_CHIPS, WEIRD_PERIODS,
@@ -148,46 +154,82 @@ export function openCmd(item, range = GRID_RANGE) {
 
 const label = (item, tile) => tile?.label || String(item.token).replace(/^(W:|\$)/, '');
 
-// What the tile says: { big, pill, pillDir, sub, msg } from the server's tile (or none yet).
+// BBRK's "here now", by the top bar's rule (here-now.js): a number from HERE_MIN up; under
+// it (most likely the viewer alone) said in words, never a bare 0; unknown: nothing.
+export function hereWords(n) {
+  if (!Number.isInteger(n) || n < 0) return '';
+  return n >= HERE_MIN ? `${fmtNum(n, 0)} here now` : 'no one else here';
+}
+
+// What the tile says: { big, text, stale, pill, pillDir, chg, chgDir, msg } from the
+// server's tile (or none yet). big: the one number; chg and chgDir: the change beside it,
+// coloured text (up, down, flat); pill and pillDir: the same for the share card
+// (lib/og-grid.js), which draws it boxed.
 export function tileFace(item, tile) {
   if (!tile) return { msg: 'LOADING...' };
   if (tile.error === 'not_found' || item.kind === 'unknown') return { msg: 'NO SUCH TICKER', suggest: tile.suggest || item.suggest || null };
   if (tile.error) return { msg: RETRY.includes(tile.error) ? 'LOADING...' : 'NO DATA' };
   switch (tile.kind) {
-    case 'weird': return { big: tile.headline || '--', text: true, stale: Boolean(tile.stale) };
-    case 'rip': return { big: Number.isFinite(tile.final) ? `$${fmtNum(tile.final, 2)}` : tile.what || 'GONE', pill: 'RIP', pillDir: 'rip' };
-    case 'bbrk': return {
-      big: Number.isInteger(tile.views7) ? fmtNum(tile.views7, 0) : '--', pill: '7D', pillDir: 'flat',
-      sub: `page views this week · ${Number.isInteger(tile.here) ? fmtNum(tile.here, 0) : '--'} here now`,
-      rowPill: `${Number.isInteger(tile.here) ? fmtNum(tile.here, 0) : '--'} here`,
-    };
-    default: return {
-      big: fmtValue(tile.last, tile.decimals, tile.unit), pill: fmtPct(tile.changePct), pillDir: dirOf(tile.changePct), stale: Boolean(tile.stale),
-    };
+    case 'weird': return { big: tile.hero || tile.headline || '--', parts: tile.heroParts || null, text: true, stale: Boolean(tile.stale), chg: '', chgDir: 'flat' };
+    case 'rip': {
+      const paid = Number.isFinite(tile.final) && tile.final > 0;
+      return { big: paid ? `$${fmtNum(tile.final, 2)}` : tile.what || 'GONE', text: !paid, pill: 'RIP', pillDir: 'rip', chg: 'RIP', chgDir: 'down' };
+    }
+    case 'bbrk': {
+      const v = tile.visitors7;
+      return {
+        big: Number.isInteger(v) ? (v > 0 ? fmtNum(v, 0) : 'none yet') : '--', text: v === 0, pill: '7D', pillDir: 'flat',
+        chg: hereWords(tile.here), chgDir: 'flat',
+      };
+    }
+    default: {
+      const pill = fmtPct(tile.changePct);
+      const dir = dirOf(tile.changePct);
+      return { big: fmtValue(tile.last, tile.decimals, tile.unit), pill, pillDir: dir, chg: Number.isFinite(tile.changePct) ? pill : '', chgDir: dir, stale: Boolean(tile.stale) };
+    }
   }
 }
 
-// One tile: the desktop tile and the phone row are the same markup (grid.css shows one
-// or the other). i: its place; open: the phone row is open; range: for OPEN.
-export function tileHtml(item, tile, { i = 0, open = false, range = GRID_RANGE } = {}) {
+// A W: tile's credit, where its source's licence asks for one next to the data (WAFFLE:
+// © OpenStreetMap, linked to its copyright page; BIGMAC: The Economist, CC BY 4.0).
+export function creditHtml(tile) {
+  if (tile?.kind !== 'weird' || tile.error || !tile.credit) return '';
+  const text = esc(tile.credit);
+  const l = tile.creditLink;
+  const html = l?.text && l.href && tile.credit.includes(l.text)
+    ? text.replace(esc(l.text), `<a href="${esc(l.href)}" target="_blank" rel="noopener noreferrer"${l.title ? ` title="${esc(l.title)}"` : ''}>${esc(l.text)}</a>`)
+    : text;
+  return `<p class="gr-credit">${html}</p>`;
+}
+
+// The tile's title (on hover): what the line holds that the tile does not print. A
+// market or CPI tile: its high and its low; a stone: its marks; BBRK: what it counts.
+export function hoverText(tile) {
+  if (!tile || tile.error) return '';
+  if (tile.kind === 'bbrk') return 'Visitors in the last 7 days. The line: visitors a day, the same 7 days.';
+  if (tile.kind === 'weird') return tile.name || '';
+  return marksFor(tile).map((m) => m.text.replace(/^H /, 'High ').replace(/^L /, 'Low ')).join(' · ');
+}
+
+// One tile, the same markup on every screen size (grid.css). i: its place; range: its
+// command's range.
+export function tileHtml(item, tile, { i = 0, range = GRID_RANGE } = {}) {
   const f = tileFace(item, tile);
   const sym = label(item, tile);
   const name = tile?.name || '';
   const cmd = openCmd(item, range);
-  const pill = f.pill ? `<span class="gr-pill num ${esc(f.pillDir || 'flat')}">${esc(f.pill)}</span>` : '';
   // CPI is monthly: under a year it shows a year, and says so.
   const own = tile?.kind === 'cpi' && !tile.error && tile.range && tile.range !== range ? `<span class="gr-rng">${esc(tile.range)}</span>` : '';
   const dym = f.suggest ? `<p class="gr-dym">Did you mean <button type="button" class="gr-swapto" data-swap="${esc(f.suggest)}">${esc(f.suggest)}</button>?</p>` : '';
-  const hero = f.msg
+  const chg = `<span class="gr-chg num ${esc(f.chgDir || 'flat')}">${esc(f.chg || '')}</span>`;
+  const body = f.msg
     ? `<div class="gr-hero"><span class="gr-msg">${esc(f.msg)}</span></div>${dym}`
-    : `<div class="gr-hero"><span class="gr-big num${f.text ? ' is-text' : ''}${f.stale ? ' is-stale' : ''}">${esc(f.big)}</span>${pill}${own}</div>${f.sub ? `<p class="gr-sub">${esc(f.sub)}</p>` : ''}`;
-  const rowVal = f.msg ? `<span class="gr-val gr-msg">${esc(f.msg)}</span>` : `<span class="gr-val num${f.text ? ' is-text' : ''}">${esc(f.big)}</span>`;
-  const rowChg = f.msg ? '' : f.rowPill ? `<span class="gr-chg num flat">${esc(f.rowPill)}</span>` : f.pill ? `<span class="gr-chg num ${esc(f.pillDir || 'flat')}">${esc(f.pill)}</span>` : '<span class="gr-chg"></span>';
-  const openLink = cmd && !f.msg ? `<a class="gr-open code" href="${esc(q(cmd))}" data-cmd="${esc(cmd)}">OPEN</a>` : '';
+    : `<div class="gr-hero"><span class="gr-big num${f.text ? ' is-text' : ''}${f.stale ? ' is-stale' : ''}">${esc(f.big)}</span>${chg}${own}</div><div class="gr-chart"></div>${creditHtml(tile)}`;
   const kind = tile?.kind && tile.kind !== 'unknown' ? tile.kind : item.kind;
-  return `<div class="gr-tile is-${esc(kind)}${open ? ' is-open' : ''}" data-i="${i}" data-token="${esc(item.token)}" tabindex="0" aria-label="${esc(`${sym}${name ? `, ${name}` : ''}${cmd ? '. Enter opens it' : ''}`)}">
-    <div class="gr-row" data-row><span class="gr-sym">${esc(sym)}</span><span class="gr-name">${esc(name)}</span><span class="gr-mini" aria-hidden="true"></span>${rowVal}${rowChg}</div>
-    <div class="gr-full">${hero}<div class="gr-chart"></div>${openLink}</div>
+  const hover = hoverText(tile);
+  return `<div class="gr-tile is-${esc(kind)}" data-i="${i}" data-token="${esc(item.token)}" tabindex="0"${hover ? ` title="${esc(hover)}"` : ''} aria-label="${esc(`${sym}${name ? `, ${name}` : ''}${cmd ? '. Enter opens it' : ''}`)}">
+    <div class="gr-head"><span class="gr-sym">${esc(sym)}</span><span class="gr-name">${esc(name)}</span></div>
+    ${body}
     <button type="button" class="gr-x" data-x tabindex="-1" aria-label="Remove ${esc(sym)}">×</button>
   </div>`;
 }
@@ -207,6 +249,18 @@ export function rangeChips(range) {
 // A small text button back to the starter board (none while the board is the starter).
 export function starterButton(tokens) {
   return isGridStarter(tokens) ? '' : '<button type="button" class="gr-starter" data-starter>STARTER</button>';
+}
+
+// The strip's right end, DESK's words in DESK's place (desk.js: + PANEL, EDIT): + TILE
+// goes to the + tile, EDIT shows every x and makes a click swap (DONE ends it).
+export const NO_CHART = 'no chart yet';
+export const EDIT_HINT = 'Click a tile to swap it, x removes it, Alt+Arrows move it.';
+export function editButtons(editing = false) {
+  return `<button type="button" class="desk-btn gr-add-btn" data-add>+ TILE</button><button type="button" class="desk-btn gr-edit" data-edit aria-pressed="${editing}">${editing ? 'DONE' : 'EDIT'}</button>`;
+}
+// COPY LINK and POST ON X: text links, not keys (no boxes).
+export function shareHtml(links) {
+  return `<button type="button" class="gr-link" data-copy>COPY LINK</button><span class="gr-dot-sep" aria-hidden="true">·</span><a class="gr-link" href="${esc(links.x)}" target="_blank" rel="noopener noreferrer">POST ON X</a>`;
 }
 
 // SHARE: the board's link, and a post on X that carries it.
@@ -244,9 +298,11 @@ export function sceneKeys(scene, onKey, { doc = globalThis.document } = {}) {
   scene.tabIndex = -1;
   scene.dataset.ownFocus = '';
   const handler = (ev) => {
-    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    // Alt passes only with an arrow (Alt+Arrows move a tile, as on DESK).
+    if (ev.metaKey || ev.ctrlKey || (ev.altKey && !String(ev.key).startsWith('Arrow'))) return;
     const t = ev.target;
     if (t?.id === 'cmd') {
+      if (ev.altKey) return;
       const list = doc.getElementById?.('suggest');
       if (ev.key === 'Escape' && !t.value && !(list && !list.hidden) && !ev.defaultPrevented && scene.isConnected !== false) {
         ev.preventDefault();
@@ -261,13 +317,17 @@ export function sceneKeys(scene, onKey, { doc = globalThis.document } = {}) {
   return () => doc.removeEventListener('keydown', handler, true);
 }
 
-// A key on the board -> what it does: move, open, remove, swap, copy, or null (not ours).
-// inScene: the focus is inside the board; tileAt: the focused tile's place (-1: none).
-// A DESK panel (embed) only shows its board: no remove, no swap.
-export function boardKeyAction(key, { inScene = false, tileAt = -1, embed = false, phone = false, shift = false } = {}) {
+// A key on the board -> what it does: move, reorder, open, remove, swap, copy, or null
+// (not ours). inScene: the focus is inside the board; tileAt: the focused tile's place
+// (-1: none). A DESK panel (embed) only shows its board: no remove, no swap, no reorder.
+export function boardKeyAction(key, { inScene = false, tileAt = -1, embed = false, phone = false, shift = false, alt = false } = {}) {
   if (!inScene) return null;
-  if (key.startsWith('Arrow')) return shift ? null : 'move';
-  if (key === 'Enter' && tileAt >= 0) return phone ? 'toggle' : 'open';
+  if (key.startsWith('Arrow')) {
+    if (alt) return !embed && !shift && tileAt >= 0 ? 'reorder' : null;
+    return shift ? null : 'move';
+  }
+  if (alt) return null;
+  if (key === 'Enter' && tileAt >= 0) return 'open';
   if ((key === 'Delete' || key === 'Backspace') && tileAt >= 0) return embed ? null : 'remove';
   if (key === '/' && tileAt >= 0) return embed ? null : 'swap';
   if ((key === 'c' || key === 'C') && !phone) return 'copy';
@@ -289,7 +349,7 @@ export function stepIndex(cur, key, cols, n) {
 // new one shows here within about 8 s.
 export const TICK_MS = 8_000;
 export const REFETCH_MS = 60_000; // /api/grid again, 1D and 5D only (the real bars)
-export const HERE_MS = 60_000; // BBRK's here now (/api/live)
+export const HERE_MS = 60_000; // BBRK's here now (the top bar's number; /api/live without one)
 export const FLASH_MS = 700;
 // The bar a tick fills: 1D draws 1-minute bars (lib/grid.js GRID_BARS), 5D 5-minute bars.
 export const BUCKET_MS = { '1D': 60_000, '5D': 5 * 60_000 };
@@ -479,17 +539,16 @@ export function render(el, cmd, ctx) {
   } else items = args.items.slice();
 
   const data = new Map(); // token -> the server's tile, for this range
-  let openAt = -1; // the phone row that is open
+  let editing = false; // EDIT: every x shows, a click swaps
   const timers = new Set();
   const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); };
   ctx.onCleanup(() => { for (const id of timers) clearTimeout(id); });
 
   el.innerHTML = `<section class="panel panel-solo gr-panel${ctx.embed ? ' is-embed' : ''}">
-    <header class="panel-head"><h2 class="panel-label">1) GRID</h2><span class="panel-meta gr-meta"></span></header>
+    <header class="panel-head"><h2 class="panel-label">1) GRID</h2><span class="panel-meta gr-meta">${ctx.embed ? '' : esc(NOTE_LINE)}</span></header>
     <div class="panel-body flush gr-body">
-      <div class="gr-bar"><div class="gr-chips"></div><div class="gr-share"></div></div>
+      <div class="gr-bar"><div class="gr-chips"></div><span class="gr-hint">${esc(EDIT_HINT)}</span><div class="gr-share"></div></div>
       <div class="gr-scene"><div class="gr-board"></div></div>
-      <div class="gr-foot"></div>
       <div class="gr-toast" role="status" aria-live="polite"></div>
     </div>
   </section>`;
@@ -497,7 +556,7 @@ export function render(el, cmd, ctx) {
   const board = el.querySelector('.gr-board');
   const chipsEl = el.querySelector('.gr-chips');
   const shareEl = el.querySelector('.gr-share');
-  const foot = el.querySelector('.gr-foot');
+  const panelEl = el.querySelector('.gr-panel');
   const toastEl = el.querySelector('.gr-toast');
   const tokens = () => items.map((i) => i.token);
   const origin = typeof location === 'object' ? location.origin : 'https://bloombroke.com';
@@ -506,25 +565,20 @@ export function render(el, cmd, ctx) {
   function drawBar() {
     const t = tokens();
     chipsEl.innerHTML = `${rangeChips(range)}${starterButton(t)}`;
-    const links = shareLinks(t, range, origin);
-    shareEl.innerHTML = `<button type="button" class="chip" data-copy>COPY LINK</button><a class="chip" href="${esc(links.x)}" target="_blank" rel="noopener noreferrer">POST ON X</a>`;
+    shareEl.innerHTML = `${shareHtml(shareLinks(t, range, origin))}${ctx.embed ? '' : editButtons(editing)}`;
   }
-  function drawFoot() {
-    foot.innerHTML = `<p class="gr-note">${esc(NOTE_LINE)}</p>`;
-  }
+  // The small line, drawn at the chart box's size; a tile with no points says so.
   function drawTileCharts(node) {
     const item = items[Number(node.dataset.i)];
     const tile = item && data.get(item.token);
     const host = node.querySelector('.gr-chart');
-    const mini = node.querySelector('.gr-mini');
-    const pts = tile && !tile.error ? tile.points : null;
-    const dir = tile?.kind === 'rip' ? 'down' : dirOf(tile?.changePct);
-    if (host) {
-      const w = Math.floor(host.clientWidth);
-      const h = Math.floor(host.clientHeight);
-      host.innerHTML = pts && w > 8 && h > 8 ? gridSparkSvg(pts, { w, h, marks: marksFor(tile), dir, byTime: Boolean(tile.xByTime) }) : '';
-    }
-    if (mini) mini.innerHTML = pts && phone() ? gridSparkSvg(pts, { w: 56, h: 16, dir, pad: 1, byTime: Boolean(tile.xByTime), cls: 'is-mini' }) : '';
+    if (!host) return;
+    const pts = tile && !tile.error && Array.isArray(tile.points) && tile.points.length > 1 ? tile.points : null;
+    if (!pts) { host.innerHTML = `<p class="gr-nochart">${esc(NO_CHART)}</p>`; return; }
+    const dir = tile.kind === 'rip' ? 'down' : dirOf(tile.changePct);
+    const w = Math.floor(host.clientWidth);
+    const h = Math.floor(host.clientHeight);
+    host.innerHTML = w > 8 && h > 8 ? gridSparkSvg(pts, { w, h, dir, byTime: Boolean(tile.xByTime), pad: 4 }) : '';
   }
   function drawCharts() {
     board.querySelectorAll('.gr-tile[data-i]').forEach(drawTileCharts);
@@ -539,28 +593,26 @@ export function render(el, cmd, ctx) {
     const tile = data.get(item.token);
     const f = tileFace(item, tile);
     const big = node.querySelector('.gr-big');
-    const val = node.querySelector('.gr-val');
-    if (f.msg || !big || !val || val.classList.contains('gr-msg')) {
+    if (f.msg || !big) {
       if (node.querySelector('.gr-swap-in')) return;
       const had = document.activeElement === node;
-      node.outerHTML = tileHtml(item, tile, { i, open: i === openAt, range });
+      node.outerHTML = tileHtml(item, tile, { i, range });
       const fresh = board.querySelector(`.gr-tile[data-i="${i}"]`);
       if (fresh) { drawTileCharts(fresh); if (had) fresh.focus({ preventScroll: true }); }
       return;
     }
     big.textContent = f.big;
     big.classList.toggle('is-stale', Boolean(f.stale));
-    val.textContent = f.big;
-    const pill = node.querySelector('.gr-hero .gr-pill');
-    if (pill && f.pill) { pill.textContent = f.pill; pill.className = `gr-pill num ${f.pillDir || 'flat'}`; }
-    const sub = node.querySelector('.gr-sub');
-    if (sub && f.sub) sub.textContent = f.sub;
-    const chg = node.querySelector('.gr-row .gr-chg');
-    if (chg && (f.rowPill || f.pill)) { chg.textContent = f.rowPill || f.pill; chg.className = `gr-chg num ${f.rowPill ? 'flat' : f.pillDir || 'flat'}`; }
+    big.classList.toggle('is-text', Boolean(f.text));
+    const chg = node.querySelector('.gr-hero .gr-chg');
+    if (chg) { chg.textContent = f.chg || ''; chg.className = `gr-chg num ${f.chgDir || 'flat'}`; }
+    const hover = hoverText(tile);
+    if (hover) node.title = hover; else node.removeAttribute('title');
     const fl = flashClass(prev?.last, tile?.last, { reduced: Boolean(reducedMq?.matches) });
     if (fl) {
-      for (const n of [big, val]) { n.classList.remove('gr-flash-up', 'gr-flash-down'); n.classList.add(fl); }
-      later(() => { for (const n of [big, val]) n.classList.remove(fl); }, FLASH_MS);
+      big.classList.remove('gr-flash-up', 'gr-flash-down');
+      big.classList.add(fl);
+      later(() => big.classList.remove(fl), FLASH_MS);
     }
     drawTileCharts(node);
   }
@@ -570,12 +622,12 @@ export function render(el, cmd, ctx) {
     const withAdd = !ctx.embed && items.length < GRID_MAX;
     const { cols, rows } = layoutFor(items.length + (withAdd ? 1 : 0));
     board.className = `gr-board gr-c${cols} gr-r${rows}`;
-    board.innerHTML = items.map((it, i) => tileHtml(it, data.get(it.token), { i, open: i === openAt, range })).join('') + (withAdd ? addTileHtml() : '');
+    board.innerHTML = items.map((it, i) => tileHtml(it, data.get(it.token), { i, range })).join('') + (withAdd ? addTileHtml() : '');
     drawCharts();
     if (focusAt === 'add') board.querySelector('.gr-in')?.focus({ preventScroll: true });
     else if (focusAt !== null) (board.querySelector(`.gr-tile[data-i="${focusAt}"]`) || board.querySelector('.gr-tile'))?.focus({ preventScroll: true });
   }
-  function drawAll() { drawBar(); drawBoard(); drawFoot(); }
+  function drawAll() { drawBar(); drawBoard(); }
 
   let toastTimer = null;
   function toast(text) {
@@ -626,6 +678,8 @@ export function render(el, cmd, ctx) {
       takeQuote(t.token, { patch: false }); // the last quote seen moves it on at once
     }
     drawBoard();
+    // BBRK's here now: the top bar's number, at once, not a minute later.
+    if ((d.tiles || []).some((t) => t.kind === 'bbrk' && !t.error)) hereNow();
     // A market tile with no quote yet (the first load, an added tile): ask now, not a tick later.
     if ((d.tiles || []).some((t) => t.kind === 'market' && !t.error && !quotes.has(t.token))) tick();
     ctx.updated?.(d.updated, false);
@@ -693,15 +747,23 @@ export function render(el, cmd, ctx) {
     if (d?.updated) ctx.updated?.(d.updated, false);
   });
   const refetch = async () => { const r = await refetchOnce(); return r === 'ok' ? (moved ? 'changed' : 'same') : r; };
-  // Every HERE_MS with a BBRK tile: its "here now" (/api/live, cached on the server).
+  // BBRK's "here now": the top bar's own number (here-now.js latestHere, and each new one it
+  // gets, onHere), never a second request while the top bar has one. Only when it has none
+  // yet (a DESK panel, the first seconds) does the tile ask /api/live itself (cached there).
+  function takeHere(n) {
+    const cur = data.get('BBRK');
+    if (!Number.isInteger(n) || !cur || cur.error || cur.here === n) return;
+    data.set('BBRK', { ...cur, here: n });
+    if (indexOf('BBRK') >= 0) patchTile(indexOf('BBRK'), cur);
+  }
+  ctx.onCleanup(onHere(takeHere));
   const hereNow = guarded(async () => {
     const had = data.get('BBRK');
     if (!had || had.error) return;
+    const shared = latestHere();
+    if (shared !== null) { takeHere(shared); return; }
     const d = await getJSON('/api/live', { signal: ctx.signal });
-    const cur = data.get('BBRK');
-    if (!Number.isInteger(d?.here) || !cur || cur.error || cur.here === d.here) return;
-    data.set('BBRK', { ...cur, here: d.here });
-    if (indexOf('BBRK') >= 0) patchTile(indexOf('BBRK'), cur);
+    takeHere(d?.here);
   });
 
   // ---- edits ----
@@ -744,7 +806,6 @@ export function render(el, cmd, ctx) {
   function remove(i) {
     if (ctx.embed || !items[i]) return;
     items.splice(i, 1);
-    if (openAt === i) openAt = -1; else if (openAt > i) openAt -= 1;
     commit();
     drawAll();
     const next = board.querySelector(`.gr-tile[data-i="${Math.min(i, items.length - 1)}"]`) || board.querySelector('.gr-in');
@@ -752,7 +813,6 @@ export function render(el, cmd, ctx) {
   }
   function setBoard(list) {
     items = list.map(gridItem).filter(Boolean).slice(0, GRID_MAX);
-    openAt = -1;
     commit();
     drawAll();
     load(missing());
@@ -770,10 +830,32 @@ export function render(el, cmd, ctx) {
     const c = openCmd(items[i], range);
     if (c) ctx.run(c);
   }
-  function toggleRow(i) {
-    openAt = openAt === i ? -1 : i;
-    board.querySelectorAll('.gr-tile[data-i]').forEach((n) => n.classList.toggle('is-open', Number(n.dataset.i) === openAt));
-    drawCharts();
+  // Alt+Arrows: the tile trades places with its neighbour that way (the board's order is
+  // its link, so the URL and the last board follow).
+  function moveTile(i, key) {
+    if (ctx.embed || !items[i]) return false;
+    const n = board.querySelectorAll('.gr-tile[data-i]').length;
+    const j = stepIndex(i, key, boardCols(), n);
+    if (j === i) return false;
+    [items[i], items[j]] = [items[j], items[i]];
+    commit();
+    drawBoard();
+    board.querySelector(`.gr-tile[data-i="${j}"]`)?.focus({ preventScroll: true });
+    return true;
+  }
+  const boardCols = () => getComputedStyle(board).gridTemplateColumns.split(' ').filter(Boolean).length || 1;
+  // + TILE: to the + tile's input (a full board says so).
+  function goAdd() {
+    if (!room()) return;
+    const input = board.querySelector('.gr-add .gr-in');
+    input?.scrollIntoView?.({ block: 'nearest' });
+    input?.focus({ preventScroll: true });
+  }
+  function setEditing(on) {
+    editing = Boolean(on);
+    panelEl.classList.toggle('is-editing', editing);
+    const b = shareEl.querySelector('[data-edit]');
+    if (b) { b.setAttribute('aria-pressed', String(editing)); b.textContent = editing ? 'DONE' : 'EDIT'; }
   }
   async function copyLink() {
     const ok = await ctx.copy(shareLinks(tokens(), range, origin).url);
@@ -820,9 +902,11 @@ export function render(el, cmd, ctx) {
   });
   shareEl.addEventListener('click', (e) => {
     if (e.target.closest('[data-copy]')) { e.preventDefault(); copyLink(); }
+    else if (e.target.closest('[data-add]')) { e.preventDefault(); goAdd(); }
+    else if (e.target.closest('[data-edit]')) { e.preventDefault(); setEditing(!editing); }
   });
   board.addEventListener('click', (e) => {
-    if (e.target.closest('.gr-open')) return; // a data-cmd link: the page runs it
+    if (e.target.closest('a[href^="https://"]')) return; // a credit link opens its site, not the tile
     const node = e.target.closest('.gr-tile');
     if (!node) return;
     if (node.classList.contains('gr-add')) { node.querySelector('.gr-in')?.focus(); return; }
@@ -832,7 +916,7 @@ export function render(el, cmd, ctx) {
     const to = e.target.closest('[data-swap]');
     if (to) { e.preventDefault(); e.stopPropagation(); swap(i, to.dataset.swap); return; }
     if (e.target.closest('input')) return;
-    if (phone()) toggleRow(i);
+    if (editing && !ctx.embed) startSwap(i);
     else openTile(i);
   });
   board.addEventListener('keydown', (e) => {
@@ -851,15 +935,14 @@ export function render(el, cmd, ctx) {
     const nodes = [...board.querySelectorAll('.gr-tile')];
     const cur = inScene ? nodes.indexOf(active.closest('.gr-tile')) : -1;
     const tileAt = cur >= 0 && nodes[cur].dataset.i !== undefined ? Number(nodes[cur].dataset.i) : -1;
-    const act = boardKeyAction(e.key, { inScene, tileAt, embed: ctx.embed, phone: phone(), shift: e.shiftKey });
+    const act = boardKeyAction(e.key, { inScene, tileAt, embed: ctx.embed, phone: phone(), shift: e.shiftKey, alt: e.altKey });
     if (act === 'move') {
-      const cols = phone() ? 1 : (getComputedStyle(board).gridTemplateColumns.split(' ').filter(Boolean).length || 1);
-      const next = nodes[stepIndex(cur, e.key, cols, nodes.length)];
+      const next = nodes[stepIndex(cur, e.key, boardCols(), nodes.length)];
       if (next?.classList.contains('gr-add')) next.querySelector('.gr-in')?.focus(); else next?.focus();
       return Boolean(next);
     }
+    if (act === 'reorder') return moveTile(tileAt, e.key) || true;
     if (act === 'open') openTile(tileAt);
-    else if (act === 'toggle') toggleRow(tileAt);
     else if (act === 'remove') remove(tileAt);
     else if (act === 'swap') startSwap(tileAt);
     else if (act === 'copy') copyLink();
@@ -871,7 +954,7 @@ export function render(el, cmd, ctx) {
   let raf = 0;
   const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(drawCharts); }) : null;
   ro?.observe(board);
-  const onPhone = () => { openAt = -1; drawBoard(); };
+  const onPhone = () => drawBoard();
   phoneMq?.addEventListener?.('change', onPhone);
   ctx.onCleanup(() => { ro?.disconnect(); cancelAnimationFrame(raf); phoneMq?.removeEventListener?.('change', onPhone); });
 

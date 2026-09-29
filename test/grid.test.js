@@ -11,7 +11,7 @@ import {
 } from '../public/command-args.js';
 import { parseCommand } from '../public/app.js';
 import {
-  layoutFor, gridSparkSvg, placeLabel, marksFor, tileHtml, tileFace, openCmd, starterButton, rangeChips,
+  layoutFor, gridSparkSvg, placeLabel, marksFor, tileHtml, tileFace, hoverText, openCmd, starterButton, rangeChips,
   saveLastBoard, boardKeyAction, sceneKeys, LAST_KEY,
   shareLinks, stepIndex, cleanBoard, LABEL_CHAR_W, toInput,
   applyQuote, barStep, flashClass, guarded, quoteTime, isIntraday, BUCKET_MS, TICK_MS, REFETCH_MS, FLASH_MS,
@@ -163,41 +163,45 @@ test('GRID layout and keys', () => {
 
 // ---- tiles and phone rows ------------------------------------------------------------------------
 
-test('GRID tiles: numbers first, and one-line phone rows that open in place', () => {
+test('GRID tiles: one template, one number and one change as coloured text, high and low on hover only', () => {
   const item = gridItem('NVDA');
   const tile = { ...marketTile('NVDA', { points: series(50) }), name: 'Nvidia' };
   const html = tileHtml(item, tile, { i: 3, range: '5Y' });
-  // The row: symbol, a tiny line, the value, the change.
-  const row = /<div class="gr-row" data-row>(.*?)<\/div>/s.exec(html)[1];
-  assert.match(row, /<span class="gr-sym">NVDA<\/span>/);
-  assert.match(row, /<span class="gr-mini" aria-hidden="true"><\/span>/);
-  assert.match(row, /<span class="gr-val num">[\d,.]+<\/span>/);
-  assert.match(row, /<span class="gr-chg num (up|down|flat)">[+−]?[\d.]+%<\/span>/);
-  // The whole tile: the big value with its change pill, the line, OPEN (shown when open).
-  assert.match(html, /<span class="gr-big num">[\d,.]+<\/span><span class="gr-pill num (up|down|flat)">/);
-  assert.match(html, /<div class="gr-chart"><\/div>/);
-  assert.match(html, /<a class="gr-open code" href="\?c=NVDA\+5Y" data-cmd="NVDA 5Y">OPEN<\/a>/);
+  // The head: the symbol and its short name.
+  assert.match(html, /<div class="gr-head"><span class="gr-sym">NVDA<\/span><span class="gr-name">Nvidia<\/span><\/div>/);
+  // One number, one change (coloured text, never a boxed pill), then the line's box.
+  assert.match(html, /<div class="gr-hero"><span class="gr-big num">[\d,.]+<\/span><span class="gr-chg num (up|down|flat)">[+−]?[\d.]+%<\/span><\/div><div class="gr-chart"><\/div>/);
+  assert.equal((html.match(/class="gr-big/g) || []).length, 1, 'one number');
+  assert.equal((html.match(/class="gr-chg/g) || []).length, 1, 'one change');
+  assert.doesNotMatch(html, /gr-pill|gr-row|gr-val|gr-mini|gr-open|gr-sub|is-open/, 'no second template, no pill');
+  // High and low: in the title (hover) only, never printed on the tile.
+  const hi = Math.max(...tile.points.map((p) => p.v));
+  assert.match(html, /title="High [\d,.]+ · Low [\d,.]+"/);
+  assert.equal(hoverText(tile), marksFor(tile).map((m) => m.text.replace(/^H /, 'High ').replace(/^L /, 'Low ')).join(' · '));
+  assert.ok(hoverText(tile).includes(hi.toFixed(2)));
+  assert.doesNotMatch(html.replace(/title="[^"]*"/g, ''), /High|Low|H \d/);
   assert.match(html, /data-i="3"/);
-  assert.doesNotMatch(html, /is-open/);
-  assert.match(tileHtml(item, tile, { i: 3, open: true }), /class="gr-tile is-market is-open"/);
   assert.match(html, /class="gr-x" data-x tabindex="-1" aria-label="Remove NVDA">×</);
   assert.doesNotMatch(html, /style=/);
   const css = readFileSync('public/screens/grid.css', 'utf8');
+  assert.doesNotMatch(css, /\.gr-chg[^{]*\{[^}]*border/, 'the change is never boxed');
+  assert.match(css, /\.gr-line\.flat \{ stroke: var\(--dim\); \}/, 'no change: the dim colour, never blue');
   const phone = css.slice(css.indexOf('@media (max-width: 639px)'));
-  assert.match(phone, /html:not\(\.is-embed\) \.gr-board \{ grid-template-columns: minmax\(0, 1fr\)/, 'a phone shows rows, not 2 columns');
-  assert.match(phone, /\.gr-tile:not\(\.is-open\) \.gr-full \{ display: none; \}/);
+  assert.match(phone, /html:not\(\.is-embed\) \.gr-board \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/, 'a phone shows 2 tiles a row');
+  assert.match(phone, /html:not\(\.is-embed\) \.gr-name \{ display: none; \}/, 'the long name is left out on a phone');
   assert.match(phone, /\.gr-chips \{[^}]*overflow-x: auto/, 'the chips scroll sideways inside the bar');
-  assert.match(css, /\.gr-panel\.is-embed \.gr-bar, \.gr-panel\.is-embed \.gr-foot, \.gr-panel\.is-embed \.gr-x, \.gr-panel\.is-embed \.gr-dym \{ display: none; \}/, 'a DESK panel: the board alone');
+  assert.match(css, /\.gr-panel\.is-embed \.gr-bar, \.gr-panel\.is-embed \.gr-x, \.gr-panel\.is-embed \.gr-dym \{ display: none; \}/, 'a DESK panel: the board alone');
   // Faces for every kind.
   assert.deepEqual(tileFace(gridItem('NVIDIA'), { error: 'not_found', suggest: 'NVDA' }), { msg: 'NO SUCH TICKER', suggest: 'NVDA' });
   assert.match(tileHtml(gridItem('NVIDIA'), { token: 'NVIDIA', error: 'not_found', suggest: 'NVDA' }), /Did you mean <button type="button" class="gr-swapto" data-swap="NVDA">NVDA<\/button>\?/);
   assert.equal(tileFace(gridItem('NVDA'), null).msg, 'LOADING...');
   assert.equal(tileFace(gridItem('NVDA'), { error: 'no_data' }).msg, 'NO DATA');
   const rip = ripTile(gridItem('RIP:LEH'), GRAVES.stones.find((e) => e.ticker === 'LEH'));
-  assert.deepEqual([tileFace(gridItem('RIP:LEH'), rip).big, tileFace(gridItem('RIP:LEH'), rip).pill], ['$0.00', 'RIP']);
-  const bb = tileFace(gridItem('BBRK'), { kind: 'bbrk', views7: 12345, here: 7 });
-  assert.equal(bb.big, '12,345');
-  assert.match(bb.sub, /page views this week · 7 here now/);
+  const rf = tileFace(gridItem('RIP:LEH'), rip);
+  assert.deepEqual([rf.big, rf.pill, rf.chg, rf.chgDir], ['FILED', 'RIP', 'RIP', 'down'], 'a stone that went to nothing: its word, the zero is drawn by the line');
+  assert.match(hoverText(rip), /FILED SEP 2008/, 'its marks on hover');
+  const bb = tileFace(gridItem('BBRK'), { kind: 'bbrk', visitors7: 12345, here: 7 });
+  assert.deepEqual([bb.big, bb.chg, bb.chgDir, bb.pill], ['12,345', '7 here now', 'flat', '7D']);
   assert.deepEqual(['NVDA', '$GOLD', 'CPI', 'W:EGGS', 'RIP:LEH', 'BBRK'].map((t) => openCmd(gridItem(t), '5Y')), ['NVDA 5Y', '$GOLD 5Y', 'CPI', 'EGGPRICE 5Y', 'GRAVEYARD LEH', 'BBRK']);
   for (const c of ['NVDA 5Y', '$GOLD 5Y', 'CPI', 'EGGPRICE 5Y', 'GRAVEYARD LEH', 'BBRK']) assert.notEqual(parseCommand(c).name, 'UNKNOWN', c);
 });
@@ -273,7 +277,7 @@ function fakeDeps() {
   };
   let weirdCalls = 0;
   const getWeird = async () => { weirdCalls += 1; return { gauges: [{ id: 'eggs', ok: true, headline: '$2.27 A DOZEN', spark: [3, 2, 6, 1] }, { id: 'pizza', ok: false, headline: 'NO DATA' }] }; };
-  const audience = { get: async () => ({ pageviews: { d7: 4321 }, live: 5 }) };
+  const audience = { get: async () => ({ visitors: { d7: 4321 }, live: 5 }) };
   // A fixed clock in the New York session (11:00 on a Monday), so 1D asks for 1-minute bars.
   const t0 = Date.now();
   const now = () => Date.UTC(2026, 8, 28, 15) + (Date.now() - t0);
@@ -307,7 +311,7 @@ test('/api/grid: every tile in one answer, 4 charts at a time, a busy one to try
     assert.equal(f.weirdCalls(), 1, 'one WEIRD read for every gauge tile');
     assert.equal(by['RIP:LEH'].kind, 'rip');
     assert.equal(by.CPI.kind, 'cpi');
-    assert.deepEqual([by.BBRK.views7, by.BBRK.here], [4321, 5]);
+    assert.deepEqual([by.BBRK.visitors7, by.BBRK.here], [4321, 5]);
     // The retry: only the failed ones, and a clean answer is kept a minute.
     const again = await fetch(`${base}/api/grid?s=AA,BB&r=5Y`);
     assert.equal(again.headers.get('cache-control'), 'public, max-age=60');
@@ -434,15 +438,15 @@ test('GRID card: a cold cache loads the missing tiles through the loader, 4 at a
   assert.ok(m.tiles.every((t) => !t.missing), 'all 16 drawn');
   // W:EGGPRICE and BBRK, as /api/grid serves them.
   const egg = m.tiles[parsed.tokens.indexOf('W:EGGPRICE')];
-  assert.deepEqual([egg.sym, egg.big], ['EGGPRICE', '$2.27 A DOZEN']);
+  assert.deepEqual([egg.sym, egg.big], ['EGGPRICE', 'Eggs $2.27 a dozen'], 'the WEIRD hero: a noun and its number');
   const bb = m.tiles[parsed.tokens.indexOf('BBRK')];
-  assert.deepEqual([bb.sym, bb.big, bb.pill], ['BBRK', '4,321', '7D'], 'the week of page views, like the page tile');
+  assert.deepEqual([bb.sym, bb.big, bb.pill], ['BBRK', '4,321', '7D'], 'the week of visitors, like the page tile');
   // Again: from memory, nothing loaded, nothing drawn.
   const b = await cards.png('STARTER', '1Y', '1.1.1.1');
   assert.deepEqual([b.png, b.maxAge, renders, c.calls.length], [a.png, 14400, 1, markets]);
   // A W: alias is the same tile: W:EGGS draws the kept W:EGGPRICE.
   const alias = gridCardModel(cardBoard('W:EGGS', '1Y'), grid);
-  assert.deepEqual([alias.complete, alias.tiles[0].big], [true, '$2.27 A DOZEN']);
+  assert.deepEqual([alias.complete, alias.tiles[0].big], [true, 'Eggs $2.27 a dozen']);
 });
 
 test('GRID card: past the deadline an incomplete card, drawn but not kept, a minute; later loads complete it', async () => {
@@ -499,19 +503,19 @@ test('GRID card: a request turned away by the per-address limit or the budget lo
   assert.deepEqual([f.calls.length, f.weirdCalls()], [0, 0], 'no getChart, no WEIRD read');
 });
 
-test('GRID card: BBRK without its page views is not kept and not drawn; with them it is', async () => {
+test('GRID card: BBRK without its week of visitors is not kept and not drawn; with them it is', async () => {
   const f = fakeDeps();
-  let aud = { pageviews: { d7: null }, live: null };
+  let aud = { visitors: { d7: null }, live: null };
   const grid = makeGrid({ ...f.deps, audience: { get: async () => aud } });
   const it = gridItem('BBRK');
   const first = (await grid.board([it], '1Y'))[0];
-  assert.deepEqual([first.views7, first.error], [null, undefined], 'the page still gets its -- tile');
+  assert.deepEqual([first.visitors7, first.error], [null, undefined], 'the page still gets its -- tile');
   assert.equal(grid.cached(it, '1Y'), null, 'but it is not kept');
   const cards = makeGridCards({ grid, fallback: async () => Buffer.from('site'), render: async () => Buffer.from('x') });
   const a = await cards.png('BBRK,CPI', '1Y', '1.1.1.1');
-  assert.equal(a.maxAge, 60, 'no page views yet: incomplete');
+  assert.equal(a.maxAge, 60, 'no visitors yet: incomplete');
   assert.equal(gridCardModel(cardBoard('BBRK', '1Y'), grid).tiles[0].missing, true, 'never drawn as --');
-  aud = { pageviews: { d7: 250 }, live: 0 };
+  aud = { visitors: { d7: 250 }, live: 0 };
   const b = await cards.png('BBRK,CPI', '1Y', '1.1.1.1');
   assert.equal(b.maxAge, 14400);
   const m = gridCardModel(cardBoard('BBRK', '1Y'), grid);

@@ -23,8 +23,8 @@ import { toMonths, changeAt, recentRows } from '../data/weird/fred.js';
 import { pool, decodeEntities } from '../data/weird/source.js';
 import { parseFredCsv } from '../data/economy.js';
 import { GAUGES, lastGoodStore, makeWeird } from '../data/weird/index.js';
-import { WEIRD_GAUGES } from '../public/screens/weird-gauges.js';
-import { tileBody, commandForNumber, tile } from '../public/screens/weird.js';
+import { HEROES, heroText, WEIRD_GAUGES } from '../public/screens/weird-gauges.js';
+import { tileBody, commandForNumber, tile, tileTitle } from '../public/screens/weird.js';
 import { numberedItem, panelNumberInput, parseCommand } from '../public/app.js';
 import { REGISTRY } from '../public/registry.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -33,6 +33,18 @@ import path from 'node:path';
 
 const fx = (f) => readFileSync(new URL(`./fixtures/weird/${f}`, import.meta.url), 'utf8');
 const fxj = (f) => JSON.parse(fx(f));
+
+// The tile's hero for a real build() output: read by the gauge's own rule (never the
+// fallback), its numbers exactly as the headline has them (a 0 is said in words).
+function builtHero(id, g) {
+  const gauge = WEIRD_GAUGES.find((x) => x.id === id);
+  assert.ok(HEROES[id](g.headline, g), `${id}: "${g.headline}" is read by its own hero`);
+  const text = heroText(gauge, { ok: true, ...g });
+  for (const n of g.headline.match(/\d[\d,.]*\d|\d/g) || []) if (n !== '0') assert.ok(text.includes(n), `${id}: "${text}" keeps ${n}`);
+  assert.match(text.split(' ')[0], /[A-Za-z]/, `${id}: "${text}" starts with its noun`);
+  return text;
+}
+
 const fred = (f) => toMonths(parseFredCsv(fx(f)));
 const NOW = Date.parse('2026-09-26T04:30:00Z');
 const noData = (e) => e.code === 'no_data';
@@ -52,6 +64,7 @@ test('billions: biggest one-day move in dollars, from the previous close estimat
   const p = billions.parse(fxj('forbes-rtb.json'));
   assert.equal(p.asOf, '2026-09-26T04:25:02.627Z');
   const g = billions.build(p);
+  assert.match(builtHero('billions', g), /^[A-Z][\w .'-]* [+\u2212]\$\d+\.\dB in a day$/);
   assert.equal(g.headline, 'ZUCKERBERG −$8.8B');
   assert.equal(g.moves.length, 10);
   assert.equal(g.moves[1].name, 'Michael Dell');
@@ -61,6 +74,7 @@ test('billions: biggest one-day move in dollars, from the previous close estimat
   assert.equal(billions.signedB(4100), '+$4.1B');
   assert.equal(billions.signedB(-20), '$0.0B');
   const flat = billions.build({ people: [{ name: 'A B', last: 'B', rank: 1, worth: 100, prev: 100 }], asOf: null, size: 1 });
+  assert.equal(builtHero('billions', flat), 'Billionaires no big moves today');
   assert.equal(flat.headline, 'NO BIG MOVES TODAY');
   assert.throws(() => billions.parse({ error: 'x' }), /unexpected shape/);
   assert.throws(() => billions.build({ people: [], asOf: null, size: 0 }), noData);
@@ -69,6 +83,7 @@ test('billions: biggest one-day move in dollars, from the previous close estimat
 test('wsb: top tickers by mentions with the 24-hour rank change; names decoded', () => {
   const rows = wsb.parse(fxj('apewisdom-wsb.json'));
   const g = wsb.build(rows, NOW);
+  assert.match(builtHero('wsb', g), /^\S+ [\d,]+ mentions in 24h$/);
   assert.equal(g.rows.length, 10);
   assert.equal(g.rows[0].ticker, 'SPY');
   assert.equal(g.rows[0].name, 'SPDR S&P 500 ETF Trust');
@@ -98,6 +113,7 @@ test('odds: the US recession market for this year and every outcome of the next 
   assert.match(fed.outcomes[0].question, /October 2026 meeting/);
   assert.ok(fed.outcomes[0].pct >= fed.outcomes[1].pct);
   const g = odds.build({ recession: rec, fed }, NOW);
+  assert.match(builtHero('odds', g), /^Recession chance [<>]?\d+%$/);
   assert.equal(g.headline, 'RECESSION 10%');
   assert.equal(g.line, 'US recession by end of 2026?');
   // After the October meeting, the December one is next.
@@ -124,6 +140,7 @@ test('boxrate: the headline dollar figure and date, or NO DATA; never a guess', 
   const p = boxrate.parse(fx('drewry-head.html'));
   assert.deepEqual({ usd: p.usd, date: p.date }, { usd: 4468, date: '2026-09-24' });
   const g = boxrate.build(p);
+  assert.match(builtHero('boxrate', g), /^40ft container \$[\d,]+ to ship$/);
   assert.equal(g.headline, '$4,468');
   assert.equal(g.asOf, '2026-09-24');
   assert.throws(() => boxrate.parse('<meta name="description" content="World Container Index: see the chart.">'), noData);
@@ -141,6 +158,7 @@ test('boxrate: the headline dollar figure and date, or NO DATA; never a guess', 
 
 test('eggs: latest price, a year before, and the peak', () => {
   const g = eggs.build(fred('fred-eggs.csv'));
+  assert.match(builtHero('eggs', g), /^Eggs \$\d+\.\d\d a dozen$/);
   assert.equal(g.price, 2.272);
   assert.equal(g.headline, '$2.27 A DOZEN');
   assert.deepEqual(g.peak, { month: '2025-03', price: 6.227 });
@@ -161,6 +179,7 @@ test('lipstick: cosmetics prices year on year; the Oct 2025 gap stays a gap', ()
   const rows = fred('fred-cosmetics.csv');
   assert.ok(!rows.some((r) => r.month === '2025-10'));
   const g = lipstick.build(rows);
+  assert.match(builtHero('lipstick', g), /^Cosmetics prices [+\u2212]?\d+\.\d% a year$/);
   assert.equal(g.month, '2026-08');
   assert.equal(g.index, 196.741);
   assert.match(g.headline, /^[+−]\d+\.\d% YOY$/);
@@ -169,21 +188,25 @@ test('lipstick: cosmetics prices year on year; the Oct 2025 gap stays a gap', ()
 
 test('boxes: output leads, prices follow, each with its own month; one missing series is fine', () => {
   const g = boxes.build({ output: fred('fred-box-output.csv'), price: fred('fred-box-price.csv') });
+  assert.match(builtHero('boxes', g), /^Box output [+\u2212]?\d+\.\d% a year$/);
   assert.equal(g.series[0].month, '2026-06');
   assert.equal(g.series[1].month, '2026-08');
   assert.equal(g.asOf, '2026-06-01');
   assert.match(g.line, /^Box output vs a year ago \(Jun\); prices [+−]\d+\.\d% \(Aug\)$/);
   const only = boxes.build({ output: null, price: fred('fred-box-price.csv') });
+  assert.match(builtHero('boxes', only), /^Box prices [+\u2212]?\d+\.\d% a year$/, 'prices lead only without output');
   assert.equal(only.line, 'Box prices vs a year ago (Aug)');
   assert.throws(() => boxes.build({ output: null, price: null }), noData);
 });
 
 test('trucks: three freight series, each dated on its own', () => {
   const g = trucks.build({ cass: fred('fred-cass.csv'), truck: fred('fred-truck.csv'), rail: fred('fred-rail.csv') });
+  assert.match(builtHero('trucks', g), /^Freight shipments [+\u2212]?\d+\.\d% a year$/);
   assert.deepEqual(g.rows.map((r) => r.month), ['2026-08', '2026-06', '2026-06']);
   assert.equal(g.rows[0].value, 1.038);
   assert.match(g.headline, /^CASS [+−]\d+\.\d% YOY$/);
   const noCass = trucks.build({ cass: null, truck: fred('fred-truck.csv'), rail: null });
+  assert.match(builtHero('trucks', noCass), /^Truck tonnage [+\u2212]?\d+\.\d% a year$/);
   assert.match(noCass.headline, /^TRUCKS /);
 });
 
@@ -192,12 +215,14 @@ test('rides: open rides with a posted wait, closed parks say closed', () => {
   const mk = rides.parsePark(fxj('queue-times-6.json'));
   const g = rides.build([{ park: rides.PARKS[0], rides: mk }, { park: rides.PARKS[4], rides: dl }]);
   const counted = dl.filter((r) => r.open && r.wait > 0);
+  assert.match(builtHero('rides', g), /^Disney ride wait \d+ min average$/);
   assert.ok(counted.length > 5);
   assert.ok(Math.abs(g.avg - counted.reduce((a, r) => a + r.wait, 0) / counted.length) < 1e-9);
   assert.equal(g.headline, `${Math.round(g.avg)} MIN AVERAGE WAIT`);
   assert.equal(g.parks[0].status, 'closed');
   assert.equal(g.credit, 'Powered by Queue-Times.com');
   const shut = rides.build([{ park: rides.PARKS[0], rides: mk }]);
+  assert.equal(builtHero('rides', shut), 'Disney parks closed');
   assert.equal(shut.headline, 'PARKS CLOSED');
   assert.throws(() => rides.build([{ park: rides.PARKS[0], error: 'down' }]));
   const gauge = WEIRD_GAUGES.find((x) => x.id === 'rides');
@@ -205,7 +230,8 @@ test('rides: open rides with a posted wait, closed parks say closed', () => {
   const tile = tileBody(gauge, { id: 'rides', ok: true, ...g });
   assert.match(tile, link, 'the tile credit links to Queue-Times.com');
   assert.match(tile, /target="_blank" rel="noopener noreferrer"/);
-  assert.match(tileBody(gauge, { id: 'rides', ok: false, headline: 'NO DATA', source: 'Queue-Times.com' }), /<a href="https:\/\/queue-times\.com\/"/);
+  // NO DATA shows no data, so it carries no credit (and never names a vendor).
+  assert.doesNotMatch(tileBody(gauge, { id: 'rides', ok: false, headline: 'NO DATA', source: 'Queue-Times.com' }), /Queue-Times/);
   assert.match(readFileSync('public/screens/weird.js', 'utf8'), /<div class="wd-foot">\$\{how\}<p class="wd-src">\$\{sourceHtml\(g, d\)\}<\/p>/, 'the detail footer uses the linked credit too');
   // Other credits stay plain text.
   assert.doesNotMatch(tileBody(WEIRD_GAUGES.find((x) => x.id === 'wsb'), { id: 'wsb', ok: true, headline: 'X', source: 'ApeWisdom', asOf: '2026-09-26' }), /<a /);
@@ -227,6 +253,7 @@ test('buzz: quarters, hit totals and the headline quarter', () => {
   const rows = qs.map((q, i) => ({ ...q, ai: { count: 100 + i }, tariff: { count: 50 }, recession: { count: 20 } }));
   rows[7].ai = { count: 1743 };
   const g = buzz.build(rows, NOW);
+  assert.match(builtHero('buzz', g), /^Filings naming AI [\d,]+\+?$/);
   assert.equal(g.headline, '1,743 AI FILINGS');
   assert.equal(g.line, '10-Qs naming AI, Q3 2026 so far');
   // Early in a quarter the last full quarter is the headline.
@@ -312,11 +339,13 @@ test('beige: the edition list, article text only, and whole-word counts', () => 
     { edition: '202608', released: '2026-09-02', counts: { uncertain: 29, tariff: 24, slow: 38, recession: 1, ai: 25 } },
     { edition: '202607', released: '2026-07-15', counts: { uncertain: 34, tariff: 24, slow: 22, recession: 1, ai: 19 } },
   ]);
+  assert.equal(builtHero('beige', g), 'Beige Book "slow" 38 times');
   assert.equal(g.headline, 'SLOW 38 TIMES');
   assert.deepEqual(g.spark, [22, 38]);
   assert.equal(g.asOf, '2026-09-02');
   const gauge = WEIRD_GAUGES.find((x) => x.id === 'beige');
-  assert.match(tileBody(gauge, { id: 'beige', ok: true, stale: false, ...g }), /FEDERAL RESERVE · SEP 02|Federal Reserve · SEP 02/);
+  assert.match(tileBody(gauge, { id: 'beige', ok: true, stale: false, ...g }), /Beige Book &quot;slow&quot;<\/span> <span class="wd-val">38<\/span> <span class="wd-unit">times/);
+  assert.equal(tileTitle(gauge, { id: 'beige', ok: true, stale: false, ...g }), 'Beige Book · SEP 02', 'when: in the tile title, not on the tile');
   const html = gauge.detail(g).html;
   assert.match(html, /Sep 2, 2026/);
   assert.doesNotMatch(html, /AUG 2026/);
@@ -329,6 +358,7 @@ test('sick: national median wastewater level per virus, with the 4-week change',
   const covid = g.rows[0];
   // Sep 19 had 820 sites and Sep 12 929, against 1,086 in a full week: both are thin, so
   // the newest week with 90% of a full week is Sep 5 (1,074 sites).
+  assert.match(builtHero('sick', g), /^Covid wastewater level \d+\.\d$/);
   assert.equal(covid.week, '2026-09-05');
   assert.equal(covid.sites, 1074);
   assert.equal(g.headline, 'COVID 2.7');
@@ -356,6 +386,7 @@ test('macau: the latest month against a year before, from the DICJ report', () =
   assert.equal(r26.months[7].value, 21891);
   assert.equal(r26.months[8].value, null, 'September is not out yet');
   const g = macau.build([r26, macau.parse(fx('dicj-2025.xml'))]);
+  assert.match(builtHero('macau', g), /^Macau casino revenue [+\u2212]?\d+\.\d% a year$/);
   assert.equal(g.month, '2026-08');
   assert.ok(Math.abs(g.yoy - (21891 / 22156 - 1) * 100) < 1e-9);
   assert.equal(g.headline, '−1.2% YOY');

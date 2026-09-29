@@ -60,9 +60,13 @@ export function asOfLabel(asOf, period = 'day') {
 export function sourceLine(d, period) {
   const src = d.credit && d.credit.includes(d.source) ? d.credit : [d.source, d.credit].filter(Boolean).join(', ');
   if (d.ok === false) return src;
-  if (!d.stale) return `${src} · ${asOfLabel(d.asOf, period)}`;
+  return `${src} · ${whenLine(d, period)}`;
+}
+// When a reading is from: "SEP 20", or for a stale one "last reading 18:00 ET SEP 25".
+export function whenLine(d, period) {
+  if (!d.stale) return asOfLabel(d.asOf, period);
   const timed = period === 'time' && d.asOf && !/^\d{4}-\d{2}-\d{2}$/.test(d.asOf);
-  return `${src} · last reading ${timed ? `${nyTime(d.asOf)} ET ${asOfLabel(d.asOf)}` : asOfLabel(d.asOf, period)}`;
+  return `last reading ${timed ? `${nyTime(d.asOf)} ET ${asOfLabel(d.asOf)}` : asOfLabel(d.asOf, period)}`;
 }
 
 // The source line as HTML. A gauge whose source asks for a linked credit (RIDES:
@@ -424,6 +428,7 @@ export const WEIRD_GAUGES = [
   },
   {
     id: 'waffle', command: 'WAFFLE', title: 'Waffle', period: 'time', detail: waffleDetail, chart: { label: 'Stores inside storm winds, one reading a day', fmtY: n0 },
+    creditLink: { text: '© OpenStreetMap contributors', short: '© OpenStreetMap', href: 'https://www.openstreetmap.org/copyright', title: '© OpenStreetMap contributors, ODbL' },
     method: [
       'Active storms come from the National Hurricane Center. For each storm, a store counts when it is inside the tropical-storm-force wind radius (34 knots) in the latest forecast advisory. The advisory gives one radius per quadrant: NE, SE, SW, NW.',
       'A storm whose advisory has no 34-knot radius (a depression) counts zero. A storm more than 800 miles from every store counts zero. If a nearby storm\'s advisory will not load, its row shows -- and the count is marked partial; if no nearby storm could be counted, the gauge shows its last reading or NO DATA.',
@@ -579,3 +584,157 @@ export const gaugeByCommand = (cmd) => WEIRD_GAUGES.find((g) => g.command === cm
 // until it reports again; its own screen, a DESK card and a GRID tile still say NO DATA.
 // Pending is not empty: it is still loading.
 export const emptyGauge = (d) => Boolean(d && d.ok === false && !d.pending);
+
+// ---- The hero: a noun and a number that read alone ---------------------------------------
+// A tile's big line is the gauge's noun, its number and the number's unit: "Eggs $2.27 a
+// dozen", "Hormuz 3 ships a day", "Cosmetics prices +2.8% a year". Each is read from the
+// server's own headline (data/weird/<id>.js writes it; its unit is the headline's own), so
+// the number is always the one the headline and the share card show. A zero is said in
+// words ("none"), never a bare 0. A headline in a shape not known here keeps the gauge's
+// title as its noun. -> { noun, num, unit } or null (no reading: LOADING, NO DATA).
+const titleCase = (s) => String(s).toLowerCase().replace(/(^|[\s\-'(])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+const SIGNED = '[+−-]?[\\d.,]+%';
+const yoyHero = (noun) => (h) => {
+  const m = new RegExp(`^(?:\\S+ )?(${SIGNED}) YOY$`).exec(h);
+  return m && { noun, num: m[1], unit: 'a year' };
+};
+const TRUCK_NOUNS = { CASS: 'Freight shipments', TRUCKS: 'Truck tonnage', RAIL: 'Rail carloads' };
+export const HEROES = {
+  canal: (h) => {
+    const m = /^(.+?) ([\d.,]+) SHIPS?\/DAY$/.exec(h);
+    return m && { noun: titleCase(m[1]), num: m[2] === '0' ? 'no' : m[2], unit: `${m[2] === '1' ? 'ship' : 'ships'} a day` };
+  },
+  pizza: (h) => {
+    const m = /^(DEFCON|INDEX) ([\d.,]+)$/.exec(h);
+    if (!m) return null;
+    return m[1] === 'DEFCON' ? { noun: 'Pentagon pizza', num: `DEFCON ${m[2]}`, unit: '' } : { noun: 'Pentagon pizza index', num: m[2], unit: '' };
+  },
+  degen: (h) => {
+    const none = /^NONE IN TOP (\d+)$/.exec(h);
+    if (none) return { noun: 'Trading apps', num: 'none', unit: `in the top ${none[1]}` };
+    const m = /^(.+?) (#\d+)$/.exec(h);
+    return m && { noun: titleCase(m[1]), num: m[2], unit: 'in free apps' };
+  },
+  waffle: (h) => {
+    const m = /^(\d[\d,]*) STORES? IN STORMS( \(PARTIAL\))?$/.exec(h);
+    if (!m) return null;
+    const part = m[2] ? ' (partial)' : '';
+    return m[1] === '0'
+      ? { noun: 'Waffle House', num: 'none', unit: `in storms${part}` }
+      : { noun: 'Waffle House', num: m[1], unit: `${m[1] === '1' ? 'store' : 'stores'} in storms${part}` };
+  },
+  panic: (h) => { const m = new RegExp(`^(${SIGNED})$`).exec(h); return m && { noun: 'Crash-page views', num: m[1], unit: 'vs average' }; },
+  // Hacker News's own threads: seekers ("Who wants to be hired?") per job ad ("Who is hiring?").
+  hiring: (h) => { const m = /^([\d.,]+) PER JOB$/.exec(h); return m && { noun: 'HN job seekers', num: m[1], unit: 'per job ad' }; },
+  // $1.50 of 1985 money in today's money (Costco still charges $1.50).
+  hotdog: (h) => { const m = /^(\$[\d.,]+)$/.exec(h); return m && { noun: "Costco's 1985 hot dog", num: m[1], unit: "in today's money" }; },
+  // The phase: "Moon waning gibbous", "Moon full" (never "Moon full moon").
+  omens: (h) => (/^[A-Z ]+$/.test(h) ? { noun: 'Moon', num: h.toLowerCase().replace(/ moon$/, ''), unit: '' } : null),
+  undies: yoyHero("Men's underwear prices"),
+  bigmac: (h) => {
+    const m = new RegExp(`^(.+?) (${SIGNED})$`).exec(h);
+    return m && { noun: `Big Mac in ${titleCase(m[1])}`, num: m[2], unit: 'vs US' };
+  },
+  billions: (h) => {
+    if (h === 'NO BIG MOVES TODAY') return { noun: 'Billionaires', num: 'no big moves', unit: 'today' };
+    const m = /^(.+?) ([+−-]\$[\d.,]+[BM])$/.exec(h);
+    return m && { noun: titleCase(m[1]), num: m[2], unit: 'in a day' };
+  },
+  wsb: (h) => { const m = /^(\S+) ([\d,]+) MENTIONS$/.exec(h); return m && { noun: m[1], num: m[2], unit: 'mentions in 24h' }; },
+  odds: (h) => {
+    const m = /^(RECESSION|FED) ([<>]?\d+%)$/.exec(h);
+    return m && { noun: m[1] === 'RECESSION' ? 'Recession chance' : 'Fed meeting, top outcome', num: m[2], unit: '' };
+  },
+  boxrate: (h) => { const m = /^(\$[\d.,]+)$/.exec(h); return m && { noun: '40ft container', num: m[1], unit: 'to ship' }; },
+  eggs: (h) => { const m = /^(\$[\d.,]+) A DOZEN$/.exec(h); return m && { noun: 'Eggs', num: m[1], unit: 'a dozen' }; },
+  rides: (h) => {
+    if (h === 'PARKS CLOSED') return { noun: 'Disney parks', num: 'closed', unit: '' };
+    const m = /^(\d+) MIN AVERAGE WAIT$/.exec(h);
+    return m && { noun: 'Disney ride wait', num: `${m[1]} min`, unit: 'average' };
+  },
+  buzz: (h) => { const m = /^([\d,]+\+?) AI FILINGS$/.exec(h); return m && { noun: 'Filings naming AI', num: m[1], unit: '' }; },
+  beige: (h) => {
+    const m = /^(.+?) ([\d,]+) TIMES$/.exec(h);
+    return m && { noun: `Beige Book "${m[1] === 'AI' ? 'AI' : m[1].toLowerCase()}"`, num: m[2], unit: m[2] === '1' ? 'time' : 'times' };
+  },
+  trucks: (h) => {
+    const m = new RegExp(`^(\\S+) (${SIGNED}) YOY$`).exec(h);
+    return m && { noun: TRUCK_NOUNS[m[1]] || titleCase(m[1]), num: m[2], unit: 'a year' };
+  },
+  boxes: (h, d) => yoyHero(/^Box prices/.test(d?.line || '') ? 'Box prices' : 'Box output')(h),
+  lipstick: yoyHero('Cosmetics prices'),
+  sick: (h) => { const m = /^COVID ([\d.,]+)$/.exec(h); return m && { noun: 'Covid wastewater level', num: m[1], unit: '' }; },
+  macau: yoyHero('Macau casino revenue'),
+};
+
+// A reading -> its hero, or null when there is no reading (LOADING, NO DATA).
+export function heroOf(g, d) {
+  if (!g || !d || d.ok === false || d.pending || !d.headline) return null;
+  const h = String(d.headline).trim();
+  const got = HEROES[g.id]?.(h, d);
+  return got || { noun: g.title, num: h, unit: '' };
+}
+// The hero as one line of text (a GRID tile, a share text).
+export function heroText(g, d) {
+  const x = heroOf(g, d);
+  return x ? [x.noun, x.num, x.unit].filter(Boolean).join(' ') : '';
+}
+
+// A tile's one meaning line: what the hero is about, never a second number and never a
+// data vendor's name. Where the server's own line already does that, it is used (the
+// gauge's own screen always shows the server's line).
+export const MEANINGS = {
+  canal: 'Ship crossings, 7-day average',
+  degen: 'Best placed of five trading apps',
+  panic: 'Views of recession, crash, stagflation, bank-run pages',
+  hiring: 'Hacker News "Who is hiring?" threads, monthly',
+  hotdog: 'Costco still charges its 1985 price',
+  undies: 'Folklore: men buy fewer when money is tight',
+  boxrate: 'Spot price on eight main routes',
+  rides: 'Posted waits across five Disney parks',
+  trucks: 'US freight volume, monthly',
+  // Output leads (box demand); prices only when output has no reading.
+  boxes: (d) => (/^Box prices/.test(d?.line || '') ? 'Box prices, a read on shipping costs' : 'Box demand, an early read on shipping'),
+  lipstick: 'Folklore: lipstick sells when money is tight',
+  sick: 'National median of sewage sites; 1 is the lowest',
+  macau: 'Gross gaming revenue, monthly',
+  // The count takes each word's plain forms (data/weird/beige.js): say which.
+  beige: (d) => {
+    const w = /^(\S+) [\d,]+ TIMES$/.exec(d?.headline || '')?.[1]?.toLowerCase();
+    const v = { uncertain: 'uncertainty', tariff: 'tariffs', slow: 'slowing', recession: 'recessions', ai: 'artificial intelligence' }[w];
+    return v ? `Top of five words; "${v}" counts too` : 'Top word in the latest Beige Book';
+  },
+};
+export function meaningOf(g, d) {
+  const m = MEANINGS[g?.id];
+  return (typeof m === 'function' ? m(d) : m) || String(d?.line || '');
+}
+
+// ---- The credit a tile must carry ----------------------------------------------------------
+// Only a credit the source's licence or terms ask for sits on a tile, short: the rest of
+// the source line (who, when) is in the gauge's own screen. OpenStreetMap (ODbL) is
+// "© OSM" here; its long form stays on the gauge's screen and in How is this measured.
+export const SHORT_CREDITS = {
+  '© OpenStreetMap contributors, ODbL': '© OpenStreetMap',
+};
+export function tileCredit(g, d) {
+  const c = d?.credit;
+  if (!c || typeof c !== 'string') return '';
+  return SHORT_CREDITS[c] || c;
+}
+// The link a tile credit carries, if its source asks for one: { text, href, title } or
+// null (RIDES: Queue-Times.com; WAFFLE: © OpenStreetMap, to its copyright page).
+export function tileCreditLink(g, d) {
+  const c = g?.creditLink;
+  const text = tileCredit(g, d);
+  if (!c || !text) return null;
+  const word = c.short && text.includes(c.short) ? c.short : c.text;
+  return text.includes(word) ? { text: word, href: c.href, title: c.title || c.text } : null;
+}
+// The tile credit as HTML, its link kept.
+export function tileCreditHtml(g, d) {
+  const text = esc(tileCredit(g, d));
+  const l = tileCreditLink(g, d);
+  if (!text || !l) return text;
+  return text.replace(esc(l.text), `<a href="${esc(l.href)}" target="_blank" rel="noopener noreferrer" title="${esc(l.title)}">${esc(l.text)}</a>`);
+}
