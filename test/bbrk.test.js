@@ -230,7 +230,7 @@ test('BBRK wiring: a command, listed, not a ticker; HOME keeps no BBRK row', () 
   const p = parseCommand('bbrk');
   assert.equal(p.name, 'BBRK');
   assert.equal(p.input, 'BBRK');
-  assert.equal(findCommand('BBRK').category, 'Markets');
+  assert.equal(findCommand('BBRK').category, 'About');
   // HOME at 1536x730: a row under the markets grid pushed it past its share of the
   // screen (VIX cut off, the grid scrolled), so BBRK is a command only.
   assert.doesNotMatch(readFileSync('public/screens/home.js', 'utf8'), /bbrk/i);
