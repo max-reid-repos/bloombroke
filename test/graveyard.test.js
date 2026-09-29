@@ -144,10 +144,11 @@ test('video: our own art and a play mark; nothing from YouTube or Google before 
 test('CSP: only the video still and the no-cookie player are added', () => {
   const csp = securityHeaders()['Content-Security-Policy'];
   const dir = (name) => csp.split('; ').find((d) => d.startsWith(`${name} `));
-  assert.equal(dir('img-src'), "img-src 'self' data:", 'no YouTube stills');
+  assert.equal(dir('img-src'), "img-src 'self' data: https://*.google-analytics.com https://www.googletagmanager.com", 'no YouTube stills (GA4 only)');
   assert.equal(dir('frame-src'), "frame-src 'self' https://www.youtube-nocookie.com");
-  assert.equal(dir('script-src'), "script-src 'self' https://datafa.st https://analytics.ahrefs.com https://static.cloudflareinsights.com", 'no YouTube script');
-  assert.doesNotMatch(csp, /ytimg|www\.youtube\.com|googlevideo|\*/);
+  assert.equal(dir('script-src'), "script-src 'self' https://datafa.st https://analytics.ahrefs.com https://static.cloudflareinsights.com https://www.googletagmanager.com", 'no YouTube script');
+  // The only wildcards are GA4's own hosts (test/ga4.test.js).
+  assert.doesNotMatch(csp.replace(/https:\/\/\*\.(google-analytics\.com|analytics\.google\.com)/g, ''), /ytimg|www\.youtube\.com|googlevideo|\*/);
 });
 
 test('sitemap: the cemetery, ZOMBIES, and one page per stone and zombie', () => {

@@ -10,7 +10,7 @@
 
 import { TERMS_VERSION } from './legal-version.js';
 import { lazyScreen, loadScreen, loadedModule, cssReady, stylesOf } from './lazy.js';
-import { goal } from './goal.js'; // GOALS: welcome_chip, welcome_typed, welcome_surprise
+import { goal, gaConsentGiven } from './goal.js'; // GOALS: welcome_chip, welcome_typed, welcome_surprise; GA4 waits for ACCEPT
 
 export const CONSENT_KEY = 'bb.consent';
 export const LEGAL_PATHS = ['/terms', '/privacy', '/disclaimer'];
@@ -117,6 +117,7 @@ function welcomeNow() {
 // none). goalOpts: goal()'s options (tests).
 export function commitWelcome(choice, { store, version = TERMS_VERSION, now = () => new Date(), goalOpts } = {}) {
   store.set(acceptRecord(version, now()));
+  gaConsentGiven(); // GA4 (goal.js) starts only now, for this visit and the next ones
   const cmd = String(choice?.cmd || '').trim().slice(0, 120);
   if (choice?.chip) goal('welcome_chip', { chip: choice.chip }, goalOpts);
   else if (choice?.surprise) goal('welcome_surprise', { kind: choice.surprise }, goalOpts);

@@ -589,4 +589,5 @@ test('fix 9: Esc stops following only when nothing else wants it', () => {
   assert.equal(escFree(doc('', ['.menu-overlay:not([hidden])'])), false, 'the menu');
   assert.equal(escFree(doc('', ['body.has-max-panel'])), false, 'a maximised panel');
   assert.equal(escFree(doc('', ['.ct-confirm'])), false, 'TAKE OVER asking');
+  assert.equal(escFree(doc('', ['dialog[open]'])), false, 'a pop-up open (HOW TO PLAY)');
 });

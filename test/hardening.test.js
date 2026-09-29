@@ -494,7 +494,7 @@ test('Ahrefs: loaded for a free visitor on bloombroke.com (async, its data-key);
   assert.equal(loadAhrefs({ doc: undefined, nav: {}, win: undefined }), false);
   // Both load on a page, from the same place.
   const { readFileSync } = await import('node:fs');
-  assert.match(readFileSync('public/goal.js', 'utf8'), /\{ loadDataFast\(\); loadAhrefs\(\); \}/);
+  assert.match(readFileSync('public/goal.js', 'utf8'), /\{ loadDataFast\(\); loadAhrefs\(\); loadGa4\(\); \}/);
   // A key that lands later reloads the page when Ahrefs alone runs, so it stops for Pro.
   const loc = { replaced: null, replace(u) { this.replaced = u; } };
   assert.equal(reloadAfterKey({ doc: { querySelector: (q) => (q.includes('analytics.ahrefs.com') ? {} : null) }, loc, session: null }), true);
@@ -504,7 +504,8 @@ test('Ahrefs: loaded for a free visitor on bloombroke.com (async, its data-key);
 test('CSP: Ahrefs may load its script and send page views, nothing wider', async () => {
   const { securityHeaders } = await import('../lib/embed.js');
   const dirs = securityHeaders()['Content-Security-Policy'].split('; ');
-  assert.ok(dirs.includes("script-src 'self' https://datafa.st https://analytics.ahrefs.com https://static.cloudflareinsights.com"));
-  assert.ok(dirs.includes("connect-src 'self' https://datafa.st https://analytics.ahrefs.com https://cloudflareinsights.com"));
+  // (GA4 follows each list: test/ga4.test.js.)
+  assert.ok(dirs.includes("script-src 'self' https://datafa.st https://analytics.ahrefs.com https://static.cloudflareinsights.com https://www.googletagmanager.com"));
+  assert.ok(dirs.includes("connect-src 'self' https://datafa.st https://analytics.ahrefs.com https://cloudflareinsights.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com"));
   assert.ok(!dirs.some((d) => /ahrefs\.com\/|\*\.ahrefs/.test(d)), 'the origin only');
 });
