@@ -14,6 +14,24 @@ import { mainHtml, loginHtml, redeemHtml, giftHtml, giftLoggedOutHtml } from '..
 import { feedbackHtml } from '../public/screens/feedback.js';
 import { notProHtml } from '../public/screens/chat.js';
 import { meHtml } from '../public/screens/me.js';
+import { usageCard, emptyState } from '../public/kit.js';
+import { didYouMeanHtml } from '../public/app.js';
+import { affordUsage, NOT_INVESTMENTS } from '../public/screens/buy.js';
+import { cpiUsage } from '../public/screens/cpi.js';
+import { usage as loanUsage, noRateHtml } from '../public/screens/loan.js';
+import { usage as historyUsage } from '../public/screens/history.js';
+import { usage as tapeUsage } from '../public/screens/tape.js';
+import { tickerUsage, errorHtml, splitDescription, descHtml, DESC_LEAD } from '../public/screens/profile.js';
+import { notCompanyHtml } from '../public/screens/why.js';
+import { dataUsage } from '../public/screens/data.js';
+import { emptyWatchHtml } from '../public/screens/watch.js';
+import { emptyPfHtml } from '../public/screens/portfolio.js';
+import { emptyAlertsHtml } from '../public/screens/alerts.js';
+import { deskEmptyHtml } from '../public/screens/desk.js';
+import { emptyHtml as chatEmptyHtml } from '../public/screens/chat.js';
+import { noSuchExtra, ipoUsage, TITLE_GONE } from '../public/screens/nosuch.js';
+import { stonePageHtml } from '../public/screens/graveyard.js';
+import { withArt } from '../lib/graveyard.js';
 
 const all = () => true;
 const KEY = 'BB-7KQ2-M9XD-HT4P-WZ3C';
@@ -29,6 +47,26 @@ const BBRK = {
 };
 const ST = { status: 'active', seat: 12, canGift: true, interval: 'year', currentPeriodEnd: new Date(Date.UTC(2027, 8, 27, 12)).toISOString() };
 const shownInTest = (html) => html.replace('<span id="pro-test" hidden>', '<span id="pro-test">');
+
+// NO SUCH TICKER and a GRAVEYARD stone, with the real data and the art on disk.
+const GRAVES = JSON.parse(readFileSync('data/graveyard.json', 'utf8'));
+const ART = (e) => ({ stone: '/img/graveyard/stone.webp', doodles: [e.ticker], sites: e.wayback ? [e.ticker] : [] });
+const graveOf = (t) => { const e = GRAVES.find((x) => x.ticker === t); return withArt(e, ART(e)); };
+const YARD = ['ATVI', 'WBVN', 'BBI', 'WFM'].map((t) => GRAVES.find((e) => e.ticker === t));
+const noSuch = (typed, found, ticker, info, opts = {}) => {
+  const word = ticker || typed;
+  const extra = noSuchExtra(word, info, { ticker, next: 1, yard: info.grave ? [] : YARD, ...opts });
+  return didYouMeanHtml(typed, found, ticker, { extra: { ...extra, kicker: extra.kicker || (ticker ? 'No such ticker. Yet.' : 'Unknown command') } });
+};
+const GUESSES = { commands: [{ cmd: 'EGGPRICE', summary: 'Average price of a dozen eggs in the US' }, { cmd: 'SPONSOR', summary: 'Sponsors: lines that rotate in the status bar' }], symbols: [{ cmd: 'BAR', name: 'Barrick' }] };
+export const NOSUCH = [
+  ['NO SUCH, a word IPO IT can list', noSuch('$QXZVW', {}, 'QXZVW', { grave: null, ipo: true })],
+  ['NO SUCH, a word it cannot', noSuch('ZORBLAT', {}, null, { grave: null, ipo: false })],
+  ['NO SUCH, an unknown command with guesses', noSuch('FOO BAR BAZ', GUESSES, null, { grave: null, ipo: false })],
+  ['NO SUCH, a dead ticker (LEH, a quote elsewhere)', noSuch('LEH', {}, 'LEH', { grave: graveOf('LEH'), ipo: false }, { quote: true })],
+  ['GRAVEYARD LEH', stonePageHtml(graveOf('LEH'), 12)],
+  ['GRAVEYARD GM (a zombie)', stonePageHtml(graveOf('GM'), 0)],
+];
 
 // [page, html, budget]: the words above + Details, numbers, keys and codes not counted.
 export const PAGES = [
@@ -53,6 +91,40 @@ export const PAGES = [
   ['ME, asking NEW KEY', meHtml({ key: KEY, st: ST, me: null, confirm: 'key', has: all }), 30],
   ['ME without Pro', meHtml({ has: all }), 20],
   ['ME, Pro ended', meHtml({ key: KEY, st: { ...ST, status: 'canceled' }, has: all }), 20],
+  ...NOSUCH.map(([name, html]) => [name, html, 30]),
+];
+
+// The usage card (kit.js usageCard) wherever a command is typed wrong: 15 words at most.
+export const USAGE = [
+  ['AFFORD, words it could not read', affordUsage('AFFORD could not read that.')],
+  ['AFFORD, no price', affordUsage('AFFORD needs a price.')],
+  ['AFFORD, a price it cannot read', affordUsage('That price does not look right.')],
+  ['AFFORD, how often', affordUsage('How often? Use a number from 1 to 1,000.')],
+  ['AFFORD, how long', affordUsage('For how long? Use 1 to 100 years, like FOR 3Y.')],
+  ['AFFORD, an investment', affordUsage(NOT_INVESTMENTS, { withFormat: false })],
+  ['CPI, no year', cpiUsage('CPI needs a year, and maybe an amount.')],
+  ['CPI, an amount', cpiUsage('That amount does not look right. Use digits, up to 1,000,000,000,000.')],
+  ['CPI, a year out of range', cpiUsage('Pick a year from 1913 to 2025.')],
+  ...['usage', 'amount', 'years', 'rate'].map((k) => [`LOAN, ${k}`, loanUsage(k)]),
+  ['LOAN, no rate data', noRateHtml({ amount: 400000, years: 30 })],
+  ['HISTORY', historyUsage()],
+  ['TAPE, a word it does not take', tapeUsage({ error: 'usage', args: {} })],
+  ['TAPE, not a ticker', tapeUsage({ error: 'symbol', args: { bad: 'XYZQW' } })],
+  ['PROFILE (and the other company screens)', tickerUsage('PROFILE', ['PROFILE AAPL', 'PROFILE KO', 'PROFILE NVDA'])],
+  ['INSIDERS', tickerUsage('INSIDERS', ['INSIDERS AAPL', 'INSIDERS TSLA'])],
+  ['A company screen, no such ticker', errorHtml({ status: 404, message: 'No company called XYZQW.' }, 'XYZQW')],
+  ['WHY, not a company', notCompanyHtml('SPX')],
+  ['DATA', dataUsage()],
+  ['IPO IT, no word', ipoUsage()],
+];
+
+// The empty state (kit.js emptyState) wherever a list is empty: 20 words at most.
+export const EMPTY = [
+  ['WATCH, empty', emptyWatchHtml()],
+  ['PORTFOLIO, empty', emptyPfHtml()],
+  ['ALERTS, empty', emptyAlertsHtml()],
+  ['DESK, empty', deskEmptyHtml(2).replace(' hidden>', '>')], // shown by desk.js when the desk has no panels
+  ['CHAT, no chats yet', chatEmptyHtml(42)],
 ];
 
 test('word budget: each card page says what it must above + Details, and no more', () => {
@@ -111,6 +183,8 @@ function cardCss() {
     ['pro.css', pro.slice(pro.indexOf('/* ==== PRO, LOGIN, REDEEM, GIFT: card pages'))],
     ['style.css FEEDBACK', style.slice(style.indexOf('/* FEEDBACK: a card page'), style.indexOf('.fb-hp'))],
     ['me.css', readFileSync('public/screens/me.css', 'utf8')],
+    ['graveyard.css stone card', (() => { const g = readFileSync('public/screens/graveyard.css', 'utf8'); return g.slice(g.indexOf('/* ---- One stone as a card page')); })()],
+    ['nosuch.css NO SUCH card', (() => { const n = readFileSync('public/screens/nosuch.css', 'utf8'); return n.slice(n.indexOf('/* The NO SUCH card')); })()],
     // WELCOME's colours keep their fallbacks (it can paint before style.css): sizes only.
     ['welcome.css', readFileSync('public/screens/welcome.css', 'utf8'), { colours: false }],
   ];
@@ -165,4 +239,124 @@ test('copy rules on the card pages: no em dash, no emoji, no brand word, no ambe
     assert.doesNotMatch(src, brand, `${f}: brand word`);
     assert.doesNotMatch(src, /amber|orange/i, `${f}: amber`);
   }
+});
+
+// ---- Part A: the usage card, the empty state, NO SUCH TICKER, GRAVEYARD stones -----------
+
+const between = (html, a, b) => { const i = html.indexOf(a); return i < 0 ? '' : html.slice(i, b ? html.indexOf(b, i) : undefined); };
+
+test('usage card: the problem, the format as code, one example that runs; the rest in + Details; 15 words', () => {
+  for (const [name, html] of USAGE) {
+    const w = cardWords(html);
+    assert.ok(w.length <= 15, `${name}: ${w.length} words (budget 15): ${w.join(' ')}`);
+    assert.match(html, /^<section class="card card-usage"/, `${name}: the kit's usage card`);
+    assert.equal((html.match(/btn-solid/g) || []).length, 1, `${name}: one example, the primary button`);
+    assert.match(html, /<div class="card-act"><a class="btn card-btn btn-solid" href="\?c=[^"]+" data-cmd="[^"]+">[^<]+<\/a><\/div>/, `${name}: the example is a command link the router runs`);
+    // Nothing else above + Details: no kicker, note, chart, facts, media or links.
+    assert.doesNotMatch(html.split('<details')[0], /card-kicker|card-note|card-chart|card-facts|card-media|card-links|class="notice"|class="muted/, `${name}: only the three slots`);
+    assert.doesNotMatch(html, /style="|Format:|>Try /, `${name}: no inline style, no old "Format:" or "Try" lines`);
+  }
+  // The kit: a missing format or example is left out, notes and more examples go in + Details.
+  const bare = usageCard({ problem: 'X needs a ticker.' });
+  assert.doesNotMatch(bare, /card-sub|card-act|card-more/);
+  const full = usageCard({ problem: 'X needs a ticker.', format: 'X <ticker>', example: 'X AAPL', more: ['X KO'], notes: ['One note.'] });
+  assert.match(full, /<p class="card-sub"><span class="code">X &lt;ticker&gt;<\/span><\/p>/);
+  assert.match(full, /<details class="how card-more"><summary>Details<\/summary>[\s\S]*data-cmd="X KO"[\s\S]*One note\./);
+  // An example that changes something (TAPE ON) is a link like any other: a link opened
+  // from outside still goes through linkPlan, which asks first.
+  assert.match(tapeUsage({ error: 'usage', args: {} }), /href="\?c=TAPE\+ON" data-cmd="TAPE ON"/);
+});
+
+test('empty state: a short title, one hint of 60ch at most, one action; 20 words', () => {
+  for (const [name, html] of EMPTY) {
+    const w = cardWords(html);
+    assert.ok(w.length <= 20, `${name}: ${w.length} words (budget 20): ${w.join(' ')}`);
+    assert.match(html, /^<div class="empty[ "]/, `${name}: the kit's empty state`);
+    const hint = /<p class="empty-hint">([\s\S]*?)<\/p>/.exec(html)?.[1].replace(/<[^>]+>/g, '') || '';
+    assert.ok(hint.length <= 60, `${name}: hint ${hint.length} characters: ${hint}`);
+    const title = /<p class="empty-title">([\s\S]*?)<\/p>/.exec(html)?.[1] || '';
+    assert.ok(title && title.split(/\s+/).length <= 8, `${name}: a short title: ${title}`);
+    const act = between(html, '<div class="empty-act">', '</div>');
+    const actions = (act.match(/<(a|button)\b/g) || []).length;
+    // DESK keeps its preset buttons (the model the others follow): + PANEL and the presets.
+    assert.ok(name.startsWith('DESK') || actions <= 1, `${name}: one action at most (${actions})`);
+    assert.doesNotMatch(html, /style="|btn-solid/, `${name}: no inline style, no primary button`);
+  }
+  assert.match(emptyAlertsHtml(), /data-cmd="ALERTS AAPL &gt; 350"/, 'ALERTS: one example that runs');
+  assert.match(emptyAlertsHtml(), /<details[\s\S]*ALERTS &lt;symbol&gt; &gt; &lt;level&gt;[\s\S]*ALERTS &lt;symbol&gt; &lt; &lt;level&gt;/, 'ALERTS: the two forms in + Details');
+  assert.match(deskEmptyHtml(2), /class="empty desk-empty" hidden>/, 'DESK: its class and hidden, for its own wiring');
+  assert.match(deskEmptyHtml(2), /data-act="add">\+ PANEL<\/button>[\s\S]*data-act="preset" data-preset=/, 'DESK: its buttons');
+  assert.match(emptyWatchHtml(), /data-cmd="WATCH RESET">STARTER LIST<\/a>/);
+  // The kit: an action { label, cmd } is a command button; small is a side panel's note.
+  assert.match(emptyState({ title: 'T', action: { label: 'GO', cmd: 'HELP' } }), /<a class="btn empty-btn" href="\?c=HELP" data-cmd="HELP">GO<\/a>/);
+  assert.match(emptyState({ title: 'T', small: true }), /^<div class="empty is-small"><p class="empty-title">T<\/p><\/div>$/);
+});
+
+test('NO SUCH TICKER and a GRAVEYARD stone: card pages, 30 words; every stone in the graveyard too', () => {
+  for (const [name, html] of NOSUCH) {
+    assert.match(html, /^<section class="card /, `${name}: a card page`);
+    assert.ok(cardWords(html).length <= 30, `${name}: ${cardWords(html).join(' ')}`);
+  }
+  const [ipo, word, guesses, grave, leh] = NOSUCH.map(([, html]) => html);
+  // IPO IT: the kicker, the ticker, "Be the first.", IPO IT, the certificate and the row.
+  assert.match(ipo, /card-kicker">No such ticker\. Yet\.<\/p><h2 class="card-hero card-hero-60 num">\$QXZVW<\/h2><p class="card-sub">Nobody has listed it\. Be the first\.<\/p>/);
+  assert.match(ipo, /<div class="card-act"><button type="button" class="btn card-btn btn-solid ns-ipo-btn" data-cmd="IPO IT QXZVW" data-ipo data-key="1">IPO IT<\/button>/);
+  assert.match(ipo, /<div class="card-media"><div class="ns-media"><a class="ns-mini"[\s\S]*class="ns-yard"/, 'the certificate and THE GRAVEYARD row are the media');
+  assert.match(word, /card-kicker">Unknown command<\/p>[\s\S]*data-cmd="HELP">HELP<\/a>/, 'no guess: HELP is the action');
+  assert.match(word, /data-prefill="Please add: ZORBLAT">Tell us\.<\/a>/);
+  // Guesses: the first is the action (key 1), the others links (keys 2, 3), what each is in + Details.
+  assert.match(guesses, /btn-solid" href="\?c=EGGPRICE" data-cmd="EGGPRICE" data-key="1"/);
+  assert.match(guesses, /class="card-link" href="\?c=SPONSOR" data-cmd="SPONSOR" data-key="2"/);
+  assert.match(guesses.split('<details')[1], /Average price of a dozen eggs/);
+  assert.ok(!cardWords(guesses).includes('Average'), 'the long words are in + Details (and the tooltip)');
+  // A dead ticker typed on its own: the stone card, "Not anymore.", F PAY RESPECTS, the quote.
+  assert.match(grave, new RegExp(`card-kicker">${TITLE_GONE.replace(/\./g, '\\.')}</p><h2 class="card-hero card-hero-60 num">LEH</h2>`));
+  assert.match(grave, /data-respect="LEH"><kbd>F<\/kbd> PAY RESPECTS/);
+  assert.match(grave, /data-cmd="\$LEH" title="Quote: \$LEH, another listing">\$LEH<\/a>/);
+  // The stone page: the facts (founded, died, peak, loss), the stone, the video and the last
+  // website as the media, the share links; the name, cause, timeline and sources in + Details.
+  const facts = [...leh.matchAll(/<dt class="tag">([^<]+)<\/dt><dd class="num[^"]*">([^<]+)<\/dd>/g)].map((m) => `${m[1]} ${m[2]}`);
+  assert.deepEqual(facts, ['Founded 1850', 'FILED 2008', 'Peak $85.80', 'Loss 100%']);
+  assert.match(leh, /<div class="card-media"><div class="gv-card-media has-video has-site"><div class="gv-card-stone"><figure class="gv-stone has-art"/);
+  assert.match(leh, /class="gv-card-video"><button type="button" class="gv-video"[\s\S]*class="gv-card-site"><a class="gv-site"/);
+  assert.match(leh, /<p class="card-links"><a class="card-link" href="https:\/\/x\.com\/intent\/post[^"]*"[^>]*data-share="grave" data-via="x">SHARE ON X<\/a> <button type="button" class="card-link" data-copy="[^"]+" data-share="grave" data-via="link">COPY LINK<\/button>/);
+  const more = leh.split('<details class="how card-more">')[1];
+  for (const bit of ['Lehman Brothers', 'Real estate losses, Chapter 11', 'class="gv-tl"', 'gv-cliff', 'SOURCES (', 'Esc, then F pays respects.']) assert.ok(more.includes(bit), `+ Details has ${bit}`);
+  // Every stone and zombie in data/graveyard.json keeps to the budget, with all its art.
+  for (const e of GRAVES) {
+    const w = cardWords(stonePageHtml(withArt(e, ART(e)), 1234));
+    assert.ok(w.length <= 30, `GRAVEYARD ${e.ticker}: ${w.length} words: ${w.join(' ')}`);
+  }
+  // Words drawn on a picture (the stone's face, the certificate's stamp) are the picture's.
+  assert.deepEqual(cardWords('<figure class="gv-stone" role="img" aria-label="x"><span>R.I.P.</span></figure><p>one</p><span aria-hidden="true">two</span>'), ['one']);
+});
+
+test('every replaced site uses the kit: usage card, empty state, the NO SUCH card', () => {
+  const src = (f) => readFileSync(f, 'utf8');
+  for (const f of ['buy', 'cpi', 'loan', 'history', 'tape', 'profile', 'why', 'data', 'nosuch'].map((n) => `public/screens/${n}.js`)) {
+    assert.match(src(f), /usageCard\(/, `${f}: usageCard`);
+    // (buy.js keeps WAGE's own lines: not a usage pile of AFFORD's.)
+    const own = f.endsWith('buy.js') ? src(f).replace(/function renderWage[\s\S]*?\n}\n/, '') : src(f);
+    assert.doesNotMatch(own, /Format: <span|class="muted examples">Try /, `${f}: no "Format:" and "Try" pile`);
+  }
+  for (const f of ['watch', 'portfolio', 'alerts', 'desk', 'chat', 'insiders', 'shorts'].map((n) => `public/screens/${n}.js`)) {
+    assert.match(src(f), /emptyState\(/, `${f}: emptyState`);
+    assert.doesNotMatch(src(f), /class="panel-msg (wl|pf)-empty"|<p class="side-empty">|<div class="desk-empty" hidden>|<div class="chat-empty"><p class="notice">/, `${f}: no hand-made empty line`);
+  }
+  const app = src('public/app.js');
+  assert.doesNotMatch(app, /Unknown command\. Type <a/, 'the unknown-command screen is the NO SUCH card');
+  assert.match(app, /view\.innerHTML = didYouMeanHtml\(cmd\.input, \{\}, null/);
+  assert.match(app, /view\.innerHTML = didYouMeanHtml\(typed, found, ticker,/);
+  assert.match(src('public/screens/graveyard.js'), /el\.innerHTML = stonePageHtml\(e, n\);/, 'GRAVEYARD LEH is the stone card');
+});
+
+test('one-line messages: 60ch at most, centred on a screen of their own; the profile blurb in + Details', () => {
+  assert.match(STYLE, /\.panel-solo \.panel-body:not\(:has\(table\)\) > \.notice,\s*\.panel-solo \.panel-body:not\(:has\(table\)\) > \.panel-msg,\s*\.panel-solo \.panel-body:not\(:has\(table\)\) > \.notice \+ \.muted \{ max-width: 60ch; margin-left: auto; margin-right: auto; text-align: center; \}/);
+  assert.match(readFileSync('public/commands.css', 'utf8'), /\.profile-desc \{ max-width: 60ch;/);
+  const long = 'Apple Inc. designs, manufactures and markets smartphones, personal computers, tablets, wearables and accessories worldwide. It also sells a range of related services. The company offers iPhone, a line of smartphones. It was founded in 1976 and is based in Cupertino.';
+  const [lead, rest] = splitDescription(long);
+  assert.ok(lead.length <= DESC_LEAD && lead.startsWith('Apple Inc. designs'), lead);
+  assert.equal(`${lead} ${rest}`, long, 'nothing lost');
+  assert.match(descHtml(long), /^<p class="profile-desc">Apple Inc\.[^<]*<\/p><details class="how profile-more"><summary>Details<\/summary><p class="profile-desc">[^<]*Cupertino\.<\/p><\/details>$/);
+  assert.equal(descHtml('Short.'), '<p class="profile-desc">Short.</p>');
 });
