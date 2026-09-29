@@ -1,78 +1,98 @@
 /* pro-demo.js's own styles, loaded with it (public/lazy.js) on PRO for a visitor: what is
-   inside the minis. Their boxes (fixed sizes, the captions, the layout) are in pro.css.
-   The minis are pictures: nothing in them takes a click or the keyboard (inert). */
+   inside the stage. Its frame (the title strip, the fixed-height view, the keys) is in
+   pro.css. The view is a picture: nothing in it takes a click or the keyboard (inert). */
 
-.pd-mini { pointer-events: none; user-select: none; }
-/* Something new in a mini comes up and in; the sponsor line goes down and out. */
-.pd-in { animation: pd-rise 240ms ease-out both; }
-.pd-out { animation: pd-drop 400ms ease-in both; }
-@keyframes pd-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-@keyframes pd-drop { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(100%); } }
+.pd-stage { position: relative; pointer-events: none; user-select: none; }
+/* Something new comes up and in. */
+.pd-in { animation: pd-rise 320ms ease-out both; }
+@keyframes pd-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .pd-in, .pd-out { animation: none; }
+  .pd-in { animation: none; }
 }
 
-/* ---- CHAT: the real thread (chat.css), in a small window ------------------------------ */
-.pd-win { display: flex; flex-direction: column; height: 100%; border: 1px solid var(--rule-strong); background: var(--bg); }
-.pd-bar { display: flex; align-items: center; gap: 12px; min-height: 28px; padding: 0 8px; border-bottom: 1px solid var(--rule); }
-.pd-dots, .pd-term-top { display: flex; gap: 4px; }
-.pd-dots i, .pd-term-top i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
-.pd-msgs.ct-msgs { overflow: hidden; scrollbar-gutter: auto; padding: 6px 12px; }
-
-/* ---- Every device: a laptop and a phone, the same rows --------------------------------- */
-.pd-dev { position: relative; width: 100%; max-width: 280px; height: 100%; margin: 0 auto; }
-.pd-laptop { position: absolute; left: 0; top: 12px; width: 184px; }
-.pd-lscreen { height: 120px; padding: 4px; overflow: hidden; border: 2px solid var(--rule-strong); border-bottom-width: 6px; background: var(--bg); }
-.pd-lbase { position: relative; left: -16px; width: calc(100% + 32px); height: 6px; border: 1px solid var(--rule-strong); border-top: 0; background: var(--panel-2); }
-.pd-phone { position: absolute; right: 0; bottom: 0; width: 92px; height: 148px; padding: 16px 2px 8px; border: 2px solid var(--rule-strong); border-radius: 12px; background: var(--bg); box-shadow: 0 0 0 4px var(--bg); }
-.pd-pscreen { height: 100%; overflow: hidden; }
-.pd-dev .grid-table { table-layout: fixed; }
-.pd-dev .grid-table th, .pd-dev .grid-table td { height: 18px; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
-.pd-lscreen .grid-table th, .pd-lscreen .grid-table td { padding: 0 2px; }
-/* A fixed table takes its widths from the head row: Symbol, Last, %Chg (the rest hidden). */
-.pd-lscreen .grid-table thead th:first-child { width: 28%; }
-.pd-lscreen .grid-table thead th:nth-child(3) { width: 44%; }
-.pd-pscreen .grid-table td, .pd-pscreen .grid-table th { padding: 0 2px; }
-.pd-pscreen .grid-table { table-layout: auto; }
-.pd-dev .grid-table thead th { color: var(--faint); font-weight: 400; letter-spacing: 0; }
-.pd-dev .wl-cname, .pd-dev .tag, .pd-dev .chg { display: none; }
-.pd-pscreen thead, .pd-pscreen .last { display: none; }
-
-/* ---- Pings when closed: the top of a phone's lock screen ------------------------------- */
+/* ---- 1 PINGS: a phone's lock screen, two notifications ---------------------------------- */
 .pd-lock {
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-  width: 100%; max-width: 200px; height: 100%; margin: 0 auto; padding: 12px 8px 0; overflow: hidden;
-  border: 2px solid var(--rule-strong); border-bottom: 0; border-radius: 16px 16px 0 0; background: var(--panel);
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  width: 336px; max-width: 100%; height: calc(100% - 32px); margin: 32px auto 0; padding: 24px 12px 0; overflow: hidden;
+  border: 2px solid var(--rule-strong); border-bottom: 0; border-radius: 24px 24px 0 0; background: var(--panel);
 }
-.pd-lock-time { font-size: 18px; font-weight: 700; color: var(--text); }
-.pd-notes { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.pd-lock-time { font-size: 44px; font-weight: 700; line-height: 1; color: var(--text); }
+.pd-notes { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .pd-note {
-  display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: 6px; align-items: start;
-  padding: 6px 8px; border-radius: 8px; background: var(--panel-3); text-align: left; line-height: 1.35;
+  display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 12px; align-items: start;
+  padding: 12px; border-radius: 12px; background: var(--panel-3); text-align: left; line-height: 1.4;
 }
-.pd-note-ic { grid-row: 1 / span 2; margin-top: 2px; }
-.pd-note-t { font-size: 12px; font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
-.pd-note-b { font-size: 11px; color: var(--text-2); }
+.pd-note-ic { grid-row: 1 / span 2; width: 32px; height: 32px; border-radius: 8px; }
+.pd-note-t { font-size: 16px; font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+.pd-note-b { font-size: 13px; color: var(--text-2); }
+.pd-note-b.up { color: var(--up); }
+.pd-note-b.down { color: var(--down); }
 
-/* ---- No ads: a small terminal, its real status line, the AD line going ----------------- */
-.pd-term {
-  display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 6px;
-  width: 100%; max-width: 272px; height: 100%; margin: 0 auto; padding: 0;
-  border: 1px solid var(--rule-strong); background: var(--bg);
+/* ---- 2 CHAT: the real thread (chat.css), bigger ------------------------------------------ */
+.pd-chat.ct-msgs { height: 100%; overflow: hidden; scrollbar-gutter: auto; padding: 16px 24px; font-size: 16px; }
+.pd-chat .cm { gap: 12px; padding: 4px 0; }
+.pd-chat .cm-t { font-size: 13px; line-height: 1.9; }
+.pd-chat .cm-chip { font-size: 16px; }
+.pd-chat .cm-day { margin: 16px 0 8px; }
+.pd-chat .cm-day:first-child { margin-top: 0; }
+.pd-chat .px-av { width: 20px; height: 20px; vertical-align: -4px; }
+
+/* ---- 3 EVERY DEVICE: a laptop and a phone, the same rows -------------------------------- */
+.pd-dev { display: flex; align-items: flex-end; justify-content: center; gap: 32px; height: 100%; padding: 32px 24px; }
+.pd-laptop { flex: 0 1 360px; min-width: 0; }
+.pd-lscreen { height: 200px; padding: 8px; overflow: hidden; border: 2px solid var(--rule-strong); border-bottom-width: 8px; border-radius: 6px 6px 0 0; background: var(--bg); }
+.pd-lbase { position: relative; left: -24px; width: calc(100% + 48px); height: 8px; border: 1px solid var(--rule-strong); border-top: 0; border-radius: 0 0 6px 6px; background: var(--panel-2); }
+.pd-phone { flex: 0 0 160px; height: 280px; padding: 24px 6px 12px; border: 2px solid var(--rule-strong); border-radius: 24px; background: var(--bg); }
+.pd-pscreen { height: 100%; overflow: hidden; }
+.pd-dev .grid-table { width: 100%; table-layout: auto; }
+.pd-dev .grid-table th, .pd-dev .grid-table td { height: 32px; padding: 0 6px; font-size: 14px; white-space: nowrap; }
+.pd-dev .grid-table thead th { height: 24px; font-size: 11px; font-weight: 400; letter-spacing: .04em; color: var(--faint); }
+.pd-dev .wl-cname, .pd-dev .tag, .pd-dev .chg { display: none; }
+/* The phone: the symbol and the move only. */
+.pd-pscreen thead, .pd-pscreen .last { display: none; }
+.pd-pscreen .grid-table th, .pd-pscreen .grid-table td { height: 32px; padding: 0 4px; font-size: 13px; }
+
+/* ---- 4 SEAT: the seat card and one gift ticket ------------------------------------------- */
+.pd-seatstage { display: flex; align-items: center; justify-content: center; height: 100%; padding: 24px; }
+/* The card and the ticket side by side, the same height. */
+.pd-seatrow { display: flex; flex-wrap: wrap; align-items: stretch; justify-content: center; gap: 24px 32px; }
+.pd-seatcard {
+  display: grid; grid-template-columns: 64px auto; grid-template-rows: auto auto; column-gap: 16px; row-gap: 4px; align-items: center;
+  padding: 24px; border: 1px solid var(--rule-strong); background: var(--panel);
 }
-.pd-term-top { padding: 8px 8px 0; }
-.pd-term-body { display: grid; grid-template-columns: 2fr 1fr; gap: 6px; min-height: 0; padding: 0 8px; }
-.pd-term-panel { min-height: 0; border: 1px solid var(--rule); background: var(--panel); }
-.pd-term-panel.is-chart { display: flex; align-items: flex-end; padding: 8px; }
-.pd-term-line { display: block; width: 100%; height: 70%; overflow: visible; }
-.pd-term-line polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-.pd-term-panel.is-rows { display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 8px; }
-.pd-term-panel.is-rows i { display: block; height: 4px; background: var(--rule-strong); }
-.pd-term-panel.is-rows i:nth-child(2n) { width: 60%; }
-.pd-term-status { display: flex; align-items: center; justify-content: center; height: 24px; padding: 0 8px; overflow: hidden; border-top: 1px solid var(--rule-strong); background: var(--panel); font-size: 11px; white-space: nowrap; }
-.pd-term-spon { min-width: 0; max-width: 100%; }
-.pd-term-legal { color: var(--dim); }
-.pd-term-sep { margin: 0 6px; color: var(--faint); }
-.pd-term-link { color: var(--accent); }
-/* A still picture: the AD line struck through. */
-.pd-struck .spon-item { text-decoration: line-through; text-decoration-color: var(--down); opacity: .6; }
+.pd-seat-slot { grid-row: 1 / span 2; width: 64px; height: 64px; border: 2px dashed var(--rule-strong); }
+.pd-seat-handle { font-size: 16px; color: var(--dim); letter-spacing: .04em; }
+.pd-seat-num { font-size: 32px; font-weight: 700; line-height: 1.1; color: var(--text); white-space: nowrap; }
+/* A ticket: a stub, a perforated line, 3 GIFT MONTHS. */
+.pd-ticket {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  width: 144px; min-height: 96px; padding: 0 0 0 24px;
+  border: 1px solid var(--accent); background: var(--accent-tint); color: var(--accent);
+}
+.pd-ticket::before { content: ''; position: absolute; top: 8px; bottom: 8px; left: 24px; border-left: 1px dashed var(--accent); }
+.pd-ticket-n { font-size: 32px; font-weight: 700; line-height: 1; }
+.pd-ticket-u { font-size: 11px; font-weight: 600; letter-spacing: .08em; }
+
+@media (max-height: 800px) {
+  .pd-lock { height: calc(100% - 24px); margin-top: 24px; padding-top: 16px; gap: 12px; }
+  .pd-lock-time { font-size: 32px; }
+  .pd-dev { padding: 24px; }
+  .pd-lscreen { height: 184px; }
+  .pd-phone { height: 240px; }
+}
+@media (max-width: 639px) {
+  /* PINGS on a phone: no phone frame, just the two cards, the width of the stage. */
+  .pd-lock { width: 100%; height: 100%; margin: 0; padding: 16px 12px; border: 0; border-radius: 0; background: none; }
+  .pd-lock-time { display: none; }
+  .pd-chat.ct-msgs { padding: 12px; }
+  .pd-dev { gap: 12px; padding: 16px 12px; }
+  .pd-laptop { flex: 1 1 auto; }
+  .pd-lscreen { height: 176px; padding: 4px; }
+  .pd-lbase { left: -12px; width: calc(100% + 24px); }
+  .pd-phone { flex: 0 0 104px; height: 216px; padding: 16px 4px 8px; border-radius: 16px; }
+  .pd-dev .grid-table th, .pd-dev .grid-table td { height: 32px; padding: 0 4px; font-size: 12px; }
+  .pd-pscreen .grid-table th, .pd-pscreen .grid-table td { font-size: 12px; padding: 0 2px; }
+  .pd-seatcard { padding: 16px; }
+  .pd-seat-num { font-size: 24px; }
+  .pd-ticket { width: 128px; min-height: 80px; }
+}

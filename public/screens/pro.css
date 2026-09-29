@@ -50,8 +50,6 @@
 .pro3-plan[aria-pressed="true"] { color: var(--text); text-decoration: none; cursor: default; }
 .pro3-plan:not([aria-pressed="true"]):hover { color: var(--text-2); }
 .pro3-plan:disabled { cursor: not-allowed; opacity: .6; }
-/* The visitor's switch: "or $42 a month", dim and underlined until pressed. */
-.pro3-switch:hover { color: var(--text-2); }
 .pro3-chat { color: inherit; text-decoration: underline dotted var(--rule-strong); text-underline-offset: .2em; }
 .pro3-chat:hover { color: var(--accent); text-decoration: none; }
 /* + Details: FREE, then PRO, one list under the other (the column is too narrow for
@@ -71,54 +69,56 @@
   .pro3-who { display: block; font-size: 24px; letter-spacing: .2em; line-height: 1.4; }
 }
 
-/* ==== PRO for a visitor (v4): what Pro gives, shown. The kit's slots as they are: the
-   CHAT window is the art, the price the hero, three minis and the bonus row the media.
-   The minis are boxes of a fixed size, so nothing moves when screens/pro-demo.js draws
-   in them (its own sheet, pro-demo.css, styles what is inside). On a desktop the chat
-   sits at the left of the price and SUBSCRIBE, so all of it is in the first view. ==== */
-.pro-v4 .card-more { max-width: var(--card-w); }
-.pd-fig { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-width: 0; margin: 0; }
-.pd-cap { font-size: 13px; color: var(--text-2); }
-.pd-mini { width: 100%; overflow: hidden; }
-.pd-chat-fig { max-width: 480px; }
-.pd-mini-chat { height: 248px; text-align: left; }
-.pro-v4 .card-media { gap: 32px; }
-.pd-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; width: 100%; }
-.pd-tile .pd-mini { height: 168px; }
-/* The bonus row: the seat card and the gift tickets, side by side, smaller than the tiles. */
-.pd-bonus { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: 24px 48px; width: 100%; }
-.pd-tile-seat, .pd-tile-gifts { width: auto; }
-.pd-seat { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 16px; border: 1px solid var(--rule-strong); background: var(--panel); }
-.pd-seat-av { flex: 0 0 auto; }
-.pd-seat-num { font-size: 18px; font-weight: 700; color: var(--text); white-space: nowrap; }
-.pd-gifts { display: flex; align-items: center; gap: 8px; height: 56px; }
-/* A ticket: a stub, a perforated line, the 30 days. */
-.pd-ticket {
-  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  width: 64px; height: 40px; padding: 0 0 0 12px;
-  border: 1px solid var(--accent); background: var(--accent-tint); color: var(--accent);
-}
-.pd-ticket::before { content: ''; position: absolute; top: 4px; bottom: 4px; left: 12px; border-left: 1px dashed var(--accent); }
-.pd-ticket-n { font-size: 14px; font-weight: 700; line-height: 1; }
-.pd-ticket-u { font-size: 11px; letter-spacing: .08em; line-height: 1.4; }
-/* The quiet line and the two links it opens. */
+/* ==== PRO for a visitor (v5): one stage, four keys. A split card (kit.css "Split"): the
+   words on the left, the stage on the right on a desktop; on a phone the words first,
+   then the stage. The stage fills its column, one box: the title strip, the view (a
+   fixed height, so nothing moves when screens/pro-demo.js draws in it or a key switches
+   it; its own sheet, pro-demo.css, styles what is inside) and the key row. ==== */
+.pro-v5 > .card-art { order: 2; }
+.pro-v5 .card-head { gap: 16px; }
+.pro-v5 .card-hero-24 { max-width: 30ch; }
+/* The price line: both prices, the picked one bright and heavy, the other dim. */
+.pro5-price { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 4px 24px; }
+.pro5-plan { padding: 0; font-weight: 400; }
+.pro5-plan[aria-pressed="true"] { font-weight: 700; }
+.pro5-plan:disabled { text-decoration: none; }
+/* The test-mode line: a line of its own under "Cancel any time.". */
+.pro-v5 #pro-test:not([hidden]) { display: block; }
+/* The key-or-code line, on top of + Details. */
+.pro-keyline { margin: 0 0 16px; font-size: 12px; letter-spacing: .06em; }
 .pro-keylinks { display: inline-flex; gap: 24px; }
 .pro-keylinks[hidden], .card-link[hidden] { display: none; }
 
+/* The stage: a terminal panel. */
+.pd-stagebox { display: flex; flex-direction: column; width: 100%; min-width: 0; border: 1px solid var(--rule-strong); background: var(--bg); text-align: left; }
+.pd-stagebox:focus { outline: 0; }
+.pd-stagebox:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+/* The title strip, like a panel head (style.css .panel-head, .panel-label, .panel-meta). */
+.pd-stage-head { display: flex; align-items: stretch; gap: 8px; height: 22px; border-bottom: 1px solid var(--rule-strong); background: var(--panel); }
+.pd-stage-label { display: flex; align-items: center; padding: 0 8px; background: var(--accent); color: var(--ink); font-size: 12px; font-weight: 600; letter-spacing: .06em; white-space: nowrap; }
+.pd-stage-meta { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; font-size: 11px; letter-spacing: .04em; color: var(--dim); white-space: nowrap; }
+.pd-stage { height: 360px; overflow: hidden; }
+/* The key row, like the F-key bar (style.css .fkey): the number dim, the one on show lit. */
+.pd-keys { display: flex; flex-wrap: wrap; min-height: 32px; border-top: 1px solid var(--rule-strong); background: var(--panel); }
+.pd-key {
+  display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px 0 8px;
+  border: 0; background: none; color: var(--text-2); font-family: var(--font); font-size: 12px; font-weight: 600; letter-spacing: .06em; white-space: nowrap;
+}
+.pd-key:hover { background: var(--panel-3); color: var(--text); }
+.pd-key-n { color: var(--dim); font-weight: 400; }
+.pd-key[aria-selected="true"] { background: var(--accent); color: var(--ink); }
+.pd-key[aria-selected="true"] .pd-key-n { color: var(--ink); }
+
 @media (min-width: 1100px) {
-  .pro-v4 { display: grid; grid-template-columns: minmax(0, 480px) minmax(0, 1fr); column-gap: 48px; }
-  .pro-v4 > .card-alert { grid-column: 1 / -1; }
-  .pro-v4 > .card-art { grid-column: 1; grid-row: 1 / span 2; align-self: center; }
-  .pro-v4 > .card-head { grid-column: 2; grid-row: 1; align-self: end; }
-  .pro-v4 > .card-cta { grid-column: 2; grid-row: 2; align-self: start; }
-  .pro-v4 > .card-alert ~ .card-art { grid-row: 2 / span 2; }
-  .pro-v4 > .card-alert ~ .card-head { grid-row: 2; }
-  .pro-v4 > .card-alert ~ .card-cta { grid-row: 3; }
-  .pro-v4 > .card-media, .pro-v4 > .card-foot { grid-column: 1 / -1; }
+  /* The words take the narrower column, the stage the wider; their tops on one line (and
+     the stage stays put when + Details opens under the words). */
+  .card.card-split.pro-v5 { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); align-items: start; }
+  .pro5-price { justify-content: flex-start; }
+}
+@media (max-height: 800px) {
+  .pd-stage { height: 320px; }
 }
 @media (max-width: 639px) {
-  .pd-mini-chat { height: 280px; }
-  .pd-tiles { grid-template-columns: minmax(0, 1fr); gap: 24px; }
-  .pd-tile .pd-mini { max-width: 320px; margin: 0 auto; }
-  .pd-bonus { gap: 24px; }
+  .pd-stage { height: 288px; }
+  .pd-key { gap: 4px; padding: 0 8px 0 6px; }
 }

@@ -28,6 +28,13 @@ export const topLineHtml = (store, pro = false, embed = false) => {
   return `${esc(line)}${line === HONEST_LINE && !pro && !embed ? ` <span class="al-pro">${proLine(ALERTS_PRO_LINE)}</span>` : ''}`;
 };
 
+// Under the "Added ..." line, for a visitor: the alert fires while this tab is open, and
+// Pro takes it to the phone. Never for Pro, never in an embed or a DESK panel, and not
+// when this device already pings (the top line says so).
+export const ALERT_SET_PRO_LINE = 'Fires while this tab is open. On your phone too: PRO';
+export const alertSetLineHtml = (store, pro = false, embed = false) => (
+  !pro && !embed && topLine(store) === HONEST_LINE ? `<p class="al-set-pro">${proLine(ALERT_SET_PRO_LINE)}</p>` : '');
+
 const ERRORS = {
   usage: () => 'Type ALERTS, a symbol, > or <, and a level.',
   symbol: (bad) => `${bad} is not a symbol this terminal knows.`,
@@ -96,6 +103,7 @@ export function render(el, cmd, ctx) {
   let warn = false;
   let confirming = false;
   let perm = '';
+  let setLine = ''; // the quiet PRO line after an alert is added (a visitor only)
 
   el.innerHTML = panel('1', 'Alerts', `${toolbar({ left: `<span class="al-honest">${topLineHtml(ctx.store, isPro(), Boolean(ctx.embed))}</span>`, right: '<span class="list-tools"></span>', label: 'Alerts' })}<div class="wl-top al-top"></div><div class="al-body"></div>`,
     { cls: 'panel-solo', metaId: 'al-meta', meta: '', bodyCls: 'flush' });
@@ -109,7 +117,7 @@ export function render(el, cmd, ctx) {
   }
   function drawTop() {
     drawTools();
-    top.innerHTML = `${msg ? `<p class="wl-msg${warn ? ' is-warn' : ''}" role="status">${esc(msg)}</p>` : ''}${perm}`;
+    top.innerHTML = `${msg ? `<p class="wl-msg${warn ? ' is-warn' : ''}" role="status">${esc(msg)}</p>` : ''}${setLine}${perm}`;
     meta.textContent = `${list.length} OF ${MAX_ALERTS}`;
   }
   function draw() {
@@ -185,6 +193,7 @@ export function render(el, cmd, ctx) {
     msg = `Added ${r.alert.sym} ${r.alert.op} ${fmtLevel(r.alert)}.${now}`;
     warn = false;
     perm = askLine();
+    setLine = alertSetLineHtml(ctx.store, isPro(), Boolean(ctx.embed));
     drawTop();
     draw();
     ctx.status(`ALERT ADDED: ${r.alert.sym} ${r.alert.op} ${fmtLevel(r.alert)}`);

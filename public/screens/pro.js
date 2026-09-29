@@ -1,9 +1,10 @@
 // PRO, LOGIN, LOGOUT, GIFT and REDEEM, as card pages (kit.js cardPage). PRO for a
-// visitor: what Pro gives, shown, not listed: a live CHAT window on top (the art), the
-// price, big, with the plan switch under it, SUBSCRIBE, one note line; three small live
-// minis (every device, pings when closed, no ads: screens/pro-demo.js fills them), the
-// seat and the 3 gift codes as a bonus row; one quiet line that opens LOGIN and REDEEM;
-// + Details for what is free and what is Pro and the terms as short rows. A browser with
+// visitor (v5, "one stage, four keys"): a split card, the words on the left (PRO, the
+// promise as the hero, both prices with the picked one bright, SUBSCRIBE, "Cancel any
+// time." and, in test mode only, a line that says no card is charged), and on the right
+// one stage: one large demo at a time in a terminal panel, with a key row 1 PINGS 2 CHAT
+// 3 EVERY DEVICE 4 SEAT (screens/pro-demo.js fills it). + Details for what is free and
+// what is Pro, the key-or-gift-code line and the terms as short rows. A browser with
 // a key whose Pro is off keeps its seat, big, and REACTIVATE. With a key: YOUR KEY, COPY and DOWNLOAD,
 // the seat and the renewal as facts, and small links (GIFT, MANAGE PLAN, CANCEL, SHOW
 // KEY, LOGOUT). LOGIN and REDEEM take the key or the code in a box on the page (the
@@ -14,8 +15,8 @@ import { cardPage, cardButton, cardLink, cardForm, cardFacts, cardRows, raw } fr
 import * as pro from '../pro.js';
 import { reloadAfterKey, takeShowKeyOnce } from '../goal.js';
 import { findCommand } from '../registry.js';
-import { avatarSvg, blank } from '../pixel-avatar.js';
-import { loadModule, loadCss, stylesOf } from '../lazy.js'; // the visitor's minis: screens/pro-demo.js, by name
+import { blank } from '../pixel-avatar.js';
+import { loadModule, loadCss, stylesOf } from '../lazy.js'; // the visitor's stage: screens/pro-demo.js, by name
 import { parsePro as parse, parseRedeem, parseLogin } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { parse, parseRedeem, parseLogin };
 
@@ -37,7 +38,7 @@ export const PRO_ROWS = [
   ['Watchlist, portfolio, DESK and GRID on every device', LIVE, 'DESK'],
   ['Your own ticker tape', LIVE, 'TAPE'],
   ['A seat number', LIVE, ''],
-  ['No sponsor line', LIVE, 'SPONSOR'],
+  ['No ad line', LIVE, ''],
   ['CHAT with friends who have Pro', LIVE, 'CHAT'],
   ['Alerts and CHAT pings when the tab is closed', LIVE, 'ME'],
 ];
@@ -113,16 +114,18 @@ function rowsHtml(rows) {
   return shownRows(rows).map(([name, status, cmd]) => {
     const at = cmd && findCommand(cmd) ? name.indexOf(cmd) : -1;
     const what = at >= 0 ? `${esc(name.slice(0, at))}${link(cmd)}${esc(name.slice(at + cmd.length))}` : esc(name);
-    return `<li class="pro-row"><span class="pro-feat">${what}</span><span class="pro-tag${status === LIVE ? ' is-live' : ''}">${esc(status)}</span></li>`;
+    // Every row is live, so it carries no tag; a row that is not says so.
+    return `<li class="pro-row"><span class="pro-feat">${what}</span>${status === LIVE ? '' : `<span class="pro-tag">${esc(status)}</span>`}</li>`;
   }).join('');
 }
 
 // The breakdown: FREE and PRO side by side (stacked on a phone), under the rule and the
-// price (price: false in + Details, where the price is a row of its own).
-export function offerHtml({ price = true } = {}) {
+// price (price: false in + Details, where the price is a row of its own). rule: false
+// where the page's hero already says the rule (the visitor's PRO).
+export function offerHtml({ price = true, rule = true } = {}) {
   return `<div class="money">
-    <div class="pro-head"><p class="fx-from">${esc(RULE)}</p>
-      ${price ? `<p class="hero num pro-price"><span class="hero-value">${esc(pro.PRICE)}</span><span class="hero-unit">A MONTH</span><span class="hero-unit pro-or">OR</span><span class="hero-value">${esc(pro.PRICE_YEAR)}</span><span class="hero-unit">A YEAR</span></p>` : ''}</div>
+    ${rule || price ? `<div class="pro-head">${rule ? `<p class="fx-from">${esc(RULE)}</p>` : ''}
+      ${price ? `<p class="hero num pro-price"><span class="hero-value">${esc(pro.PRICE)}</span><span class="hero-unit">A MONTH</span><span class="hero-unit pro-or">OR</span><span class="hero-value">${esc(pro.PRICE_YEAR)}</span><span class="hero-unit">A YEAR</span></p>` : ''}</div>` : ''}
     <div class="pro-cols">
       <section class="pro-col" aria-label="Free"><h3 class="pro-col-h">FREE</h3><ul class="pro-list">${rowsHtml(FREE_ROWS)}</ul></section>
       <section class="pro-col" aria-label="Pro"><h3 class="pro-col-h">PRO</h3><ul class="pro-list">${rowsHtml(PRO_ROWS)}</ul></section>
@@ -170,33 +173,32 @@ function wire(el, ctx, sel, label, fn) {
 }
 
 // ---- the PRO page --------------------------------------------------------------------
-// A visitor: the minis, the price, one button, one note line, small links, + Details
-// (visitorHtml below). A key whose Pro is off: its seat, big, the price with the plan
+// A visitor: the promise, both prices, one button, the note, + Details; the stage
+// beside it (visitorHtml below). A key whose Pro is off: its seat, big, the price with the plan
 // switch in it, one button, one note line, small links, + Details.
 // A key with Pro on: YOUR KEY (masked until SHOW KEY), COPY and DOWNLOAD, the seat and
 // the renewal as facts, small links. Everything else (FREE vs PRO, the terms as short
 // rows, gifts) is behind + Details.
 
 export const YOUR_KEY = 'YOUR KEY';
-// The visitor's view: the kicker, the captions under the minis, the key-or-code line.
+// The visitor's view (v5): the kicker, the hero (the promise, in words, not a number), the
+// note, the test-mode line, the key-or-code line (in + Details).
 export const KICKER = 'PRO';
-export const CAPTIONS = {
-  chat: 'Chat with friends',
-  dev: 'Every device',
-  pings: 'Pings when closed',
-  ads: 'No ads',
-  seat: 'Yours forever',
-  gifts: '3 friends get a month',
-};
+// The hero, in ONE place. The owner's other line, if it is ever wanted:
+// 'Pro is your stuff on every device, pings on your phone, and chat with friends.'
+export const HERO = RULE;
+export const CANCEL_NOTE = 'Cancel any time.';
+export const TEST_LINE = 'Test mode: no card is charged yet.';
 export const KEY_Q = 'Key or gift code?';
-// What each mini is, for a screen reader (the words on a mini are the picture's).
-export const MINI_LABELS = {
-  chat: 'A chat between ana and joe: a stock with its price, a screen, a GUESS score and a reply',
-  dev: 'The same watchlist on a laptop and on a phone',
-  pings: 'A phone lock screen: a price alert, then a chat message',
-  ads: 'A terminal whose sponsor line slides away',
-  gifts: '3 gift codes, 30 days of Pro each',
-};
+// The stage: one large demo at a time, keys 1 to 4. label: the title strip and the key;
+// meta: the title strip's quiet part (EVERY DEVICE says "your watchlist" when it shows
+// the visitor's own list: screens/pro-demo.js); aria: what the picture shows.
+export const STAGES = [
+  { id: 'pings', label: 'PINGS', meta: 'demo', aria: 'A phone lock screen with two notifications: a chat message with a stock price, and a price alert' },
+  { id: 'chat', label: 'CHAT', meta: 'demo', aria: 'A chat between ana and joe: a stock with its price, a GUESS score and a reply' },
+  { id: 'dev', label: 'EVERY DEVICE', meta: 'demo', aria: 'The same watchlist on a laptop and on a phone' },
+  { id: 'seat', label: 'SEAT', meta: 'yours forever', aria: 'A seat card with the next free seat number, a blank username and an empty avatar, and a ticket for 3 gift months' },
+];
 export const RENEW_NOTE = 'Renews until cancelled';
 export const TEST_NOTE = 'test mode, no charge';
 export const KEY_NOTE = 'Your login on any device.';
@@ -205,13 +207,8 @@ export const MANAGE = 'MANAGE PLAN';
 export const CANCEL = 'CANCEL';
 export const GIFT_AFTER = 'When the gift month ends, you can subscribe on this key and keep its seat.';
 export const PLAN_PRICE = { year: `${pro.PRICE_YEAR} a year.`, month: `Or ${pro.PRICE} a month.` };
-// The visitor's hero: the picked plan's price, the one big number.
-export const HERO_PRICE = { year: pro.PRICE_YEAR, month: pro.PRICE };
-export const HERO_LABEL = { year: `${pro.PRICE_YEAR} a year`, month: `${pro.PRICE} a month` };
-// Under it, each price once: the plan's unit, then the other plan as the switch.
-export const PLAN_UNIT = { year: 'a year', month: 'a month' };
-export const PLAN_OTHER = { year: `or ${pro.PRICE} a month`, month: `or ${pro.PRICE_YEAR} a year` };
-const otherPlan = (plan) => (plan === 'month' ? 'year' : 'month');
+// The visitor's price line: both prices, each once; the picked one bright and heavy.
+export const PLAN_LINE = { month: `${pro.PRICE} a month`, year: `${pro.PRICE_YEAR} a year` };
 export const planButton = (plan) => (plan === 'month' ? 'MONTHLY' : 'YEARLY');
 
 const isGift = (st) => st?.status === 'gift' || st?.status === 'gift_ended';
@@ -261,20 +258,6 @@ export function seedBits(seed) {
     }
   }
   return bits;
-}
-
-// The seat card of the bonus row: a seeded avatar and SEAT 00043 (blank before it comes).
-export function seatCardInner(n) {
-  const seat = Number.isInteger(n) && n > 0 ? n : null;
-  const av = avatarSvg({ seat }, { size: 32, cls: 'pd-seat-av', bits: seat ? seedBits(seat) : blank() });
-  return `${av}<span class="pd-seat-num num">${seatInner({ mine: false, seat })}</span>`;
-}
-
-// The visitor's sub: "a year · or $42 a month". The "or ..." part is the switch (a
-// .pro3-plan, so the same click handler picks its plan).
-export function switchHtml(plan) {
-  const p = plan === 'month' ? 'month' : 'year';
-  return `<span id="pro-unit">${esc(PLAN_UNIT[p])}</span> · <button type="button" class="pro3-plan pro3-switch" id="pro-switch" data-plan="${otherPlan(p)}">${esc(PLAN_OTHER[p])}</button>`;
 }
 
 // The price, with the plan switch in it: the picked plan bright, the other one dim.
@@ -348,8 +331,8 @@ export function mainHtml({ key = null, st = null, next = null, alert = '', alert
       detailsOpen,
     });
   }
-  // A visitor: the minis, the price and SUBSCRIBE.
-  if (!key) return visitorHtml({ next, alert, alertWarn, plan, details, detailsOpen, exists });
+  // A visitor: the words and SUBSCRIBE on the left, the stage on the right.
+  if (!key) return visitorHtml({ alert, alertWarn, plan, detailsOpen, exists });
   // A key whose Pro is off: something to buy, its own seat big.
   const h = heroSeat({ key, st, next });
   const label = key ? (gift ? 'SUBSCRIBE' : 'REACTIVATE') : 'SUBSCRIBE';
@@ -376,56 +359,66 @@ export function mainHtml({ key = null, st = null, next = null, alert = '', alert
 }
 
 // ---- the visitor's view ----------------------------------------------------------------------
-// ART: the CHAT window (a live mini) and its caption. KICKER PRO, HERO the picked plan's
-// price, SUB the plan switch, ACT SUBSCRIBE, NOTE the renewal line. MEDIA: three minis in a
-// row (every device, pings when closed, no ads), then the bonus row: the next seat and the
-// 3 gift codes. LINKS: one quiet line that opens LOGIN and REDEEM. The minis are empty
-// boxes of a fixed size here; screens/pro-demo.js draws them in the browser. Words on a
-// mini are the picture's (role="img" with a label); the captions are words.
+// A split card (kit.js cardPage split): the text column (KICKER PRO, HERO the promise at
+// 24, SUB both prices, ACT one SUBSCRIBE, NOTE "Cancel any time." and the test-mode line,
+// + Details) and the art column: the STAGE, a terminal panel with a title strip like the
+// app's panel heads (PINGS · demo), one large demo, and a key row like the F-key bar.
+// pro.css puts the text first on a phone and on the left on a desktop. The view is an
+// empty box of a fixed size here; screens/pro-demo.js draws in it. Words in the view are
+// the picture's (role="img" with a label).
 
-const figure = (cls, inner, caption) => `<figure class="pd-fig ${cls}">${inner}<figcaption class="pd-cap">${esc(caption)}</figcaption></figure>`;
-const mini = (id, kind) => `<div class="pd-mini pd-mini-${kind}" id="${id}" role="img" aria-label="${esc(MINI_LABELS[kind])}" inert></div>`;
-
-export function giftTicketsHtml() {
-  const ticket = '<span class="pd-ticket"><span class="pd-ticket-n num">30</span><span class="pd-ticket-u">DAYS</span></span>';
-  return `<div class="pd-gifts" role="img" aria-label="${esc(MINI_LABELS.gifts)}">${ticket.repeat(3)}</div>`;
+// The price line: both prices, each once; the picked one bright and heavy. The same
+// .pro3-plan buttons (and click handler) as the key view's switch.
+export function priceLineHtml(plan) {
+  const p = plan === 'month' ? 'month' : 'year';
+  const b = (x) => `<button type="button" class="pro3-plan pro5-plan" id="pro-plan-${x}" data-plan="${x}" aria-pressed="${p === x}">${esc(PLAN_LINE[x])}</button>`;
+  return `<span class="pro5-price" role="group" aria-label="Plan">${b('month')}${b('year')}</span>`;
 }
 
-export function visitorHtml({ next = null, alert = '', alertWarn = false, plan = 'year', details = '', detailsOpen = false, exists = () => true } = {}) {
-  const p = plan === 'month' ? 'month' : 'year';
-  const seat = Number.isInteger(next) && next > 0 ? next : null;
-  const seatAria = seatLabel({ mine: false, seat });
-  const tiles = `<div class="pd-tiles">${figure('pd-tile', mini('pd-dev', 'dev'), CAPTIONS.dev)}${figure('pd-tile', mini('pd-pings', 'pings'), CAPTIONS.pings)}${figure('pd-tile', mini('pd-ads', 'ads'), CAPTIONS.ads)}</div>`;
-  const bonus = `<div class="pd-bonus">${figure('pd-tile-seat', `<div class="pd-seat" id="pro-seat" role="img" aria-label="${esc(seatAria)}">${seatCardInner(seat)}</div>`, CAPTIONS.seat)}${figure('pd-tile-gifts', giftTicketsHtml(), CAPTIONS.gifts)}</div>`;
-  // One quiet line; LOGIN and REDEEM behind it (GIFT is for members).
+// The stage's frame: the title strip, the view, the keys 1 to 4 (the first one on).
+export function stageHtml() {
+  const s = STAGES[0];
+  const keys = STAGES.map((x, i) => `<button type="button" role="tab" class="pd-key" data-stage="${i + 1}" aria-selected="${i === 0}" aria-controls="pd-stage"><span class="pd-key-n">${i + 1}</span><span class="pd-key-l">${esc(x.label)}</span></button>`).join('');
+  return '<div class="pd-stagebox" id="pd-stagebox" tabindex="-1" data-own-focus>'
+    + `<div class="pd-stage-head"><span class="pd-stage-label" id="pd-stage-label">${esc(s.label)}</span><span class="pd-stage-meta" id="pd-stage-meta"><span aria-hidden="true">·</span> ${esc(s.meta)}</span></div>`
+    + `<div class="pd-stage" id="pd-stage" role="img" aria-label="${esc(s.aria)}" inert></div>`
+    + `<div class="pd-keys" role="tablist" aria-label="What Pro gives">${keys}</div>`
+    + '</div>';
+}
+
+// The note: "Cancel any time.", then two hidden lines the server may turn on: yearly not
+// set up (yearlyReady), and test mode (showTest), a line of its own.
+const visitorNote = () => `${esc(CANCEL_NOTE)}<span id="pro-year-note" hidden> ${esc(YEARLY_NOT_YET)}</span><span id="pro-test" hidden>${esc(TEST_LINE)}</span>`;
+
+// The key-or-code line (in + Details): LOGIN and REDEEM behind it (GIFT is for members).
+export function keyLineHtml(exists = () => true) {
   const keyLinks = [exists('LOGIN') ? cardLink({ label: 'LOGIN', cmd: 'LOGIN' }) : '', exists('REDEEM') ? cardLink({ label: 'REDEEM', cmd: 'REDEEM' }) : ''].filter(Boolean).join(' ');
+  return `<p class="pro-keyline">${cardLink({ label: KEY_Q, id: 'pro-keyq', attrs: 'aria-expanded="false" aria-controls="pro-keylinks"' })}<span class="pro-keylinks" id="pro-keylinks" hidden>${keyLinks}</span></p>`;
+}
+
+export function visitorHtml({ alert = '', alertWarn = false, plan = 'year', detailsOpen = false, exists = () => true } = {}) {
+  const p = plan === 'month' ? 'month' : 'year';
   return cardPage({
     label: 'Bloombroke Pro',
-    cls: 'pro-card pro-v4',
-    wide: true,
+    cls: 'pro-card pro-v5',
+    split: true,
     alert,
     alertWarn,
-    art: raw(figure('pd-chat-fig', mini('pd-chat', 'chat'), CAPTIONS.chat)),
+    art: raw(stageHtml()),
     kicker: KICKER,
-    hero: raw(`<span id="pro-price">${esc(HERO_PRICE[p])}</span>`),
-    heroLabel: HERO_LABEL[p],
-    heroId: 'pro-hero',
-    heroSize: 60,
-    sub: raw(switchHtml(p)),
-    act: raw(buyButton('SUBSCRIBE', p)),
-    note: raw(noteHtml(RENEW_NOTE)),
-    media: raw(tiles + bonus),
-    links: [
-      cardLink({ label: KEY_Q, id: 'pro-keyq', attrs: 'aria-expanded="false" aria-controls="pro-keylinks"' }),
-      `<span class="pro-keylinks" id="pro-keylinks" hidden>${keyLinks}</span>`,
-    ],
-    details,
+    hero: HERO,
+    heroSize: 24,
+    sub: raw(priceLineHtml(p)),
+    act: raw(cardButton({ label: 'SUBSCRIBE', primary: true, id: 'pro-sub', attrs: `data-plan="${p}"` })),
+    note: raw(visitorNote()),
+    details: raw(detailsHtml({ keyLine: keyLineHtml(exists), rule: HERO !== RULE })),
     detailsOpen,
   });
 }
 
 // + Details: what is free and what is Pro, then the terms as short rows (the full wording
-// is in the Terms), gifts, and the test card in test mode.
+// is in the Terms), gifts, and the test card in test mode (last). A visitor's has the
+// key-or-code line on top, and no rule line while the hero says it.
 export const TERMS_ROWS = [
   ['Price', `${pro.PRICE} a month or ${pro.PRICE_YEAR} a year, in USD, charged by Stripe.`],
   ['Renewal', 'Every month or every year, as you picked, until you cancel.'],
@@ -438,21 +431,21 @@ export const TERMS_ROWS = [
   ['Gift licences', 'Cannot make gift codes.'],
   ['Login', 'Your key is your login. There is no email or password.'],
 ];
-export function detailsHtml({ gift = false } = {}) {
-  return `${gift ? cardRows([['After the gift', GIFT_AFTER]]) : ''}${offerHtml({ price: false })}
-    <p class="pro-demo" id="pro-demo" role="note" hidden>${esc(DEMO_BANNER)}</p>
+export function detailsHtml({ gift = false, keyLine = '', rule = true } = {}) {
+  return `${keyLine}${gift ? cardRows([['After the gift', GIFT_AFTER]]) : ''}${offerHtml({ price: false, rule })}
     ${cardRows([
     ...TERMS_ROWS,
     ['Terms', raw('Subscribing means you agree to the <a href="/terms">Terms</a>.')],
     ['Not advice', 'Bloombroke gives information only, not investment advice.'],
     ['Operator', raw(`${esc(OPERATOR)} Contact <a href="mailto:${CONTACT}">${CONTACT}</a>.`)],
-  ])}`;
+  ])}
+    <p class="pro-demo" id="pro-demo" role="note" hidden>${esc(DEMO_BANNER)}</p>`;
 }
 
 // Per screen: the next seat once it arrives, the picked plan, a key to show in full.
 const views = new WeakMap();
 const viewOf = (el) => {
-  if (!views.has(el)) views.set(el, { next: null, plan: 'year', reveal: null, demo: null, demoToken: null });
+  if (!views.has(el)) views.set(el, { next: null, plan: 'year', reveal: null, demo: null, demoToken: null, want: null, held: false, keysOff: null });
   return views.get(el);
 };
 
@@ -480,25 +473,12 @@ function setPlan(host, plan) {
   const b = host.querySelector('#pro-sub');
   if (!b) return;
   b.dataset.plan = plan;
-  b.textContent = `${b.dataset.label} ${planButton(plan)}`;
-  for (const p of host.querySelectorAll('.pro3-plan:not(.pro3-switch)')) p.setAttribute('aria-pressed', String(p.dataset.plan === plan));
-  // The visitor's switch now offers the other plan; its unit follows the hero.
-  const sw = host.querySelector('#pro-switch');
-  if (sw && PLAN_OTHER[plan]) {
-    sw.dataset.plan = otherPlan(plan);
-    sw.textContent = PLAN_OTHER[plan];
-    const unit = host.querySelector('#pro-unit');
-    if (unit) unit.textContent = PLAN_UNIT[plan];
-  }
-  // The visitor's hero is the picked plan's price.
-  const price = host.querySelector('#pro-price');
-  if (price && HERO_PRICE[plan]) {
-    price.textContent = HERO_PRICE[plan];
-    host.querySelector('#pro-hero')?.setAttribute('aria-label', HERO_LABEL[plan]);
-  }
+  // The key view's button says its plan (REACTIVATE YEARLY); the visitor's is SUBSCRIBE.
+  if (b.dataset.label) b.textContent = `${b.dataset.label} ${planButton(plan)}`;
+  for (const p of host.querySelectorAll('.pro3-plan')) p.setAttribute('aria-pressed', String(p.dataset.plan === plan));
 }
 
-// The visitor's quiet line: it gives way to LOGIN and REDEEM (their own handlers).
+// The visitor's key line in + Details: it gives way to LOGIN and REDEEM (their own handlers).
 function wireKeyLine(host) {
   const q = host.querySelector('#pro-keyq');
   const links = host.querySelector('#pro-keylinks');
@@ -511,39 +491,88 @@ function wireKeyLine(host) {
   });
 }
 
-// The visitor's minis (screens/pro-demo.js, loaded by name with its stylesheets): started
+// The visitor's stage (screens/pro-demo.js, loaded by name with its stylesheets): started
 // once the card is drawn, stopped on a redraw and when the screen is left.
 export const DEMO_JS = 'screens/pro-demo.js';
-function startMinis(el, host, ctx) {
+function startStage(el, host, ctx) {
   const v = viewOf(el);
   v.demo?.stop();
   v.demo = null;
   v.demoToken = null;
-  // In an embed or a DESK panel: the still pictures only (no quotes call, no timers).
-  if (ctx?.embed && host.querySelector('#pd-chat')) {
+  v.want = null;
+  v.held = false;
+  // In an embed or a DESK panel: the first stage, still (no quotes call, no timers).
+  if (ctx?.embed && host.querySelector('#pd-stage')) {
     Promise.all([loadModule(DEMO_JS, { recover: false }), ...stylesOf(DEMO_JS).map(loadCss)])
-      .then(([m]) => { if (host.isConnected && host.querySelector('#pd-chat')) m.drawStill(host, ctx); }).catch(() => {});
+      .then(([m]) => { if (host.isConnected && host.querySelector('#pd-stage')) m.drawStill(host, ctx); }).catch(() => {});
   }
-  if (ctx?.embed || !host.querySelector('#pd-chat') || !ctx?.signal) return;
+  if (ctx?.embed || !host.querySelector('#pd-stage') || !ctx?.signal) return;
   const token = {};
   v.demoToken = token;
   Promise.all([loadModule(DEMO_JS, { recover: false }), ...stylesOf(DEMO_JS).map(loadCss)]).then(([m]) => {
-    if (v.demoToken !== token || ctx.signal.aborted || !host.isConnected || !host.querySelector('#pd-chat')) return;
-    v.demo = m.startDemo(host, ctx);
-  }).catch(() => { /* the page works without its minis */ });
+    if (v.demoToken !== token || ctx.signal.aborted || !host.isConnected || !host.querySelector('#pd-stage')) return;
+    v.demo = m.startDemo(host, ctx, { seat: () => v.next, first: v.want ?? 0, hold: v.held || v.want !== null });
+  }).catch(() => { /* the page works without its stage */ });
 }
 
-// Yearly not set up on the server: monthly only, and say so.
+// The stage's keys: 1 to 4 (a key, or a click on the key row) pick a stage; M and Y pick
+// the plan. Only while the focus is not in the command bar or any other field: typing
+// 3988.HK or MSFT there is typing. A hover on the stage keeps it where it is. Stopped
+// when the screen is left or redrawn.
+export const PLAN_KEYS = { M: 'month', Y: 'year' };
+export function stageKeyFor(e) {
+  if (!e || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return null;
+  const t = e.target;
+  if (t?.id === 'cmd' || t?.closest?.('input, select, textarea, [contenteditable], dialog, [role="dialog"]')) return null;
+  if (/^[1-4]$/.test(e.key)) return { stage: Number(e.key) - 1 };
+  const k = String(e.key || '').toUpperCase();
+  return PLAN_KEYS[k] ? { plan: PLAN_KEYS[k] } : null;
+}
+function wireStage(el, host, ctx, { doc = globalThis.document } = {}) {
+  const v = viewOf(el);
+  v.keysOff?.();
+  v.keysOff = null;
+  const box = host.querySelector('#pd-stagebox');
+  if (!box || ctx?.embed) return;
+  const pick = (i) => {
+    if (v.demo) { v.demo.pick(i); return; }
+    // Before the stage module is in: remember it, and mark the key.
+    v.want = i;
+    for (const t of host.querySelectorAll('[data-stage]')) t.setAttribute('aria-selected', String(Number(t.dataset.stage) === i + 1));
+  };
+  for (const t of host.querySelectorAll('[data-stage]')) t.addEventListener('click', () => pick(Number(t.dataset.stage) - 1));
+  box.addEventListener('pointerenter', () => { if (v.demo) v.demo.hold(); else v.held = true; });
+  // A click on the stage takes the focus there, so its keys work at once.
+  box.addEventListener('pointerdown', (e) => { if (!e.target?.closest?.('button, a')) box.focus?.({ preventScroll: true }); });
+  if (!doc?.addEventListener) return;
+  const onKey = (e) => {
+    if (!host.isConnected || ctx?.signal?.aborted) { off(); return; }
+    const k = stageKeyFor(e);
+    if (!k) return;
+    if (k.plan) {
+      const b = host.querySelector(`#pro-plan-${k.plan}`);
+      if (!b) return;
+      if (!b.disabled) b.click();
+    } else pick(k.stage);
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const off = () => { doc.removeEventListener('keydown', onKey, true); if (v.keysOff === off) v.keysOff = null; };
+  doc.addEventListener('keydown', onKey, true);
+  ctx?.signal?.addEventListener?.('abort', off, { once: true });
+  v.keysOff = off;
+}
+
+// Yearly not set up on the server: monthly only, the yearly price dim and off, and say so.
 function yearlyReady(host, v) {
   pro.getConfig().then((c) => {
     if (c.yearly || !host.isConnected) return;
     const y = host.querySelector('#pro-plan-year');
-    const sw = host.querySelector('#pro-switch');
-    if (!y && !sw) return;
+    if (!y) return;
     v.plan = 'month';
     setPlan(host, 'month');
-    // The key view's year part, or the visitor's switch (now offering the year): off.
-    for (const b of [y, sw]) { if (b) { b.disabled = true; b.title = YEARLY_NOT_YET; } }
+    y.disabled = true;
+    y.title = YEARLY_NOT_YET;
     const n = host.querySelector('#pro-year-note');
     if (n) n.hidden = false;
   });
@@ -580,7 +609,8 @@ function renderAccount(el, ctx, alert = '', plan = null, { warn = false } = {}) 
   wire(host, ctx, '#pro-cancel', 'OPENING BILLING. CANCEL IS THERE...', () => pro.openPortal());
   if (key) wireKey(host, ctx, key);
   wireKeyLine(host);
-  startMinis(el, host, ctx);
+  wireStage(el, host, ctx);
+  startStage(el, host, ctx);
   const show = host.querySelector('#pro-show');
   const reveal = () => {
     v.reveal = pro.getKey();
@@ -612,13 +642,8 @@ function loadNumbers(el, ctx) {
   ctx.fetchJSON('/api/pro/seat', { signal: ctx.signal }).then((d) => {
     if (!Number.isInteger(d?.next) || !el.isConnected) return;
     v.next = d.next;
-    const h = el.querySelector('#pro-seat');
-    if (h && !pro.getKey()) {
-      const seat = heroSeat({ next: v.next });
-      // The visitor's bonus row: the seat card, with its avatar.
-      h.innerHTML = h.classList.contains('pd-seat') ? seatCardInner(seat.seat) : seatInner(seat);
-      h.setAttribute('aria-label', seatLabel(seat));
-    }
+    // The visitor's SEAT stage draws it (in place, when it is on show).
+    v.demo?.refresh();
   }).catch(() => {});
 }
 
@@ -666,7 +691,8 @@ export function render(el, cmd, ctx) {
   page(el);
   renderAccount(el, ctx, '', plan);
   loadNumbers(el, ctx);
-  ctx.status(pro.isPro() ? 'PRO: ACTIVE' : `PRO: ${pro.PRICE_BOTH.toUpperCase()}`);
+  // Not the price: the page says it once (the review, Sep 29).
+  ctx.status(pro.isPro() ? 'PRO: ACTIVE' : '');
   if (pro.getKey()) {
     pro.refreshStatus().then(() => {
       if (!el.isConnected) return;

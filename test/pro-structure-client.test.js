@@ -37,7 +37,7 @@ test('PRO: free is what you look at, Pro is your own stuff; every row says LIVE 
   assert.equal(RULE, 'Free is everything you look at. Pro is your own stuff, plus things that work while you are away.');
   assert.ok(FREE_ROWS.every(([, s]) => s === LIVE), 'everything free is live');
   const pro = Object.fromEntries(PRO_ROWS.map(([n, s]) => [n, s]));
-  for (const n of ['Watchlist, portfolio, DESK and GRID on every device', 'Your own ticker tape', 'A seat number', 'No sponsor line']) assert.equal(pro[n], LIVE, n);
+  for (const n of ['Watchlist, portfolio, DESK and GRID on every device', 'Your own ticker tape', 'A seat number', 'No ad line']) assert.equal(pro[n], LIVE, n);
   assert.ok(FREE_ROWS.some(([n, s]) => n === 'DESK and GRID, saved on this device' && s === LIVE), 'DESK and GRID are free on this device');
   assert.equal(pro['Alerts and CHAT pings when the tab is closed'], LIVE, 'closed-tab alerts are live (PINGS in ME)');
   assert.equal(pro['CHAT with friends who have Pro'], LIVE, 'CHAT is live for Pro');

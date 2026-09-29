@@ -5,6 +5,7 @@
 
 .al-honest { color: var(--dim); font-size: 12px; white-space: normal; }
 .al-perm { color: var(--text-2); }
+.al-set-pro { color: var(--dim); font-size: 12px; }
 .al-perm .quiet { margin-left: 8px; }
 .al-table .al-cond { color: var(--text); }
 .al-table .al-dist { color: var(--dim); }
