@@ -184,14 +184,6 @@ export function graveBeatsQuote(q) {
   return String(q.currency || '').toUpperCase() !== 'USD';
 }
 
-// n entries at random (a fresh pick each visit), for THE GRAVEYARD row.
-export function pickGraves(list, n = 4, rand = Math.random) {
-  const pool = [...(list || [])];
-  const out = [];
-  while (pool.length && out.length < n) out.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]);
-  return out;
-}
-
 // 'https://www.sec.gov/Archives/...' -> 'sec.gov'.
 export function srcHost(url) {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }

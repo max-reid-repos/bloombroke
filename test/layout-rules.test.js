@@ -74,17 +74,14 @@ const shownInTest = (html) => html.replace('<span id="pro-test" hidden>', '<span
 const GRAVES = JSON.parse(readFileSync('data/graveyard.json', 'utf8'));
 const ART = (e) => ({ stone: '/img/graveyard/stone.webp', doodles: [e.ticker], sites: e.wayback ? [e.ticker] : [] });
 const graveOf = (t) => { const e = GRAVES.find((x) => x.ticker === t); return withArt(e, ART(e)); };
-const YARD = ['ATVI', 'WBVN', 'BBI', 'WFM'].map((t) => GRAVES.find((e) => e.ticker === t));
+// A dead ticker typed on its own keeps the NO SUCH card (its stone); every other word
+// gets the NOT A TICKER panel (test/not-found-panel.test.js).
 const noSuch = (typed, found, ticker, info, opts = {}) => {
   const word = ticker || typed;
-  const extra = noSuchExtra(word, info, { ticker, next: 1, yard: info.grave ? [] : YARD, ...opts });
-  return didYouMeanHtml(typed, found, ticker, { extra: { ...extra, kicker: extra.kicker || (ticker ? 'No such ticker. Yet.' : 'Unknown command') } });
+  const extra = noSuchExtra(word, info, opts);
+  return didYouMeanHtml(typed, found, ticker, { extra: { ...extra, kicker: extra.kicker || 'Not found' } });
 };
-const GUESSES = { commands: [{ cmd: 'EGGPRICE', summary: 'Average price of a dozen eggs in the US' }, { cmd: 'SPONSOR', summary: 'Sponsors: lines that rotate in the status bar' }], symbols: [{ cmd: 'BAR', name: 'Barrick' }] };
 export const NOSUCH = [
-  ['NO SUCH, a word IPO IT can list', noSuch('$QXZVW', {}, 'QXZVW', { grave: null, ipo: true })],
-  ['NO SUCH, a word it cannot', noSuch('ZORBLAT', {}, null, { grave: null, ipo: false })],
-  ['NO SUCH, an unknown command with guesses', noSuch('FOO BAR BAZ', GUESSES, null, { grave: null, ipo: false })],
   ['NO SUCH, a dead ticker (LEH, a quote elsewhere)', noSuch('LEH', {}, 'LEH', { grave: graveOf('LEH'), ipo: false }, { quote: true })],
   ['GRAVEYARD LEH', stonePageHtml(graveOf('LEH'), 12)],
   ['GRAVEYARD GM (a zombie)', stonePageHtml(graveOf('GM'), 0)],
@@ -280,7 +277,7 @@ function cardCss() {
     ['style.css FEEDBACK', style.slice(style.indexOf('/* FEEDBACK: a card page'), style.indexOf('.fb-hp'))],
     ['me.css', readFileSync('public/screens/me.css', 'utf8')],
     ['graveyard.css stone card', (() => { const g = readFileSync('public/screens/graveyard.css', 'utf8'); return g.slice(g.indexOf('/* ---- One stone as a card page')); })()],
-    ['nosuch.css NO SUCH card', (() => { const n = readFileSync('public/screens/nosuch.css', 'utf8'); return n.slice(n.indexOf('/* The NO SUCH card')); })()],
+    ['nosuch.css NOT A TICKER panel', (() => { const n = readFileSync('public/screens/nosuch.css', 'utf8'); return n.slice(n.indexOf('/* NOT A TICKER')); })()],
     ['whatif.css result card', (() => { const w = readFileSync('public/screens/whatif.css', 'utf8'); return w.slice(w.indexOf('/* ---- WHATIF result: a split card page'), w.indexOf('/* Title strip parts')); })()],
     // WELCOME's colours keep their fallbacks (it can paint before style.css): sizes only.
     ['welcome.css', readFileSync('public/screens/welcome.css', 'utf8'), { colours: false }],
@@ -400,18 +397,7 @@ test('NO SUCH TICKER and a GRAVEYARD stone: card pages, 30 words; every stone in
     assert.match(html, /^<section class="card /, `${name}: a card page`);
     assert.ok(cardWords(html).length <= 30, `${name}: ${cardWords(html).join(' ')}`);
   }
-  const [ipo, word, guesses, grave, leh] = NOSUCH.map(([, html]) => html);
-  // IPO IT: the kicker, the ticker, "Be the first.", IPO IT, the certificate and the row.
-  assert.match(ipo, /card-kicker">No such ticker\. Yet\.<\/p><h2 class="card-hero card-hero-60 num">\$QXZVW<\/h2><p class="card-sub">Nobody has listed it\. Be the first\.<\/p>/);
-  assert.match(ipo, /<div class="card-act"><button type="button" class="btn card-btn btn-solid ns-ipo-btn" data-cmd="IPO IT QXZVW" data-ipo data-key="1">IPO IT<\/button>/);
-  assert.match(ipo, /<div class="card-media"><div class="ns-media"><a class="ns-mini"[\s\S]*class="ns-yard"/, 'the certificate and THE GRAVEYARD row are the media');
-  assert.match(word, /card-kicker">Unknown command<\/p>[\s\S]*data-cmd="HELP">HELP<\/a>/, 'no guess: HELP is the action');
-  assert.match(word, /data-prefill="Please add: ZORBLAT">Tell us\.<\/a>/);
-  // Guesses: the first is the action (key 1), the others links (keys 2, 3), what each is in + Details.
-  assert.match(guesses, /btn-solid" href="\?c=EGGPRICE" data-cmd="EGGPRICE" data-key="1"/);
-  assert.match(guesses, /class="card-link" href="\?c=SPONSOR" data-cmd="SPONSOR" data-key="2"/);
-  assert.match(guesses.split('<details')[1], /Average price of a dozen eggs/);
-  assert.ok(!cardWords(guesses).includes('Average'), 'the long words are in + Details (and the tooltip)');
+  const [grave, leh] = NOSUCH.map(([, html]) => html);
   // A dead ticker typed on its own: the stone card, "Not anymore.", F PAY RESPECTS, the quote.
   assert.match(grave, new RegExp(`card-kicker">${TITLE_GONE.replace(/\./g, '\\.')}</p><h2 class="card-hero card-hero-44 num">LEH</h2>`));
   assert.match(grave, /data-respect="LEH"><kbd>F<\/kbd> PAY RESPECTS/);
