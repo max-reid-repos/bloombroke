@@ -140,7 +140,7 @@ test('thread head and composer: the menu per kind; closed chats have no composer
 // ---- the few words -----------------------------------------------------------------------------
 
 test('few words: not Pro is one line and PRO; the empty Pro screen is one sentence, 35 words at most', () => {
-  assert.deepEqual(words(notProHtml()), ['1)', 'CHAT', ...NOT_PRO.split(' '), 'PRO']);
+  assert.deepEqual(words(notProHtml()), ['CHAT', ...NOT_PRO.split(' '), 'PRO']);
   assert.equal(NOT_PRO, 'Private chat with friends who have Pro.');
   assert.equal(emptyText(42), 'Your seat is 42. Give it to a friend with Pro, then type CHAT and their number.');
   const empty = shellHtml().replace(/<div class="panel-body chat-body">[\s\S]*<\/div>\s*<\/section>$/, `<div class="panel-body chat-body">${emptyHtml(42)}</div></section>`);

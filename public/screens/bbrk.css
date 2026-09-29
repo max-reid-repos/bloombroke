@@ -1,13 +1,24 @@
 /* bbrk.js's own styles, loaded with it (public/lazy.js) the first time a screen that
-   uses it opens; the page's always-on styles are in the stylesheets public/index.html links. */
+   uses it opens; the page's always-on styles are in the stylesheets public/index.html links.
+   The page itself is a card (kit.css, "Card pages"); only its chart, globe and the
+   counters table are here. */
 
-/* ==== from commands.css ==== */
+/* ---- The 30-day chart, across the column, no axes ---------------------------------- */
+.bb-chart { height: 96px; }
+.bb-spark { display: block; width: 100%; height: 100%; overflow: visible; }
+.bb-spark-area { fill: var(--accent-tint); stroke: none; }
+.bb-spark-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.bb-spark-dot { fill: none; stroke: var(--accent); stroke-width: 8; stroke-linecap: round; }
 
-/* ---- BBRK: our own site numbers for sponsors, drawn like a quote (screens/bbrk.js) ---- */
-.bb-panel > .panel-body { padding: 10px 12px; }
-/* The numbers across the panel, then the globe, big and centred, under all of them. */
-.bb-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
-.bb-globe { position: relative; width: min(640px, 100%); margin: 4px auto 8px; text-align: center; font-size: 12px; }
+/* ---- Six facts in one row once the column is its full 880 px --------------------- */
+.bb-card { container-type: inline-size; }
+@container (min-width: 880px) {
+  .bb-card .card-facts { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+/* ---- The globe: --globe-w, or the room left in the first view (kit.js fitToView, which
+   writes --fit-w), centred, square, never cut off ------------------------------------- */
+.bb-globe { position: relative; width: min(var(--fit-w, var(--globe-w)), 100%); margin: 0 auto; text-align: center; font-size: 12px; }
 /* Drag to turn it (public/globe.js); pan-y: a mostly vertical drag still scrolls the page. */
 .bb-globe canvas {
   display: block; width: 100%; aspect-ratio: 1; cursor: grab; touch-action: pan-y; outline: 0;
@@ -17,35 +28,20 @@
 .bb-globe canvas:focus-visible { box-shadow: 0 0 0 1px var(--accent); border-radius: 50%; }
 /* The label of the dot under the pointer: 'Tokyo · 12 this week'. */
 .bb-globe .globe-tip {
-  position: absolute; z-index: 2; padding: 1px 6px; pointer-events: none; transform: translateY(-100%);
+  position: absolute; z-index: 2; padding: 2px 6px; pointer-events: none; transform: translateY(-100%);
   background: var(--panel); border: 1px solid var(--rule-strong); color: var(--text); font-size: 11px; white-space: nowrap;
 }
 .bb-globe .globe-tip[hidden] { display: none; }
-.bb-globe figcaption { margin-top: 6px; letter-spacing: .04em; }
-.bb-spark { display: flex; align-items: flex-end; gap: 8px; margin-top: 8px; font-size: 11px; }
-.bb-tops { display: grid; gap: 4px; margin-top: 14px; max-width: 760px; }
-.bb-tops > div { display: grid; grid-template-columns: 11ch minmax(0, 1fr); gap: 12px; }
-.bb-tops dt { color: var(--dim); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
-.bb-tops dd { color: var(--text-2); overflow-wrap: anywhere; }
-.bb-panel .bb-table { margin-top: 12px; max-width: 760px; }
-.bb-src { margin-top: 10px; }
-/* Wider than a phone: the two columns (visitors, sparkline, top lines and the counters on
-   the left; the key numbers on the right) sit close together in one centred block, not
-   against the panel's edges. .bb-top gives its two parts to this grid. */
-@media (min-width: 640px) {
-  .bb-data {
-    display: grid; grid-template-columns: minmax(0, 520px) minmax(260px, 420px);
-    justify-content: center; align-items: start; column-gap: 56px;
-    width: 100%; max-width: 1100px; margin: 0 auto;
-  }
-  .bb-data > .bb-top { display: contents; }
-  .bb-data > .bb-top > .q-main { grid-column: 1; grid-row: 1; }
-  .bb-data > .bb-top > .stats { grid-column: 2; grid-row: 1 / span 3; }
-  .bb-data > .bb-tops, .bb-data > .bb-table { grid-column: 1; }
-  .bb-data > .bb-src { grid-column: 1 / -1; }
-}
+.bb-globe figcaption { margin-top: 8px; color: var(--dim); }
 
+/* ---- + Details: what a sponsor gets, from our own counters -------------------------- */
+.bb-card .bb-table { max-width: 60ch; margin: 0 auto 12px; }
+
+/* A short window: a lower chart, so more of the globe is in the first view. */
+@media (max-height: 800px) {
+  .bb-chart { height: 64px; }
+}
 @media (max-width: 639px) {
-  .bb-spark .spark { width: 160px; }
-  .bb-panel .bb-table { table-layout: fixed; }
+  .bb-chart { height: 64px; }
+  .bb-card .bb-table { table-layout: fixed; }
 }

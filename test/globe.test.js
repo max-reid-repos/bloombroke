@@ -305,18 +305,28 @@ test('hover and tap: the label of the dot under the pointer; keys turn it only w
   }
 });
 
-test('SPONSOR and BBRK: a big globe under the text, as wide as the page on a phone', () => {
+test('SPONSOR and BBRK: the globe under the numbers, in the first view, centred, square, never cut off', () => {
+  // --globe-w: about half the old 640 px, and never taller than 40% of the window.
+  assert.match(readFileSync('public/style.css', 'utf8'), /--globe-w: min\(340px, 40vh\);/);
   const css = readFileSync('public/screens/sponsor.css', 'utf8');
-  assert.match(css, /\.spon-globe \{[^}]*width: min\(640px, 100%\);/, 'big on a desktop');
-  assert.doesNotMatch(css, /spon-top/, 'no longer beside YOUR AD HERE');
-  const phone = css.slice(css.lastIndexOf('@media (max-width: 639px) {'));
-  assert.match(phone, /\.spon-globe \{[^}]*align-self: stretch;[^}]*\}/);
-  assert.match(phone, /\.spon-globe canvas \{ width: 100%; \}/);
+  assert.match(css, /\.spon-globe \{[^}]*width: min\(var\(--fit-w, var\(--globe-w\)\), 100%\);[^}]*margin: 0 auto;/, 'the room left, or --globe-w; centred');
+  assert.doesNotMatch(css, /spon-top|align-self: stretch/, 'not beside YOUR AD HERE; not page-wide on a phone');
   assert.match(css, /\.spon-globe canvas \{[^}]*aspect-ratio: 1;/, 'always square: never cut in half');
   const bb = readFileSync('public/screens/bbrk.css', 'utf8');
-  assert.match(bb, /\.bb-grid \{ display: grid; grid-template-columns: minmax\(0, 1fr\);/, 'one column: the globe under the numbers');
-  assert.match(bb, /\.bb-globe \{[^}]*width: min\(640px, 100%\);[^}]*margin: [^;]*auto/, 'big and centred');
+  assert.match(bb, /\.bb-globe \{[^}]*width: min\(var\(--fit-w, var\(--globe-w\)\), 100%\);[^}]*margin: 0 auto;/, 'the room left, or --globe-w; centred');
+  // Six facts in one row once BBRK's column is its full 880 px, so the globe fits the first view.
+  assert.match(bb, /\.bb-card \{ container-type: inline-size; \}\s*@container \(min-width: 880px\) \{\s*\.bb-card \.card-facts \{ grid-template-columns: repeat\(6, minmax\(0, 1fr\)\); \}/);
+  // Both screens fit it on render, on new numbers and on resize.
+  for (const f of ['public/screens/sponsor.js', 'public/screens/bbrk.js']) {
+    const src = readFileSync(f, 'utf8');
+    assert.match(src, /fitToView\(/, f);
+    assert.match(src, /addEventListener\?*\.?\('resize', \w+\)/, `${f}: on resize`);
+    assert.match(src, /requestAnimationFrame\(/, `${f}: once a frame`);
+    assert.match(src, /removeEventListener\?*\.?\('resize', \w+\)/, `${f}: and let go`);
+  }
   assert.match(bb, /\.bb-globe canvas \{[^}]*aspect-ratio: 1;/);
+  // Under the numbers: the card's media slot comes after its facts.
+  for (const f of ['public/screens/sponsor.js', 'public/screens/bbrk.js']) assert.match(readFileSync(f, 'utf8'), /facts:[\s\S]*media: raw\(/, f);
 });
 
 test('globe: the land four times as dense from the shipped grid, crisp and cheap', () => {
@@ -344,4 +354,29 @@ test('house rules in the globe and hint files', () => {
     assert.doesNotMatch(s, /amber|orange|#f5a|#ffa|#ff9/i, `${f}: amber`);
   }
   assert.doesNotMatch(readFileSync('public/globe.js', 'utf8'), /DataFast|datafa\.st|Mapbox/i, 'no vendor names in the page code');
+});
+
+test('fitToView: the globe gets the room left above the dock, 220 to 340 px; a phone keeps its own size', async () => {
+  const { fitToView } = await import('../public/kit.js');
+  const props = {};
+  const fig = (top, h = 250, canvasH = 225) => ({
+    isConnected: true, offsetHeight: h, getBoundingClientRect: () => ({ top }),
+    querySelector: () => ({ offsetHeight: canvasH }),
+    style: { setProperty: (k, v) => { props[k] = v; }, removeProperty: (k) => { delete props[k]; } },
+  });
+  const doc = (scrollTop = 0) => ({
+    getElementById: () => ({ scrollTop, getBoundingClientRect: () => ({ bottom: 671 }) }),
+    querySelector: () => ({ getBoundingClientRect: () => ({ top: 671 }) }),
+  });
+  const win = (phone = false) => ({ matchMedia: () => ({ matches: phone }), getComputedStyle: () => ({ overflowY: 'auto' }), innerHeight: 730, scrollY: 0 });
+  // 671 (the dock) - 400 (its top) - 25 (the caption) - 8 = 238.
+  assert.equal(fitToView(fig(400), { win: win(), doc: doc() }), 238);
+  assert.equal(props['--fit-w'], '238px');
+  // Scrolled down 100: measured as if at the top.
+  assert.equal(fitToView(fig(300), { win: win(), doc: doc(100) }), 238);
+  assert.equal(fitToView(fig(100), { win: win(), doc: doc() }), 340, 'never bigger than 340');
+  assert.equal(fitToView(fig(600), { win: win(), doc: doc() }), 220, 'never smaller than 220');
+  assert.equal(fitToView(fig(400), { win: win(true), doc: doc() }), null, 'a phone scrolls instead');
+  assert.equal(props['--fit-w'], undefined);
+  assert.equal(fitToView(null), null);
 });

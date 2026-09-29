@@ -9,7 +9,8 @@ import express from 'express';
 import { cleanSponsors, cleanUrl, loadSponsors, mountSponsors, SPONSORS_FILE, MAX_LINES, MAX_HOUSE } from '../lib/sponsors.js';
 import { stripItems, itemHtml, mountStrip, ROTATE_MS, SLIDE_MS, MAX_SPONSOR_LINES } from '../public/sponsor-strip.js';
 import { stripShownBatch } from '../public/goal.js';
-import { sponsorHtml, proofParts, proofHtml, visitLen, cleanDown, weeklyViews, viewsLine, paidLines, pointAtStrip, sponCaption, render, REFRESH_MS, HERO, POINT, FINE, MAILTO, PHONE_MQ } from '../public/screens/sponsor.js';
+import { sponsorHtml, sponFacts, factsHtml, visitLen, cleanDown, weeklyViews, viewsLine, paidLines, pointAtStrip, render, REFRESH_MS, HERO, POINT, FINE, MAILTO, PHONE_MQ } from '../public/screens/sponsor.js';
+import { cardWords } from '../public/kit.js';
 import { hereText, paintHere, mountHereNow, clearOfBrand, HERE_MS, HERE_MIN } from '../public/here-now.js';
 import { findCommand } from '../public/registry.js';
 import { parseCommand } from '../public/app.js';
@@ -204,61 +205,52 @@ const FULL = {
     countries: [{ name: 'United States', pct: 60.4 }, { name: 'Japan', pct: 10 }], globe: { window: '7d', countries: [{ cc: 'US', visitors: 45 }, { cc: 'JP', visitors: 7 }], other: 4 } },
   inventory: { stripShown: { today: 100, d7: 5678 } },
 };
-// Visible words: anything with a letter or a digit, tags and hidden parts left out.
-const words = (h) => h.replace(/<[^>]+aria-hidden="true"[^>]*>[^<]*<\/span>/g, ' ').replace(/<[^>]+>/g, ' ').replace(/&[a-z0-9#]+;/g, ' ')
-  .split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w)).length;
-
-test('SPONSOR screen: YOUR AD HERE with the globe, one live line, email and BBRK; about 45 words', () => {
+test('SPONSOR screen: a card: YOUR AD HERE, your line, EMAIL and BBRK, the rule, three numbers, the globe; 30 words at most', () => {
   const page = sponsorHtml({ has: () => true, bbrk: FULL, cfg: cleanSponsors({ house: house(3) }) });
-  assert.match(page, /<section class="spon-page" aria-label="Sponsor">\s*<h2 class="spon-hero">YOUR AD HERE<\/h2>\s*<div id="spon-proof"/, 'YOUR AD HERE on its own row');
-  assert.match(page, /<p class="spon-fine">[^<]*<\/p>\s*<figure class="spon-globe"><canvas role="img" aria-label="Globe of visitors by country, last 7 days: US 45, JP 7, other 4\."><\/canvas><figcaption class="dim">7D by place · 7 live now<\/figcaption><\/figure>\s*<\/section>/, 'the globe under the fine print, its caption under it');
   assert.equal(HERO, 'YOUR AD HERE');
-  assert.match(page, /<p class="spon-live"><span class="spon-part">243 page views this week<\/span><span class="spon-dot" aria-hidden="true"> · <\/span><span class="spon-part">8 min visits<\/span>/);
-  assert.doesNotMatch(page, /here now/, 'right now is in the globe caption, not twice');
-  assert.match(page, /<p class="spon-views">Your line: about 5,600 views a week<\/p>/);
+  assert.match(page, /<h2 class="card-hero card-hero-96 num"><span class="spon-slot">YOUR AD HERE<\/span><\/h2>/, 'YOUR AD HERE, big, in a box like an empty ad slot');
+  assert.match(page, /<p class="card-sub" id="spon-views">Your line: about 5,600 views a week<\/p>/);
   assert.equal(MAILTO, 'mailto:hello@bloombroke.com?subject=Sponsor%20Bloombroke');
-  assert.match(page, /<p class="spon-act"><a class="spon-mail" href="mailto:hello@bloombroke\.com\?subject=Sponsor%20Bloombroke">EMAIL hello@bloombroke\.com<\/a><a class="spon-mail spon-bbrk" href="\?c=BBRK" data-cmd="BBRK">BBRK NUMBERS<\/a><\/p>/, 'BBRK is a button beside the email, same style');
-  assert.equal((page.match(/<a /g) || []).length, 3, 'the email, BBRK and one tiny WEIRD link');
-  assert.match(page, /<a class="spon-weird" href="\?c=WEIRD" data-cmd="WEIRD">Or a WEIRD gauge<\/a>/);
+  assert.match(page, /<div class="card-act"><a class="btn card-btn btn-solid" href="mailto:hello@bloombroke\.com\?subject=Sponsor%20Bloombroke">EMAIL hello@bloombroke\.com<\/a><a class="btn card-btn" href="\?c=BBRK" data-cmd="BBRK">BBRK NUMBERS<\/a><\/div>/, 'EMAIL the one primary, BBRK beside it');
+  assert.equal((page.match(/btn-solid/g) || []).length, 1);
+  assert.match(page, new RegExp(`<p class="card-note">${FINE.replace(/\./g, '\\.')}</p>`), 'the rule line, once');
+  assert.match(page, /<dt class="tag">PAGE VIEWS, 7D<\/dt><dd class="num">243<\/dd>/);
+  assert.match(page, /<dt class="tag">VISITS<\/dt><dd class="num">8 min<\/dd>/);
+  assert.match(page, /<dt class="tag">US<\/dt><dd class="num">60%<\/dd>/);
+  // The globe under the numbers, no caption (the numbers say it); its words for a screen reader.
+  assert.match(page, /<\/dl><div class="card-media"><figure class="spon-globe"><canvas role="img" aria-label="Globe of visitors by country, last 7 days: US 45, JP 7, other 4\."><\/canvas><\/figure><\/div>/);
+  // WEIRD is behind + Details.
+  const [top, details] = page.split('<details class="how card-more"');
+  assert.doesNotMatch(top, /WEIRD/);
+  assert.match(details, /<a class="spon-weird" href="\?c=WEIRD" data-cmd="WEIRD">Or a WEIRD gauge<\/a>/);
   assert.doesNotMatch(sponsorHtml({ has: () => false }), /WEIRD|BBRK/, 'no link to a command that is not here');
   assert.match(sponsorHtml({ has: (c) => c === 'BBRK' }), /data-cmd="BBRK"/);
-  assert.equal((page.match(/class="spon-fine"/g) || []).length, 1, 'one line of fine print');
-  assert.match(page, new RegExp(FINE.replace(/\./g, '\\.')));
   assert.equal(POINT, '↓ this line, every screen');
-  const n = words(page) + words(POINT);
-  assert.ok(n <= 49, `${n} words with live now in the caption`);
-  const quiet = words(sponsorHtml({ has: () => true, bbrk: { ...FULL, audience: { ...FULL.audience, live: 0 } } })) + words(POINT);
-  assert.ok(quiet <= 46, `${quiet} words`);
-  // Gone: the fact rows, the numbers table, the gauge preview, the mock.
-  assert.doesNotMatch(page, /spon-facts|spon-nums|SITE NUMBERS|spon-mock|wd-tile|CANAL|data-cmd="(CHANGES|DATA|MCP)"/);
+  const w = cardWords(page);
+  assert.ok(w.length <= 30, `${w.length} words: ${w.join(' ')}`);
+  // Gone: the numbers table, the gauge preview, the mock, a vendor name.
+  assert.doesNotMatch(page, /spon-nums|SITE NUMBERS|spon-mock|wd-tile|CANAL|DataFast|data-cmd="(CHANGES|DATA|MCP)"/);
   assert.doesNotMatch(page, /\$\d/, 'no prices');
   assert.doesNotMatch(page, /—/);
   assert.doesNotMatch(page, new RegExp(['bloom', 'berg'].join(''), 'i'));
   assert.equal(parseCommand('SPONSOR').name, 'SPONSOR');
-  // While loading: -- for every number, the plain caption.
+  // While loading: -- for every number.
   const empty = sponsorHtml({ has: () => true });
-  assert.match(empty, /-- page views this week/);
+  assert.match(empty, /<dd class="num">--<\/dd>/);
   assert.match(empty, /Your line: -- views a week/);
-  assert.match(empty, /<figcaption class="dim">7D by place<\/figcaption>/);
-  const css = readFileSync('public/screens/sponsor.css', 'utf8');
-  assert.match(css, /@media \(max-width: 639px\) \{[\s\S]*\.spon-globe \{ align-self: stretch;/, 'as wide as the page on a phone (test/globe.test.js has the rest)');
 });
 
-test('SPONSOR live line: page views lead; -- for anything missing; short country names; caption live above 0 only', () => {
-  assert.deepEqual(proofParts(FULL), ['243 page views this week', '8 min visits', '60% US']);
-  assert.deepEqual(proofParts(null), ['-- page views this week', '-- min visits', '-- top country']);
-  assert.deepEqual(proofParts({ audience: { live: 0, pageviews: { d7: 1234 }, avgVisitSec: 40, countries: [{ name: 'Japan', pct: 10.4 }] } }), ['1,234 page views this week', '40 s visits', '10% Japan']);
-  assert.deepEqual(proofParts({ audience: { visitors: { d7: 68 }, pageviews: {}, avgVisitSec: null, countries: [] } }), ['-- page views this week', '-- min visits', '-- top country'], 'never visitors in place of page views');
-  assert.equal(proofParts({ audience: { countries: [{ name: 'United Kingdom', pct: 5 }] } })[2], '5% UK');
+test('SPONSOR numbers: page views lead; -- for anything missing; short country names', () => {
+  const v = (b) => sponFacts(b).map((f) => `${f.value} ${f.label}`);
+  assert.deepEqual(v(FULL), ['243 PAGE VIEWS, 7D', '8 min VISITS', '60% US']);
+  assert.deepEqual(v(null), ['-- PAGE VIEWS, 7D', '-- min VISITS', '-- TOP COUNTRY']);
+  assert.deepEqual(v({ audience: { pageviews: { d7: 1234 }, avgVisitSec: 40, countries: [{ name: 'Japan', pct: 10.4 }] } }), ['1,234 PAGE VIEWS, 7D', '40 s VISITS', '10% Japan']);
+  assert.deepEqual(v({ audience: { visitors: { d7: 68 }, pageviews: {}, avgVisitSec: null, countries: [] } }), ['-- PAGE VIEWS, 7D', '-- min VISITS', '-- TOP COUNTRY'], 'never visitors in place of page views');
+  assert.equal(sponFacts({ audience: { countries: [{ name: 'United Kingdom', pct: 5 }] } })[2].label, 'UK');
   assert.equal(visitLen(429), '7 min');
   assert.equal(visitLen(-1), '-- min');
-  assert.match(proofHtml(FULL), /<span class="spon-part">60% US<\/span><\/p>/);
-  assert.match(proofHtml({ audience: { pageviews: { d7: '<b>' } } }), /-- page views this week/, 'only numbers');
-  assert.equal(sponCaption(FULL), '7D by place · 7 live now');
-  assert.equal(sponCaption({ audience: { live: 0 } }), '7D by place');
-  assert.equal(sponCaption({ audience: { live: 1 } }), '7D by place', '1 is most likely the viewer');
-  assert.equal(sponCaption({ audience: { live: 2 } }), '7D by place · 2 live now');
-  assert.equal(sponCaption(null), '7D by place');
+  assert.match(factsHtml({ audience: { pageviews: { d7: '<b>' } } }), /<dd class="num">--<\/dd>/, 'only numbers');
+  assert.match(factsHtml(FULL), /^<dl class="card-facts n3" id="spon-facts">/);
 });
 
 test('SPONSOR refresh: numbers and globe dots again every minute through ctx.live (paused while hidden)', async () => {
@@ -268,7 +260,7 @@ test('SPONSOR refresh: numbers and globe dots again every minute through ctx.liv
   const nodes = {};
   const node = (k) => (nodes[k] ||= { innerHTML: '', textContent: '', isConnected: true, hidden: false, attrs: {}, setAttribute(a, v) { this.attrs[a] = v; } });
   const el = { set innerHTML(v) { this.html = v; }, get innerHTML() { return this.html; }, isConnected: true,
-    querySelector: (sel) => ({ '#spon-proof': node('proof'), '.spon-globe canvas': null, '.spon-globe figcaption': node('cap'), '.spon-globe': node('fig') }[sel] ?? null) };
+    querySelector: (sel) => ({ '#spon-facts': node('facts'), '#spon-views': node('views'), '.spon-globe canvas': null, '.spon-globe': node('fig') }[sel] ?? null) };
   let answer = FULL;
   const ctx = {
     status() {}, signal: null, onCleanup: (f) => cleanups.push(f), live: (fn, ms) => lives.push([fn, ms]),
@@ -281,19 +273,17 @@ test('SPONSOR refresh: numbers and globe dots again every minute through ctx.liv
   assert.equal(lives.length, 1);
   assert.equal(lives[0][1], REFRESH_MS);
   assert.equal(REFRESH_MS, 60_000);
-  assert.match(node('proof').innerHTML, /243 page views this week/);
-  assert.equal(node('cap').textContent, '7D by place · 7 live now');
+  assert.match(node('facts').outerHTML, /<dd class="num">243<\/dd>/);
   answer = { ...FULL, audience: { ...FULL.audience, pageviews: { d7: 300 }, live: 0 } };
   lives[0][0]();
   await flush();
   assert.equal(calls.length, 2);
-  assert.match(node('proof').innerHTML, /300 page views this week/);
-  assert.equal(node('cap').textContent, '7D by place');
+  assert.match(node('facts').outerHTML, /<dd class="num">300<\/dd>/);
   for (const f of cleanups) f();
   answer = { ...FULL, audience: { ...FULL.audience, pageviews: { d7: 999 } } };
   lives[0][0]();
   await flush();
-  assert.doesNotMatch(node('proof').innerHTML, /999/, 'nothing painted after the screen closes');
+  assert.doesNotMatch(node('facts').outerHTML, /999/, 'nothing painted after the screen closes');
   // ctx.live is the shell's liveTimer: it skips a hidden tab and catches up when shown.
   const app = readFileSync('public/app.js', 'utf8');
   assert.match(app, /const paused = \(\) => document\.hidden \|\| !embedVisible;/);
@@ -380,7 +370,7 @@ test('SPONSOR open: the real strip is outlined with a label above it until the s
   assert.equal(tag.hidden, true);
   pstop();
   assert.equal(pls.scroll, undefined);
-  assert.match(readFileSync('public/screens/sponsor.css', 'utf8'), /\.spon-page \{ gap: 14px; padding-top: 8px; padding-bottom: 44px; \}/);
+  assert.match(readFileSync('public/screens/sponsor.css', 'utf8'), /\.spon-card \{ padding-bottom: 48px; \}/, 'room at the end for the label');
   real.hidden = true; // Pro: no strip, nothing to point at
   const none = pointAtStrip(doc, win);
   assert.ok(!cls.has('is-spot'));
@@ -388,6 +378,10 @@ test('SPONSOR open: the real strip is outlined with a label above it until the s
   const css = readFileSync('public/style.css', 'utf8');
   assert.match(css, /\.status-sponsor\.is-spot \{ outline: 1px solid var\(--accent\);/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.status-sponsor\.is-spot \{ animation: none; \} \}/);
+  // Never an empty frame: no slide in while outlined (it starts below the frame), and a
+  // line of its own if the strip has none.
+  assert.match(css, /\.status-sponsor\.is-spot\.is-sliding \.spon-item \{ animation: none; \}/);
+  assert.match(css, /\.status-sponsor\.is-spot:empty::before \{ content: 'YOUR LINE HERE';/);
   const own = readFileSync('public/screens/sponsor.css', 'utf8');
   assert.match(own, /\.spon-point \{\s*position: fixed;/);
   assert.match(own, /\.wd-tile \{ display: flex;/, 'WEIRD and DESK tiles keep their base styles');

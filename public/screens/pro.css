@@ -27,88 +27,44 @@
 
 .pro-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .pro-stats .stat dd { white-space: normal; }
-.pro-key-box { padding: 4px 0 8px; }
-.pro-key {
-  margin: 4px 0 4px; font-size: 32px; font-weight: 600; letter-spacing: .06em; line-height: 1.2;
-  color: var(--accent); overflow-wrap: anywhere; user-select: all;
-}
+/* A key or a gift code, in the card's hero (its size is the hero's): selectable at once. */
+.pro-key { color: var(--accent); overflow-wrap: anywhere; user-select: all; }
 
 @media (max-width: 639px) {
   .pro-stats { grid-template-columns: minmax(0, 1fr); }
-  .pro-key { font-size: 22px; }
 }
 
-.pro-terms { margin: 4px 0 0; padding-left: 16px; list-style: square; color: var(--text-2); line-height: 1.55; }
-.pro-terms li { margin: 2px 0; }
-.pro-terms a { color: var(--accent); }
-.pro-demo { margin: 0 0 8px; padding: 8px 12px; border: 1px solid var(--accent); background: var(--accent-tint); color: var(--accent); font-weight: 600; letter-spacing: .02em; }
+.pro-demo { margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--accent); background: var(--accent-tint); color: var(--accent); font-weight: 600; letter-spacing: .02em; }
 .pro-demo[hidden] { display: none; }
 
-/* ==== PRO: the seat, big (screens/pro.js mainHtml). Centred, nothing to scroll at
-   1536x730; everything else waits behind + DETAILS. ==== */
+/* ==== PRO, LOGIN, REDEEM, GIFT: card pages (kit.css, "Card pages"). Only what is
+   theirs is here: the seat's dim zeros, the plan switch in the price, + Details. ==== */
 
-.pro3 {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
-  min-height: calc(100vh - var(--topbar-h) - var(--cmd-h) - var(--dock-h) - var(--tape-h) - 48px);
-  padding: 8px 0 20px; text-align: center;
-}
-.pro3.is-open { justify-content: flex-start; }
-.pro3-second { width: 100%; max-width: 760px; text-align: left; }
-.pro3-main { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; }
-.pro3-note { margin: 0; }
-.pro3-top { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.pro3-kicker { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .24em; color: var(--dim); }
-.pro3-seat {
-  margin: 0; font-size: clamp(46px, 7.4vw, 116px); font-weight: 800; line-height: 1; letter-spacing: -.01em;
-  color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums;
-}
 .pro3-word, .pro3-who { color: var(--text-2); }
 .pro3-zero { color: var(--faint); }
-.pro3-status { margin: 0; font-size: 18px; font-weight: 600; }
-.pro3-price { margin: 0; font-size: clamp(18px, 1.9vw, 26px); font-weight: 600; }
 /* The plan switch lives in the price: the picked plan bright, the other dim. */
 .pro3-plan {
-  padding: 0 2px; border: 0; background: none; font: inherit; color: var(--faint); cursor: pointer;
+  padding: 0 2px; border: 0; background: none; font: inherit; color: var(--dim); cursor: pointer;
   text-decoration: underline dotted var(--rule-strong); text-underline-offset: .22em;
 }
 .pro3-plan[aria-pressed="true"] { color: var(--text); text-decoration: none; cursor: default; }
 .pro3-plan:not([aria-pressed="true"]):hover { color: var(--text-2); }
 .pro3-plan:disabled { cursor: not-allowed; opacity: .6; }
-.pro3-act { margin: 2px 0 0; }
-.pro3-buy {
-  display: inline-block; padding: 11px 30px; border: 1px solid var(--accent); background: var(--accent); color: var(--ink);
-  font: inherit; font-size: 16px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; cursor: pointer; text-decoration: none;
-}
-.pro3-buy:hover, .pro3-buy:focus-visible { background: var(--text); border-color: var(--text); color: var(--ink); text-decoration: none; }
-.pro3-buy:disabled { opacity: .5; cursor: wait; }
-.pro3-year-note { margin: -6px 0 0; font-size: 12px; color: var(--dim); }
-.pro3-year-note[hidden] { display: none; }
-.pro3-under { margin: -4px 0 0; font-size: 13px; color: var(--dim); }
-.pro3-proof { margin: 0; min-height: 1.3em; font-size: 15px; color: var(--text-2); }
-.pro3-part { white-space: nowrap; }
-.pro3-perks { margin: 4px 0 0; padding: 0; list-style: none; font-size: clamp(17px, 1.7vw, 22px); font-weight: 600; line-height: 1.45; color: var(--text); }
-.pro3-soon { margin: 0; font-size: 13px; color: var(--dim); }
-.pro3-soon a { color: inherit; text-decoration: underline dotted; text-underline-offset: .2em; }
-.pro3-links { margin: 2px 0 0; font-size: 12px; letter-spacing: .06em; }
-.pro3-link { padding: 0; border: 0; background: none; font: inherit; color: var(--dim); cursor: pointer; text-decoration: none; white-space: nowrap; }
-.pro3-link:hover, .pro3-link:focus-visible { color: var(--text); }
-.pro3-dot { color: var(--faint); }
-#pro-shown { width: 100%; max-width: 760px; }
-#pro-shown:empty { display: none; }
-.pro3-fine { margin: 0; font-size: 12px; color: var(--faint); }
-.pro3-fine[hidden] { display: none; }
-.pro3-details { width: 100%; max-width: 980px; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--rule); text-align: left; }
-.pro3-details[hidden] { display: none; }
-.pro3-details .pro-terms { margin: 12px 0; }
+.pro3-chat { color: inherit; text-decoration: underline dotted var(--rule-strong); text-underline-offset: .2em; }
+.pro3-chat:hover { color: var(--accent); text-decoration: none; }
+/* + Details: FREE, then PRO, one list under the other (the column is too narrow for
+   two), then the terms as short rows. */
+.pro-card .money { margin: 0 0 16px; }
+.pro-card .pro-head { margin-bottom: 8px; }
+.pro-card .fx-from, .pro-card .pro-demo { max-width: 60ch; }
+.pro-card .pro-cols { grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 0; }
+.pro-card .pro-list { margin: 0; }
+/* After checkout: LOADING, or what went wrong and TRY AGAIN, over the card. */
+#pro-claim:not(:empty) { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 32px; text-align: center; }
+/* GIFT: the codes made so far, left to right like a table. */
+.pro-gifts { width: 100%; max-width: 60ch; text-align: left; }
 
 @media (max-width: 639px) {
-  .pro3 { gap: 12px; padding-top: 4px; }
-  .pro3-main { gap: 12px; }
   /* YOUR on its own line, so SEAT 00012 stays whole on a phone. */
-  .pro3-who { display: block; font-size: .42em; letter-spacing: .2em; line-height: 1.4; }
-  .pro3-seat { font-size: clamp(40px, 15vw, 64px); }
-  .pro3-buy { padding: 11px 24px; }
-  /* The live line: one part per line, no dangling dot. */
-  .pro3-proof .pro3-part { display: block; }
-  .pro3-proof .pro3-dot { display: none; }
+  .pro3-who { display: block; font-size: 24px; letter-spacing: .2em; line-height: 1.4; }
 }

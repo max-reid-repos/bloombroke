@@ -1,6 +1,7 @@
-// PRO v3: the seat, big. GET /api/pro/seat (the next seat number: read only, one number,
-// cached), the hero (the next seat for a visitor, your own seat for Pro), yearly first,
-// the test-mode line, the live line from real numbers only, and every old PRO command.
+// PRO v3: the seat, big, as a card page (kit.js cardPage). GET /api/pro/seat (the next
+// seat number: read only, one number, cached), the hero (the next seat for a visitor),
+// the key view for Pro (YOUR KEY, COPY, DOWNLOAD, MANAGE PLAN and CANCEL), yearly first,
+// the test-mode note, the word budget, and every old PRO command.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,16 +12,16 @@ import { createStore } from '../pro/store.js';
 import { revealKeyFrom } from '../pro/licence.js';
 import { mountPro, SEAT_CACHE_MS } from '../pro/routes.js';
 import { parseCommand, urlFor } from '../public/app.js';
+import { cardWords } from '../public/kit.js';
 import {
-  mainHtml, pageHtml, detailsHtml, heroSeat, seatParts, proofLine, visitLen, planButton,
-  TEST_LINE, UP_NEXT, PERKS, GIFT_ACTION, DETAILS_OPEN, BUY_TERMS, DEMO_BANNER,
+  mainHtml, pageHtml, detailsHtml, heroSeat, seatParts, keyFacts, planButton,
+  UP_NEXT, YOUR_KEY, PERKS, GIFT_ACTION, GIFT_AFTER, MANAGE, CANCEL, KEY_NOTE, RENEW_NOTE, TEST_NOTE, TERMS_ROWS, BUY_TERMS, DEMO_BANNER,
   render, loginCommand, logoutCommand, giftCommand, redeemCommand,
 } from '../public/screens/pro.js';
 
 const T0 = Date.UTC(2026, 8, 28, 12);
 const quiet = { log() {}, error() {} };
 const KEY = 'BB-7KQ2-M9XD-HT4P-WZ3C';
-const BBRK = { audience: { visitors: { d7: 70 }, pageviews: { d7: 245 }, avgVisitSec: 417 } };
 const all = () => true;
 
 async function setup({ store: override } = {}) {
@@ -40,14 +41,6 @@ async function setup({ store: override } = {}) {
   };
   const close = () => new Promise((r) => server.close(r));
   return { db, store, get, close, advance(ms) { t += ms; } };
-}
-
-// Words a person reads: tags out, entities in, split on spaces.
-function words(html) {
-  const text = html
-    .replace(/<[^>]+\bhidden\b[^>]*>[^<]*<\/[a-z0-9]+>/gi, ' ') // hidden notes (the yearly one)
-    .replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
-  return text.split(/\s+/).filter((w) => /[A-Za-z0-9$+-]/.test(w) && w !== '·' && w !== '-');
 }
 
 // ---- GET /api/pro/seat -------------------------------------------------------------------
@@ -101,46 +94,93 @@ test('hero: a visitor sees the next seat, UP NEXT, the zeros in front dim', () =
   assert.equal(seatParts(0), null);
   assert.equal(seatParts(null), null);
   assert.deepEqual(heroSeat({ next: 43 }), { mine: false, seat: 43 });
-  const html = mainHtml({ next: 43, bbrk: BBRK, has: all });
-  assert.match(html, new RegExp(`>${UP_NEXT}<`));
-  assert.match(html, /aria-label="SEAT 00043"/);
-  assert.match(html, /<span class="pro3-word">SEAT <\/span><span class="pro3-zero">000<\/span>43<\/h2>/);
+  const html = mainHtml({ next: 43, has: all });
+  assert.match(html, new RegExp(`<p class="tag card-kicker">${UP_NEXT}</p>`));
+  assert.match(html, /<h2 class="card-hero card-hero-96 num" id="pro-seat" aria-label="SEAT 00043"><span class="pro3-word">SEAT <\/span><span class="pro3-zero">000<\/span>43<\/h2>/);
   assert.doesNotMatch(html, /YOUR/);
   // Before the number arrives: dashes, never a guess.
   assert.match(mainHtml({ has: all }), /<span class="pro3-zero">-----<\/span><\/h2>/);
 });
 
-test('hero: a Pro viewer sees their own seat, not the next one', () => {
+test('key view: Pro sees YOUR KEY, COPY and DOWNLOAD, its own seat and renewal, and the small links', () => {
   const st = { status: 'active', seat: 12, canGift: true, interval: 'year', currentPeriodEnd: new Date(Date.UTC(2027, 8, 27, 12)).toISOString() };
   assert.deepEqual(heroSeat({ key: KEY, st, next: 43 }), { mine: true, seat: 12 });
-  const html = mainHtml({ key: KEY, st, next: 43, bbrk: BBRK, has: all });
-  assert.match(html, /aria-label="Your SEAT 00012"/);
-  assert.match(html, /<span class="pro3-who">YOUR <\/span><span class="pro3-word">SEAT <\/span><span class="pro3-zero">000<\/span>12<\/h2>/);
-  assert.doesNotMatch(html, /00043|>43</);
-  assert.doesNotMatch(html, new RegExp(UP_NEXT));
-  assert.match(html, /Renews Sep 27, 2027, yearly/);
-  // Paid Pro: GIFT is the one big action, MANAGE a small link, no SUBSCRIBE, no live line.
-  assert.match(html, new RegExp(`class="pro3-buy" href="\\?c=GIFT" data-cmd="GIFT">${GIFT_ACTION}<`));
-  assert.match(html, /id="pro-manage">MANAGE</);
+  const html = mainHtml({ key: KEY, st, next: 43, has: all });
+  assert.match(html, new RegExp(`<p class="tag card-kicker">${YOUR_KEY}</p>`));
+  assert.match(html, /<span class="pro-key" id="pro-key">BB-XXXX-XXXX-XXXX-WZ3C<\/span>/, 'masked until SHOW KEY');
+  assert.doesNotMatch(html, new RegExp(KEY), 'the full key is not in the page until asked');
+  assert.match(mainHtml({ key: KEY, st, reveal: KEY, has: all }), new RegExp(`id="pro-key">${KEY}<`), 'in full after checkout, REDEEM or SHOW KEY');
+  assert.match(html, /class="btn card-btn btn-solid" id="pro-copy">COPY</);
+  assert.match(html, /class="btn card-btn" id="pro-dl">DOWNLOAD</);
+  assert.equal((html.match(/btn-solid/g) || []).length, 1, 'one primary button');
+  assert.ok(html.includes(KEY_NOTE));
+  assert.doesNotMatch(html, /00043|>43</, 'its own seat, not the next one');
+  assert.match(html, /<dd class="num"><span class="pro3-zero">000<\/span>12<\/dd>/);
+  assert.match(html, /<dt class="tag">RENEWS YEARLY<\/dt><dd class="num">Sep 27, 2027<\/dd>/);
+  // The links: GIFT, MANAGE PLAN, CANCEL (both open the billing portal), SHOW KEY, LOGOUT.
+  assert.match(html, new RegExp(`<a class="card-link" href="\\?c=GIFT" data-cmd="GIFT">${GIFT_ACTION}</a>`));
+  assert.match(html, new RegExp(`id="pro-manage">${MANAGE}<`));
+  assert.match(html, new RegExp(`id="pro-cancel">${CANCEL}<`));
   assert.match(html, /id="pro-show">SHOW KEY</);
   assert.match(html, /data-cmd="LOGOUT"/);
-  assert.doesNotMatch(html, /SUBSCRIBE|pro-proof|pro3-price/);
-  // Pro that cannot gift (a trial or no subscription id): MANAGE is the big one, once.
-  const noGift = mainHtml({ key: KEY, st: { ...st, canGift: false }, has: all });
-  assert.equal((noGift.match(/id="pro-manage"/g) || []).length, 1);
-  assert.match(noGift, /class="pro3-buy" id="pro-manage">MANAGE</);
+  assert.doesNotMatch(html, /SUBSCRIBE|pro-sub|pro3-plan/);
+  // No benefits block for someone who has Pro.
+  for (const p of PERKS) assert.ok(!html.includes(`>${p.label}<`), p.label);
+  // Pro that cannot gift: no GIFT link; a subscription that is ending: no CANCEL.
+  assert.doesNotMatch(mainHtml({ key: KEY, st: { ...st, canGift: false }, has: all }), /data-cmd="GIFT"/);
+  const ending = mainHtml({ key: KEY, st: { ...st, cancelAtPeriodEnd: true }, has: all });
+  assert.doesNotMatch(ending, /pro-cancel/);
+  assert.match(ending, /ENDS, NO RENEWAL/);
+  assert.equal((ending.match(/id="pro-manage"/g) || []).length, 1);
+  // Both links call the same portal; no new billing code.
+  const src = readFileSync('public/screens/pro.js', 'utf8');
+  assert.match(src, /wire\(host, ctx, '#pro-manage', 'OPENING BILLING\.\.\.', \(\) => pro\.openPortal\(\)\);/);
+  assert.match(src, /wire\(host, ctx, '#pro-cancel', '[^']*', \(\) => pro\.openPortal\(\)\);/);
 });
 
-test('hero: a lapsed key keeps its seat and gets REACTIVATE; a gift month gets no button', () => {
+test('just bought, SHOW KEY on a key with Pro off, a gift month, billing only with a saved key', () => {
+  const st = { status: 'active', seat: 12, canGift: true, interval: 'year', currentPeriodEnd: new Date(Date.UTC(2027, 8, 27, 12)).toISOString() };
+  const bought = mainHtml({ key: KEY, st, reveal: KEY, has: all });
+  assert.match(bought, /<p class="card-note">Save this key\. It is your login on any device\.<\/p>/, 'the last chance to save it');
+  assert.doesNotMatch(bought, /pro-manage|pro-cancel/, 'no key saved in this browser (node has none): nothing for billing to send');
+  assert.match(mainHtml({ key: KEY, st, has: all }), /<p class="card-note">Your login on any device\.<\/p>/);
+  // A key with Pro off: SHOW KEY puts the key into the same view; the price and REACTIVATE stay.
+  const off = mainHtml({ key: KEY, st: { status: 'canceled', seat: 7 }, reveal: KEY, has: all });
+  assert.match(off, /id="pro-sub"[^>]*>REACTIVATE YEARLY</);
+  assert.match(off, /<dl class="card-facts n1"><div class="card-fact"><dt class="tag">YOUR KEY<\/dt><dd class="num"><span class="pro-key" id="pro-key">BB-7KQ2-M9XD-HT4P-WZ3C<\/span><\/dd><\/div><\/dl>/);
+  assert.doesNotMatch(off, /pro-show/);
+  assert.match(off, /Renews until cancelled · REACTIVATE keeps this key/);
+  assert.match(mainHtml({ key: KEY, st: { status: 'gift_ended', seat: 9 }, has: all }), /Renews until cancelled · SUBSCRIBE keeps this key/);
+  // A gift month: what happens after it, in Details.
+  const gift = mainHtml({ key: KEY, st: { status: 'gift', seat: 9, giftUntil: new Date(Date.now() + 5 * 864e5).toISOString() }, has: all });
+  assert.ok(gift.split('<details')[1].includes(GIFT_AFTER));
+  assert.ok(!detailsHtml().includes(GIFT_AFTER));
+  // A pasted gift code with spaces fits the LOGIN box.
+  assert.match(readFileSync('public/screens/pro.js', 'utf8'), /button: 'LOGIN', maxlength: 80 \}/);
+});
+
+test('key facts: the seat, and renews, ends or the gift month', () => {
+  const end = new Date(Date.UTC(2026, 10, 3, 12)).toISOString();
+  const label = (st) => keyFacts(st, Date.UTC(2026, 9, 1)).map((f) => f.label);
+  assert.deepEqual(label({ status: 'active', seat: 3, interval: 'month', currentPeriodEnd: end }), ['SEAT', 'RENEWS MONTHLY']);
+  assert.deepEqual(label({ status: 'active', seat: 3, cancelAt: end }), ['SEAT', 'ENDS, NO RENEWAL']);
+  assert.deepEqual(label({ status: 'gift', seat: 9, giftUntil: end }), ['SEAT', 'GIFT MONTH UNTIL']);
+  assert.deepEqual(label(null), ['SEAT']);
+});
+
+test('hero: a lapsed key keeps its seat and gets REACTIVATE; a gift month shows the key', () => {
   const lapsed = mainHtml({ key: KEY, st: { status: 'canceled', seat: 7 }, has: all });
   assert.match(lapsed, /aria-label="Your SEAT 00007"/);
+  assert.match(lapsed, /<p class="tag card-kicker">CANCELED<\/p>/);
   assert.match(lapsed, /id="pro-sub" data-plan="year" data-label="REACTIVATE">REACTIVATE YEARLY</);
   assert.match(lapsed, /REACTIVATE keeps this key, its seat and your synced lists\./);
-  assert.match(lapsed, /id="pro-manage">MANAGE</);
+  assert.match(lapsed, /id="pro-manage">MANAGE PLAN</);
+  assert.doesNotMatch(lapsed, /pro-cancel/, 'nothing to cancel');
   const gift = mainHtml({ key: KEY, st: { status: 'gift', seat: 9, giftUntil: new Date(Date.now() + 5 * 864e5).toISOString() }, has: all });
-  assert.match(gift, /aria-label="Your SEAT 00009"/);
-  assert.doesNotMatch(gift, /pro3-buy|pro-manage/);
-  assert.match(gift, /When the gift month ends, you can subscribe on this key and keep its seat\./);
+  assert.match(gift, /YOUR KEY/);
+  assert.doesNotMatch(gift, /pro-sub|pro-manage|pro-cancel/, 'a gift month has no billing');
+  assert.match(gift, /GIFT MONTH UNTIL/);
+  assert.ok(detailsHtml().length > 0);
   const ended = mainHtml({ key: KEY, st: { status: 'gift_ended', seat: 9 }, has: all });
   assert.match(ended, /data-label="SUBSCRIBE">SUBSCRIBE YEARLY</);
 });
@@ -151,8 +191,8 @@ test('yearly first: PRO and PRO YEARLY lead with yearly, PRO MONTHLY with monthl
   const html = mainHtml({ next: 43, has: all });
   assert.match(html, /id="pro-plan-year" data-plan="year" aria-pressed="true">\$420 a year\.</);
   assert.match(html, /id="pro-plan-month" data-plan="month" aria-pressed="false">Or \$42 a month\.</);
-  assert.match(html, /id="pro-sub" data-plan="year" data-label="SUBSCRIBE">SUBSCRIBE YEARLY</);
-  assert.equal((html.match(/class="pro3-buy"/g) || []).length, 1, 'one button');
+  assert.match(html, /class="btn card-btn btn-solid" id="pro-sub" data-plan="year" data-label="SUBSCRIBE">SUBSCRIBE YEARLY</);
+  assert.equal((html.match(/btn-solid/g) || []).length, 1, 'one button');
   const month = mainHtml({ next: 43, plan: 'month', has: all });
   assert.match(month, /id="pro-sub" data-plan="month" data-label="SUBSCRIBE">SUBSCRIBE MONTHLY</);
   assert.match(month, /id="pro-plan-month" data-plan="month" aria-pressed="true"/);
@@ -165,48 +205,47 @@ test('yearly first: PRO and PRO YEARLY lead with yearly, PRO MONTHLY with monthl
   assert.match(readFileSync('public/screens/pro.js', 'utf8'), /const plan = cmd\.args\?\.plan === 'month' \? 'month' : 'year';/);
 });
 
-// ---- the test-mode line, DETAILS --------------------------------------------------------------
+// ---- the note, the test mode, DETAILS -------------------------------------------------------
 
-test('test mode: the dim line is on the page; DETAILS keeps the full terms and the test card', () => {
-  assert.equal(TEST_LINE, 'Test mode: no card is charged yet.');
-  const page = pageHtml();
-  assert.match(page, /<p class="pro3-fine" id="pro-test" hidden>Test mode: no card is charged yet\.<\/p>/);
-  assert.match(page, /id="pro-details" hidden/);
+test('note and test mode: one dim line on the page; Details keeps every term as a short row, and the test card', () => {
+  const html = mainHtml({ next: 43, has: all });
+  assert.match(html, new RegExp(`<p class="card-note">${RENEW_NOTE}<span id="pro-test" hidden> · ${TEST_NOTE}</span>`));
+  assert.equal(pageHtml(), '<div class="pro-page"><div id="pro-claim"></div><div id="pro-account"></div></div>');
+  // + Details: WHATIF's toggle, closed.
+  assert.match(html, /<details class="how card-more"><summary>Details<\/summary>/);
   const d = detailsHtml();
-  for (const t of BUY_TERMS) assert.ok(d.includes(t.replace(/'/g, '&#39;')) || d.includes(t), t);
   assert.ok(d.includes(DEMO_BANNER));
+  assert.match(d, /id="pro-demo" role="note" hidden/);
   assert.match(d, /you agree to the <a href="\/terms">Terms<\/a>/);
   assert.match(d, />FREE</);
+  assert.match(d, />PRO</);
   assert.match(d, /COMING WHEN PRO LAUNCHES/);
-  assert.match(mainHtml({ has: all }), new RegExp(`id="pro-more" aria-expanded="false" aria-controls="pro-details">\\${DETAILS_OPEN}<`));
-  // The page shows it only when the server says test mode.
+  // Every fact of the buying terms is still there, short: price, renewal, cancel, the
+  // paid period, the experiment, the shutdown refund, gifts, login, not advice, operator.
+  const text = d.replace(/<[^>]+>/g, ' ');
+  for (const x of ['$42 a month or $420 a year', 'Stripe', 'until you cancel', 'type PRO and press MANAGE PLAN or CANCEL', 'end of the month or year you paid for',
+    'experiment', 'short notice', 'refund the unused days', 'up to 3 codes', '30 days', 'no card', 'their own seat', 'Work once', '90 days',
+    'Cannot make gift codes', 'no email or password', 'not investment advice', 'Run by Bloombroke.', 'hello@bloombroke.com']) assert.ok(text.includes(x), x);
+  for (const [, t] of TERMS_ROWS) assert.ok(t.split(/\s+/).length <= 14, `${t}: 14 words or fewer`);
+  // The full wording stays exported (and in the Terms).
+  assert.match(BUY_TERMS.join(' '), /Cancel any time: type PRO and press MANAGE PLAN or CANCEL\./);
+  // The page shows the test bits only when the server says test mode.
   assert.match(readFileSync('public/screens/pro.js', 'utf8'), /if \(c\.mode !== 'test' \|\| !el\.isConnected\) return;/);
-});
-
-// ---- the live line ---------------------------------------------------------------------------
-
-test('live line: our own numbers only, the parts that are known, never a seat count', () => {
-  assert.equal(proofLine(BBRK), '70 visitors this week · 7 min average visit');
-  assert.equal(proofLine({ audience: { visitors: { d7: 1 } } }), '1 visitor this week');
-  assert.equal(proofLine({ audience: { avgVisitSec: 40 } }), '40 s average visit');
-  assert.equal(proofLine(null), '');
-  assert.equal(proofLine({ audience: { visitors: { d7: null }, avgVisitSec: null } }), '');
-  assert.equal(proofLine({ seats: { all: 12 }, audience: {} }), '', 'seats in test mode are demo checkouts');
-  assert.equal(visitLen(417), '7 min');
-  assert.match(mainHtml({ next: 43, bbrk: BBRK, has: all }), /id="pro-proof"><span class="pro3-part">70 visitors this week<\/span><span class="pro3-dot" aria-hidden="true"> · <\/span><span class="pro3-part">7 min average visit<\/span><\/p>/);
 });
 
 // ---- few words -------------------------------------------------------------------------------
 
-test('few words: the visitor page is about 50 words, perks as three lines', () => {
-  const html = mainHtml({ next: 43, bbrk: BBRK, has: all }) + '<p class="pro3-fine">' + TEST_LINE + '</p>';
-  const w = words(html);
-  assert.ok(w.length <= 55, `${w.length} words: ${w.join(' ')}`);
-  assert.deepEqual(PERKS, ['Your seat number, forever.', 'Your setup on every device.', 'No ads. No trackers.']);
-  for (const p of PERKS) assert.ok(html.includes(`<li>${p}</li>`), p);
-  assert.match(html, /<a class="pro3-link" href="\?c=CHAT" data-cmd="CHAT">CHAT<\/a> with Pro friends\. Coming: closed-tab alerts\./);
-  // One row of small links for a visitor.
-  assert.match(html, /data-cmd="LOGIN">LOGIN<.*data-cmd="REDEEM">REDEEM<.*data-cmd="GIFT">GIFT<.*id="pro-more"/s);
+test('few words: 30 for a visitor in test mode, 25 with a key; the four facts; no visitors line', () => {
+  const visitor = mainHtml({ next: 43, has: all }).replace('<span id="pro-test" hidden>', '<span id="pro-test">');
+  const w = cardWords(visitor);
+  assert.ok(w.length <= 30, `${w.length} words: ${w.join(' ')}`);
+  assert.deepEqual(PERKS.map((p) => p.value), ['SEAT', 'SYNC', 'CHAT', 'AD-FREE']);
+  assert.match(visitor, /<dt class="tag">friends<\/dt><dd class="num"><a class="pro3-chat" href="\?c=CHAT" data-cmd="CHAT">CHAT<\/a><\/dd>/);
+  assert.doesNotMatch(visitor, /visitors this week|average visit|pro-proof/, 'that line lives on SPONSOR and BBRK');
+  assert.match(visitor, /data-cmd="LOGIN">LOGIN<.*data-cmd="REDEEM">REDEEM<.*data-cmd="GIFT">GIFT</s);
+  const st = { status: 'active', seat: 12, canGift: true, interval: 'year', currentPeriodEnd: new Date(Date.UTC(2027, 8, 27, 12)).toISOString() };
+  const k = cardWords(mainHtml({ key: KEY, st, has: all }));
+  assert.ok(k.length <= 25, `${k.length} words: ${k.join(' ')}`);
 });
 
 // ---- every old PRO command -------------------------------------------------------------------
@@ -221,8 +260,10 @@ test('old commands still route: PRO YEARLY, LOGIN, LOGOUT, REDEEM, GIFT; MANAGE 
   assert.equal(parseCommand('REDEEM GIFT-ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-2345').args.code, 'GIFT-ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-2345');
   assert.equal(parseCommand('GIFT').name, 'GIFT');
   for (const c of [render, loginCommand.render, logoutCommand.render, giftCommand.render, redeemCommand.render]) assert.equal(typeof c, 'function');
-  // MANAGE is a button on PRO for a key holder with billing, as before.
+  // MANAGE PLAN is on PRO for a key holder with billing, as before.
   assert.match(mainHtml({ key: KEY, st: { status: 'active', seat: 3, canGift: true }, has: all }), /id="pro-manage"/);
+  // LOGIN and REDEEM with nothing after them: a box on the page, not a line of how-to.
+  assert.deepEqual(parseCommand('REDEEM').args, { show: true });
 });
 
 // ---- house rules -----------------------------------------------------------------------------
@@ -233,7 +274,7 @@ test('house rules on the new PRO copy: no brand word, no em dash, no emoji, no a
   assert.doesNotMatch(src, /—/);
   assert.doesNotMatch(src, /\p{Extended_Pictographic}/u);
   assert.doesNotMatch(src, /32,000/);
-  const front = mainHtml({ next: 43, bbrk: BBRK, has: all });
+  const front = mainHtml({ next: 43, has: all }).split('<details')[0];
   assert.doesNotMatch(front, /advice|advise|should buy|recommend/i);
   // No amber or orange in the new styles.
   assert.doesNotMatch(readFileSync('public/screens/pro.css', 'utf8'), /amber|orange|hsl\((2\d|3\d|4\d),/i);
