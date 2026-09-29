@@ -69,11 +69,12 @@ export function stillFollowing(rooms, room) {
   return Boolean(r?.drive && !r.drive.own && r.drive.following);
 }
 // Esc belongs to following only when nothing else wants it: no text in the command bar,
-// no suggestion list or menu open, no panel maximised, no link or TAKE OVER waiting.
+// no suggestion list or menu open, no panel maximised, no link or TAKE OVER waiting, no
+// pop-up open (a <dialog>: HOW TO PLAY).
 export function escFree(doc) {
   if (!doc?.querySelector) return true;
   if (doc.getElementById?.('cmd')?.value) return false;
-  return !doc.querySelector('#suggest:not([hidden]), .menu-overlay:not([hidden]), body.has-max-panel, .link-confirm[role="alertdialog"], .ct-confirm');
+  return !doc.querySelector('#suggest:not([hidden]), .menu-overlay:not([hidden]), body.has-max-panel, .link-confirm[role="alertdialog"], .ct-confirm, dialog[open]');
 }
 // The pause before the next long-poll (the same rule as the CHAT screen's).
 export function nextPause(d, elapsed) {

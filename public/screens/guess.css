@@ -66,6 +66,17 @@
 .gs-share { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .gs-x { height: 24px; }
 .gs-legend { padding: 8px 10px; font-size: 11px; line-height: 15px; color: var(--dim); }
+/* HOW TO PLAY (howto.js): the link where the legend line was, and the ? key beside it. */
+.gs-legend .gs-howto { font-size: 12px; letter-spacing: 0; text-decoration: underline; text-underline-offset: 3px; }
+.gs-key { display: inline-block; margin-left: 8px; padding: 0 4px; border: 1px solid var(--rule-strong); color: var(--dim); font-size: 11px; line-height: 14px; }
+@media (pointer: coarse) { .gs-key { display: none; } }
+/* The example row in the pop-up: the table's own cells, as tiles; a dark cell gets an
+   edge so it reads as a tile on the pop-up's panel. */
+.gs-howto-ex .gs-g { width: 12%; }
+.gs-howto-ex th, .gs-howto-ex td { border-bottom: 0; }
+/* Its labels are the table's header, set a little tighter so FIRST LETTER fits whole. */
+.gs-howto-ex thead th { padding: 0 4px; letter-spacing: .02em; }
+.howto .gs-cell.g-miss { box-shadow: inset 0 0 0 1px var(--rule-strong); }
 @media (max-width: 639px) {
   .gs-table .gs-g { width: 18%; }
   .gs-table .gs-i { width: 3ch; }

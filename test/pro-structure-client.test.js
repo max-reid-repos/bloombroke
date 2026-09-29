@@ -394,7 +394,7 @@ test('legal: version bumped, so everyone who accepted 1.0 is asked again', async
   const { LEGAL_UPDATED } = await import('../public/legal-version.js');
   const { needsConsent, acceptRecord } = await import('../public/consent.js');
   const { DEFAULT_TERMS_VERSION } = await import('../pro/billing.js');
-  assert.equal(TERMS_VERSION, '1.6', 'PINGS: push subscriptions, ping settings, closed-tab alerts');
+  assert.equal(TERMS_VERSION, '1.7', 'Google Analytics: first-party cookies, free visitors only, off with GPC');
   assert.equal(LEGAL_UPDATED, '29 September 2026');
   assert.equal(needsConsent(acceptRecord('1.0')), true);
   assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
