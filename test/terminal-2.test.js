@@ -69,9 +69,10 @@ test('rule A: the chart\'s change says its range: 1Y, TODAY, IN VIEW', () => {
   assert.match(chart, /<span class="ch-k ch-tag">\$\{esc\(tag\)\}<\/span>\$\{c\.parts\.map/);
   assert.match(chart, /opts\.quote === 'external' && atLatest \? '' :/);
   // "Today" is asked at each render, never kept from when the chart was made.
-  assert.match(chart, /const today = \(\) => nyToday\(\);/);
+  assert.match(chart, /const todayNow = \(\) => nyToday\(\);/);
+  assert.match(chart, /const today = todayNow\(\); \/\/ asked at each build/);
   assert.doesNotMatch(chart, /const today = nyToday\(\);|const todayDate = new Date\(\);/);
-  assert.match(chart, /rolling: inst\?\.kind === 'crypto', today: model\.info\[model\.info\.length - 1\]\?\.day === today\(\)/);
+  assert.match(chart, /rolling: inst\?\.kind === 'crypto', today: model\.info\[model\.info\.length - 1\]\?\.day === todayNow\(\)/);
 });
 
 // ---- The ticker screen ---------------------------------------------------------------------

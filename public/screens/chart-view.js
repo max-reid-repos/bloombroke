@@ -400,6 +400,44 @@ function attrs(el, a) {
 
 // ---- The SVG --------------------------------------------------------------------------
 
+// The prev close axis tag: on its line, or 16px off the last value's tag; inside the plot.
+export function prevTagAt(prevY, lastY, { top = PAD_T, bottom = Infinity } = {}) {
+  const clamp = (v) => Math.min(bottom - 8, Math.max(top + 8, v));
+  if (!Number.isFinite(lastY) || Math.abs(prevY - lastY) >= 16) return clamp(prevY);
+  const side = prevY >= lastY ? 1 : -1;
+  const y = clamp(lastY + side * 16);
+  return Math.abs(y - lastY) >= 16 ? y : clamp(lastY - side * 16);
+}
+
+// PREV CLOSE at the line's right end, above or below it where no bar is (span: the
+// bars' pixel rows there), else null.
+export function prevWordsBox({ W, py, lw, top, bottom }, span) {
+  const x0 = W - lw - 2;
+  const x1 = W - 2;
+  const taken = span(x0 - 2, x1 + 2);
+  for (const y0 of [py - 15, py + 2]) {
+    const y1 = y0 + 13;
+    if (y0 < top || y1 > bottom) continue;
+    if (!taken || taken[1] < y0 - 1 || taken[0] > y1 + 1) return { x0, y0, x1, y1 };
+  }
+  return null;
+}
+
+// [top, bottom] pixel rows the bars cover between x0 and x1, or null.
+function barsYSpan(points, main, candles, x, y, i0, i1, x0, x1) {
+  let lo = Infinity;
+  let hi = -Infinity;
+  const take = (v) => { if (Number.isFinite(v)) { const py = y(v); if (py < lo) lo = py; if (py > hi) hi = py; } };
+  for (let i = i0; i <= i1; i += 1) {
+    const xi = x(i);
+    const xn = i < i1 ? x(i + 1) : xi;
+    if (xn < x0 || xi > x1) continue;
+    if (candles && !points[i].live) { take(points[i].h ?? main[i]); take(points[i].l ?? main[i]); } else take(main[i]);
+    if (!candles && i < i1) take(main[i + 1]);
+  }
+  return lo <= hi ? [lo, hi] : null;
+}
+
 // model: {
 //   points [{ t, v, o?, h?, l?, x?, live? }], info [{ day, mins, session }] per point,
 //   full [a, b] (b past the last bar leaves room for the rest of a session),
@@ -489,16 +527,18 @@ export function svgFor(model, win, width, height) {
   const ticks = niceTicks(min, max, Math.max(2, Math.round(priceH / 48)));
   const lastI = i1;
   const lastY = Number.isFinite(main[lastI]) ? y(main[lastI]) : -99;
+  const prevLineY = showPrev ? y(prev) : null;
+  const prevTagY = showPrev ? prevTagAt(prevLineY, lastY, { top: PAD_T, bottom: PAD_T + priceH }) : null;
   for (const t of ticks) {
     const ty = y(t);
     if (ty < PAD_T - 1 || ty > PAD_T + priceH + 1) continue;
     s += `<line class="ch-grid" x1="0" x2="${f1(W)}" y1="${f1(ty)}" y2="${f1(ty)}"/>`;
-    if (Math.abs(ty - lastY) >= 14) s += `<text class="ch-ylab" x="${f1(W + 6)}" y="${f1(ty + 4)}">${esc(fmtAxis(t))}</text>`;
+    if (Math.abs(ty - lastY) >= 14 && !(showPrev && Math.abs(ty - prevTagY) < 18)) s += `<text class="ch-ylab" x="${f1(W + 6)}" y="${f1(ty + 4)}">${esc(fmtAxis(t))}</text>`;
   }
   if (pct) s += `<line class="ch-zero" x1="0" x2="${f1(W)}" y1="${f1(y(0))}" y2="${f1(y(0))}"/>`;
 
   // Time labels.
-  for (const lab of axisLabels(info, a, b, pxPerBar, { intraday: model.intraday })) {
+  for (const lab of axisLabels(model.axisInfo || info, a, b, pxPerBar, { intraday: model.intraday })) {
     const lx = x(lab.i);
     if (lx < -1 || lx > W + 1) continue;
     const anchor = lx < 24 ? 'start' : lx > W - 24 ? 'end' : 'middle';
@@ -508,12 +548,14 @@ export function svgFor(model, win, width, height) {
   s += `<line class="ch-axis" x1="${f1(W)}" x2="${f1(W)}" y1="${PAD_T}" y2="${f1(PAD_T + plotH)}"/>`;
   s += `<line class="ch-axis" x1="0" x2="${f1(W)}" y1="${f1(PAD_T + plotH)}" y2="${f1(PAD_T + plotH)}"/>`;
 
-  // The previous close, dashed.
+  // The previous close: dashed, its value on the axis, its words never over the bars.
   if (showPrev) {
-    const py = y(prev);
+    const py = prevLineY;
     s += `<line class="ch-ref ch-ref-prev" x1="0" x2="${f1(W)}" y1="${f1(py)}" y2="${f1(py)}"/>`;
-    const text = `PREV CLOSE ${model.fmtY(prev)}`;
-    s += `<rect class="ch-lab-bg" x="2" y="${f1(py - 15)}" width="${labelWidth(text)}" height="13"/><text class="ch-lab ch-ref-prev-lab" x="6" y="${f1(py - 5)}">${esc(text)}</text>`;
+    const text = 'PREV CLOSE';
+    const lw = labelWidth(text);
+    const box = prevWordsBox({ W, py, lw, top: PAD_T, bottom: PAD_T + priceH }, (x0, x1) => barsYSpan(points, main, candles, x, y, i0, i1, x0, x1));
+    if (box) s += `<rect class="ch-lab-bg" x="${f1(box.x0)}" y="${f1(box.y0)}" width="${lw}" height="13"/><text class="ch-lab ch-ref-prev-lab" x="${f1(box.x0 + 4)}" y="${f1(box.y0 + 10)}">${text}</text>`;
   }
 
   // Volume pane.
@@ -594,7 +636,10 @@ export function svgFor(model, win, width, height) {
     while (j >= i0 && !Number.isFinite(c.pv[j])) j -= 1;
     if (j >= i0) tags.push({ v: c.pv[j], cls: `ch-last ${c.cls}` });
   }
-  let usedY = [];
+  if (showPrev) {
+    s += `<g class="ch-prev"><title>Previous close</title><rect class="ch-prev-bg" x="${f1(W + 0.5)}" y="${f1(prevTagY - 8)}" width="${PAD_R - 1}" height="16"/><text class="ch-prev-t" x="${f1(W + 6)}" y="${f1(prevTagY + 4)}">${esc(fmtAxis(prev))}</text></g>`;
+  }
+  let usedY = showPrev ? [prevTagY] : [];
   for (const t of tags) {
     let ty = y(t.v);
     for (const u of usedY) if (Math.abs(ty - u) < 16) ty = u + (ty >= u ? 16 : -16);

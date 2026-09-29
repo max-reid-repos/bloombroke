@@ -4,8 +4,8 @@ import { parseCommand, suggest, symbolSuggestions, toQuery, fromQuery } from '..
 import { INSTRUMENTS, resolveInstrument, matchInstrument, searchInstruments, FX_MAJOR_IDS, YIELD_IDS, instrumentById } from '../public/instruments.js';
 import { freshTag, freshnessParts, statusLine, lastTradeLine, category } from '../public/freshness.js';
 import { statRows, changeText } from '../public/screens/quote.js';
-import { marketsTable, marketsColumns } from '../public/screens/markets.js';
-import { fxTable } from '../public/screens/home.js';
+import { marketsColumns } from '../public/screens/markets.js';
+import { marketsTable, fxTable } from '../public/screens/markets-full.js';
 import { ratesRows } from '../public/screens/rates.js';
 import { changeFrom, withLive } from '../public/screens/chart.js';
 

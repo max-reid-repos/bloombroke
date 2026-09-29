@@ -23,6 +23,18 @@ export function freshTag(item) {
     : `<span class="fresh is-dly" title="${DLY_TITLE}">DLY</span>`;
 }
 
+// In a price list only a delayed row has a mark (DLY); the strip says the rest once.
+export function delayTag(item) {
+  return item?.realTime === false ? freshTag(item) : '';
+}
+
+// The strip's line, only when a row is delayed.
+export const LEGEND_TEXT = 'RT · DLY WHERE MARKED';
+export function freshLegend(items) {
+  if (!(items || []).some((it) => it?.realTime === false)) return '';
+  return `<span class="fresh-legend" title="${esc(`Unmarked rows: real time. ${DLY_TITLE}`)}">${LEGEND_TEXT}</span>`;
+}
+
 // The tooltip of the freshness dot: "Updated 22:48:47 ET".
 export function updatedTitle(iso, stale) {
   const t = iso ? nyTime(iso) : '--:--:--';

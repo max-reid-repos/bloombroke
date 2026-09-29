@@ -14,7 +14,7 @@ import {
 import { createChartView, COMPARE_CLASSES } from './chart-view.js';
 import {
   barInfo, alignAsOf, rebase, commonStart, placeEvents, headerStats, fmtVol, whenText, fmtDateBox, parseDateBox,
-  timeAt, unitAt, windowDays, placeNewsFlags, mergeFlags,
+  timeAt, unitAt, windowDays, placeNewsFlags, mergeFlags, oneDayPad, hasSession, padInfo,
 } from './chart-math.js';
 import { sizeGuard } from './size-guard.js';
 
@@ -512,6 +512,12 @@ export function chartStyleToggle(style) {
   return `<button type="button" class="tab ch-sty" data-style-toggle data-style="${cur}" aria-label="Chart type ${now}, switch to ${next}" title="Switch to ${next}">${now.toUpperCase()}</button>`;
 }
 
+// A chart in a panel (HOME, DESK) shows the range chips only; maximised or on its own
+// screen, the full bar.
+export function chartBarMode({ panel = false, maximised = false } = {}) {
+  return panel && !maximised ? 'chips' : 'full';
+}
+
 export function rangeChart(root, ctx, opts) {
   const { symbol, meta, navigate, label = symbol, bp = false } = opts;
   const inst = instrumentById(symbol);
@@ -542,13 +548,15 @@ export function rangeChart(root, ctx, opts) {
   let model = null;
   // Today, asked each time (never kept from when the chart was made: a page left open
   // overnight moves on to the new day).
-  const today = () => nyToday();
+  const todayNow = () => nyToday();
 
   const cmdFor = (r, cmp = compare) => [symbol, rangeWords({ ...r, compare: cmp })].filter(Boolean).join(' ');
   // Decimals from the latest price (a MAX chart from 1980 starts under a dollar).
   const decimalsFor = (pts) => opts.decimals ?? priceDecimals(pts[pts.length - 1].v);
   const fmtYFor = (pts) => opts.fmtY || ((v) => fmtNum(v, decimalsFor(pts)));
   const compact = () => compactOpt || root.classList.contains('is-tight');
+  const panelOpt = Boolean(opts.panel || ctx.embed);
+  const chipsOnly = () => chartBarMode({ panel: panelOpt, maximised: Boolean(root.closest?.('.panel.is-max')) }) === 'chips';
   // A narrow bar (a container query in style.css sets --ch-yy) shows 09/25/26.
   const shortDates = () => {
     const bar = root.querySelector('.ch-bar');
@@ -575,6 +583,13 @@ export function rangeChart(root, ctx, opts) {
 
   // ---- Markup ------------------------------------------------------------------------
 
+  function compareChips() {
+    return compare.map((s, k) => {
+      const c = cmpData.get(s);
+      return `<span class="ch-chip ${COMPARE_CLASSES[k]}"><span class="ch-chip-sw" aria-hidden="true"></span>${esc(s)} <span class="num ch-chip-pct" data-sym="${esc(s)}">${c?.error ? 'NO DATA' : ''}</span><button type="button" class="ch-chip-x" data-uncompare="${esc(s)}" aria-label="Remove ${esc(s)}">&times;</button></span>`;
+    }).join('');
+  }
+
   function controls() {
     const w = win();
     const tabs = PRESETS.map((p) => {
@@ -585,14 +600,12 @@ export function rangeChart(root, ctx, opts) {
         : `<button type="button" class="${cls}" data-range="${p}"${on ? ' aria-pressed="true"' : ''}>${p}</button>`;
     }).join('');
     if (compact()) return `<div class="ch-bar"><nav class="tabs ch-tabs" aria-label="Chart range">${tabs}</nav></div>`;
+    if (chipsOnly()) return `<div class="ch-bar is-chips"><nav class="tabs ch-tabs" aria-label="Chart range">${tabs}</nav>${compare.length ? `<div class="ch-tools">${compareChips()}</div>` : ''}</div>`;
     const per = periodMenu({
       cur: data?.bar || barFor(w), merged: data?.merged || 1, open: perOpen, id: perId,
       range: !range.from && !fetchWin ? range.range || '1Y' : null, today: new Date(),
     });
-    const chips = compare.map((s, k) => {
-      const c = cmpData.get(s);
-      return `<span class="ch-chip ${COMPARE_CLASSES[k]}"><span class="ch-chip-sw" aria-hidden="true"></span>${esc(s)} <span class="num ch-chip-pct" data-sym="${esc(s)}">${c?.error ? 'NO DATA' : ''}</span><button type="button" class="ch-chip-x" data-uncompare="${esc(s)}" aria-label="Remove ${esc(s)}">&times;</button></span>`;
-    }).join('');
+    const chips = compareChips();
     const canCompare = compare.length < MAX_COMPARE;
     // One row, left to right: the ranges and the bar period | the two date boxes | the
     // LINE or CANDLES toggle | + COMPARE. Everything after the bar period is one group
@@ -687,14 +700,11 @@ export function rangeChart(root, ctx, opts) {
     const intraday = isIntradayBar(bar);
     const times = pts.map((p) => p.t);
     const oneDay = intraday && !fetchWin && !range.from && range.range === '1D';
-    // A 1D chart of today leaves room for the rest of the session (or after hours).
-    let pad = 0;
-    const sessionSym = isStock || (inst?.us && inst.kind === 'index' && !inst.allDay);
+    // Today's 1D fits its bars, at least a 2-hour window (oneDayPad).
     const last = info[info.length - 1];
-    if (oneDay && sessionSym && last.day === today()) {
-      const end = data.ext ? 20 * 60 : 16 * 60;
-      pad = Math.max(0, (end - last.mins) / (BAR_MS[bar] / 60_000));
-    }
+    const barMins = isIntradayBar(bar) ? BAR_MS[bar] / 60_000 : 1;
+    const today = todayNow(); // asked at each build, never kept from when the chart was made
+    const pad = oneDay ? oneDayPad(info, { today, session: hasSession(inst, isStock), ext: data.ext, barMins }) : 0;
     // A quote dated by day only ("2026-09-25") is about that New York day.
     const q = quote && /^\d{4}-\d{2}-\d{2}$/.test(quote.asOf || '') ? { ...quote, asOf: `${quote.asOf}T12:00:00Z` } : quote;
     const refs = oneDay ? sessionRefs(pts.filter((p) => !p.live), q, { multiDay: false }) : { prevClose: null };
@@ -716,7 +726,7 @@ export function rangeChart(root, ctx, opts) {
     const span2 = (p, o) => (p.te ? `${whenText(p.t, o)} - ${whenText(p.te, o)}` : null);
     return {
       points: pts, info, times, bar, intraday, oneDay, dayVolume, merged: data.merged || 1,
-      full: [0, pts.length - 1 + pad],
+      full: [0, pts.length - 1 + pad], axisInfo: padInfo(info, pad, barMins),
       style, pct: cmp.length > 0, compare: cmp, refs, flags,
       volume: !compact(), fmtY, bp, decimals, label: `${label}, ${rangeLabel(range)}`,
       // The crosshair's time: with the year on daily bars and longer.
@@ -833,7 +843,7 @@ export function rangeChart(root, ctx, opts) {
       // then the chart's line is its change only, unless the window ends in the past.
       const atLatest = i1 === model.points.length - 1 && !fetchWin?.to && !range.to;
       const last = opts.quote === 'external' && atLatest ? '' : `<span class="ch-k">LAST</span> <span class="ch-v">${esc(fmtY(st.last))}</span> `;
-      const tag = changeTag({ range, zoomed, fetchWin, rolling: inst?.kind === 'crypto', today: model.info[model.info.length - 1]?.day === today() });
+      const tag = changeTag({ range, zoomed, fetchWin, rolling: inst?.kind === 'crypto', today: model.info[model.info.length - 1]?.day === todayNow() });
       l1.innerHTML = `${last}<span class="ch-k ch-tag">${esc(tag)}</span>${c.parts.map((t) => ` <span class="ch-c ${c.dir}">${esc(t)}</span>`).join('')}${sess ? ` <span class="ch-k">${sess}</span>` : ''}`;
     }
     if (tight) { l2.innerHTML = ''; return; }
@@ -1022,7 +1032,7 @@ export function rangeChart(root, ctx, opts) {
     // The bars in hand still draw this window well: no request.
     if (covered && count >= 20 && count <= 3000 && (data.bar === want || (fits(data.bar) && !userBar))) return;
     if (covered && data.bar === want) return;
-    const { from, to } = windowDays(t0, t1, today());
+    const { from, to } = windowDays(t0, t1, todayNow());
     fetchWin = { from, to };
     viewWin = { t0, t1 };
     if (userBar && !fits(userBar)) userBar = null;
@@ -1065,7 +1075,7 @@ export function rangeChart(root, ctx, opts) {
     const ti = root.querySelector('input[name="to"]');
     const f = parseDateBox(fi.value);
     const t = parseDateBox(ti.value);
-    const day = today();
+    const day = todayNow();
     fi.classList.toggle('is-bad', !f || f > day);
     ti.classList.toggle('is-bad', !t || (f && t <= f));
     if (!f || !t) { ctx.status?.('DATES LOOK LIKE 09/25/2026', 'warn'); return; }
@@ -1201,7 +1211,9 @@ export function rangeChart(root, ctx, opts) {
   let tightTimer = 0;
   let chromeFull = 150;
   let shortWas = null;
+  let chipsWas = chipsOnly();
   const ro = typeof ResizeObserver === 'function' && !compactOpt ? new ResizeObserver(() => {
+    if (chipsOnly() !== chipsWas) { chipsWas = chipsOnly(); repaintBar(); }
     // The date form follows the box width at once (before paint), so no long date
     // shows clipped in a short box.
     const short = shortDates();

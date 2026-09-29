@@ -1,7 +1,7 @@
-// MARKETS: one dense table of world markets. Also exports the shared helpers
-// (number formats, panels, price tick flashes) used by the other screens.
+// Market rows and the shared helpers (formats, panels, tick flashes) for every screen.
 
-import { freshTag } from '../freshness.js';
+import { delayTag } from '../freshness.js';
+import { loadModule } from '../lazy.js';
 
 const MINUS = '−';
 
@@ -113,41 +113,25 @@ export const BIG_MOVE_PCT = 2;
 // Yields and the 2s10s spread show their change in bp (changeBp, worked out on the
 // server) in the change cell; the Chg column, where there is one, stays empty for them.
 // A price shows its change in %, or -- when the source has no day's move for it.
-function marketRow(m, compact, chg = true) {
+// day: MARKETS' dim day after the name for a trade not from today.
+export function marketRow(m, compact, chg = true, day = '') {
   const bp = m.kind === 'yield';
   const d = dirOf(bp ? m.changeBp : m.change);
   const cmd = m.cmd || cmdForInstrument(m.id);
   const last = m.unit === 'bp' ? fmtBp(m.lastBp, { level: true }) : fmtNum(m.last, m.decimals);
   const big = !bp && Math.abs(m.changePct) >= BIG_MOVE_PCT ? ' is-big' : '';
   return `<tr${rowAttrs(cmd)}>
-      ${nameCell(m.name, cmd)}
-      <td class="tag">${freshTag(m)}</td>
-      <td class="num last${tick(`mk:${m.id}:last`, m.last)}">${last}</td>
+      ${nameCell(m.name, cmd, day ? ` <span class="mk-day dim">${esc(day)}</span>` : '')}
+      <td class="tag">${delayTag(m)}</td>
+      <td class="num last${tick(`mk:${m.id}:last`, m.last)}"${m.asOf ? ` title="As of ${esc(fmtAsOf(m.asOf))}${/T/.test(m.asOf) ? ' ET' : ''}"` : ''}>${last}</td>
       ${chg ? `<td class="num chg ${d}">${bp ? '' : fmtSigned(m.change, m.decimals)}</td>` : ''}
       <td class="num pct ${d}${big}">${bp ? fmtBp(m.changeBp) : fmtPct(m.changePct)}</td>
       ${compact ? '' : `<td class="num time dim">${esc(fmtAsOf(m.asOf))}</td>`}
     </tr>`;
 }
 
-const HEAD = (compact) => `<thead><tr><th scope="col">Name</th><th scope="col" class="tag"><span class="offscreen">Real time or delayed</span></th><th scope="col" class="num">Last</th><th scope="col" class="num chg">Chg</th><th scope="col" class="num">%Chg</th>${compact ? '' : '<th scope="col" class="num time">Time</th>'}</tr></thead>`;
-
-export function marketsTable(instruments, { compact = false } = {}) {
-  const cols = compact ? 5 : 6;
-  let group = '';
-  const rows = instruments.map((m) => {
-    const head = m.group !== group
-      ? `<tr class="group-row"><th colspan="${cols}" scope="rowgroup">${esc((group = m.group))}</th></tr>`
-      : '';
-    return head + marketRow(m, compact);
-  }).join('');
-  return `<table class="grid-table">
-    ${HEAD(compact)}
-    <tbody>${rows}</tbody>
-  </table>`;
-}
-
-// HOME and MARKETS: one small table per group, flowing into columns on wide screens.
-// Every group table uses the same fixed column widths, so the RT/DLY tags and the
+// HOME: one small table per group, flowing into columns on wide screens.
+// Every group table uses the same fixed column widths, so the DLY marks and the
 // numbers line up from one group to the next. time adds the last-trade time column;
 // chg: false leaves out the change column (HOME shows % only), cls names the wrapper.
 // A row with a sub (HOME: Europe, Asia, Energy...) opens a thin sub-heading bar inside
@@ -167,6 +151,48 @@ export function marketsColumns(instruments, { time = false, chg = true, cls = ''
   </table>`).join('')}</div>`;
 }
 
+// HOME's MARKETS list: four columns, each a group of the MARKETS screen's own
+// instruments under short names (the full list and full names stay on MARKETS). A plain
+// string starts a sub-heading bar inside the column (Europe, Asia, Commodities...). Every
+// column is the same shape, two sub-headings and ten rows, so all four end on one line.
+export const HOME_MARKETS = [
+  { name: 'US', rows: [
+    'Indexes', ['SPX', 'S&P 500'], ['NDX', 'Nasdaq 100'], ['DJI', 'Dow'], ['RUT', 'Russell 2000'], ['SPXEW', 'Equal weight'],
+    ['SOX', 'Semis'], ['DJTRANS', 'Transports'],
+    'Futures + vol', ['SPFUT', 'S&P 500 fut'], ['NDFUT', 'Nasdaq 100 fut'], ['VIX', 'VIX'],
+  ] },
+  { name: 'World', rows: [
+    'Europe', ['STOXX50', 'Euro Stoxx 50'], ['FTSE', 'FTSE 100'], ['DAX', 'DAX'], ['CAC40', 'CAC 40'],
+    'Asia', ['N225', 'Nikkei 225'], ['HSI', 'Hang Seng'], ['SHANGHAI', 'Shanghai'], ['KOSPI', 'KOSPI'], ['NIFTY50', 'Nifty 50'], ['ASX200', 'ASX 200'],
+  ] },
+  { name: 'Commodities + crypto', rows: [
+    'Commodities', ['WTI', 'WTI oil'], ['BRENT', 'Brent oil'], ['NATGAS', 'Natural gas'], ['GOLD', 'Gold (spot)'],
+    ['SILVER', 'Silver (spot)'], ['COPPER', 'Copper'], ['WHEAT', 'Wheat'], ['BALTICDRY', 'Baltic Dry'],
+    'Crypto', ['BTC', 'Bitcoin'], ['ETH', 'Ether'],
+  ] },
+  { name: 'FX + rates', rows: [
+    'FX', ['DXY', 'Dollar index'], ['EURUSD', 'EUR/USD'], ['USDJPY', 'USD/JPY'], ['GBPUSD', 'GBP/USD'], ['USDCNH', 'USD/CNH'],
+    'Rates', ['US3M', 'US 3M'], ['US2Y', 'US 2Y'], ['US10Y', 'US 10Y'], ['US30Y', 'US 30Y'], ['US2S10S', '2s10s'],
+  ] },
+];
+
+// The HOME rows from /api/markets, regrouped in the order above, each with its group,
+// sub-heading and short name. A missing id drops out; a sub-heading with no rows left
+// drops with it (it only shows above a row).
+export function homeMarkets(instruments) {
+  const byId = new Map((instruments || []).map((m) => [m.id, m]));
+  return HOME_MARKETS.flatMap((g) => {
+    let sub = null;
+    const out = [];
+    for (const r of g.rows) {
+      if (typeof r === 'string') { sub = r; continue; }
+      const [id, name] = r;
+      if (byId.has(id)) out.push({ ...byId.get(id), name, group: g.name, sub });
+    }
+    return out;
+  });
+}
+
 // Replace a table that refreshes on a timer without losing the focused row.
 export function rerender(root, html) {
   const focused = root.contains(document.activeElement) ? document.activeElement.getAttribute('data-cmd') : null;
@@ -174,25 +200,11 @@ export function rerender(root, html) {
   if (focused) root.querySelector(`[data-cmd="${CSS.escape(focused)}"][tabindex="0"]`)?.focus({ preventScroll: true });
 }
 
+// MARKETS comes with the page; its layout is markets-full.js, off the startup bundle.
+export const MARKETS_FULL = 'screens/markets-full.js';
 export function render(el, cmd, ctx) {
-  el.innerHTML = panel('1', 'Markets', LOADING, { cls: 'panel-solo', metaId: 'mk-meta', meta: 'NAME, LAST, CHANGE, TIME' });
-  const body = el.querySelector('.panel-body');
-  const meta = el.querySelector('#mk-meta');
-
-  async function load() {
-    try {
-      const data = await ctx.fetchJSON('/api/markets', { signal: ctx.signal });
-      rerender(body, marketsColumns(data.instruments, { time: true }));
-      settleTicks(body);
-      meta.textContent = `${data.instruments.length} INSTRUMENTS`;
-      ctx.updated(data.updated, data.stale, data.instruments);
-    } catch (err) {
-      if (err.name === 'AbortError') return;
-      if (!body.querySelector('table')) body.innerHTML = `<p class="panel-msg">${esc(err.message)}</p>`;
-      ctx.status('COULD NOT REFRESH MARKETS', 'warn');
-    }
-  }
-
-  load();
-  ctx.live(load, 15_000);
+  el.innerHTML = panel('1', 'Markets', LOADING, { cls: 'panel-solo mk-panel', metaId: 'mk-meta' });
+  loadModule(MARKETS_FULL).then((m) => { if (!ctx.signal?.aborted) m.render(el, cmd, ctx); }, () => {
+    if (!ctx.signal?.aborted) ctx.status?.('COULD NOT LOAD MARKETS', 'warn');
+  });
 }

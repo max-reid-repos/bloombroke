@@ -195,6 +195,8 @@ export function stockHintFor(raw, cmd) {
   const toks = tokenize(raw);
   const head = toks[0];
   if (!head || !SHADOWED_TICKERS.has(head) || !cmd || cmd.name === 'UNKNOWN') return null;
+  // DESK: no hint (in its tool bar it read as a panel's "Stock: $DESK").
+  if (cmd.name === 'DESK') return null;
   // The word alone, or a named instrument's chart with its period (GOLD 5Y).
   if (toks.length > 1 && !(cmd.name === 'QUOTE' && !cmd.error)) return null;
   return [`$${head}`, ...toks.slice(1)].join(' ');
@@ -1393,8 +1395,8 @@ function boot() {
   // redraw their panels, so it goes back in whenever it is gone.
   function showStockHint(view, command) {
     const place = () => {
-      // The first title strip: a panel's, or HELP's search bar, or the DESK bar.
-      const head = view.querySelector('.panel-head, .help-search, .desk-bar');
+      // The first title strip: a panel's, or HELP's search bar (never DESK: stockHintFor).
+      const head = view.querySelector('.panel-head, .help-search');
       if (!head || head.querySelector('.stock-hint')) return;
       const a = document.createElement('a');
       a.className = 'stock-hint';
