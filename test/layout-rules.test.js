@@ -148,9 +148,17 @@ export const PAGES = [
   // Just bought or redeemed: the save line (the last chance to save the key); in a browser
   // that saved it, MANAGE PLAN and CANCEL too. 27 (the reviewer's call, Sep 29).
   ['PRO key, just bought', mainHtml({ key: KEY, st: ST, reveal: KEY, has: all }), 27],
-  ['BBRK', bbrkHtml(BBRK), 25],
-  ['BBRK loading', bbrkHtml(null), 25],
-  ['SPONSOR', sponsorHtml({ has: all, bbrk: BBRK, cfg: { lines: [], house: [{ text: 'x', cmd: 'SPONSOR' }] } }), 30],
+  // BBRK (Sep 29 design review): the kicker (5), the hero sentence (2), the change line (4),
+  // three fact labels (4), the seats line (5 at most), and the globe's one caption line
+  // that says what a figure is (14) = 34; 35 leaves one word, no more.
+  ['BBRK', bbrkHtml({ ...BBRK, mode: 'test', seats: { all: 3 } }), 35],
+  ['BBRK, live mode, no seats', bbrkHtml({ ...BBRK, mode: 'live', seats: { all: 0 } }), 35],
+  ['BBRK loading', bbrkHtml(null), 35],
+  // SPONSOR (Sep 29 design review): SPONSOR (1), the headline (5), "Shown N times this
+  // week." (4) and what it counts (5), the price (2), EMAIL (2), the rule line (8), TRY
+  // YOUR LINE (3), "Numbers: BBRK" (2) = 32.
+  ['SPONSOR', sponsorHtml({ has: all, bbrk: BBRK, cfg: { lines: [], house: [{ text: 'x', cmd: 'SPONSOR' }], price: 99 } }), 33],
+  ['SPONSOR, no price', sponsorHtml({ has: all, bbrk: BBRK, cfg: { lines: [], house: [{ text: 'x', cmd: 'SPONSOR' }] } }), 33],
   ['LOGIN', loginHtml(), 15],
   ['REDEEM', redeemHtml(), 15],
   ['GIFT, logged out', giftLoggedOutHtml(), 15],

@@ -1081,7 +1081,8 @@ function boot() {
     stripKey = key;
     strip?.stop();
     if (items.length) shown ||= stripShownBatch();
-    strip = items.length ? mountStrip(sponsorEl, items, { reduceMotion: reduceMotion.matches, isHidden: () => document.hidden, onShow: () => shown.add(), onAnyClick: () => countOnly('strip_click') }) : null;
+    // is-try: SPONSOR's TRY YOUR LINE covers it: it holds still and counts nothing.
+    strip = items.length ? mountStrip(sponsorEl, items, { reduceMotion: reduceMotion.matches, isHidden: () => document.hidden || sponsorEl.classList.contains('is-try'), onShow: () => shown.add(), onAnyClick: () => countOnly('strip_click') }) : null;
     if (!items.length) sponsorEl.innerHTML = '';
     sponsorEl.hidden = !items.length;
   }

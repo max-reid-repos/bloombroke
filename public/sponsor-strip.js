@@ -6,7 +6,7 @@
 
 import { goal } from './goal.js';
 
-// The config, asked once per page load. Anything wrong: no sponsors.
+// The config, asked once per page load. Anything wrong: no sponsors. price: SPONSOR's line.
 let loading = null;
 export function loadSponsors() {
   const none = { lines: [], house: [], gauges: {}, line: null };
@@ -14,7 +14,7 @@ export function loadSponsors() {
   loading ||= fetch('/api/sponsors', { headers: { Accept: 'application/json' } })
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => (d && typeof d === 'object'
-      ? { lines: Array.isArray(d.lines) ? d.lines : [], house: Array.isArray(d.house) ? d.house : [], gauges: d.gauges || {}, line: d.line || null }
+      ? { lines: Array.isArray(d.lines) ? d.lines : [], house: Array.isArray(d.house) ? d.house : [], gauges: d.gauges || {}, line: d.line || null, price: d.price }
       : none))
     .catch(() => { loading = null; return none; });
   return loading;

@@ -195,7 +195,7 @@ test('drag: the globe follows the pointer, flings on, stops, then turns by itsel
   p.ev('pointermove', { pointerId: 2, pointerType: 'touch', clientX: 100, clientY: 20 });
   assert.equal(g.view.tilt, tilt, 'a vertical touch drag is the page scrolling');
   p.ev('pointercancel', { pointerId: 2, pointerType: 'touch' });
-  assert.match(readFileSync('public/screens/sponsor.css', 'utf8'), /\.spon-globe canvas \{[^}]*touch-action: pan-y;/);
+  assert.doesNotMatch(readFileSync('public/screens/sponsor.css', 'utf8'), /spon-globe/, 'SPONSOR has no globe any more (Sep 29: it went home to BBRK)');
   assert.match(readFileSync('public/screens/bbrk.css', 'utf8'), /\.bb-globe canvas \{[^}]*touch-action: pan-y;/);
   g.stop();
   assert.equal(p.listeners.pointerdown, undefined, 'stop() takes the handlers away');
@@ -298,36 +298,34 @@ test('hover and tap: the label of the dot under the pointer; keys turn it only w
   p.ev('keydown', { key: 'ArrowLeft', ctrlKey: true });
   assert.ok(near(g.view.lon0, wrapLon(lon + KEY_STEP)), 'with a modifier: not ours');
   g.stop();
-  // The page wiring: both screens give the globe its places and the live count.
-  for (const f of ['public/screens/sponsor.js', 'public/screens/bbrk.js']) {
+  // The page wiring: BBRK gives the globe its places and the live count (SPONSOR has none).
+  assert.doesNotMatch(readFileSync('public/screens/sponsor.js', 'utf8'), /mountGlobe|globe\.js/);
+  for (const f of ['public/screens/bbrk.js']) {
     const s = readFileSync(f, 'utf8');
     assert.match(s, /mountGlobe\(canvas, geo, \w+\?\.audience\?\.globe \|\| null, \{ reduceMotion[^}]*live: /, f);
     assert.match(s, /globe\?\.update\(\w+\??\.audience\?\.globe \|\| null, \w+\??\.audience\?\.live \?\? null\)/, f);
   }
 });
 
-test('SPONSOR and BBRK: the globe under the numbers, in the first view, centred, square, never cut off', () => {
-  // --globe-w: about half the old 640 px, and never taller than 40% of the window.
+test('BBRK: the globe is the one picture, right of the numbers (under them on a phone), fitted, square, never cut off', () => {
+  // --globe-w: about half the old 640 px, and never taller than 40% of the window (a phone).
   assert.match(readFileSync('public/style.css', 'utf8'), /--globe-w: min\(340px, 40vh\);/);
-  const css = readFileSync('public/screens/sponsor.css', 'utf8');
-  assert.match(css, /\.spon-globe \{[^}]*width: min\(var\(--fit-w, var\(--globe-w\)\), 100%\);[^}]*margin: 0 auto;/, 'the room left, or --globe-w; centred');
-  assert.doesNotMatch(css, /spon-top|align-self: stretch/, 'not beside YOUR AD HERE; not page-wide on a phone');
-  assert.match(css, /\.spon-globe canvas \{[^}]*aspect-ratio: 1;/, 'always square: never cut in half');
   const bb = readFileSync('public/screens/bbrk.css', 'utf8');
   assert.match(bb, /\.bb-globe \{[^}]*width: min\(var\(--fit-w, var\(--globe-w\)\), 100%\);[^}]*margin: 0 auto;/, 'the room left, or --globe-w; centred');
-  // Five facts (MRR is in + Details) in one row once BBRK's column is its full 880 px, so the globe fits the first view.
-  assert.match(bb, /\.bb-card \{ container-type: inline-size; \}\s*@container \(min-width: 880px\) \{\s*\.bb-card \.card-facts \{ grid-template-columns: repeat\(5, minmax\(0, 1fr\)\); \}/);
-  // Both screens fit it on render, on new numbers and on resize.
-  for (const f of ['public/screens/sponsor.js', 'public/screens/bbrk.js']) {
-    const src = readFileSync(f, 'utf8');
-    assert.match(src, /fitToView\(/, f);
-    assert.match(src, /addEventListener\?*\.?\('resize', \w+\)/, `${f}: on resize`);
-    assert.match(src, /requestAnimationFrame\(/, `${f}: once a frame`);
-    assert.match(src, /removeEventListener\?*\.?\('resize', \w+\)/, `${f}: and let go`);
-  }
+  // The split card: the numbers left, the globe right from 1100 px; below that the numbers
+  // first, then the globe, then + Details.
+  assert.match(bb, /@media \(min-width: 1100px\) \{\s*\.bb-card\.card-split \{ grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\);[^}]*\}[\s\S]*?\.bb-card > \.card-art \{ order: 1;/);
+  assert.match(bb, /@media \(max-width: 1099px\) \{\s*\.bb-card \.card-col \{ display: contents; \}\s*\.bb-card > \.card-art \{ order: 1; \}\s*\.bb-card \.card-foot \{ order: 2; \}/);
+  // It is fitted on render, on new numbers and on resize, up to GLOBE_MAX in its column.
+  const src = readFileSync('public/screens/bbrk.js', 'utf8');
+  assert.match(src, /fitToView\(fig, \{ max: GLOBE_MAX \}\)/);
+  assert.match(src, /addEventListener\?*\.?\('resize', \w+\)/, 'on resize');
+  assert.match(src, /requestAnimationFrame\(/, 'once a frame');
+  assert.match(src, /removeEventListener\?*\.?\('resize', \w+\)/, 'and let go');
   assert.match(bb, /\.bb-globe canvas \{[^}]*aspect-ratio: 1;/);
-  // Under the numbers: the card's media slot comes after its facts.
-  for (const f of ['public/screens/sponsor.js', 'public/screens/bbrk.js']) assert.match(readFileSync(f, 'utf8'), /facts:[\s\S]*media: raw\(/, f);
+  // The card's art slot (kit.js cardPage split), not the media slot.
+  assert.match(src, /split: true,[\s\S]*art: raw\(globeHtml\(d\)\)/);
+  assert.doesNotMatch(src, /media: raw\(/);
 });
 
 test('globe: the land four times as dense from the shipped grid, crisp and cheap', () => {

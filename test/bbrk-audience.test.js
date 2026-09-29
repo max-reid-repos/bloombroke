@@ -15,7 +15,7 @@ import {
 import { mountEmbeds } from '../lib/embed-pages.js';
 import { stripItems, mountStrip } from '../public/sponsor-strip.js';
 import { countOnly, stripShownBatch } from '../public/goal.js';
-import { bbrkHtml, heroChange, visitTime, topLine, globeCaption, globeLabel, bbrkCaption, chartSvg, mrrText, SOURCE, STRIP, KICKER, INVENTORY } from '../public/screens/bbrk.js';
+import { bbrkHtml, heroChange, heroText, visitTime, topLine, globeCaption, globeLabel, chartSvg, chartHtml, sinceLaunch, factsOf, seatsText, seatsHtml, mrrText, SOURCE, STRIP, KICKER, INVENTORY, GLOBE_CAPTION, MAX_FACTS } from '../public/screens/bbrk.js';
 import { cardWords } from '../public/kit.js';
 import { ortho, dotRadius, startLon, mountGlobe } from '../public/globe.js';
 import { build as buildDots, rings } from '../scripts/build-globe-dots.js';
@@ -460,10 +460,14 @@ const FULL = {
 const text = (html) => html.replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/g, ' ');
 const words = (html) => text(html).split(/\s+/).filter((w) => /[A-Za-z]/.test(w)).length;
 
-test('BBRK screen: a card: visitors hero, the chart, five facts, the globe; the rest (MRR too) behind Details', () => {
+test('BBRK screen: a split card: the numbers left, the globe right; the hero reads alone; the rest (MRR too) behind Details', () => {
   const html = bbrkHtml(FULL);
-  assert.match(html, /<h2 class="card-hero card-hero-60 num" id="bb-hero">412<\/h2>/);
-  assert.match(html, /visitors today · <span class="num up">\+35<\/span> vs same time yesterday/);
+  // The hero is a sentence on its own, the change against yesterday in the line under it.
+  assert.match(html, /<h2 class="card-hero card-hero-44 num" id="bb-hero">412 visitors today<\/h2>/);
+  assert.match(html, /<p class="card-sub"><span id="bb-sub"><span class="num up">\+35<\/span> vs same time yesterday<\/span><\/p>/);
+  assert.equal(heroText(1), '1 visitor today');
+  assert.equal(heroText(0), 'No visitors yet today', 'a zero said, not printed');
+  assert.equal(heroText(null), '-- visitors today');
   assert.match(html, /class="bb-spark"/);
   for (const s of ['3,180', '11,890', '1m 37s', '31%', '68%', 'United States 41% · Germany 6%', 'x.com 23%', '1,840', '12,950', '390', '160']) assert.ok(html.includes(s), s);
   for (const [, label] of INVENTORY) assert.ok(html.includes(label), label);
@@ -472,33 +476,82 @@ test('BBRK screen: a card: visitors hero, the chart, five facts, the globe; the 
   assert.doesNotMatch(html, /DataFast/, 'no data vendor on screen');
   assert.equal(STRIP, 'OUR OWN SITE NUMBERS. NOT A SECURITY. NOT FOR SALE.');
   assert.equal(KICKER, 'BBRK · OUR OWN SITE NUMBERS');
-  // The slots in order: kicker, hero, sub, chart, facts, globe, then + Details.
+  // The split card (kit.js cardPage split): the globe is the art; the numbers are the column.
+  assert.match(html, /^<section class="card card-split bb-card" aria-label="BBRK, our own site numbers"><div class="card-art"><figure class="bb-globe">/);
   const at = (x) => html.indexOf(x);
-  const order = ['card-kicker', 'id="bb-hero"', 'id="bb-sub"', 'id="bb-chart"', 'id="bb-facts"', 'class="bb-globe"', 'card-more'];
+  const order = ['card-kicker', 'id="bb-hero"', 'id="bb-sub"', 'id="bb-chart"', 'id="bb-facts"', 'id="bb-seats"', 'card-more'];
   for (let i = 1; i < order.length; i++) assert.ok(at(order[i - 1]) >= 0 && at(order[i - 1]) < at(order[i]), `${order[i - 1]} before ${order[i]}`);
-  // Countries, referrers, the counters and the sources are in Details, not above it.
+  // Countries, referrers, the counters, desktop, the sources are in Details, not above it.
   const [top, details] = html.split('<details class="how card-more"');
-  for (const x of ['United States 41% · Germany 6%', 'x.com 23%', '1,840', SOURCE, 'Not a security. Not for sale.', '<dt class="tag">MRR</dt><dd>$0, test mode</dd>']) {
+  for (const x of ['United States 41% · Germany 6%', 'x.com 23%', '1,840', '68%', SOURCE, 'Not a security. Not for sale.', '<dt class="tag">MRR</dt><dd>$0, test mode</dd>']) {
     assert.ok(details.includes(x), x);
     assert.ok(!top.includes(x), `${x} not above Details`);
   }
-  assert.match(top, /3 here now|7 here now/);
-  assert.equal(bbrkCaption(FULL), '7 here now · top: United States 41%');
-  assert.equal(bbrkCaption({ audience: { live: 1, countries: [] } }), '7D by place', 'one here now is most likely the viewer');
   // MRR: a row in + Details, never a tile (no TEST MODE up front); no MRR, no row.
   assert.doesNotMatch(top, /MRR|TEST MODE/i);
-  assert.equal((top.match(/<dt class="tag">/g) || []).length, 5, 'five facts');
   assert.equal(mrrText('MRR $0 (test mode)'), '$0, test mode');
   assert.equal(mrrText('MRR $120'), '$120');
   assert.equal(mrrText(null), null);
   assert.doesNotMatch(bbrkHtml({ ...FULL, mrr: null }), />MRR</);
   const w = cardWords(html);
-  assert.ok(w.length <= 25, `${w.length} words: ${w.join(' ')}`);
+  assert.ok(w.length <= 35, `${w.length} words: ${w.join(' ')}`);
+  // No sub when yesterday is unknown (the CSS hides the empty line).
+  assert.match(bbrkHtml({ audience: { visitors: { today: 3 } } }), /<span id="bb-sub"><\/span>/);
+  assert.match(readFileSync('public/screens/bbrk.css', 'utf8'), /\.bb-card \.card-sub:has\(> #bb-sub:empty\) \{ display: none; \}/);
 });
 
-test('BBRK chart: across the column, no axes, a dot on the last day; nothing without two days', () => {
-  const svg = chartSvg([0, 0, 18, 37, 19, 15]);
-  assert.match(svg, /^<svg class="bb-spark" viewBox="0 0 300 96" preserveAspectRatio="none" role="img" aria-label="Visitors a day, last 6 days\. Latest day: 15\.">/);
+test('BBRK facts: three at most; 30 days only when it differs from 7 days, else in + Details', () => {
+  const labels = (d) => factsOf(d).map((f) => f.label);
+  assert.equal(MAX_FACTS, 3);
+  assert.deepEqual(labels(FULL), ['7 DAYS', '30 DAYS', 'AVG VISIT'], '30 days differs: it is a fact, RETURNING goes to Details');
+  const same = { ...FULL, audience: { ...FULL.audience, visitors: { ...FULL.audience.visitors, d7: 96, d30: 96 } } };
+  assert.deepEqual(labels(same), ['7 DAYS', 'AVG VISIT', 'RETURNING']);
+  for (const d of [FULL, same, null]) assert.ok(factsOf(d).length <= 3);
+  const top = (d) => bbrkHtml(d).split('<details')[0];
+  const det = (d) => bbrkHtml(d).split('<details')[1];
+  assert.equal((top(FULL).match(/<dt class="tag">/g) || []).length, 3, 'three facts');
+  assert.match(det(FULL), /<dt class="tag">Returning<\/dt><dd>31%<\/dd>/, 'the fact left out is in Details');
+  assert.doesNotMatch(det(FULL), />30 days</);
+  assert.doesNotMatch(top(same), />30 DAYS</);
+  assert.match(det(same), /<dt class="tag">30 days<\/dt><dd>96 visitors<\/dd>/);
+  assert.match(det(same), /<dt class="tag">Desktop<\/dt><dd>68%<\/dd>/);
+});
+
+test('BBRK seats: the real count of Pro seats taken; none is said calmly; test mode is not a sale', () => {
+  const live = (n) => ({ ...FULL, mode: 'live', seats: { today: 0, yesterday: 0, d7: n, all: n } });
+  assert.equal(seatsText(live(3)), '3 Pro seats taken');
+  assert.equal(seatsText(live(1)), '1 Pro seat taken');
+  assert.equal(seatsText(live(1200)), '1,200 Pro seats taken');
+  assert.equal(seatsText(live(0)), 'No Pro seats taken yet', 'a zero said, never "0"');
+  assert.match(seatsHtml(live(3)), /^<p class="bb-seats" id="bb-seats"><span class="num">3<\/span> Pro seats taken<\/p>$/);
+  assert.doesNotMatch(bbrkHtml(live(0)).split('<details')[0], />0</);
+  // Test mode: the licences are test ones; no one has paid. The count is a row in Details.
+  const test = { ...FULL, mode: 'test', seats: { today: 0, yesterday: 2, d7: 3, all: 3 } };
+  assert.equal(seatsText(test), 'No paid Pro seats yet');
+  assert.match(bbrkHtml(test).split('<details')[1], /<dt class="tag">Pro seats<\/dt><dd>3 in test mode, no card charged<\/dd>/);
+  // Unknown (no Stripe, no database): no line.
+  for (const d of [null, { ...FULL, seats: null }, { ...FULL, mode: null, seats: { all: 2 } }]) {
+    assert.equal(seatsText(d), '');
+    assert.match(seatsHtml(d), /^<p class="bb-seats" id="bb-seats" hidden><\/p>$/);
+  }
+});
+
+test('BBRK chart: from launch day (the first day with a visitor), never the empty days before; its two ends', () => {
+  const spark = [0, 0, 0, 0, 18, 37, 19, 15];
+  assert.deepEqual(sinceLaunch(spark, '2026-09-29'), { values: [18, 37, 19, 15], from: '2026-09-26' });
+  assert.deepEqual(sinceLaunch([0, 0, 3], null), { values: [3], from: null });
+  assert.equal(sinceLaunch([0, 0, 0]), null);
+  assert.equal(sinceLaunch(null), null);
+  const html = chartHtml({ day: '2026-09-29', audience: { spark30: spark } });
+  assert.match(html, /aria-label="Visitors a day since launch day, 4 days\. Today so far: 15\."/);
+  // The line starts at the first visitor: its first point is 18 of 37, not zero.
+  assert.match(html, /class="bb-spark-line" d="M0\.0 (\d+\.\d) /);
+  const y0 = Number(/class="bb-spark-line" d="M0\.0 (\d+\.\d) /.exec(html)[1]);
+  assert.ok(y0 < 92 - 1, `the line starts above zero (${y0})`);
+  assert.match(html, /<p class="bb-ends" aria-hidden="true"><span>SEP 26<\/span><span>TODAY<\/span><\/p>$/);
+  assert.equal(chartHtml({ audience: { spark30: [0, 0, 0] } }), '', 'no visitor yet: no chart');
+  assert.equal(chartHtml({ audience: { spark30: [0, 0, 5] } }), '', 'one day: no line');
+  const svg = chartSvg([18, 37, 19, 15]);
   assert.match(svg, /class="bb-spark-line"[^>]*vector-effect="non-scaling-stroke"/);
   assert.match(svg, /class="bb-spark-dot" d="M300\.0 /, 'the dot on the last day, at the right edge');
   assert.doesNotMatch(svg, /<text|axis/);
@@ -506,13 +559,28 @@ test('BBRK chart: across the column, no axes, a dot on the last day; nothing wit
   assert.equal(chartSvg(null), '');
 });
 
+test('BBRK globe: one caption line that says what a figure is; zoom keys 12 px or more', () => {
+  const html = bbrkHtml(FULL);
+  assert.equal(GLOBE_CAPTION, 'Each figure is a place with visitors in 7 days; its number is how many.');
+  assert.match(html, /<figcaption class="bb-caption">Each figure is a place with visitors in 7 days; its number is how many\.<\/figcaption>/);
+  assert.equal((html.match(/<figcaption/g) || []).length, 1, 'one line');
+  assert.doesNotMatch(html, /here now|top: /, 'the caption says what a figure is, nothing else');
+  // True to globe.js: the figures are the places of the last 7 days (the server's window),
+  // and the number under a figure is its visitors.
+  assert.equal(FULL.audience.globe.window, '7d');
+  const css = readFileSync('public/screens/bbrk.css', 'utf8');
+  const px = (sel, prop) => Number(new RegExp(`${sel.replace(/[.[\]"=]/g, '\\$&')} \\{[^}]*${prop}: (\\d+)px`).exec(css)?.[1]);
+  assert.ok(px('.bb-globe .globe-zoom-btn', 'font-size') >= 12, 'zoom signs 12 px or more');
+  assert.ok(px('.bb-globe .globe-zoom-btn', 'width') >= 24 && px('.bb-globe .globe-zoom-btn', 'height') >= 24, 'zoom keys 24 px');
+  assert.ok(px('.bb-globe .globe-tip', 'font-size') >= 12, 'the hover label too');
+});
+
 test('BBRK screen: -- for everything missing, and nothing breaks', () => {
   const html = bbrkHtml(null);
   assert.doesNotMatch(html, /NaN|undefined|null|Infinity/);
-  assert.ok((html.match(/--/g) || []).length >= 12);
-  assert.doesNotMatch(html, /class="spark"/, 'no sparkline without data');
+  assert.ok((html.match(/--/g) || []).length >= 10);
+  assert.doesNotMatch(html, /class="bb-spark"/, 'no chart without data');
   assert.equal(globeCaption(null), '7D by place');
-  assert.equal(globeCaption(FULL), '7D by place · 7 live now');
   assert.equal(globeLabel(FULL), 'Globe of visitors by country, last 7 days: US 1,310, other 45.');
   assert.deepEqual(heroChange(null, 3), { text: '--', dir: 'flat' });
   assert.deepEqual(heroChange(2, 0), { text: '+2', dir: 'up' });

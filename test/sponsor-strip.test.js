@@ -6,10 +6,10 @@ import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import express from 'express';
-import { cleanSponsors, cleanUrl, loadSponsors, mountSponsors, SPONSORS_FILE, MAX_LINES, MAX_HOUSE } from '../lib/sponsors.js';
+import { cleanSponsors, cleanUrl, loadSponsors, mountSponsors, sponsorPrice, SPONSORS_FILE, MAX_LINES, MAX_HOUSE, TEXT_MAX } from '../lib/sponsors.js';
 import { stripItems, itemHtml, mountStrip, ROTATE_MS, SLIDE_MS, MAX_SPONSOR_LINES } from '../public/sponsor-strip.js';
 import { stripShownBatch } from '../public/goal.js';
-import { sponsorHtml, sponFacts, factsHtml, visitLen, cleanDown, weeklyViews, viewsLine, paidLines, pointAtStrip, render, REFRESH_MS, HERO, POINT, FINE, MAILTO, PHONE_MQ } from '../public/screens/sponsor.js';
+import { sponsorHtml, shownCount, shownLine, priceText, mailtoFor, tryLine, pointAtStrip, render, REFRESH_MS, HERO, POINT, FINE, MAILTO, PHONE_MQ, SHOWN_DEF, SHOWN_DETAIL, TRY_MAX, TRY_LABEL } from '../public/screens/sponsor.js';
 import { cardWords } from '../public/kit.js';
 import { hereText, paintHere, mountHereNow, clearOfBrand, HERE_MS, HERE_MIN } from '../public/here-now.js';
 import { findCommand } from '../public/registry.js';
@@ -77,13 +77,19 @@ test('/api/sponsors serves the cleaned file', async () => {
   const file = path.join(dir, 's.json');
   writeFileSync(file, JSON.stringify({ lines: [{ name: 'A', text: 'B', url: 'https://a.example/?utm=1' }], house: [{ text: 'Rent me', cmd: 'SPONSOR' }] }));
   const app = express();
-  mountSponsors(app, { file, log: { error() {} } });
+  mountSponsors(app, { file, log: { error() {} }, price: '' });
+  const priced = express();
+  mountSponsors(priced, { file, log: { error() {} }, price: '99' });
   const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
+  const server2 = await new Promise((r) => { const s = priced.listen(0, '127.0.0.1', () => r(s)); });
   try {
     const d = await (await fetch(`http://127.0.0.1:${server.address().port}/api/sponsors`)).json();
-    assert.deepEqual(d, { lines: [{ name: 'A', text: 'B', url: 'https://a.example/' }], house: [{ text: 'Rent me', cmd: 'SPONSOR' }], gauges: {}, line: { name: 'A', text: 'B', url: 'https://a.example/' } });
+    assert.deepEqual(d, { lines: [{ name: 'A', text: 'B', url: 'https://a.example/' }], house: [{ text: 'Rent me', cmd: 'SPONSOR' }], gauges: {}, line: { name: 'A', text: 'B', url: 'https://a.example/' }, price: null });
+    const p = await (await fetch(`http://127.0.0.1:${server2.address().port}/api/sponsors`)).json();
+    assert.equal(p.price, 99, 'SPONSOR_PRICE, as whole dollars a week');
   } finally {
     await new Promise((r) => server.close(r));
+    await new Promise((r) => server2.close(r));
     loadSponsors();
     rmSync(dir, { recursive: true, force: true });
   }
@@ -205,66 +211,154 @@ const FULL = {
     countries: [{ name: 'United States', pct: 60.4 }, { name: 'Japan', pct: 10 }], globe: { window: '7d', countries: [{ cc: 'US', visitors: 45 }, { cc: 'JP', visitors: 7 }], other: 4 } },
   inventory: { stripShown: { today: 100, d7: 5678 } },
 };
-test('SPONSOR screen: a card: the drawn terminal with its strip lit, the headline, the views, EMAIL and BBRK, the rule, three numbers, the globe; 30 words at most', () => {
-  const page = sponsorHtml({ has: () => true, bbrk: FULL, cfg: cleanSponsors({ house: house(3) }) });
+test('SPONSOR screen: one column: kicker, headline, how often the strip was shown and what that counts, the price, EMAIL, the rules, TRY YOUR LINE, the BBRK link; the rest in Details', () => {
+  const page = sponsorHtml({ has: () => true, bbrk: FULL, cfg: { ...cleanSponsors({ house: house(3) }), price: 99 } });
   assert.equal(HERO, 'Your line on every screen.');
-  // Not a boxed YOUR AD HERE (it read as an ad on this page): a small terminal whose bottom
-  // strip is lit with YOUR COMPANY HERE, a picture (role="img"), above the headline.
-  assert.match(page, /^<section class="card card-wide spon-card" aria-label="Sponsor"><div class="card-art"><figure class="spon-term" role="img" aria-label="[^"]+">[\s\S]*<span class="spon-term-strip">YOUR COMPANY HERE<\/span><\/figure><\/div><div class="card-head">/);
-  assert.equal((page.match(/class="spon-term-panel/g) || []).length, 3, 'three faint panels');
-  assert.doesNotMatch(page, /spon-slot|YOUR AD HERE/);
-  assert.match(page, /<h2 class="card-hero card-hero-44 num">Your line on every screen\.<\/h2><p class="card-sub" id="spon-views">About 5,600 views a week\.<\/p>/);
-  assert.equal(MAILTO, 'mailto:hello@bloombroke.com?subject=Sponsor%20Bloombroke');
-  assert.match(page, /<div class="card-act"><a class="btn card-btn btn-solid" href="mailto:hello@bloombroke\.com\?subject=Sponsor%20Bloombroke">EMAIL hello@bloombroke\.com<\/a><a class="btn card-btn" href="\?c=BBRK" data-cmd="BBRK">BBRK NUMBERS<\/a><\/div>/, 'EMAIL the one primary, BBRK beside it');
-  assert.equal((page.match(/btn-solid/g) || []).length, 1);
-  assert.match(page, new RegExp(`<p class="card-note">${FINE.replace(/\./g, '\\.')}</p>`), 'the rule line, once');
-  assert.match(page, /<dt class="tag">PAGE VIEWS, 7D<\/dt><dd class="num">243<\/dd>/);
-  assert.match(page, /<dt class="tag">VISITS<\/dt><dd class="num">8 min<\/dd>/);
-  assert.match(page, /<dt class="tag">US<\/dt><dd class="num">60%<\/dd>/);
-  // The globe under the numbers, no caption (the numbers say it); its words for a screen reader.
-  assert.match(page, /<\/dl><div class="card-media"><figure class="spon-globe"><canvas role="img" aria-label="Globe of visitors by country, last 7 days: US 45, JP 7, other 4\."><\/canvas><\/figure><\/div>/);
-  // WEIRD is behind + Details.
+  assert.match(page, /^<section class="card spon-card" aria-label="Sponsor"><div class="card-head"><p class="tag card-kicker">SPONSOR<\/p><h2 class="card-hero card-hero-44 num">Your line on every screen\.<\/h2>/);
+  // The number and, right under it, what it counts.
+  assert.match(page, /<p class="card-sub"><span id="spon-views">Shown 5,678 times this week\.<\/span><span class="spon-def">Strip lines shown, last 7 days\.<\/span><\/p>/);
+  assert.equal(SHOWN_DEF, 'Strip lines shown, last 7 days.');
+  // The price, then the one primary button: EMAIL.
+  assert.match(page, /<div class="card-act"><p class="spon-price" id="spon-price">\$99 a week<\/p><a class="btn card-btn btn-solid" href="mailto:hello@bloombroke\.com\?subject=Sponsor%20Bloombroke" id="spon-email">EMAIL hello@bloombroke\.com<\/a><\/div>/);
+  assert.equal((page.match(/btn-solid/g) || []).length, 1, 'one white primary');
+  assert.equal((page.match(/class="btn /g) || []).length, 1, 'no second button');
+  assert.equal(FINE, 'One rotating line. No tracking code. Hidden for Pro.');
+  assert.match(page, /<p class="card-note">One rotating line\. No tracking code\. Hidden for Pro\.<\/p>/);
+  // TRY YOUR LINE: a label and one input (no form, no name, the longest line we run).
+  assert.equal(TRY_LABEL, 'TRY YOUR LINE');
+  assert.equal(TRY_MAX, TEXT_MAX, 'the same limit as a paid line (lib/sponsors.js)');
+  assert.match(page, /<div class="card-media"><div class="spon-try"><label class="tag" for="spon-try">TRY YOUR LINE<\/label><input class="card-input spon-try-input" id="spon-try" type="text" maxlength="100" [^>]*><\/div><\/div>/);
+  assert.doesNotMatch(page, /<form|name="/);
+  // Numbers: a text link to BBRK.
+  assert.match(page, /<p class="card-links"><span class="spon-numbers">Numbers: <a class="card-link" href="\?c=BBRK" data-cmd="BBRK">BBRK<\/a><\/span><\/p>/);
+  // Gone: the mock terminal, the second button, the three tiles, the globe.
+  assert.doesNotMatch(page, /spon-term|YOUR COMPANY HERE|card-art|card-facts|<dl class="card-facts|spon-globe|<canvas|BBRK NUMBERS|PAGE VIEWS|About [\d,-]+ views/);
   const [top, details] = page.split('<details class="how card-more"');
-  assert.doesNotMatch(top, /WEIRD/);
+  // + Details: what the number counts in full, where, what we refuse, the audience (in
+  // BBRK's words), the sources; WEIRD only there.
+  assert.ok(details.includes(SHOWN_DETAIL));
+  assert.match(SHOWN_DETAIL, /last 7 days/);
+  assert.match(details, /<dt class="tag">Not for<\/dt><dd>No investment products, brokers, exchanges, crypto, funds or tips\.<\/dd>/);
+  assert.match(details, /<dt class="tag">Visitors<\/dt><dd>68 in 7 days, 8m 00s average visit<\/dd>/);
+  assert.match(details, /<dt class="tag">Countries<\/dt><dd>United States 60% · Japan 10%<\/dd>/);
+  assert.doesNotMatch(top, /WEIRD|United States/);
   assert.match(details, /<a class="spon-weird" href="\?c=WEIRD" data-cmd="WEIRD">Or a WEIRD gauge<\/a>/);
   assert.doesNotMatch(sponsorHtml({ has: () => false }), /WEIRD|BBRK/, 'no link to a command that is not here');
-  assert.match(sponsorHtml({ has: (c) => c === 'BBRK' }), /data-cmd="BBRK"/);
   assert.equal(POINT, '↓ this line, every screen');
   const w = cardWords(page);
-  assert.ok(w.length <= 30, `${w.length} words: ${w.join(' ')}`);
-  // Gone: the numbers table, the gauge preview, the mock, a vendor name.
-  assert.doesNotMatch(page, /spon-nums|SITE NUMBERS|spon-mock|wd-tile|CANAL|DataFast|data-cmd="(CHANGES|DATA|MCP)"/);
-  assert.doesNotMatch(page, /\$\d/, 'no prices');
-  assert.doesNotMatch(page, /—/);
+  assert.ok(w.length <= 33, `${w.length} words: ${w.join(' ')}`);
+  assert.doesNotMatch(page, /DataFast|—|TBD/);
   assert.doesNotMatch(page, new RegExp(['bloom', 'berg'].join(''), 'i'));
   assert.equal(parseCommand('SPONSOR').name, 'SPONSOR');
-  // While loading: -- for every number.
+  // While loading: --, and no price line.
   const empty = sponsorHtml({ has: () => true });
-  assert.match(empty, /<dd class="num">--<\/dd>/);
-  assert.match(empty, /About -- views a week\./);
+  assert.match(empty, /Shown -- times this week\./);
+  assert.match(empty, /<p class="spon-price" id="spon-price" hidden><\/p>/);
 });
 
-test('SPONSOR numbers: page views lead; -- for anything missing; short country names', () => {
-  const v = (b) => sponFacts(b).map((f) => `${f.value} ${f.label}`);
-  assert.deepEqual(v(FULL), ['243 PAGE VIEWS, 7D', '8 min VISITS', '60% US']);
-  assert.deepEqual(v(null), ['-- PAGE VIEWS, 7D', '-- min VISITS', '-- TOP COUNTRY']);
-  assert.deepEqual(v({ audience: { pageviews: { d7: 1234 }, avgVisitSec: 40, countries: [{ name: 'Japan', pct: 10.4 }] } }), ['1,234 PAGE VIEWS, 7D', '40 s VISITS', '10% Japan']);
-  assert.deepEqual(v({ audience: { visitors: { d7: 68 }, pageviews: {}, avgVisitSec: null, countries: [] } }), ['-- PAGE VIEWS, 7D', '-- min VISITS', '-- TOP COUNTRY'], 'never visitors in place of page views');
-  assert.equal(sponFacts({ audience: { countries: [{ name: 'United Kingdom', pct: 5 }] } })[2].label, 'UK');
-  assert.equal(visitLen(429), '7 min');
-  assert.equal(visitLen(-1), '-- min');
-  assert.match(factsHtml({ audience: { pageviews: { d7: '<b>' } } }), /<dd class="num">--<\/dd>/, 'only numbers');
-  assert.match(factsHtml(FULL), /^<dl class="card-facts n3" id="spon-facts">/);
+test('SPONSOR price: from SPONSOR_PRICE through /api/sponsors; hidden entirely when unset', () => {
+  assert.equal(sponsorPrice('99'), 99);
+  assert.equal(sponsorPrice(' $1,200 '), 1200);
+  for (const v of [undefined, '', '  ', '0', '-5', '9.99', 'ninety', '99 a week', '1234567']) assert.equal(sponsorPrice(v), null, String(v));
+  assert.equal(priceText({ price: 99 }), '$99 a week');
+  assert.equal(priceText({ price: 1200 }), '$1,200 a week');
+  for (const cfg of [null, {}, { price: null }, { price: 0 }, { price: '99' }, { price: 9.5 }]) assert.equal(priceText(cfg), '', JSON.stringify(cfg));
+  const unset = sponsorHtml({ has: () => true, bbrk: FULL, cfg: { price: null } });
+  assert.match(unset, /<p class="spon-price" id="spon-price" hidden><\/p>/);
+  assert.doesNotMatch(unset.split('<details')[0].replace(/<[^>]+>/g, ' '), /\$|a week|TBD|price/i, 'no price, no placeholder');
+  assert.match(sponsorHtml({ has: () => true, cfg: { price: 99 } }), /<p class="spon-price" id="spon-price">\$99 a week<\/p>/);
+  assert.match(readFileSync('public/screens/sponsor.css', 'utf8'), /\.spon-price\[hidden\] \{ display: none; \}/);
+  // The key is in .env.example; the browser config passes it through.
+  assert.match(readFileSync('.env.example', 'utf8'), /^SPONSOR_PRICE=$/m);
+  assert.match(readFileSync('public/sponsor-strip.js', 'utf8'), /price: d\.price \}/);
 });
 
-test('SPONSOR refresh: numbers and globe dots again every minute through ctx.live (paused while hidden)', async () => {
+test('SPONSOR shown: the real strip count of the last 7 days, said plainly; a zero is said, not printed', () => {
+  assert.equal(shownCount(FULL), 5678);
+  assert.equal(shownCount({ inventory: { stripShown: { d7: null } } }), null);
+  assert.equal(shownCount(null), null);
+  assert.equal(shownCount({ inventory: { stripShown: { d7: '12' } } }), null, 'numbers only');
+  assert.equal(shownLine(2097), 'Shown 2,097 times this week.');
+  assert.equal(shownLine(1), 'Shown 1 time this week.');
+  assert.equal(shownLine(0), 'Not shown yet this week.');
+  assert.equal(shownLine(null), 'Shown -- times this week.');
+  // Never page views, never visitors in its place.
+  assert.equal(shownCount({ audience: { pageviews: { d7: 300 }, visitors: { d7: 96 } } }), null);
+});
+
+test('SPONSOR mailto: the typed line goes into the EMAIL body, encoded', () => {
+  assert.equal(MAILTO, 'mailto:hello@bloombroke.com?subject=Sponsor%20Bloombroke');
+  assert.equal(mailtoFor(''), MAILTO);
+  assert.equal(mailtoFor('   '), MAILTO);
+  assert.equal(mailtoFor('Acme: fresh beans'), `${MAILTO}&body=Our%20line%3A%20Acme%3A%20fresh%20beans`);
+  const m = mailtoFor('A&B #1? "x" <y>\ncc=me@x.com&subject=hi');
+  assert.equal(m, `${MAILTO}&body=Our%20line%3A%20A%26B%20%231%3F%20%22x%22%20%3Cy%3E%20cc%3Dme%40x.com%26subject%3Dhi`);
+  assert.equal(m.split('&').length, 2, 'one subject and one body: a typed & or = cannot add a field');
+  assert.doesNotMatch(m, /[#\s"<>\n]/);
+  assert.ok(decodeURIComponent(mailtoFor('x'.repeat(500)).split('body=')[1]).length <= 'Our line: '.length + TRY_MAX);
+});
+
+test('SPONSOR try your line: shows in the real strip as text, holds it still, and is never stored or sent', async () => {
+  // tryLine: the text goes in data-try (the CSS draws it), never into markup.
+  const attrs = {};
+  const cls = new Set();
+  const real = { setAttribute: (k, v) => { attrs[k] = v; }, removeAttribute: (k) => { delete attrs[k]; }, classList: { add: (c) => cls.add(c), remove: (c) => cls.delete(c), contains: (c) => cls.has(c) } };
+  tryLine(real, '  <b>Acme</b>   now ');
+  assert.equal(attrs['data-try'], '<b>Acme</b> now');
+  assert.ok(cls.has('is-try'));
+  tryLine(real, '');
+  assert.equal(attrs['data-try'], undefined);
+  assert.ok(!cls.has('is-try'));
+  tryLine(null, 'x'); // no strip (Pro): nothing
+  const css = readFileSync('public/screens/sponsor.css', 'utf8');
+  assert.match(css, /\.status-sponsor\.is-try > \* \{ display: none; \}/, 'the strip\'s own line is hidden');
+  assert.match(css, /\.status-sponsor\.is-try::after \{\s*content: attr\(data-try\);/, 'the typed text, as text');
+  assert.match(css, /\.status-sponsor\.is-try::before \{\s*content: 'SPONSOR';/, 'marked like a paid line');
+  // The shell's strip holds still and counts nothing while it shows (app.js isHidden).
+  assert.match(readFileSync('public/app.js', 'utf8'), /isHidden: \(\) => document\.hidden \|\| sponsorEl\.classList\.contains\('is-try'\)/);
+  // The screen: typing mirrors into the strip and the EMAIL link; closing puts the strip back.
+  const listeners = {};
+  const input = { value: '', addEventListener: (t, f) => { listeners[t] = f; }, removeEventListener: (t) => { delete listeners[t]; } };
+  const email = { attrs: {}, setAttribute(k, v) { this.attrs[k] = v; } };
+  const stripEl = { ...real, hidden: false, getBoundingClientRect: () => ({ left: 0, width: 100, top: 700, right: 100 }), querySelector: () => null };
+  const prevDoc = globalThis.document;
+  const saved = [];
+  const store = { setItem: (...a) => saved.push(a) };
+  const prevLs = globalThis.localStorage;
+  globalThis.localStorage = store;
+  globalThis.document = { getElementById: (id) => (id === 'status-sponsor' ? stripEl : null) };
+  const cleanups = [];
+  const fetches = [];
+  try {
+    const el = { set innerHTML(v) { this.html = v; }, get innerHTML() { return this.html; }, isConnected: true,
+      querySelector: (sel) => ({ '#spon-try': input, '#spon-email': email }[sel] ?? null) };
+    render(el, {}, { status() {}, signal: null, onCleanup: (f) => cleanups.push(f), live() {}, fetchJSON: async (u) => { fetches.push(u); return FULL; } });
+    input.value = 'Acme Coffee: beans & more';
+    listeners.input();
+    assert.equal(attrs['data-try'], 'Acme Coffee: beans & more');
+    assert.ok(cls.has('is-try'));
+    assert.equal(email.attrs.href, mailtoFor('Acme Coffee: beans & more'));
+    for (const f of cleanups) f();
+    assert.ok(!cls.has('is-try'), 'closed: the strip is back');
+    assert.equal(listeners.input, undefined);
+  } finally {
+    globalThis.document = prevDoc;
+    globalThis.localStorage = prevLs;
+  }
+  assert.deepEqual(saved, [], 'nothing stored');
+  assert.deepEqual(fetches, ['/api/bbrk'], 'nothing sent: only our numbers are asked for');
+  const src = readFileSync('public/screens/sponsor.js', 'utf8');
+  assert.doesNotMatch(src, /localStorage|sessionStorage|indexedDB|sendBeacon|method: 'POST'|goal\(/, 'never saved, never sent');
+});
+
+test('SPONSOR refresh: the numbers again every minute through ctx.live (paused while hidden)', async () => {
   const calls = [];
   const lives = [];
   const cleanups = [];
   const nodes = {};
   const node = (k) => (nodes[k] ||= { innerHTML: '', textContent: '', isConnected: true, hidden: false, attrs: {}, setAttribute(a, v) { this.attrs[a] = v; } });
   const el = { set innerHTML(v) { this.html = v; }, get innerHTML() { return this.html; }, isConnected: true,
-    querySelector: (sel) => ({ '#spon-facts': node('facts'), '#spon-views': node('views'), '.spon-globe canvas': null, '.spon-globe': node('fig') }[sel] ?? null) };
+    querySelector: (sel) => ({ '#spon-views': node('views'), '#spon-details': node('details'), '#spon-price': node('price') }[sel] ?? null) };
   let answer = FULL;
   const ctx = {
     status() {}, signal: null, onCleanup: (f) => cleanups.push(f), live: (fn, ms) => lives.push([fn, ms]),
@@ -277,43 +371,23 @@ test('SPONSOR refresh: numbers and globe dots again every minute through ctx.liv
   assert.equal(lives.length, 1);
   assert.equal(lives[0][1], REFRESH_MS);
   assert.equal(REFRESH_MS, 60_000);
-  assert.match(node('facts').outerHTML, /<dd class="num">243<\/dd>/);
-  answer = { ...FULL, audience: { ...FULL.audience, pageviews: { d7: 300 }, live: 0 } };
+  assert.equal(node('views').textContent, 'Shown 5,678 times this week.');
+  assert.match(node('details').innerHTML, /68 in 7 days/);
+  answer = { ...FULL, inventory: { stripShown: { d7: 6000 } } };
   lives[0][0]();
   await flush();
   assert.equal(calls.length, 2);
-  assert.match(node('facts').outerHTML, /<dd class="num">300<\/dd>/);
+  assert.equal(node('views').textContent, 'Shown 6,000 times this week.');
   for (const f of cleanups) f();
-  answer = { ...FULL, audience: { ...FULL.audience, pageviews: { d7: 999 } } };
+  answer = { ...FULL, inventory: { stripShown: { d7: 9999 } } };
   lives[0][0]();
   await flush();
-  assert.doesNotMatch(node('facts').outerHTML, /999/, 'nothing painted after the screen closes');
+  assert.doesNotMatch(node('views').textContent, /9,999/, 'nothing painted after the screen closes');
   // ctx.live is the shell's liveTimer: it skips a hidden tab and catches up when shown.
   const app = readFileSync('public/app.js', 'utf8');
   assert.match(app, /const paused = \(\) => document\.hidden \|\| !embedVisible;/);
   assert.match(app, /live\(fn, ms\) \{ cleanups\.push\(liveTimer\(fn, ms\)\); \}/);
   assert.doesNotMatch(readFileSync('public/screens/sponsor.js', 'utf8'), /setInterval|ctx\.every/, 'no timer of its own');
-});
-
-test('SPONSOR views a week: last 7 days strip_shown over the paid lines plus yours, rounded down; -- when missing', () => {
-  const shown = (d7) => ({ inventory: { stripShown: { d7 } } });
-  const paid = (n) => cleanSponsors({ lines: Array.from({ length: n }, (_, i) => ({ name: `S${i}`, text: 'x' })), house: house(3) });
-  assert.equal(paidLines(cleanSponsors({ house: house(3) })), 0, 'house lines do not count');
-  assert.equal(paidLines(paid(2)), 2);
-  assert.equal(paidLines(null), 0);
-  assert.equal(weeklyViews(shown(192), null), 190, 'no paid lines: all of it');
-  assert.equal(weeklyViews(shown(192), cleanSponsors({ house: house(3) })), 190);
-  assert.equal(weeklyViews(shown(5678), paid(1)), 2800, '5678 / 2 = 2839, down to 2800');
-  assert.equal(weeklyViews(shown(5678), paid(2)), 1800, '5678 / 3 = 1892.7, down to 1800');
-  assert.equal(weeklyViews(shown(99), null), 99);
-  assert.equal(weeklyViews(shown(0), null), 0);
-  assert.equal(weeklyViews(shown(null), null), null);
-  assert.equal(weeklyViews(null, null), null);
-  assert.equal(weeklyViews({ inventory: {} }, null), null);
-  assert.deepEqual([cleanDown(12345), cleanDown(100), cleanDown(109), cleanDown(1999), cleanDown(7.9), cleanDown(-1), cleanDown(NaN)], [12000, 100, 100, 1900, 7, null, null]);
-  assert.equal(viewsLine(190), 'About 190 views a week.');
-  assert.equal(viewsLine(12000), 'About 12,000 views a week.');
-  assert.equal(viewsLine(null), 'About -- views a week.');
 });
 
 test('SPONSOR open: the real strip is outlined with a label above it until the screen closes; nothing for Pro', () => {
