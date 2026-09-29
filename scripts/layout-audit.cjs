@@ -16,7 +16,9 @@
 //   primary   more than one primary (solid) button
 //   fold      on a desktop size, BBRK's and SPONSOR's globe, or GRAVEYARD LEH's stone, video
 //             and last website, not wholly in the first view (the media's bottom below the
-//             scroll box's visible bottom, scrolled to the top)
+//             scroll box's visible bottom, scrolled to the top); for WHATIF, at every size,
+//             the certificate and SHARE
+// WHATIF results run at 1440x900, 1536x730 and 390x844, after the race has ended.
 // and prints a table. --shots saves a PNG per page and size (after-<page>-<width>.png).
 // The numbers the pages show come from small fixtures below, or with --live-data from the
 // public GET routes of that site (/api/bbrk, /api/sponsors, /api/pro/seat, /api/pro/config).
@@ -88,6 +90,9 @@ const PAGES = [
   // Part B: the result screens, MCP, the link confirm and TAPE (SPONSOR is above).
   ['afford', 'AFFORD 1200 BIKE 2 PER WEEK'], ['cpi', 'CPI 100 2015'], ['loan', 'LOAN 400000 30Y 6.5%'], ['mcp', 'MCP'],
   ['link-confirm', 'WATCH', { link: 'WATCH ADD AAPL', sel: '.link-card' }], ['tape', 'TAPE'],
+  // WHATIF: a split card page. One thing, three things, a VICES habit; after the race.
+  ...[['whatif', 'WHATIF IPHONE6'], ['whatif-three', 'WHATIF IPHONE6 RTX3080 LATTE:3Y'], ['whatif-vices', 'WHATIF BEER:10Y']]
+    .map(([n, c]) => [n, c, { wait: 14000, fold: ['.card-art', '#wi-share-btn'], sizes: [[1440, 900], [1536, 730], [390, 844]] }]),
 ].filter(([n]) => !ONLY || ONLY.split(',').includes(n));
 
 async function liveData() {
@@ -101,7 +106,7 @@ async function liveData() {
 }
 
 // Runs in the page: every check, for the card on screen.
-function inPage(scale, firstView, sel) {
+function inPage(scale, firstView, sel, fold) {
   const out = { overflow: [], crop: [], font: [], measure: [], primary: [], fold: [] };
   const de = document.documentElement;
   const screen = document.getElementById('screen');
@@ -154,15 +159,20 @@ function inPage(scale, firstView, sel) {
   }
   // The first view: scrolled to the top, the globe ends above the dock and the scroll
   // box's visible bottom.
-  if (firstView) {
+  if (firstView || fold.length) {
     const box = document.getElementById('screen');
     const own = box && /auto|scroll/.test(getComputedStyle(box).overflowY);
     if (own) box.scrollTop = 0; else window.scrollTo(0, 0);
     const dock = document.querySelector('.dock');
     const bottom = Math.min(own ? box.getBoundingClientRect().bottom : innerHeight, dock ? dock.getBoundingClientRect().top : innerHeight);
+    for (const s of fold) {
+      const el = card.querySelector(s);
+      if (!el) out.fold.push(`no ${s}`);
+      else if (el.getBoundingClientRect().bottom > bottom + 0.5) out.fold.push(`${s} bottom ${Math.round(el.getBoundingClientRect().bottom)} > visible ${Math.round(bottom)}`);
+    }
     const media = card.querySelector('.card-media');
-    if (!media) out.fold.push('no media');
-    else {
+    if (firstView && !media) out.fold.push('no media');
+    else if (firstView) {
       const r = media.getBoundingClientRect();
       if (r.bottom > bottom + 0.5) out.fold.push(`media bottom ${Math.round(r.bottom)} > visible ${Math.round(bottom)}`);
       const c = media.querySelector('canvas');
@@ -182,7 +192,7 @@ async function main() {
   let failed = 0;
   try {
     for (const [name, cmd, opts = {}] of PAGES) {
-      for (const [w, h] of SIZES) {
+      for (const [w, h] of opts.sizes || SIZES) {
         const context = await browser.createBrowserContext(); // its own storage: no key left over
         const page = await context.newPage();
         await page.setViewport({ width: w, height: h, deviceScaleFactor: 1 });
@@ -220,13 +230,13 @@ async function main() {
           await page.keyboard.press('Enter');
           await page.waitForSelector('#screen .card-form', { timeout: 15000 }).catch(() => {});
         }
-        await new Promise((r) => { setTimeout(r, 2000); });
+        await new Promise((r) => { setTimeout(r, opts.wait || 2000); });
         if (OPEN) {
           await page.evaluate((s) => { const d = document.querySelector(`#screen ${s} .card-more`); if (d) { d.open = true; d.scrollIntoView({ block: 'start' }); } }, sel);
           await new Promise((r) => { setTimeout(r, 300); });
         }
         const firstView = !OPEN && w >= 1100 && ['bbrk', 'sponsor', 'graveyard-leh'].includes(name);
-        const res = await page.evaluate(inPage, TYPE, firstView, sel);
+        const res = await page.evaluate(inPage, TYPE, firstView, sel, OPEN ? [] : opts.fold || []);
         const bad = Object.entries(res).filter(([, v]) => v.length);
         if (bad.length) failed++;
         rows.push({ page: name, size: `${w}x${h}`, result: bad.length ? 'FAIL' : 'ok', notes: bad.map(([k, v]) => `${k}: ${[...new Set(v)].slice(0, 3).join('; ')}`).join(' | ') });

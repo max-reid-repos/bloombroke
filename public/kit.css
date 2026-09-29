@@ -155,14 +155,32 @@
 .card-input::placeholder { color: var(--dim); }
 .card-input:focus { border-color: var(--accent); outline: 0; }
 
+/* Split (cardPage split: true, WHATIF): the art is the hero, so it takes the left column
+   and the other slots, in their usual order, the right one; from 1100 px (the desktop
+   layout) only. Below that it is the one centred column, the art first. The right column
+   keeps the card's gaps and reads left to right, like a page. Two columns of 3:2, the
+   art the wider; the whole no wider than two text columns (2 x --card-w). */
+.card-col { display: flex; flex-direction: column; align-items: center; gap: 32px; width: 100%; min-width: 0; }
+@media (min-width: 1100px) {
+  .card.card-split {
+    display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; gap: 48px;
+    max-width: calc(var(--card-w) * 2); text-align: left;
+  }
+  .card-split > .card-alert { grid-column: 1 / -1; }
+  .card-split .card-col, .card-split .card-head, .card-split .card-cta, .card-split .card-foot { align-items: flex-start; }
+  .card-split .card-act, .card-split .card-links { justify-content: flex-start; }
+}
+
 /* Below the desktop layout, and on a short desktop screen, the biggest hero steps down
    and the groups sit closer, so a card fits a 730 px high window. */
 @media (max-width: 1099px), (max-height: 800px) {
-  .card { gap: 24px; padding: 24px 0; }
+  .card, .card-col { gap: 24px; }
+  .card { padding: 24px 0; }
   .card-hero-96 { font-size: 60px; }
 }
 @media (max-width: 639px) {
   .card { gap: 24px; padding: 16px 0; }
+  .card-col { gap: 24px; }
   .card-hero-96, .card-hero-60 { font-size: 44px; }
   .card-hero-44 { font-size: 32px; }
   .card-hero-32 { font-size: 24px; }

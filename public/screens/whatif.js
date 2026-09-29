@@ -9,10 +9,10 @@
 // WHATIF MY 1200 AAPL 2015    your own purchase (free for everyone)
 
 import { esc, q, fmtNum, panel, metaNote, LOADING, nyTime } from './markets.js';
-import { toolbar, segmented } from '../kit.js';
-import { createReplay, fmtCounter, isBehind } from '../whatif-replay.js';
+import { toolbar, segmented, cardPage, cardButton, cardLink, raw, edgeFade } from '../kit.js';
+import { createReplay, isBehind } from '../whatif-replay.js';
 import { videoSupport, makeVideo, downloadBlob, VIDEO_NEEDS } from '../whatif-video.js';
-import { parseMine, formWords, mineLabel, fmtAmount, MINE_DOODLE, MINE_EXAMPLES } from '../whatif-mine.js';
+import { parseMine, formWords, mineLabel, MINE_DOODLE, MINE_EXAMPLES } from '../whatif-mine.js';
 import { whatifEmbedSnippet } from '../embed-snippet.js'; // EMBED: the iframe line
 import { goal } from '../goal.js'; // GOALS
 
@@ -137,33 +137,6 @@ export function fmtMonth(key) {
   return `${MONTHS[m - 1]} ${y}`;
 }
 
-// One dry line, picked by outcome and by what was bought. The same command always gets
-// the same line. Hindsight only: the lines describe what happened, never what anyone
-// should do. QUIPS: things bought once. GADGET_QUIPS join them for gadgets only.
-export const QUIPS = {
-  big: [
-    'In hindsight, the company did better than the product.',
-    'Somewhere, a shareholder thanks you for your purchase.',
-  ],
-  gain: [
-    'This time, the stock beat the stuff.',
-    'The money grew. You just were not holding it.',
-  ],
-  loss: [
-    'Good news: you dodged this one.',
-    'The product held up better than the stock.',
-  ],
-};
-export const GADGET_QUIPS = {
-  big: ['The gadget is in a drawer somewhere. The stock is not.'],
-  gain: ['The stock did better than the gadget.'],
-  loss: ['For once, the gadget was the better buy.'],
-};
-export const HABIT_QUIPS = {
-  big: ['The habit is long gone. The shares would not be.', 'All those small buys, in hindsight, added up.'],
-  gain: ['In hindsight, the habit money grew.'],
-  loss: ['For once, spending it was the smart move.'],
-};
 export const WHATIF_TITLE = 'WHATIF: what if you had bought the stock?';
 export const HINDSIGHT_NOTE = 'Hindsight only. Past returns do not predict future returns. Not a recommendation.';
 
@@ -205,38 +178,92 @@ export function dropList(rows) {
   return `Worst drop along the way, by holding, month-end prices: ${parts.join('; ')}.`;
 }
 
-export function hashText(s) {
-  let h = 2166136261;
-  for (const c of String(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
-  return h >>> 0;
-}
-// kind: 'thing' | 'gadget' | 'habit' (see quipKind).
-export function quipFor(multiple, key, kind = 'thing') {
-  const bucket = multiple > 5 ? 'big' : multiple >= 1 ? 'gain' : 'loss';
-  const list = kind === 'habit' ? HABIT_QUIPS[bucket] : kind === 'gadget' ? [...GADGET_QUIPS[bucket], ...QUIPS[bucket]] : QUIPS[bucket];
-  return list[hashText(key) % list.length];
-}
-
 // ---- Picker ---------------------------------------------------------------------
 // A shelf of doodle cards per tab. Keys: arrows move, Space picks, Enter runs, [ and ]
 // change the shelf. On a habit card, typing a number goes into its years box.
+// A card shows its doodle and name; the year and price show once it is picked.
+
+// A family with many models (19 iPhones) is one card. Picking it picks one model, `pick`
+// (the one people share most), and shows a row of chips, one per model, to change it.
+// The commands stay the same: WHATIF IPHONE6, WHATIF IPHONE (every iPhone picked).
+export const FAMILY_CARDS = {
+  IPHONE: { name: 'iPhone', pick: 'iphone6' },
+  PLAYSTATION: { name: 'PlayStation', pick: 'ps4' },
+  XBOX: { name: 'Xbox', pick: 'xboxone' },
+  GEFORCE: { name: 'GeForce', pick: 'rtx3080' },
+};
+
+// A shelf's cards, in catalogue order: { item } or, where a family's first model is,
+// { fam, name, doodle, items } (its models on this shelf, in catalogue order).
+export function shelfCards(cat, shelf) {
+  const out = [];
+  const fams = new Map();
+  const items = shelfItems(cat, shelf);
+  for (const p of items) {
+    const f = FAMILY_CARDS[p.family] && items.filter((x) => x.family === p.family).length > 1 ? p.family : '';
+    if (!f) { out.push({ item: p }); continue; }
+    if (!fams.has(f)) {
+      const card = { fam: f, name: FAMILY_CARDS[f].name, doodle: p.doodle, items: [] };
+      fams.set(f, card);
+      out.push(card);
+    }
+    fams.get(f).items.push(p);
+  }
+  return out;
+}
+// The model a family card picks first.
+export const familyPick = (fam) => (fam.items.some((p) => p.id === FAMILY_CARDS[fam.fam]?.pick) ? FAMILY_CARDS[fam.fam].pick : fam.items[0].id);
+// Chip words: the model without the family's shared first word ("iPhone 6" -> "6") or a
+// note in brackets ("iPhone 3G (on contract)" -> "3G"; the card and tooltip keep it).
+export function chipLabels(items) {
+  const names = items.map((p) => (p.short || p.name).replace(/\s*\([^)]*\)$/, ''));
+  const first = `${names[0].split(' ')[0]} `;
+  return names.every((n) => n.startsWith(first) && n.length > first.length) ? names.map((n) => n.slice(first.length)) : names;
+}
+// The year and price a picked card shows.
+const pickedMeta = (p) => `${p.date.slice(0, 4)} ${fmtUsd(p.price)}`;
 
 const EXAMPLES = ['WHATIF IPHONE6 IPHONE8 LATTE:3Y', 'WHATIF MODEL3 RTX3080', 'WHATIF BEER:10Y BETTING', MINE_EXAMPLES[0]];
 const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
 export const PICKER_KEYS = 'SPACE PICK · ENTER RUN';
-export const PICKER_KEYS_LONG = 'Arrows move. Space picks. Enter runs. [ and ] change the shelf.';
+export const PICKER_KEYS_LONG = 'Arrows move. Space picks. Enter runs. [ and ] change the shelf. On a model chip, Shift+Space adds it.';
 export const PICKER_INTRO = 'Pick what you bought. See what the stock would be worth now.';
+
+const doodleImg = (doodle) => `<img class="wi-doodle" src="${esc(art(`doodle-${doodle || 'box'}.webp`))}" width="384" height="384" alt="" loading="lazy" decoding="async">`;
+const boxHtml = (on) => `<span class="wi-box" aria-hidden="true">${on ? '[x]' : '[ ]'}</span>`;
 
 export function cardHtml(p, picks) {
   const on = picks.has(p.id);
-  const box = `<span class="wi-box" aria-hidden="true">${on ? '[x]' : '[ ]'}</span>`;
-  const img = `<img class="wi-doodle" src="${esc(art(`doodle-${p.doodle || 'box'}.webp`))}" width="384" height="384" alt="" loading="lazy" decoding="async">`;
+  // A habit keeps its years box (typing a number on the card goes into it).
   const meta = p.kind === 'monthly'
-    ? `<span class="wi-cmeta"><span class="dim">${esc(p.ticker)}</span><label class="wi-years"><span class="offscreen">Years or dates for ${esc(p.name)}</span><input type="text" inputmode="text" maxlength="9" value="${esc(picks.get(p.id) || `${p.defaultYears}Y`)}" data-spec="${esc(p.id)}" spellcheck="false" autocomplete="off"></label></span>`
-    : `<span class="wi-cmeta num">${esc(p.date.slice(0, 4))} ${esc(fmtUsd(p.price))}</span>`;
+    ? `<span class="wi-cmeta"><label class="wi-years"><span class="offscreen">Years or dates for ${esc(p.name)}</span><input type="text" inputmode="text" maxlength="9" value="${esc(picks.get(p.id) || `${p.defaultYears}Y`)}" data-spec="${esc(p.id)}" spellcheck="false" autocomplete="off"></label></span>`
+    : `<span class="wi-cmeta num" data-meta${on ? '' : ' hidden'}>${esc(pickedMeta(p))}</span>`;
   return `<li class="wi-card${on ? ' is-on' : ''}" role="option" aria-selected="${on}" tabindex="-1" data-id="${esc(p.id)}" title="${esc(`${p.name}, ${p.company} ${p.ticker}`)}">
-    ${img}${box}<span class="wi-cname">${esc(p.name)}</span>${meta}
+    ${doodleImg(p.doodle)}${boxHtml(on)}<span class="wi-cname">${esc(p.name)}</span>${meta}
   </li>`;
+}
+
+// A family card: the family's name, or the model's once one is picked (with its year and
+// price); "3 PICKED" for several.
+export function familyCardParts(fam, picks) {
+  const on = fam.items.filter((p) => picks.has(p.id));
+  if (on.length === 1) return { on: true, name: on[0].name, meta: pickedMeta(on[0]) };
+  return { on: on.length > 0, name: fam.name, meta: on.length ? `${on.length} PICKED` : '' };
+}
+export function familyCardHtml(fam, picks) {
+  const { on, name, meta } = familyCardParts(fam, picks);
+  const p0 = fam.items[0];
+  return `<li class="wi-card wi-fam${on ? ' is-on' : ''}" role="option" aria-selected="${on}" tabindex="-1" data-fam="${esc(fam.fam)}" title="${esc(`${fam.name}: ${fam.items.length} models, ${p0.company} ${p0.ticker}`)}">
+    ${doodleImg(fam.doodle)}${boxHtml(on)}<span class="wi-cname">${esc(name)}</span><span class="wi-cmeta num" data-meta${meta ? '' : ' hidden'}>${esc(meta)}</span>
+  </li>`;
+}
+
+// The chips of a picked family, over the RUN bar: one per model, its year beside it.
+// The one the roving focus starts on is the first picked.
+export function chipsHtml(fam, picks) {
+  const labels = chipLabels(fam.items);
+  const start = Math.max(0, fam.items.findIndex((p) => picks.has(p.id)));
+  return `<span class="tag wi-chips-label">${esc(fam.name)}</span><span class="wi-chips-row" role="group" aria-label="${esc(`${fam.name}: which model`)}" data-chips="${esc(fam.fam)}">${fam.items.map((p, i) => `<button type="button" class="chip wi-chip" data-chip="${esc(p.id)}" aria-pressed="${picks.has(p.id)}" tabindex="${i === start ? 0 : -1}" title="${esc(`${p.name}: ${pickedMeta(p)}`)}">${esc(labels[i])} <span class="wi-chip-y num">${esc(p.date.slice(0, 4))}</span></button>`).join('')}</span>`;
 }
 
 // The YOUR OWN card (first on every shelf) and a card per purchase of your own.
@@ -286,9 +313,12 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
     ${ownFormHtml()}
     <ul class="wi-shelf" role="listbox" aria-multiselectable="true" aria-label="Things you bought" data-own-focus></ul>
     <div class="wi-bar">
-      <span class="wi-count" id="wi-count"></span>
-      <span class="wi-cmd code" id="wi-cmd"></span>
-      <button type="button" class="wi-run" id="wi-run">RUN</button>
+      <div class="wi-chips" hidden></div>
+      <div class="wi-bar-row">
+        <span class="wi-count" id="wi-count"></span>
+        <span class="wi-cmd code" id="wi-cmd"></span>
+        <button type="button" class="wi-run" id="wi-run">RUN</button>
+      </div>
     </div>`, { cls: 'panel-solo wi-panel', meta: `<span class="wi-hint">${metaNote(PICKER_KEYS, PICKER_KEYS_LONG)}</span>` });
 
   const list = el.querySelector('.wi-shelf');
@@ -296,7 +326,12 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
   const countEl = el.querySelector('#wi-count');
   const cmdEl = el.querySelector('#wi-cmd');
   const byId = new Map(allItems(cat).map((p) => [p.id, p]));
+  const tray = el.querySelector('.wi-chips');
   let rows = [];
+  let fams = new Map(); // this shelf's family cards, by family
+  let famOpen = null; // the family whose chips show
+  let stopFade = () => {};
+  ctx.onCleanup?.(() => stopFade());
 
   function refresh() {
     const once = [...picks.keys()].map((id) => byId.get(id)).filter((p) => p.kind === 'once');
@@ -324,15 +359,82 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
     if (scroll) r.scrollIntoView({ block: 'nearest' });
   }
 
+  // ---- Family cards and their chips.
+  const famPicked = (fam) => fam.items.some((p) => picks.has(p.id));
+  function drawFam(fam) {
+    const row = list.querySelector(`[data-fam="${fam.fam}"]`);
+    if (!row) return;
+    const { on, name, meta } = familyCardParts(fam, picks);
+    row.classList.toggle('is-on', on);
+    row.setAttribute('aria-selected', String(on));
+    row.querySelector('.wi-box').textContent = on ? '[x]' : '[ ]';
+    row.querySelector('.wi-cname').textContent = name;
+    const m = row.querySelector('[data-meta]');
+    m.textContent = meta;
+    m.hidden = !meta;
+  }
+  // The chips show for the family last picked or moved to, while any of it is picked.
+  function drawChips(focusId = '') {
+    const fam = famOpen && fams.get(famOpen);
+    if (!fam || !famPicked(fam)) { famOpen = null; stopFade(); tray.hidden = true; tray.innerHTML = ''; return; }
+    tray.innerHTML = chipsHtml(fam, picks);
+    tray.hidden = false;
+    stopFade();
+    stopFade = edgeFade(tray.querySelector('.wi-chips-row'));
+    const chip = focusId && tray.querySelector(`[data-chip="${focusId}"]`);
+    if (chip) {
+      tray.querySelectorAll('.wi-chip').forEach((c) => { c.tabIndex = c === chip ? 0 : -1; });
+      chip.focus({ preventScroll: true });
+      chip.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    } else tray.querySelector('.wi-chip[tabindex="0"]')?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }
+  function toggleFam(row, { keys = false } = {}) {
+    const fam = fams.get(row.dataset.fam);
+    if (famPicked(fam)) {
+      fam.items.forEach((p) => picks.delete(p.id));
+      if (famOpen === fam.fam) famOpen = null;
+      drawFam(fam); drawChips(); refresh();
+      return;
+    }
+    const id = familyPick(fam);
+    picks.set(id, '');
+    famOpen = fam.fam;
+    drawFam(fam);
+    drawChips(keys ? id : '');
+    refresh();
+  }
+  // A chip: pick this model instead (a click, Space); with Shift (or Ctrl or Cmd on a
+  // click), add or drop it, so several models can be picked. The last one stays: the
+  // family card drops the family.
+  function chooseChip(id, { add = false } = {}) {
+    const fam = fams.get(famOpen);
+    if (!fam) return;
+    const on = fam.items.filter((p) => picks.has(p.id));
+    if (add) {
+      if (!picks.has(id)) picks.set(id, '');
+      else if (on.length > 1) picks.delete(id);
+    } else {
+      fam.items.forEach((p) => { if (p.id !== id) picks.delete(p.id); });
+      picks.set(id, '');
+    }
+    drawFam(fam);
+    drawChips(id);
+    refresh();
+  }
+
   function showShelf(name, { focus = true } = {}) {
     // Years typed on this shelf are kept before its cards are redrawn.
     for (const inp of list.querySelectorAll('input[data-spec]')) if (picks.has(inp.dataset.spec)) picks.set(inp.dataset.spec, inp.value);
     shelf = name;
     tabBox.innerHTML = toolbar({ left: tabs(), label: 'Shelves' });
-    list.innerHTML = ownCardHtml() + mine.map(mineCardHtml).join('') + shelfItems(cat, shelf).map((p) => cardHtml(p, picks)).join('');
+    const cards = shelfCards(cat, shelf);
+    fams = new Map(cards.filter((c) => c.fam).map((c) => [c.fam, c]));
+    list.innerHTML = ownCardHtml() + mine.map(mineCardHtml).join('') + cards.map((c) => (c.fam ? familyCardHtml(c, picks) : cardHtml(c.item, picks))).join('');
     list.setAttribute('aria-label', `${shelf}: things you bought`);
     rows = [...list.querySelectorAll('.wi-card')];
-    const first = Math.max(0, rows.findIndex((r) => picks.has(r.dataset.id) || r.dataset.mine));
+    if (!fams.has(famOpen)) famOpen = [...fams.values()].find(famPicked)?.fam || null;
+    drawChips();
+    const first = Math.max(0, rows.findIndex((r) => picks.has(r.dataset.id) || r.dataset.mine || (r.dataset.fam && famPicked(fams.get(r.dataset.fam)))));
     if (rows[first]) rows[first].tabIndex = 0;
     if (focus && !window.matchMedia('(pointer: coarse)').matches) focusRow(first, { scroll: false });
   }
@@ -388,8 +490,9 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
     } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeForm(); }
   });
 
-  function toggle(row) {
+  function toggle(row, opts) {
     if (row.dataset.own !== undefined) { openForm(); return; }
+    if (row.dataset.fam) { toggleFam(row, opts); return; }
     if (row.dataset.mine) {
       mine = mine.filter((m) => m.id !== row.dataset.mine);
       showShelf(shelf);
@@ -403,6 +506,8 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
     row.classList.toggle('is-on', on);
     row.setAttribute('aria-selected', String(on));
     row.querySelector('.wi-box').textContent = on ? '[x]' : '[ ]';
+    const meta = row.querySelector('[data-meta]');
+    if (meta) meta.hidden = !on;
     refresh();
   }
 
@@ -438,10 +543,49 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
       End: () => focusRow(rows.length - 1),
       '[': () => moveShelf(-1),
       ']': () => moveShelf(1),
-      ' ': () => toggle(row),
+      ' ': () => toggle(row, { keys: true }),
       Enter: () => runPicks(),
     };
     if (keys[e.key]) { stop(); keys[e.key](); }
+  });
+
+  // Moving to a picked family card shows its chips.
+  list.addEventListener('focusin', (e) => {
+    const row = e.target.closest('[data-fam]');
+    if (row && row.dataset.fam !== famOpen && famPicked(fams.get(row.dataset.fam))) { famOpen = row.dataset.fam; drawChips(); }
+  });
+
+  // The chips: arrows move, Space picks this model (Shift+Space adds it), Enter runs,
+  // Esc or Up goes back to the card.
+  tray.addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-chip]');
+    if (chip) chooseChip(chip.dataset.chip, { add: e.shiftKey || e.ctrlKey || e.metaKey });
+  });
+  tray.addEventListener('keydown', (e) => {
+    const chip = e.target.closest('[data-chip]');
+    if (!chip || e.ctrlKey || e.metaKey || e.altKey) return;
+    const chips = [...tray.querySelectorAll('[data-chip]')];
+    const i = chips.indexOf(chip);
+    const go = (j) => {
+      const c = chips[Math.max(0, Math.min(chips.length - 1, j))];
+      chips.forEach((x) => { x.tabIndex = x === c ? 0 : -1; });
+      c.focus({ preventScroll: true });
+      c.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    };
+    const back = () => { const r = list.querySelector(`[data-fam="${famOpen}"]`); if (r) focusRow(rows.indexOf(r)); };
+    const keys = {
+      ArrowRight: () => go(i + 1),
+      ArrowLeft: () => go(i - 1),
+      Home: () => go(0),
+      End: () => go(chips.length - 1),
+      ' ': () => chooseChip(chip.dataset.chip, { add: e.shiftKey }),
+      Enter: () => runPicks(),
+      Escape: back,
+      ArrowUp: back,
+      '[': () => moveShelf(-1),
+      ']': () => moveShelf(1),
+    };
+    if (keys[e.key]) { e.preventDefault(); e.stopPropagation(); keys[e.key](); }
   });
 
   // [ and ] also work from the shelf tabs.
@@ -500,33 +644,25 @@ export function shareLinks(m, origin) {
   };
 }
 
-// Type sizes arrive as % of the certificate width; the CSP allows no inline styles, so
-// they are set through the DOM after render (see sizeCert).
-// actions: the quiet row under the buttons. video: the SAVE VIDEO button (videoHtml).
-export function certHtml(m, links, actions = '', video = '') {
+// The certificate: a picture (role="img"), its words drawn on the paper. Type sizes
+// arrive as % of the certificate width; the CSP allows no inline styles, so they are set
+// through the DOM after render (see sizeCert).
+export function certHtml(m) {
   const alt = `A certificate: ${m.ribbon}, worth ${m.big} today. ${m.spent}. ${m.holding}. ${m.multiple}.`;
-  return `<figure class="wi-cert${m.loss ? ' is-loss' : ''}">
-      <img class="wc-paper" src="${esc(art('certificate.webp'))}" width="1536" height="1024" alt="${esc(alt)}">
-      <div class="wc wc-receipt" aria-hidden="true">${m.receipt.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
-      <div class="wc wc-ribbon" data-fs="${esc(m.fit.ribbon)}" aria-hidden="true">${esc(m.ribbon)}</div>
-      <div class="wc wc-big" data-fs="${esc(m.fit.big)}" aria-hidden="true">${esc(m.big)}</div>
-      <div class="wc wc-today" aria-hidden="true">worth today</div>
-      <div class="wc wc-l1" data-fs="${esc(m.fit.lines)}" aria-hidden="true">${esc(m.spent)}</div>
-      <div class="wc wc-l2" data-fs="${esc(m.fit.lines)}" aria-hidden="true">${esc(m.holding)}</div>
-      <div class="wc-seal" aria-hidden="true">
+  return `<figure class="wi-cert${m.loss ? ' is-loss' : ''}" role="img" aria-label="${esc(alt)}">
+      <img class="wc-paper" src="${esc(art('certificate.webp'))}" width="1536" height="1024" alt="">
+      <div class="wc wc-receipt">${m.receipt.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
+      <div class="wc wc-ribbon" data-fs="${esc(m.fit.ribbon)}">${esc(m.ribbon)}</div>
+      <div class="wc wc-big" data-fs="${esc(m.fit.big)}">${esc(m.big)}</div>
+      <div class="wc wc-today">worth today</div>
+      <div class="wc wc-l1" data-fs="${esc(m.fit.lines)}">${esc(m.spent)}</div>
+      <div class="wc wc-l2" data-fs="${esc(m.fit.lines)}">${esc(m.holding)}</div>
+      <div class="wc-seal">
         <div class="wc wc-mult" data-fs="${esc(m.fit.mult)}">${esc(m.multiple)}</div>
         ${m.loss ? '<div class="wc wc-strike"></div><div class="wc wc-dodged">dodged</div>' : ''}
       </div>
       <img class="wc-sticker" src="${esc(art(`doodle-${m.doodle}.webp`))}" width="384" height="384" alt="">
-    </figure>
-    <div class="wi-share">
-      <a class="wi-btn" href="${esc(links.x)}" target="_blank" rel="noopener noreferrer">SHARE ON X</a>
-      ${video}
-      <a class="wi-btn" href="${esc(links.image)}" download="bloombroke-whatif.png">DOWNLOAD IMAGE</a>
-      <button type="button" class="wi-btn" data-copy="${esc(links.url)}">COPY LINK</button>
-    </div>
-    ${video ? '<p class="wi-vmsg" data-vmsg role="status"></p>' : ''}
-    ${actions}`;
+    </figure>`;
 }
 
 function sizeCert(el) {
@@ -547,9 +683,83 @@ async function copyText(text) {
   }
 }
 
+// ---- SHARE --------------------------------------------------------------------------
+// One primary button, SHARE, and a small menu under it: Post on X, Save video, Download
+// image, Copy link and Embed (not for your own purchases). Each item keeps the attribute
+// the share count listens for (ga4.js SHARES): the x.com link, a[download], data-video,
+// data-copy and data-embed.
+
+// Save video: a menu item where the browser can make one; else the plain line why.
+export function videoHtml(d, support = videoSupport()) {
+  if (!d.cert || !d.replay?.points?.length) return '';
+  return support
+    ? '<button type="button" class="wi-mi" role="menuitem" data-video>Save video</button>'
+    : `<span class="wi-mi is-off" role="menuitem" aria-disabled="true">${esc(VIDEO_NEEDS)}</span>`;
+}
+
+export function shareHtml(d, links, video = '') {
+  const items = [
+    `<a class="wi-mi" role="menuitem" href="${esc(links.x)}" target="_blank" rel="noopener noreferrer">Post on X</a>`,
+    video,
+    `<a class="wi-mi" role="menuitem" href="${esc(links.image)}" download="bloombroke-whatif.png">Download image</a>`,
+    `<button type="button" class="wi-mi" role="menuitem" data-copy="${esc(links.url)}">Copy link</button>`,
+    d.cert && !d.mine ? `<button type="button" class="wi-mi" role="menuitem" data-embed="${esc(d.cert.command)}" title="Copy one line of HTML that shows this result on your site">Embed</button>` : '',
+  ].filter(Boolean);
+  return `<div class="wi-sharebox">${cardButton({ label: 'SHARE', primary: true, id: 'wi-share-btn', attrs: 'aria-haspopup="menu" aria-expanded="false" aria-controls="wi-menu"' })}`
+    + `<div class="wi-menu" id="wi-menu" role="menu" aria-label="Share" hidden>${items.join('')}</div></div>`
+    + (video ? '<span class="wi-vmsg" data-vmsg role="status"></span>' : '');
+}
+
+// Opens and closes the menu: a click or Down opens it, Esc closes it (the focus back on
+// SHARE), a click outside or a choice closes it.
+function setupShare(el, ctx, key) {
+  const btn = el.querySelector('#wi-share-btn');
+  const menu = el.querySelector('#wi-menu');
+  if (!btn || !menu) return;
+  const items = () => [...menu.querySelectorAll('.wi-mi:not(.is-off)')];
+  const open = (focus) => {
+    menu.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    if (focus) items()[0]?.focus();
+  };
+  const close = (refocus) => {
+    if (menu.hidden) return;
+    menu.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+    if (refocus) btn.focus();
+  };
+  btn.addEventListener('click', (e) => { if (menu.hidden) open(e.detail === 0); else close(false); });
+  btn.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); open(true); }
+    else if (e.key === 'Escape' && !menu.hidden) { e.preventDefault(); e.stopPropagation(); close(true); }
+  });
+  menu.addEventListener('keydown', (e) => {
+    const list = items();
+    const i = list.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault(); e.stopPropagation();
+      list[(i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length]?.focus();
+    } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(true); }
+    else if (e.key === 'Tab') close(false);
+  });
+  menu.addEventListener('click', (e) => {
+    const b = e.target.closest('a');
+    if (b) goal('whatif_share', { via: b.hasAttribute('download') ? 'image' : 'x' }, { once: key });
+    if (e.target.closest('.wi-mi:not(.is-off)')) setTimeout(() => close(false), 0);
+  });
+  const outside = (e) => { if (!menu.hidden && !e.target.closest?.('.wi-sharebox')) close(false); };
+  document.addEventListener('click', outside, true);
+  ctx.onCleanup?.(() => document.removeEventListener('click', outside, true));
+}
+
 // ---- Result ---------------------------------------------------------------------
-// One hero: the number, the multiple beside it, one line of what it is. Everything else
-// (small print, worst drop, sources, the maths) sits behind one + Details toggle.
+// A card page (kit.js cardPage, split): the certificate is the hero (it is the share
+// image and carries the amount); beside it (under it on a phone) one sentence with the
+// real values, SHARE, a short note, the race chart and REPLAY / CHANGE PICKS. Two or more
+// things: the list of them under the chart. Everything else (the small print, the worst
+// drop, the table, how it is worked out, sources) is behind + Details.
+// While the race runs only the certificate and the chart move; the sentence and the list
+// show when it ends, so one amount is on screen at a time.
 
 const NICE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 // '2015-01' -> 'Jan 2015'; '2015-01-02' -> '2 Jan 2015'.
@@ -563,54 +773,40 @@ export function niceDay(iso) {
 }
 // "Apple Inc." -> "Apple": the company as people say it.
 export const shortCompany = (c) => String(c || '').replace(/,?\s+(Inc\.?|Corp\.?|Corporation|Ltd\.?|plc)$/i, '').trim();
-const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
-// The one line under the big number: what was bought, when, and what was paid.
+// The short note under SHARE; the full small print (HINDSIGHT_NOTE) is first in + Details.
+export const RESULT_NOTE = 'Hindsight. Not a recommendation.';
+
+// The one sentence under the certificate: what was paid, when, and what it is worth now
+// as the maker's stock. What was bought is on the certificate, so it is not said again.
 // mine: the parsed MY items of the command (whatif-mine.js), matched to rows by id.
-// Catalogue items use the certificate's ribbon ("iPhone 6", "10 years of Big Macs",
-// "3 iPhones"), made on the server from the catalogue's short names.
-// { lead, paid }: paid is false where the lead already says the amount.
-export function heroParts(d, mine = []) {
+//   "You paid $649.00 in Sep 2014. As Apple stock it is worth $8,701 today."
+//   "You paid $2,011 since Oct 2016. As McDonald's stock it is worth $3,418 today."
+//   "You paid $1,947 in all. As stock in 2 companies they are worth $9,120 today."
+export function resultSentence(d, mine = []) {
   const rows = d.rows || [];
-  const ribbon = d.cert?.ribbon;
-  const co = (r) => shortCompany(r.company) || r.ticker;
-  if (rows.length === 1) {
-    const r = rows[0];
-    const item = mine.find((m) => m.id === r.id);
-    if (item?.kind === 'once') return { lead: `${fmtAmount(item.amount)} in ${co(r)} on ${niceDay(r.bought)}.`, paid: false };
-    if (item) {
-      const when = item.to ? `from ${niceMonth(r.from)} to ${niceMonth(r.to)}` : `since ${niceMonth(r.from)}`;
-      return { lead: `${fmtAmount(item.amount)} a ${item.per} in ${co(r)} ${when}.`, paid: true };
-    }
-    if (r.kind === 'once') return { lead: `${ribbon || r.name}, ${niceMonth(String(r.bought).slice(0, 7))}, as ${co(r)} stock.`, paid: true };
-    return { lead: `${cap(ribbon || r.name)}, as ${co(r)} stock.`, paid: true };
-  }
-  const tickers = new Set(rows.map((r) => r.ticker));
-  const where = tickers.size === 1 ? `${co(rows[0])} stock` : `stock in ${tickers.size} companies`;
-  return { lead: `${cap(ribbon || `${rows.length} things`)}, as ${where}.`, paid: true };
-}
-
-export function heroLine(d, mine = []) {
-  const { lead, paid } = heroParts(d, mine);
-  return paid ? `${lead} You paid ${fmtUsd(d.total.paid)}.` : lead;
-}
-
-// Which quips fit: gadgets, other things bought once, habits. None for your own
-// purchases or a mix of one-offs and habits.
-export function quipKind(d, cat) {
-  const rows = d.rows || [];
-  if (!rows.length || rows.some((r) => r.mine)) return '';
-  const byId = new Map(allItems(cat).map((p) => [p.id, p]));
-  const items = rows.map((r) => byId.get(r.id));
-  if (items.some((p) => !p)) return '';
-  if (rows.every((r) => r.kind === 'monthly')) return 'habit';
-  if (rows.every((r) => r.kind === 'once')) return items.every((p) => shelvesOf(p).includes('GADGETS')) ? 'gadget' : 'thing';
-  return '';
-}
-
-function resultHtml(d, key, links, cat, mine) {
   const t = d.total;
-  const dir = t.multiple >= 1 ? 'up' : 'down';
+  const worth = fmtUsd(t.value);
+  // A company of three words or more goes by its ticker, so the line stays one line.
+  const co = (r) => { const c = shortCompany(r.company); return c && c.split(/\s+/).length <= 2 ? c : r.ticker; };
+  if (rows.length !== 1) {
+    const tickers = new Set(rows.map((r) => r.ticker));
+    const where = tickers.size === 1 ? `${co(rows[0])} stock` : `stock in ${tickers.size} companies`;
+    return `You paid ${fmtUsd(t.paid)} in all. As ${where} they are worth ${worth} today.`;
+  }
+  const r = rows[0];
+  const item = mine.find((m) => m.id === r.id);
+  const now = String(d.asOf || '').slice(0, 7);
+  let when;
+  if (r.kind === 'once') when = item ? `on ${niceDay(r.bought)}` : `in ${niceMonth(String(r.bought).slice(0, 7))}`;
+  else if (item ? item.to : r.to && now && r.to < now) when = `${niceMonth(r.from)} to ${niceMonth(r.to)}`;
+  else when = `since ${niceMonth(r.from)}`;
+  return `You paid ${fmtUsd(t.paid)}${/^since|^on|^in/.test(when) ? ' ' : ', '}${when}. As ${co(r)} stock it is worth ${worth} today.`;
+}
+
+// The things bought, one row each: what, when, paid, shares, worth now, x. In + Details
+// for one thing; under the chart for two or more (its sums are the sentence).
+export function tableHtml(d) {
   const rows = d.rows.map((r) => {
     const loss = r.multiple < 1;
     const bought = r.kind === 'once'
@@ -628,18 +824,19 @@ function resultHtml(d, key, links, cat, mine) {
       <td class="num ${loss ? 'down' : 'up'}">${esc(fmtX(r.multiple))}</td>
     </tr>`;
   }).join('');
+  return `<div class="wi-receipt">
+      <table class="grid-table wi-table">
+        <thead><tr><th scope="col">Item</th><th scope="col" class="num wi-when">Bought</th><th scope="col" class="num">Paid</th><th scope="col" class="num wi-sh">Shares</th><th scope="col" class="num">Worth now</th><th scope="col" class="num">x</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+// + Details: the table (one thing), the small print (its exact words), how it is worked
+// out, the notes and sources, and START OVER.
+function detailsHtml(d, { table = false } = {}) {
   const asOf = d.asOf ? (/^\d{4}-\d{2}-\d{2}$/.test(d.asOf) ? `the ${fmtDay(d.asOf)} close` : `${nyTime(d.asOf)} ET`) : 'now';
   const notes = d.rows.map((r) => `<li><span class="wi-note-name">${esc(r.name)}</span> ${esc(r.note || '')}${r.clamped ? ` ${esc(r.startNote || 'Starts when the shares began trading.')}` : ''} <a href="${esc(r.src)}" target="_blank" rel="noopener noreferrer">source</a></li>`).join('');
-  const editCmd = `WHATIF EDIT ${key.replace(/^WHATIF\s*/, '')}`;
-  // CHANGE PICKS and START OVER: a quiet second row under the share buttons.
-  const actions = `<div class="wi-actions">
-      <a class="code" href="${esc(q(editCmd))}" data-cmd="${esc(editCmd)}">CHANGE PICKS</a>
-      <a class="code" href="${esc(q('WHATIF'))}" data-cmd="WHATIF">START OVER</a>
-      ${d.cert && !d.mine ? `<button type="button" class="code wi-embed" data-embed="${esc(d.cert.command)}" title="Copy one line of HTML that shows this result on your site">EMBED</button>` : ''}
-    </div>`;
-  const hero = heroParts(d, mine);
-  const kind = quipKind(d, cat);
-  const quip = kind ? quipFor(t.multiple, key, kind) : '';
   const small = [
     HINDSIGHT_NOTE,
     riskLine(d),
@@ -649,26 +846,7 @@ function resultHtml(d, key, links, cat, mine) {
     d.replay?.cpi?.last ? jarLong(d.replay.cpi.last) : '',
     d.replay?.cpi?.gap || '', // a month BLS never published (Oct 2025), carried forward
   ].filter(Boolean);
-  return `
-    <div class="wi-layout${d.cert ? '' : ' no-cert'}">
-    <div class="wi-head">
-    <p class="hero num wi-hero"><span class="hero-value ${dir}">${esc(fmtUsd(t.value))}</span><span class="wi-x ${dir}">${esc(fmtX(t.multiple))}</span></p>
-    <p class="wi-sentence">${esc(hero.lead)}${hero.paid ? ` You paid <span class="num wi-paid">${esc(fmtUsd(t.paid))}</span>.` : ''}</p>
-    ${quip ? `<p class="wi-quip">${esc(quip)}</p>` : ''}
-    </div>
-    ${replayHtml(d)}
-    ${d.cert ? `<div class="wi-certcol">${certHtml(d.cert, links, actions, videoHtml(d))}</div>` : ''}
-    <div class="wi-body">
-    <div class="wi-receipt">
-      <table class="grid-table wi-table">
-        <thead><tr><th scope="col">Item</th><th scope="col" class="num wi-when">Bought</th><th scope="col" class="num">Paid</th><th scope="col" class="num wi-sh">Shares</th><th scope="col" class="num">Worth now</th><th scope="col" class="num">x</th></tr></thead>
-        <tbody>${rows}</tbody>
-        <tfoot><tr><th scope="row" class="name">Total</th><td class="wi-when"></td><td class="num">${esc(fmtUsd(t.paid))}</td><td class="wi-sh"></td><td class="num last ${dir}">${esc(fmtUsd(t.value))}</td><td class="num ${dir}">${esc(fmtX(t.multiple))}</td></tr></tfoot>
-      </table>
-    </div>
-    ${d.cert ? '' : actions}
-    <details class="how wi-details">
-      <summary>Details</summary>
+  return `${table ? tableHtml(d) : ''}
       <ul class="how-list">${small.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
       <p class="how-h">How it is calculated</p>
       <ul class="how-list">
@@ -682,88 +860,70 @@ function resultHtml(d, key, links, cat, mine) {
       </ul>
       <p class="how-h">Notes and sources</p>
       <ul class="how-list">${notes}</ul>
-    </details>
-    </div>
-    </div>`;
+      <p class="wi-over"><a class="code" href="${esc(q('WHATIF'))}" data-cmd="WHATIF">START OVER</a></p>`;
+}
+
+// The result page. key: the command as typed; links: shareLinks(d.cert); video: videoHtml(d).
+export function resultHtml(d, { key, links = null, mine = [], video = '' } = {}) {
+  const multi = d.rows.length > 1;
+  const editCmd = `WHATIF EDIT ${String(key || '').replace(/^WHATIF\s*/, '')}`;
+  const chart = replayHtml(d);
+  return cardPage({
+    split: Boolean(d.cert), cls: 'wi-result', label: 'WHATIF result',
+    art: d.cert ? raw(certHtml(d.cert)) : '',
+    // Each sentence on a line of its own (a phone wraps them as it must).
+    sub: raw(resultSentence(d, mine).split(/(?<=\.) (?=[A-Z])/).map((l) => `<span class="wi-line">${esc(l)}</span>`).join(' ')),
+    act: d.cert && links ? raw(shareHtml(d, links, video)) : '',
+    note: RESULT_NOTE,
+    chart: chart ? raw(chart) : '',
+    media: multi ? raw(tableHtml(d)) : '',
+    links: [
+      chart ? cardLink({ label: 'REPLAY', attrs: 'data-replay title="Replay (Space)"' }) : '',
+      cardLink({ label: 'CHANGE PICKS', cmd: editCmd }),
+    ],
+    details: raw(detailsHtml(d, { table: !multi })),
+  });
 }
 
 // ---- REPLAY ------------------------------------------------------------------------
 
-// The title strip: the small print only, short, with its exact long form as the tooltip.
-// The rest of what used to sit there is in + Details.
-export const HINDSIGHT_STRIP = 'Hindsight. Past returns do not predict future ones. Not a recommendation.';
 export const HABIT_LONG = 'Habits are bought once a month, on the first trading day. The month still running counts only the days so far.';
 export const jarLong = (last) => `CASH IN A JAR: the same cash, deflated by CPI-U from the BLS, to ${fmtMonth(last)}. Later months use the latest value.`;
-export function resultMeta() {
-  return metaNote(HINDSIGHT_STRIP, HINDSIGHT_NOTE);
-}
-const money = (n) => (n > 0 ? `−${fmtUsd(n)}` : fmtUsd(0));
 
-// SAVE VIDEO sits on the share row, second after SHARE ON X. Where the browser cannot
-// make one, a plain line says why instead.
-export function videoHtml(d, support = videoSupport()) {
-  if (!d.cert || !d.replay?.points?.length) return '';
-  return support
-    ? '<button type="button" class="wi-btn" data-video>SAVE VIDEO</button>'
-    : `<span class="wi-vneeds">${esc(VIDEO_NEEDS)}</span>`;
-}
-
-// The race: a date, the three lines' names and values in their colours, and a small
-// REPLAY control, over the chart.
+// The race: three thin lines, each named at its end on the chart (whatif-replay.js).
+// The values are in the chart's label, for a screen reader.
 export function replayHtml(d) {
   const pts = d.replay?.points;
   if (!pts?.length) return '';
   const last = pts[pts.length - 1];
   const label = `Replay from ${fmtDay(pts[0].d)} to today: stock ${fmtUsd(last.stock)}, cash in a jar ${fmtUsd(last.jar)}, spent ${fmtUsd(last.spent)}.`;
-  return `<section class="wi-replay" aria-label="Replay">
-      <div class="wr-head">
-        <span class="wr-date num" data-wr="date">${esc(fmtDay(last.d))}</span>
-        <span class="wr-key wr-stock">STOCK <span class="num" data-wr="stock">${esc(fmtUsd(last.stock))}</span></span>
-        <span class="wr-key wr-jar">CASH IN A JAR <span class="num" data-wr="jar">${esc(fmtUsd(last.jar))}</span></span>
-        <span class="wr-key wr-spent">SPENT <span class="num" data-wr="spent">${esc(money(last.spent))}</span></span>
-        <button type="button" class="wr-play" data-replay title="Replay (Space)">REPLAY</button>
-      </div>
-      <canvas class="wr-canvas" role="img" aria-label="${esc(label)}"></canvas>
-    </section>`;
+  return `<div class="wi-replay"><canvas class="wr-canvas" role="img" aria-label="${esc(label)}"></canvas></div>`;
 }
 
 function setupReplay(el, d, ctx) {
   const box = el.querySelector('.wi-replay');
   if (!box) return;
   const pts = d.replay.points;
-  const last = pts[pts.length - 1];
-  const $ = (k) => box.querySelector(`[data-wr="${k}"]`);
-  const hero = el.querySelector('.hero-value');
-  const mult = el.querySelector('.wi-x');
-  const paid = el.querySelector('.wi-paid');
+  const card = el.querySelector('.wi-result');
   const cert = el.querySelector('.wi-cert');
   const certBig = cert?.querySelector('.wc-big');
   const certSpent = cert?.querySelector('.wc-l1');
   // Everything that rolls, with its final text and classes, put back exactly at the end.
-  const rolling = [hero, mult, paid, certBig, certSpent].filter(Boolean);
+  const rolling = [certBig, certSpent].filter(Boolean);
   const finals = rolling.map((n) => [n, n.textContent, n.className]);
-  const setDir = (n, dir) => { n.classList.toggle('up', dir === 'up'); n.classList.toggle('down', dir === 'down'); };
   const show = (f) => {
-    $('date').textContent = f.done ? fmtDay(last.d) : fmtCounter(f.t);
-    $('stock').textContent = fmtUsd(f.stock);
-    $('jar').textContent = fmtUsd(f.jar);
-    $('spent').textContent = money(f.spent);
     if (f.done) {
       for (const [n, text, cls] of finals) { n.textContent = text; n.className = cls; }
       return;
     }
-    const dir = isBehind(f) ? 'down' : 'up';
-    const x = f.spent > 0 ? f.stock / f.spent : NaN;
-    if (hero) { hero.textContent = fmtUsd(f.stock); setDir(hero, dir); }
-    if (mult) { mult.textContent = fmtX(x); setDir(mult, dir); }
-    if (paid) paid.textContent = fmtUsd(f.spent);
     if (certBig) certBig.textContent = fmtUsd(f.stock);
     if (certSpent) certSpent.textContent = `You spent ${fmtUsd(f.spent)}`;
-    cert?.classList.toggle('is-behind', dir === 'down');
+    cert?.classList.toggle('is-behind', isBehind(f));
   };
   const player = createReplay(box.querySelector('.wr-canvas'), pts, {
     onFrame: show,
     onDone: () => {
+      card?.classList.remove('is-racing');
       if (!cert) return;
       cert.classList.remove('is-racing', 'is-behind', 'is-stamped');
       void cert.offsetWidth; // restart the stamp
@@ -771,8 +931,14 @@ function setupReplay(el, d, ctx) {
     },
   });
   // The certificate shows from the start, its number rolling; the seal stamps at the end.
-  const replay = () => { cert?.classList.remove('is-stamped'); cert?.classList.add('is-racing'); player.play(); };
-  box.querySelector('[data-replay]').addEventListener('click', replay);
+  // The sentence and the list wait for the end (one amount on screen at a time).
+  const replay = () => {
+    card?.classList.add('is-racing');
+    cert?.classList.remove('is-stamped');
+    cert?.classList.add('is-racing');
+    player.play();
+  };
+  el.querySelectorAll('[data-replay]').forEach((b) => b.addEventListener('click', replay));
 
   // Space replays, while the command bar is empty (or nothing else has the focus).
   const onKey = (e) => {
@@ -833,25 +999,24 @@ export function render(el, cmd, ctx) {
     return ctx.fetchJSON(`/api/whatif?${new URLSearchParams({ c: plan.words.join(' ') })}`, { signal: ctx.signal }).then((d) => {
       if (d.picker) { renderPicker(el, ctx, cat, plan.picks, plan.shelf, plan.mine); return; }
       const links = d.cert ? shareLinks(d.cert, location.origin) : null;
-      el.innerHTML = panel('1', WHATIF_TITLE, resultHtml(d, key, links, cat, plan.mine), { cls: 'panel-solo wi-panel', meta: resultMeta(d) });
+      el.innerHTML = panel('1', WHATIF_TITLE, resultHtml(d, { key, links, mine: plan.mine, video: videoHtml(d) }), { cls: 'panel-solo wi-panel' });
       sizeCert(el);
+      setupShare(el, ctx, key);
       setupReplay(el, d, ctx);
       el.querySelector('[data-copy]')?.addEventListener('click', async (e) => {
         const ok = await copyText(e.currentTarget.dataset.copy);
         ctx.status(ok ? 'LINK COPIED' : 'COPY THE LINK FROM THE ADDRESS BAR', ok ? '' : 'warn');
         if (ok) goal('whatif_share', { via: 'link' }, { once: key });
       });
-      // EMBED: copies the iframe line (public/embed-snippet.js), says so on the button.
+      // EMBED: copies the iframe line (public/embed-snippet.js); the status line says so.
       el.querySelector('[data-embed]')?.addEventListener('click', async (e) => {
         const b = e.currentTarget;
         const ok = await copyText(whatifEmbedSnippet(b.dataset.embed));
-        if (ok) { b.textContent = 'COPIED'; setTimeout(() => { b.textContent = 'EMBED'; }, 2000); }
         ctx.status(ok ? 'EMBED CODE COPIED' : 'COULD NOT COPY', ok ? '' : 'warn');
         if (ok) goal('whatif_embed', { kind: 'whatif' }, { once: b.dataset.embed });
       });
       ctx.status(`WHATIF: ${fmtX(d.total.multiple)}${d.stale ? ' (LAST KNOWN PRICES)' : ''}`, d.stale ? 'warn' : '');
       goal('whatif_run', undefined, { once: key });
-      el.querySelector('.wi-share')?.addEventListener('click', (e) => { const b = e.target.closest('a'); if (b) goal('whatif_share', { via: b.hasAttribute('download') ? 'image' : 'x' }, { once: key }); });
     });
   }).catch((err) => {
     if (err.name === 'AbortError') return;

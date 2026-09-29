@@ -93,8 +93,9 @@ test('no prose footnotes under panels: reading notes live in the title strip', a
   const { metaNote } = await import('../public/screens/markets.js');
   assert.equal(metaNote('A = B', 'long <form>'), '<span class="meta-note" title="long &lt;form&gt;">A = B</span>');
   // The legally required small print keeps its exact words, now in the title strip.
-  // WHATIF: a short strip, with the exact words as its tooltip and first in + Details.
-  assert.match(src('screens/whatif.js'), /metaNote\(HINDSIGHT_STRIP, HINDSIGHT_NOTE\)/);
+  // WHATIF (a card page since Sep 29): a short note under SHARE, the exact words first in
+  // + Details; no title strip.
+  assert.match(src('screens/whatif.js'), /note: RESULT_NOTE,/);
   assert.match(src('screens/whatif.js'), /const small = \[\n    HINDSIGHT_NOTE,/);
   assert.match(src('screens/fedpath.js'), /FP_NOTE = metaNote\('IMPLIED BY FUTURES, NOT A FORECAST', LABEL\)/);
   assert.match(src('screens/funding.js'), /Hindsight only\. Past returns do not predict future returns\. Not a recommendation\./);

@@ -6,7 +6,10 @@ import {
   addMonths, monthsBetween, daysInMonth, stepPrice, WhatifError,
 } from '../data/whatif.js';
 import { getWhatif, getFunding } from '../data/whatif-service.js';
-import { planWhatif, normalizeSpec, commandFor, quipFor, QUIPS, familyIds, fmtX } from '../public/screens/whatif.js';
+import {
+  planWhatif, normalizeSpec, commandFor, familyIds, fmtX, shelfCards, familyPick, chipLabels, chipsHtml, familyCardHtml,
+  familyCardParts, cardHtml, FAMILY_CARDS,
+} from '../public/screens/whatif.js';
 
 const catalog = JSON.parse(readFileSync(new URL('../data/whatif-products.json', import.meta.url)));
 const prices = JSON.parse(readFileSync(new URL('../data/whatif-prices.json', import.meta.url)));
@@ -169,10 +172,54 @@ test('picker helpers: families, edit mode, specs, command', () => {
   assert.equal(fmtX(13.284), '13.3x');
 });
 
-test('one-liners: picked by outcome, same input same line, plain copy', () => {
-  assert.ok(QUIPS.big.includes(quipFor(13, 'WHATIF IPHONE6')));
-  assert.ok(QUIPS.gain.includes(quipFor(1.4, 'WHATIF LATTE:3Y')));
-  assert.ok(QUIPS.loss.includes(quipFor(0.2, 'WHATIF PELOTON')));
-  assert.equal(quipFor(3, 'WHATIF X'), quipFor(3, 'WHATIF X'));
-  for (const line of Object.values(QUIPS).flat()) assert.doesNotMatch(line, /\u2014/);
+test('family cards: one card per family, its chips the same item ids as the commands', () => {
+  const cat = {
+    products: catalog.products.map((p) => ({ ...p, kind: 'once' })),
+    recurring: catalog.recurring.map((r) => ({ ...r, kind: 'monthly' })),
+  };
+  const gadgets = shelfCards(cat, 'GADGETS');
+  const phones = gadgets.filter((c) => c.fam === 'IPHONE');
+  assert.equal(phones.length, 1, 'one iPhone card, not 18');
+  assert.ok(!gadgets.some((c) => c.item?.family === 'IPHONE'));
+  const fam = phones[0];
+  assert.equal(fam.name, 'iPhone');
+  assert.deepEqual(fam.items.map((p) => p.id), familyIds(cat, 'IPHONE'), 'the chips are the ids WHATIF IPHONE picks');
+  assert.equal(gadgets.indexOf(fam), 0, 'where the first iPhone stood');
+  // The games shelf: PlayStation, Xbox and GeForce fold; Switch and Quest stay one card each.
+  const games = shelfCards(cat, 'GAMES');
+  assert.deepEqual(games.filter((c) => c.fam).map((c) => [c.fam, c.items.map((p) => p.id)]),
+    [['GEFORCE', ['gtx1080', 'rtx3080', 'rtx4090']], ['PLAYSTATION', ['ps4', 'ps5']], ['XBOX', ['xboxone', 'xboxseriesx']]]);
+  assert.deepEqual(games.filter((c) => c.item).map((c) => c.item.id), ['switch', 'quest2']);
+  assert.equal(shelfCards(cat, 'CARS').filter((c) => c.item).length, 4, 'the Teslas are different cars: a card each');
+  // The first chip picked is the one people share most: iPhone 6. Every default is in its family.
+  assert.equal(familyPick(fam), 'iphone6');
+  for (const [f, { pick }] of Object.entries(FAMILY_CARDS)) assert.ok(familyIds(cat, f).includes(pick), `${f}: ${pick}`);
+  // A chip runs the same command as typing the model: WHATIF IPHONE6, WHATIF IPHONE6 IPHONE8.
+  assert.equal(commandFor(new Map([[familyPick(fam), '']]), cat), 'WHATIF IPHONE6');
+  const html = chipsHtml(fam, new Map([['iphone6', ''], ['iphone8', '']]));
+  const ids = [...html.matchAll(/data-chip="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(ids, fam.items.map((p) => p.id));
+  assert.deepEqual([...html.matchAll(/data-chip="([^"]+)" aria-pressed="true"/g)].map((m) => m[1]), ['iphone6', 'iphone8']);
+  assert.match(html, /data-chip="iphone6" aria-pressed="true" tabindex="0"/, 'the roving focus starts on the first picked');
+  assert.equal((html.match(/tabindex="0"/g) || []).length, 1);
+  const edit = planWhatif(['EDIT', 'IPHONE6', 'IPHONE8'], cat);
+  assert.equal(commandFor(edit.picks, cat), 'WHATIF IPHONE6 IPHONE8');
+  assert.deepEqual([...planWhatif(['IPHONE'], cat).picks.keys()], ids, 'WHATIF IPHONE: every chip picked');
+  // Chip words: the model without the family word; the year beside it.
+  assert.deepEqual(chipLabels(fam.items).slice(0, 7), ['3G', '3GS', '4', '4S', '5', '5s', '6']);
+  // The catalogue the browser gets has no short names: the words in brackets go.
+  assert.deepEqual(chipLabels(fam.items.map(({ short, ...p }) => p)).filter((l) => /\(|\s/.test(l)), [], 'no notes on a chip');
+  assert.deepEqual(chipLabels(games.find((c) => c.fam === 'XBOX').items), ['One', 'Series X']);
+  assert.deepEqual(chipLabels(games.find((c) => c.fam === 'GEFORCE').items), ['GTX 1080', 'RTX 3080', 'RTX 4090']);
+  assert.match(html, /data-chip="iphone6"[^>]*>6 <span class="wi-chip-y num">2014<\/span>/);
+  // The card: doodle and name only; the model, year and price once picked; "2 PICKED" for more.
+  const none = familyCardHtml(fam, new Map());
+  assert.match(none, /doodle-phones\.webp[\s\S]*<span class="wi-cname">iPhone<\/span><span class="wi-cmeta num" data-meta hidden><\/span>/);
+  assert.doesNotMatch(none, /\$|20\d\d/);
+  assert.deepEqual(familyCardParts(fam, new Map([['iphone6', '']])), { on: true, name: 'iPhone 6', meta: '2014 $649.00' });
+  assert.deepEqual(familyCardParts(fam, edit.picks), { on: true, name: 'iPhone', meta: '2 PICKED' });
+  // A single card: the year and price are there but hidden until it is picked.
+  const ipad = cat.products.find((p) => p.id === 'ipad');
+  assert.match(cardHtml(ipad, new Map()), /data-meta hidden>2010 \$499\.00</);
+  assert.match(cardHtml(ipad, new Map([['ipad', '']])), /data-meta>2010 \$499\.00</);
 });

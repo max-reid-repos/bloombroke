@@ -51,6 +51,9 @@ import { mcpHtml, MCP_URL, MCP_RULE, MCP_APPS } from '../public/screens/mcp.js';
 import { tapeHtml } from '../public/screens/tape.js';
 import { linkConfirmHtml, renamedHtml, soonHtml, notLoadedHtml, liveHintHtml } from '../public/cards.js';
 import { parseCommand } from '../public/app.js';
+import { resultHtml as whatifHtml, shareLinks as whatifLinks, videoHtml as whatifVideo } from '../public/screens/whatif.js';
+import { getWhatif, catalog as WHATIF_CATALOG } from '../data/whatif-service.js';
+import { certModel } from '../data/whatif-cert.js';
 
 const all = () => true;
 const KEY = 'BB-7KQ2-M9XD-HT4P-WZ3C';
@@ -114,6 +117,24 @@ export const CARDS_B = [
   ['TAPE, Pro, a note', tapeHtml({ on: true, isPro: true, custom: ['AAPL', 'MSFT', 'GOLD'], note: 'No ticker called XYZQ.', kind: 'warn' }).replace(TAPE_LIST, ''), 20],
 ];
 
+// ---- WHATIF results: a split card page (kit.js cardPage split), 20 words ------------------
+// Fixed prices, so nothing touches the network. The list of things (two or more) is the
+// media: a list, not words (like TAPE's), so it is left out of the count.
+const WI_NOW = new Date('2026-09-27T12:00:00Z');
+const wiQuote = async () => ({ last: 100, asOf: '2026-09-25T20:00:00Z' });
+export async function whatifPage(tokens) {
+  const d = await getWhatif(tokens, { quoteImpl: wiQuote, chartImpl: async () => null, risk: true, now: WI_NOW });
+  const command = `WHATIF ${tokens.join(' ')}`;
+  d.cert = certModel(d, WHATIF_CATALOG, command);
+  return whatifHtml(d, { key: command, links: whatifLinks(d.cert, 'https://bloombroke.com'), video: whatifVideo(d, 'webcodecs') });
+}
+const WI_LIST = /<div class="card-media"><div class="wi-receipt">[\s\S]*?<\/table>\s*<\/div><\/div>/;
+export const WHATIF = [
+  ['WHATIF IPHONE6', await whatifPage(['IPHONE6'])],
+  ['WHATIF BEER:10Y (a VICES habit)', await whatifPage(['BEER:10Y'])],
+  ['WHATIF IPHONE6 RTX3080 LATTE:3Y (the list is the media)', (await whatifPage(['IPHONE6', 'RTX3080', 'LATTE:3Y'])).replace(WI_LIST, '')],
+];
+
 // [page, html, budget]: the words above + Details, numbers, keys and codes not counted.
 export const PAGES = [
   ['PRO visitor (test mode)', shownInTest(mainHtml({ next: 4, has: all })), 30],
@@ -139,6 +160,7 @@ export const PAGES = [
   ['ME, Pro ended', meHtml({ key: KEY, st: { ...ST, status: 'canceled' }, has: all }), 20],
   ...NOSUCH.map(([name, html]) => [name, html, 30]),
   ...CARDS_B.map(([name, html, budget]) => [name, html, budget]),
+  ...WHATIF.map(([name, html]) => [name, html, 20]),
 ];
 
 // The usage card (kit.js usageCard) wherever a command is typed wrong: 15 words at most.
@@ -247,6 +269,7 @@ function cardCss() {
     ['me.css', readFileSync('public/screens/me.css', 'utf8')],
     ['graveyard.css stone card', (() => { const g = readFileSync('public/screens/graveyard.css', 'utf8'); return g.slice(g.indexOf('/* ---- One stone as a card page')); })()],
     ['nosuch.css NO SUCH card', (() => { const n = readFileSync('public/screens/nosuch.css', 'utf8'); return n.slice(n.indexOf('/* The NO SUCH card')); })()],
+    ['whatif.css result card', (() => { const w = readFileSync('public/screens/whatif.css', 'utf8'); return w.slice(w.indexOf('/* ---- WHATIF result: a split card page'), w.indexOf('/* Title strip parts')); })()],
     // WELCOME's colours keep their fallbacks (it can paint before style.css): sizes only.
     ['welcome.css', readFileSync('public/screens/welcome.css', 'utf8'), { colours: false }],
   ];
@@ -575,4 +598,31 @@ test('Part B: TAPE is a small card: ON or OFF, one line, the one switch, the tap
   }
   // A card hero is text to read: no user-select: all (keys keep it, .pro-key).
   assert.doesNotMatch(readFileSync('public/kit.css', 'utf8'), /user-select/);
+});
+
+test('split card: the art beside the other slots from 1100 px, one column below; the same slots in the same order', () => {
+  const html = cardPage({ split: true, art: raw('<img alt="">'), sub: 'x', links: [cardLink({ label: 'L', cmd: 'L' })] });
+  assert.match(html, /^<section class="card card-split"><div class="card-art"><img alt=""><\/div><div class="card-col"><div class="card-head"><p class="card-sub">x<\/p><\/div><div class="card-foot"><p class="card-links">/);
+  assert.doesNotMatch(cardPage({ split: true, sub: 'x' }), /card-split|card-col/, 'no art: the one column');
+  assert.doesNotMatch(cardPage({ art: raw('<img alt="">'), sub: 'x' }), /card-split|card-col/, 'not asked: the one column');
+  const kit = readFileSync('public/kit.css', 'utf8');
+  assert.match(kit, /@media \(min-width: 1100px\) \{\n  \.card\.card-split \{\n    display: grid; grid-template-columns: minmax\(0, 3fr\) minmax\(0, 2fr\); align-items: start; gap: 48px;\n    max-width: calc\(var\(--card-w\) \* 2\); text-align: left;/);
+  // The right column keeps the card's gaps (and steps down with them).
+  assert.match(kit, /\.card-col \{ display: flex; flex-direction: column; align-items: center; gap: 32px;/);
+  assert.match(kit, /@media \(max-width: 1099px\), \(max-height: 800px\) \{\n  \.card, \.card-col \{ gap: 24px; \}/);
+});
+
+test('WHATIF: every result keeps to 20 words, the certificate is the picture, one SHARE', async () => {
+  for (const [name, html] of WHATIF) {
+    assert.match(html, /^<section class="card card-split wi-result"/, `${name}: a split card page`);
+    assert.match(html, /<div class="card-art"><figure class="wi-cert[^"]*" role="img" aria-label="A certificate: /, `${name}: the certificate is the art, its words the picture's`);
+    assert.equal((html.match(/btn-solid/g) || []).length, 1, `${name}: SHARE, the one primary button`);
+    assert.doesNotMatch(html, /card-hero/, `${name}: the certificate is the hero`);
+  }
+  // Every catalogue item on its own, and a few together, keep to the budget.
+  const each = [...WHATIF_CATALOG.products.map((p) => [p.id.toUpperCase()]), ...WHATIF_CATALOG.recurring.map((r) => [`${r.id.toUpperCase()}:10Y`])];
+  for (const tokens of [...each, ['IPHONE6', 'IPHONE8'], ['MODELS', 'BIGMAC:5Y', 'BETTING:3Y', 'PS5']]) {
+    const w = cardWords((await whatifPage(tokens)).replace(WI_LIST, ''));
+    assert.ok(w.length <= 20, `WHATIF ${tokens.join(' ')}: ${w.length} words: ${w.join(' ')}`);
+  }
 });

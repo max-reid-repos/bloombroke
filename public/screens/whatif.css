@@ -30,7 +30,10 @@
   align-self: end; padding-right: 24px; font-size: 12px; line-height: 15px;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
+/* A card shows its doodle and name; the year and price only once it is picked. */
+.wi-card:has(> .wi-cmeta[hidden]) .wi-cname { grid-row: 1 / span 2; align-self: center; }
 .wi-cmeta { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 11px; white-space: nowrap; }
+.wi-cmeta[hidden] { display: none; }
 .wi-years input {
   width: 8ch; height: 20px; padding: 0 4px;
   border: 1px solid var(--rule-strong); background: var(--panel);
@@ -65,67 +68,79 @@
 @media (max-width: 639px) { .wi-shelf { --wi-bar-h: 40px; } }
 .wi-bar {
   position: sticky; bottom: var(--dock-h);
-  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
   margin-top: 10px; padding: 6px 8px;
   background: var(--panel-2); border: 1px solid var(--rule-strong);
   box-shadow: 0 -8px 10px -4px var(--bg);
   font-size: 12px;
 }
+.wi-bar-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+/* A picked family's models, over the RUN bar: one chip each, the picked ones lit. The
+   row scrolls sideways (edge fades) and never wraps. */
+.wi-chips { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--rule); }
+.wi-chips[hidden] { display: none; }
+.wi-chips-label { flex: 0 0 auto; }
+.wi-chips-row { display: flex; gap: 6px; min-width: 0; }
+.wi-chip { flex: 0 0 auto; gap: 6px; height: 24px; letter-spacing: .04em; cursor: pointer; }
+.wi-chip-y { color: var(--dim); font-weight: 400; }
+.wi-chip[aria-pressed="true"] { color: var(--ink); background: var(--accent); border-color: var(--accent); }
+.wi-chip[aria-pressed="true"] .wi-chip-y { color: var(--ink); }
+.wi-chip:focus-visible { outline: 1px solid var(--text); outline-offset: 1px; }
 .wi-count { color: var(--text); font-weight: 600; letter-spacing: .06em; white-space: nowrap; }
 .wi-cmd { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.wi-hero { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 16px; }
-.wi-x { font-size: 26px; font-weight: 700; }
-.wi-sentence { margin-top: 4px; font-size: 15px; color: var(--text); }
-.wi-quip { margin-top: 6px; color: var(--text-2); font-size: 13px; }
-.wi-receipt { margin: 16px -10px 0; border-top: 1px solid var(--rule-strong); overflow-x: auto; }
-.wi-table tfoot th, .wi-table tfoot td { height: 28px; font-weight: 600; border-top: 1px solid var(--rule-strong); padding: 0 10px; }
-.wi-table tfoot .name { color: var(--text); letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
 .wi-table .is-loss .name a { color: var(--down); }
 .wi-when { color: var(--text-2); }
 .wi-when-m { display: none; }
-.wi-actions { display: flex; gap: 16px; margin-top: 10px; font-size: 11px; letter-spacing: .06em; }
-.wi-actions .code { color: var(--dim); }
-.wi-actions .code:hover { color: var(--accent); }
-/* EMBED (public/embed-snippet.js): a button that looks like the links beside it. */
-.wi-actions button.code { padding: 0; border: 0; background: none; font: inherit; letter-spacing: inherit; cursor: pointer; }
 .wi-note-name { color: var(--text); }
 .how-h { margin-top: 12px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
-.wi-details { margin-top: 10px; }
+
+/* ---- WHATIF result: a split card page (kit.js cardPage split) ----------------------
+   The certificate is the art (the hero); beside it on a desktop, under it on a phone:
+   the sentence (sub), SHARE and its menu (act), the note, the race (chart), the list of
+   things when there are two or more (media), REPLAY and CHANGE PICKS (links), + Details.
+   Sizes on the type and spacing scales (style.css); colours from its palette. */
+.wi-result .card-art { max-width: 100%; }
+/* While the race runs only the certificate and the chart move: the sentence and the list
+   wait for the end (their room is kept, so nothing jumps). */
+.wi-result.is-racing .card-sub, .wi-result.is-racing .wi-receipt { visibility: hidden; }
+.wi-result .card-sub { color: var(--text); }
+.wi-line { display: block; }
+/* SHARE: one primary button; its menu opens under it, over what follows. */
+.wi-sharebox { position: relative; display: inline-flex; }
+.wi-menu {
+  position: absolute; top: 100%; left: 0; z-index: 20;
+  display: flex; flex-direction: column; min-width: 100%; margin-top: 4px; padding: 4px 0;
+  background: var(--panel-2); border: 1px solid var(--rule-strong); text-align: left;
+}
+.wi-menu[hidden] { display: none; }
+.wi-mi {
+  display: block; padding: 8px 16px; border: 0; background: none;
+  color: var(--text-2); font-family: var(--font); font-size: 13px; text-align: left; white-space: nowrap; text-decoration: none; cursor: pointer;
+}
+.wi-mi:hover, .wi-mi:focus-visible { color: var(--text); background: var(--panel-3); text-decoration: none; outline: 0; }
+.wi-mi:disabled { cursor: progress; }
+.wi-mi.is-off { max-width: 32ch; color: var(--dim); white-space: normal; cursor: default; }
+.wi-vmsg { flex: 1 0 100%; font-size: 11px; letter-spacing: .04em; color: var(--dim); }
+.wi-vmsg:empty { display: none; }
+/* The race: three thin lines, named at their ends; a little taller on a phone. */
+.wi-replay { width: 100%; }
+.wr-canvas { display: block; width: 100%; height: 130px; }
+/* The list of things (two or more): it reads left to right; in a narrow column the
+   BOUGHT and SHARES columns fold under the name. */
+.wi-result .card-media { align-items: stretch; }
+.wi-receipt { width: 100%; overflow-x: auto; container-type: inline-size; text-align: left; }
+.wi-result .card-details .wi-receipt { margin-bottom: 12px; }
+@container (max-width: 559px) {
+  .wi-table .wi-sh, .wi-table .wi-when { display: none; }
+  .wi-table tbody .name { white-space: normal; padding-top: 4px; padding-bottom: 4px; }
+  .wi-when-m { display: block; font-size: 11px; }
+}
+.wi-over { margin-top: 12px; font-size: 12px; letter-spacing: .06em; }
+
+/* Title strip parts, split by a dot (on phones they wrap, one per line, no dots). */
+.wi-panel .panel-meta > * + *::before { content: '· '; }
 
 /* WHATIF certificate: text over the art, placed in % of the image (the same numbers as
    POS in lib/og.js), sized in cqw so it scales with the paper. */
-.wi-layout { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "replay" "cert" "body"; gap: 14px 28px; }
-.wi-head { grid-area: head; min-width: 0; }
-.wi-certcol { grid-area: cert; min-width: 0; }
-.wi-body { grid-area: body; min-width: 0; }
-.wi-body > .wi-receipt:first-child { margin-top: 0; }
-@media (min-width: 1100px) {
-  .wi-layout:not(.no-cert) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "cert head" "cert replay" "cert body"; grid-template-rows: auto auto 1fr; align-items: start; }
-}
-/* REPLAY: the race in thin terminal lines, in the right column under the number (on
-   phones too), so it is in view while it plays however long the table is. The
-   certificate waits, then stamps in when the race ends. */
-.wi-replay { grid-area: replay; min-width: 0; border-top: 1px solid var(--rule-strong); padding-top: 8px; }
-.wr-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 16px; font-size: 11px; letter-spacing: .06em; }
-.wr-date { min-width: 11ch; color: var(--text); font-weight: 600; }
-.wr-key .num { margin-left: 4px; color: var(--text); font-weight: 600; letter-spacing: 0; }
-.wr-stock { color: var(--accent); }
-.wr-jar { color: var(--cmp-3); }
-.wr-spent { color: var(--down); }
-.wr-canvas { display: block; width: 100%; height: 130px; margin-top: 6px; }
-/* REPLAY: a small quiet control at the chart's top right. */
-.wr-play {
-  margin-left: auto; height: 20px; padding: 0 8px;
-  border: 1px solid var(--rule-strong); background: transparent; color: var(--text-2);
-  font-family: var(--font); font-size: 10px; letter-spacing: .1em; cursor: pointer;
-}
-.wr-play:hover { border-color: var(--text); color: var(--text); }
-.wi-vmsg { margin-top: 6px; font-size: 11px; color: var(--dim); letter-spacing: .04em; }
-.wi-vmsg:empty { display: none; }
-.wi-vneeds { align-self: center; font-size: 11px; color: var(--dim); }
-/* Title strip parts, split by a dot (on phones they wrap, one per line, no dots). */
-.wi-panel .panel-meta > * + *::before { content: '· '; }
-.wi-certcol { overflow: clip; }
 .wc-seal { position: absolute; inset: 0; pointer-events: none; transform-origin: 82.5% 68.4%; }
 /* While racing, the number rolls in ink (red while behind) and the seal is empty; it
    stamps in with the multiple when the race ends. */
@@ -136,7 +151,7 @@
 .wi-cert {
   --paper-ink: #2A1A10; --paper-soft: #5A4330; --paper-red: #C23B2A;
   position: relative; container-type: inline-size;
-  width: 97%; max-width: 860px; margin: 4px 0 0 3%;
+  width: 97%; max-width: 860px; margin: 0 0 0 3%;
 }
 .wc-paper { display: block; width: 100%; height: auto; }
 .wc {
@@ -172,32 +187,21 @@
 @media (max-width: 639px) {
   .wi-shelf { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .wi-hint, .wi-cmd { display: none; }
-  .wi-bar { gap: 8px; flex-wrap: nowrap; }
+  .wi-bar-row { gap: 8px; flex-wrap: nowrap; }
+  .wi-chips { gap: 8px; }
   .wr-canvas { height: 150px; }
   .wi-panel .panel-head { flex-wrap: wrap; }
   .wi-panel .panel-label { flex: 1 1 100%; max-width: none; }
   .wi-panel .panel-meta { flex: 1 1 100%; justify-content: flex-start; text-align: left; padding-left: 8px; }
   .wi-panel .panel-meta > * + *::before { content: none; }
   .wi-panel .panel-meta:has(> .wi-hint:only-child) { display: none; }
-  .wi-sh, .wi-table .wi-sh, .wi-table .wi-when { display: none; }
-  .wi-table tbody .name { white-space: normal; padding-top: 4px; padding-bottom: 4px; }
-  .wi-when-m { display: block; font-size: 11px; }
-  .wi-sentence { font-size: 14px; }
-  .wi-x { font-size: 20px; }
   .wo-line { gap: 6px; font-size: 13px; }
   .wo-line input, .wo-line select { padding: 0 4px; font-size: 13px; }
   .wo-amt input { width: 6ch; padding-left: 16px; }
   .wo-cur { left: 5px; }
   .wo-dt { width: 8ch; }
-  .wi-receipt { margin: 12px -10px 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .wi-cert.is-stamped .wc-seal { animation: none; }
 }
-
-/* ==== from company-ui.css ==== */
-
-.wi-share .wi-actions { display: inline-flex; gap: 16px; margin: 0 0 0 auto; }
-.wi-body > .wi-actions { display: flex; }
-@media (max-width: 639px) { .wi-share .wi-actions { margin-left: 0; flex-basis: 100%; } }

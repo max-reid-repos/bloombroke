@@ -65,7 +65,20 @@ function cssVar(el, name, fallback) {
   return v || fallback;
 }
 
-// The lines up to frame f, thin, in terminal colours, with small monospace year marks.
+// Where the three names go at the lines' ends: in the lines' order top to bottom, at
+// least `gap` px apart and inside [top, bottom]. ys: the ends' y, in LINE_KEYS order.
+export function labelYs(ys, { gap = 12, top = 0, bottom = Infinity } = {}) {
+  const order = ys.map((y, i) => [y, i]).sort((a, b) => a[0] - b[0]);
+  const out = order.map(([y]) => y);
+  for (let i = 0; i < out.length; i += 1) out[i] = Math.max(out[i], i ? out[i - 1] + gap : top);
+  for (let i = out.length - 1; i >= 0; i -= 1) out[i] = Math.min(out[i], i < out.length - 1 ? out[i + 1] - gap : bottom);
+  const res = [];
+  order.forEach(([, i], k) => { res[i] = out[k]; });
+  return res;
+}
+
+// The lines up to frame f, thin, in terminal colours, with small monospace year marks,
+// each line named at its end (STOCK, CASH IN A JAR, SPENT), so no key is needed.
 export function drawTerminal(canvas, points, f) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const w = canvas.clientWidth;
@@ -85,8 +98,11 @@ export function drawTerminal(canvas, points, f) {
     rule: cssVar(canvas, '--rule-strong', '#2a3642'),
     dim: cssVar(canvas, '--dim', '#7C93A8'),
   };
+  const font = cssVar(canvas, '--font', 'monospace');
+  ctx.font = `11px ${font}`;
   const padL = 4;
-  const padR = 8;
+  // Room at the right for the names, after the last point.
+  const padR = 8 + Math.ceil(Math.max(...LINE_KEYS.map((k) => ctx.measureText(LINE_LABELS[k]).width)));
   const padT = 6;
   const padB = 16;
   const t0 = timeOf(points[0]);
@@ -97,7 +113,7 @@ export function drawTerminal(canvas, points, f) {
   const Y = (v) => padT + ((top - v) / span) * (h - padT - padB);
 
   // Zero line and year marks.
-  ctx.font = `10px ${cssVar(canvas, '--font', 'monospace')}`;
+  ctx.font = `10px ${font}`;
   ctx.fillStyle = col.dim;
   ctx.strokeStyle = col.rule;
   ctx.lineWidth = 1;
@@ -136,6 +152,18 @@ export function drawTerminal(canvas, points, f) {
   line('spent', col.spent, -1);
   line('jar', col.jar);
   line('stock', col.stock);
+
+  // The names, just right of the ends.
+  const endP = upto[upto.length - 1];
+  const sign = { stock: 1, jar: 1, spent: -1 };
+  const ys = labelYs(LINE_KEYS.map((k) => Y(sign[k] * endP[k])), { gap: 12, top: padT + 4, bottom: h - padB - 4 });
+  ctx.font = `11px ${font}`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  LINE_KEYS.forEach((k, i) => {
+    ctx.fillStyle = col[k];
+    ctx.fillText(LINE_LABELS[k], X(endP.t) + 6, ys[i]);
+  });
 }
 
 // ---- Player ------------------------------------------------------------------------

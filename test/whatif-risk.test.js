@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { maxDrawdown, holdingPath } from '../data/whatif.js';
 import { attachRisk, getWhatif } from '../data/whatif-service.js';
-import { QUIPS, riskLine, dropList, fmtDrop, HINDSIGHT_NOTE, WHATIF_TITLE } from '../public/screens/whatif.js';
+import { riskLine, dropList, fmtDrop, HINDSIGHT_NOTE, WHATIF_TITLE, RESULT_NOTE, PICKER_INTRO } from '../public/screens/whatif.js';
 import { HINDSIGHT_NOTE as OG_NOTE } from '../lib/og.js';
 import { COMMANDS } from '../public/app.js';
 
@@ -75,12 +75,12 @@ test('risk line: always shown, one holding or several', () => {
 });
 
 test('WHATIF copy is hindsight, never advice', () => {
-  const all = [...QUIPS.big, ...QUIPS.gain, ...QUIPS.loss, WHATIF_TITLE, COMMANDS.find((c) => c.name === 'WHATIF').hint];
+  const all = [RESULT_NOTE, PICKER_INTRO, WHATIF_TITLE, COMMANDS.find((c) => c.name === 'WHATIF').hint];
   for (const line of all) {
     assert.doesNotMatch(line, /\bshould\b/i, line);
     assert.doesNotMatch(line, /usually|always|will (grow|rise)/i, line);
   }
-  assert.ok(QUIPS.big.includes('In hindsight, the company did better than the product.'));
+  assert.equal(RESULT_NOTE, 'Hindsight. Not a recommendation.');
   assert.equal(HINDSIGHT_NOTE, 'Hindsight only. Past returns do not predict future returns. Not a recommendation.');
   assert.equal(OG_NOTE, HINDSIGHT_NOTE, 'the share image carries the same small print');
 });

@@ -23,9 +23,10 @@
 // (a name that truncates before columns drop).
 //
 // Card pages (the screens that are one thing, not a table: BBRK, SPONSOR, PRO, LOGIN,
-// REDEEM, GIFT, FEEDBACK, CHAT without Pro). Styles: kit.css, "Card pages".
+// REDEEM, GIFT, FEEDBACK, CHAT without Pro, a WHATIF result). Styles: kit.css, "Card pages".
 //   cardPage({ art, kicker, hero, sub, act, note, chart, facts, media, links, details })
 //                                 one centred column, the slots always in this order
+//   cardPage({ split: true, art, ... })  the art beside the rest on a desktop (WHATIF)
 //   cardButton / cardLink / cardForm / cardFacts / cardRows   the parts that go in them
 //   cardWords(html)               the words a card shows above its + Details
 //   fitToView(el)                 a globe sized to the room left in the first view
@@ -52,6 +53,11 @@ const q = (c) => '?' + new URLSearchParams({ c }).toString();
 //   LINKS   small dim links
 //   + Details (the same .how toggle as WHATIF, closed): everything else, as short rows.
 // A text value is escaped; raw(html) passes markup through (the caller escapes).
+//
+// split: when the art is the hero (WHATIF's certificate, the share image), the art takes
+// the left column and every other slot, in the same order, the right one, read left to
+// right: two columns from 1100 px wide (the desktop layout), one column below that, the
+// art first. The same slots and rules; only where the art sits changes.
 
 export const raw = (html) => ({ html: String(html ?? '') });
 const put = (v) => (v && typeof v === 'object' && 'html' in v ? v.html : esc(v));
@@ -100,7 +106,7 @@ export const DETAILS = 'Details';
 // The page. wide: BBRK's wider column. alert: a one-line message on top (after LOGIN,
 // an error). Leave any slot out and it is not drawn.
 export function cardPage({
-  label = '', id = '', wide = false, cls = '', alert = '', alertWarn = false, art = '',
+  label = '', id = '', wide = false, split = false, cls = '', alert = '', alertWarn = false, art = '',
   kicker = '', hero = '', heroSize = 60, heroId = '', heroLabel = '', sub = '', subId = '',
   act = '', note = '', noteId = '', chart = '', facts = null, media = '', links = [], details = '', detailsId = '', detailsOpen = false,
 } = {}) {
@@ -120,15 +126,17 @@ export function cardPage({
     linkRow.length ? `<p class="card-links">${linkRow.join(' ')}</p>` : '',
     given(details) ? `<details class="how card-more"${attr('id', detailsId)}${detailsOpen ? ' open' : ''}><summary>${DETAILS}</summary><div class="card-details">${put(details)}</div></details>` : '',
   ].join('');
-  return `<section class="card${wide ? ' card-wide' : ''}${cls ? ` ${esc(cls)}` : ''}"${attr('id', id)}${attr('aria-label', label)}>`
-    + (given(alert) ? `<p class="card-alert${alertWarn ? ' warn' : ''}" role="status">${put(alert)}</p>` : '')
-    + (given(art) ? `<div class="card-art">${put(art)}</div>` : '')
-    + (head ? `<div class="card-head">${head}</div>` : '')
+  const rest = (head ? `<div class="card-head">${head}</div>` : '')
     + (cta ? `<div class="card-cta">${cta}</div>` : '')
     + (given(chart) ? `<div class="card-chart">${put(chart)}</div>` : '')
     + (facts ? (typeof facts === 'string' ? facts : cardFacts(facts)) : '')
     + (given(media) ? `<div class="card-media">${put(media)}</div>` : '')
-    + (foot ? `<div class="card-foot">${foot}</div>` : '')
+    + (foot ? `<div class="card-foot">${foot}</div>` : '');
+  const two = split && given(art);
+  return `<section class="card${wide ? ' card-wide' : ''}${two ? ' card-split' : ''}${cls ? ` ${esc(cls)}` : ''}"${attr('id', id)}${attr('aria-label', label)}>`
+    + (given(alert) ? `<p class="card-alert${alertWarn ? ' warn' : ''}" role="status">${put(alert)}</p>` : '')
+    + (given(art) ? `<div class="card-art">${put(art)}</div>` : '')
+    + (two ? `<div class="card-col">${rest}</div>` : rest)
     + '</section>';
 }
 

@@ -256,9 +256,9 @@ test('EMBED copies the right one-line snippet', () => {
   assert.doesNotMatch(whatifEmbedSnippet('WHATIF "><script>'), /"><script>/);
   assert.equal(guessEmbedSnippet(), '<iframe src="https://bloombroke.com/embed/guess" width="600" height="420" style="border:0" loading="lazy" title="Bloombroke GUESS"></iframe>');
   const whatif = readFileSync(new URL('../public/screens/whatif.js', import.meta.url), 'utf8');
-  assert.match(whatif, /data-embed="\$\{esc\(d\.cert\.command\)\}"[^>]*>EMBED<\/button>/);
+  assert.match(whatif, /data-embed="\$\{esc\(d\.cert\.command\)\}"[^>]*>Embed<\/button>/, 'Embed: an item of the SHARE menu');
   assert.match(whatif, /copyText\(whatifEmbedSnippet\(b\.dataset\.embed\)\)/);
-  assert.match(whatif, /\$\{d\.cert && !d\.mine \? `<button type="button" class="code wi-embed"/, 'no EMBED on MY results');
+  assert.match(whatif, /d\.cert && !d\.mine \? `<button type="button" class="wi-mi" role="menuitem" data-embed=/, 'no EMBED on MY results');
   assert.match(whatif, /if \(ok\) goal\('whatif_embed', \{ kind: 'whatif' \}, \{ once: b\.dataset\.embed \}\);/);
   const guess = readFileSync(new URL('../public/screens/guess.js', import.meta.url), 'utf8');
   assert.match(guess, /class="chip gs-embed"[^>]*>EMBED<\/button>/);
