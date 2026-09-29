@@ -219,7 +219,7 @@ test('note and test mode: one dim line on the page; Details keeps every term as 
   assert.match(d, /you agree to the <a href="\/terms">Terms<\/a>/);
   assert.match(d, />FREE</);
   assert.match(d, />PRO</);
-  assert.match(d, /COMING WHEN PRO LAUNCHES/);
+  assert.doesNotMatch(d, /COMING WHEN PRO LAUNCHES/, 'closed-tab alerts are live now');
   // Every fact of the buying terms is still there, short: price, renewal, cancel, the
   // paid period, the experiment, the shutdown refund, gifts, login, not advice, operator.
   const text = d.replace(/<[^>]+>/g, ' ');

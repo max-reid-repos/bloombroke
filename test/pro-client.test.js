@@ -213,14 +213,15 @@ test('PRO screen: experimental notice before SUBSCRIBE, demo banner text', () =>
   assert.equal(DEMO_BANNER, 'Demo checkout. No real money. Use card 4242 4242 4242 4242, any future date, any CVC.');
 });
 
-test('PRO screen: renewal line, and closed-tab alerts only as coming when Pro launches', () => {
+test('PRO screen: renewal line, and closed-tab alerts live (PINGS in ME)', () => {
   const end = new Date(Date.UTC(2026, 9, 26, 12)).toISOString();
   assert.equal(statusText({ status: 'active', cancelAtPeriodEnd: false, currentPeriodEnd: end }), 'Renews Oct 26');
   assert.equal(statusText({ status: 'active', cancelAtPeriodEnd: true, currentPeriodEnd: end }), 'Active until Oct 26 (cancelled, will not renew)');
   assert.equal(statusText({ status: 'active', cancelAtPeriodEnd: false, cancelAt: end, currentPeriodEnd: end }), 'Active until Oct 26 (cancelled, will not renew)');
   assert.equal(statusText({ status: 'active' }), 'ACTIVE');
-  // Alerts while the tab is open are free and live; alerts with the tab closed are not built.
-  assert.ok(PRO_ROWS.filter(([name]) => /alert/i.test(name)).every(([, status]) => status === COMING), 'Pro does not promise alerts yet');
+  // Alerts while the tab is open are free; alerts with the tab closed are Pro, live, in ME.
+  assert.ok(PRO_ROWS.filter(([name]) => /alert/i.test(name)).every(([, status, cmd]) => status === LIVE && cmd === 'ME'), 'closed-tab alerts are live');
+  assert.ok(!PRO_ROWS.some(([, status]) => status === COMING));
   assert.ok(FREE_ROWS.some(([name, status]) => /alerts while the tab is open/i.test(name) && status === LIVE));
   for (const t of BUY_TERMS) assert.doesNotMatch(t, /alert/i);
 });

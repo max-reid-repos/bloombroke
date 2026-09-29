@@ -86,7 +86,7 @@ export function mountChat(app, {
   db, store, guess = createLimiter({ max: 20, windowMs: 15 * MIN }), mode = 'live', publicUrl = 'https://bloombroke.com',
   getQuote = async () => null, parse, linkChanges, titleOf = null, now = () => Date.now(), limits = chatLimits(now),
   hub = createHub({ now }), stampMs = STAMP_MS, log = console, guessSecret = null, sweepMs = DRIVE_SWEEP_MS,
-  meLimitsFor = meLimits(now),
+  meLimitsFor = meLimits(now), onMessage = null, onAccountDelete = null, pingsOf = null,
 }) {
   if (!parse || !linkChanges) throw new Error('mountChat needs the terminal parser');
   const chat = createChatStore(db, { now });
@@ -246,6 +246,8 @@ export function mountChat(app, {
       if (!hit.ok) return limited(res, hit, 'That is a lot of messages for one minute. Slow down a little.');
       const tickers = await stamp(text);
       const out = chat.send(id, lic.id, { text, card, tickers });
+      // PINGS (pro/push.js): before the nudge, while the waits still tell who is on CHAT.
+      try { onMessage?.({ room: id, from: lic.id, message: out.message, notify: out.notify, hub }); } catch (err) { log.error('[chat] ping', err?.message); }
       nudge(out, 'message', id);
       res.json({ message: out.message });
     } catch (err) { next(err); }
@@ -439,8 +441,13 @@ export function mountChat(app, {
   };
   // NEW KEY: the licence's open long-polls answer at once; the old key's next call is 401.
   store.onKeyChange?.((licId) => hub.emit([licId], { type: 'rooms' }));
+  // DELETE MY ACCOUNT also takes its push rows (PINGS, pro/push.js).
+  const onDelete = (licId) => {
+    endDrivesOf(licId);
+    try { onAccountDelete?.(licId); } catch (err) { log.error('[me] pings', err?.message); }
+  };
   mountMe(app, {
-    db, store, chat, hub, guess, mode, publicUrl, now, log, limits: meLimitsFor, onDelete: endDrivesOf,
+    db, store, chat, hub, guess, mode, publicUrl, now, log, limits: meLimitsFor, onDelete, pingsOf,
   });
   return { chat, hub, drives, sweep, purge: (t) => chat.purge(t) };
 }

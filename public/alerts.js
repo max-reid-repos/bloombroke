@@ -1,8 +1,7 @@
-// ALERTS: price and gauge alerts, kept in this browser only (localStorage, max 20).
-// Pure parts (parse, crossing, list maths, formatting) are exported for node:test. The
-// watcher (startAlerts) runs in the browser: while a Bloombroke tab is open it checks
-// every 60 seconds with one /api/quotes call (plus /api/weird when a gauge alert
-// exists), pauses while the tab is hidden, and lets only one open tab do the checking.
+// ALERTS: price and gauge alerts in this browser (localStorage, max 20; with closed-tab
+// alerts on, the server gets the quote alerts: push.js). Pure parts are exported for
+// node:test. The watcher (startAlerts): one open tab checks every 60 s, with one
+// /api/quotes call (plus /api/weird for a gauge).
 
 import { matchInstrument } from './instruments.js';
 import { tickerForName, LISTED_TICKERS, stockIdOf } from './known-tickers.js';
@@ -13,12 +12,14 @@ export const LEASE_KEY = 'bb.alerts.lease';
 export const CHECKED_KEY = 'bb.alerts.checked';
 export const MAX_ALERTS = 20;
 export const CHECK_MS = 60_000;
-// Longer than a hidden tab's throttled timer (about once a minute), so a hidden leader
-// keeps its lease between ticks.
+// Over a hidden tab's timer (about a minute): a hidden leader keeps its lease.
 export const LEASE_MS = 90_000;
 export const TICK_MS = 5_000;
 export const MAX_QUOTES = 60;
 export const HONEST_LINE = 'Alerts check while Bloombroke is open in a tab.';
+// Closed-tab alerts on here (push.js): the server pings the ids its last sync (under 2
+// minutes old, bb.push.sig) reported armed; the tab notifies the rest.
+const PUSHED = 'bb.push.alerts';
 
 const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 const SYM_RE = /^[A-Z0-9.&/-]{1,16}$/;
@@ -27,8 +28,7 @@ const OP_WORDS = { ABOVE: '>', OVER: '>', BELOW: '<', UNDER: '<' };
 const MINUS = '−';
 const MAX_TIME = 8.64e15; // the largest valid Date
 
-// WEIRD gauges that have one clear number (data/weird/<id>.js gives value and unit).
-// dp: the decimals the headline shows.
+// WEIRD gauges with one clear number (data/weird/<id>.js); dp: the headline's decimals.
 export const ALERT_GAUGES = {
   CANAL: { id: 'canal', unit: 'ships/day', dp: 0, name: 'Hormuz ships a day, 7-day average' },
   WAFFLE: { id: 'waffle', unit: 'stores', dp: 0, name: 'Waffle Houses inside storm winds' },
@@ -67,9 +67,8 @@ export function parseLevel(text) {
 
 const decimalsIn = (text) => (/\.(\d+)/.exec(String(text)) || [, ''])[1].length;
 
-// The symbol words of an alert -> { kind: 'quote', sym } | { kind: 'gauge', sym, gauge }
-// | { error, bad }. Named instruments (SPX, EUR/USD, S&P 500), tickers, and the company
-// names the terminal knows offline (APPLE -> AAPL), like the command bar.
+// Symbol words -> { kind: 'quote', sym } | { kind: 'gauge', sym, gauge } | { error, bad },
+// like the command bar: instruments, tickers, offline company names (APPLE -> AAPL).
 export function resolveAlertSymbol(words) {
   // $GOLD > 30: the stock GOLD, never spot gold.
   if (words.length === 1 && stockIdOf(words[0])) return { kind: 'quote', sym: stockIdOf(words[0]) };
@@ -85,8 +84,8 @@ export function resolveAlertSymbol(words) {
   }
   const m = matchInstrument(toks);
   if (m && m.used === toks.length) return { kind: 'quote', sym: m.inst.id };
-  // Like the command bar: a known ticker as it is, then a company name (APPLE), then
-  // any ticker-shaped word (the screen checks it has a quote before saving).
+  // A known ticker, a company name (APPLE), then any ticker-shaped word (the screen
+  // checks it has a quote).
   if (toks.length === 1 && LISTED_TICKERS.has(toks[0])) return { kind: 'quote', sym: toks[0] };
   const named = tickerForName(text);
   if (named) return { kind: 'quote', sym: named.id || named };
@@ -134,12 +133,10 @@ export function conditionMet(op, value, level) {
 // Where the value for an alert comes from in a check: quote id or gauge:<id>.
 export const valueKey = (a) => (a.kind === 'gauge' ? `gauge:${a.gauge}` : a.sym);
 
-// A check's values against the list. Returns { list, fired } (new objects; the input is
-// not changed). A WAITING alert whose condition is true fires once and turns TRIGGERED:
-// a price that jumps past the level between two checks still fires. A re-armed alert
-// whose condition was still true waits until the value is back on the other side, so it
-// fires on a fresh crossing only. Missing values change nothing. values: { key: number }
-// or { key: { value, stale } }.
+// A check's values against the list -> { list, fired } (new objects). A WAITING alert
+// whose condition is true fires once and turns TRIGGERED, even after a jump past the
+// level. A re-armed alert still true waits for the value to cross back first. Missing
+// values change nothing. values: { key: number } or { key: { value, stale } }.
 export function evaluate(list, values, now = Date.now()) {
   const fired = [];
   const out = list.map((a) => {
@@ -167,8 +164,7 @@ export function evaluate(list, values, now = Date.now()) {
   return { list: out, fired };
 }
 
-// Back to WAITING. When the last value still meets the condition, it waits for a fresh
-// crossing (rearmed) instead of firing again at once.
+// Back to WAITING; still past the level, it waits for a fresh crossing (rearmed).
 export function rearm(list, id) {
   return list.map((a) => {
     if (a.id !== id) return a;
@@ -190,8 +186,8 @@ export const unseenCount = (list) => list.filter((a) => a.state === 'triggered' 
 
 const sameAlert = (a, b) => a.sym === b.sym && a.kind === b.kind && a.op === b.op && a.level === b.level;
 
-// Add a parsed alert. Returns { list, alert } or { list, error: 'full' | 'duplicate' }.
-// info: what the add learned (dp, unit, name, last) from a quote or the gauge list.
+// Add a parsed alert -> { list, alert } or { list, error: 'full' | 'duplicate' }. info:
+// what the add learned (dp, unit, name, last).
 export function addAlert(list, parsed, info = {}, now = Date.now(), id = newId(now)) {
   if (list.some((a) => sameAlert(a, parsed))) return { list, error: 'duplicate' };
   if (list.length >= MAX_ALERTS) return { list, error: 'full' };
@@ -259,6 +255,7 @@ export function loadAlerts(store) {
 
 export function saveAlerts(store, list) {
   store.set(ALERTS_KEY, cleanAlerts(list));
+  if (store.get(PUSHED, 0)) import('./push.js').then((m) => m.syncAlerts(cleanAlerts(list))).catch(() => {});
 }
 
 // The one batch call for the quote alerts, or null when there are none.
@@ -269,8 +266,8 @@ export function quotesUrl(list) {
 
 export const needsWeird = (list) => list.some((a) => a.kind === 'gauge');
 
-// The API answers -> { key: { value, stale } } for evaluate(). A stale quote or gauge
-// (the last good value while its source is down) is kept for the screen, marked stale.
+// The API answers -> { key: { value, stale } } for evaluate(); a stale value is kept for
+// the screen, marked stale.
 export function valuesFrom(quotes, weird) {
   const values = {};
   for (const qt of quotes?.quotes || []) if (qt && Number.isFinite(qt.last)) values[qt.ticker] = { value: qt.last, stale: Boolean(qt.stale) };
@@ -321,19 +318,16 @@ export function firedText(a) {
 // The command a fired alert opens: the stock or the gauge's own screen.
 export const openCommand = (a) => a.sym;
 
-// ---------------------------------------------------------------------------
-// Browser: the watcher. One per page (never inside a DESK panel).
-// ---------------------------------------------------------------------------
+// ---- Browser: the watcher, one per page (never in a DESK panel) ----
 
-// The tab lease: { tab, at }. A tab holds it while visible and renews it on each tick;
-// a lease older than LEASE_MS belongs to nobody (that tab closed or slept).
+// The tab lease { tab, at }: renewed each tick; older than LEASE_MS it is nobody's.
 export function leaseFree(lease, tab, now) {
   return !lease || lease.tab === tab || !Number.isFinite(lease.at) || now - lease.at > LEASE_MS;
 }
 
-// One tick of the watcher: take (or keep) the lease, and check when the last check by
-// any tab is CHECK_MS old. A hidden tab keeps its lease and keeps checking (the browser
-// slows its timer to about once a minute), so alerts check while any tab is open.
+// One tick: take (or keep) the lease, and check when the last check by any tab is
+// CHECK_MS old. A hidden tab keeps its lease and checks too (its timer slows to about
+// once a minute), so alerts check while any tab is open.
 export function tickPlan({ hasAlerts, lease, tab, now, lastChecked }) {
   if (!hasAlerts) return { take: false, check: false };
   if (!leaseFree(lease, tab, now)) return { take: false, check: false };
@@ -344,6 +338,8 @@ export function startAlerts({ store, fetchJSON, status, run, statusline }) {
   const tab = newId();
   let busy = false;
   let flag = null;
+  // Pings on: sync once (5 s at most) before the first check; server-fired turns TRIGGERED.
+  const first = store.get(PUSHED, 0) && Promise.race([import('./push.js').then((m) => m.syncAlerts(loadAlerts(store), { force: true })), new Promise((r) => setTimeout(r, 5e3).unref?.())]).catch(() => {});
 
   function readLease() { return store.get(LEASE_KEY, null); }
   function takeLease(now, force = false) {
@@ -377,7 +373,8 @@ export function startAlerts({ store, fetchJSON, status, run, statusline }) {
   function notify(a) {
     const text = firedText(a);
     status(text);
-    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    const p = store.get('bb.push.sig', 0);
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted' || (p && Date.now() - p.at < 12e4 && p.armed?.includes(a.id))) return;
     try {
       const n = new Notification(text, { body: 'Bloombroke ALERTS', tag: `bb-alert-${a.id}` });
       n.onclick = () => {
@@ -403,6 +400,7 @@ export function startAlerts({ store, fetchJSON, status, run, statusline }) {
         needsWeird(list) ? fetchJSON('/api/weird').catch(() => null) : null,
       ]);
       const values = valuesFrom(quotes, weird);
+      await first;
       // Read again: the list may have changed (another tab, the screen) while we waited.
       const { list: next, fired } = evaluate(loadAlerts(store), values, Date.now());
       saveAlerts(store, next);

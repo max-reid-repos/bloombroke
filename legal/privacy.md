@@ -12,7 +12,7 @@ Our Data Protection Officer can be reached at {{CONTACT}}. Write to this address
 
 - You can use the free terminal without an account, a name or an email address.
 - Your watchlist, portfolio, saved wage, command history and screen layouts are stored in your own browser, not on our servers, unless you turn on Pro sync.
-- We count visits with DataFast, and Cloudflare counts page views without cookies. If your browser sends Global Privacy Control, we do not load DataFast.
+- We count visits with DataFast; Ahrefs Web Analytics and Cloudflare count page views without cookies. If your browser sends Global Privacy Control, we load neither DataFast nor Ahrefs Web Analytics.
 - Sponsor links carry no tracking codes, and sponsors get no data from us.
 - Pro payments go through Stripe. We never see your full card number.
 - CHAT messages between Pro members are seen only by the people in that chat, unless a chat is reported, and are deleted after 30 days.
@@ -37,6 +37,7 @@ We use DataFast (datafa.st) to understand how many people visit and which screen
 
 - **Global Privacy Control.** If your browser sends a Global Privacy Control (GPC) signal, we do not load DataFast on any page of bloombroke.com.
 - **Feature events.** When you use certain features, such as a WHATIF result or a GUESS game, we send DataFast an event with the feature's name and, for some features, a short fixed label, such as how a result was shared. The event itself carries no personal data, but DataFast links it to the same visitor and session cookies as your visits.
+- **Ahrefs Web Analytics.** We also count page views with Ahrefs Web Analytics (analytics.ahrefs.com). It sets no cookies. It records the pages viewed, the referring page, your approximate country, and your device and browser type. Like DataFast, it is not loaded when your browser sends GPC, and it is never loaded for Pro users.
 - **Cloudflare Web Analytics.** Cloudflare, our network provider, adds its own count of page views and page load times. Cloudflare states that it does not use cookies for this and does not identify visitors. It is not affected by GPC.
 - **Our own counters.** Our server keeps daily totals of some actions, such as WHATIF results, GUESS games, feedback notes, MCP tool calls, and how many times sponsor-strip lines were shown and clicked. These are totals only, with no IP address and nothing about who did what, so we keep them even when your browser sends GPC.
 - **What we publish.** We publish aggregate visitor numbers on our BBRK screen, including visitor counts by country, from DataFast totals; a country or referring site with fewer than three visitors is not shown on its own, and we publish approximate locations: country totals, and city dots rounded to about 100 km, only for places with three or more visitors in the last seven days; never anything about a single visitor.
@@ -70,6 +71,10 @@ If you send feedback with the FEEDBACK command, we store your message, your emai
 
 If you use CHAT, a Pro feature, we store your seat number, the username, colour and avatar you choose in ME, which seats you asked to chat with and who asked you, who you chat with and who you blocked, the groups you are in, and your messages with the time they were sent. When a message names a $TICKER, we also store that ticker's price at the moment you sent it, so the chat can show the move since. A message is shown only to the people in that chat. We do not read messages or use them for anything else: our server only checks each one for links, which are not allowed, and for $TICKERs. The exception is a report: when you or someone else reports a chat, we store a copy of the last 20 messages of that chat, who reported it, the seats in it and the reason given, and we read that copy to deal with the report. We keep messages for 30 days, then delete them. If you post a GUESS result to a chat, we store its score with the message, and the lines CHAT posts itself (who started or stopped DRIVE, last week's GUESS winner) are stored like messages; all of them are deleted after 30 days. With DRIVE, the screens you open go live to the people following you: the server keeps only your current screen, in memory, while you drive, and stores none of them.
 
+### Pings
+
+If you turn on pings in ME, a Pro feature, your browser gives us a push subscription for that device: an address at the push service of your browser's maker (Apple, Google, Mozilla or Microsoft) and the keys that encrypt a ping for that browser only. We store the subscription for each device, your ping settings (chat messages, alerts when the tab is closed, show message text), and, for each device that has alerts when the tab is closed on, a copy of that device's price alert rules (symbol, above or below, level, and whether each one has fired) so that our server can check them with the tab closed and ping that device. A ping goes from our server through that push service to your device, and its content is encrypted end to end: the push service delivers it but cannot read it. A chat ping names who wrote; it includes the start of the message text only if you turn on SHOW MESSAGE TEXT. You can turn pings off in ME at any time.
+
 ### When you contact us
 
 If you email us, we receive your email address and whatever you write, and we use them to reply and keep a record of the conversation.
@@ -81,6 +86,7 @@ We use personal data only to:
 - provide the service and show you the data you ask for;
 - run Pro: take payments, give access, sync your data, carry CHAT messages and handle cancellations and refunds;
 - deal with reports about CHAT messages;
+- send you the pings you turn on in ME;
 - keep the service secure, prevent abuse and fraud, and enforce our [Terms of Use](/terms);
 - understand how the service is used, in totals, so we can improve it;
 - answer your messages and requests, and read your feedback;
@@ -101,8 +107,10 @@ We share personal data only with these service providers, which help us run Bloo
 | Stripe | Pro payments and billing | United States and Ireland, among other places |
 | Cloudflare | Network, security and delivery for every visit, DNS, page-view counts (Cloudflare Web Analytics), and routing of email sent to {{CONTACT}} | A global network, based in the United States |
 | DataFast | Visit analytics, as described in section 3 (not loaded when your browser sends GPC) | Mostly outside the EU, including the United States, as its data processing terms state |
+| Ahrefs | Page-view analytics (Ahrefs Web Analytics), as described in section 3: no cookies, not loaded when your browser sends GPC, never loaded for Pro users | Based in Singapore; its servers may be in other countries, as its own terms state |
 | Hetzner | Hosting: the server that runs Bloombroke and stores Pro data | Ashburn, Virginia, United States |
 | Google (Gmail) | The mailbox that receives email sent to {{CONTACT}} | United States, among other places |
+| Apple, Google, Mozilla, Microsoft (push services) | Only if you turn on pings: the push service of your browser's maker delivers each ping, encrypted end to end, to your device | Their own networks, mainly in the United States |
 
 We may also disclose personal data when the law requires it, to a regulator or court, to protect our rights or someone's safety, or to a buyer if the service is sold, in which case this policy continues to apply.
 
@@ -116,10 +124,10 @@ Our server and several providers are outside Singapore, so your personal data is
 
 | Data | How long |
 |---|---|
-| IP addresses in our rate limiters | For the length of the limit window (one minute for the ticker counter, the site counters, GUESS and pay respects; 10 or 15 minutes for the Pro routes and gift codes; one hour for feedback; one minute, 10 minutes and 24 hours for the MCP endpoint), plus at most one minute. Held in memory, never on disk. The pay respects once-a-day check keeps a salted hash of your IP address and the stone until the end of that New York day, in memory, never on disk. |
+| IP addresses in our rate limiters | For the length of the limit window (one minute for the ticker counter, the site counters, GUESS and pay respects; 10 or 15 minutes for the Pro routes and gift codes; one hour for feedback and for moving a ping subscription; one minute, 10 minutes and 24 hours for the MCP endpoint), plus at most one minute. Held in memory, never on disk. The pay respects once-a-day check keeps a salted hash of your IP address and the stone until the end of that New York day, in memory, never on disk. |
 | Ticker counter | A coded copy of your browser tab's random number and of your IP address, with the tickers opened, for one hour; after that only the count per ticker, for 24 hours. All in memory, never on disk. |
 | Error logs on our server | We aim to delete them within 14 days. |
-| Records kept by Cloudflare, DataFast and Google | For the periods in their own policies. |
+| Records kept by Cloudflare, DataFast, Ahrefs and Google | For the periods in their own policies. |
 | Pro licence record | The hash and last four characters of your key, your seat number, your Stripe IDs and the dates are kept while your licence exists and for 5 years after your subscription is cancelled, for payment and refund records, and then deleted. A licence whose subscription is unpaid or overdue is kept until the subscription is cancelled. If you delete your account in ME, the record stays for the same time, with a key that no longer works. |
 | Synced data | Deleted 30 days after your subscription ends, or sooner if you ask. |
 | Encrypted copy of your key | Deleted as soon as your browser has saved the key, and at the latest 25 hours after checkout. |
@@ -132,6 +140,8 @@ Our server and several providers are outside Singapore, so your personal data is
 | Chat contacts and blocks | Deleted 30 days after your Pro ends, at once when you delete your account in ME, or sooner if you ask. |
 | Username, colour and avatar | Deleted 30 days after your Pro ends, at once when you delete your account in ME, or sooner if you ask. |
 | A username you gave up | Kept 30 days so nobody else takes it at once, then deleted. |
+| Ping subscriptions | Each device's push subscription is kept until you turn pings off on that device, log out on it, make a NEW KEY or delete your account, or 30 days after your Pro ends, whichever comes first. A subscription the push service says is gone, or that fails 5 times in a row, is deleted at once. |
+| Ping settings and server alerts | Your ping settings are kept until you delete your account, or 30 days after your Pro ends. The copy of a device's price alert rules is kept only while alerts when the tab is closed are on for that device, is replaced each time you change the alerts there, and is deleted with that device's subscription. |
 | ME device settings | In your browser until you clear it. For Pro, the synced copy follows the synced data rule above, and goes at once when you delete your account in ME. |
 | Emails | For as long as we need them to deal with your message, and then deleted, unless we need to keep them for a legal reason. |
 | Our own counters | Daily totals only. They contain no personal data. |

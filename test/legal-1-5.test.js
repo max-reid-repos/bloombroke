@@ -2,6 +2,7 @@
 // offensive, we may reset them, the seat never changes), cancelling from ME, NEW KEY,
 // DOWNLOAD MY DATA and DELETE MY ACCOUNT, what deletion keeps and removes, and the new
 // retention rows. The version goes up so everyone who accepted 1.4 is asked again.
+// (1.6 since, PINGS: test/legal-1-6.test.js; the pins below follow its wording.)
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,13 +17,16 @@ const terms = readFileSync('legal/terms.md', 'utf8');
 const privacy = readFileSync('legal/privacy.md', 'utf8');
 const section = (md, n) => md.slice(md.indexOf(`## ${n}.`), md.indexOf(`## ${n + 1}.`));
 
-test('legal 1.5: the version is bumped, so everyone who accepted 1.4 is asked again', () => {
-  assert.equal(TERMS_VERSION, '1.5');
-  assert.equal(LEGAL_UPDATED, '29 September 2026');
+test('legal 1.5: the version was bumped, so everyone who accepted 1.4 is asked again', () => {
+  // major.minor as integers: 1.10 comes after 1.5.
+  const [major, minor] = TERMS_VERSION.split('.').map(Number);
+  assert.ok(major > 1 || (major === 1 && minor >= 5), TERMS_VERSION);
+  assert.ok(LEGAL_UPDATED);
   assert.equal(needsConsent(acceptRecord('1.4')), true);
-  assert.equal(needsConsent(acceptRecord('1.5')), false);
-  assert.match(legalPage('terms', terms), /Version 1\.5\. Last updated 29 September 2026/);
-  assert.match(legalPage('privacy', privacy), /Version 1\.5\./);
+  assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
+  const v = TERMS_VERSION.replace('.', '\\.');
+  assert.match(legalPage('terms', terms), new RegExp(`Version ${v}\\. Last updated ${LEGAL_UPDATED}`));
+  assert.match(legalPage('privacy', privacy), new RegExp(`Version ${v}\\.`));
 });
 
 test('terms s9: cancel from ME, NEW KEY, usernames and avatars, deleting the account', () => {
