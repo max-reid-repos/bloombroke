@@ -314,6 +314,41 @@ test('ALERTS stand-down: only for alerts the server said it pings, in a sync und
   assert.match(readFileSync('pro/push-send.js', 'utf8'), /g: `bb-alert-\$\{row\.client_id\}`/);
 });
 
+test('ALERTS on tab start: with pings on, one sync first; an alert the server already fired turns TRIGGERED and the tab does not notify it again', async () => {
+  const run = async ({ flag }) => {
+    const data = new Map();
+    const made = [];
+    const puts = [];
+    const saved = {};
+    for (const k of ['window', 'document', 'Notification', 'setInterval', 'localStorage', 'navigator', 'fetch']) saved[k] = Object.getOwnPropertyDescriptor(globalThis, k);
+    const set = (k, v) => Object.defineProperty(globalThis, k, { value: v, configurable: true, writable: true });
+    set('window', new EventTarget());
+    set('document', Object.assign(new EventTarget(), { hidden: false }));
+    set('Notification', class { constructor(title, opts) { made.push(opts.tag); } static permission = 'granted'; });
+    set('setInterval', () => 0);
+    set('localStorage', { getItem: (k) => (data.has(k) ? data.get(k) : null), setItem: (k, v) => data.set(k, String(v)), removeItem: (k) => data.delete(k) });
+    set('navigator', { serviceWorker: { getRegistration: async () => ({ pushManager: { getSubscription: async () => ({ endpoint: 'https://fcm.googleapis.com/fcm/send/fake' }) } }) } });
+    set('fetch', async (url, opts) => { puts.push(url); return { ok: true, status: 200, json: async () => ({ ok: true, on: true, armed: [], fired: ['q1'] }) }; });
+    const store = { get: (k, d) => { const v = data.get(k); return v ? JSON.parse(v) : d; }, set: (k, v) => data.set(k, JSON.stringify(v)) };
+    store.set(ALERTS_KEY, [{ id: 'q1', kind: 'quote', sym: 'AAPL', op: '>', level: 350, state: 'waiting' }]);
+    store.set('bb.pro.key', KEY);
+    if (flag) store.set(ALERTS_FLAG, true);
+    try {
+      startAlerts({ store, fetchJSON: async () => ({ quotes: [{ ticker: 'AAPL', last: 351 }] }), status() {}, run() {}, statusline: null });
+      await new Promise((r) => setTimeout(r, 60));
+    } finally {
+      for (const [k, d] of Object.entries(saved)) { if (d) Object.defineProperty(globalThis, k, d); else delete globalThis[k]; }
+    }
+    return { made, puts, list: store.get(ALERTS_KEY, []) };
+  };
+  const off = await run({ flag: false });
+  assert.deepEqual(off.made, ['bb-alert-q1'], 'pings off: the tab notifies, as today');
+  const on = await run({ flag: true });
+  assert.equal(on.puts[0], '/api/push/alerts', 'the sync went first');
+  assert.deepEqual(on.made, [], 'the server fired it already: no second notification from the tab');
+  assert.equal(on.list[0].state, 'triggered');
+});
+
 // ---- the service worker -----------------------------------------------------------------------------------
 
 function loadSw({ clients = [], origin = 'https://bloombroke.com', fetchImpl = null } = {}) {

@@ -12,8 +12,7 @@ export const LEASE_KEY = 'bb.alerts.lease';
 export const CHECKED_KEY = 'bb.alerts.checked';
 export const MAX_ALERTS = 20;
 export const CHECK_MS = 60_000;
-// Longer than a hidden tab's throttled timer (about once a minute), so a hidden leader
-// keeps its lease between ticks.
+// Over a hidden tab's timer (about a minute): a hidden leader keeps its lease.
 export const LEASE_MS = 90_000;
 export const TICK_MS = 5_000;
 export const MAX_QUOTES = 60;
@@ -69,9 +68,8 @@ export function parseLevel(text) {
 
 const decimalsIn = (text) => (/\.(\d+)/.exec(String(text)) || [, ''])[1].length;
 
-// The symbol words of an alert -> { kind: 'quote', sym } | { kind: 'gauge', sym, gauge }
-// | { error, bad }. Named instruments (SPX, EUR/USD, S&P 500), tickers, and the company
-// names the terminal knows offline (APPLE -> AAPL), like the command bar.
+// Symbol words -> { kind: 'quote', sym } | { kind: 'gauge', sym, gauge } | { error, bad },
+// like the command bar: instruments, tickers, offline company names (APPLE -> AAPL).
 export function resolveAlertSymbol(words) {
   // $GOLD > 30: the stock GOLD, never spot gold.
   if (words.length === 1 && stockIdOf(words[0])) return { kind: 'quote', sym: stockIdOf(words[0]) };
@@ -87,8 +85,8 @@ export function resolveAlertSymbol(words) {
   }
   const m = matchInstrument(toks);
   if (m && m.used === toks.length) return { kind: 'quote', sym: m.inst.id };
-  // Like the command bar: a known ticker as it is, then a company name (APPLE), then
-  // any ticker-shaped word (the screen checks it has a quote before saving).
+  // A known ticker, a company name (APPLE), then any ticker-shaped word (the screen
+  // checks it has a quote).
   if (toks.length === 1 && LISTED_TICKERS.has(toks[0])) return { kind: 'quote', sym: toks[0] };
   const named = tickerForName(text);
   if (named) return { kind: 'quote', sym: named.id || named };
@@ -190,8 +188,8 @@ export const unseenCount = (list) => list.filter((a) => a.state === 'triggered' 
 
 const sameAlert = (a, b) => a.sym === b.sym && a.kind === b.kind && a.op === b.op && a.level === b.level;
 
-// Add a parsed alert. Returns { list, alert } or { list, error: 'full' | 'duplicate' }.
-// info: what the add learned (dp, unit, name, last) from a quote or the gauge list.
+// Add a parsed alert -> { list, alert } or { list, error: 'full' | 'duplicate' }. info:
+// what the add learned (dp, unit, name, last).
 export function addAlert(list, parsed, info = {}, now = Date.now(), id = newId(now)) {
   if (list.some((a) => sameAlert(a, parsed))) return { list, error: 'duplicate' };
   if (list.length >= MAX_ALERTS) return { list, error: 'full' };
@@ -270,8 +268,8 @@ export function quotesUrl(list) {
 
 export const needsWeird = (list) => list.some((a) => a.kind === 'gauge');
 
-// The API answers -> { key: { value, stale } } for evaluate(). A stale quote or gauge
-// (the last good value while its source is down) is kept for the screen, marked stale.
+// The API answers -> { key: { value, stale } } for evaluate(); a stale value is kept for
+// the screen, marked stale.
 export function valuesFrom(quotes, weird) {
   const values = {};
   for (const qt of quotes?.quotes || []) if (qt && Number.isFinite(qt.last)) values[qt.ticker] = { value: qt.last, stale: Boolean(qt.stale) };
@@ -324,8 +322,7 @@ export const openCommand = (a) => a.sym;
 
 // ---- Browser: the watcher, one per page (never in a DESK panel) ----
 
-// The tab lease: { tab, at }. A tab holds it while visible and renews it on each tick;
-// a lease older than LEASE_MS belongs to nobody (that tab closed or slept).
+// The tab lease { tab, at }: renewed each tick; older than LEASE_MS it is nobody's.
 export function leaseFree(lease, tab, now) {
   return !lease || lease.tab === tab || !Number.isFinite(lease.at) || now - lease.at > LEASE_MS;
 }
@@ -343,6 +340,8 @@ export function startAlerts({ store, fetchJSON, status, run, statusline }) {
   const tab = newId();
   let busy = false;
   let flag = null;
+  // Pings on: sync once before the first check (what the server fired turns TRIGGERED).
+  const first = store.get(PUSHED, 0) && import('./push.js').then((m) => m.syncAlerts(loadAlerts(store), { force: true })).catch(() => {});
 
   function readLease() { return store.get(LEASE_KEY, null); }
   function takeLease(now, force = false) {
@@ -403,6 +402,7 @@ export function startAlerts({ store, fetchJSON, status, run, statusline }) {
         needsWeird(list) ? fetchJSON('/api/weird').catch(() => null) : null,
       ]);
       const values = valuesFrom(quotes, weird);
+      await first;
       // Read again: the list may have changed (another tab, the screen) while we waited.
       const { list: next, fired } = evaluate(loadAlerts(store), values, Date.now());
       saveAlerts(store, next);

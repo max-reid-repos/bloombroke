@@ -97,7 +97,8 @@ async function setup({ config = FAKE_VAPID, quotes = {} } = {}) {
       subscribe: (s) => req('POST', '/api/push/subscribe', { key: p.key, body: s }),
       unsubscribe: (endpoint) => req('POST', '/api/push/unsubscribe', { key: p.key, body: { endpoint } }),
       prefs: (body) => (body ? req('PUT', '/api/push/prefs', { key: p.key, body }) : req('GET', '/api/push/prefs', { key: p.key })),
-      alerts: (alerts, extra = {}) => req('PUT', '/api/push/alerts', { key: p.key, body: { alerts, ...extra } }),
+      // This person's first device (pinged() subscribes sub(p.id)) unless extra.endpoint.
+      alerts: (alerts, extra = {}) => req('PUT', '/api/push/alerts', { key: p.key, body: { alerts, endpoint: sub(p.id).endpoint, ...extra } }),
       test: () => req('POST', '/api/push/test', { key: p.key }),
       open: (seats) => req('POST', '/api/chat/open', { key: p.key, body: { seats } }),
       say: (room, text) => req('POST', `/api/chat/rooms/${room}/messages`, { key: p.key, body: { text } }),
@@ -282,6 +283,7 @@ test('prefs: off by default, booleans only, per licence; ALERTS off drops the se
     assert.throws(() => cleanPrefsPatch([]), PushError);
     assert.deepEqual((await a.prefs({ chat: true, show_text: true })).body, { chat: true, alerts: false, show_text: true, devices: 0 });
     assert.deepEqual((await a.prefs({ alerts: true })).body, { chat: true, alerts: true, show_text: true, devices: 0 });
+    await a.subscribe(sub(a.id));
     await a.alerts([{ id: 'a1', sym: 'AAPL', op: '>', level: 350, state: 'waiting' }]);
     assert.equal(s.count('server_alerts', a.id), 1);
     await a.prefs({ alerts: false });
@@ -309,23 +311,23 @@ test('alerts: validated like the client, 20 at most, quote alerts only, replaced
     assert.deepEqual(r.body, { ok: true, count: 0, on: false, armed: [], fired: [] });
     assert.equal(s.count('server_alerts', a.id), 0);
     await a.prefs({ alerts: true });
+    r = await a.alerts([al(1)]);
+    assert.deepEqual(r.body, { ok: true, count: 0, on: false, armed: [], fired: [] }, 'no device at that address: nothing kept, the tab notifies');
+    assert.equal(s.count('server_alerts', a.id), 0);
+    await a.subscribe(sub(a.id));
     r = await a.alerts([al(1), al(2, { sym: 'EUR/USD', op: '<=' }), al(3, { state: 'triggered' })]);
     assert.equal(r.status, 200);
     assert.equal(r.body.count, 3);
-    assert.equal(r.body.on, false, 'no device yet');
-    assert.deepEqual(r.body.armed, [], 'no device: the tab keeps its own notifications');
+    assert.equal(r.body.on, true);
+    assert.deepEqual(r.body.armed, ['al1', 'al2'], 'what the server pings for this device');
     assert.deepEqual(r.body.fired, ['al3']);
     const rows = s.push.store.alertsOf(a.id);
     assert.deepEqual(rows.map((x) => [x.client_id, x.symbol, x.op, x.level, x.fired_at !== null]), [['al1', 'AAPL', '>', 101, false], ['al2', 'EUR/USD', '<=', 102, false], ['al3', 'AAPL', '>', 103, true]]);
     await a.alerts([al(2, { sym: 'EUR/USD', op: '<=' })]);
     assert.deepEqual(s.push.store.alertsOf(a.id).map((x) => x.client_id), ['al2'], 'replaced');
     assert.deepEqual(cleanServerAlerts([]), []);
-    // on: pings for ALERTS and this very device; armed: what the server pings for the tab.
-    await a.subscribe(sub(1));
-    r = await a.alerts([al(2, { sym: 'EUR/USD', op: '<=' })], { endpoint: sub(1).endpoint });
-    assert.equal(r.body.on, true);
-    assert.deepEqual(r.body.armed, ['al2']);
-    assert.equal((await a.alerts([], { endpoint: sub(2).endpoint })).body.on, false, 'another device');
+    assert.equal((await a.alerts([], { endpoint: sub(999).endpoint })).body.on, false, 'an address that is not this licence\'s device');
+    assert.equal((await a.alerts([al(1, { value: 'x', state: 'triggered' })])).status, 400, 'a value is a number');
   } finally { await s.close(); }
 });
 
@@ -378,19 +380,63 @@ test('alert loop: fires once, never on a stale quote, only for ALERTS pings on w
   } finally { await s.close(); }
 });
 
-test('alert loop: the open tab saw the crossing first (its notification stands down): the server still pings, once', async () => {
+test('the open tab saw the crossing first (its notification stood down): the one ping goes from the sync, to that device, once', async () => {
   const s = await setup({ quotes: { AAPL: { last: 349, stale: false } } });
   try {
     const a = s.person();
-    await s.pinged(a, { alerts: true });
+    const mine = await s.pinged(a, { alerts: true });
+    await a.subscribe(sub(500)); // a second device of A: not pinged for this device's alert
     const x = { id: 'x1', sym: 'AAPL', op: '>', level: 350, dp: 2, state: 'waiting' };
     await a.alerts([x]);
     await s.push.alerts.cycle();
-    await a.alerts([{ ...x, state: 'triggered' }]); // the tab's check came first
+    const r = await a.alerts([{ ...x, state: 'triggered', value: 351.25 }]); // the tab's check came first
+    assert.deepEqual(r.body.fired, ['x1']);
+    await s.push.sender.drain();
+    assert.deepEqual(s.fake.sent.map((m) => [m.endpoint, m.body.t, m.body.b]), [[mine, 'AAPL above 350', 'AAPL 351.25 · above your 350']]);
+    assert.equal(s.fake.sent[0].opts.urgency, 'high');
     s.quotes.AAPL = { last: 351, stale: false };
-    assert.equal((await s.push.alerts.cycle()).fired, 1, 'the ping still goes');
-    await a.alerts([{ ...x, state: 'triggered' }]);
-    assert.equal((await s.push.alerts.cycle()).fired, 0, 'once');
+    assert.equal((await s.push.alerts.cycle()).fired, 0, 'fired already: the loop does not ping again');
+    await a.alerts([{ ...x, state: 'triggered', value: 351.25 }]);
+    await s.push.sender.drain();
+    assert.equal(s.fake.sent.length, 1, 'once');
+    // Without a value (an older tab): the ping still goes, without a number.
+    await a.alerts([x, { id: 'x2', sym: 'MSFT', op: '<', level: 1, state: 'waiting' }]);
+    await a.alerts([x, { id: 'x2', sym: 'MSFT', op: '<', level: 1, state: 'triggered' }]);
+    await s.push.sender.drain();
+    assert.equal(s.fake.sent[1].body.b, 'MSFT is below your 1');
+  } finally { await s.close(); }
+});
+
+test('alerts are per device: two devices keep their own lists; one sends [] and the other keeps its alerts; the owner alone is pinged', async () => {
+  const s = await setup({ quotes: { AAPL: { last: 351, stale: false }, MSFT: { last: 100, stale: false } } });
+  try {
+    const a = s.person();
+    const one = await s.pinged(a, { alerts: true });
+    await a.subscribe(sub(600));
+    const two = sub(600).endpoint;
+    await a.alerts([{ id: 'p1', sym: 'AAPL', op: '>', level: 350, state: 'waiting' }], { endpoint: one });
+    await a.alerts([{ id: 'q1', sym: 'MSFT', op: '<', level: 50, state: 'waiting' }], { endpoint: two });
+    // Device two opens ME with no alerts of its own: its list is [], device one's stays.
+    await a.alerts([], { endpoint: two });
+    assert.deepEqual(s.push.store.alertsOf(a.id).map((r) => r.client_id), ['p1']);
+    await a.alerts([{ id: 'q1', sym: 'MSFT', op: '<', level: 50, state: 'waiting' }], { endpoint: two });
+    assert.deepEqual(s.push.store.alertsOf(a.id).map((r) => r.client_id).sort(), ['p1', 'q1']);
+    assert.equal((await s.push.alerts.cycle()).fired, 1);
+    await s.push.sender.drain();
+    assert.deepEqual(s.fake.sent.map((m) => m.endpoint), [one], 'only the device that owns the alert');
+    // A device goes (LOGOUT, 410, NEW KEY): its alerts go with it.
+    await a.unsubscribe(two);
+    assert.deepEqual(s.push.store.alertsOf(a.id).map((r) => r.client_id), ['p1']);
+    s.fake.fail(one, 410);
+    s.push.sender.toLicence(a.id, { t: 'x' }, {});
+    await s.push.sender.drain();
+    assert.equal(s.count('server_alerts', a.id), 0, '410: the device and its alerts are gone');
+    // Another licence logs in on a browser: that browser is a new device, the old alerts gone.
+    const b = s.person();
+    await a.subscribe(sub(700));
+    await a.alerts([{ id: 'r1', sym: 'AAPL', op: '>', level: 1, state: 'waiting' }], { endpoint: sub(700).endpoint });
+    await b.subscribe(sub(700));
+    assert.equal(s.count('server_alerts', a.id), 0);
   } finally { await s.close(); }
 });
 
@@ -413,10 +459,12 @@ test('alert loop: fired while the tab was not looking: it stays fired, goes back
     // The tab shows TRIGGERED, then the person re-arms it: now it fires on the next crossing.
     await a.alerts([{ ...x, state: 'triggered' }]);
     r = await a.alerts([{ ...x, rearmed: true }]);
-    assert.deepEqual(r.body.armed, ['x1']);
+    assert.deepEqual(r.body.armed, [], 'waiting for a fresh crossing: the tab keeps its own notification for now');
     assert.equal((await s.push.alerts.cycle()).fired, 0, 're-armed while above: waits');
     s.quotes.AAPL = { last: 349, stale: false };
     await s.push.alerts.cycle();
+    r = await a.alerts([x]);
+    assert.deepEqual(r.body.armed, ['x1'], 'back below: armed, the server pings it');
     s.quotes.AAPL = { last: 351, stale: false };
     assert.equal((await s.push.alerts.cycle()).fired, 1, 'the next crossing');
   } finally { await s.close(); }
@@ -442,13 +490,13 @@ test('alert loop: 300 symbols a cycle at most, taking turns; closed market: only
   const quotes = Object.fromEntries(['AA', 'BB', 'CC'].map((k) => [k, { last: 10, stale: false }]));
   const store = {
     waitingAlerts: () => ['AA', 'BB', 'CC'].map((sym, i) => ({ id: i + 1, licence_id: 1, client_id: `c${i}`, symbol: sym, op: '>', level: 50, dp: 2, armed: 1 })),
-    armAlert() {}, fireAlert: () => true,
+    armAlert() {}, fireAlert: () => true, subById: (id) => ({ id, endpoint: 'e' }),
   };
   const calls = [];
   const sent = [];
   let open = false;
   const loop = createAlertLoop({
-    store, sender: { toLicence: (id, p) => sent.push(p) }, isActive: () => true, log: quiet, cap: 2, chunk: 1, marketOpen: () => open,
+    store, sender: { enqueue: (d, p) => sent.push(p) }, isActive: () => true, log: quiet, cap: 2, chunk: 1, marketOpen: () => open,
     getQuoteList: async (syms) => { calls.push(syms.join()); return { quotes: syms.map((t) => ({ ticker: t, ...quotes[t] })) }; },
   });
   await loop.cycle();
@@ -696,9 +744,11 @@ test('DOWNLOAD MY DATA: devices by push service and date only, the ping settings
     const d = JSON.parse(r.text);
     const at = new Date(s.now()).toISOString();
     assert.deepEqual(d.pings, {
-      devices: [{ push_service: 'fcm.googleapis.com', added: at, last_ping: null }, { push_service: 'updates.push.services.mozilla.com', added: at, last_ping: null }],
+      devices: [
+        { push_service: 'fcm.googleapis.com', added: at, last_ping: null, alerts: [{ symbol: 'AAPL', op: '>', level: 350, added: at, fired: null }, { symbol: 'MSFT', op: '<', level: 300, added: at, fired: at }] },
+        { push_service: 'updates.push.services.mozilla.com', added: at, last_ping: null, alerts: [] },
+      ],
       settings: { chat: true, alerts: true, show_text: false },
-      alerts: [{ symbol: 'AAPL', op: '>', level: 350, added: at, fired: null }, { symbol: 'MSFT', op: '<', level: 300, added: at, fired: at }],
     });
     assert.ok(!r.text.includes('fake-device') && !r.text.includes(FAKE_P256DH) && !r.text.includes(FAKE_AUTH), 'no address, no keys');
   } finally { await s.close(); }

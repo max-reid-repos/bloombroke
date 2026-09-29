@@ -83,7 +83,7 @@ export function alertPayload(row, value) {
   const level = fmtLevel(row.level);
   return {
     t: `${row.symbol} ${word} ${level}`,
-    b: `${row.symbol} ${fmtValue(value, row.dp)} · ${word} your ${level}`,
+    b: Number.isFinite(value) ? `${row.symbol} ${fmtValue(value, row.dp)} · ${word} your ${level}` : `${row.symbol} is ${word} your ${level}`,
     u: `/?c=${encodeURIComponent(row.symbol)}`,
     g: `bb-alert-${row.client_id}`,
   };
@@ -257,7 +257,9 @@ export function createAlertLoop({
         if (!r.armed) { if (!hit) store.armAlert(r.id); continue; }
         if (!hit) continue;
         if (!store.fireAlert(r.id, now())) continue;
-        sender.toLicence(r.licence_id, alertPayload(r, v), { ttl: ALERT_TTL, urgency: 'high', topic: `a${r.id}` });
+        // The device that owns the alert, only.
+        const device = store.subById(r.sub_id);
+        if (device) sender.enqueue(device, alertPayload(r, v), { ttl: ALERT_TTL, urgency: 'high', topic: `a${r.id}` });
         fired += 1;
       }
       return { symbols: syms.length, fired };

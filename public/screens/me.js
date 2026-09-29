@@ -42,7 +42,7 @@ export const PING_HINTS = { ios: push.IOS_HINT, denied: push.DENIED_HINT, no: pu
 export const PING_ROWS = [
   ['Pings', 'Notifications when the tab is closed. PINGS turns them on or off on this device; the three settings count for all your devices.'],
   ['Chat messages', 'A new message while you are not on CHAT. One ping per chat every 5 minutes.'],
-  ['Alerts', 'Your price alerts, checked by our server every minute. WEIRD gauge alerts still need an open tab. Pings can be late or missed: do not rely on them.'],
+  ['Alerts', 'The price alerts of this device, checked by our server every minute and pinged to this device. WEIRD gauge alerts still need an open tab. Pings can be late or missed: do not rely on them.'],
   ['Message text', 'Off: a ping only says who wrote. On: the first 80 characters of the message.'],
 ];
 

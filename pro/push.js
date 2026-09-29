@@ -33,6 +33,7 @@ import { sameOrigin } from './feedback.js';
 import { isDeletedLicence, DELETED_PREFIX, ENDED_KEEP_MS } from './store.js';
 import {
   createSender, createChatPinger, createAlertLoop, TEST_PAYLOAD, SEND_TIMEOUT_MS, pushHostOk, PUSH_HOSTS, PUSH_HOST_SUFFIXES,
+  alertPayload, ALERT_TTL,
 } from './push-send.js';
 
 export { pushHostOk, PUSH_HOSTS, PUSH_HOST_SUFFIXES };
@@ -141,8 +142,10 @@ export function cleanServerAlerts(list) {
     if (a.state !== 'waiting' && a.state !== 'triggered') throw bad();
     const dp = a.dp === undefined ? 2 : a.dp;
     if (!Number.isInteger(dp) || dp < 0 || dp > 8) throw bad();
+    // value: what the tab saw when it fired (a TRIGGERED alert), for the ping's text.
+    if (a.value !== undefined && (typeof a.value !== 'number' || !Number.isFinite(a.value) || Math.abs(a.value) > 1e12)) throw bad();
     ids.add(a.id);
-    out.push({ id: a.id, sym: a.sym, op: a.op, level: a.level, dp, state: a.state, rearmed: a.rearmed === true });
+    out.push({ id: a.id, sym: a.sym, op: a.op, level: a.level, dp, state: a.state, rearmed: a.rearmed === true, ...(a.value !== undefined ? { value: a.value } : {}) });
   }
   return out;
 }
@@ -170,13 +173,16 @@ export function createPushStore(db, { now = () => Date.now() } = {}) {
     setPrefs: db.prepare(`INSERT INTO push_prefs (licence_id, chat, alerts, show_text, updated_at) VALUES (@lic, @chat, @alerts, @show_text, @t)
       ON CONFLICT (licence_id) DO UPDATE SET chat = excluded.chat, alerts = excluded.alerts, show_text = excluded.show_text, updated_at = excluded.updated_at`),
     alertsOf: db.prepare('SELECT * FROM server_alerts WHERE licence_id = ? ORDER BY id'),
-    addAlert: db.prepare(`INSERT INTO server_alerts (licence_id, client_id, symbol, op, level, dp, armed, created_at, fired_at, seen)
-      VALUES (@lic, @id, @sym, @op, @level, @dp, @armed, @t, @fired, @seen)`),
+    alertsOfSub: db.prepare('SELECT * FROM server_alerts WHERE sub_id = ? ORDER BY id'),
+    subById: db.prepare('SELECT * FROM push_subs WHERE id = ?'),
+    addAlert: db.prepare(`INSERT INTO server_alerts (licence_id, sub_id, client_id, symbol, op, level, dp, armed, created_at, fired_at, seen)
+      VALUES (@lic, @sub, @id, @sym, @op, @level, @dp, @armed, @t, @fired, @seen)`),
     setAlert: db.prepare('UPDATE server_alerts SET dp = @dp, armed = @armed, fired_at = @fired, seen = @seen WHERE id = @rid'),
     allSubs: db.prepare('SELECT id, endpoint FROM push_subs'),
     dropAlert: db.prepare('DELETE FROM server_alerts WHERE id = ?'),
     waiting: db.prepare(`SELECT a.* FROM server_alerts a JOIN push_prefs p ON p.licence_id = a.licence_id AND p.alerts = 1
-      WHERE a.fired_at IS NULL AND EXISTS (SELECT 1 FROM push_subs s WHERE s.licence_id = a.licence_id) ORDER BY a.id`),
+      JOIN push_subs s ON s.id = a.sub_id AND s.licence_id = a.licence_id
+      WHERE a.fired_at IS NULL ORDER BY a.id`),
     arm: db.prepare('UPDATE server_alerts SET armed = 1 WHERE id = ? AND fired_at IS NULL'),
     fire: db.prepare('UPDATE server_alerts SET fired_at = ? WHERE id = ? AND fired_at IS NULL'),
     forgetSubs: db.prepare('DELETE FROM push_subs WHERE licence_id = ?'),
@@ -192,14 +198,19 @@ export function createPushStore(db, { now = () => Date.now() } = {}) {
     hasSubs: (lic) => Number(q.count.get(lic).n) > 0,
     devices: (lic) => Number(q.count.get(lic).n),
     hasEndpoint: (lic, endpoint) => q.byEndpoint.get(endpoint)?.licence_id === lic,
+    // This licence's device at this address, or null.
+    deviceOf: (lic, endpoint) => { const r = q.byEndpoint.get(endpoint); return r && r.licence_id === lic ? r : null; },
+    subById: (id) => q.subById.get(id) || null,
     // A new device, or the same browser again (its keys may have changed). A browser
-    // that was another licence's is this licence's now (it logged in with this key).
+    // that was another licence's is this licence's now (it logged in with this key): a
+    // new row, so the other licence's alerts for it go with the old one.
     subscribe(lic, sub) {
       return tx(db, () => {
         const had = q.byEndpoint.get(sub.endpoint);
         if (had?.licence_id !== lic && Number(q.count.get(lic).n) >= MAX_SUBS) {
           throw new PushError('too_many', `Pings go to ${MAX_SUBS} devices at most. Turn them off on one first.`, 409);
         }
+        if (had && had.licence_id !== lic) q.drop.run(had.id);
         q.upsert.run({ lic, ...sub, t: now() });
         return Number(q.count.get(lic).n);
       });
@@ -238,54 +249,65 @@ export function createPushStore(db, { now = () => Date.now() } = {}) {
     alertsOf: (lic) => q.alertsOf.all(lic),
     // Closed-tab alerts off: the copy of the alerts goes (the Privacy Policy).
     clearAlerts: (lic) => Number(q.forgetAlerts.run(lic).changes),
-    // Replace the licence's server alerts with the browser's list (cleanServerAlerts).
-    // Returns { count, armed, fired }: the browser ids the server will ping (the tab's
-    // own notification stands down for those) and the ones it has fired (the tab marks
-    // them TRIGGERED). seen: the browser has shown TRIGGERED since the server fired it.
+    // Replace ONE DEVICE's server alerts with that browser's list (cleanServerAlerts):
+    // alerts live in each browser, so each device has its own list and its own pings.
+    // Returns { count, armed, fired, ping }: the browser ids the server will ping (armed,
+    // and past a re-arm: the tab's own notification stands down for those), the ones it
+    // has fired (the tab marks them TRIGGERED), and ping: [{ row, value }] to send now.
+    // seen: the browser has shown TRIGGERED since the server fired it.
     //  - new here, TRIGGERED there: it fired in the tab first; it never fires here.
-    //  - TRIGGERED there, not fired here: the tab saw the crossing first; the server's own
-    //    check still pings it, once.
+    //  - TRIGGERED there, not fired here: the tab saw the crossing first and its own
+    //    notification stood down, so it is fired now and pinged once, from here.
     //  - fired here, WAITING there, not seen: the tab has not caught up; it stays fired
     //    (never a second ping for the same crossing) and goes back in `fired`.
     //  - fired here, seen, WAITING there: re-armed in the tab. rearmed (still past the
     //    level): it waits for a fresh crossing (armed 0); otherwise it fires on the next.
-    replaceAlerts(lic, list) {
+    replaceAlerts(lic, subId, list) {
       return tx(db, () => {
         const t = now();
-        const rows = q.alertsOf.all(lic);
+        const rows = q.alertsOfSub.all(subId);
         const kept = new Set();
         const armedIds = [];
         const firedIds = [];
+        const ping = [];
         for (const a of list) {
           const row = rows.find((r) => !kept.has(r.id) && sameAlert(r, a));
           let fired = row ? row.fired_at : null;
           let armed = row ? row.armed : (a.rearmed ? 0 : 1);
           let seen = row ? row.seen : 0;
           if (!row && a.state === 'triggered') { fired = t; seen = 1; }
-          else if (row && a.state === 'triggered') { if (fired !== null) seen = 1; }
+          else if (row && a.state === 'triggered') {
+            if (fired === null) { fired = t; ping.push({ row: { ...row, dp: a.dp }, value: a.value }); }
+            seen = 1;
+          }
           else if (row && fired !== null && seen) { fired = null; seen = 0; armed = a.rearmed ? 0 : 1; }
           else if (row && fired === null && a.rearmed) armed = 0;
           if (row) {
             kept.add(row.id);
             q.setAlert.run({ rid: row.id, dp: a.dp, armed, fired, seen });
           } else {
-            q.addAlert.run({ lic, id: a.id, sym: a.sym, op: a.op, level: a.level, dp: a.dp, armed, t, fired, seen });
+            q.addAlert.run({ lic, sub: subId, id: a.id, sym: a.sym, op: a.op, level: a.level, dp: a.dp, armed, t, fired, seen });
           }
-          (fired === null ? armedIds : firedIds).push(a.id);
+          if (fired !== null) firedIds.push(a.id);
+          else if (armed) armedIds.push(a.id);
         }
         for (const r of rows) if (!kept.has(r.id)) q.dropAlert.run(r.id);
-        return { count: list.length, armed: armedIds, fired: firedIds };
+        return { count: list.length, armed: armedIds, fired: firedIds, ping };
       });
     },
-    // DOWNLOAD MY DATA: each device as its push service's host name and when it was
-    // added (never the address or the keys), the settings, and the copy of the alerts.
+    // DOWNLOAD MY DATA: each device as its push service's host name and dates (never
+    // the address or the keys), with the copy of its alerts; the settings.
     exportOf(lic) {
       const iso = (ms) => (Number.isFinite(ms) ? new Date(ms).toISOString() : null);
       const host = (e) => { try { return new URL(e).hostname; } catch { return null; } };
       return {
-        devices: q.subsOf.all(lic).map((r) => ({ push_service: host(r.endpoint), added: iso(r.created_at), last_ping: iso(r.last_ok_at) })),
+        devices: q.subsOf.all(lic).map((r) => ({
+          push_service: host(r.endpoint),
+          added: iso(r.created_at),
+          last_ping: iso(r.last_ok_at),
+          alerts: q.alertsOfSub.all(r.id).map((a) => ({ symbol: a.symbol, op: a.op, level: a.level, added: iso(a.created_at), fired: iso(a.fired_at) })),
+        })),
         settings: this.prefs(lic),
-        alerts: q.alertsOf.all(lic).map((r) => ({ symbol: r.symbol, op: r.op, level: r.level, added: iso(r.created_at), fired: iso(r.fired_at) })),
       };
     },
     waitingAlerts: () => q.waiting.all(),
@@ -295,16 +317,16 @@ export function createPushStore(db, { now = () => Date.now() } = {}) {
     forgetDevices: (lic) => Number(q.forgetSubs.run(lic).changes),
     // DELETE MY ACCOUNT: everything.
     wipe(lic) {
-      return tx(db, () => Number(q.forgetSubs.run(lic).changes) + Number(q.forgetPrefs.run(lic).changes) + Number(q.forgetAlerts.run(lic).changes));
+      return tx(db, () => Number(q.forgetAlerts.run(lic).changes) + Number(q.forgetSubs.run(lic).changes) + Number(q.forgetPrefs.run(lic).changes));
     },
     // Daily (Privacy Policy): every push row of a licence whose Pro ended over 30 days
     // ago, and of a deleted account. Counts only.
     purge(t = now()) {
       const p = { before: t - ENDED_KEEP_MS, deleted: `${DELETED_PREFIX}%` };
       return tx(db, () => ({
+        alerts: Number(q.goneAlerts.run(p).changes), // first: they would go with the devices
         subs: Number(q.goneSubs.run(p).changes),
         prefs: Number(q.gonePrefs.run(p).changes),
-        alerts: Number(q.goneAlerts.run(p).changes),
       }));
     },
   };
@@ -457,15 +479,20 @@ export function mountPush(app, {
     const list = cleanServerAlerts(req.body?.alerts);
     const endpoint = req.body?.endpoint;
     if (endpoint !== undefined && (typeof endpoint !== 'string' || endpoint.length > MAX_ENDPOINT)) return fail(res, 400, 'bad_endpoint', 'Send { endpoint }.');
+    const off = { ok: true, count: 0, on: false, armed: [], fired: [] };
     // ALERTS pings off: nothing is kept (the Privacy Policy), and the tab notifies itself.
     if (!push.prefs(lic.id).alerts) {
       push.clearAlerts(lic.id);
-      return res.json({ ok: true, count: 0, on: false, armed: [], fired: [] });
+      return res.json(off);
     }
-    const out = push.replaceAlerts(lic.id, list);
-    // on: this licence's server alerts ping (with an endpoint: this very device).
-    const on = endpoint ? push.hasEndpoint(lic.id, endpoint) : push.hasSubs(lic.id);
-    res.json({ ok: true, count: out.count, on, armed: on ? out.armed : [], fired: out.fired });
+    // The alerts are this device's: without a device of this licence at that address
+    // there is nothing to keep, and the tab notifies itself.
+    const device = typeof endpoint === 'string' ? push.deviceOf(lic.id, endpoint) : null;
+    if (!device) return res.json(off);
+    const out = push.replaceAlerts(lic.id, device.id, list);
+    // The tab saw a crossing first and stood down: the one ping goes now, to this device.
+    for (const p of out.ping) sender.enqueue(device, alertPayload(p.row, p.value), { ttl: ALERT_TTL, urgency: 'high', topic: `a${p.row.id}` });
+    res.json({ ok: true, count: out.count, on: true, armed: out.armed, fired: out.fired });
   });
 
   r.post('/test', (req, res) => {

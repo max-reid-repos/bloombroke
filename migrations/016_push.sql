@@ -30,8 +30,9 @@ CREATE TABLE push_prefs (
   updated_at INTEGER NOT NULL
 );
 
--- The price alerts of a licence, copied from the browser (public/alerts.js) while
--- closed-tab alerts are on, so the server can check them with the tab closed.
+-- The price alerts of one device, copied from its browser (public/alerts.js; alerts live
+-- in each browser) while closed-tab alerts are on for it, so the server can check them
+-- with the tab closed and ping that device. They go with the device (sub_id cascades).
 -- client_id: the alert's id in the browser. op: the ALERTS operators. dp: the decimals
 -- the ping shows. armed: 1 fires when the condition is true; 0 waits until it is false
 -- first (a re-armed alert fires on a fresh crossing only). fired_at: set once, when it fired.
@@ -40,6 +41,7 @@ CREATE TABLE push_prefs (
 CREATE TABLE server_alerts (
   id INTEGER PRIMARY KEY,
   licence_id INTEGER NOT NULL REFERENCES licences(id) ON DELETE CASCADE,
+  sub_id INTEGER NOT NULL REFERENCES push_subs(id) ON DELETE CASCADE,
   client_id TEXT NOT NULL,
   symbol TEXT NOT NULL,
   op TEXT NOT NULL CHECK (op IN ('>', '<', '>=', '<=')),
@@ -51,4 +53,5 @@ CREATE TABLE server_alerts (
   seen INTEGER NOT NULL DEFAULT 0 CHECK (seen IN (0, 1))
 );
 CREATE INDEX server_alerts_licence ON server_alerts(licence_id);
+CREATE INDEX server_alerts_sub ON server_alerts(sub_id);
 CREATE INDEX server_alerts_waiting ON server_alerts(fired_at, symbol);

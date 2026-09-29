@@ -73,6 +73,8 @@ export function serverAlerts(list) {
     .slice(0, 20)
     .map((a) => ({
       id: a.id, sym: a.sym, op: a.op, level: a.level, dp: Number.isInteger(a.vdp) && a.vdp >= 0 && a.vdp <= 8 ? a.vdp : 2, state: a.state, rearmed: a.rearmed === true,
+      // What the tab saw when it fired: the text of the ping the server sends for it.
+      ...(a.state === 'triggered' && Number.isFinite(a.firedValue) && Math.abs(a.firedValue) <= 1e12 ? { value: a.firedValue } : {}),
     }));
 }
 export const alertsSig = (alerts) => JSON.stringify(alerts);

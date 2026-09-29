@@ -34,7 +34,7 @@ test('privacy: what pings store, who delivers them, encrypted end to end, messag
   for (const must of [
     'your browser gives us a push subscription for that device: an address at the push service of your browser\'s maker (Apple, Google, Mozilla or Microsoft) and the keys that encrypt a ping for that browser only',
     'your ping settings (chat messages, alerts when the tab is closed, show message text)',
-    'while alerts when the tab is closed are on, a copy of your price alerts (symbol, above or below, level, and whether each one has fired)',
+    'for each device that has alerts when the tab is closed on, a copy of that device\'s price alert rules (symbol, above or below, level, and whether each one has fired) so that our server can check them with the tab closed and ping that device',
     'its content is encrypted end to end: the push service delivers it but cannot read it',
     'it includes the start of the message text only if you turn on SHOW MESSAGE TEXT',
   ]) assert.ok(s3.includes(must), must);
@@ -44,7 +44,7 @@ test('privacy: what pings store, who delivers them, encrypted end to end, messag
   for (const row of [
     '| Ping subscriptions | Each device\'s push subscription is kept until you turn pings off on that device, log out on it, make a NEW KEY or delete your account, or 30 days after your Pro ends, whichever comes first.',
     'A subscription the push service says is gone, or that fails 5 times in a row, is deleted at once.',
-    '| Ping settings and server alerts | Your ping settings are kept until you delete your account, or 30 days after your Pro ends. The copy of your price alerts is kept only while alerts when the tab is closed are on',
+    '| Ping settings and server alerts | Your ping settings are kept until you delete your account, or 30 days after your Pro ends. The copy of a device\'s price alert rules is kept only while alerts when the tab is closed are on for that device, is replaced each time you change the alerts there, and is deleted with that device\'s subscription. |',
   ]) assert.ok(s8.includes(row), row);
   assert.ok(section(privacy, 8).includes('one hour for feedback and for moving a ping subscription'));
   // The numbers match the code.
