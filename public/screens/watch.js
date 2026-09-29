@@ -8,7 +8,8 @@ import {
   loadWatchlist, saveWatchlist, isDefaultList, addIds, removeIds, moveItem, exportText,
   sortRows, parseSymbols, DEFAULT_WATCHLIST, MAX_WATCH,
 } from '../watchlist.js';
-import { toolbar, emptyState } from '../kit.js';
+import { toolbar, emptyState, proLine, raw } from '../kit.js';
+import { isPro } from '../pro.js'; // the quiet PRO line, for a visitor only
 
 const SORT_KEY = 'bb.watch.sort';
 const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}" data-example>${esc(c)}</a>`; // an example: saving ones prefill (app.js examplePlan)
@@ -177,7 +178,9 @@ function readSort(store) {
 }
 
 // An empty list: the kit's empty state, and one button back to the starter list (WATCH RESET).
-export const emptyWatchHtml = () => emptyState({ title: 'The watchlist is empty.', hint: 'Add symbols above, like AAPL MSFT GOLD.', action: { label: 'STARTER LIST', cmd: 'WATCH RESET' } });
+// Without Pro, one quiet line: the list lives in this browser only, and PRO syncs it.
+export const WATCH_PRO_LINE = 'Saved on this device. PRO syncs it.';
+export const emptyWatchHtml = ({ pro = false } = {}) => emptyState({ title: 'The watchlist is empty.', hint: 'Add symbols above, like AAPL MSFT GOLD.', action: { label: 'STARTER LIST', cmd: 'WATCH RESET' }, note: pro ? '' : raw(proLine(WATCH_PRO_LINE)) });
 
 export function render(el, cmd, ctx) {
   const a = cmd.args || { action: 'show' };
@@ -237,7 +240,7 @@ export function render(el, cmd, ctx) {
 
   function draw() {
     if (!list.length) {
-      body.innerHTML = emptyWatchHtml();
+      body.innerHTML = emptyWatchHtml({ pro: isPro() });
       return;
     }
     const rows = sortRows(list.map((id) => ({ id, quote: byId[id] || null })), sort.key, sort.dir);

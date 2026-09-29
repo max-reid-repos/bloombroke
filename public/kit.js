@@ -31,6 +31,7 @@
 //   fitToView(el)                 a globe sized to the room left in the first view
 //   usageCard(...)                a command typed wrong (15 words at most)
 //   emptyState(...)               a list with nothing in it (20 words at most)
+//   proLine(text)                 a quiet line for a visitor, its word PRO a link to PRO
 
 export * from './kit-core.js';
 
@@ -155,8 +156,9 @@ export function usageCard({ problem, format = '', grammar = '', example = '', mo
 }
 
 // An empty list: title, hint (60ch at most), action ({ label, cmd } or raw(html), DESK's
-// presets), details (+ Details). small: a side panel's note.
-export function emptyState({ title, hint = '', action = null, details = '', small = false, cls = '', id = '', hidden = false } = {}) {
+// presets), note (one quiet line under the action), details (+ Details). small: a side
+// panel's note.
+export function emptyState({ title, hint = '', action = null, note = '', details = '', small = false, cls = '', id = '', hidden = false } = {}) {
   const act = action && typeof action === 'object' && 'cmd' in action
     ? `<a class="btn empty-btn" href="${esc(q(action.cmd))}" data-cmd="${esc(action.cmd)}" data-example>${esc(action.label || action.cmd)}</a>`
     : given(action) ? put(action) : '';
@@ -164,8 +166,15 @@ export function emptyState({ title, hint = '', action = null, details = '', smal
     + `<p class="empty-title">${put(title)}</p>`
     + (given(hint) ? `<p class="empty-hint">${put(hint)}</p>` : '')
     + (act ? `<div class="empty-act">${act}</div>` : '')
+    + (given(note) ? `<p class="empty-note">${put(note)}</p>` : '')
     + (given(details) ? `<details class="how card-more"><summary>${DETAILS}</summary><div class="card-details">${put(details)}</div></details>` : '')
     + '</div>';
+}
+
+// A quiet line at the moment Pro would help (WATCH empty, ALERTS, the GUESS end), for a
+// visitor only (the caller checks): the text escaped, its word PRO a link to the PRO screen.
+export function proLine(text) {
+  return esc(text).replace(/\bPRO\b/, `<a class="pro-line-link" href="${esc(q('PRO'))}" data-cmd="PRO">PRO</a>`);
 }
 
 // The words a card shows above its + Details: tags, hidden bits and the details out;
