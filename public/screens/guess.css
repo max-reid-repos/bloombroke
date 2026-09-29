@@ -7,14 +7,19 @@
 /* --- end FISHTANK -------------------------------------------------------------- */
 
 /* --- GUESS (screens/guess.js): one mystery stock a day ------------------------- */
+/* One column at every size: the mystery chart on top, the guesses under it. The chart is
+   never taller than half its width (2:1), so a -12% year does not look like a collapse. */
 .grid-guess { grid-template-columns: minmax(0, 1fr); }
-.gs-chart { position: relative; height: 280px; min-height: 0; overflow: hidden; }
+.gs-chart { position: relative; width: 100%; aspect-ratio: 2 / 1; max-height: 360px; min-height: 0; overflow: hidden; }
 @media (min-width: 1100px) {
-  .grid-guess { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
-  html:not(.is-embed) .view > .grid-guess { grid-template-rows: minmax(0, 1fr); }
-  html:not(.is-embed) .view > .grid-guess > .gs-chart-panel > .panel-body { display: flex; flex-direction: column; overflow: hidden; scrollbar-gutter: auto; }
-  html:not(.is-embed) .view > .grid-guess .gs-chart { flex: 1 1 0; height: auto; min-height: 200px; }
-  .is-embed .gs-chart { height: calc(100vh - 40px); }
+  /* A column: the chart wants 2:1 (50cqw of its panel), and gives way (down to 160 px)
+     to the guesses at their own height, which sit right under it. Room left over goes
+     under the guesses, never between the chart and the table. */
+  html:not(.is-embed) .view > .grid-guess { display: flex; flex-direction: column; }
+  html:not(.is-embed) .view > .grid-guess > .gs-chart-panel { flex: 0 1 auto; min-height: 160px; }
+  html:not(.is-embed) .view > .grid-guess > .gs-play { flex: 1 0 auto; }
+  html:not(.is-embed) .view > .grid-guess > .gs-chart-panel > .panel-body { display: flex; flex-direction: column; flex: 0 1 auto; overflow: hidden; scrollbar-gutter: auto; container-type: inline-size; }
+  html:not(.is-embed) .view > .grid-guess .gs-chart { flex: 0 1 auto; aspect-ratio: auto; height: 50cqw; min-height: 120px; max-height: none; }
 }
 .gs-svg { display: block; }
 .gs-line { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; }
@@ -49,11 +54,11 @@
 /* The arrow that points to the answer, after the guess's value. */
 .gs-cell .gs-d { margin-left: 6px; font-size: 14px; font-weight: 700; }
 .gs-table tbody th, .gs-table tbody td { height: 36px; padding-top: 2px; padding-bottom: 2px; }
-/* Green: same or close, as the green square in the share text. Blue: near. */
+/* Right (hit): a green fill, as the green square in the share text. Close (near): blue
+   text and its arrow, no box. Wrong (miss): dim text. */
 .gs-cell.g-hit { background: var(--up); color: var(--ink); }
-.gs-cell.g-near { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); }
-.gs-cell.g-miss { color: var(--text-2); }
-.gs-cell.g-miss .gs-d { color: var(--dim); }
+.gs-cell.g-near { color: var(--accent); }
+.gs-cell.g-miss { color: var(--dim); }
 .gs-cell.g-none { color: var(--faint); }
 .gs-end { display: grid; gap: 8px; padding: 4px 10px 10px; }
 .gs-result { font-size: 16px; font-weight: 600; color: var(--text); }
@@ -65,7 +70,13 @@
 .gs-stats b { color: var(--text); font-weight: 600; }
 .gs-share { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .gs-pro { font-size: 12px; color: var(--dim); }
-.gs-x { height: 24px; }
+/* SHARE ON X and EMBED: plain text links beside the one primary button (COPY RESULT). */
+.gs-share .gs-link { margin-left: 8px; font-size: 12px; letter-spacing: .06em; text-decoration: underline; text-underline-offset: 3px; }
+/* Hover and focus as the kit's .card-link: brighter text; the underline stays as it is. */
+.gs-share .gs-link:hover, .gs-share .gs-link:focus-visible { color: var(--text); text-decoration: underline; }
+/* The chart's strip once the game is over: the stock, named. */
+.panel-meta .gs-reveal { color: var(--text-2); font-size: 12px; text-transform: none; letter-spacing: 0; }
+.gs-reveal .gs-rtk { color: var(--text); font-weight: 600; }
 .gs-legend { padding: 8px 10px; font-size: 11px; line-height: 15px; color: var(--dim); }
 /* HOW TO PLAY (howto.js): the link where the legend line was, and the ? key beside it. */
 .gs-legend .gs-howto { font-size: 12px; letter-spacing: 0; text-decoration: underline; text-underline-offset: 3px; }
@@ -77,7 +88,8 @@
 .gs-howto-ex th, .gs-howto-ex td { border-bottom: 0; }
 /* Its labels are the table's header, set a little tighter so FIRST LETTER fits whole. */
 .gs-howto-ex thead th { padding: 0 4px; letter-spacing: .02em; }
-.howto .gs-cell.g-miss { box-shadow: inset 0 0 0 1px var(--rule-strong); }
+/* The key under it: the same looks, a letter each (hit a fill, near and miss text). */
+.howto-sw.gs-cell { display: flex; align-items: center; justify-content: center; width: auto; min-width: 24px; height: 20px; padding: 0 4px; border-left: 0; font-size: 12px; font-weight: 600; }
 @media (max-width: 639px) {
   .gs-table .gs-g { width: 18%; }
   .gs-table .gs-i { width: 3ch; }
@@ -86,4 +98,5 @@
   .gs-table thead th { height: 28px; font-size: 10px; line-height: 12px; letter-spacing: .02em; white-space: normal; }
   .gs-cell .gs-v { font-size: 11px; }
   .gs-cell .gs-d { margin-left: 3px; }
+  .panel-meta .gs-reveal { font-size: 13px; }
 }

@@ -97,10 +97,18 @@ export function msToNextPuzzle(nowMs) {
   return Math.max(0, at - nowMs);
 }
 
+// "13 h 20 m": hours and whole minutes, no ticking seconds (the screen updates it once a
+// minute). A part minute counts as a whole one, so it never reads 0 m before the new one.
+// The end card's NEXT IN; once the new puzzle is out (the New York midnight seen when the
+// screen opened has passed), a line and the way to start it instead, never "0 h 0 m".
+export function nextInner(now, at) {
+  return now < at
+    ? `NEXT IN <span class="gs-cd">${fmtCountdown(at - now)}</span>`
+    : `A NEW PUZZLE IS OUT. <a class="code" href="${esc(q('GUESS'))}" data-cmd="GUESS">GUESS</a>`;
+}
 export function fmtCountdown(ms) {
-  const t = Math.max(0, Math.floor(ms / 1000));
-  const p = (x) => String(x).padStart(2, '0');
-  return `${p(Math.floor(t / 3600))}:${p(Math.floor((t % 3600) / 60))}:${p(t % 60)}`;
+  const t = Math.max(0, Math.ceil(ms / 60_000));
+  return `${Math.floor(t / 60)} h ${t % 60} m`;
 }
 
 // pool: [[ticker, name]]. Ticker matches first, then names that start with the words,
@@ -163,7 +171,7 @@ export function chartSvg(series, w, h) {
     const vy = f(y(v));
     const zero = Math.abs(v) < step / 1000;
     // A label the end tag would cover is left out.
-    const lab = Math.abs(y(v) - y(series[series.length - 1][1])) < 14 ? '' : `<text class="gs-ylab" x="${w - 4}" y="${f(y(v) + 4)}" text-anchor="end">${esc(pctLabel(zero ? 0 : v))}</text>`;
+    const lab = Math.abs(y(v) - y(series[series.length - 1][1])) < 18 ? '' : `<text class="gs-ylab" x="${w - 4}" y="${f(y(v) + 4)}" text-anchor="end">${esc(pctLabel(zero ? 0 : v))}</text>`;
     grid.push(`<line class="gs-grid${zero ? ' is-zero' : ''}" x1="${padL}" x2="${padL + pw}" y1="${vy}" y2="${vy}"/>${lab}`);
   }
   const months = [];
@@ -240,7 +248,7 @@ export function rowsHtml(rows, tries = TRIES) {
 export const HOWTO_KEY = 'bb.guess.howto';
 // The example: guess KO (Coca-Cola) when the answer is MDLZ (Mondelez), graded as
 // data/guess.js grades it (a test checks): the same sector (green); a 1Y move 5 to 20
-// points under the answer's (blue, up); over twice the answer's size (dark, down); a first
+// points under the answer's (blue, up); over twice the answer's size (dim, down); a first
 // letter 2 before the answer's (blue, up: later in A to Z).
 export const HOWTO_EXAMPLE = {
   ticker: 'KO',
@@ -260,10 +268,12 @@ export const HOWTO = {
     'Each guess gets 4 clues.',
     'Arrows point to the answer.',
   ],
+  // The key: each a tiny cell of the table's own look, with a letter in it (hit: a green
+  // fill; near: blue text and its arrow, no box; miss: dim text).
   legend: [
-    { cls: 'gs-cell g-hit', say: 'Green', label: 'hit' },
-    { cls: 'gs-cell g-near', say: 'Blue', label: 'near' },
-    { cls: 'gs-cell g-miss', say: 'Dark', label: 'miss' },
+    { cls: 'gs-cell g-hit', say: 'Green', label: 'hit', sample: 'A' },
+    { cls: 'gs-cell g-near', say: 'Blue', label: 'near', sample: 'A\u2191' },
+    { cls: 'gs-cell g-miss', say: 'Dim', label: 'miss', sample: 'A\u2193' },
   ],
   foot: 'A new stock every day at midnight New York time.',
   button: 'PLAY',
@@ -309,20 +319,35 @@ export function statsHtml(s) {
   return `<p class="gs-stats">${item('PLAYED', String(s.played))}${item('WIN %', s.winPct === null ? '--' : String(s.winPct))}${item('STREAK', String(s.current))}</p>`;
 }
 
+// The chart's strip once the game is over, won or lost: "SO · Southern Company · −12.3% in
+// a year" (the ticker, the name, the 1Y move the chart ends on). Before that, and while
+// the answer is still loading, the strip keeps saying MYSTERY STOCK.
+export function revealHtml(answer, move) {
+  if (!answer?.ticker) return '';
+  const pct = Number.isFinite(move) ? ` · <span class="${move > 0 ? 'up' : move < 0 ? 'down' : 'flat'}">${esc(pctLabel(move, 1))}</span> in a year` : '';
+  return `<span class="meta-note gs-reveal"><b class="gs-rtk">${esc(answer.ticker)}</b> · ${esc(answer.name)}${pct}</span>`;
+}
+// The move the chart ends on: the % change of its last close.
+export const seriesMove = (series) => (Array.isArray(series) && series.length ? Number(series[series.length - 1][1]) : NaN);
+
 // The end line: "Got it in 3." or "It was UPS (United Parcel Service)."
 export function endLine(solvedIn, answer) {
   if (solvedIn) return `Got it in ${solvedIn}.`;
   return answer ? `It was ${answer.ticker} (${answer.name}).` : '';
 }
 
+// The chart's strip while the stock is still a mystery.
+const MYSTERY = metaNote('MYSTERY STOCK · 1 YEAR · % CHANGE', 'Past prices only: its daily closes over the last year, as percent change from the first close.');
+
 export function render(el, cmd, ctx) {
   const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
   el.innerHTML = `<div class="grid grid-guess">
-    ${panel('1', 'Guess', LOADING, { metaId: 'gs-meta', meta: metaNote('MYSTERY STOCK · 1 YEAR · % CHANGE', 'Past prices only: its daily closes over the last year, as percent change from the first close.'), bodyCls: 'flush', cls: 'gs-chart-panel' })}
+    ${panel('1', 'Guess', LOADING, { metaId: 'gs-meta', meta: MYSTERY, bodyCls: 'flush', cls: 'gs-chart-panel' })}
     ${panel('2', 'Your guesses', LOADING, { metaId: 'gs-left', cls: 'gs-play', bodyCls: 'flush' })}
   </div>`;
   const [chartBody, playBody] = el.querySelectorAll('.panel-body');
-  const label = el.querySelector('.gs-chart-panel .panel-label');
+  const label = el.querySelector('.gs-chart-panel').querySelector('.panel-label');
+  const chartMeta = el.querySelector('#gs-meta');
   const left = el.querySelector('#gs-left');
 
   let puzzle = null;
@@ -334,6 +359,8 @@ export function render(el, cmd, ctx) {
   let matches = [];
   let resize = null;
   let chat = null; // POST TO CHAT: { pro, key, header, rooms } once looked up
+  // The next New York midnight from when the screen opened: the new puzzle is out then.
+  const nextAt = Date.now() + msToNextPuzzle(Date.now());
   // HOW TO PLAY: howto.js and its stylesheet, loaded with this screen (never in a DESK
   // panel). It opens by itself on a first visit only: a player with a result or a saved
   // game has been here before.
@@ -381,10 +408,10 @@ export function render(el, cmd, ctx) {
       ${statsHtml(s)}
       <div class="gs-share">
         <button type="button" class="pf-btn btn-solid gs-copy">COPY RESULT</button>
-        <a class="chip gs-x" href="${esc(shareOnX(shareText(game.n, game.rows, solved())))}" target="_blank" rel="noopener">SHARE ON X</a>
-        <button type="button" class="chip gs-embed" title="Copy one line of HTML that puts today's GUESS on your site">EMBED</button>
+        <a class="card-link gs-link gs-x" href="${esc(shareOnX(shareText(game.n, game.rows, solved())))}" target="_blank" rel="noopener">SHARE ON X</a>
+        <button type="button" class="card-link gs-link gs-embed" title="Copy one line of HTML that puts today's GUESS on your site">EMBED</button>
         ${postChatHtml(chat?.pro, chat?.rooms)}
-        <span class="gs-next">NEXT IN <span class="gs-cd">${fmtCountdown(msToNextPuzzle(Date.now()))}</span></span>
+        <span class="gs-next">${nextInner(Date.now(), nextAt)}</span>
       </div>
       ${proChatLineHtml(!ctx.embed && chat?.visitor === true)}
     </div>`;
@@ -393,7 +420,10 @@ export function render(el, cmd, ctx) {
   function paint() {
     const done = isDone();
     left.textContent = done ? '' : `GUESS ${game.rows.length + 1} OF ${TRIES}`;
-    playBody.innerHTML = `${done ? '' : formHtml()}${rowsHtml(game.rows)}${ctx.embed ? legendHtml() : howtoLinkHtml(!done)}${done ? endHtml() : ''}`;
+    // After the game, no blank rows for tries never used (a win in 3 leaves room for the chart).
+    playBody.innerHTML = `${done ? '' : formHtml()}${rowsHtml(game.rows, done ? game.rows.length : TRIES)}${ctx.embed ? legendHtml() : howtoLinkHtml(!done)}${done ? endHtml() : ''}`;
+    // The game is over: the chart's strip names the stock.
+    chartMeta.innerHTML = (done && revealHtml(answer, seriesMove(puzzle?.series))) || MYSTERY;
     if (!done && !coarse) playBody.querySelector('.gs-in')?.focus();
   }
 
@@ -592,15 +622,11 @@ export function render(el, cmd, ctx) {
   }
 
   load();
+  // NEXT IN, once a minute.
   ctx.every(() => {
-    const cd = playBody.querySelector('.gs-cd');
-    if (!cd) return;
-    const ms = msToNextPuzzle(Date.now());
-    cd.textContent = fmtCountdown(ms);
-    if (ms < 1000) {
-      const next = playBody.querySelector('.gs-next');
-      if (next) next.innerHTML = `A NEW PUZZLE IS OUT. <a class="code" href="${esc(q('GUESS'))}" data-cmd="GUESS">GUESS</a>`;
-    }
-  }, 1000);
+    if (!playBody.querySelector('.gs-cd')) return; // no count running (playing, or the new puzzle is out)
+    const next = playBody.querySelector('.gs-next');
+    if (next) next.innerHTML = nextInner(Date.now(), nextAt);
+  }, 60_000);
   return () => resize?.disconnect();
 }
