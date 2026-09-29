@@ -25,18 +25,19 @@
 
 /* ---- Every device: a laptop and a phone, the same rows --------------------------------- */
 .pd-dev { position: relative; width: 100%; max-width: 280px; height: 100%; margin: 0 auto; }
-.pd-laptop { position: absolute; left: 0; top: 12px; width: 188px; }
+.pd-laptop { position: absolute; left: 0; top: 12px; width: 184px; }
 .pd-lscreen { height: 120px; padding: 4px; overflow: hidden; border: 2px solid var(--rule-strong); border-bottom-width: 6px; background: var(--bg); }
 .pd-lbase { position: relative; left: -16px; width: calc(100% + 32px); height: 6px; border: 1px solid var(--rule-strong); border-top: 0; background: var(--panel-2); }
-.pd-phone { position: absolute; right: 0; bottom: 0; width: 88px; height: 148px; padding: 16px 2px 8px; border: 2px solid var(--rule-strong); border-radius: 12px; background: var(--bg); box-shadow: 0 0 0 4px var(--bg); }
+.pd-phone { position: absolute; right: 0; bottom: 0; width: 92px; height: 148px; padding: 16px 2px 8px; border: 2px solid var(--rule-strong); border-radius: 12px; background: var(--bg); box-shadow: 0 0 0 4px var(--bg); }
 .pd-pscreen { height: 100%; overflow: hidden; }
 .pd-dev .grid-table { table-layout: fixed; }
 .pd-dev .grid-table th, .pd-dev .grid-table td { height: 18px; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
 .pd-lscreen .grid-table th, .pd-lscreen .grid-table td { padding: 0 2px; }
-.pd-lscreen .grid-table th:first-child { width: 28%; }
-.pd-lscreen .grid-table .last { width: 44%; }
+/* A fixed table takes its widths from the head row: Symbol, Last, %Chg (the rest hidden). */
+.pd-lscreen .grid-table thead th:first-child { width: 28%; }
+.pd-lscreen .grid-table thead th:nth-child(3) { width: 44%; }
 .pd-pscreen .grid-table td, .pd-pscreen .grid-table th { padding: 0 2px; }
-.pd-pscreen .grid-table th:first-child { width: 45%; }
+.pd-pscreen .grid-table { table-layout: auto; }
 .pd-dev .grid-table thead th { color: var(--faint); font-weight: 400; letter-spacing: 0; }
 .pd-dev .wl-cname, .pd-dev .tag, .pd-dev .chg { display: none; }
 .pd-pscreen thead, .pd-pscreen .last { display: none; }

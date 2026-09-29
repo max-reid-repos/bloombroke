@@ -64,6 +64,7 @@
 .gs-stats { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; }
 .gs-stats b { color: var(--text); font-weight: 600; }
 .gs-share { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gs-pro { font-size: 12px; color: var(--dim); }
 .gs-x { height: 24px; }
 .gs-legend { padding: 8px 10px; font-size: 11px; line-height: 15px; color: var(--dim); }
 /* HOW TO PLAY (howto.js): the link where the legend line was, and the ? key beside it. */

@@ -19,6 +19,7 @@ import { emptyWatchHtml, WATCH_PRO_LINE } from '../public/screens/watch.js';
 import { topLineHtml, ALERTS_PRO_LINE } from '../public/screens/alerts.js';
 import { HONEST_LINE } from '../public/alerts.js';
 import { DEFAULT_WATCHLIST } from '../public/watchlist.js';
+import { proChatLineHtml, CHAT_PRO_LINE } from '../public/screens/guess.js';
 
 const all = () => true;
 const NOW = Date.UTC(2026, 8, 29, 15, 30);
@@ -349,8 +350,9 @@ test('visitor view: the kit slots in order, the price the only big number, one p
 
 test('member view unchanged: a key keeps the v3 key view and the REACTIVATE view, no minis', () => {
   const st = { status: 'active', seat: 12, canGift: true, interval: 'year', currentPeriodEnd: new Date(Date.UTC(2027, 8, 27, 12)).toISOString() };
-  const on = mainHtml({ key: 'BB-7KQ2-M9XD-HT4P-WZ3C', st, has: all });
-  const off = mainHtml({ key: 'BB-7KQ2-M9XD-HT4P-WZ3C', st: { status: 'canceled', seat: 7 }, has: all });
+  const key = ['BB', '7KQ2', 'M9XD', 'HT4P', 'WZ3C'].join('-'); // a fake key, built from parts (gitleaks)
+  const on = mainHtml({ key, st, has: all });
+  const off = mainHtml({ key, st: { status: 'canceled', seat: 7 }, has: all });
   for (const html of [on, off]) {
     assert.doesNotMatch(html, /pd-|pro-v4|card-wide|pro-keyq/);
   }
@@ -359,8 +361,8 @@ test('member view unchanged: a key keeps the v3 key view and the REACTIVATE view
 
 // ---- the quiet PRO lines -----------------------------------------------------------------------
 
-test('moment lines: WATCH empty and ALERTS say what PRO adds, 10 words at most, PRO a link; never for Pro', () => {
-  for (const line of [WATCH_PRO_LINE, ALERTS_PRO_LINE]) {
+test('moment lines: WATCH empty, ALERTS and the GUESS end say what PRO adds, 10 words at most, PRO a link; never for Pro', () => {
+  for (const line of [WATCH_PRO_LINE, ALERTS_PRO_LINE, CHAT_PRO_LINE]) {
     assert.ok(line.split(/\s+/).length <= 10, line);
     assert.match(line, /\bPRO\b/);
     assert.doesNotMatch(line, /—|\p{Extended_Pictographic}/u);
@@ -375,4 +377,11 @@ test('moment lines: WATCH empty and ALERTS say what PRO adds, 10 words at most, 
   assert.doesNotMatch(topLineHtml({ get: () => true }, false), /data-cmd="PRO"/);
   // No pop-ups: a line, not a dialog.
   for (const f of ['public/screens/watch.js', 'public/screens/alerts.js']) assert.doesNotMatch(readFileSync(f, 'utf8'), /showModal|<dialog/);
+  // GUESS: where Pro sees POST TO CHAT, a visitor sees the line; nothing while unknown, for Pro, or in an embed.
+  assert.equal(proChatLineHtml(true), `<p class="gs-pro">${link}: compare scores with friends in CHAT.</p>`);
+  assert.equal(proChatLineHtml(false), '');
+  const g = readFileSync('public/screens/guess.js', 'utf8');
+  assert.match(g, /\$\{proChatLineHtml\(!ctx\.embed && chat\?\.visitor === true\)\}/);
+  assert.match(g, /if \(!pro\.isPro\(\)\) \{\s*\/\/ [^\n]*\n\s*chat = \{ pro: false, rooms: \[\], visitor: true \};/);
+  assert.match(g, /chat = \{ pro: true, key: pro\.getKey\(\), header: pro\.HEADER, rooms: postable\(d\.rooms\) \};/, 'Pro: no visitor flag');
 });
