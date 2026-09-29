@@ -5,8 +5,8 @@
 // their username in its colour and #42 (ME sets all three; NAME opens ME). A $TICKER in a message carries the price when it was sent, so the
 // chip shows the move since; a card opens a screen of the terminal. No links, no files.
 // New messages come by long-poll (GET /api/chat/wait) while this screen is open.
-// DRIVE (../drive.js): the thread head has DRIVE; a room someone drives shows one line
-// with FOLLOW. GUESS LEAGUE: GUESS results are one line each, and TODAY'S GUESS sits
+// GO LIVE (../drive.js, DRIVE in the code): the thread head has GO LIVE; a room where
+// someone is live shows one line with WATCH. GUESS LEAGUE: GUESS results are one line each, and TODAY'S GUESS sits
 // over the thread when anyone in the room posted today's.
 //
 // Pure *Html builders are exported for node:test; render() is the browser part.
@@ -143,10 +143,12 @@ export function dayLabel(ms, now = Date.now()) {
 
 // GUESS LEAGUE: '4/6', or 'X/6' for a game not solved.
 export const GUESS_OF = 6;
+// Typed with a chat open: GO LIVE, or DRIVE (its first name, kept as an alias).
+export const LIVE_WORDS = ['GO LIVE', 'DRIVE'];
 export const scoreText = (g, of = GUESS_OF) => `${g?.solved ? g.tries : 'X'}/${of}`;
 
 export function messageHtml(m, quotes = {}) {
-  // A line from the server: "Tom 1 is driving.", last week's GUESS winner.
+  // A line from the server: "Tom #1 is live.", last week's GUESS winner.
   if (m.kind === 'sys') return `<div class="cm cm-sys" data-id="${Number(m.id)}"><span class="cm-t">${timeText(m.at)}</span><span class="cm-body">${esc(m.text)}</span></div>`;
   // A GUESS result: one line, a click opens GUESS.
   if (m.kind === 'guess' && m.guess) {
@@ -168,20 +170,20 @@ export function messagesHtml(list, quotes = {}, now = Date.now()) {
   return out;
 }
 
-// DRIVE in the thread head: DRIVE, STOP while you drive this room, TAKE OVER while
-// someone else does (it asks first). Not in a closed chat.
+// GO LIVE in the thread head: GO LIVE, STOP while you are live in this room, TAKE OVER
+// while someone else is (it asks first). Not in a closed chat.
 export function driveChipHtml(room, dv = null) {
   if (!room || room.readOnly) return '';
   const mine = dv?.role === 'drive' && dv.room === room.id;
   if (!mine && room.drive && !room.drive.own) return '<button type="button" class="chip ct-drive" data-act="take">TAKE OVER</button>';
-  return `<button type="button" class="chip ct-drive${mine ? ' is-on' : ''}" data-act="${mine ? 'drive-stop' : 'drive'}" aria-pressed="${mine}">${mine ? 'STOP' : 'DRIVE'}</button>`;
+  return `<button type="button" class="chip ct-drive${mine ? ' is-on' : ''}" data-act="${mine ? 'drive-stop' : 'drive'}" aria-pressed="${mine}">${mine ? 'STOP' : 'GO LIVE'}</button>`;
 }
 // TAKE OVER asks first, one line: Enter takes over, Esc keeps things as they are.
 export function takeConfirmHtml(by) {
-  return `<div class="desk-confirm ct-confirm" role="alertdialog" aria-label="Take over DRIVE" tabindex="-1"><span class="desk-confirm-text">Take over from ${esc(driverName(by))}?</span><button type="button" class="desk-btn" data-act="take-yes">ENTER: TAKE OVER</button><button type="button" class="desk-btn" data-act="take-no">ESC: CANCEL</button></div>`;
+  return `<div class="desk-confirm ct-confirm" role="alertdialog" aria-label="Take over the live screen" tabindex="-1"><span class="desk-confirm-text">Take over from ${esc(driverName(by))}?</span><button type="button" class="desk-btn" data-act="take-yes">ENTER: TAKE OVER</button><button type="button" class="desk-btn" data-act="take-no">ESC: CANCEL</button></div>`;
 }
 
-// The lines over the thread: someone drives (FOLLOW, or STOP while you follow), and
+// The lines over the thread: someone is live (WATCH, or STOP while you watch), and
 // TODAY'S GUESS when anyone here posted today's. '' when neither.
 export function extraHtml(room, dv = null, guess = null) {
   if (!room) return '';
@@ -190,8 +192,8 @@ export function extraHtml(room, dv = null, guess = null) {
   if (d && !d.own) {
     const on = dv?.role === 'follow' && dv.room === room.id;
     out += on
-      ? `<p class="ct-line ct-offer"><span>Following ${esc(driverName(d.by))}.</span><button type="button" class="chip" data-act="unfollow">STOP</button></p>`
-      : `<p class="ct-line ct-offer"><span>${esc(driverName(d.by))} is driving.</span><button type="button" class="chip" data-act="follow">FOLLOW</button></p>`;
+      ? `<p class="ct-line ct-offer"><span>Watching ${esc(driverName(d.by))}.</span><button type="button" class="chip" data-act="unfollow">STOP</button></p>`
+      : `<p class="ct-line ct-offer"><span>${esc(driverName(d.by))} is live.</span><button type="button" class="chip" data-act="follow">WATCH</button></p>`;
   }
   if (guess?.scores?.length) {
     // Each player as everywhere else: avatar, username in its colour, #seat.
@@ -355,7 +357,7 @@ export function render(el, cmd, ctx) {
     const x = $('.ct-extra');
     if (x) x.innerHTML = extraHtml(room(), dv.state(), st.guess);
   }
-  // DRIVE started, ended or its count moved: the head and the lines over the thread.
+  // GO LIVE started, ended or its count moved: the head and the lines over the thread.
   const unsub = dv.subscribe(() => {
     if (!alive()) return;
     const head = $('.ct-head');
@@ -363,12 +365,12 @@ export function render(el, cmd, ctx) {
     paintExtra();
   });
   ctx.onCleanup(unsub);
-  // DRIVE typed in the command bar while a chat is open.
+  // GO LIVE (or DRIVE, its old name) typed in the command bar while a chat is open.
   ctx.setCommandHook?.((clean) => {
     const r = room();
-    if (clean !== 'DRIVE' || !r || r.readOnly) return false;
+    if (!LIVE_WORDS.includes(clean) || !r || r.readOnly) return false;
     const now = dv.state();
-    if (now?.role === 'drive' && now.room === r.id) { ctx.status('DRIVING: OPEN ANY SCREEN'); return true; }
+    if (now?.role === 'drive' && now.room === r.id) { ctx.status('LIVE: OPEN ANY SCREEN'); return true; }
     act(() => startDrive(r));
     return true;
   });
@@ -388,7 +390,7 @@ export function render(el, cmd, ctx) {
   }
   async function startDrive(r) {
     await dv.start(r.id);
-    ctx.status('DRIVING: OPEN ANY SCREEN');
+    ctx.status('LIVE: OPEN ANY SCREEN');
   }
 
   function paintMessages(stick = false) {
@@ -554,7 +556,7 @@ export function render(el, cmd, ctx) {
     $('.ct-menu').hidden = true;
     if (!r) return;
     if (a === 'add' || a === 'report') { inline(a); return; }
-    // Leaving or blocking ends your drive or follow here first.
+    // Leaving or blocking ends your live or your watching here first.
     if ((a === 'leave' || a === 'block') && dv.state()?.room === r.id) await dv.stop();
     await act(async () => {
       const d = await api(`/api/chat/rooms/${r.id}`, { method: 'POST', body: { action: a }, signal });
@@ -596,9 +598,9 @@ export function render(el, cmd, ctx) {
       case 'take': askTake(); break;
       case 'take-yes': answerTake(true); break;
       case 'take-no': answerTake(false); break;
-      case 'drive-stop': dv.stop(); ctx.status('STOPPED DRIVING'); break;
-      case 'follow': { const r = room(); if (r) act(async () => { await dv.follow(r.id); if (alive()) ctx.status('FOLLOWING'); }); break; }
-      case 'unfollow': dv.stop(); ctx.status('STOPPED FOLLOWING'); break;
+      case 'drive-stop': dv.stop(); ctx.status('ENDED LIVE'); break;
+      case 'follow': { const r = room(); if (r) act(async () => { await dv.follow(r.id); if (alive()) ctx.status('WATCHING'); }); break; }
+      case 'unfollow': dv.stop(); ctx.status('STOPPED WATCHING'); break;
       case 'back': st.open = null; st.msgs = []; paint(); ctx.status('CHAT'); break;
       case 'menu': {
         const m = $('.ct-menu');

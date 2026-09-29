@@ -53,7 +53,7 @@ test('registry: CHAT is Pro; no example sends a request to a real seat; HELP exp
   assert.deepEqual(e.examples, ['CHAT'], 'a click on an example must never message seat 42');
   assert.equal(e.syntax, 'CHAT [seat ...|@username]');
   const { DETAIL } = await import('../public/registry-detail.js');
-  assert.equal(DETAIL.CHAT.options.length, 3, 'a seat, a username (ME), a group');
+  assert.deepEqual(DETAIL.CHAT.options.map(([w]) => w), ['<seat>', '@<username>', '<seat> <seat> ...', 'GO LIVE'], 'a seat, a username (ME), a group; GO LIVE typed in a chat');
   assert.match(DETAIL.CHAT.source, /deleted after 30 days/);
 });
 
@@ -190,7 +190,9 @@ test('the page: the badge by the seat, hidden, opens CHAT; only the badge loads 
   assert.match(html, /<a id="seat"[^>]*><\/a><a id="chat-badge" class="chat-badge num" href="\/\?c=CHAT" data-cmd="CHAT" hidden><\/a>/);
   const a = buildAssets('public');
   const shell = a.closure('app.js');
-  assert.ok(shell.includes('chat-badge.js'));
+  // The badge's file comes in right after the first screen (app.js), the chat screen on first use.
+  assert.ok(!shell.includes('chat-badge.js'));
+  assert.match(readFileSync('public/app.js', 'utf8'), /loadModule\('chat-badge\.js'\)\.then\(\(m\) => m\.mountChatBadge\(\$\('chat-badge'\), \{ timer: liveTimer \}\)/);
   assert.ok(!shell.includes('screens/chat.js'), 'the chat screen loads on first use');
   assert.match(readFileSync('public/app.js', 'utf8'), /'screens\/grid\.css', 'screens\/chat\.css',/);
 });

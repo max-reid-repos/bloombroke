@@ -205,11 +205,15 @@ const FULL = {
     countries: [{ name: 'United States', pct: 60.4 }, { name: 'Japan', pct: 10 }], globe: { window: '7d', countries: [{ cc: 'US', visitors: 45 }, { cc: 'JP', visitors: 7 }], other: 4 } },
   inventory: { stripShown: { today: 100, d7: 5678 } },
 };
-test('SPONSOR screen: a card: YOUR AD HERE, your line, EMAIL and BBRK, the rule, three numbers, the globe; 30 words at most', () => {
+test('SPONSOR screen: a card: the drawn terminal with its strip lit, the headline, the views, EMAIL and BBRK, the rule, three numbers, the globe; 30 words at most', () => {
   const page = sponsorHtml({ has: () => true, bbrk: FULL, cfg: cleanSponsors({ house: house(3) }) });
-  assert.equal(HERO, 'YOUR AD HERE');
-  assert.match(page, /<h2 class="card-hero card-hero-96 num"><span class="spon-slot">YOUR AD HERE<\/span><\/h2>/, 'YOUR AD HERE, big, in a box like an empty ad slot');
-  assert.match(page, /<p class="card-sub" id="spon-views">Your line: about 5,600 views a week<\/p>/);
+  assert.equal(HERO, 'Your line on every screen.');
+  // Not a boxed YOUR AD HERE (it read as an ad on this page): a small terminal whose bottom
+  // strip is lit with YOUR COMPANY HERE, a picture (role="img"), above the headline.
+  assert.match(page, /^<section class="card card-wide spon-card" aria-label="Sponsor"><div class="card-art"><figure class="spon-term" role="img" aria-label="[^"]+">[\s\S]*<span class="spon-term-strip">YOUR COMPANY HERE<\/span><\/figure><\/div><div class="card-head">/);
+  assert.equal((page.match(/class="spon-term-panel/g) || []).length, 3, 'three faint panels');
+  assert.doesNotMatch(page, /spon-slot|YOUR AD HERE/);
+  assert.match(page, /<h2 class="card-hero card-hero-44 num">Your line on every screen\.<\/h2><p class="card-sub" id="spon-views">About 5,600 views a week\.<\/p>/);
   assert.equal(MAILTO, 'mailto:hello@bloombroke.com?subject=Sponsor%20Bloombroke');
   assert.match(page, /<div class="card-act"><a class="btn card-btn btn-solid" href="mailto:hello@bloombroke\.com\?subject=Sponsor%20Bloombroke">EMAIL hello@bloombroke\.com<\/a><a class="btn card-btn" href="\?c=BBRK" data-cmd="BBRK">BBRK NUMBERS<\/a><\/div>/, 'EMAIL the one primary, BBRK beside it');
   assert.equal((page.match(/btn-solid/g) || []).length, 1);
@@ -237,7 +241,7 @@ test('SPONSOR screen: a card: YOUR AD HERE, your line, EMAIL and BBRK, the rule,
   // While loading: -- for every number.
   const empty = sponsorHtml({ has: () => true });
   assert.match(empty, /<dd class="num">--<\/dd>/);
-  assert.match(empty, /Your line: -- views a week/);
+  assert.match(empty, /About -- views a week\./);
 });
 
 test('SPONSOR numbers: page views lead; -- for anything missing; short country names', () => {
@@ -307,9 +311,9 @@ test('SPONSOR views a week: last 7 days strip_shown over the paid lines plus you
   assert.equal(weeklyViews(null, null), null);
   assert.equal(weeklyViews({ inventory: {} }, null), null);
   assert.deepEqual([cleanDown(12345), cleanDown(100), cleanDown(109), cleanDown(1999), cleanDown(7.9), cleanDown(-1), cleanDown(NaN)], [12000, 100, 100, 1900, 7, null, null]);
-  assert.equal(viewsLine(190), 'Your line: about 190 views a week');
-  assert.equal(viewsLine(12000), 'Your line: about 12,000 views a week');
-  assert.equal(viewsLine(null), 'Your line: -- views a week');
+  assert.equal(viewsLine(190), 'About 190 views a week.');
+  assert.equal(viewsLine(12000), 'About 12,000 views a week.');
+  assert.equal(viewsLine(null), 'About -- views a week.');
 });
 
 test('SPONSOR open: the real strip is outlined with a label above it until the screen closes; nothing for Pro', () => {

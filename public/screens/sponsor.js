@@ -1,7 +1,9 @@
-// SPONSOR: a card page (kit.js cardPage). YOUR AD HERE, big; one line of what a line
-// would get a week; EMAIL (the one primary button) and BBRK NUMBERS; the rule line; three
-// of our own numbers (/api/bbrk: our analytics and the strip inventory); BBRK's globe of
-// visitor places under them, at --globe-w. The rest is behind + Details. While SPONSOR
+// SPONSOR: a card page (kit.js cardPage). A small drawn terminal with its bottom strip lit
+// (YOUR COMPANY HERE), so it is plain the line runs on every screen, not on this page;
+// the headline; about how many views a line gets a week; EMAIL (the one primary button)
+// and BBRK NUMBERS; the rule line; three of our own numbers (/api/bbrk: our analytics and
+// the strip inventory); BBRK's globe of visitor places under them, at --globe-w. The rest
+// is behind + Details. While SPONSOR
 // is open the real strip at the bottom is outlined, with a small label above it. The
 // numbers and the globe's dots come again every minute while the tab is visible (the
 // shell's ctx.live).
@@ -21,7 +23,8 @@ export { loadSponsors }; // the config, asked once per page load: the status lin
 export const CONTACT = 'hello@bloombroke.com';
 export const SUBJECT = 'Sponsor Bloombroke';
 export const MAILTO = `mailto:${CONTACT}?subject=${encodeURIComponent(SUBJECT)}`;
-export const HERO = 'YOUR AD HERE';
+export const HERO = 'Your line on every screen.';
+export const STRIP = 'YOUR COMPANY HERE'; // lit in the drawn terminal's bottom strip
 export const POINT = '↓ this line, every screen';
 export const REFRESH_MS = 60_000;
 export const PHONE_MQ = '(max-width: 639px)'; // kit.css's phone layout
@@ -77,7 +80,18 @@ export function weeklyViews(b, cfg) {
 }
 
 export function viewsLine(n) {
-  return n === null || n === undefined ? 'Your line: -- views a week' : `Your line: about ${count(n)} views a week`;
+  return n === null || n === undefined ? 'About -- views a week.' : `About ${count(n)} views a week.`;
+}
+
+// The drawing at the top: a small terminal (a top bar, three faint panels, a chart line)
+// with the bottom strip lit and YOUR COMPANY HERE in it. A picture: its words are its own
+// (role="img"), and it scales down with the column on a phone. Colours: sponsor.css.
+export function termHtml() {
+  const line = '<svg class="spon-term-line" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,34 10,30 20,32 30,22 40,26 50,16 60,20 70,10 80,14 90,6 100,9"/></svg>';
+  return `<figure class="spon-term" role="img" aria-label="A drawing of a Bloombroke screen, your company's line lit in the strip at the bottom">`
+    + '<span class="spon-term-top"><span class="spon-term-dot"></span><span class="spon-term-bar"></span></span>'
+    + `<span class="spon-term-body"><span class="spon-term-panel is-chart">${line}</span><span class="spon-term-panel"></span><span class="spon-term-panel"></span></span>`
+    + `<span class="spon-term-strip">${esc(STRIP)}</span></figure>`;
 }
 
 export function factsHtml(b) {
@@ -125,8 +139,9 @@ export function sponsorHtml({ has, bbrk = null, cfg = null } = {}) {
     label: 'Sponsor',
     wide: true,
     cls: 'spon-card',
-    hero: raw(`<span class="spon-slot">${esc(HERO)}</span>`),
-    heroSize: 96,
+    art: raw(termHtml()),
+    hero: HERO,
+    heroSize: 44,
     sub: viewsLine(weeklyViews(bbrk, cfg)),
     subId: 'spon-views',
     act: raw(act),

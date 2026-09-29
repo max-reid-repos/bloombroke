@@ -14,12 +14,44 @@
   .wd-tile .panel-body { min-height: 0; padding: 6px 8px; }
 }
 
-/* SPONSOR: a card page (kit.css, "Card pages"). YOUR AD HERE in a box like an empty ad
-   slot; BBRK's globe under the numbers at --globe-w. Room at the end for the label over
+/* SPONSOR: a card page (kit.css, "Card pages"). A small drawn terminal (sponsor.js
+   termHtml) with its bottom strip lit, so the line is plainly on every screen, not on this
+   page; BBRK's globe under the numbers at --globe-w. Room at the end for the label over
    the strip (sponsor.js pointAtStrip), so at the bottom it covers nothing. On a desktop
    the globe takes the room left in the first view (kit.js fitToView writes --fit-w). */
 .spon-card { padding-bottom: 48px; }
-.spon-slot { display: inline-block; padding: 12px 32px; border: 1px solid var(--rule-strong); background: var(--panel); }
+/* The terminal: 480 x 200 at most, smaller with the column. A top bar, three faint panels
+   (one with a chart line), the strip at the bottom lit with the accent. */
+.spon-term {
+  display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 6px;
+  width: 100%; max-width: 480px; aspect-ratio: 12 / 5; margin: 0; padding: 8px;
+  border: 1px solid var(--rule-strong); background: var(--bg);
+}
+.spon-term-top { display: flex; align-items: center; gap: 6px; }
+.spon-term-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+.spon-term-bar { flex: 1 1 auto; height: 6px; max-width: 40%; background: var(--panel-3); }
+.spon-term-body { display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: 1fr 1fr; gap: 6px; min-height: 0; }
+.spon-term-panel { min-height: 0; border: 1px solid var(--rule); background: var(--panel); }
+.spon-term-panel.is-chart { grid-row: 1 / span 2; display: flex; align-items: flex-end; padding: 8px; }
+.spon-term-line { display: block; width: 100%; height: 60%; overflow: visible; }
+.spon-term-line polyline { fill: none; stroke: var(--faint); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.spon-term-strip {
+  display: block; padding: 4px 8px; overflow: hidden;
+  border: 1px solid var(--accent); background: var(--accent-tint); color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-tint), 0 0 24px var(--accent-tint);
+  font-family: var(--font); font-size: 12px; font-weight: 700; letter-spacing: .12em; line-height: 1.4;
+  text-align: center; white-space: nowrap; text-overflow: ellipsis;
+}
+/* A desktop: the terminal at the left, the headline, the line and the buttons at its
+   right, so the globe still fits the first view. */
+@media (min-width: 900px) {
+  .spon-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 32px; }
+  .spon-card > .card-art { grid-column: 1; grid-row: 1 / span 2; align-self: center; }
+  .spon-card > .card-head { grid-column: 2; grid-row: 1; align-self: end; align-items: flex-start; text-align: left; }
+  .spon-card > .card-cta { grid-column: 2; grid-row: 2; align-self: start; align-items: flex-start; text-align: left; }
+  .spon-card > .card-cta .card-act { justify-content: flex-start; }
+  .spon-card > .card-facts, .spon-card > .card-media, .spon-card > .card-foot { grid-column: 1 / -1; }
+}
 .spon-globe { position: relative; width: min(var(--fit-w, var(--globe-w)), 100%); margin: 0 auto; text-align: center; font-size: 12px; }
 .spon-globe[hidden] { display: none; }
 /* Drag to turn it, the wheel or two fingers to zoom (public/globe.js); pan-y: a mostly
@@ -64,7 +96,6 @@
   /* The page scrolls on a phone: room at the end for the label over the strip, so at the
      bottom (the only place the label shows, sponsor.js pointAtStrip) it covers nothing. */
   .spon-card { padding-bottom: 48px; }
-  .spon-slot { padding: 8px 16px; }
 }
 
 /* A WEIRD gauge with a sponsor: SPONSORED BY in its title strip. */

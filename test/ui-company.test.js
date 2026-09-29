@@ -272,7 +272,7 @@ test('afford: a wage field instead of a command, and a share row', () => {
   assert.match(share, /data-copy="https:\/\/bloombroke\.com\/\?c=AFFORD\+1200"/);
   assert.match(share, /x\.com\/intent\/post\?text=/);
   const html = buyHtml(r, share);
-  assert.ok(html.indexOf('buy-side') < html.indexOf('buy-share'), 'the share row comes after the verdict');
+  assert.ok(html.indexOf('class="stamp ') < html.indexOf('data-copy'), 'the share links come after the verdict');
   assert.doesNotMatch(html, /Type <a class="code"[^>]*>WAGE 35/);
   assert.doesNotMatch(share, /invest|recommend/i, 'no advice wording');
 });

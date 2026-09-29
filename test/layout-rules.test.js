@@ -44,6 +44,12 @@ import { optionsUsage } from '../public/screens/options.js';
 import { fxUsage } from '../public/screens/fx.js';
 import { financialsUsage } from '../public/screens/financials.js';
 import { withArt } from '../lib/graveyard.js';
+import { buyHtml, buyMaths, affordShare, wageHtml } from '../public/screens/buy.js';
+import { cpiResultHtml } from '../public/screens/cpi.js';
+import { loanResultHtml } from '../public/screens/loan.js';
+import { mcpHtml, MCP_URL, MCP_RULE, MCP_APPS } from '../public/screens/mcp.js';
+import { tapeHtml } from '../public/screens/tape.js';
+import { linkConfirmHtml, renamedHtml, soonHtml, notLoadedHtml } from '../public/cards.js';
 
 const all = () => true;
 const KEY = 'BB-7KQ2-M9XD-HT4P-WZ3C';
@@ -80,6 +86,32 @@ export const NOSUCH = [
   ['GRAVEYARD GM (a zombie)', stonePageHtml(graveOf('GM'), 0)],
 ];
 
+// ---- Part B: result screens, TAPE, SPONSOR's terminal, the shell's own small cards -------
+const AFF = (a, wage = null) => { const r = buyMaths(a, { wage }); return buyHtml(r, affordShare(r, 'AFFORD 1200 BIKE 2 PER WEEK', 'https://bloombroke.com')); };
+const CPI = { result: 135.19, amount: 100, year: 2015, pct: 35.19, perYear: 2.4, base: 237.017, latest: { label: 'Aug 2026', value: 320.4 } };
+const RATE_SOURCE = 'Average 30-year fixed mortgage rate, weekly national survey, week of SEP 24, 2026';
+// TAPE: the Pro list of tickers is the media (a list, not words), so it is left out of the count.
+const TAPE_LIST = /<div class="tape-list">[\s\S]*?<\/ul><\/div>/;
+export const CARDS_B = [
+  ['AFFORD result, no wage saved', AFF({ price: 1200, times: 2, unit: 'WEEK', years: 3, label: 'Bike' }), 30],
+  ['AFFORD result, a wage saved', AFF({ price: 30000, times: 1, unit: 'WEEK', years: 8 }, 35), 30],
+  ['CPI result', cpiResultHtml(CPI), 30],
+  ['LOAN result, today\'s rate', loanResultHtml({ amount: 400000, years: 30 }, 6.5, RATE_SOURCE), 30],
+  ['LOAN result, your rate', loanResultHtml({ amount: 25000, years: 5 }, 7.9, 'Rate you gave'), 30],
+  ['WAGE saved', wageHtml(35), 15],
+  ['WAGE shown', wageHtml(35, { show: true }), 15],
+  ['WAGE, none saved', wageHtml(null), 15],
+  ['WAGE cleared', wageHtml(null, { clear: true }), 15],
+  ['MCP', mcpHtml(), 30],
+  ['A link that wants to change a list', linkConfirmHtml({ title: 'Watchlist', what: 'watchlist', input: 'WATCH ADD AAPL, MSFT', view: 'WATCH' }), 30],
+  ['RENAMED', renamedHtml(), 15],
+  ['COMING SOON', soonHtml({ name: 'AAPL EARNINGS', hint: 'EARNINGS for one ticker is on the way', ticker: 'AAPL' }), 15],
+  ['A screen that did not load', notLoadedHtml(), 15],
+  ['TAPE on', tapeHtml({ on: true }), 20],
+  ['TAPE off', tapeHtml({ on: false }), 20],
+  ['TAPE, Pro, a note', tapeHtml({ on: true, isPro: true, custom: ['AAPL', 'MSFT', 'GOLD'], note: 'No ticker called XYZQ.', kind: 'warn' }).replace(TAPE_LIST, ''), 20],
+];
+
 // [page, html, budget]: the words above + Details, numbers, keys and codes not counted.
 export const PAGES = [
   ['PRO visitor (test mode)', shownInTest(mainHtml({ next: 4, has: all })), 30],
@@ -104,6 +136,7 @@ export const PAGES = [
   ['ME without Pro', meHtml({ has: all }), 20],
   ['ME, Pro ended', meHtml({ key: KEY, st: { ...ST, status: 'canceled' }, has: all }), 20],
   ...NOSUCH.map(([name, html]) => [name, html, 30]),
+  ...CARDS_B.map(([name, html, budget]) => [name, html, budget]),
 ];
 
 // The usage card (kit.js usageCard) wherever a command is typed wrong: 15 words at most.
@@ -175,7 +208,7 @@ test('card markup: token classes only, no inline sizes; the slots in one order; 
     const sizes = [...html.matchAll(/card-hero-(\d+)/g)].map((m) => Number(m[1]));
     assert.ok(sizes.every((n) => HERO_SIZES.includes(n)), `${name}: hero ${sizes}`);
     // The slots, in the kit's order, each at most once.
-    const order = ['card-alert', 'card-kicker', 'card-hero', 'card-sub', 'card-act', 'card-note', 'card-chart', 'card-facts', 'card-media', 'card-links', 'card-more'];
+    const order = ['card-alert', 'card-art', 'card-kicker', 'card-hero', 'card-sub', 'card-act', 'card-note', 'card-chart', 'card-facts', 'card-media', 'card-links', 'card-more'];
     const at = order.map((c) => html.indexOf(`class="${c}`) >= 0 ? html.indexOf(`class="${c}`) : html.indexOf(` ${c}`)).filter((i) => i >= 0);
     assert.deepEqual(at, [...at].sort((a, b) => a - b), `${name}: slots in order`);
   }
@@ -260,7 +293,8 @@ test('copy rules on the card pages: no em dash, no emoji, no brand word, no ambe
     assert.doesNotMatch(html.split('<details')[0], /\b(advice|advise|you should|we recommend|buy now|invest in)\b/i, `${name}: advice words above Details`);
     assert.doesNotMatch(html, /DataFast|Yahoo|Polygon|Finnhub|Alpha Vantage|Twelve Data|Nasdaq Data/i, `${name}: a data vendor on screen`);
   }
-  for (const f of ['public/kit.js', 'public/kit.css', 'public/screens/bbrk.css', 'public/screens/sponsor.css', 'public/screens/pro.css', 'public/screens/feedback.js', 'public/screens/welcome.css', 'public/screens/me.js', 'public/screens/me.css', 'public/pixel-avatar.js']) {
+  for (const f of ['public/kit.js', 'public/kit.css', 'public/screens/bbrk.css', 'public/screens/sponsor.css', 'public/screens/pro.css', 'public/screens/feedback.js', 'public/screens/welcome.css', 'public/screens/me.js', 'public/screens/me.css', 'public/pixel-avatar.js',
+    'public/cards.js', 'public/screens/buy.js', 'public/screens/cpi.js', 'public/screens/loan.js', 'public/screens/mcp.js', 'public/screens/tape.js', 'public/screens/sponsor.js', 'public/drive.js']) {
     const src = readFileSync(f, 'utf8');
     assert.doesNotMatch(src, /—/, `${f}: em dash`);
     assert.doesNotMatch(src, brand, `${f}: brand word`);
@@ -463,4 +497,66 @@ test('GRAVEYARD stone: the media row is sized to the first view, the video the b
   for (const w of ['.gv-card-stone { flex: 0 0 auto; width: calc(var(--gv-h) * 560 / 778); }', '.gv-card-video { flex: 0 0 auto; width: calc(var(--gv-h) * 16 / 9); }', '.gv-card-site { flex: 0 0 auto; width: calc(var(--gv-h) * .9); }']) assert.ok(css.includes(w), w);
   assert.doesNotMatch(css, /gv-page3|gv-a-stone|\.gv-page\b|gv-vcol|gv-respects/, 'the old stone page is gone');
   assert.doesNotMatch(readFileSync('public/screens/nosuch.css', 'utf8') + readFileSync('public/nosuch.css', 'utf8'), /ns-page|ns-grave|\.ns-stone|ns-quote|\.ns-ipo\b/, 'the old NO SUCH page is gone');
+});
+
+test('Part B: result screens are card pages; each keeps its facts, the rest in + Details', () => {
+  const top = (html) => html.split('<details')[0];
+  const more = (html) => html.split('<details class="how card-more">')[1] || '';
+  // AFFORD: the cost per use is the hero, what was typed the sub, the verdict stamp the picture
+  // (its words are the picture's), the share links, how each number is worked out in + Details.
+  const [aff, affWage] = [CARDS_B[0][1], CARDS_B[1][1]];
+  assert.match(aff, /<h2 class="card-hero card-hero-60 num">\$3\.85 a use<\/h2><p class="card-sub">Bike: \$1,200, used twice a week for 3 years\.<\/p>/);
+  assert.match(aff, /<div class="card-act"><form class="card-form" id="wage-form"[\s\S]*SHOW HOURS<\/button><\/form><\/div>/, 'no wage: the field for it is the action');
+  assert.doesNotMatch(affWage, /wage-form/, 'a wage saved: no field');
+  for (const label of ['Total uses', 'Hours of work', 'If invested, 8%/yr']) assert.ok(top(aff).includes(`<dt class="tag">${label}</dt>`), label);
+  assert.match(aff, /<div class="card-media"><div class="buy-verdict"><p class="stamp stamp-sleep" role="img" aria-label="Verdict: SLEEP ON IT">[\s\S]*<p class="stamp-line">Under \$10 a use\. Think it over\.<\/p>/);
+  assert.match(aff, /<p class="card-links"><a class="card-link" href="https:\/\/x\.com\/intent\/post[^"]*" target="_blank" rel="noopener noreferrer">SHARE ON X<\/a> <button type="button" class="card-link" data-copy="[^"]+">COPY LINK<\/button><\/p>/);
+  for (const bit of ['Cost per use', 'not a forecast or a promise', 'A rule of thumb for things you buy']) assert.ok(more(aff).includes(bit), bit);
+  // CPI and LOAN: hero, sub, note, the facts; their chart and table panels stay as they were.
+  const cpi = CARDS_B[2][1];
+  assert.match(cpi, /<h2 class="card-hero card-hero-60 num">\$135\.19<\/h2><p class="card-sub">\$100\.00 in 2015 is worth this today\.<\/p><\/div><div class="card-cta"><p class="card-note">Prices are up 35\.2% since 2015\.<\/p>/);
+  assert.equal((cpi.match(/class="card-fact"/g) || []).length, 4);
+  const loan = CARDS_B[3][1];
+  assert.match(loan, /<h2 class="card-hero card-hero-60 num">\$2,528\.27<\/h2><p class="card-sub">A month, for \$400,000 over 30 years at 6\.50%\.<\/p>[\s\S]*<p class="card-note">Average 30-year fixed/);
+  assert.match(loan, /<dt class="tag">Total interest<\/dt><dd class="num down">/);
+  for (const f of ['cpi', 'loan']) assert.match(readFileSync(`public/screens/${f}.js`, 'utf8'), f === 'cpi' ? /body\.innerHTML = cpiResultHtml\(d\);/ : /panel\('1', 'Loan', loanResultHtml\(a, rate, source, res\)/, f);
+  // WAGE: a hero and a note, the next step one button.
+  assert.match(CARDS_B[5][1], /<h2 class="card-hero card-hero-44 num">\$35\.00 an hour<\/h2>/);
+  assert.match(CARDS_B[7][1], /data-cmd="WAGE 35" data-example>WAGE 35<\/a>/, 'a saving example goes into the bar (examplePlan)');
+  // MCP: kicker, the URL as the hero, one COPY, the rule; every app in + Details.
+  const mcp = mcpHtml();
+  assert.match(mcp, new RegExp(`<p class="tag card-kicker">MCP</p><h2 class="card-hero card-hero-32 num">${MCP_URL.replace(/[./]/g, '\\$&')}</h2>`));
+  assert.match(mcp, /<div class="card-act"><button type="button" class="btn card-btn btn-solid" id="mcp-copy">COPY URL<\/button><\/div><p class="card-note">/);
+  assert.ok(top(mcp).includes(MCP_RULE));
+  for (const [app] of MCP_APPS) assert.ok(more(mcp).includes(`<dt class="tag">${app}</dt>`), app);
+});
+
+test('Part B: the shell\'s own small cards (link confirm, RENAMED, COMING SOON, did not load) load after the first screen', () => {
+  const link = CARDS_B[10][1];
+  assert.match(link, /<h2 class="card-hero card-hero-32 num">This link wants to change your watchlist\.<\/h2>/);
+  // RUN IT is the one action: a button (no href, no data-example), so nothing opens or runs it by itself.
+  assert.match(link, /<div class="card-act"><button type="button" class="btn card-btn btn-solid" data-cmd="WATCH ADD AAPL, MSFT">RUN IT<\/button><\/div><p class="card-note">Esc: just show <a class="code" href="\?c=WATCH" data-cmd="WATCH">WATCH<\/a>\.<\/p>/);
+  const app = readFileSync('public/app.js', 'utf8');
+  // Esc just shows the plain screen, never the link; only with the bar empty and nothing else open.
+  assert.match(app, /const escShows = \(e\) => \{[\s\S]{0,200}linkAsk \|\| menu\?\.isOpen\(\) \|\| !list\.hidden\) return;[\s\S]{0,200}run\(cmd\.view\);\s*\};\s*document\.addEventListener\('keydown', escShows, true\);\s*cleanups\.push/);
+  for (const c of ['renamedHtml(example)', 'soonHtml(s)', 'notLoadedHtml()', 'linkConfirmHtml(']) assert.ok(app.includes(`(c) => c.${c}`), c);
+  assert.match(CARDS_B[11][1], /BUY is now AFFORD[\s\S]*data-cmd="AFFORD 1200" data-example>AFFORD 1200</);
+  assert.match(CARDS_B[12][1], /card-kicker">Coming soon<\/p><h2 class="card-hero card-hero-44 num">AAPL EARNINGS<\/h2>/);
+  assert.match(CARDS_B[13][1], /data-reload>RELOAD<\/button>/);
+});
+
+test('Part B: TAPE is a small card: ON or OFF, one line, the one switch, the tape as the media; the rest in + Details', () => {
+  const [on, off, proNote] = [tapeHtml({ on: true }), tapeHtml({ on: false }), tapeHtml({ on: true, isPro: true, custom: ['AAPL'], note: 'Added AAPL.' })];
+  assert.match(on, /<h2 class="card-hero card-hero-60 num">TAPE ON<\/h2><p class="card-sub">It sits above the status line on every screen\.<\/p>/);
+  // The switch runs at once (a direct button, not a prefill): it is what TAPE is for.
+  assert.match(on, /<div class="card-act"><a class="btn card-btn btn-solid" href="\?c=TAPE\+OFF" data-cmd="TAPE OFF">TURN OFF<\/a><\/div>/);
+  assert.match(off, /data-cmd="TAPE ON">TURN ON<\/a>/);
+  assert.match(on, /<div class="card-media"><div class="tape tape-panel"><div class="tape-track"><\/div><\/div><\/div>/, 'the moving tape is the media');
+  const d = on.split('<details')[1];
+  assert.match(d, /DESK panel with the command <span class="code">TAPE<\/span>/);
+  assert.match(d, /Your own ticker tape is a Pro feature/);
+  assert.match(proNote, /<p class="card-alert" role="status">Added AAPL\.<\/p>/);
+  assert.match(proNote, /<div class="card-media">[\s\S]*<div class="tape-list"><p class="fx-from">Your tape: 1 of 40\.<\/p><ul class="pro-list">/, 'a Pro list stays as the media');
+  assert.match(proNote.split('<details')[1], /data-cmd="TAPE ADD AAPL" data-example>[\s\S]*data-cmd="TAPE RESET" data-example>/);
+  assert.doesNotMatch(on + off, /tape-set|tape-state|class="seg"/, 'the old switch panel is gone');
 });

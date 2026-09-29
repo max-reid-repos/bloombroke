@@ -74,9 +74,10 @@ const FIX = {
   '/api/live': { here: 3 },
 };
 
-// [name, command, { key, type, sel, ls }]: type: typed into the command bar (a link never
-// runs LOGIN); sel: what to audit (default the card page, .card); ls: localStorage to set
-// first (an empty watchlist).
+// [name, command, { key, type, sel, ls, link }]: type: typed into the command bar (a link
+// never runs LOGIN); sel: what to audit (default the card page, .card); ls: localStorage to
+// set first (an empty watchlist); link: a command that changes a saved list, put in the
+// address bar and run with Enter in the empty bar (how the link-confirm card shows).
 const PAGES = [
   ['bbrk', 'BBRK'], ['sponsor', 'SPONSOR'], ['pro', 'PRO'], ['pro-key', 'PRO', { key: true }],
   ['login', 'LOGIN', { type: true }], ['redeem', 'REDEEM'], ['gift', 'GIFT'], ['feedback', 'FEEDBACK'], ['chat', 'CHAT'],
@@ -84,6 +85,9 @@ const PAGES = [
   // Part A: NO SUCH TICKER at an unknown ticker, a GRAVEYARD stone, a usage card, two empty lists.
   ['nosuch', '$QXZVW'], ['graveyard-leh', 'GRAVEYARD LEH'], ['afford-usage', 'AFFORD X'],
   ['watch-empty', 'WATCH', { sel: '.empty', ls: { 'bb.watch': '[]' } }], ['alerts-empty', 'ALERTS', { sel: '.empty' }],
+  // Part B: the result screens, MCP, the link confirm and TAPE (SPONSOR is above).
+  ['afford', 'AFFORD 1200 BIKE 2 PER WEEK'], ['cpi', 'CPI 100 2015'], ['loan', 'LOAN 400000 30Y 6.5%'], ['mcp', 'MCP'],
+  ['link-confirm', 'WATCH', { link: 'WATCH ADD AAPL', sel: '.link-card' }], ['tape', 'TAPE'],
 ].filter(([n]) => !ONLY || ONLY.split(',').includes(n));
 
 async function liveData() {
@@ -203,6 +207,12 @@ async function main() {
         await page.goto(`${BASE}/?c=${encodeURIComponent(opts.type ? 'PRO' : cmd)}`, { waitUntil: 'domcontentloaded', timeout: 45000 });
         const sel = opts.sel || '.card';
         await page.waitForSelector(`#screen ${sel}`, { timeout: 15000 }).catch(() => {});
+        if (opts.link) {
+          await page.evaluate((c) => { history.replaceState(history.state, '', `?c=${encodeURIComponent(c)}`); }, opts.link);
+          await page.click('#cmd');
+          await page.keyboard.press('Enter');
+          await page.waitForSelector(`#screen ${sel}`, { timeout: 15000 }).catch(() => {});
+        }
         if (opts.type) {
           await page.click('#cmd');
           await page.keyboard.type(cmd);

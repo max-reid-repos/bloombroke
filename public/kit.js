@@ -22,7 +22,7 @@
 //
 // Card pages (the screens that are one thing, not a table: BBRK, SPONSOR, PRO, LOGIN,
 // REDEEM, GIFT, FEEDBACK, CHAT without Pro). Styles: kit.css, "Card pages".
-//   cardPage({ kicker, hero, sub, act, note, chart, facts, media, links, details })
+//   cardPage({ art, kicker, hero, sub, act, note, chart, facts, media, links, details })
 //                                 one centred column, the slots always in this order
 //   cardButton / cardLink / cardForm / cardFacts / cardRows   the parts that go in them
 //   cardWords(html)               the words a card shows above its + Details
@@ -169,6 +169,7 @@ export function edgeFade(el) {
 
 // ---- Card pages ------------------------------------------------------------------------
 // One centred column, fixed slots in a fixed order, so every card page reads the same:
+//   ART     a small drawing above it all (SPONSOR's terminal), words on it are the picture's
 //   KICKER  a small uppercase label (.tag)
 //   HERO    one thing, big: a number or a short title (heroSize 96, 60, 44 or 32 px;
 //           24 for a usage card's problem)
@@ -229,7 +230,7 @@ export const DETAILS = 'Details';
 // The page. wide: BBRK's wider column. alert: a one-line message on top (after LOGIN,
 // an error). Leave any slot out and it is not drawn.
 export function cardPage({
-  label = '', id = '', wide = false, cls = '', alert = '', alertWarn = false,
+  label = '', id = '', wide = false, cls = '', alert = '', alertWarn = false, art = '',
   kicker = '', hero = '', heroSize = 60, heroId = '', heroLabel = '', sub = '', subId = '',
   act = '', note = '', noteId = '', chart = '', facts = null, media = '', links = [], details = '', detailsId = '', detailsOpen = false,
 } = {}) {
@@ -251,6 +252,7 @@ export function cardPage({
   ].join('');
   return `<section class="card${wide ? ' card-wide' : ''}${cls ? ` ${esc(cls)}` : ''}"${attr('id', id)}${attr('aria-label', label)}>`
     + (given(alert) ? `<p class="card-alert${alertWarn ? ' warn' : ''}" role="status">${put(alert)}</p>` : '')
+    + (given(art) ? `<div class="card-art">${put(art)}</div>` : '')
     + (head ? `<div class="card-head">${head}</div>` : '')
     + (cta ? `<div class="card-cta">${cta}</div>` : '')
     + (given(chart) ? `<div class="card-chart">${put(chart)}</div>` : '')
