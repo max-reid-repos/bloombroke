@@ -1,16 +1,18 @@
-// HELP: the command directory. Categories on the left, the commands of one category on
-// the right, a search box on top (/ focuses it). HELP <command> opens one command:
-// syntax, options, examples, source and delay. Everything comes from ../registry.js.
+// HELP: the command reference, one numbered panel. The key row first, then START HERE,
+// then every group with its count, as one list (two columns on a desktop). The groups
+// are the MENU's (registry.js commandGroups): one source. There is no search box: "/"
+// puts the command bar in find mode, and what you type there filters this list.
+// HELP <command> opens one command: syntax, options, examples, source and delay.
 
-import { esc, q } from './markets.js';
-import { edgeFade } from '../kit.js';
+import { esc, q, panel } from './markets.js';
 import {
-  CATEGORIES, findCommand, byCategory, categoriesInUse, searchCommands,
-  START_HERE, START_KEYS, FUNCTION_BAR, mergeDetail,
+  findCommand, byCategory, searchCommands, commandGroups, START_GROUP,
+  START_KEYS, FUNCTION_BAR, mergeDetail, CATEGORIES,
 } from '../registry.js';
 import { DETAIL } from '../registry-detail.js';
 import { commandForWord } from '../resolve.js';
 import { LISTED_TICKERS, stockIdOf } from '../known-tickers.js';
+import { matchInstrument, INSTRUMENTS } from '../instruments.js';
 import { parseHelp as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { parse };
 
@@ -19,13 +21,14 @@ mergeDetail(DETAIL);
 
 const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 
-// The HELP categories, in order (Pro and Legal included).
-export const HELP_GROUPS = CATEGORIES;
-const CAT_KEY = 'bb.helpcat';
+// The HELP groups, in order (START HERE, then the categories: Pro and About included).
+export const HELP_GROUPS = [START_GROUP, ...CATEGORIES];
+// A group to open the list at (the Category button on a command's page sets it).
+const JUMP_KEY = 'bb.helpcat';
 
 // What HELP <topic> shows: { entry, ticker } for a command or a ticker, or { query }
-// to search for anything else. Plain words find their command: HELP SHORT and HELP
-// SHORT INTEREST open SHORTS, HELP DIVIDEND opens DIVIDENDS, a typo one letter off
+// to filter the list by anything else. Plain words find their command: HELP SHORT and
+// HELP SHORT INTEREST open SHORTS, HELP DIVIDEND opens DIVIDENDS, a typo one letter off
 // opens the command it meant (from: the words typed).
 export function resolveTopic(topic) {
   const words = String(topic || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
@@ -45,31 +48,63 @@ export function resolveTopic(topic) {
 }
 
 const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
-const helpCmd = (c) => (c.pattern ? 'HELP AAPL' : `HELP ${c.name}`);
 
-// One command row: name, what it does, syntax, example.
-export function commandRow(c, i, { showCategory = false } = {}) {
-  const ex = c.soon ? '<span class="hc-soon">SOON</span>' : (c.examples[0] ? code(c.examples[0]) : '');
-  const cat = showCategory ? `<span class="hc-cat">${esc(c.category)}</span>` : '';
-  return `<li class="hc-row${c.soon ? ' is-soon' : ''}" data-i="${i}" data-ex="${esc(c.soon ? '' : c.examples[0] || '')}">
-    <a class="hc-name" href="${esc(q(helpCmd(c)))}" data-cmd="${esc(helpCmd(c))}" title="More about ${esc(c.name)}">${esc(c.name)}</a>
-    <span class="hc-sum">${esc(c.summary)}${cat}</span>
-    <span class="hc-syn">${esc(c.syntax)}</span>
-    <span class="hc-ex">${ex}</span>
-  </li>`;
+// The key row: the keys of a keyboard product, first on the page.
+// A phone has no Ctrl or F-keys (its key bar has MENU and the screens): those two hide there.
+const DESK_KEYS = new Set(['Ctrl K', 'F1-F10']);
+export function keyRow() {
+  return `<p class="help-keys">${START_KEYS.map(([k, what]) => `<span class="hk${DESK_KEYS.has(k) ? ' hk-desk' : ''}"><kbd>${esc(k)}</kbd> ${esc(what)}</span>`).join('<span class="hk-sep" aria-hidden="true">&middot;</span>')}</p>`;
 }
 
-function rows(list, opts) {
-  return `<ol class="hc-list">${list.map((c, i) => commandRow(c, i, opts)).join('')}</ol>`;
+// One row: the command (it runs), what it does.
+function row(it) {
+  return `<li class="hl-row"><a class="hl-name" href="${esc(q(it.cmd))}" data-cmd="${esc(it.cmd)}">${esc(it.name)}</a><span class="hl-sum">${esc(it.summary)}</span></li>`;
 }
 
-// Start here: one dense list of the commands to know, then one line of keys. Each row
-// runs its command.
+export const DOLLAR_LINE = `$ before a ticker always means the stock, e.g. ${code('$GOLD')}.`;
+
+// One group: its header (name and count), its rows. START HERE has no count, and the
+// line about $ under it.
+function group(g) {
+  const start = g.name === START_GROUP;
+  const head = start ? esc(g.name) : `${esc(g.name)} <span class="hl-n">&middot; ${g.items.length}</span>`;
+  return `<section class="hl-group${start ? ' hl-start' : ''}" data-group="${esc(g.name)}">
+    <h3 class="hl-h">${head}</h3>
+    <ol class="hl-list">${g.items.map(row).join('')}</ol>
+    ${start ? `<p class="help-tip">${DOLLAR_LINE}</p>` : ''}
+  </section>`;
+}
+
+// START HERE on its own (the first group).
 export function startHere() {
-  const items = START_HERE.map(([c, what]) => `<li class="hs-row"><a class="hs-cmd" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a><span class="hs-what">${esc(what)}</span></li>`).join('');
-  return `<ul class="hs-list">${items}</ul>
-    <p class="hs-keys">${START_KEYS.map(([k, what]) => `<kbd>${esc(k)}</kbd> ${esc(what)}`).join(' <span class="hs-sep" aria-hidden="true">&middot;</span> ')}</p>
-    <p class="help-tip dim">$ + ticker always means the stock, e.g. <a class="code" href="${esc(q('$GOLD'))}" data-cmd="$GOLD">$GOLD</a>.</p>`;
+  return group(commandGroups()[0]);
+}
+
+// The groups for a find: each category with only the commands that match, best first
+// overall in `best` (Enter runs it). START HERE drops out (its commands are in their
+// categories too). An empty query is every group.
+export function filterGroups(query, groups = commandGroups()) {
+  const text = String(query || '').trim();
+  if (!text) return { groups, best: null, count: null };
+  const found = searchCommands(text, groups.flatMap((g) => g.items.map((it) => it.entry).filter(Boolean)));
+  const hit = new Set(found);
+  const kept = groups.filter((g) => g.name !== START_GROUP)
+    .map((g) => ({ ...g, items: g.items.filter((it) => hit.has(it.entry)) }))
+    .filter((g) => g.items.length);
+  return { groups: kept, best: found[0] ? found[0].examples[0] : null, count: found.length };
+}
+
+// The whole list (or a found part of it).
+export function listHtml(query = '') {
+  const { groups, count } = filterGroups(query);
+  if (count === 0) return `<p class="help-none">No command matches "${esc(String(query).trim())}". Enter runs what you typed. Try a plainer word: price, news, rate, dividend.</p>`;
+  return `<div class="hl">${groups.map(group).join('')}</div>`;
+}
+
+// The HELP page: the key row, the list, one line on HELP <command>.
+export function helpHtml(query = '') {
+  return `${keyRow()}<div class="help-found">${listHtml(query)}</div>
+    <p class="help-foot">${code('HELP FX')} shows how one command works: its words, options and examples.</p>`;
 }
 
 function detail(entry, ticker) {
@@ -110,122 +145,143 @@ function detail(entry, ticker) {
   </article>`;
 }
 
-function readCat(store) {
-  const c = store.get(CAT_KEY, CATEGORIES[0]);
-  return categoriesInUse().includes(c) ? c : CATEGORIES[0];
+const ESC_BACK = '<span class="help-esc"><kbd>Esc</kbd> back</span>';
+
+// Typed in find mode, does this run as it is (a command, a known ticker or an
+// instrument like DOW, EUR, GOLD, OIL), rather than open the best HELP match?
+export function runsAsTyped(text) {
+  const words = String(text || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return false;
+  const [first] = words;
+  const entry = findCommand(first);
+  if (entry && !entry.hidden && !entry.pattern) return true;
+  return Boolean(stockIdOf(first) || LISTED_TICKERS.has(first) || matchInstrument(words) || CURRENCIES.has(first));
+}
+// Currency codes (EUR, JPY): a quote of their own.
+const CURRENCIES = new Set(INSTRUMENTS.flatMap((i) => [i.base, i.quote]).filter(Boolean));
+
+// Find mode only where the command bar is on screen: never in a DESK panel or an embed
+// (html.is-embed hides the bar), never with the bar hidden.
+export function canFind({ doc = document, bar } = {}) {
+  if (!bar || doc.documentElement?.classList.contains('is-embed')) return false;
+  return Boolean(bar.getClientRects?.().length);
+}
+
+// Find mode: "/" focuses the command bar with its prompt turned to "/", and what is typed
+// there filters the list here (the bar's own suggestion list stays shut). Enter runs the
+// best match (or the words as typed, when they are a command or a ticker), Esc leaves
+// find mode. A phone keyboard sends no "/" key: a bar that holds just "/" enters it too.
+// Returns the cleanup.
+export function findMode({ doc = document, bar, promptEl, onFilter, onRun, status, asTyped = runsAsTyped }) {
+  let on = false;
+  const prompt = promptEl?.textContent;
+  function enter() {
+    on = true;
+    bar.value = '';
+    bar.closest('form')?.classList.add('is-find');
+    if (promptEl) promptEl.textContent = '/';
+    bar.focus();
+    onFilter('');
+    status('FIND: TYPE A WORD, ENTER RUNS THE FIRST MATCH');
+  }
+  function leave({ clear = false } = {}) {
+    if (!on) return;
+    on = false;
+    bar.closest('form')?.classList.remove('is-find');
+    if (promptEl) promptEl.textContent = prompt;
+    if (clear) bar.value = '';
+    onFilter('');
+    status('');
+  }
+  function onKey(e) {
+    if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      const field = e.target.closest?.('input, textarea, select');
+      if (field && !(field === bar && !bar.value)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      enter();
+      return;
+    }
+    if (!on || e.target !== bar) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      leave({ clear: true });
+    } else if (e.key === 'Enter') {
+      if (e.isComposing || e.keyCode === 229) return; // an IME is composing: its Enter is its own
+      if (asTyped(bar.value)) { leave(); return; } // AAPL, GOLD, NEWS: the bar runs it as typed
+      const best = onFilter(bar.value);
+      if (!best) { leave(); return; } // nothing matches: the bar runs what was typed
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      leave({ clear: true });
+      onRun(best);
+    } else if (e.key === 'Tab' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.stopImmediatePropagation(); // no completion or history while finding
+      if (e.key === 'Tab') e.preventDefault();
+    }
+  }
+  function onInput(e) {
+    if (e.target !== bar) return;
+    if (!on && bar.value === '/') { e.stopImmediatePropagation(); enter(); return; } // a phone's "/"
+    if (!on) return;
+    e.stopImmediatePropagation(); // the bar's suggestion list stays shut
+    const n = onFilter(bar.value, true);
+    status(bar.value.trim() ? `FIND: ${n} ${n === 1 ? 'COMMAND' : 'COMMANDS'}` : 'FIND: TYPE A WORD, ENTER RUNS THE FIRST MATCH');
+  }
+  function onBlur() { if (on && !bar.value) leave(); }
+  doc.addEventListener('keydown', onKey, true);
+  doc.addEventListener('input', onInput, true);
+  bar.addEventListener('blur', onBlur);
+  return () => {
+    leave();
+    doc.removeEventListener('keydown', onKey, true);
+    doc.removeEventListener('input', onInput, true);
+    bar.removeEventListener('blur', onBlur);
+  };
 }
 
 export function render(el, cmd, ctx) {
   const topic = resolveTopic(cmd.args?.topic);
-  const cats = categoriesInUse();
-  let cat = readCat(ctx.store);
-  let query = topic.query || '';
-  let view = topic.entry ? 'detail' : (query ? 'search' : 'cat');
-  let active = -1;
-
-  el.innerHTML = `<div class="help">
-    <div class="help-search">
-      <span class="prompt" aria-hidden="true">/</span>
-      <input class="help-q" type="search" maxlength="60" spellcheck="false" autocomplete="off" aria-label="Search commands" placeholder="Search commands: insider, yield, dividend, earnings" value="${esc(query)}">
-      <span class="help-count dim" aria-live="polite"></span>
-    </div>
-    <div class="help-body">
-      <nav class="help-cats" aria-label="Command categories">
-        ${cats.map((c) => `<button type="button" class="help-cat" data-cat="${esc(c)}">${esc(c)}<span class="help-n">${c === 'Start here' ? '' : byCategory(c).length}</span></button>`).join('')}
-      </nav>
-      <div class="help-main"></div>
-    </div>
-  </div>`;
-  const main = el.querySelector('.help-main');
-  const input = el.querySelector('.help-q');
-  const count = el.querySelector('.help-count');
-
-  function paint() {
-    el.querySelectorAll('.help-cat').forEach((b) => {
-      const on = view === 'cat' && b.dataset.cat === cat;
-      b.classList.toggle('is-active', on);
-      if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
+  if (topic.entry) {
+    const label = topic.ticker ? `HELP ${topic.ticker}` : `HELP ${topic.entry.name}`;
+    el.innerHTML = `<div class="help">${panel('1', label, detail(topic.entry, topic.ticker), { cls: 'panel-solo', meta: ESC_BACK })}</div>`;
+    el.querySelector('.hd-cat')?.addEventListener('click', (e) => {
+      ctx.store.set(JUMP_KEY, e.currentTarget.dataset.cat);
+      ctx.run('HELP');
     });
-    active = -1;
-    count.textContent = '';
-    if (view === 'detail') {
-      main.innerHTML = detail(topic.entry, topic.ticker);
-    } else if (view === 'search') {
-      const found = searchCommands(query);
-      count.textContent = `${found.length} ${found.length === 1 ? 'command' : 'commands'}`;
-      main.innerHTML = found.length
-        ? `<h2 class="help-h">Commands for "${esc(query)}"</h2>${rows(found, { showCategory: true })}<p class="help-tip dim">Up and Down pick a row, Enter runs its example.</p>`
-        : `<h2 class="help-h">Nothing for "${esc(query)}"</h2><p class="muted">Try a plainer word, like price, news, rate or dividend. Or type a ticker in the command bar: ${code('AAPL')}</p>`;
-    } else if (cat === 'Start here') {
-      main.innerHTML = `<h2 class="help-h">Start here</h2>${startHere()}`;
-    } else {
-      main.innerHTML = `<h2 class="help-h">${esc(cat)}</h2>${rows(byCategory(cat))}`;
-    }
+    ctx.status(topic.from ? `HELP ${topic.entry.name} (FROM ${topic.from})` : '');
+    return () => {};
   }
 
-  function markActive() {
-    const list = [...main.querySelectorAll('.hc-row[data-ex]')];
-    list.forEach((r, i) => r.classList.toggle('is-active', i === active));
-    list[active]?.scrollIntoView({ block: 'nearest' });
+  el.innerHTML = `<div class="help">${panel('1', 'HELP', helpHtml(topic.query || ''), { cls: 'panel-solo', meta: ESC_BACK })}</div>`;
+  const found = el.querySelector('.help-found');
+  let shown = topic.query || '';
+  // Draws the list for a query; -> the best match's command (Enter), or with count the
+  // number of matches.
+  function filter(text, count = false) {
+    const t = String(text || '').trim();
+    const res = filterGroups(t);
+    if (t !== shown) { found.innerHTML = listHtml(t); shown = t; }
+    found.querySelector('.hl-row.is-best')?.classList.remove('is-best');
+    if (res.best) found.querySelector(`.hl-name[data-cmd="${CSS.escape(res.best)}"]`)?.closest('.hl-row').classList.add('is-best');
+    return count ? (res.count ?? 0) : res.best;
   }
 
-  el.querySelector('.help-cats').addEventListener('click', (e) => {
-    const b = e.target.closest('.help-cat');
-    if (!b) return;
-    cat = b.dataset.cat;
-    ctx.store.set(CAT_KEY, cat);
-    view = 'cat';
-    query = '';
-    input.value = '';
-    paint();
-  });
-  main.addEventListener('click', (e) => {
-    const b = e.target.closest('.hd-cat');
-    if (!b) return;
-    ctx.store.set(CAT_KEY, b.dataset.cat);
-    ctx.run('HELP');
-  });
-
-  input.addEventListener('input', () => {
-    query = input.value.trim().toLowerCase();
-    view = query ? 'search' : (topic.entry ? 'detail' : 'cat');
-    paint();
-  });
-  input.addEventListener('keydown', (e) => {
-    const list = [...main.querySelectorAll('.hc-row[data-ex]')];
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      if (!list.length) return;
-      e.preventDefault();
-      active = e.key === 'ArrowDown' ? Math.min(list.length - 1, active + 1) : Math.max(0, active - 1);
-      markActive();
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      const row = list[active >= 0 ? active : 0];
-      if (row?.dataset.ex) ctx.run(row.dataset.ex);
-    } else if (e.key === 'Escape') {
-      // First Esc clears the search, the next one leaves it.
-      e.preventDefault();
-      e.stopPropagation();
-      if (input.value) { input.value = ''; input.dispatchEvent(new Event('input')); } else input.blur();
-    }
-  });
-
-  // "/" focuses the search, from the empty command bar or from anywhere on the page.
-  function onSlash(e) {
-    if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
-    const t = e.target;
-    const field = t.closest?.('input, textarea, select');
-    if (field && !(field.id === 'cmd' && !field.value)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    input.focus();
-    input.select();
+  // The Category button on a command's page: open the list at that group.
+  const jump = ctx.store.get(JUMP_KEY, null);
+  if (jump) {
+    ctx.store.set(JUMP_KEY, null);
+    el.querySelector(`.hl-group[data-group="${CSS.escape(String(jump))}"]`)?.scrollIntoView({ block: 'start' });
   }
-  document.addEventListener('keydown', onSlash, true);
 
-  paint();
-  const stopFade = edgeFade(el.querySelector('.help-cats'));
-  if (query) input.focus();
-  ctx.status(topic.from ? `HELP ${topic.entry.name} (FROM ${topic.from})` : '');
-  return () => { document.removeEventListener('keydown', onSlash, true); stopFade(); };
+  const bar = document.getElementById('cmd');
+  const stop = canFind({ bar })
+    ? findMode({ bar, promptEl: bar.closest('form')?.querySelector('.prompt'), onFilter: filter, onRun: (c) => ctx.run(c), status: (t) => ctx.status(t) })
+    : () => {};
+  if (topic.query) {
+    const n = filterGroups(topic.query).count;
+    ctx.status(`HELP: ${n} ${n === 1 ? 'COMMAND' : 'COMMANDS'} FOR "${topic.query.toUpperCase()}"`);
+  } else ctx.status('');
+  return stop;
 }

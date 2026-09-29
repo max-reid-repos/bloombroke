@@ -29,6 +29,17 @@ export function parseHelp(args) {
   return { topic: args.length ? args.join(' ') : null };
 }
 
+// ---- EMBED ---------------------------------------------------------------------------
+// EMBED [GUESS | WHATIF <list>]: which embed (/embed/* routes). Anything else lists
+// them (asked: the words typed; mine: a WHATIF list of your own, which has no embed).
+export function parseEmbed(args) {
+  const [head, ...rest] = args;
+  if (!head) return { target: null };
+  if (head === 'GUESS' && !rest.length) return { target: 'GUESS' };
+  if (head === 'WHATIF' && rest.length && !rest.includes('MY')) return { target: 'WHATIF', command: args.join(' ') };
+  return { target: null, asked: args.join(' '), mine: head === 'WHATIF' && rest.includes('MY') };
+}
+
 // ---- NEWS <ticker> (TICKERNEWS) ----------------------------------------------------------
 // NEWS <ticker>. Returns null for plain NEWS so the market-wide screen handles it.
 export function parseTickerNews(args) {

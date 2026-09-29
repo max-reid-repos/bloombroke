@@ -1,17 +1,24 @@
-// MENU (Ctrl+K): every command by category in a quick overlay, with a find box. Same
-// data as HELP (registry.js). Picking a command runs its first example.
+// MENU (Ctrl+K): START HERE, then every command by category, in a quick overlay with a
+// find box. The same groups as HELP (registry.js commandGroups). Picking a command runs
+// its first example.
 
-import { LISTED, categoriesInUse, searchCommands } from './registry.js';
+import { LISTED, commandGroups, inGroups, searchCommands } from './registry.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const q = (c) => '?' + new URLSearchParams({ c }).toString();
 
 // What the menu lists: runnable commands (not MENU itself, not patterns or SOON).
-export const menuItems = () => LISTED.filter((c) => !c.pattern && !c.soon && c.name !== 'MENU' && c.examples.length);
+export const menuItems = () => LISTED.filter(inGroups);
 
-function item(c) {
-  const ex = c.examples[0];
-  return `<li><a class="mn-item" href="${esc(q(ex))}" data-cmd="${esc(ex)}"><span class="mn-name">${esc(c.name)}</span><span class="mn-sum">${esc(c.summary)}</span></a></li>`;
+// it: a group item ({ name, cmd, summary }) or a registry entry (a search result).
+function item(it) {
+  const cmd = it.cmd || it.examples[0];
+  return `<li><a class="mn-item" href="${esc(q(cmd))}" data-cmd="${esc(cmd)}"><span class="mn-name">${esc(it.name)}</span><span class="mn-sum">${esc(it.summary)}</span></a></li>`;
+}
+
+// The menu's groups as HTML: START HERE first, then the categories.
+export function menuGroupsHtml(groups = commandGroups()) {
+  return `<div class="mn-grid">${groups.map((g) => `<section class="mn-cat" data-group="${esc(g.name)}"><h3 class="mn-h">${esc(g.name)}</h3><ul class="mn-list">${g.items.map(item).join('')}</ul></section>`).join('')}</div>`;
 }
 
 export function createMenu({ onClose } = {}) {
@@ -44,10 +51,7 @@ export function createMenu({ onClose } = {}) {
         : '<p class="mn-none">No command matches. Press Enter to run what you typed.</p>';
       return;
     }
-    body.innerHTML = `<div class="mn-grid">${categoriesInUse().map((cat) => {
-      const list = items.filter((c) => c.category === cat);
-      return list.length ? `<section class="mn-cat"><h3 class="mn-h">${esc(cat)}</h3><ul class="mn-list">${list.map(item).join('')}</ul></section>` : '';
-    }).join('')}</div>`;
+    body.innerHTML = menuGroupsHtml();
   }
 
   function links() { return [...body.querySelectorAll('.mn-item')]; }

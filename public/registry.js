@@ -20,42 +20,27 @@
 //   hidden      runs, but never listed (420)
 // PHRASES (below) lists the plain words that surely mean one command.
 
+// The groups, in the order HELP and MENU list them, after START HERE (START_HERE below).
 export const CATEGORIES = [
-  'Start here',
   'Markets',
+  'News and info',
   'Stocks and companies',
+  'Weird data',
   'Charts',
+  'Money tools',
+  'Your stuff',
   'Rates and bonds',
   'FX',
   'Crypto and commodities',
   'Economy and calendars',
   'Screens and lists',
-  'Weird data',
-  'Your stuff',
-  'Money tools',
   'Pro',
-  'Legal',
+  'About',
 ];
 
 const RANGES = [['1D 5D 1M 3M 6M YTD', 'A preset range'], ['1Y 2Y 5Y 10Y MAX', 'Longer ranges'], ['<from> <to>', 'Two dates, like 2020-01-01 2024-12-31'], ['FROM <date>', 'From a date to today']];
 
 export const REGISTRY = [
-  // --- Start here -----------------------------------------------------------------
-  // --- MCP (screens/mcp.js, server lib/mcp/) ---
-  {
-    name: 'MCP', category: 'Start here', summary: 'Use Bloombroke from Claude, ChatGPT, Grok or Cursor: the MCP link',
-    syntax: 'MCP', examples: ['MCP'], keywords: ['mcp', 'ai', 'claude', 'chatgpt', 'grok', 'cursor', 'connector', 'llm', 'agent'],
-  },
-  // --- end MCP ---
-  {
-    name: 'HELP', aliases: ['?', 'H'], category: 'Start here', summary: 'Every command, with a search box and examples',
-    syntax: 'HELP [<command>]', examples: ['HELP', 'HELP FX', 'HELP AAPL'], keywords: ['commands', 'how', 'guide', 'manual', 'list'],
-  },
-  {
-    name: 'MENU', category: 'Start here', summary: 'Every command by category, in a quick overlay (Ctrl+K)',
-    syntax: 'MENU', examples: ['MENU'], keywords: ['launcher', 'navigate', 'find', 'categories'],
-  },
-
   // --- Markets --------------------------------------------------------------------
   {
     name: 'HOME', category: 'Markets', summary: 'Markets, the S&P 500 and news on one screen',
@@ -83,12 +68,6 @@ export const REGISTRY = [
     syntax: 'TRENDING', examples: ['TRENDING'], keywords: ['popular', 'most viewed', 'most opened', 'people', 'crowd', 'trending'],
   },
   // --- end TRENDING ---
-  // --- BBRK: our own site numbers as a joke quote (screens/bbrk.js, lib/counters.js) ---
-  {
-    name: 'BBRK', category: 'Markets', summary: 'Our own site numbers, drawn like a quote. Not a security, not for sale',
-    syntax: 'BBRK', examples: ['BBRK'], keywords: ['bloombroke', 'site numbers', 'stats', 'usage', 'open startup', 'metrics', 'mrr', 'parody'],
-  },
-  // --- end BBRK ---
   {
     name: 'HEATMAP', category: 'Markets', summary: 'The S&P 100 by sector, size and colour',
     syntax: 'HEATMAP', examples: ['HEATMAP'], keywords: ['map', 'treemap', 'sectors', 'colour', 'color'],
@@ -107,11 +86,33 @@ export const REGISTRY = [
     name: 'BREADTH', category: 'Markets', summary: 'How many stocks rose and fell, by exchange and sector',
     syntax: 'BREADTH', examples: ['BREADTH'], keywords: ['advance', 'decline', 'up', 'down', 'participation'],
   },
+
+  // --- News and info --------------------------------------------------------------
   {
-    name: 'NEWS', category: 'Markets', summary: 'Headlines that move markets, or about one company', takesTicker: true, bar: 3,
+    name: 'NEWS', category: 'News and info', summary: 'Headlines that move markets, or about one company', takesTicker: true, bar: 3,
     syntax: 'NEWS [MACRO|SEC|WIRES|WSB|<ticker>]', examples: ['NEWS', 'NEWS AAPL', 'TSLA NEWS', 'NEWS MACRO', 'NEWS SEC', 'NEWS WIRES', 'NEWS WSB'],
     keywords: ['headlines', 'stories', 'articles', 'press', 'press releases', 'fed', 'bls', '8-k', 'wires', 'reddit', 'wallstreetbets', 'wsb'],
   },
+  // --- MCP (screens/mcp.js, server lib/mcp/) ---
+  {
+    name: 'MCP', category: 'News and info', summary: 'Use Bloombroke from Claude, ChatGPT, Grok or Cursor: the MCP link',
+    syntax: 'MCP', examples: ['MCP'], keywords: ['mcp', 'ai', 'claude', 'chatgpt', 'grok', 'cursor', 'connector', 'llm', 'agent'],
+  },
+  // --- end MCP ---
+  {
+    name: 'HELP', aliases: ['?', 'H'], category: 'News and info', summary: 'Every command and the keys, with examples',
+    syntax: 'HELP [<command>]', examples: ['HELP', 'HELP FX', 'HELP AAPL'], keywords: ['commands', 'how', 'guide', 'manual', 'list'],
+  },
+  {
+    name: 'MENU', category: 'News and info', summary: 'Every command by category, in a quick overlay (Ctrl+K)',
+    syntax: 'MENU', examples: ['MENU'], keywords: ['launcher', 'navigate', 'find', 'categories'],
+  },
+  // --- EMBED (screens/embed.js; the pages are lib/embed-pages.js) ---
+  {
+    name: 'EMBED', category: 'News and info', summary: 'Put GUESS or a WHATIF result on your own site: the code to copy',
+    syntax: 'EMBED [GUESS|WHATIF <list>]', examples: ['EMBED', 'EMBED GUESS', 'EMBED WHATIF IPHONE6'], keywords: ['embed', 'iframe', 'widget', 'blog', 'newsletter', 'website', 'share', 'code'],
+  },
+  // --- end EMBED ---
 
   // --- Stocks and companies -----------------------------------------------------------
   {
@@ -259,6 +260,12 @@ export const REGISTRY = [
     name: 'EXDIV', category: 'Economy and calendars', summary: 'Ex-dividend dates for the next five weekdays',
     syntax: 'EXDIV [<day>]', examples: ['EXDIV', 'EXDIV 2026-10-01'], keywords: ['ex-dividend', 'dividend', 'record date'],
   },
+  // --- HOLIDAYS (screens/holidays.js; the dates are app.js NYSE_HOLIDAYS) ---
+  {
+    name: 'HOLIDAYS', category: 'Economy and calendars', summary: 'US stock market closures and early closes, the next 12 months, in your time zone',
+    syntax: 'HOLIDAYS', examples: ['HOLIDAYS'], keywords: ['holiday', 'holidays', 'market holidays', 'closed', 'closure', 'early close', 'half day', 'nyse', 'nasdaq'],
+  },
+  // --- end HOLIDAYS ---
 
   // --- Screens and lists ----------------------------------------------------------------
   {
@@ -353,40 +360,46 @@ export const REGISTRY = [
   },
   // --- end ALERTS ---
 
-  // --- Legal ----------------------------------------------------------------------------
+  // --- About ----------------------------------------------------------------------------
   {
-    name: 'TERMS', category: 'Legal', summary: 'Terms of Use: information only, not investment advice',
-    syntax: 'TERMS', examples: ['TERMS'], keywords: ['terms of use', 'rules', 'legal'],
-  },
-  {
-    name: 'PRIVACY', category: 'Legal', summary: 'Privacy Policy: what we collect and why',
-    syntax: 'PRIVACY', examples: ['PRIVACY'], keywords: ['privacy policy', 'data', 'cookies', 'legal'],
-  },
-  {
-    name: 'DISCLAIMER', category: 'Legal', summary: 'Disclaimer: data may be delayed or wrong, investing is risky',
-    syntax: 'DISCLAIMER', examples: ['DISCLAIMER'], keywords: ['risk', 'advice', 'legal', 'warning'],
-  },
-  {
-    name: 'FEEDBACK', aliases: ['IDEA'], category: 'Legal', summary: 'Tell us what to fix or build: a short note, email optional',
+    name: 'FEEDBACK', aliases: ['IDEA'], category: 'About', summary: 'Tell us what to fix or build: a short note, email optional',
     syntax: 'FEEDBACK', examples: ['FEEDBACK'], keywords: ['feedback', 'idea', 'suggestion', 'bug', 'contact', 'report'],
   },
   // --- Provenance (screens/data.js, status.js, changes.js) ---
   {
-    name: 'DATA', aliases: ['SOURCES'], category: 'Legal', summary: 'Where the data comes from, in eight groups: how often it updates, how fresh it is',
+    name: 'DATA', aliases: ['SOURCES'], category: 'About', summary: 'Where the data comes from, in eight groups: how often it updates, how fresh it is',
     syntax: 'DATA [<dataset>]', examples: ['DATA', 'DATA CPI'], keywords: ['sources', 'data sources', 'licence', 'license', 'delay', 'provenance', 'where from', 'attribution'],
   },
   {
-    name: 'STATUS', category: 'Legal', summary: 'Pro: is each data feed up right now',
+    name: 'STATUS', category: 'About', summary: 'Pro: is each data feed up right now',
     syntax: 'STATUS', examples: ['STATUS'], keywords: ['status', 'uptime', 'down', 'outage', 'health', 'broken'],
   },
   {
-    name: 'CHANGES', aliases: ['CHANGELOG'], category: 'Legal', summary: 'What changed on Bloombroke, by day',
+    name: 'CHANGES', aliases: ['CHANGELOG'], category: 'About', summary: 'What changed on Bloombroke, by day',
     syntax: 'CHANGES', examples: ['CHANGES'], keywords: ['changelog', 'release notes', 'new features', 'updates', 'what is new'],
   },
   // --- end Provenance ---
   {
-    name: 'SPONSOR', category: 'Legal', summary: 'Sponsors: lines that rotate in the status bar, no tracking, and who we do not take',
+    name: 'SPONSOR', category: 'About', summary: 'Sponsors: lines that rotate in the status bar, no tracking, and who we do not take',
     syntax: 'SPONSOR', examples: ['SPONSOR'], keywords: ['sponsor', 'sponsored', 'advertise', 'ads'],
+  },
+  // --- BBRK: our own site numbers as a joke quote (screens/bbrk.js, lib/counters.js) ---
+  {
+    name: 'BBRK', category: 'About', summary: 'Our own site numbers, drawn like a quote. Not a security, not for sale',
+    syntax: 'BBRK', examples: ['BBRK'], keywords: ['bloombroke', 'site numbers', 'stats', 'usage', 'open startup', 'metrics', 'mrr', 'parody'],
+  },
+  // --- end BBRK ---
+  {
+    name: 'TERMS', category: 'About', summary: 'Terms of Use: information only, not investment advice',
+    syntax: 'TERMS', examples: ['TERMS'], keywords: ['terms of use', 'rules', 'legal'],
+  },
+  {
+    name: 'PRIVACY', category: 'About', summary: 'Privacy Policy: what we collect and why',
+    syntax: 'PRIVACY', examples: ['PRIVACY'], keywords: ['privacy policy', 'data', 'cookies', 'legal'],
+  },
+  {
+    name: 'DISCLAIMER', category: 'About', summary: 'Disclaimer: data may be delayed or wrong, investing is risky',
+    syntax: 'DISCLAIMER', examples: ['DISCLAIMER'], keywords: ['risk', 'advice', 'legal', 'warning'],
   },
 
   // --- Weird data (WEIRD and one command per gauge; screens in screens/weird*.js) ------
@@ -609,6 +622,7 @@ export const PHRASES = {
   HEATMAP: ['heatmap', 'heat map'],
   SECTORS: ['sectors', 'sector performance'],
   CLOCK: ['market hours', 'market clock', 'is the market open'],
+  HOLIDAYS: ['market holidays', 'stock market holidays', 'early close', 'half day'],
   WATCH: ['watchlist', 'my watchlist'],
   PORTFOLIO: ['portfolio', 'my portfolio', 'holdings', 'my holdings'],
   LOAN: ['mortgage calculator', 'loan calculator', 'loan payment'],
@@ -616,30 +630,35 @@ export const PHRASES = {
   FX: ['exchange rate', 'exchange rates', 'currency converter'],
 };
 
-// "Start here": the commands to know, one short line each, and the keys.
+// START HERE: the five commands to know first, in reading order, one short line each.
+// HELP and MENU both open with them (commandGroups below).
 export const START_HERE = [
   ['AAPL', 'A stock: price and chart'],
-  ['AAPL NEWS', 'Ticker, then a function'],
   ['MARKETS', 'World markets'],
-  ['NEWS', 'Market headlines'],
-  ['FX 500 USD THB', 'Convert money'],
-  ['RATES', 'US rates and yields'],
-  ['CPI 100 2000', 'Inflation since a year'],
-  ['HEATMAP', 'S&P 100 in colour'],
-  ['MOVERS', 'Top gainers and losers'],
-  ['SCREEN', 'Filter US stocks'],
-  ['EARNINGS', 'Earnings calendar'],
-  ['WATCH', 'Your watchlist'],
-  ['PORTFOLIO', 'Your holdings'],
-  ['DESK', 'Build your own screen'],
-  ['WHATIF', "The maker's stock instead"],
-  ['AFFORD 1200', 'Can you afford it'],
-  ['MENU', 'Every command (Ctrl K)'],
-  ['HELP FX', 'How one command works'],
+  ['NEWS', 'Headlines'],
+  ['WHATIF IPHONE6', "The maker's stock instead"],
+  ['GUESS', "Today's mystery chart"],
+];
+export const START_GROUP = 'Start here';
+
+// HELP's key row, first on the page.
+export const START_KEYS = [
+  ['Enter', 'run'], ['Tab', 'complete'], ['Esc', 'back'], ['Ctrl K', 'menu'], ['/', 'find'],
+  ['F1-F10', 'screens'], ['1-9', 'the numbered thing on screen'],
 ];
 
-// The one line of keys under the list.
-export const START_KEYS = [
-  ['Enter', 'run'], ['Tab', 'complete'], ['Esc', 'back'], ['Ctrl K', 'menu'], ['/', 'search'],
-  ['1-9', 'stock functions'], ['number Enter', 'panel'], ['F1-F10', 'screens'],
-];
+// A command HELP and MENU list: listed, runnable, typed as a word (no pattern, nothing
+// coming soon), and not MENU itself.
+export const inGroups = (c) => !c.hidden && !c.pattern && !c.soon && c.name !== 'MENU' && c.examples.length > 0;
+
+// What HELP and MENU list, in order: START HERE, then every category with something in
+// it. One source for both. Each item: { name, cmd, summary, entry }. cmd is what a click
+// runs (a command's first example); entry is the registry entry (null in START HERE).
+export function commandGroups() {
+  const start = { name: START_GROUP, items: START_HERE.map(([cmd, summary]) => ({ name: cmd, cmd, summary, entry: null })) };
+  const rest = CATEGORIES.map((name) => ({
+    name,
+    items: REGISTRY.filter((c) => c.category === name && inGroups(c)).map((c) => ({ name: c.name, cmd: c.examples[0], summary: c.summary, entry: c })),
+  })).filter((g) => g.items.length);
+  return [start, ...rest];
+}
