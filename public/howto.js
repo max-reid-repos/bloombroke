@@ -9,8 +9,9 @@
 //     lines    up to 3 short lines
 //     example  markup the screen draws with its own classes (GUESS: one real guess row);
 //              its table cells flip in one by one (none with reduced motion)
-//     legend   [{ cls, label, say }]: tiny cells with the screen's own classes, a word
-//              each (say: what the colour is, for screen readers)
+//     legend   [{ cls, label, say, sample }]: tiny cells with the screen's own classes,
+//              a word each (say: what the colour is, for screen readers; sample: a
+//              letter or two drawn in the cell, for a look that is text, not a fill)
 //     foot     one small line
 //     button   the one primary button; it closes the pop-up (PLAY)
 //   mountHowto(opts)   wires it to a screen: it opens by itself once (a key in
@@ -27,7 +28,7 @@ export const MAX_LINES = 3;
 
 export function howtoHtml({ title = 'How to play', goal = '', lines = [], example = '', legend = [], foot = '', button = 'PLAY' } = {}) {
   const list = lines.slice(0, MAX_LINES);
-  const keys = legend.map((k) => `<li class="howto-k"><span class="howto-sw ${esc(k.cls)}" aria-hidden="true"></span>${k.say ? `<span class="offscreen">${esc(k.say)}: </span>` : ''}${esc(k.label)}</li>`);
+  const keys = legend.map((k) => `<li class="howto-k"><span class="howto-sw ${esc(k.cls)}" aria-hidden="true">${esc(k.sample || '')}</span>${k.say ? `<span class="offscreen">${esc(k.say)}: </span>` : ''}${esc(k.label)}</li>`);
   return `<div class="howto-box">
     <div class="howto-head">
       <h2 class="howto-title" id="howto-title">${esc(title)}</h2>

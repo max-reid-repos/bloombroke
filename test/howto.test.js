@@ -49,7 +49,8 @@ test('GUESS how to play: 45 visible words at most (the site\'s count), and the c
   assert.ok(words.length <= 45, `${words.length} words: ${words.join(' ')}`);
   assert.equal(words.length, 44, `the count reported: ${words.join(' ')}`);
   // Counting every number and sign too, for the record.
-  assert.equal(allTokens(html).length, 51, allTokens(html).join(' '));
+  // (54 with the key's sample letters, A A↑ A↓, which are not words.)
+  assert.equal(allTokens(html).length, 54, allTokens(html).join(' '));
   // Screen-reader words and the arrows are not on show.
   assert.ok(!words.includes('Answer') && !words.includes('Green:'), words.join(' '));
 });
