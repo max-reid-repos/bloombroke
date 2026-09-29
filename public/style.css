@@ -457,6 +457,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   font-size: 11px; font-weight: 600; letter-spacing: .1em;
   color: var(--text-2); background: var(--accent-tint); border-bottom: 0;
 }
+.mk-full .mk-day { font-size: 11px; }
 .mk-full .mk-group td.pct.is-big { outline: 1px solid currentColor; outline-offset: -3px; }
 /* The width one column needs: the same parts as the colgroup above (name, DLY mark, last,
    chg, %) plus the name cell's side padding. Measured, never shown. */
@@ -469,7 +470,6 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .fresh-legend { white-space: nowrap; cursor: help; }
 .panel-head > .fresh-legend { display: flex; align-items: center; flex: 0 0 auto; padding-right: 8px; font-size: 11px; color: var(--dim); letter-spacing: .04em; }
 .mk-group td.num { padding: 0 6px; }
-.mk-cols-time { columns: 3 400px; }
 
 /* ---- Range chart: presets, bar sizes, dates, header, chart --------------- */
 .rc { display: flex; flex-direction: column; min-width: 0; container: rc / inline-size; }

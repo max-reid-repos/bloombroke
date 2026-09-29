@@ -400,11 +400,15 @@ function attrs(el, a) {
 
 // ---- The SVG --------------------------------------------------------------------------
 
-// Where the previous close's axis tag goes: on its line, or one tag height (16px) off the
-// last value's tag when the two would overlap.
-export function prevTagAt(prevY, lastY) {
-  if (!Number.isFinite(lastY) || Math.abs(prevY - lastY) >= 16) return prevY;
-  return prevY >= lastY ? lastY + 16 : lastY - 16;
+// Where the previous close's axis tag (16px tall) goes: on its line, or one tag height off
+// the last value's tag when the two would overlap; always whole inside the plot [top,
+// bottom] (a nudge that would leave it goes to the last tag's other side instead).
+export function prevTagAt(prevY, lastY, { top = PAD_T, bottom = Infinity } = {}) {
+  const clamp = (v) => Math.min(bottom - 8, Math.max(top + 8, v));
+  if (!Number.isFinite(lastY) || Math.abs(prevY - lastY) >= 16) return clamp(prevY);
+  const side = prevY >= lastY ? 1 : -1;
+  const y = clamp(lastY + side * 16);
+  return Math.abs(y - lastY) >= 16 ? y : clamp(lastY - side * 16);
 }
 
 // The words PREV CLOSE at the right end of its line: a 13px box above the line, else
@@ -530,7 +534,7 @@ export function svgFor(model, win, width, height) {
   // The previous close's value tag on the price axis: next to the last value's tag, one
   // tag height away from it.
   const prevLineY = showPrev ? y(prev) : null;
-  const prevTagY = showPrev ? prevTagAt(prevLineY, lastY) : null;
+  const prevTagY = showPrev ? prevTagAt(prevLineY, lastY, { top: PAD_T, bottom: PAD_T + priceH }) : null;
   for (const t of ticks) {
     const ty = y(t);
     if (ty < PAD_T - 1 || ty > PAD_T + priceH + 1) continue;
@@ -644,7 +648,8 @@ export function svgFor(model, win, width, height) {
   if (showPrev) {
     s += `<g class="ch-prev"><title>Previous close</title><rect class="ch-prev-bg" x="${f1(W + 0.5)}" y="${f1(prevTagY - 8)}" width="${PAD_R - 1}" height="16"/><text class="ch-prev-t" x="${f1(W + 6)}" y="${f1(prevTagY + 4)}">${esc(fmtAxis(prev))}</text></g>`;
   }
-  let usedY = [];
+  // The previous close's tag is taken space too: the compare tags step off it.
+  let usedY = showPrev ? [prevTagY] : [];
   for (const t of tags) {
     let ty = y(t.v);
     for (const u of usedY) if (Math.abs(ty - u) < 16) ty = u + (ty >= u ? 16 : -16);

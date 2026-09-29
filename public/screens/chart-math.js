@@ -359,6 +359,22 @@ export function sessionPad(info, { endMins = 960, barMins = 1, minWindow = MIN_W
   return Math.max(0, (want - last.mins) / barMins);
 }
 
+// Whether a symbol's 1D chart is a session (a stock, or a US index that is not traded
+// all day): crypto, FX, futures and the all-day indexes (the dollar index, MOVE) are not,
+// and are never padded.
+export function hasSession(inst, isStock = !inst) {
+  return Boolean(isStock || (inst?.us && inst.kind === 'index' && !inst.allDay));
+}
+
+// The empty bar slots after the last bar of a 1D chart: only for a session symbol whose
+// last bar is from today (New York day), per sessionPad. A holiday or a weekend shows the
+// last session as it is; so does a half day once its 13:00 close has passed.
+export function oneDayPad(info, { today, session = true, ext = false, barMins = 1 } = {}) {
+  const last = info?.[info.length - 1];
+  if (!session || !last || last.day !== today) return 0;
+  return sessionPad(info, { endMins: ext ? 20 * 60 : 16 * 60, barMins });
+}
+
 // The axis labels' bar info with the empty slots after the last bar filled in (their
 // clock times on the same day), so a 2-hour window of a young session still shows
 // 10:00 10:30 11:00 under the empty part.

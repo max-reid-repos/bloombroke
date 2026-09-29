@@ -114,14 +114,15 @@ export const BIG_MOVE_PCT = 2;
 // server) in the change cell; the Chg column, where there is one, stays empty for them.
 // A price shows its change in %, or -- when the source has no day's move for it.
 // Only a delayed row carries a mark (DLY); the strip says the rest are real time.
-function marketRow(m, compact, chg = true) {
+// day: MARKETS' small dim day after the name when the last trade is not from today (staleDay).
+function marketRow(m, compact, chg = true, day = '') {
   const bp = m.kind === 'yield';
   const d = dirOf(bp ? m.changeBp : m.change);
   const cmd = m.cmd || cmdForInstrument(m.id);
   const last = m.unit === 'bp' ? fmtBp(m.lastBp, { level: true }) : fmtNum(m.last, m.decimals);
   const big = !bp && Math.abs(m.changePct) >= BIG_MOVE_PCT ? ' is-big' : '';
   return `<tr${rowAttrs(cmd)}>
-      ${nameCell(m.name, cmd)}
+      ${nameCell(m.name, cmd, day ? ` <span class="mk-day dim">${esc(day)}</span>` : '')}
       <td class="tag">${delayTag(m)}</td>
       <td class="num last${tick(`mk:${m.id}:last`, m.last)}"${m.asOf ? ` title="As of ${esc(fmtAsOf(m.asOf))}${/T/.test(m.asOf) ? ' ET' : ''}"` : ''}>${last}</td>
       ${chg ? `<td class="num chg ${d}">${bp ? '' : fmtSigned(m.change, m.decimals)}</td>` : ''}
@@ -298,17 +299,42 @@ export function packColumns(rows, n) {
   return out;
 }
 
-// The widest name, in characters: the name column is at least this wide, so no name is
-// ever cut.
-export const nameChars = (rows) => rows.reduce((w, m) => Math.max(w, String(m.name || '').length), 0);
+// The New York day of a time: "2026-09-29".
+const NY_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
+export const nyDay = (t) => NY_DAY.format(new Date(t));
+
+// A row's last trade day when it is not today in New York, for a small dim mark after the
+// name (the hover title never reaches a phone): "Fri" within the last week, "Sep 26"
+// before that. '' for a trade from today, or no time at all. asOf: a time, or a day
+// ("2026-09-26").
+export function staleDay(asOf, now = Date.now()) {
+  if (!asOf) return '';
+  let day = /^\d{4}-\d{2}-\d{2}$/.test(asOf) ? asOf : null;
+  if (!day) { const t = Date.parse(asOf); if (!Number.isFinite(t)) return ''; day = nyDay(t); }
+  const today = nyDay(now);
+  if (day >= today) return '';
+  const noon = (d) => Date.parse(`${d}T12:00:00Z`);
+  const at = new Date(noon(day));
+  return (noon(today) - noon(day)) / 86_400_000 < 7
+    ? at.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })
+    : at.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+// The widest name, in characters, with its day mark (staleDay) when it has one: the name
+// column is at least this wide, so no name is ever cut.
+export const nameChars = (rows, now = Date.now()) => rows.reduce((w, m) => {
+  const day = staleDay(m.asOf, now);
+  return Math.max(w, String(m.name || '').length + (day ? day.length + 1 : 0));
+}, 0);
 
 // MARKETS as columns: n columns of group blocks (packColumns); chg: false leaves out the
-// Chg column. Per row: name, DLY mark when delayed, last, chg, %. Nothing else.
-export function marketsFull(rows, { n = 3, chg = true } = {}) {
+// Chg column. Per row: name (with its day when not today), DLY mark when delayed, last,
+// chg, %. Nothing else. now: the time "today" is judged by.
+export function marketsFull(rows, { n = 3, chg = true, now = Date.now() } = {}) {
   const span = 4 + (chg ? 1 : 0);
   const cols = `<colgroup><col><col class="c-tag"><col class="c-last">${chg ? '<col class="c-chg">' : ''}<col class="c-pct"></colgroup>`;
   return packColumns(rows, n).map((col) => `<div class="mk-col">${col.map((u) => `<table class="grid-table mk-group">
-    ${cols}<tbody>${u.head ? `<tr class="group-row"><th colspan="${span}" scope="rowgroup">${esc(u.group)}</th></tr>` : ''}<tr class="group-row sub-row"><th colspan="${span}" scope="rowgroup">${esc(u.sub)}</th></tr>${u.rows.map((m) => marketRow(m, true, chg)).join('')}</tbody>
+    ${cols}<tbody>${u.head ? `<tr class="group-row"><th colspan="${span}" scope="rowgroup">${esc(u.group)}</th></tr>` : ''}<tr class="group-row sub-row"><th colspan="${span}" scope="rowgroup">${esc(u.sub)}</th></tr>${u.rows.map((m) => marketRow(m, true, chg, staleDay(m.asOf, now))).join('')}</tbody>
   </table>`).join('')}</div>`).join('');
 }
 
@@ -334,6 +360,7 @@ export function render(el, cmd, ctx) {
   const meta = el.querySelector('#mk-meta');
   let rows = null;
   let fit = null;
+  let now = Date.now(); // "today" for the day marks, set at each paint
 
   // One column's width at this font: the widest name, the DLY mark and the numbers
   // (the colgroup widths in style.css), plus the cells' side padding.
@@ -341,18 +368,19 @@ export function render(el, cmd, ctx) {
   probe.className = 'mk-probe';
   probe.setAttribute('aria-hidden', 'true');
   const colPx = (chg) => {
-    probe.style.setProperty('--mk-name', `${nameChars(rows)}ch`);
+    probe.style.setProperty('--mk-name', `${nameChars(rows, now)}ch`);
     probe.classList.toggle('no-chg', !chg);
     if (!probe.isConnected) body.append(probe);
     return Math.ceil(probe.getBoundingClientRect().width);
   };
   function paint() {
     if (!rows) return;
+    now = Date.now();
     const next = marketsFit(body.clientWidth - 2, colPx);
     probe.remove();
     fit = next;
     // Classes, not a style attribute: the page's CSP allows no inline styles.
-    rerender(body, `<div class="mk-full mk-n${next.n}${next.wrap ? ' is-wrap' : ''}">${marketsFull(rows, next)}</div>`);
+    rerender(body, `<div class="mk-full mk-n${next.n}${next.wrap ? ' is-wrap' : ''}">${marketsFull(rows, { ...next, now })}</div>`);
     settleTicks(body);
   }
 

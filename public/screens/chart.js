@@ -14,7 +14,7 @@ import {
 import { createChartView, COMPARE_CLASSES } from './chart-view.js';
 import {
   barInfo, alignAsOf, rebase, commonStart, placeEvents, headerStats, fmtVol, whenText, fmtDateBox, parseDateBox,
-  timeAt, unitAt, windowDays, placeNewsFlags, mergeFlags, sessionPad, padInfo,
+  timeAt, unitAt, windowDays, placeNewsFlags, mergeFlags, oneDayPad, hasSession, padInfo,
 } from './chart-math.js';
 import { sizeGuard } from './size-guard.js';
 
@@ -686,13 +686,9 @@ export function rangeChart(root, ctx, opts) {
     // A 1D chart of today fits the bars there are, at least a 2-hour window (sessionPad):
     // early in the session the bars do not sit in the left tenth of an empty axis. After
     // the close (or on a weekend) the bars are the whole session.
-    let pad = 0;
-    const sessionSym = isStock || (inst?.us && inst.kind === 'index' && !inst.allDay);
     const last = info[info.length - 1];
     const barMins = isIntradayBar(bar) ? BAR_MS[bar] / 60_000 : 1;
-    if (oneDay && sessionSym && last.day === today) {
-      pad = sessionPad(info, { endMins: data.ext ? 20 * 60 : 16 * 60, barMins });
-    }
+    const pad = oneDay ? oneDayPad(info, { today, session: hasSession(inst, isStock), ext: data.ext, barMins }) : 0;
     // A quote dated by day only ("2026-09-25") is about that New York day.
     const q = quote && /^\d{4}-\d{2}-\d{2}$/.test(quote.asOf || '') ? { ...quote, asOf: `${quote.asOf}T12:00:00Z` } : quote;
     const refs = oneDay ? sessionRefs(pts.filter((p) => !p.live), q, { multiDay: false }) : { prevClose: null };

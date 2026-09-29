@@ -4,11 +4,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { barInfo, sessionPad, padInfo, axisLabels, MIN_WINDOW_MINS } from '../public/screens/chart-math.js';
+import { barInfo, sessionPad, padInfo, axisLabels, MIN_WINDOW_MINS, oneDayPad, hasSession } from '../public/screens/chart-math.js';
+import { instrumentById } from '../public/instruments.js';
+import { fxTable } from '../public/screens/home.js';
 import { svgFor, prevTagAt, prevWordsBox } from '../public/screens/chart-view.js';
 import { chartBarMode } from '../public/screens/chart.js';
 import {
-  HOME_MARKETS, homeMarkets, marketsColumns, marketsGroups, packColumns, marketsFull, marketsFit, nameChars, fmtNum,
+  HOME_MARKETS, homeMarkets, marketsColumns, marketsGroups, packColumns, marketsFull, marketsFit, nameChars, fmtNum, staleDay,
 } from '../public/screens/markets.js';
 import { delayTag, freshLegend, LEGEND_TEXT } from '../public/freshness.js';
 import { watchTable } from '../public/screens/watch.js';
@@ -51,9 +53,50 @@ test('1D axis: fits the bars once they span 2 hours; after the close it is the w
   // Never past the session's end.
   assert.equal(sessionPad(barInfo(bars(DAY, '15:30', 11), 1), { endMins: 960, barMins: 1 }), 960 - 940);
   assert.equal(sessionPad([], {}), 0);
-  // The chart applies it to today's 1D only (a weekend or a past day draws its bars as they are).
-  const chart = src('screens/chart.js');
-  assert.match(chart, /if \(oneDay && sessionSym && last\.day === today\) \{\s*pad = sessionPad\(info/);
+});
+
+// A 1D chart's pad as the chart decides it (chart.js build: oneDayPad with hasSession).
+const padFor = (id, points, today, { ext = false, barMins = 1 } = {}) => {
+  const inst = instrumentById(id);
+  return oneDayPad(barInfo(points, barMins), { today, session: hasSession(inst, !inst), ext, barMins });
+};
+
+test('1D axis: a winter (EST) session gets the same 2-hour window', () => {
+  // 15 Dec 2026 is standard time: 09:30 ET = 14:30 UTC.
+  const EST = (hm) => Date.parse(`2026-12-15T${hm}:00-05:00`);
+  const pts = Array.from({ length: 36 }, (_, k) => ({ t: EST('09:30') + k * 60_000, v: 1 + k }));
+  assert.equal(barInfo(pts, 1)[0].mins, 570, '09:30 in New York, not 08:30 or 10:30');
+  assert.equal(padFor('SPX', pts, '2026-12-15'), 85);
+  assert.equal(padFor('AAPL', pts, '2026-12-15'), 85);
+});
+
+test('1D axis: a half day (13:00 close) and a holiday show the session as it was', () => {
+  // Friday 27 Nov 2026, the day after Thanksgiving: the session ends at 13:00.
+  const est = (day, from, n) => Array.from({ length: n }, (_, k) => ({ t: Date.parse(`${day}T${from}:00-05:00`) + k * 60_000, v: 1 + k }));
+  const half = est('2026-11-27', '09:30', 211);
+  assert.equal(barInfo(half, 1).at(-1).mins, 13 * 60);
+  assert.equal(padFor('SPX', half, '2026-11-27'), 0, 'at 15:00 that day: no empty 13:00 to 16:00');
+  // Early that morning it still opens on a 2-hour window.
+  assert.equal(padFor('SPX', est('2026-11-27', '09:30', 11), '2026-11-27'), 110);
+  // Thanksgiving (26 Nov): no bars today, the chart holds Wednesday's full session.
+  const wed = est('2026-11-25', '09:30', 391);
+  assert.equal(padFor('SPX', wed, '2026-11-26'), 0);
+  assert.equal(padFor('AAPL', wed, '2026-11-28'), 0, 'a weekend too');
+});
+
+test('1D axis: crypto, FX, futures and all-day indexes are never padded', () => {
+  const young = bars(DAY, '09:30', 10);
+  for (const id of ['BTC', 'ETH', 'EURUSD', 'USDJPY', 'SPFUT', 'GOLD', 'DXY', 'MOVEINDEX']) {
+    assert.equal(hasSession(instrumentById(id)), false, id);
+    assert.equal(padFor(id, young, DAY), 0, id);
+  }
+  for (const id of ['SPX', 'NDX', 'VIX']) assert.equal(hasSession(instrumentById(id)), true, id);
+  assert.equal(hasSession(null, true), true, 'a stock');
+  assert.equal(padFor('AAPL', young, DAY), 111);
+  // With after hours (a stock's ext bars), 2 hours from the first bar, capped at 20:00.
+  assert.equal(padFor('AAPL', bars(DAY, '19:00', 11), DAY, { ext: true }), 50, '19:10: only to 20:00');
+  assert.equal(padFor('AAPL', young, DAY, { ext: true }), 111);
+  assert.equal(src('screens/chart.js').includes('oneDayPad(info, { today, session: hasSession(inst, isStock), ext: data.ext, barMins })'), true);
 });
 
 test('1D axis: the empty part of a young session still has clock labels', () => {
@@ -112,6 +155,19 @@ test('PREV CLOSE: a busy right edge keeps only the axis tag; the tag steps off t
   assert.equal(prevTagAt(200, 120), 200);
   assert.equal(prevTagAt(125, 120), 136);
   assert.equal(prevTagAt(115, 120), 104);
+  // Always whole inside the plot: at the top it goes under the last tag instead.
+  assert.equal(prevTagAt(2, 200, { top: 8, bottom: 300 }), 16);
+  assert.equal(prevTagAt(12, 20, { top: 8, bottom: 300 }), 36, 'no room above the last tag: below it');
+  assert.equal(prevTagAt(298, 290, { top: 8, bottom: 300 }), 274, 'no room below: above it');
+  // The compare tags see it: in percent mode there is no prev close; a line chart's last
+  // tag at the prev close line is stepped, never drawn over it.
+  const pts = Array.from({ length: 30 }, (_, k) => ({ t: ET(DAY, '09:30') + k * 60_000, v: 100 + k / 10 }));
+  const near = svgFor(model(pts, { refs: { prevClose: 102.95 } }), null, 600, 300).svg;
+  const prevY = Number(/class="ch-prev-t" x="[\d.]+" y="([\d.]+)"/.exec(near)[1]) - 4;
+  const lastY = Number(/class="ch-last-t" x="[\d.]+" y="([\d.]+)"/.exec(near)[1]) - 4;
+  assert.ok(Math.abs(prevY - lastY) >= 15.99, `${prevY} vs ${lastY}`);
+  assert.ok(prevY - 8 >= 8, 'inside the plot');
+  assert.match(src('screens/chart-view.js'), /let usedY = showPrev \? \[prevTagY\] : \[\];/);
 });
 
 // ---- 3. Chart bars: chips in a panel, everything in FULL -----------------------------
@@ -154,6 +210,9 @@ test('RT/DLY: no RT on any row; delayed rows keep a small DLY; the strip says it
   assert.match(src('screens/home.js'), /const html = freshLegend\(rows\);/);
   assert.match(src('screens/markets.js'), /freshLegend\(rows\)/);
   assert.match(src('screens/watch.js'), /freshLegend\(list\.map/);
+  const fx = fxTable([{ id: 'EURUSD', pair: 'EUR/USD', last: 1.1, change: 0, changePct: 0, decimals: 4, realTime: true }, { id: 'X', pair: 'X/Y', last: 1, change: 0, changePct: 0, decimals: 4, realTime: false }]);
+  assert.doesNotMatch(fx, />RT</, 'HOME fxTable: no RT');
+  assert.match(fx, />DLY</);
   const wl = watchTable([{ id: 'AAPL', quote: { ticker: 'AAPL', last: 1, change: 0, changePct: 0, realTime: true } }, { id: 'ES', quote: { ticker: 'ES', last: 1, change: 0, changePct: 0, realTime: false } }]);
   assert.doesNotMatch(wl, />RT</);
   assert.match(wl, />DLY</);
@@ -235,6 +294,23 @@ test('MARKETS columns: no column is headed by another group; blocks keep HOME or
   assert.deepEqual([...marketsFull(rows, { n: 1, chg: false }).split('<tr class="row-link"')[1].matchAll(/<td class="num (\w+)/g)].map((m) => m[1]), ['last', 'pct'], 'no room: Chg goes first');
 });
 
+test('MARKETS: a row not traded today (New York) shows its day after the name; today shows nothing', () => {
+  const now = Date.parse('2026-09-29T10:06:00-04:00'); // a Tuesday
+  assert.equal(staleDay('2026-09-29T02:45:00-04:00', now), '', 'Nikkei traded this morning');
+  assert.equal(staleDay('2026-09-28T16:00:00-04:00', now), 'Mon');
+  assert.equal(staleDay('2026-09-26', now), 'Sat');
+  assert.equal(staleDay('2026-09-25T16:00:00-04:00', now), 'Fri');
+  assert.equal(staleDay('2026-09-10', now), 'Sep 10');
+  assert.equal(staleDay('2026-09-29T01:00:00Z', now), 'Mon', 'the New York day, not UTC');
+  assert.equal(staleDay(null, now), '');
+  const rows = marketsGroups([inst('SPX', 'Americas'), inst('BALTICDRY', 'Commodities', { asOf: '2026-09-28', name: 'Baltic Dry Index' })]);
+  const html = marketsFull(rows, { n: 1, now });
+  assert.match(html, /Baltic Dry Index<\/a> <span class="mk-day dim">Mon<\/span><\/th>/);
+  assert.equal((html.match(/mk-day/g) || []).length, 1, 'SPX traded today: no mark');
+  // The mark counts in the name column's width.
+  assert.equal(nameChars(rows, now), 'Baltic Dry Index Mon'.length);
+});
+
 test('MARKETS widths: no name is cut at 1440x900 or 1536x730; a narrow panel drops Chg, then wraps', () => {
   const rows = marketsGroups(API);
   const ch = 13 * 0.6; // the table's monospace character at 13px
@@ -268,10 +344,18 @@ test('DESK panel: the quote ranges are one line, never a number stacked over its
   assert.equal(rangeLine({ kind: 'stock', decimals: 2, low52: 100, high52: 200 }).replace(/<[^>]+>/g, ''), '52w 100.00 to 200.00');
   assert.equal(rangeLine({ kind: 'fx', decimals: 4 }), '');
   assert.match(rangeLine({ kind: 'yield', decimals: 3, low: 4.1, high: 4.2 }), /4\.100% to 4\.200%/);
+  // The 52W qualifier stays in the one line.
+  assert.match(rangeLine({ ...vix, range52Basis: 'daily closes' }), /52w \(closes\)<\/span> 13\.38 to 35\.30/);
+  assert.match(rangeLine({ ...vix, decimals: 4, last: 1.15, low52: 1.13, high52: 1.21, range52Dp: 2 }), /52w \(rounded\)<\/span> 1\.13 to 1\.21/);
+  // The panel keeps the grid (Mkt cap, P/E, Open, Prev close...); only the Day range and
+  // 52W cells give way to the line.
   const css = src('screens/quote.css');
-  assert.match(css, /\.is-embed \.q-top \.stats \{ display: none; \}/);
+  assert.doesNotMatch(css, /\.is-embed \.q-top \.stats \{ display: none; \}/, 'the grid stays in a panel');
+  assert.match(css, /\.is-embed \.q-top \.stat-range \{ display: none; \}/);
   assert.match(css, /\.is-embed \.q-ranges \{ display: block;/);
-  assert.match(css, /\.q-ranges \{ display: none; \}/, 'the full screen keeps its stats grid');
+  assert.match(css, /\.q-ranges \{ display: none; \}/, 'the full screen keeps its range cells');
+  const q = src('screens/quote.js');
+  assert.match(q, /const isRange = \(k\) => k === 'Day range' \|\| k\.startsWith\('52W'\);/);
 });
 
 // ---- The heatmap ----------------------------------------------------------------------

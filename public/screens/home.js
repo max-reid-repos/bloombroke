@@ -2,7 +2,7 @@
 
 import { esc, fmtNum, fmtSigned, fmtPct, dirOf, panel, LOADING, marketsColumns, nameCell, rowAttrs, rerender, tick, settleTicks, HOME_MARKETS, homeMarkets } from './markets.js';
 import { rangeChart } from './chart.js';
-import { freshTag, freshLegend } from '../freshness.js';
+import { delayTag, freshLegend } from '../freshness.js';
 import { newsList, liveNews, dedupeNews, mergePushed, newsStream, NEWS_POLL_MS } from './news.js';
 import { startSince } from '../since.js'; // SINCE line
 import { lazyScreen, loadScreen, stylesOf } from '../lazy.js';
@@ -16,14 +16,14 @@ export function fxTable(pairs) {
     const d = dirOf(p.change);
     return `<tr${rowAttrs(p.id)}>
       ${nameCell(p.pair || p.name, p.id)}
-      <td class="tag">${freshTag(p)}</td>
+      <td class="tag">${delayTag(p)}</td>
       <td class="num last${tick(`fx:${p.id}:last`, p.last)}">${fmtNum(p.last, p.decimals)}</td>
       <td class="num chg ${d}">${fmtSigned(p.change, p.decimals)}</td>
       <td class="num pct ${d}">${fmtPct(p.changePct)}</td>
     </tr>`;
   }).join('');
   return `<table class="grid-table">
-    <thead><tr><th scope="col">Pair</th><th scope="col" class="tag"><span class="offscreen">Real time or delayed</span></th><th scope="col" class="num">Last</th><th scope="col" class="num chg">Chg</th><th scope="col" class="num">%Chg</th></tr></thead>
+    <thead><tr><th scope="col">Pair</th><th scope="col" class="tag"><span class="offscreen">Delayed</span></th><th scope="col" class="num">Last</th><th scope="col" class="num chg">Chg</th><th scope="col" class="num">%Chg</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
