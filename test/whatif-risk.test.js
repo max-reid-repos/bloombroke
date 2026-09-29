@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { maxDrawdown, holdingPath } from '../data/whatif.js';
 import { attachRisk, getWhatif } from '../data/whatif-service.js';
-import { riskLine, dropList, fmtDrop, HINDSIGHT_NOTE, WHATIF_TITLE, RESULT_NOTE, PICKER_INTRO } from '../public/screens/whatif.js';
+import { riskLine, dropList, fmtDrop, HINDSIGHT_NOTE, WHATIF_TITLE, RESULT_NOTE, OWN_PLACEHOLDER } from '../public/screens/whatif.js';
 import { HINDSIGHT_NOTE as OG_NOTE } from '../lib/og.js';
 import { COMMANDS } from '../public/app.js';
 
@@ -75,7 +75,7 @@ test('risk line: always shown, one holding or several', () => {
 });
 
 test('WHATIF copy is hindsight, never advice', () => {
-  const all = [RESULT_NOTE, PICKER_INTRO, WHATIF_TITLE, COMMANDS.find((c) => c.name === 'WHATIF').hint];
+  const all = [RESULT_NOTE, OWN_PLACEHOLDER, WHATIF_TITLE, COMMANDS.find((c) => c.name === 'WHATIF').hint];
   for (const line of all) {
     assert.doesNotMatch(line, /\bshould\b/i, line);
     assert.doesNotMatch(line, /usually|always|will (grow|rise)/i, line);

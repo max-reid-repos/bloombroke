@@ -1,15 +1,17 @@
-// REPLAY: the WHATIF race, from the first buy to today, in three thin lines.
+// REPLAY: the WHATIF race, from the first buy to today, in two thin lines.
 //
 //   STOCK          the value of the shares bought so far
 //   CASH IN A JAR  the same dollars kept in a jar, deflated by CPI-U
-//   SPENT          the running total paid, drawn below zero (money out)
+//
+// What was spent is on the certificate (and rolls there during the race), so it is not
+// a line of its own. The frames still carry it (the saved video draws it).
 //
 // The points come from the server (data/whatif.js replaySeries): one per month, one per
 // purchase day and today. The last point equals the result table exactly. Pure maths at
 // the top (node:test imports it), then the terminal-style canvas and the player.
 
-export const LINE_KEYS = ['stock', 'jar', 'spent'];
-export const LINE_LABELS = { stock: 'STOCK', jar: 'CASH IN A JAR', spent: 'SPENT' };
+export const LINE_KEYS = ['stock', 'jar'];
+export const LINE_LABELS = { stock: 'STOCK', jar: 'CASH IN A JAR' };
 
 // 8 to 12 seconds: longer histories get a little longer.
 export function durationMs(points) {
@@ -38,7 +40,8 @@ export function frameAt(points, p) {
   return { t, i, stock: mix('stock'), jar: mix('jar'), spent: mix('spent'), done: false };
 }
 
-// The value box behind the lines: stock and jar above zero, spent below it.
+// The value box behind the lines: stock and jar above zero, spent below it (the saved
+// video's box; the page's chart uses the top only).
 export function scaleOf(points) {
   let top = 0;
   let bottom = 0;
@@ -65,7 +68,7 @@ function cssVar(el, name, fallback) {
   return v || fallback;
 }
 
-// Where the three names go at the lines' ends: in the lines' order top to bottom, at
+// Where the names go at the lines' ends: in the lines' order top to bottom, at
 // least `gap` px apart and inside [top, bottom]. ys: the ends' y, in LINE_KEYS order.
 export function labelYs(ys, { gap = 12, top = 0, bottom = Infinity } = {}) {
   const order = ys.map((y, i) => [y, i]).sort((a, b) => a[0] - b[0]);
@@ -77,8 +80,9 @@ export function labelYs(ys, { gap = 12, top = 0, bottom = Infinity } = {}) {
   return res;
 }
 
-// The lines up to frame f, thin, in terminal colours, with small monospace year marks,
-// each line named at its end (STOCK, CASH IN A JAR, SPENT), so no key is needed.
+// The lines up to frame f, thin, in terminal colours, with monospace year marks (11 px,
+// the smallest type on the page), each line named at its end (STOCK, CASH IN A JAR),
+// so no key is needed.
 export function drawTerminal(canvas, points, f) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const w = canvas.clientWidth;
@@ -94,7 +98,6 @@ export function drawTerminal(canvas, points, f) {
   const col = {
     stock: cssVar(canvas, '--accent', '#6CCBFF'),
     jar: cssVar(canvas, '--cmp-3', '#8f99a3'),
-    spent: cssVar(canvas, '--down', '#FF5C5C'),
     rule: cssVar(canvas, '--rule-strong', '#2a3642'),
     dim: cssVar(canvas, '--dim', '#7C93A8'),
   };
@@ -107,13 +110,12 @@ export function drawTerminal(canvas, points, f) {
   const padB = 16;
   const t0 = timeOf(points[0]);
   const t1 = timeOf(points[points.length - 1]);
-  const { top, bottom } = scaleOf(points);
+  const { top } = scaleOf(points);
   const X = (t) => padL + ((t - t0) / Math.max(1, t1 - t0)) * (w - padL - padR);
-  const span = top + bottom;
-  const Y = (v) => padT + ((top - v) / span) * (h - padT - padB);
+  const Y = (v) => padT + ((top - v) / top) * (h - padT - padB);
 
   // Zero line and year marks.
-  ctx.font = `10px ${font}`;
+  ctx.font = `11px ${font}`;
   ctx.fillStyle = col.dim;
   ctx.strokeStyle = col.rule;
   ctx.lineWidth = 1;
@@ -129,34 +131,32 @@ export function drawTerminal(canvas, points, f) {
     if ((y - y0) % every) continue;
     const x = X(Date.UTC(y, 0, 1, 12));
     if (x < padL + 12 || x > w - padR - 16) continue;
-    ctx.fillText(String(y), x - 12, h);
+    ctx.fillText(String(y), x - 14, h);
     ctx.fillRect(Math.round(x), Math.round(Y(0)) - 2, 1, 5);
   }
 
   // The lines, up to the current frame.
-  const upto = points.slice(0, f.i + 1).map((p) => ({ t: timeOf(p), stock: p.stock, jar: p.jar, spent: p.spent }));
-  if (!f.done) upto.push({ t: f.t, stock: f.stock, jar: f.jar, spent: f.spent });
-  const line = (key, color, sign = 1) => {
+  const upto = points.slice(0, f.i + 1).map((p) => ({ t: timeOf(p), stock: p.stock, jar: p.jar }));
+  if (!f.done) upto.push({ t: f.t, stock: f.stock, jar: f.jar });
+  const line = (key, color) => {
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;
     ctx.lineJoin = 'round';
     ctx.beginPath();
-    upto.forEach((p, i) => { const x = X(p.t); const y = Y(sign * p[key]); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+    upto.forEach((p, i) => { const x = X(p.t); const y = Y(p[key]); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
     ctx.stroke();
     const endP = upto[upto.length - 1];
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(X(endP.t), Y(sign * endP[key]), 2.5, 0, Math.PI * 2);
+    ctx.arc(X(endP.t), Y(endP[key]), 2.5, 0, Math.PI * 2);
     ctx.fill();
   };
-  line('spent', col.spent, -1);
   line('jar', col.jar);
   line('stock', col.stock);
 
   // The names, just right of the ends.
   const endP = upto[upto.length - 1];
-  const sign = { stock: 1, jar: 1, spent: -1 };
-  const ys = labelYs(LINE_KEYS.map((k) => Y(sign[k] * endP[k])), { gap: 12, top: padT + 4, bottom: h - padB - 4 });
+  const ys = labelYs(LINE_KEYS.map((k) => Y(endP[k])), { gap: 14, top: padT + 4, bottom: h - padB - 4 });
   ctx.font = `11px ${font}`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';

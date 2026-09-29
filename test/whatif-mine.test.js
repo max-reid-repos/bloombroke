@@ -15,7 +15,7 @@ import { normalizeWhatif, certModel, whatifTokens } from '../data/whatif-cert.js
 import { readdirSync } from 'node:fs';
 import { getCert, whatifPng, makeRateLimit, mineModels, minePngs, MINE_MEMORY } from '../lib/og.js';
 import { createCache } from '../data/cache.js';
-import { planWhatif, commandFor, shareLinks, ownCardHtml, ownFormHtml } from '../public/screens/whatif.js';
+import { planWhatif, commandFor, shareLinks, ownInputHtml, ownWords, OWN_PLACEHOLDER } from '../public/screens/whatif.js';
 import * as screenMod from '../public/screens/whatif.js';
 import { PRO_ROWS, FREE_ROWS, LIVE } from '../public/screens/pro.js';
 import { findCommand } from '../public/registry.js';
@@ -267,11 +267,9 @@ test('free for everyone: no Pro gate, the FREE list says so', async () => {
   assert.equal(screenMod.mineAllowed, undefined, 'no gate in the screen');
   const src = readFileSync('public/screens/whatif.js', 'utf8');
   assert.doesNotMatch(src, /isPro|Pro feature/);
-  // The YOUR OWN card and its form show for a free user.
-  assert.match(ownCardHtml(), /YOUR OWN[\s\S]*Any stock</);
-  // One sentence: [$ amount] [how often] in [ticker] since [date].
-  assert.match(ownFormHtml(), /data-f="amount"[\s\S]*data-f="how"[\s\S]*>in<[\s\S]*data-f="ticker"[\s\S]*>since<[\s\S]*data-f="date"/);
-  assert.doesNotMatch(ownFormHtml(), /data-f="to"/, 'TO lives in the command only');
+  // The YOUR OWN line shows for a free user: one input, Enter runs it.
+  assert.match(ownInputHtml(), new RegExp(`<input id="wi-own-in" class="wi-own-in" type="text" maxlength="80" placeholder="${OWN_PLACEHOLDER}"`));
+  assert.doesNotMatch(ownInputHtml(), /<button|btn-solid/, 'Enter runs it: no button of its own');
   // The server never gates: a free visitor (no key) gets the result.
   const d = await getWhatif(['MY', '649', 'AAPL', '2014-09-19'], { quoteImpl: quote(341.07), dailyImpl: bakedAapl, now: NOW });
   assert.equal(d.mine, true);
