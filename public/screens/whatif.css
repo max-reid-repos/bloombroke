@@ -82,7 +82,7 @@
 .wi-chips-row { display: flex; gap: 6px; min-width: 0; }
 .wi-chip { flex: 0 0 auto; gap: 6px; height: 24px; letter-spacing: .04em; cursor: pointer; }
 .wi-chip-y { color: var(--dim); font-weight: 400; }
-.wi-chip[aria-pressed="true"] { color: var(--ink); background: var(--accent); border-color: var(--accent); }
+.wi-chip[aria-pressed="true"] { color: var(--ink); background: var(--here); border-color: var(--here); }
 .wi-chip[aria-pressed="true"] .wi-chip-y { color: var(--ink); }
 .wi-chip:focus-visible { outline: 1px solid var(--text); outline-offset: 1px; }
 .wi-count { color: var(--text); font-weight: 600; letter-spacing: .06em; white-space: nowrap; }

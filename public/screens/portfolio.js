@@ -140,7 +140,7 @@ function importBox() {
     <textarea id="pf-csv" rows="6" spellcheck="false" placeholder="ticker,shares,cost&#10;AAPL,10,150&#10;MSFT,5,300"></textarea>
     <div class="pf-import-row">
       <label class="pf-file">Or pick a .csv file <input type="file" accept=".csv,text/csv,text/plain"></label>
-      <button type="submit" class="pf-btn">REPLACE HOLDINGS</button>
+      <button type="submit" class="pf-btn btn-solid">REPLACE HOLDINGS</button>
     </div>
   </form>`;
 }
@@ -185,7 +185,7 @@ export function render(el, cmd, ctx) {
     if (!warn) savePortfolio(ctx.store, holdings);
   } else if (a.action === 'export') {
     const csv = toCsv(holdings);
-    extra = `<div class="pf-export"><textarea readonly rows="${Math.min(8, holdings.length + 1)}" aria-label="Your holdings as CSV" data-own-focus>${esc(csv)}</textarea><a class="pf-btn" download="bloombroke-portfolio.csv" href="data:text/csv;charset=utf-8,${encodeURIComponent(csv)}">DOWNLOAD CSV</a></div>`;
+    extra = `<div class="pf-export"><textarea readonly rows="${Math.min(8, holdings.length + 1)}" aria-label="Your holdings as CSV" data-own-focus>${esc(csv)}</textarea><a class="pf-btn btn-solid" download="bloombroke-portfolio.csv" href="data:text/csv;charset=utf-8,${encodeURIComponent(csv)}">DOWNLOAD CSV</a></div>`;
     msg = holdings.length ? 'Copying your holdings as CSV...' : 'No holdings to export.';
     if (holdings.length) {
       ctx.copy(csv).then((ok) => {

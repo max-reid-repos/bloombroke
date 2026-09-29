@@ -340,6 +340,44 @@ export function barInfo(points, barMins = 1) {
   });
 }
 
+// ---- The 1D axis: fits the bars, never under 2 hours (no chart opens on an empty range)
+export const MIN_WINDOW_MINS = 120;
+
+// Empty bar slots after today's last bar: up to MIN_WINDOW_MINS from the first bar,
+// never past endMins; 0 once the bars span it.
+export function sessionPad(info, { endMins = 960, barMins = 1, minWindow = MIN_WINDOW_MINS } = {}) {
+  if (!info?.length || !(barMins > 0)) return 0;
+  const last = info[info.length - 1];
+  const first = info.find((x) => x.day === last.day) || last;
+  const want = Math.min(endMins, first.mins + minWindow);
+  return Math.max(0, (want - last.mins) / barMins);
+}
+
+// A stock or a US index with a session: crypto, FX, futures, DXY and MOVE are not.
+export function hasSession(inst, isStock = !inst) {
+  return Boolean(isStock || (inst?.us && inst.kind === 'index' && !inst.allDay));
+}
+
+// Only a session symbol's bars of today are padded: a holiday, a weekend or a finished
+// half day shows the session as it was.
+export function oneDayPad(info, { today, session = true, ext = false, barMins = 1 } = {}) {
+  const last = info?.[info.length - 1];
+  if (!session || !last || last.day !== today) return 0;
+  return sessionPad(info, { endMins: ext ? 20 * 60 : 16 * 60, barMins });
+}
+
+// Bar info with the empty slots filled in, for clock labels under the empty part.
+export function padInfo(info, pad, barMins = 1) {
+  const n = Math.floor(pad);
+  if (!info?.length || n <= 0) return info;
+  const last = info[info.length - 1];
+  const more = Array.from({ length: n }, (_, k) => {
+    const mins = last.mins + (k + 1) * barMins;
+    return { day: last.day, mins, session: mins + barMins <= 570 ? 'pre' : mins >= 960 ? 'post' : 'regular', weekday: last.weekday, empty: true };
+  });
+  return [...info, ...more];
+}
+
 // ---- Header numbers ------------------------------------------------------------------
 
 // The strip over the chart for bars i0..i1: last, change from base, the high and low (bar

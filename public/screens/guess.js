@@ -385,7 +385,7 @@ export function render(el, cmd, ctx) {
           placeholder="Type a company or ticker" aria-label="Your guess: an S&P 100 ticker or company" role="combobox" aria-autocomplete="list" aria-controls="gs-sug" aria-expanded="false">
         <ul id="gs-sug" class="gs-sug" role="listbox" hidden></ul>
       </div>
-      <button type="submit" class="chip gs-go">GUESS</button>
+      <button type="submit" class="chip gs-go btn-solid">GUESS</button>
     </form>`;
   }
 

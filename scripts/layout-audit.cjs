@@ -14,6 +14,10 @@
 //             picture (role="img", aria-hidden="true": a tombstone's face) are the picture's
 //   measure   a block of text wider than about 70 characters of its own font
 //   primary   more than one primary (solid) button
+//   small     (reported, not failing yet: phase 2) rule D, on a phone readable text under
+//             13 px; a tracked uppercase label may be 12
+//   cut       MARKETS only (its own page, no card checks): a market name cut short (an
+//             ellipsis or clipped), at 1440x900, 1536x730 and 390x844
 //   fold      on a desktop size, BBRK's and SPONSOR's globe, or GRAVEYARD LEH's stone, video
 //             and last website, not wholly in the first view (the media's bottom below the
 //             scroll box's visible bottom, scrolled to the top); for WHATIF, at every size,
@@ -93,6 +97,8 @@ const PAGES = [
   // WHATIF: a split card page. One thing, three things, a VICES habit; after the race.
   ...[['whatif', 'WHATIF IPHONE6'], ['whatif-three', 'WHATIF IPHONE6 RTX3080 LATTE:3Y'], ['whatif-vices', 'WHATIF BEER:10Y']]
     .map(([n, c]) => [n, c, { wait: 14000, fold: ['.card-art', '#wi-share-btn'], sizes: [[1440, 900], [1536, 730], [390, 844]] }]),
+  // MARKETS: every name whole (live /api/markets from the server under test).
+  ['markets', 'MARKETS', { sel: '.mk-full', names: true, wait: 3000, sizes: [[1440, 900], [1536, 730], [390, 844]] }],
 ].filter(([n]) => !ONLY || ONLY.split(',').includes(n));
 
 async function liveData() {
@@ -106,14 +112,29 @@ async function liveData() {
 }
 
 // Runs in the page: every check, for the card on screen.
-function inPage(scale, firstView, sel, fold) {
-  const out = { overflow: [], crop: [], font: [], measure: [], primary: [], fold: [] };
+function inPage(scale, firstView, sel, fold, names) {
+  const out = { overflow: [], crop: [], font: [], measure: [], primary: [], fold: [], cut: [], small: [] };
   const de = document.documentElement;
   const screen = document.getElementById('screen');
   if (de.scrollWidth > de.clientWidth + 1) out.overflow.push(`page ${de.scrollWidth}>${de.clientWidth}`);
   if (screen && screen.scrollWidth > screen.clientWidth + 1) out.overflow.push(`screen ${screen.scrollWidth}>${screen.clientWidth}`);
   const card = document.querySelector(`#screen ${sel}`);
   if (!card) { out.crop.push(`no ${sel} on screen`); return out; }
+  // MARKETS: a name cell whose text is wider than the cell, or whose text runs past the
+  // cell's right edge into the numbers, is cut.
+  if (names) {
+    const cells = [...card.querySelectorAll('.name')];
+    if (!cells.length) out.cut.push('no names');
+    for (const el of cells) {
+      const a = el.querySelector('a') || el;
+      const range = document.createRange();
+      range.selectNodeContents(a);
+      const text = range.getBoundingClientRect();
+      const box = el.getBoundingClientRect();
+      if (el.scrollWidth > el.clientWidth + 1 || text.right > box.right + 0.5 || getComputedStyle(el).textOverflow === 'ellipsis') out.cut.push(a.textContent.trim());
+    }
+    return out;
+  }
   const shut = (el) => { const d = el.closest('details:not([open])'); return Boolean(d) && !el.closest('summary'); };
   const shown = (el) => { const r = el.getBoundingClientRect(); return !shut(el) && r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
   // Media: inside every clipping or scrolling box above it, and square when it is a globe.
@@ -151,6 +172,11 @@ function inPage(scale, firstView, sel, fold) {
     const s = getComputedStyle(el);
     const px = parseFloat(s.fontSize);
     if (!scale.includes(px)) out.font.push(`${el.tagName.toLowerCase()}.${el.className || ''} ${px}px`);
+    if (innerWidth < 640 && px < 13) {
+      const text = el.textContent.trim();
+      const label = px >= 12 && parseFloat(s.letterSpacing) > 0 && (s.textTransform === 'uppercase' || text === text.toUpperCase());
+      if (!label) out.small.push(`${el.tagName.toLowerCase()}.${el.className || ''} ${px}px`);
+    }
     ctx.font = `${s.fontWeight} ${s.fontSize} ${s.fontFamily}`;
     const ch = ctx.measureText('0').width || px * 0.6;
     const w = el.getBoundingClientRect().width;
@@ -236,10 +262,11 @@ async function main() {
           await new Promise((r) => { setTimeout(r, 300); });
         }
         const firstView = !OPEN && w >= 1100 && ['bbrk', 'sponsor', 'graveyard-leh'].includes(name);
-        const res = await page.evaluate(inPage, TYPE, firstView, sel, OPEN ? [] : opts.fold || []);
-        const bad = Object.entries(res).filter(([, v]) => v.length);
+        const res = await page.evaluate(inPage, TYPE, firstView, sel, OPEN ? [] : opts.fold || [], Boolean(opts.names));
+        const bad = Object.entries(res).filter(([k, v]) => v.length && k !== 'small');
         if (bad.length) failed++;
-        rows.push({ page: name, size: `${w}x${h}`, result: bad.length ? 'FAIL' : 'ok', notes: bad.map(([k, v]) => `${k}: ${[...new Set(v)].slice(0, 3).join('; ')}`).join(' | ') });
+        const notes = [...bad, ...(res.small.length ? [['small (not failing yet)', res.small]] : [])];
+        rows.push({ page: name, size: `${w}x${h}`, result: bad.length ? 'FAIL' : 'ok', notes: notes.map(([k, v]) => `${k}: ${[...new Set(v)].slice(0, 3).join('; ')}`).join(' | ') });
         if (SHOTS) {
           fs.mkdirSync(SHOTS, { recursive: true });
           await page.screenshot({ path: path.join(SHOTS, `after-${name}-${w}${OPEN ? '-details' : ''}.png`) });

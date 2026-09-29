@@ -24,7 +24,7 @@
   border: 1px solid var(--rule-strong); background: transparent; color: var(--text-2);
   font-family: var(--font); font-size: 12px; font-weight: 600; letter-spacing: .1em; cursor: pointer;
 }
-.sc-clear:hover, .sc-more:hover { color: var(--ink); background: var(--accent); border-color: var(--accent); }
+.sc-clear:hover, .sc-more:hover { color: var(--accent); background: var(--accent-tint); border-color: var(--accent); }
 .sc-err { color: var(--down); font-size: 12px; }
 .sc-presets { margin-top: 8px; font-size: 12px; line-height: 2; }
 .sc-presets .code { margin-right: 6px; }

@@ -136,7 +136,7 @@ export function welcomeHtml(ui) {
       <form class="consent-bar" autocomplete="off">
         <span class="consent-prompt" aria-hidden="true">&gt;</span>
         <input class="consent-input" type="text" maxlength="120" spellcheck="false" autocapitalize="characters" autocorrect="off" enterkeyhint="go" aria-label="Type a command">
-        <button type="submit" class="consent-accept">START</button>
+        <button type="submit" class="consent-accept btn-solid">START</button>
       </form>
       ${ui ? ui.chipsHtml() : ''}
       <p class="consent-body" id="consent-body">${t.lead} By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a> and confirm you are 18+. <a href="/disclaimer">Disclaimer</a></p>

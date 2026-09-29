@@ -23,6 +23,11 @@
   --accent-tint: hsla(201, 100%, 71%, .1);
   --ink: hsl(213, 60%, 3%);          /* text on the accent */
 
+  /* What a filled button means, site-wide (rule C, kit.css): */
+  --primary: var(--text);            /* white: the ONE action on a page (.btn-solid), ink text 16:1 */
+  --primary-hover: hsl(0, 0%, 100%);
+  --here: var(--accent);             /* ice blue: where you are (panel strip, F-key, range, tab), ink 11:1 */
+
   /* Compare lines on a chart: white, a deeper ice blue, steel grey */
   --cmp-1: hsl(0, 0%, 96%);
   --cmp-2: hsl(222, 90%, 70%);
@@ -282,7 +287,7 @@ kbd {
   display: flex; align-items: center;
   margin: 0;
   padding: 0 8px;
-  background: var(--accent);
+  background: var(--here);
   color: var(--ink);
   font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
   white-space: nowrap;
@@ -303,7 +308,7 @@ a.panel-label:hover { text-decoration: none; background: var(--text); }
   font-size: 11px; color: var(--dim); letter-spacing: .04em; white-space: nowrap;
 }
 .stock-hint:hover, .stock-hint:focus-visible { color: var(--text); text-decoration: none; }
-.help-search .stock-hint, .desk-bar .stock-hint { margin-right: 0; margin-left: auto; }
+.help-search .stock-hint { margin-right: 0; margin-left: auto; }
 /* Phones: a long panel title wraps inside its label instead of pushing the page wide. */
 @media (max-width: 639px) {
   .panel-head { height: auto; min-height: 22px; }
@@ -321,7 +326,7 @@ a.panel-label:hover { text-decoration: none; background: var(--text); }
 .tab { display: flex; align-items: center; padding: 0 8px; color: var(--dim); font-size: 11px; }
 button.tab { border: 0; background: transparent; font-family: var(--font); cursor: pointer; }
 .tab:hover { text-decoration: none; color: var(--text); background: var(--panel-3); }
-.tab.is-active { color: var(--ink); background: var(--text-2); }
+.tab.is-active { color: var(--ink); background: var(--here); }
 
 /* ---- Live or delayed tags ------------------------------------------------ */
 /* Quiet text, not a box (a box means you can press it). A fixed width, so RT and DLY
@@ -438,8 +443,38 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .mk-group .c-pct { width: 8ch; }
 .mk-group .c-time { width: 7ch; }
 .mk-group .name { width: auto; }
+
+/* ---- MARKETS: HOME's list at full size (markets.js marketsFull) ---------------------
+   2 or 3 columns (1 in a narrow panel), each at least as wide as the widest name plus the
+   numbers, so a name is never cut; the panel ends where the columns end. Every block in
+   a column opens with its own group's title bar or sub-heading bar. */
+.mk-full { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+.mk-full.mk-n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mk-full.mk-n1 { grid-template-columns: minmax(0, 1fr); }
+.mk-full .mk-col { min-width: 0; }
+.mk-full .mk-col + .mk-col { border-left: 1px solid var(--rule-strong); }
+.mk-full .mk-group .name { max-width: none; overflow: visible; text-overflow: clip; }
+.mk-full .mk-group td.num { padding: 0 6px; }
+.mk-full .mk-group .c-pct { width: 9ch; }
+.mk-full.is-wrap .mk-group .name { white-space: normal; line-height: 1.3; }
+.mk-full .mk-group .sub-row th {
+  height: 18px; padding: 0 10px;
+  font-size: 11px; font-weight: 600; letter-spacing: .1em;
+  color: var(--text-2); background: var(--accent-tint); border-bottom: 0;
+}
+.mk-full .mk-day { font-size: 11px; }
+.mk-full .mk-group td.pct.is-big { outline: 1px solid currentColor; outline-offset: -3px; }
+/* The width one column needs: the same parts as the colgroup above (name, DLY mark, last,
+   chg, %) plus the name cell's side padding. Measured, never shown. */
+.mk-probe {
+  position: absolute; visibility: hidden; pointer-events: none; height: 0;
+  width: calc(var(--mk-name, 24ch) + 20px + 34px + 11ch + 9ch + 9ch);
+}
+.mk-probe.no-chg { width: calc(var(--mk-name, 24ch) + 20px + 34px + 11ch + 9ch); }
+/* The strip's one line on the marks (freshLegend). */
+.fresh-legend { white-space: nowrap; cursor: help; }
+.panel-head > .fresh-legend { display: flex; align-items: center; flex: 0 0 auto; padding-right: 8px; font-size: 11px; color: var(--dim); letter-spacing: .04em; }
 .mk-group td.num { padding: 0 6px; }
-.mk-cols-time { columns: 3 400px; }
 
 /* ---- Range chart: presets, bar sizes, dates, header, chart --------------- */
 .rc { display: flex; flex-direction: column; min-width: 0; container: rc / inline-size; }
@@ -489,16 +524,20 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .ch-dates label { display: flex; align-items: center; gap: 6px; letter-spacing: .06em; }
 .ch-right > .ch-dates { gap: 6px; }
 .ch-dsep { color: var(--dim); }
-/* The date boxes: inverse ice blue, typed as MM/DD/YYYY or MM/DD/YY; red when they hold
-   no real day. */
+/* The dates: plain text in the bar until clicked or focused, then a box to type in
+   (MM/DD/YYYY or MM/DD/YY); red when they hold no real day. Never filled (kit.css rule
+   C): the selected range chip outranks them. Brighter when they are the window
+   (typed dates or a zoom). */
 .ch-dates input {
   width: 13ch; height: 28px; padding: 0 8px;
-  border: 0; background: var(--text-2); color: var(--ink);
-  font-family: var(--font); font-size: 13px; font-weight: 600; letter-spacing: .02em;
+  border: 1px solid transparent; background: transparent; color: var(--text-2);
+  font-family: var(--font); font-size: 13px; font-weight: 400; letter-spacing: .02em;
+  cursor: text;
 }
-.ch-dates.is-active input { background: var(--accent); }
-.ch-dates input:focus { outline: 2px solid var(--text); outline-offset: 0; background: var(--text); }
-.ch-dates input.is-bad { background: var(--down); color: var(--ink); }
+.ch-dates input:hover { border-bottom-color: var(--rule-strong); }
+.ch-dates.is-active input { color: var(--text); }
+.ch-dates input:focus { outline: 0; border-color: var(--accent); background: var(--bg); color: var(--text); }
+.ch-dates input.is-bad { border-color: var(--down); color: var(--down); }
 /* The bar period: a button right of MAX ("DAILY" with a caret) opening a grid of period
    rows and the ranges each may draw. The grid floats over the chart (absolute, from the
    toolbar's top row), so opening it never changes a size. */
@@ -506,7 +545,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .ch-rng { display: flex; align-items: stretch; min-width: 0; }
 .ch-per { display: flex; }
 .ch-per-btn { height: 28px; gap: 6px; font-size: 12px; white-space: nowrap; border: 1px solid var(--rule-strong); border-width: 0 1px; color: var(--text); cursor: pointer; }
-.ch-per-btn[aria-expanded="true"] { color: var(--ink); background: var(--text-2); }
+.ch-per-btn[aria-expanded="true"] { color: var(--ink); background: var(--here); }
 .ch-caret { font-size: 10px; }
 .ch-per-grid {
   position: absolute; top: 28px; left: 0; z-index: 30;
@@ -522,7 +561,7 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
   font-family: var(--font); font-size: 12px; color: var(--text-2);
 }
 .ch-per-c:hover { color: var(--text); background: var(--panel-3); }
-.ch-per-c.is-active { color: var(--ink); background: var(--text-2); font-weight: 600; }
+.ch-per-c.is-active { color: var(--ink); background: var(--here); font-weight: 600; }
 .ch-per-c:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
 .ch-hv { color: var(--text); }
 /* Narrow chart boxes (HOME, DESK panels) keep the bar on one row by compacting in steps,
@@ -623,6 +662,9 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .ch-lab-bg { fill: var(--bg); opacity: .82; }
 .ch-ref-prev-lab { fill: var(--text-2); }
 .ch-ref-open-lab { fill: var(--dim); }
+/* The previous close's value on the price axis: an outlined tag, quieter than the last value's. */
+.ch-prev-bg { fill: var(--bg); stroke: var(--text-2); stroke-width: 1; stroke-dasharray: 3 2; shape-rendering: crispEdges; }
+.ch-prev-t { fill: var(--text-2); font-family: var(--font); font-size: 11px; }
 .ch-mk-lab { fill: var(--text); }
 .ch-mk-lab.up, .ch-mk-move.up { fill: var(--up); }
 .ch-mk-lab.down, .ch-mk-move.down { fill: var(--down); }
@@ -647,6 +689,13 @@ a.ch-flag { cursor: pointer; }
 .ch-flag.is-N .ch-flag-t { fill: var(--text); }
 a.ch-flag:focus { outline: none; }
 a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accent); stroke-width: 2; }
+/* The key to the markers, one dim line under the chart (chart.js flagKeyHtml). */
+.ch-key { margin: 4px 0 0 10px; height: 20px; font-size: 12px; line-height: 20px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ch-key[hidden] { display: none; }
+.ch-key-m { display: inline-block; width: 14px; height: 14px; border: 1px solid var(--text-2); font-size: 11px; font-weight: 700; line-height: 12px; text-align: center; color: var(--text-2); }
+.ch-key-m.is-E { border-color: var(--accent); color: var(--accent); }
+.ch-key-m.is-N { border-color: var(--text); color: var(--text); }
+.rc.is-compact > .ch-key, .rc.is-tight > .ch-key { display: none; }
 /* The measure: a shaded band between two bars and a big label. */
 .ch-meas { pointer-events: none; }
 .ch-meas-band { opacity: .14; }
@@ -722,10 +771,10 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 
 .wi-run {
   height: 24px; padding: 0 16px;
-  border: 1px solid var(--accent); background: var(--accent); color: var(--ink);
+  border: 1px solid var(--primary); background: var(--primary); color: var(--ink);
   font-family: var(--font); font-size: 12px; font-weight: 600; letter-spacing: .12em; cursor: pointer;
 }
-.wi-run:hover { background: var(--text); border-color: var(--text); }
+/* The fill: the --primary token (kit.css, rule C), the page's one action; the markup adds .btn-solid. */
 
 .hero-value.up, .wi-x.up { color: var(--up); }
 .hero-value.down, .wi-x.down { color: var(--down); }
@@ -739,8 +788,9 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
   border: 1px solid var(--rule-strong); background: transparent; color: var(--text);
   font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-decoration: none; cursor: pointer;
 }
-.wi-btn:first-child { background: var(--accent); border-color: var(--accent); color: var(--ink); }
-.wi-btn:hover { text-decoration: none; background: var(--text); border-color: var(--text); color: var(--ink); }
+.wi-btn:first-child { background: var(--primary); border-color: var(--primary); color: var(--ink); }
+.wi-btn:hover { text-decoration: none; background: var(--accent-tint); border-color: var(--accent); color: var(--accent); }
+.wi-btn:first-child:hover { background: var(--primary-hover); border-color: var(--primary-hover); color: var(--ink); }
 
 /* ---- NEWS ------------------------------------------------------------- */
 .news-row {
@@ -755,7 +805,24 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .news-row:hover { background: var(--panel-2); }
 .news-time { color: var(--dim); }
 .news-time .nt-s { display: none; }
-.news-src { color: var(--accent); font-size: 11px; letter-spacing: .04em; }
+.news-src { color: var(--dim); font-size: 11px; letter-spacing: .04em; } /* the third colour: the strip has the sources (rule B) */
+/* NEWS: a thin rule between two hours, the hour a small dim label on it; one line where
+   the stories from before the last visit start (news.js newsList). */
+.news-hour, .news-since { display: flex; align-items: center; gap: 8px; height: 16px; padding: 0 10px; }
+.news-hour::after, .news-since::after { content: ''; flex: 1 1 auto; height: 1px; background: var(--rule-strong); }
+.news-hour-l { font-size: 11px; letter-spacing: .06em; color: var(--dim); }
+.news-since { height: 20px; }
+.news-since::after { background: var(--accent); }
+.news-since-l { font-size: 12px; letter-spacing: .04em; color: var(--accent); }
+/* The strip's slots (news.js liveNews): repainted one by one, no box of their own. */
+.news-slot { display: contents; }
+/* The source toggles in the title strip: the kit's segmented, strip height. A phone gets
+   one button that steps through them instead. */
+.news-srcs { display: flex; align-items: center; }
+.news-srcs .seg { height: 18px; }
+.news-srcs .seg-item { padding: 0 6px; }
+.news-src-one { display: none; height: 18px; padding: 0 6px; border: 1px solid var(--rule-strong); background: transparent; color: var(--text-2); font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .06em; white-space: nowrap; }
+.news-src-one:hover { color: var(--text); background: var(--panel-3); }
 .news-title { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .news-title:visited { color: var(--text-2); }
 .news-title:hover { color: var(--accent); text-decoration: none; }
@@ -863,7 +930,7 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 }
 .fkey:hover { text-decoration: none; background: var(--panel-3); color: var(--text); }
 .fkey-n { color: var(--dim); font-weight: 400; }
-.fkey.is-active { background: var(--accent); color: var(--ink); }
+.fkey.is-active { background: var(--here); color: var(--ink); }
 .fkey.is-active .fkey-n { color: var(--ink); }
 
 /* ---- Narrower screens ------------------------------------------------- */
@@ -915,10 +982,17 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
   .stamp-v { font-size: 26px; }
   .stats-row { grid-template-columns: minmax(0, 1fr); }
   .chart-host { height: 240px; margin-left: 6px; }
+  .ch-key { margin-left: 6px; font-size: 13px; white-space: normal; height: auto; }
   .rc-home .chart-host-home { margin-left: 6px; }
 
   .news-row { grid-template-columns: 44px minmax(0, 1fr); gap: 8px; padding: 4px 8px; }
   .news-src { display: none; }
+  .news-srcs { display: none; }
+  .news-src-one { display: inline-flex; align-items: center; }
+  .news-bar .seg { flex-wrap: wrap; height: auto; } /* the tabs wrap, never scroll sideways */
+  .news-bar .seg-item { min-height: 22px; }
+  .news-hour-l { font-size: 12px; }
+  .news-since-l { font-size: 13px; }
   .news-time .nt-l { display: none; }
   .news-time .nt-s { display: inline; }
   .news-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
@@ -990,7 +1064,7 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 }
 .fn:hover { text-decoration: none; background: var(--panel-3); color: var(--text); }
 .fn-n { color: var(--faint); font-weight: 400; }
-.fn.is-active { background: var(--text-2); color: var(--ink); }
+.fn.is-active { background: var(--here); color: var(--ink); }
 .fn.is-active .fn-n { color: var(--ink); }
 .fn.is-soon { color: var(--faint); }
 .fn.is-soon:hover { color: var(--dim); }
@@ -1007,10 +1081,11 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 .wl-export input:focus, .pf-export textarea:focus, .pf-import textarea:focus { outline: 1px solid var(--accent); outline-offset: 0; }
 .pf-btn {
   display: inline-flex; align-items: center; height: 24px; padding: 0 12px;
-  border: 1px solid var(--accent); background: var(--accent); color: var(--ink);
+  border: 1px solid var(--accent); background: transparent; color: var(--accent);
   font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .1em; cursor: pointer; white-space: nowrap;
 }
-.pf-btn:hover { text-decoration: none; background: var(--text); border-color: var(--text); }
+/* An outline by default; the page's one action adds .btn-solid for the white fill (rule C). */
+.pf-btn:hover { text-decoration: none; background: var(--accent-tint); }
 .wl-empty, .pf-empty { padding: 10px; line-height: 2; }
 .wl-empty .code, .pf-empty .code { margin: 0 4px; }
 
@@ -1042,7 +1117,7 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
   border: 1px solid var(--rule-strong); background: transparent; color: var(--text-2);
   font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .08em; cursor: pointer; white-space: nowrap;
 }
-.desk-btn:hover { color: var(--ink); background: var(--accent); border-color: var(--accent); }
+.desk-btn:hover { color: var(--accent); background: var(--accent-tint); border-color: var(--accent); } /* a key tints (rule C) */
 
 .dp { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); outline: 1px solid var(--rule-strong); }
 .dp.is-focused { box-shadow: inset 0 0 0 1px var(--accent); z-index: 1; }
@@ -1116,6 +1191,10 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
      last one takes the room left; the ones above keep their size. */
   html:not(.is-embed) .view > :is(.panel, .stack, .grid, .with-side, #er-host) { flex: 0 1 auto; min-height: 96px; }
   html:not(.is-embed) .view > :nth-last-child(1 of :is(.panel, .stack, .grid, .with-side, #er-host):not([hidden])) { flex: 1 1 auto; min-height: 240px; }
+  /* MARKETS ends where its columns end (no empty panel under them); taller than the
+     window, it scrolls inside. */
+  /* !important: the rule above names #er-host, and an id outweighs any class list here. */
+  html:not(.is-embed) .view > .panel.mk-panel:not([hidden]) { flex: 0 1 auto !important; min-height: 96px; }
   html:not(.is-embed) .view > .panel > .panel-body,
   html:not(.is-embed) .view > #er-host > .panel > .panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
   html:not(.is-embed) .view > #er-host { display: flex; flex-direction: column; }
@@ -1209,10 +1288,11 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 /* --- ALERTS (price and gauge alerts) -------------------------------------------- */
 .status-alerts {
   margin-left: auto; height: 16px; padding: 0 6px;
-  border: 0; background: var(--accent); color: var(--ink);
-  font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .08em; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent-tint); color: var(--accent);
+  font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: .08em; line-height: 14px; cursor: pointer;
 }
-.status-alerts:hover { background: var(--text); }
+/* A button, so an outline (rule C): it tints, never fills. */
+.status-alerts:hover { color: var(--text); border-color: var(--text); }
 .status-alerts[hidden] { display: none; }
 /* --- end ALERTS ----------------------------------------------------------------- */
 

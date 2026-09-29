@@ -343,7 +343,7 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
       <div class="wi-bar-row">
         <span class="wi-count" id="wi-count"></span>
         <span class="wi-cmd code" id="wi-cmd"></span>
-        <button type="button" class="wi-run" id="wi-run">RUN</button>
+        <button type="button" class="wi-run btn-solid" id="wi-run">RUN</button>
       </div>
     </div>`, { cls: 'panel-solo wi-panel', meta: `<span class="wi-hint">${metaNote(PICKER_KEYS, PICKER_KEYS_LONG)}</span>` });
 

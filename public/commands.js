@@ -32,7 +32,7 @@ export const EXTRA = [
   { name: 'PROFILE', screen: lazy('screens/profile.js'), parse: parseTicker, takesArgs: true },
   { name: 'HISTORY', screen: lazy('screens/history.js'), parse: parseHistory, takesArgs: true },
   { name: 'DIVIDENDS', screen: lazy('screens/dividends.js'), parse: parseTicker, takesArgs: true },
-  { name: 'NEWS', screen: lazy('screens/news.js'), parse: parseNewsTab }, // NEWS <tab> (MACRO, SEC, WIRES, WSB); plain NEWS falls through
+  { name: 'NEWS', screen: lazy('screens/news-page.js'), parse: parseNewsTab }, // NEWS <tab> (MACRO, SEC, WIRES, WSB); plain NEWS falls through
   { name: 'NEWS', id: 'TICKERNEWS', screen: lazy('screens/tickernews.js'), parse: parseTickerNews },
   { name: 'CURVE', screen: lazy('screens/curve.js') },
   { name: 'BONDS', screen: lazy('screens/bonds.js'), parse: parseBonds },

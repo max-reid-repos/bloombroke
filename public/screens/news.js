@@ -1,8 +1,7 @@
 // NEWS: finance headlines from a few public feeds, newest first. New stories are pushed
 // as they come (the news hub); while the stream is down the list is polled every minute.
 
-import { esc, panel, LOADING } from './markets.js';
-import { toolbar, segmented } from '../kit-core.js'; // not kit.js: the card pages stay out of the startup JS
+import { esc } from './markets.js';
 
 const SHORT = {
   CNBC: 'CNBC', MarketWatch: 'MKTW', 'Yahoo Finance': 'YHOO', 'Federal Reserve': 'FED', BLS: 'BLS', 'SEC EDGAR': 'SEC',
@@ -187,13 +186,46 @@ export function liveNews({ body, meta = null, metaHtml = () => '', ctx, marker =
   let streaming = false;
   const EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
   let listening = false;
-  const paintMeta = () => { if (meta) meta.innerHTML = `${newBadge(counter.count)}${marker ? liveMarker(streaming) : ''}${metaHtml()}`; };
+  // The strip in three slots (display: contents, so the strip's gaps stay): the badge,
+  // the LIVE marker and the rest (NEWS: the source toggles). Each is repainted on its
+  // own, so clearing the badge on the reader's first pointerdown or key never replaces
+  // the toggle being pressed. The rest is rebuilt only when it changes, and a toggle
+  // that had the focus gets it back.
+  let rest = null;
+  const slot = (name) => {
+    let el = meta.querySelector(`.news-slot-${name}`);
+    if (!el) {
+      meta.innerHTML = '<span class="news-slot news-slot-badge"></span><span class="news-slot news-slot-live"></span><span class="news-slot news-slot-rest"></span>';
+      rest = null;
+      el = meta.querySelector(`.news-slot-${name}`);
+    }
+    return el;
+  };
+  const paintBadge = () => { if (meta) slot('badge').innerHTML = newBadge(counter.count); };
+  const paintLive = () => { if (meta) slot('live').innerHTML = marker ? liveMarker(streaming) : ''; };
+  const focusKey = (el) => {
+    if (!el?.classList) return null;
+    if (el.classList.contains('news-src-one')) return '.news-src-one';
+    return el.dataset?.value ? `button[data-value="${el.dataset.value}"]:not(.news-src-one)` : null;
+  };
+  function paintRest() {
+    if (!meta) return;
+    const box = slot('rest');
+    const html = metaHtml();
+    if (html === rest) return;
+    const act = globalThis.document?.activeElement;
+    const key = act && meta.contains?.(act) ? focusKey(act) : null;
+    box.innerHTML = html;
+    rest = html;
+    if (key) box.querySelector(key)?.focus();
+  }
+  const paintMeta = () => { paintBadge(); paintLive(); paintRest(); };
   function clear() {
     if (!counter.count) return;
     counter.clear();
     clearTimeout(timer);
     stopListening();
-    paintMeta();
+    paintBadge();
   }
   function stopListening() {
     if (!listening) return;
@@ -230,7 +262,7 @@ export function liveNews({ body, meta = null, metaHtml = () => '', ctx, marker =
   function setLive(on) {
     if (streaming === Boolean(on)) return;
     streaming = Boolean(on);
-    paintMeta();
+    paintLive();
   }
   return { show, paintMeta, clear, setLive };
 }
@@ -315,76 +347,20 @@ export function newsStream({ tabs, onItems, onState = () => {}, ctx = {}, ES = g
   return { get live() { return live; }, get gaveUp() { return gaveUp; } };
 }
 
-export function newsList(items) {
-  const rows = dedupeNews(items).map((n) => {
+// items -> <ol class="news">. before(n, i), if given: markup to put above row i (the NEWS
+// screen's hour rules and "Before your last visit" line, screens/news-page.js).
+export function newsList(items, { before = null, now = new Date() } = {}) {
+  const list = dedupeNews(items).filter((n) => safeHref(n.link));
+  return `<ol class="news">${list.map((n, i) => {
     const href = safeHref(n.link);
-    if (!href) return '';
-    const src = shortSource(n.source);
     const filing = 'ticker' in n;
-    return `<li class="news-row${filing && !n.ticker ? ' is-dim' : ''}" data-k="${esc(newsKey(n))}">
-      ${newsTimeHtml(n.time)}
-      <span class="news-src" title="${esc(n.source || '')}">${esc(src)}</span>
+    return `${before ? before(n, i, list) : ''}<li class="news-row${filing && !n.ticker ? ' is-dim' : ''}" data-k="${esc(newsKey(n))}">
+      ${newsTimeHtml(n.time, now)}
+      <span class="news-src dim" title="${esc(n.source || '')}">${esc(shortSource(n.source))}</span>
       ${filing ? filingCell(n, href) : `<a class="news-title" href="${esc(href)}" target="_blank" rel="noopener noreferrer" title="${esc(n.title)}">${esc(n.title)}</a>`}
     </li>`;
-  }).join('');
-  return `<ol class="news">${rows}</ol>`;
+  }).join('')}</ol>`;
 }
 
-export function render(el, cmd, ctx) {
-  const tab = NEWS_TABS.includes(cmd.args?.tab) ? cmd.args.tab : 'MARKETS';
-  el.innerHTML = panel('1', 'News', `<div class="news-bar">${LOADING}</div><div class="news-body"></div>`, { cls: 'panel-solo', metaId: 'news-meta', bodyCls: 'flush', meta: esc(TAB_SOURCES[tab]) });
-  const bar = el.querySelector('.news-bar');
-  const body = el.querySelector('.news-body');
-  const live = liveNews({ body, meta: el.querySelector('#news-meta'), metaHtml: () => esc(TAB_SOURCES[tab]), ctx, marker: true });
-  let data = null;
-  let pending = []; // pushed before the first list came
-  let src = 'ALL';
-  const tabs = segmented(NEWS_TABS.map((t) => ({ label: t, cmd: tabCommand(t) })), tab, { label: 'News tab' });
-
-  function paint() {
-    if (!data) return;
-    const sources = [...new Set(data.sources.map(shortSource))];
-    if (!sources.includes(src)) src = 'ALL';
-    const items = dedupeNews(filterNews(data.items, src));
-    const pick = sources.length > 1 ? segmented([{ label: 'ALL', value: 'ALL' }, ...sources.map((x) => ({ label: x, value: x }))], src, { label: 'Source' }) : '';
-    bar.innerHTML = toolbar({ left: tabs, right: pick, label: 'News' });
-    live.show(data.items, items, items.length ? newsList(items) : '<p class="panel-msg">NO DATA</p>');
-  }
-
-  bar.addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-value]');
-    if (!b) return;
-    src = b.dataset.value;
-    paint();
-  });
-
-  async function load() {
-    try {
-      data = await ctx.fetchJSON(newsApi(tab), { signal: ctx.signal });
-      if (pending.length) { data = { ...data, items: mergePushed(data.items, pending) }; pending = []; }
-      paint();
-      if (data.updated) ctx.updated(data.updated, data.stale);
-    } catch (err) {
-      if (err.name === 'AbortError') return;
-      if (!body.querySelector('.news')) { bar.innerHTML = toolbar({ left: tabs, label: 'News' }); body.innerHTML = `<p class="panel-msg">${esc(err.message)}</p>`; }
-      ctx.status('COULD NOT REFRESH NEWS', 'warn');
-    }
-  }
-
-  // New stories are pushed as they come; the minute poll runs only while the stream is down.
-  const stream = newsStream({
-    tabs: [tab], ctx,
-    onState: (on) => live.setLive(on),
-    onItems: (t, items) => {
-      if (t !== tab) return;
-      if (!data) { pending = mergePushed(pending, items); return; }
-      const names = new Set(data.sources || []);
-      for (const n of items) if (n.source) names.add(n.source);
-      data = { ...data, items: mergePushed(data.items, items), sources: [...names] };
-      paint();
-    },
-  });
-
-  load();
-  ctx.live(() => { if (!stream.live) load(); }, NEWS_POLL_MS);
-}
+// The NEWS screen itself is screens/news-page.js (the routes load it): HOME needs only
+// the list and the live parts above, so the screen's own code stays out of startup.

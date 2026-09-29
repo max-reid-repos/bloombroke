@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { isCalculated, FX_SOURCE } from '../public/screens/fx.js';
 import { newsList, TAB_SOURCES, NEWS_TABS } from '../public/screens/news.js';
+import { sourceToggles } from '../public/screens/news-page.js';
 import { tickerNewsList, TICKER_SOURCES } from '../public/screens/tickernews.js';
 
 const src = (f) => readFileSync(new URL(`../public/${f}`, import.meta.url), 'utf8');
@@ -41,10 +42,13 @@ test('news: headline, publisher and link only, credited to the publisher', () =>
   assert.match(tickerNewsList([{ title: 'x', link: 'https://example.com/b', source: 'SA', time: null }]), linkOut);
   assert.match(newsList([{ title: 'Apple Inc.: Results', link: 'https://www.sec.gov/a', source: 'SEC EDGAR', ticker: 'AAPL', time: null }]), linkOut);
   assert.deepEqual(Object.keys(TAB_SOURCES), NEWS_TABS);
-  assert.match(src('screens/news.js'), /meta: esc\(TAB_SOURCES\[tab\]\)/);
+  // The strip names the sources: the tab's own words, then the source toggles (rule B).
+  assert.match(src('screens/news-page.js'), /meta: sourceToggles\(null, 'ALL', tab\)/);
+  for (const t of NEWS_TABS) assert.match(sourceToggles(null, 'ALL', t), new RegExp(TAB_SOURCES[t]), t);
+  assert.match(sourceToggles(['CNBC', 'MKTW'], 'ALL', 'MARKETS'), />CNBC<[\s\S]*>MKTW</);
   assert.match(src('screens/tickernews.js'), /meta: TICKER_SOURCES/);
   assert.equal(TICKER_SOURCES, 'NEWS PUBLISHERS · SEC');
-  for (const f of ['screens/news.js', 'screens/tickernews.js']) assert.doesNotMatch(src(f), /class="footnote"/, f);
+  for (const f of ['screens/news.js', 'screens/news-page.js', 'screens/tickernews.js']) assert.doesNotMatch(src(f), /class="footnote"/, f);
   assert.match(disclaimer, /Each headline links to the original publisher/);
   assert.match(disclaimer, /Headlines: news publishers and online forums, the Board of Governors of the Federal Reserve System, the US Bureau of Labor Statistics and SEC EDGAR\./);
 });

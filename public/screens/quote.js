@@ -56,14 +56,73 @@ export function statRows(d) {
   return rows;
 }
 
+// The key ranges as one line for a panel (a DESK panel, embed mode), where the stats
+// grid's narrow Day range and 52W cells stacked "15.73 -" over "16.19": "day 15.73 to
+// 16.19 · 52w 13.38 to 35.30". It stands in for those two cells only (the rest of the
+// grid stays). Each part stays whole; a very narrow panel wraps between the parts only.
+export function rangeLine(d) {
+  const dec = decimalsOf(d);
+  const r52dec = d.range52Basis !== 'daily closes' && Number.isInteger(d.range52Dp) && d.range52Dp < dec ? d.range52Dp : dec;
+  const f = (v, k) => (isYield(d) ? `${fmtNum(v, k)}%` : fmtNum(v, k));
+  const parts = [];
+  if (Number.isFinite(d.low) && Number.isFinite(d.high)) parts.push(['day', `${f(d.low, dec)} to ${f(d.high, dec)}`]);
+  // The same qualifier as the grid's 52W label: from daily closes, or the source's rounding.
+  const k52 = d.range52Basis === 'daily closes' ? '52w (closes)' : r52dec < dec ? '52w (rounded)' : '52w';
+  if (Number.isFinite(d.low52) && Number.isFinite(d.high52)) parts.push([k52, `${f(d.low52, r52dec)} to ${f(d.high52, r52dec)}`]);
+  if (!parts.length) return '';
+  return `<p class="q-ranges num">${parts.map(([k, v]) => `<span class="q-rg"><span class="dim">${k}</span> ${esc(v)}</span>`).join('<span class="q-rg-sep dim" aria-hidden="true"> · </span>')}</p>`;
+}
+
 function statsHtml(d) {
-  return `<dl class="stats">${statRows(d).map(([k, v, extra]) => `<div class="stat"><dt>${esc(k)}</dt><dd class="num">${esc(v)}${extra || ''}</dd></div>`).join('')}</dl>`;
+  // stat-range: the Day range and 52W cells, which a panel shows as rangeLine instead.
+  const isRange = (k) => k === 'Day range' || k.startsWith('52W');
+  return `<dl class="stats">${statRows(d).map(([k, v, extra]) => `<div class="stat${isRange(k) ? ' stat-range' : ''}"><dt>${esc(k)}</dt><dd class="num">${esc(v)}${extra || ''}</dd></div>`).join('')}</dl>`;
 }
 
 // "+1.9 bp" for yields, "+1.23 +0.37%" for everything else.
 export function changeText(d) {
   if (isYield(d)) return Number.isFinite(d.change) ? `${fmtSigned(d.change * 100, 1)} bp` : '--';
   return `${fmtSigned(d.change, decimalsOf(d))} ${fmtPct(d.changePct)}`;
+}
+
+// What the change is over (rule A, kit.css): "today" when the last trade is from today
+// on the instrument's own exchange (Tokyo for the Nikkei, London for the FTSE, New York
+// for US stocks, FX and the rest), else the day it is from ("on Fri", "on Sep 12" when
+// older than a week). Crypto's change is a rolling 24 hours: "24h".
+const NY = 'America/New_York';
+const SESSION_TZ = {
+  FTSE: 'Europe/London', DAX: 'Europe/Berlin', STOXX50: 'Europe/Berlin', CAC40: 'Europe/Paris',
+  N225: 'Asia/Tokyo', HSI: 'Asia/Hong_Kong', SHANGHAI: 'Asia/Shanghai', KOSPI: 'Asia/Seoul',
+  NIFTY50: 'Asia/Kolkata', ASX200: 'Australia/Sydney', SET: 'Asia/Bangkok',
+};
+// A stock listed abroad, by its suffix (7203.T, 0700.HK, VOD.L).
+const SUFFIX_TZ = {
+  T: 'Asia/Tokyo', HK: 'Asia/Hong_Kong', SS: 'Asia/Shanghai', SZ: 'Asia/Shanghai', KS: 'Asia/Seoul', KQ: 'Asia/Seoul',
+  NS: 'Asia/Kolkata', BO: 'Asia/Kolkata', AX: 'Australia/Sydney', BK: 'Asia/Bangkok', SI: 'Asia/Singapore', TW: 'Asia/Taipei',
+  L: 'Europe/London', DE: 'Europe/Berlin', F: 'Europe/Berlin', PA: 'Europe/Paris', AS: 'Europe/Amsterdam', MI: 'Europe/Rome',
+  MC: 'Europe/Madrid', SW: 'Europe/Zurich', ST: 'Europe/Stockholm', CO: 'Europe/Copenhagen', OL: 'Europe/Oslo', HE: 'Europe/Helsinki',
+};
+export function sessionTz(d) {
+  const id = String(d?.ticker || '').toUpperCase();
+  const suffix = /\.([A-Z]{1,2})$/.exec(id)?.[1];
+  return SESSION_TZ[id] || (suffix && SUFFIX_TZ[suffix]) || NY;
+}
+export function changeWhen(d, now = new Date()) {
+  if (d?.kind === 'crypto') return '24h';
+  const tz = sessionTz(d);
+  const dayIn = (t) => new Date(t).toLocaleDateString('en-CA', { timeZone: tz });
+  const raw = String(d?.asOf || '');
+  let day = raw;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const t = Date.parse(raw);
+    if (!Number.isFinite(t)) return '';
+    day = dayIn(t);
+  }
+  const today = dayIn(now);
+  if (day === today) return 'today';
+  const days = (Date.parse(`${today}T12:00:00Z`) - Date.parse(`${day}T12:00:00Z`)) / 86_400_000;
+  const opts = days > 0 && days < 7 ? { weekday: 'short' } : { month: 'short', day: 'numeric' };
+  return `on ${new Date(`${day}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', ...opts })}`;
 }
 
 // The name, once: "Gold COMEX (Dec'26)", not "Gold Gold COMEX (Dec'26)". A short label
@@ -88,7 +147,7 @@ export function showExtended(d) {
   return true;
 }
 
-function quoteHtml(d) {
+export function quoteHtml(d) {
   const dec = decimalsOf(d);
   const dir = dirOf(isYield(d) ? Math.round(d.change * 1000) : d.change);
   const ext = showExtended(d)
@@ -100,9 +159,10 @@ function quoteHtml(d) {
     <div class="q-main">
       <p class="q-name">${title}</p>
       <p class="q-hero num"><span class="q-last${tick(`q:${d.ticker}:last`, d.last)}">${fmtNum(d.last, dec)}</span><span class="q-ccy">${esc(unit)}</span>${freshTag(d)}</p>
-      <p class="q-chg num ${dir}">${esc(changeText(d))}</p>
+      <p class="q-chg num ${dir}">${esc(changeText(d))}${changeWhen(d) ? `<span class="q-chg-when dim">${esc(changeWhen(d))}</span>` : ''}</p>
       ${ext}
       <p class="q-asof dim">${lastTradeLine(d)}${d.stale ? ' (LAST KNOWN)' : ''}</p>
+      ${rangeLine(d)}
     </div>
     ${statsHtml(d)}
   </div>`;

@@ -108,7 +108,7 @@ function formHtml(spec, open = true) {
     <label class="sc-field"><span class="sc-lab">Country</span><select name="country">${countries}</select></label>
     <label class="sc-field"><span class="sc-lab">Industry has</span><input name="industry" value="${esc(v.industry)}" placeholder="a word in its name" autocomplete="off" spellcheck="false"></label>
     ${nums}
-    <div class="sc-actions"><button class="wi-run" type="submit">RUN SCREEN</button><button class="sc-clear" type="button">CLEAR</button><span class="sc-err" role="alert"></span></div>
+    <div class="sc-actions"><button class="wi-run btn-solid" type="submit">RUN SCREEN</button><button class="sc-clear" type="button">CLEAR</button><span class="sc-err" role="alert"></span></div>
   </form></details>
   <p class="sc-presets muted">Numbers are the least (over) and the most (under). Sizes take K, M, B and T, like MCAP&gt;10B or VOL&gt;1M. P/E from a market data provider, may be missing for some stocks; so may dividend yield.</p>`;
 }

@@ -93,14 +93,14 @@
 .consent-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 16px; }
 .consent-accept {
   padding: 6px 14px;
-  border: 1px solid var(--accent, #6CCBFF);
-  background: var(--accent, #6CCBFF);
+  border: 1px solid var(--primary, #CFEAFF);
+  background: var(--primary, #CFEAFF);
   color: var(--ink, #030609);
   font: inherit; font-weight: 800; letter-spacing: .08em;
   cursor: pointer;
 }
-.consent-accept:hover { filter: brightness(1.1); }
-.consent-accept:focus-visible { outline: 2px solid var(--text, #CFEAFF); outline-offset: 2px; }
+.consent-accept:hover { background: var(--primary-hover, #FFFFFF); border-color: var(--primary-hover, #FFFFFF); }
+.consent-accept:focus-visible { outline: 2px solid var(--accent, #6CCBFF); outline-offset: 2px; }
 .consent-links { display: flex; gap: 14px; font-size: 12px; }
 .consent-links a { color: var(--accent, #6CCBFF); }
 @media (max-width: 639px) {
