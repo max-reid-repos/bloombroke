@@ -7,7 +7,9 @@ import { readFileSync } from 'node:fs';
 import { parseCommand, screenFor } from '../public/app.js';
 import { parseEmbed } from '../public/command-args.js';
 import { EMBEDS, embedFor, guessEmbedSnippet, whatifEmbedSnippet } from '../public/embed-snippet.js';
-import { listHtml, noteFor, embedHtml } from '../public/screens/embed.js';
+import { listHtml, noteFor, embedHtml, whatifListOk, render as renderEmbed } from '../public/screens/embed.js';
+import { catalog as WHATIF_CATALOG } from '../data/whatif-service.js';
+import { normalizeWhatif } from '../data/whatif-cert.js';
 import { findCommand, commandGroups } from '../public/registry.js';
 import { ownPreview } from '../lib/embed-pages.js';
 
@@ -53,7 +55,7 @@ test('EMBED GUESS / WHATIF: the frame and a credit line, escaped on the page, CO
   assert.match(html, /<pre class="emb-code"><code id="emb-code">&lt;iframe src=&quot;https:\/\/bloombroke\.com\/embed\/guess&quot;/);
   assert.equal((html.match(/btn-solid/g) || []).length, 1, 'COPY is the one primary');
   assert.match(html, /<button type="button" class="btn card-btn btn-solid" id="emb-copy">COPY<\/button>/);
-  assert.match(html, /<iframe class="emb-frame" src="\/embed\/guess" title="Preview: GUESS" loading="lazy"><\/iframe>/);
+  assert.match(html, /<iframe class="emb-frame" src="\/embed\/guess" title="Preview: GUESS" loading="lazy" inert tabindex="-1"><\/iframe>/);
   assert.doesNotMatch(html, /<input|style="/, 'no second input, no inline style (the page CSP)');
   assert.equal(embedFor({ target: null }), null);
 });
@@ -84,4 +86,35 @@ test('EMBED: in the registry, HELP and MENU; its own preview is not counted as a
   assert.equal(ownPreview({ get: (h) => (h === 'sec-fetch-site' ? 'same-origin' : undefined) }), true);
   assert.equal(ownPreview({ get: (h) => (h === 'sec-fetch-site' ? 'cross-site' : undefined) }), false);
   assert.equal(ownPreview({ get: () => undefined }), false);
+});
+
+test('EMBED preview: inert, so playing it cannot give away today\'s GUESS', () => {
+  const html = embedHtml(embedFor({ target: 'GUESS' }));
+  assert.match(html, /<iframe [^>]*\binert\b[^>]*tabindex="-1"/);
+  const css = readFileSync('public/screens/embed.css', 'utf8');
+  assert.match(css, /\.emb-frame \{[^}]*pointer-events: none/);
+});
+
+test('EMBED WHATIF: the list is checked with the WHATIF parser\'s rules before any code', async () => {
+  const cases = ['WHATIF IPHONE6', 'WHATIF iphone6 latte:3y', 'WHATIF LATTE', 'WHATIF IPHONE', 'WHATIF APPLE', 'WHATIF NOPE',
+    'WHATIF GADGETS', 'WHATIF IPHONE6 NOPE', 'WHATIF', 'WHATIF "><b>', 'WHATIF IPHONE6,NETFLIX:2Y'];
+  for (const c of cases) {
+    assert.equal(whatifListOk(c, WHATIF_CATALOG), normalizeWhatif(c, WHATIF_CATALOG) !== null, c);
+  }
+  assert.equal(whatifListOk('WHATIF IPHONE6', WHATIF_CATALOG), true);
+  assert.equal(whatifListOk('WHATIF NOPE', WHATIF_CATALOG), false);
+  // The screen: an unknown list gets the plain "no embed" line and no code, no COPY.
+  const el = { innerHTML: '', querySelector: () => null };
+  const said = [];
+  const ctx = { signal: {}, status: (t) => said.push(t), copy: async () => true, fetchJSON: async (u) => { assert.equal(u, '/api/whatif/catalog'); return WHATIF_CATALOG; } };
+  await renderEmbed(el, parseCommand('EMBED WHATIF NOPE'), ctx);
+  assert.match(el.innerHTML, /WHATIF NOPE has no embed: WHATIF does not know that list\. These two do:/);
+  assert.doesNotMatch(el.innerHTML, /emb-copy|&lt;iframe|<iframe/);
+  assert.equal(said.at(-1), 'EMBED: NO EMBED FOR WHATIF NOPE');
+  // A good list: the code and COPY.
+  const btn = { addEventListener() {} };
+  const el2 = { innerHTML: '', querySelector: (sel) => (sel === '#emb-copy' ? btn : null) };
+  await renderEmbed(el2, parseCommand('EMBED WHATIF IPHONE6'), ctx);
+  assert.match(el2.innerHTML, /id="emb-copy"/);
+  assert.match(el2.innerHTML, /embed\/whatif\?c=WHATIF\+IPHONE6/);
 });

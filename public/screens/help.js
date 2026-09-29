@@ -12,6 +12,7 @@ import {
 import { DETAIL } from '../registry-detail.js';
 import { commandForWord } from '../resolve.js';
 import { LISTED_TICKERS, stockIdOf } from '../known-tickers.js';
+import { matchInstrument, INSTRUMENTS } from '../instruments.js';
 import { parseHelp as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { parse };
 
@@ -146,10 +147,32 @@ function detail(entry, ticker) {
 
 const ESC_BACK = '<span class="help-esc"><kbd>Esc</kbd> back</span>';
 
+// Typed in find mode, does this run as it is (a command, a known ticker or an
+// instrument like DOW, EUR, GOLD, OIL), rather than open the best HELP match?
+export function runsAsTyped(text) {
+  const words = String(text || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return false;
+  const [first] = words;
+  const entry = findCommand(first);
+  if (entry && !entry.hidden && !entry.pattern) return true;
+  return Boolean(stockIdOf(first) || LISTED_TICKERS.has(first) || matchInstrument(words) || CURRENCIES.has(first));
+}
+// Currency codes (EUR, JPY): a quote of their own.
+const CURRENCIES = new Set(INSTRUMENTS.flatMap((i) => [i.base, i.quote]).filter(Boolean));
+
+// Find mode only where the command bar is on screen: never in a DESK panel or an embed
+// (html.is-embed hides the bar), never with the bar hidden.
+export function canFind({ doc = document, bar } = {}) {
+  if (!bar || doc.documentElement?.classList.contains('is-embed')) return false;
+  return Boolean(bar.getClientRects?.().length);
+}
+
 // Find mode: "/" focuses the command bar with its prompt turned to "/", and what is typed
 // there filters the list here (the bar's own suggestion list stays shut). Enter runs the
-// best match, Esc leaves find mode. Returns the cleanup.
-export function findMode({ doc = document, bar, promptEl, onFilter, onRun, status }) {
+// best match (or the words as typed, when they are a command or a ticker), Esc leaves
+// find mode. A phone keyboard sends no "/" key: a bar that holds just "/" enters it too.
+// Returns the cleanup.
+export function findMode({ doc = document, bar, promptEl, onFilter, onRun, status, asTyped = runsAsTyped }) {
   let on = false;
   const prompt = promptEl?.textContent;
   function enter() {
@@ -185,6 +208,8 @@ export function findMode({ doc = document, bar, promptEl, onFilter, onRun, statu
       e.stopImmediatePropagation();
       leave({ clear: true });
     } else if (e.key === 'Enter') {
+      if (e.isComposing || e.keyCode === 229) return; // an IME is composing: its Enter is its own
+      if (asTyped(bar.value)) { leave(); return; } // AAPL, GOLD, NEWS: the bar runs it as typed
       const best = onFilter(bar.value);
       if (!best) { leave(); return; } // nothing matches: the bar runs what was typed
       e.preventDefault();
@@ -197,7 +222,9 @@ export function findMode({ doc = document, bar, promptEl, onFilter, onRun, statu
     }
   }
   function onInput(e) {
-    if (!on || e.target !== bar) return;
+    if (e.target !== bar) return;
+    if (!on && bar.value === '/') { e.stopImmediatePropagation(); enter(); return; } // a phone's "/"
+    if (!on) return;
     e.stopImmediatePropagation(); // the bar's suggestion list stays shut
     const n = onFilter(bar.value, true);
     status(bar.value.trim() ? `FIND: ${n} ${n === 1 ? 'COMMAND' : 'COMMANDS'}` : 'FIND: TYPE A WORD, ENTER RUNS THE FIRST MATCH');
@@ -249,7 +276,7 @@ export function render(el, cmd, ctx) {
   }
 
   const bar = document.getElementById('cmd');
-  const stop = bar
+  const stop = canFind({ bar })
     ? findMode({ bar, promptEl: bar.closest('form')?.querySelector('.prompt'), onFilter: filter, onRun: (c) => ctx.run(c), status: (t) => ctx.status(t) })
     : () => {};
   if (topic.query) {

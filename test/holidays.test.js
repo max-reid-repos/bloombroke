@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { NYSE_HOLIDAYS, NYSE_EARLY_CLOSES, parseCommand, marketStatus } from '../public/app.js';
-import { HOLIDAY_NAMES, upcoming, holidaysTable, nextLine, nyDay } from '../public/screens/holidays.js';
+import { HOLIDAY_NAMES, upcoming, holidaysTable, nextLine, nyDay, lastListed, marketDay } from '../public/screens/holidays.js';
 import { findCommand, commandGroups } from '../public/registry.js';
 import { screenFor } from '../public/app.js';
 
@@ -34,6 +34,7 @@ test('HOLIDAYS: the next 12 months, in order, closed or early close', () => {
   assert.deepEqual(rows.filter((r) => r.early).map((r) => r.date), ['2026-11-27', '2026-12-24']);
   assert.ok(!rows.some((r) => r.date === '2027-11-25'), 'past 12 months: not yet');
   assert.equal(rows[0].day, 'THU NOV 26, 2026');
+  assert.equal(rows[0].localDay, null);
   // In New York the early close is just 1:00 pm New York.
   assert.equal(rows[1].closeLocal, null);
   const html = holidaysTable(rows);
@@ -43,17 +44,31 @@ test('HOLIDAYS: the next 12 months, in order, closed or early close', () => {
   assert.match(holidaysTable([]), /No closures listed/);
 });
 
-test('HOLIDAYS: days and early closes in the visitor\'s time zone', () => {
+test('HOLIDAYS: the New York date first; the visitor\'s day and time second, dim', () => {
   const bkk = upcoming(NOW, 'Asia/Bangkok');
-  assert.equal(bkk[0].day, 'THU NOV 26, 2026', '9:30 New York is the same evening in Bangkok');
+  assert.equal(bkk[0].day, 'THU NOV 26, 2026', 'the market date');
+  assert.equal(bkk[0].localDay, null, '9:30 New York is the same evening in Bangkok: nothing more');
   const eve = bkk.find((r) => r.date === '2026-12-24');
   assert.equal(eve.closeLocal, '1:00 am Fri', '1:00 pm New York is 1:00 am the next day');
   const akl = upcoming(NOW, 'Pacific/Auckland');
-  assert.equal(akl[0].day, 'FRI NOV 27, 2026', 'Auckland: already the next day');
-  assert.equal(akl.find((r) => r.date === '2026-11-27').closeLocal, '7:00 am');
+  assert.equal(akl[0].day, 'THU NOV 26, 2026');
+  assert.equal(akl[0].localDay, 'FRI NOV 27', 'Auckland: already the next day');
+  assert.equal(akl.find((r) => r.date === '2026-11-27').closeLocal, '7:00 am Sat');
+  assert.match(holidaysTable(akl), /<td class="co-date">THU NOV 26, 2026 <span class="dim hol-local">FRI NOV 27 your time<\/span><\/td>/);
   const la = upcoming(NOW, 'America/Los_Angeles');
+  assert.equal(la[0].localDay, null);
   assert.equal(la.find((r) => r.date === '2026-11-27').closeLocal, '10:00 am');
   assert.match(holidaysTable(la), /Early close 1:00 pm New York <span class="dim">\(10:00 am your time\)<\/span>/);
+  assert.match(holidaysTable(la), /<th scope="col" class="co-date">New York date<\/th>/);
+  assert.equal(marketDay(lastListed()), 'FRI DEC 24, 2027');
+  assert.match(readFileSync('public/screens/holidays.js', 'utf8'), /Listed to \$\{esc\(marketDay\(lastListed\(\)\)\)\}\./);
+});
+
+// A reminder with a date on it: this fails once the list covers less than the next 12
+// months. Add the next year's NYSE dates to app.js (and their names to holidays.js).
+test('HOLIDAYS: the dates reach at least 12 months past today', () => {
+  const need = nyDay(Date.now() + 365 * 86400000);
+  assert.ok(lastListed() >= need, `HOLIDAYS is listed to ${lastListed()}, short of ${need}: add the next year's NYSE holidays`);
 });
 
 test('HOLIDAYS: a free command, in the registry, HELP and MENU, lazy', () => {

@@ -14,4 +14,7 @@ html:not(.is-embed) .view > .panel.hol-panel:not([hidden]) { flex: 0 1 auto !imp
   .hol-table td, .hol-table :is(th, td):nth-child(2) { width: auto; padding: 0; border: 0; height: auto; white-space: normal; }
   .hol-table td:first-child { font-size: 12px; color: var(--text-2); }
   .hol-table td:last-child { grid-column: 2; color: var(--text-2); }
+  .hol-local { display: block; margin-left: 0; }
 }
+.hol-local { margin-left: 8px; font-size: 12px; }
+.hol-foot { margin: 0; padding: 12px 10px; font-size: 12px; color: var(--dim); }

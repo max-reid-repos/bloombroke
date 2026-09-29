@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { commandGroups, START_HERE, START_KEYS, START_GROUP, CATEGORIES, findCommand } from '../public/registry.js';
-import { helpHtml, keyRow, startHere, filterGroups, listHtml, findMode, HELP_GROUPS } from '../public/screens/help.js';
+import { helpHtml, keyRow, startHere, filterGroups, listHtml, findMode, canFind, runsAsTyped, HELP_GROUPS } from '../public/screens/help.js';
 import { menuGroupsHtml, menuItems } from '../public/menu.js';
 import { COMMANDS } from '../public/app.js';
 
@@ -139,4 +139,60 @@ test('"/" puts the command bar in find mode: typing filters HELP, Enter runs the
   assert.equal(typedSlash.defaultPrevented, false);
   stop();
   assert.equal((p.on.doc.keydown || []).length, 0, 'listeners go with the screen');
+});
+
+test('find mode: only where the bar is on screen, never in a DESK panel or an embed', () => {
+  const doc = (embed) => ({ documentElement: { classList: { contains: (c) => embed && c === 'is-embed' } } });
+  const bar = (shown) => ({ getClientRects: () => (shown ? [{}] : []) });
+  assert.equal(canFind({ doc: doc(false), bar: bar(true) }), true);
+  assert.equal(canFind({ doc: doc(true), bar: bar(true) }), false, 'a DESK panel: "/" in USD/JPY stays a character');
+  assert.equal(canFind({ doc: doc(false), bar: bar(false) }), false, 'the bar hidden');
+  assert.equal(canFind({ doc: doc(false), bar: null }), false);
+  const src = readFileSync('public/screens/help.js', 'utf8');
+  assert.match(src, /const stop = canFind\(\{ bar \}\)\s*\?\s*findMode\(/, 'render mounts find mode only through canFind');
+});
+
+test('find mode on a phone: a bar that holds just "/" enters it', () => {
+  const p = fakePage();
+  const prompt = { textContent: '>' };
+  const stop = findMode({ doc: p.doc, bar: p.bar, promptEl: prompt, onFilter: () => null, onRun: () => {}, status: () => {} });
+  p.bar.value = '/';
+  const e = p.fire('input', { key: 'Unidentified' });
+  assert.ok(e.stopped);
+  assert.equal(prompt.textContent, '/');
+  assert.equal(p.bar.value, '', 'the "/" itself is not a search');
+  p.bar.value = 'USD/';
+  stop();
+  const later = fakePage();
+  const stop2 = findMode({ doc: later.doc, bar: later.bar, promptEl: { textContent: '>' }, onFilter: () => null, onRun: () => {}, status: () => {} });
+  later.bar.value = 'USD/JPY';
+  assert.equal(later.fire('input', {}).stopped, false, 'a "/" inside other words is typing');
+  stop2();
+});
+
+test('find mode Enter: IME composing is left alone; commands and tickers run as typed; Ctrl or Cmd with / does nothing', () => {
+  for (const t of ['DOW', 'EUR', 'GOLD', 'OIL', 'AAPL', 'NEWS', '$GOLD', 'EUR USD', 'rates']) assert.equal(runsAsTyped(t), true, t);
+  for (const t of ['insider', 'yield', 'dividend', 'mortgage', '']) assert.equal(runsAsTyped(t), false, t);
+  const p = fakePage();
+  const prompt = { textContent: '>' };
+  const ran = [];
+  const stop = findMode({ doc: p.doc, bar: p.bar, promptEl: prompt, onFilter: (t) => filterGroups(t).best, onRun: (c) => ran.push(c), status: () => {} });
+  for (const mod of [{ ctrlKey: true }, { metaKey: true }]) {
+    const e = p.fire('keydown', { key: '/', target: { closest: () => null }, ...mod });
+    assert.equal(e.defaultPrevented, false);
+    assert.equal(prompt.textContent, '>');
+  }
+  p.fire('keydown', { key: '/', target: { closest: () => null } });
+  p.bar.value = 'insider';
+  const ime = p.fire('keydown', { key: 'Enter', isComposing: true });
+  assert.equal(ime.defaultPrevented, false);
+  assert.deepEqual(ran, []);
+  assert.equal(prompt.textContent, '/', 'still finding');
+  p.bar.value = 'GOLD';
+  const gold = p.fire('keydown', { key: 'Enter' });
+  assert.equal(gold.defaultPrevented, false, 'the bar runs GOLD as typed');
+  assert.deepEqual(ran, []);
+  assert.equal(p.bar.value, 'GOLD');
+  assert.equal(prompt.textContent, '>');
+  stop();
 });
