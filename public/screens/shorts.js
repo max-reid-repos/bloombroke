@@ -3,7 +3,7 @@
 
 import { esc, fmtNum, fmtSigned, dirOf, panel, LOADING } from './markets.js';
 import { metaNote, errorHtml, tickerUsage, fmtInt, fmtBig, fmtDay, dash } from './company-kit.js';
-import { dataTable, sortRows, nextSort, fmtDate } from '../kit.js';
+import { dataTable, sortRows, nextSort, fmtDate, emptyState } from '../kit.js';
 import { mountLines } from './lines.js';
 
 export { parseTicker as parse } from './company-kit.js';
@@ -52,7 +52,7 @@ export function render(el, cmd, ctx) {
         <div class="si-table"></div>
         <aside class="side-panel" aria-label="Short interest trend">
           <p class="side-title tag">Short interest, shares</p>
-          ${pts.length >= 2 ? '<div class="side-chart" id="si-chart"></div><p class="side-hover dim" id="si-hover" aria-live="polite"></p>' : '<p class="side-empty">Not enough settlements for a trend.</p>'}
+          ${pts.length >= 2 ? '<div class="side-chart" id="si-chart"></div><p class="side-hover dim" id="si-hover" aria-live="polite"></p>' : emptyState({ title: 'Not enough settlements for a trend.', small: true, cls: 'side-empty' })}
           ${newest ? `<dl class="stats side-stats">
             <div class="stat"><dt>Latest</dt><dd class="num">${fmtBig(newest.shortInterest)} <span class="dim">${esc(fmtDay(newest.date))}</span></dd></div>
             <div class="stat"><dt>Days to cover</dt><dd class="num">${Number.isFinite(newest.daysToCover) ? fmtNum(newest.daysToCover, 2) : dash}</dd></div>

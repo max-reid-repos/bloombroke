@@ -9,7 +9,7 @@ import {
   addLot, sellShares, removeHolding, setHolding, readPfForm, valuePortfolio, toCsv, parseCsv, plain,
   loadPortfolio, savePortfolio, MAX_HOLDINGS,
 } from '../portfolio.js';
-import { toolbar } from '../kit.js';
+import { toolbar, emptyState } from '../kit.js';
 
 const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
 const EXAMPLES = ['PF ADD AAPL 10 @ 150', 'PF SELL AAPL 3', 'PF REMOVE AAPL', 'PF EXPORT', 'PF IMPORT'];
@@ -162,6 +162,9 @@ export function pfForm() {
   </form>`;
 }
 
+// No holdings: the kit's empty state (the form above is the action).
+export const emptyPfHtml = () => emptyState({ title: 'No holdings yet.', hint: 'Add one above: the ticker, how many shares, the price paid.' });
+
 export function render(el, cmd, ctx) {
   const a = cmd.args || { action: 'show' };
   let holdings = loadPortfolio(ctx.store);
@@ -303,7 +306,7 @@ export function render(el, cmd, ctx) {
 
   function draw() {
     if (!holdings.length) {
-      body.innerHTML = '<p class="panel-msg pf-empty">No holdings yet. Add one above: the ticker, how many shares, and the price you paid for each.</p>';
+      body.innerHTML = emptyPfHtml();
       allocPanel.hidden = true;
       return;
     }

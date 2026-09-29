@@ -16,7 +16,7 @@ import { getKey, isPro, HEADER, normalizeKey, normalizeGiftCode, chatBeep } from
 import { avatarSvg, nameHtml } from '../pixel-avatar.js';
 import { parseCommand, screenTitle, linkChanges, linkPlan } from '../app.js';
 import { drive, who as driverName } from '../drive.js';
-import { cardPage, cardButton, raw } from '../kit.js';
+import { cardPage, cardButton, raw, emptyState } from '../kit.js';
 
 // The same rules as the server (pro/chat.js; test/chat.test.js checks they match).
 export const MAX_TEXT = 500;
@@ -28,7 +28,7 @@ export const TICKER_WORD_RE = /(^|[^A-Za-z0-9$])\$([A-Z]{1,5}(?:\.[A-Z]{1,2})?)(
 export const NOT_PRO = 'Private chat with friends who have Pro.';
 export const KEEP_NOTE = 'DELETED AFTER 30 DAYS';
 export const CLOSED = 'This chat is closed.';
-export const emptyText = (seat) => `Your seat is ${seat}. Give it to a friend with Pro, then type CHAT and their number.`;
+export const emptyText = (seat) => `Your seat is ${seat}. Give it to a Pro friend, then type CHAT and their number.`;
 
 const MINUS = '\u2212';
 const q = (c) => '?' + new URLSearchParams({ c }).toString().replace(/%24/g, '$');
@@ -277,7 +277,9 @@ export function shellHtml() {
 }
 
 export function emptyHtml(seat) {
-  return `<div class="chat-empty"><p class="notice">${esc(emptyText(seat))}</p></div>`;
+  // The kit's empty state: the seat as the title, how to start a chat as the hint.
+  const [title, hint] = emptyText(seat).split(/(?<=\.) /);
+  return emptyState({ title, hint, cls: 'chat-empty' });
 }
 
 // ---- the browser -------------------------------------------------------------------------

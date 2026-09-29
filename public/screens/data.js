@@ -13,6 +13,7 @@
 
 import { esc, panel, LOADING, metaNote } from './markets.js';
 import { dash } from './company-kit.js';
+import { usageCard } from '../kit.js';
 import { treeKey, focusTreeRow } from './sectors.js';
 import { ageWords, delayWord, lastUpdateWords } from '../provenance.js';
 import { NYSE_HOLIDAYS, nyParts, marketStatus } from '../app.js';
@@ -290,9 +291,12 @@ const state = { open: new Set(), cur: null };
 
 const KEYS_TIP = 'Down from the empty command bar (or Tab) moves in. Right or Enter opens a group, Left closes it, Space toggles, E opens all, C closes all. A click or tap opens and closes. Hover a line for its detail.';
 
+// A command typed wrong: the kit's usage card.
+export const dataUsage = () => usageCard({ problem: 'DATA takes one dataset name at most.', format: 'DATA [<dataset>]', example: 'DATA CPI' });
+
 export function render(el, cmd, ctx) {
   if (cmd.error) {
-    el.innerHTML = panel('1', 'Data', `<p class="notice">DATA takes one dataset name at most, like <span class="code">DATA CPI</span>.</p>`, { cls: 'panel-solo' });
+    el.innerHTML = panel('1', 'Data', dataUsage(), { cls: 'panel-solo' });
     ctx.status('DATA: CHECK THE FORMAT', 'warn');
     return;
   }

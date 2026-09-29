@@ -1,8 +1,9 @@
 // LOAN: monthly payment and total interest on a fixed-rate loan.
 // Without a rate it uses this week's average 30-year fixed mortgage rate (Freddie Mac, via RATES).
 
-import { esc, q, fmtNum, panel, metaNote, LOADING } from './markets.js';
+import { esc, fmtNum, panel, metaNote, LOADING } from './markets.js';
 import { mountLines, legend } from './lines.js';
+import { usageCard } from '../kit.js';
 import { MAX_LOAN, parseMoney, takeYears, parseLoan as parse } from '../command-args.js'; // the words it takes: read at startup (command-args.js)
 export { MAX_LOAN, parseMoney, takeYears, parse };
 
@@ -44,12 +45,23 @@ export function amortize(principal, annualRate, years) {
 
 const usd = (n, d = 0) => `$${fmtNum(n, d)}`;
 
-function usage(kind) {
+// A command typed wrong: the kit's usage card.
+export function usage(kind) {
   const ex = ['LOAN 400000 30Y', 'LOAN 400000 30Y 6.5%', 'LOAN 25000 5Y 7.9%'];
   const title = kind === 'amount' ? 'That amount does not look right.' : kind === 'years' ? 'Pick a term from 1 to 50 years.' : kind === 'rate' ? 'Pick a rate from 0% to 30%.' : 'LOAN needs an amount.';
-  return `<p class="notice">${esc(title)}</p>
-    <p class="muted">Format: <span class="code">LOAN &lt;amount&gt; [&lt;years&gt;Y] [&lt;rate&gt;%]</span>. No rate: today's average 30-year mortgage rate.</p>
-    <p class="muted examples">Try ${ex.map((e) => `<a class="code" href="${esc(q(e))}" data-cmd="${esc(e)}">${esc(e)}</a>`).join(' ')}</p>`;
+  return usageCard({
+    problem: title,
+    format: 'LOAN <amount> [<years>Y] [<rate>%]',
+    example: ex[0],
+    more: ex.slice(1),
+    notes: ["No rate: today's average 30-year mortgage rate."],
+  });
+}
+
+// Today's rate did not load: the same card, with your amount and term and a rate of your own.
+export function noRateHtml(a) {
+  const base = `LOAN ${a.amount} ${a.years}Y`;
+  return usageCard({ problem: "Today's mortgage rate did not load.", format: `${base} <rate>%`, example: `${base} 6.5%`, notes: ['Add your own rate at the end.'] });
 }
 
 function show(el, ctx, a, rate, source) {
@@ -116,7 +128,7 @@ export function render(el, cmd, ctx) {
     ctx.updated(d.mortgageUpdated || d.updated, d.stale);
   }).catch((err) => {
     if (err.name === 'AbortError') return;
-    el.innerHTML = panel('1', 'Loan', `<p class="notice">Today's mortgage rate did not load.</p><p class="muted">Add your own rate at the end: <span class="code">LOAN ${esc(String(a.amount))} ${esc(String(a.years))}Y &lt;rate&gt;%</span></p>`, { cls: 'panel-solo' });
+    el.innerHTML = panel('1', 'Loan', noRateHtml(a), { cls: 'panel-solo' });
     ctx.status('LOAN: NO RATE DATA', 'warn');
   });
 }

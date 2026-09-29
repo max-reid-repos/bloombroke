@@ -1,8 +1,8 @@
 // CPI: what money from a past year is worth today, from the US consumer price index.
 
-import { esc, q, fmtNum, panel, LOADING } from './markets.js';
+import { esc, fmtNum, panel, LOADING } from './markets.js';
 import { mountChart } from './quote.js';
-import { toolbar } from '../kit.js';
+import { toolbar, usageCard } from '../kit.js';
 import { flipAmount } from './fx.js';
 
 const EXAMPLES = ['CPI 100 2015', 'CPI 1000 1990', 'CPI 20 1970'];
@@ -29,15 +29,21 @@ export function cpiFormCommand(amount, year, thisYear = new Date().getUTCFullYea
   return `CPI ${flipAmount(n)} ${y}`;
 }
 
-function examplesHtml() {
-  return EXAMPLES.map((e) => `<a class="code" href="${esc(q(e))}" data-cmd="${esc(e)}">${esc(e)}</a>`).join(' ');
+// A command typed wrong, or a year with no data: the kit's usage card. The first
+// sentence is the problem; the rest goes in + Details.
+export function cpiUsage(message) {
+  const [problem, ...rest] = String(message).split(/(?<=[.?]) /);
+  return usageCard({
+    problem,
+    format: 'CPI <amount> <year>',
+    example: EXAMPLES[0],
+    more: EXAMPLES.slice(1),
+    notes: [rest.join(' '), 'The amount is optional and starts at $100.'],
+  });
 }
 
 function errorView(el, message) {
-  el.innerHTML = panel('1', 'CPI', `
-    <p class="notice">${esc(message)}</p>
-    <p class="muted">Format: <span class="code">CPI &lt;amount&gt; &lt;year&gt;</span>. The amount is optional and starts at $100.</p>
-    <p class="muted examples">Try ${examplesHtml()}</p>`, { cls: 'panel-solo' });
+  el.innerHTML = panel('1', 'CPI', cpiUsage(message), { cls: 'panel-solo' });
 }
 
 export function render(el, cmd, ctx) {

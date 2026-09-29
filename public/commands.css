@@ -133,7 +133,9 @@
 /* ---- Company screens -------------------------------------------------- */
 .profile { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 380px); gap: 24px; padding: 2px 0 6px; }
 .profile-name { margin: 2px 0 8px; font-size: 24px; font-weight: 600; line-height: 1.2; }
-.profile-desc { max-width: 78ch; color: var(--text-2); line-height: 1.6; }
+.profile-desc { max-width: 60ch; color: var(--text-2); line-height: 1.6; }
+.profile-more { max-width: 60ch; margin-top: 8px; }
+.profile-more .profile-desc { margin-top: 8px; }
 .profile-web { margin-top: 10px; }
 .hist-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; border-bottom: 1px solid var(--rule-strong); font-size: 11px; letter-spacing: .06em; }
 .btn {

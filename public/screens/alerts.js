@@ -5,7 +5,7 @@
 
 import { esc, q, panel } from './markets.js';
 import { decimalsOf } from './quote.js';
-import { toolbar } from '../kit.js';
+import { toolbar, emptyState, cardRows, raw } from '../kit.js';
 import { rowActions, listTools } from './watch.js';
 import {
   parseAlertArgs, loadAlerts, saveAlerts, addAlert, removeAlert, rearm, markSeen,
@@ -60,6 +60,21 @@ export function alertsTable(list, now = Date.now()) {
   </table>`;
 }
 
+// No alerts: the kit's empty state. One example that adds an alert; the two forms (above,
+// below) and what it works on in + Details.
+export function emptyAlertsHtml() {
+  return emptyState({
+    title: 'No alerts.',
+    hint: 'Add one from the command bar, like this:',
+    action: { label: 'ALERTS AAPL > 350', cmd: 'ALERTS AAPL > 350' },
+    details: raw(cardRows([
+      ['Above a level', raw(code('ALERTS <symbol> > <level>'))],
+      ['Below a level', raw(code('ALERTS <symbol> < <level>'))],
+      ['Works on', 'Stocks, indexes, FX, yields, coins and WEIRD gauges with a number.'],
+    ])),
+  });
+}
+
 export function render(el, cmd, ctx) {
   const a = cmd.args || { action: 'show' };
   let list = loadAlerts(ctx.store);
@@ -85,7 +100,7 @@ export function render(el, cmd, ctx) {
   }
   function draw() {
     if (!list.length) {
-      body.innerHTML = `<p class="panel-msg wl-empty">No alerts. Add one from the command bar: ${code('ALERTS <symbol> > <level>')} or ${code('ALERTS <symbol> < <level>')}. Stocks, indexes, FX, yields, coins and WEIRD gauges with a number.</p>`;
+      body.innerHTML = emptyAlertsHtml();
     } else {
       body.innerHTML = alertsTable(list);
     }

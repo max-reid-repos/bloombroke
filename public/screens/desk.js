@@ -12,6 +12,7 @@
 import { esc, q, panel, nyTime } from './markets.js';
 import { goal } from '../goal.js'; // GOALS
 import * as L from '../desk-layout.js';
+import { emptyState, cardRows, raw } from '../kit.js';
 import { cardGauge, cardHtml, cardBody, weirdPickItems, mergeCardRows, nextCardFetch, confirmKey, CARD_RETRY_MS } from './desk-cards.js';
 
 const MOBILE = '(max-width: 699px)';
@@ -19,6 +20,18 @@ const ROWS_FIT = 16; // desk 1 is 16 rows tall: it fills the window
 const GAP = 1;
 const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
+
+// An empty desk: the model for the kit's empty state. The title, one hint, and the
+// buttons that fill it (+ PANEL and the presets); what a panel can show in + Details.
+export function deskEmptyHtml(n) {
+  return emptyState({
+    title: `Desk ${n} is empty.`,
+    hint: 'Add a panel with any command, or load a preset.',
+    action: raw(`<button type="button" class="desk-btn" data-act="add">+ PANEL</button> ${L.PRESET_NAMES.map((k) => `<button type="button" class="desk-btn" data-act="preset" data-preset="${k}">${k}</button>`).join('')}`),
+    details: raw(cardRows([['Any command', 'A chart, NEWS, WATCH, HEATMAP, FX 500 USD THB.']])),
+    cls: 'desk-empty', hidden: true,
+  });
+}
 
 export function render(el, cmd, ctx) {
   if (ctx.embed) {
@@ -75,11 +88,7 @@ export function render(el, cmd, ctx) {
       <button type="button" class="desk-btn" data-act="confirm-no">ESC: KEEP</button>
     </div>
     <div class="desk-grid" role="list"><button type="button" class="dp-add" data-act="add">+ PANEL</button></div>
-    <div class="desk-empty" hidden>
-      <p class="notice">Desk ${n} is empty.</p>
-      <p class="muted">Add a panel and give it any command: a chart, NEWS, WATCH, HEATMAP, FX 500 USD THB.</p>
-      <p class="examples"><button type="button" class="desk-btn" data-act="add">+ PANEL</button> ${L.PRESET_NAMES.map((k) => `<button type="button" class="desk-btn" data-act="preset" data-preset="${k}">${k}</button>`).join('')}</p>
-    </div>
+    ${deskEmptyHtml(n)}
   </div>`;
   const desk = el.querySelector('.desk');
   const grid = el.querySelector('.desk-grid');

@@ -125,7 +125,9 @@ test('AFFORD errors say what works, and only mention investments for investments
   const el = { innerHTML: '', querySelector: () => null };
   const ctx = { status: () => {}, store: { get: () => null }, copy: async () => true };
   renderBuy(el, parseCommand('AFFORD 1200 2'), ctx);
-  assert.match(el.innerHTML, /Try: <a class="code"[^>]*>AFFORD 1200 2 PER WEEK FOR 3Y<\/a>/);
+  // The kit's usage card: one example that runs, the full one in + Details.
+  assert.match(el.innerHTML, /<a class="btn card-btn btn-solid" href="[^"]*" data-cmd="AFFORD 1200">AFFORD 1200<\/a>/);
+  assert.match(el.innerHTML, /<a class="code"[^>]*>AFFORD 1200 2 PER WEEK FOR 3Y<\/a>/);
   assert.doesNotMatch(el.innerHTML, /investment/i);
   renderBuy(el, parseCommand('AFFORD 1200 BIKE'), ctx);
   assert.match(el.innerHTML, /Bike: <span class="num">\$1,200<\/span>/);

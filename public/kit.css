@@ -168,3 +168,20 @@
   .card-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .card-form { flex-direction: column; }
 }
+
+/* ---- Usage card and empty state (kit.js usageCard, emptyState) ----------------------
+   A usage card is a card page with three slots only: the problem (hero 32), the format
+   (sub, as code) and one example (the primary button); the rest behind + Details.
+   An empty state is DESK's empty desk made the model: a title, one hint (60ch at most),
+   one action, where the list would start. */
+.card-usage .card-sub .code { white-space: normal; overflow-wrap: anywhere; }
+.card-details .codes { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 16px 12px; text-align: left; }
+.empty[hidden] { display: none; }
+.empty-title { max-width: 60ch; font-size: 16px; font-weight: 600; color: var(--text); }
+.empty-hint { max-width: 60ch; font-size: 13px; color: var(--text-2); }
+.empty-act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.empty-act .btn { display: inline-flex; align-items: center; text-decoration: none; }
+.empty > .card-more { max-width: 60ch; }
+.empty.is-small { padding: 8px 0; }
+.empty.is-small .empty-title { font-size: 12px; font-weight: 400; color: var(--dim); }
