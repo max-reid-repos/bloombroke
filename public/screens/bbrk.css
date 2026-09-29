@@ -55,16 +55,17 @@
   background: var(--panel); border: 1px solid var(--rule-strong); color: var(--text); font-size: 12px; white-space: nowrap;
 }
 .bb-globe .globe-tip[hidden] { display: none; }
-/* Zoom (public/globe.js): +, - and back to 1x, 24 px keys with 12 px signs, in the top
-   right corner the round globe leaves empty (an L: 1x beside +, - under it). Out of the
-   flow, so fitToView's sizing is unchanged. */
+/* Zoom (public/globe.js): +, - and back to 1x, 32 px keys (a finger's target) with 14 px
+   signs, in the top right corner the round globe leaves empty (an L: 1x beside +, - under
+   it; clear of a 340 px globe on a phone). Out of the flow, so fitToView's sizing is
+   unchanged. */
 .bb-globe .globe-zoom {
   position: absolute; top: 0; right: 0; z-index: 1; display: grid; gap: 4px;
-  grid-template-columns: 24px 24px; grid-template-areas: "reset in" ". out";
+  grid-template-columns: 32px 32px; grid-template-areas: "reset in" ". out";
 }
 .bb-globe .globe-zoom-btn {
-  width: 24px; height: 24px; padding: 0; border: 1px solid var(--rule-strong); background: var(--bg);
-  color: var(--text-2); font: inherit; font-size: 12px; line-height: 1; cursor: pointer;
+  width: 32px; height: 32px; padding: 0; border: 1px solid var(--rule-strong); background: var(--bg);
+  color: var(--text-2); font: inherit; font-size: 14px; line-height: 1; cursor: pointer;
 }
 .bb-globe .globe-zoom-btn[data-zoom="in"] { grid-area: in; }
 .bb-globe .globe-zoom-btn[data-zoom="out"] { grid-area: out; }

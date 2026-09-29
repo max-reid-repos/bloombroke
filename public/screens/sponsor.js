@@ -29,9 +29,11 @@ export const PHONE_MQ = '(max-width: 639px)'; // kit.css's phone layout
 // The rules, true of the code: one line at a time (sponsor-strip.js), plain text and a link
 // with its query string taken off (lib/sponsors.js), no strip for Pro (stripItems).
 export const FINE = 'One rotating line. No tracking code. Hidden for Pro.';
-// What "Shown N times this week" counts: inventory.stripShown.d7 (lib/counters.js strip_shown).
-export const SHOWN_DEF = 'Strip lines shown, last 7 days.';
-export const SHOWN_DETAIL = 'Every line the strip at the bottom showed in the last 7 days (New York days, today included), in open, visible tabs, counted by our server. Paid lines in rotation share it.';
+// What "Shown N times this week" counts: inventory.stripShown.d7 (lib/counters.js
+// strip_shown). One showing is ROTATE_MS (4 s) of a strip line on a visible screen,
+// however many lines rotate (public/sponsor-strip.js mountStrip).
+export const SHOWN_DEF = 'One showing = 4 seconds on a visible screen.';
+export const SHOWN_DETAIL = 'Showings in the last 7 days (New York days, today included), counted by our server. Lines share the showings: with 3 lines in rotation, each gets about a third.';
 export const TRY_LABEL = 'TRY YOUR LINE';
 export const TRY_MAX = 100; // lib/sponsors.js TEXT_MAX: the longest line text we run
 export const TRY_HOLDER = 'Acme: plain words about Acme';
@@ -158,12 +160,20 @@ export function markGaugeSponsor(metaEl, id, { pro = isPro } = {}) {
   });
 }
 
+// Whether TRY YOUR LINE has a strip to show in: not for Pro (no strip), not in an embed
+// (no status bar), not while the strip is hidden.
+export function canTry(real, { pro = isPro, doc = globalThis.document } = {}) {
+  if (!real || real.hidden) return false;
+  if (doc?.documentElement?.classList?.contains('is-embed')) return false;
+  return !pro();
+}
+
 // The typed line in the REAL strip at the bottom: its lines hidden, the text drawn by the
 // CSS from data-try (sponsor.css), so it is never markup. The strip holds still and counts
 // nothing while it shows (app.js isHidden). '' puts the strip back. Nothing is stored.
 export function tryLine(real, text) {
   if (!real) return;
-  const t = String(text ?? '').replace(/\s+/g, ' ').trim();
+  const t = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, TRY_MAX);
   if (t) {
     real.setAttribute('data-try', t);
     real.classList.add('is-try');
@@ -237,6 +247,10 @@ export function render(el, cmd, ctx) {
   const input = el.querySelector?.('#spon-try');
   const email = el.querySelector?.('#spon-email');
   const real = () => globalThis.document?.getElementById?.('status-sponsor') || null;
+  // TRY YOUR LINE only where the strip shows: never for Pro or in an embed (no strip).
+  const tryBox = input?.closest?.('.card-media');
+  const fitTry = () => { if (tryBox) tryBox.hidden = !canTry(real()); };
+  fitTry();
   let typed = '';
   const paint = () => {
     const v = el.querySelector('#spon-views');
@@ -259,9 +273,12 @@ export function render(el, cmd, ctx) {
     unpoint.place?.();
   };
   input?.addEventListener('input', onInput);
+  const onPro = () => { fitTry(); if (tryBox?.hidden) tryLine(real(), ''); };
+  globalThis.window?.addEventListener?.('bb:pro', onPro);
   ctx.onCleanup(() => {
     open = false;
     input?.removeEventListener('input', onInput);
+    globalThis.window?.removeEventListener?.('bb:pro', onPro);
     tryLine(real(), '');
     unpoint();
   });
@@ -269,6 +286,7 @@ export function render(el, cmd, ctx) {
     if (!open || !el.isConnected) return;
     cfg = c;
     unpoint = pointAtStrip();
+    fitTry();
     if (typed) tryLine(real(), typed);
     paint();
   });

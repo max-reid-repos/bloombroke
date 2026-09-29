@@ -7,9 +7,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import express from 'express';
 import { cleanSponsors, cleanUrl, loadSponsors, mountSponsors, sponsorPrice, SPONSORS_FILE, MAX_LINES, MAX_HOUSE, TEXT_MAX } from '../lib/sponsors.js';
-import { stripItems, itemHtml, mountStrip, ROTATE_MS, SLIDE_MS, MAX_SPONSOR_LINES } from '../public/sponsor-strip.js';
+import { stripItems, itemHtml, mountStrip, stripHidden, ROTATE_MS, SLIDE_MS, MAX_SPONSOR_LINES } from '../public/sponsor-strip.js';
 import { stripShownBatch } from '../public/goal.js';
-import { sponsorHtml, shownCount, shownLine, priceText, mailtoFor, tryLine, pointAtStrip, render, REFRESH_MS, HERO, POINT, FINE, MAILTO, PHONE_MQ, SHOWN_DEF, SHOWN_DETAIL, TRY_MAX, TRY_LABEL } from '../public/screens/sponsor.js';
+import { sponsorHtml, shownCount, shownLine, priceText, mailtoFor, tryLine, canTry, pointAtStrip, render, REFRESH_MS, HERO, POINT, FINE, MAILTO, PHONE_MQ, SHOWN_DEF, SHOWN_DETAIL, TRY_MAX, TRY_LABEL } from '../public/screens/sponsor.js';
 import { cardWords } from '../public/kit.js';
 import { hereText, paintHere, mountHereNow, clearOfBrand, HERE_MS, HERE_MIN } from '../public/here-now.js';
 import { findCommand } from '../public/registry.js';
@@ -185,6 +185,34 @@ test('rotation: reduced motion swaps with no slide; one line never rotates', () 
     mock.timers.tick(ROTATE_MS * 3);
     assert.equal(s1.index, 0);
     s1.stop();
+    // One showing is 4 s on a visible screen, however many lines: a sole line (a sole paid
+    // line) counts again every 4 s it stays; nothing while the tab is hidden.
+    let hidden = false;
+    const n = [];
+    const solo = mountStrip(fakeHost(), stripItems(cleanSponsors({ lines: [{ name: 'Acme', text: 'Hi' }] })), { isHidden: () => hidden, onShow: (item) => n.push(item.kind) });
+    assert.deepEqual(n, ['paid'], 'shown once at mount');
+    mock.timers.tick(ROTATE_MS * 3);
+    assert.equal(n.length, 4, 'and once every 4 s');
+    hidden = true;
+    mock.timers.tick(ROTATE_MS * 5);
+    assert.equal(n.length, 4, 'nothing while hidden');
+    hidden = false;
+    mock.timers.tick(ROTATE_MS);
+    assert.equal(n.length, 5);
+    solo.stop();
+    mock.timers.tick(ROTATE_MS * 2);
+    assert.equal(n.length, 5, 'nothing after stop');
+    // Several lines: the same unit (one a tick), also while hovered (the line stays on screen).
+    const m = [];
+    const h = fakeHost();
+    const multi = mountStrip(h, stripItems(cleanSponsors({ house: house(3) })), { onShow: () => m.push(1) });
+    mock.timers.tick(ROTATE_MS * 2);
+    assert.equal(m.length, 3);
+    h.fire('mouseenter');
+    mock.timers.tick(ROTATE_MS * 2);
+    assert.equal(multi.index, 2, 'held while hovered');
+    assert.equal(m.length, 5, 'still one showing a tick');
+    multi.stop();
   } finally { mock.timers.reset(); }
   const css = readFileSync('public/style.css', 'utf8');
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.spon-strip\.is-sliding \.spon-item \{ animation: none; \} \}/);
@@ -216,8 +244,9 @@ test('SPONSOR screen: one column: kicker, headline, how often the strip was show
   assert.equal(HERO, 'Your line on every screen.');
   assert.match(page, /^<section class="card spon-card" aria-label="Sponsor"><div class="card-head"><p class="tag card-kicker">SPONSOR<\/p><h2 class="card-hero card-hero-44 num">Your line on every screen\.<\/h2>/);
   // The number and, right under it, what it counts.
-  assert.match(page, /<p class="card-sub"><span id="spon-views">Shown 5,678 times this week\.<\/span><span class="spon-def">Strip lines shown, last 7 days\.<\/span><\/p>/);
-  assert.equal(SHOWN_DEF, 'Strip lines shown, last 7 days.');
+  assert.match(page, /<p class="card-sub"><span id="spon-views">Shown 5,678 times this week\.<\/span><span class="spon-def">One showing = 4 seconds on a visible screen\.<\/span><\/p>/);
+  assert.equal(SHOWN_DEF, 'One showing = 4 seconds on a visible screen.');
+  assert.equal(ROTATE_MS, 4000, 'the 4 seconds the definition names');
   // The price, then the one primary button: EMAIL.
   assert.match(page, /<div class="card-act"><p class="spon-price" id="spon-price">\$99 a week<\/p><a class="btn card-btn btn-solid" href="mailto:hello@bloombroke\.com\?subject=Sponsor%20Bloombroke" id="spon-email">EMAIL hello@bloombroke\.com<\/a><\/div>/);
   assert.equal((page.match(/btn-solid/g) || []).length, 1, 'one white primary');
@@ -238,6 +267,7 @@ test('SPONSOR screen: one column: kicker, headline, how often the strip was show
   // BBRK's words), the sources; WEIRD only there.
   assert.ok(details.includes(SHOWN_DETAIL));
   assert.match(SHOWN_DETAIL, /last 7 days/);
+  assert.match(SHOWN_DETAIL, /Lines share the showings: with 3 lines in rotation, each gets about a third\./);
   assert.match(details, /<dt class="tag">Not for<\/dt><dd>No investment products, brokers, exchanges, crypto, funds or tips\.<\/dd>/);
   assert.match(details, /<dt class="tag">Visitors<\/dt><dd>68 in 7 days, 8m 00s average visit<\/dd>/);
   assert.match(details, /<dt class="tag">Countries<\/dt><dd>United States 60% · Japan 10%<\/dd>/);
@@ -246,7 +276,7 @@ test('SPONSOR screen: one column: kicker, headline, how often the strip was show
   assert.doesNotMatch(sponsorHtml({ has: () => false }), /WEIRD|BBRK/, 'no link to a command that is not here');
   assert.equal(POINT, '↓ this line, every screen');
   const w = cardWords(page);
-  assert.ok(w.length <= 33, `${w.length} words: ${w.join(' ')}`);
+  assert.ok(w.length <= 35, `${w.length} words: ${w.join(" ")}`);
   assert.doesNotMatch(page, /DataFast|—|TBD/);
   assert.doesNotMatch(page, new RegExp(['bloom', 'berg'].join(''), 'i'));
   assert.equal(parseCommand('SPONSOR').name, 'SPONSOR');
@@ -314,8 +344,42 @@ test('SPONSOR try your line: shows in the real strip as text, holds it still, an
   assert.match(css, /\.status-sponsor\.is-try > \* \{ display: none; \}/, 'the strip\'s own line is hidden');
   assert.match(css, /\.status-sponsor\.is-try::after \{\s*content: attr\(data-try\);/, 'the typed text, as text');
   assert.match(css, /\.status-sponsor\.is-try::before \{\s*content: 'SPONSOR';/, 'marked like a paid line');
-  // The shell's strip holds still and counts nothing while it shows (app.js isHidden).
-  assert.match(readFileSync('public/app.js', 'utf8'), /isHidden: \(\) => document\.hidden \|\| sponsorEl\.classList\.contains\('is-try'\)/);
+  // The shell's strip (app.js: isHidden is stripHidden) holds still and counts nothing
+  // while a typed line covers it; afterwards it rotates and counts again.
+  assert.match(readFileSync('public/app.js', 'utf8'), /isHidden: \(\) => stripHidden\(sponsorEl\)/);
+  mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+  try {
+    const host = fakeHost();
+    host.classList.contains = (c) => host.classList.has(c);
+    host.setAttribute = () => {};
+    host.removeAttribute = () => {};
+    const shown = [];
+    const st = mountStrip(host, stripItems(cleanSponsors({ house: house(3) })), { isHidden: () => stripHidden(host, { hidden: false }), onShow: () => shown.push(1) });
+    assert.equal(shown.length, 1);
+    tryLine(host, 'Acme');
+    mock.timers.tick(ROTATE_MS * 5);
+    assert.equal(st.index, 0, 'held still under the typed line');
+    assert.equal(shown.length, 1, 'no showing counted while it is covered');
+    tryLine(host, '');
+    mock.timers.tick(ROTATE_MS);
+    assert.equal(st.index, 1, 'rotates again');
+    assert.equal(shown.length, 2, 'and counts again');
+    st.stop();
+    assert.equal(stripHidden(host, { hidden: true }), true, 'a hidden tab');
+  } finally { mock.timers.reset(); }
+  // Long text: cut to the longest line we run.
+  tryLine(real, 'x'.repeat(500));
+  assert.equal(attrs['data-try'].length, TRY_MAX);
+  tryLine(real, '');
+  // Only where the strip shows: not for Pro, not in an embed, not with no strip.
+  const shownStrip = { hidden: false };
+  const page = (embed) => ({ documentElement: { classList: { contains: (c) => embed && c === 'is-embed' } } });
+  assert.equal(canTry(shownStrip, { pro: () => false, doc: page(false) }), true);
+  assert.equal(canTry(shownStrip, { pro: () => true, doc: page(false) }), false, 'Pro: no strip');
+  assert.equal(canTry(shownStrip, { pro: () => false, doc: page(true) }), false, 'an embed');
+  assert.equal(canTry({ hidden: true }, { pro: () => false, doc: page(false) }), false, 'the strip hidden');
+  assert.equal(canTry(null, { pro: () => false, doc: page(false) }), false);
+  assert.match(readFileSync('public/screens/sponsor.css', 'utf8'), /\.spon-card > \.card-media\[hidden\] \{ display: none; \}/);
   // The screen: typing mirrors into the strip and the EMAIL link; closing puts the strip back.
   const listeners = {};
   const input = { value: '', addEventListener: (t, f) => { listeners[t] = f; }, removeEventListener: (t) => { delete listeners[t]; } };

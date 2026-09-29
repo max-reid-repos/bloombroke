@@ -24,7 +24,7 @@ export const SOURCE = 'Visitors: our analytics. Strip, embeds, MCP: our server c
 // What a figure on the globe is (globe.js: a place of the last 7 days, a country or a city
 // of 3 or more; nearby places merge into one figure, and the number under it is their
 // visitors, drawn from 2 up). One line, the same "7 days" as the fact.
-export const GLOBE_CAPTION = 'Each figure is a place with visitors in 7 days; its number is how many.';
+export const GLOBE_CAPTION = 'Each figure is a place or a cluster of nearby places with visitors in 7 days; the number counts visitors, shown from 2.';
 export const MAX_FACTS = 3;
 export const GLOBE_MAX = 560; // px: the globe in the right column, at most (fitToView)
 
@@ -77,42 +77,49 @@ export function topLine(list) {
   return rows.length ? rows.map((x) => `${x.name} ${pct(x.pct)}`).join(' · ') : '--';
 }
 
-// Visitors a day from launch day: the days from the first one with any visitor to today,
-// never the empty days before. { values, from } (from: its New York date when day, today's,
-// is known), or null with no visitor yet.
-export function sinceLaunch(spark, day = null) {
+// Visitors a day from launch day: the points from the first one with any visitor on,
+// never the empty days before. days: each point's New York date (/api/bbrk spark30Days).
+// { values, from, to, launch }: from and to the first and last point's dates (null when
+// not known), launch whether the series reaches back to launch day (a day with no visitor
+// before the first one; else the 30 days start after launch). null with no visitor yet.
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+export function sinceLaunch(spark, days = []) {
   const v = (Array.isArray(spark) ? spark : []).map((n) => (fin(n) ? n : 0));
   const first = v.findIndex((n) => n > 0);
   if (first < 0) return null;
-  const values = v.slice(first);
-  let from = null;
-  const m = typeof day === 'string' && /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
-  if (m) from = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] - (values.length - 1))).toISOString().slice(0, 10);
-  return { values, from };
+  const d = Array.isArray(days) && days.length === v.length ? days : [];
+  const date = (i) => (DAY.test(String(d[i])) ? d[i] : null);
+  return { values: v.slice(first), from: date(first), to: date(v.length - 1), launch: first > 0 };
 }
 
 // Visitors a day, across the column: an area from zero, the line, a dot on the last day.
 // No axes. The SVG stretches to the column (the line and the dot keep their width).
-export function chartSvg(values, { w = 300, h = 96 } = {}) {
+// label: what the points are, for a screen reader.
+export function chartSvg(values, { w = 300, h = 96, label = '' } = {}) {
   const v = (Array.isArray(values) ? values : []).filter(fin);
   if (v.length < 2) return '';
   const hi = Math.max(...v, 1);
   const pts = v.map((y, i) => [(i / (v.length - 1)) * w, h - 4 - (Math.max(0, y) / hi) * (h - 12)]);
   const line = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
   const [lx, ly] = pts[pts.length - 1];
-  const label = `Visitors a day since launch day, ${v.length} days. Today so far: ${count(v[v.length - 1])}.`;
-  return `<svg class="bb-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}">`
+  const say = `${label || `Visitors a day, ${v.length} days`}. Last day: ${count(v[v.length - 1])}.`;
+  return `<svg class="bb-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="${esc(say)}">`
     + `<path class="bb-spark-area" d="${line} L${w} ${h} L0 ${h} Z"/>`
     + `<path class="bb-spark-line" d="${line}" vector-effect="non-scaling-stroke"/>`
     + `<path class="bb-spark-dot" d="M${lx.toFixed(1)} ${ly.toFixed(1)} h0" vector-effect="non-scaling-stroke"/></svg>`;
 }
 
-// The chart and its two ends: launch day at the left, TODAY at the right. '' before launch.
+// The chart and its two ends: the first point's date at the left (launch day, or the
+// start of the 30 days), the last one's at the right (TODAY when it is today). '' before
+// launch or with one day only.
 export function chartHtml(d) {
-  const s = sinceLaunch(d?.audience?.spark30, d?.day);
-  const svg = s ? chartSvg(s.values) : '';
+  const s = sinceLaunch(d?.audience?.spark30, d?.audience?.spark30Days);
+  if (!s) return '';
+  const span = s.launch ? `since launch day${s.from ? `, ${fmtDate(s.from, 'prose')}` : ''}` : `last ${s.values.length} days`;
+  const svg = chartSvg(s.values, { label: `Visitors a day, ${span}` });
   if (!svg) return '';
-  return svg + `<p class="bb-ends" aria-hidden="true"><span>${esc(s.from ? fmtDate(s.from) : '')}</span><span>TODAY</span></p>`;
+  const end = s.to && s.to === d?.day ? 'TODAY' : s.to ? fmtDate(s.to) : '';
+  return svg + `<p class="bb-ends" aria-hidden="true"><span>${esc(s.from ? fmtDate(s.from) : '')}</span><span>${esc(end)}</span></p>`;
 }
 
 // 'MRR $0 (test mode)' -> '$0, test mode': a row in + Details, never a tile up front

@@ -37,6 +37,10 @@ export function stripItems(cfg, { pro = false } = {}) {
   return (cfg.house || []).filter((l) => l?.text).map((l) => ({ kind: 'house', label: 'AD', text: l.text, cmd: l.cmd || 'SPONSOR' }));
 }
 
+// The strip counts no showing and holds still while the tab is hidden, or while SPONSOR's
+// TRY YOUR LINE covers it (is-try, screens/sponsor.js tryLine).
+export const stripHidden = (host, doc = globalThis.document) => Boolean(doc?.hidden || host?.classList?.contains('is-try'));
+
 // One line. A paid line with a link opens it in a new tab with no referrer; an AD line
 // runs its command in the terminal (the app's data-cmd click).
 export function itemHtml(item) {
@@ -54,7 +58,8 @@ export function itemHtml(item) {
 // Rotate items in host. Returns { stop, next, index, paused }. isHidden: whether the tab
 // is hidden (skips a turn). reduceMotion: swap without the slide. onPaidClick: a click on
 // a paid line (the sponsor_click goal; our own AD lines send nothing). onShow: a line
-// was shown while the tab is visible; onAnyClick: a click on any line (BBRK's strip
+// was shown while the tab is visible, and again every rotateMs it stays (one showing =
+// rotateMs on a visible screen); onAnyClick: a click on any line (BBRK's strip
 // inventory; the status bar counts, the SPONSOR screen preview does not).
 export function mountStrip(host, items, { reduceMotion = false, isHidden = () => false, rotateMs = ROTATE_MS, onPaidClick = () => goal('sponsor_click'), onShow = () => {}, onAnyClick = () => {} } = {}) {
   let i = 0;
@@ -99,6 +104,8 @@ export function mountStrip(host, items, { reduceMotion = false, isHidden = () =>
   ];
   for (const [t, f] of on) host.addEventListener(t, f);
   show(false);
-  const timer = items.length > 1 ? setInterval(() => ctl.next(), rotateMs) : null;
+  // Every rotateMs on a visible screen is one showing, however many lines: the next
+  // line (counted as it shows), or the same one again when it holds (one line, hover).
+  const timer = items.length ? setInterval(() => { if (!ctl.next() && !isHidden()) { try { onShow(items[i]); } catch { /* never stops the strip */ } } }, rotateMs) : null;
   return ctl;
 }

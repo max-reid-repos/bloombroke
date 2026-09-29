@@ -31,6 +31,8 @@
 .spon-price { font-size: 18px; color: var(--text); }
 .spon-price[hidden] { display: none; }
 /* TRY YOUR LINE: a label over one input, the column's width. Mixed case, as it will run. */
+/* Hidden where there is no strip to show it in: Pro, an embed (sponsor.js canTry). */
+.spon-card > .card-media[hidden] { display: none; }
 .spon-try { display: flex; flex-direction: column; align-items: stretch; gap: 8px; width: 100%; text-align: left; }
 .spon-try .spon-try-input { flex: 0 0 auto; width: 100%; font-size: 14px; text-transform: none; }
 .spon-numbers { white-space: nowrap; }
