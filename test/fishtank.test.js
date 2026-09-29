@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   pctToDepth, depthRange, capToSize, fishColor, pickExtremes, tankHeader, sizeLimits, seeded, makeRunner, render,
   SPECIES, SPECIES_NAME, speciesOf, FISH_SCALE, MAX_OF_H, legendItems, legendHtml, tagPlan, toggleSector, sectorAlpha, DIM, sectorCentre, schoolStep,
-  FISH_SPRITES, spriteOf, spriteScale, animFrame, spriteColors, colorLevel, LEVELS, drawGlyph,
+  FISH_SPRITES, spriteOf, spriteScale, animFrame, spriteColors, colorLevel, LEVELS, drawGlyph, mirrored,
 } from '../public/screens/fishtank.js';
 import { parseSprite, PALETTE_CHARS, spriteCache, blit } from '../public/pixel-sprite.js';
 import { heatmapStocks, fishtankStocks, SP100, SECTORS } from '../data/sp100.js';
@@ -191,7 +191,9 @@ test('fishtank: leaving the screen cancels the frame loop, observers and listene
   const canvas = el(); const tip = el(); const sr = el();
   const host = el({ querySelector: (sel) => ({ canvas, '.ft-tip': tip, '.ft-sr': sr }[sel]) });
   const meta = el();
-  const leg = el();
+  const glyph = { width: 0, height: 0, style: {}, getContext: () => fakeCtx() };
+  const btn = { dataset: { sector: 'TECH' }, setAttribute() {}, querySelector: () => glyph };
+  const leg = el({ querySelectorAll: (sel) => (sel === '.ft-leg-btn' ? [btn] : []) });
   const root = el({ querySelector: (sel) => ({ '#ft-host': host, '#ft-meta': meta, '#ft-leg': leg }[sel]) });
   const observers = [];
   class Obs { constructor(cb) { this.cb = cb; this.on = false; observers.push(this); } observe() { this.on = true; } disconnect() { this.on = false; } }
@@ -231,6 +233,10 @@ test('fishtank: leaving the screen cancels the frame loop, observers and listene
     assert.equal(leg.hidden, false, 'the legend shows once there is data');
     assert.match(leg.innerHTML, /data-sector="TECH"/);
     assert.ok(listeners.size >= 4, 'listening while on screen: visibility, Esc, motion, pixel ratio');
+    assert.deepEqual([glyph.width, glyph.height], [22, 9], 'the TECH glyph: the swordfish at 1x');
+    globalThis.window.devicePixelRatio = 2; // a zoom or another monitor
+    for (const f of [...listeners]) f({});
+    assert.deepEqual([glyph.width, glyph.height, glyph.style.width], [44, 18, '22px'], 'a new pixel ratio redraws the legend glyphs crisp');
     for (const f of cleanups) f();
     assert.equal(r.q.size, 0, 'the pending frame is cancelled');
     assert.ok(observers.every((o) => !o.on), 'observers disconnected');
@@ -485,16 +491,73 @@ test('fishtank sprites: colours in buckets, green up, red down, steel flat, full
   for (const p of [-3, -0.2, 0, 0.2, 3]) assert.ok(light(spriteColors(p).shade) < light(spriteColors(p).body), 'the shade is darker');
 });
 
-test('fishtank legend: glyphs are the sprites, drawn whole with smoothing off', () => {
-  const ctx = fakeCtx();
-  const canvas = { width: 52, height: 32, getContext: () => ctx };
-  drawGlyph(canvas, 'eel', 2);
-  assert.deepEqual([canvas.width, canvas.height], [52, 32]);
-  assert.equal(ctx.imageSmoothingEnabled, false);
-  const rects = ctx.calls.filter((c) => c[0] === 'fillRect');
-  assert.ok(rects.length > 10);
-  assert.ok(rects.every(([, , x, y, w, h]) => [x, y, w, h].every(Number.isInteger) && h === 2), 'whole pixels, scale 2');
-  drawGlyph(canvas, 'jelly', 1);
-  assert.deepEqual([canvas.width, canvas.height], [26, 16]);
+test('fishtank legend: glyphs are the sprites, a whole multiple of the sprite at the pixel ratio', () => {
+  for (const [kind, dpr] of [['eel', 2], ['jelly', 1], ['puffer', 1.25], ['swordfish', 1.5], ['crab', 3], ['fish', 2.625]]) {
+    const ctx = fakeCtx();
+    const canvas = { width: 52, height: 32, style: {}, getContext: () => ctx };
+    drawGlyph(canvas, kind, dpr);
+    const sp = spriteOf(kind);
+    const p = canvas.width / sp.w;
+    assert.ok(Number.isInteger(p) && p >= 1, `${kind} @${dpr}: scale ${p}`);
+    assert.equal(canvas.height, sp.h * p, `${kind}: the box is the sprite times ${p}`);
+    assert.equal(canvas.style.width, `${canvas.width / Math.min(3, dpr)}px`, 'shown at one canvas pixel a device pixel');
+    assert.ok(canvas.width / Math.min(3, dpr) <= 26 && canvas.height / Math.min(3, dpr) <= 16, `${kind} @${dpr}: fits the chip`);
+    assert.equal(ctx.imageSmoothingEnabled, false);
+    const rects = ctx.calls.filter((c) => c[0] === 'fillRect');
+    assert.ok(rects.length > 3);
+    assert.ok(rects.every(([, , x, y, w, h]) => [x, y, w, h].every(Number.isInteger) && h === p && x % p === 0 && y % p === 0), `${kind}: even whole pixels`);
+  }
   drawGlyph({}, 'fish'); // no context: nothing to do
+});
+
+test('fishtank sprites: the jellyfish never flips; the rest face the way they swim', () => {
+  assert.equal(mirrored('jelly', -1), false);
+  assert.equal(mirrored('jelly', 1), false);
+  for (const k of ['swordfish', 'crab', 'fish']) {
+    assert.equal(mirrored(k, -0.3), true, k);
+    assert.equal(mirrored(k, 0.3), false, k);
+  }
+});
+
+test('pixel sprites: the cache stays bounded across every colour, direction and outline', () => {
+  const make = (w, h) => ({ width: w, height: h, getContext: () => fakeCtx() });
+  const all = spriteCache(make);
+  const kinds = Object.keys(FISH_SPRITES);
+  for (let round = 0; round < 3; round += 1) {
+    for (const k of kinds) for (const fr of [0, 1]) for (let p = -6; p <= 6; p += 0.25) for (const flip of [false, true]) for (const out of [null, 'L']) {
+      const c = spriteColors(p);
+      all.get(spriteOf(k, fr), c.key, c, flip, out);
+    }
+  }
+  assert.equal(all.size, kinds.length * 2 * (2 * LEVELS + 1) * 2 * 2, 'every combination once, however often asked');
+  assert.ok(all.size <= 1500);
+  const small = spriteCache(make, 10);
+  let most = 0;
+  for (let i = 0; i < 200; i += 1) {
+    small.get(spriteOf(kinds[i % kinds.length]), `c${i % 37}`, { body: 'B' }, i % 2 === 0);
+    most = Math.max(most, small.size);
+  }
+  assert.ok(most <= 10, `a small cap holds: ${most}`);
+  small.clear();
+  assert.equal(small.size, 0);
+});
+
+test('fishtank schools: the drawn sprite size, not the length, keeps fish apart and off the walls', () => {
+  // Short lengths but wide sprites (a big scale): the sprites decide.
+  const W = 1000;
+  const fish = Array.from({ length: 3 }, (_, i) => ({ sector: 'TECH', x: 500 + i * 3, vx: 10, speed: 15, face: 1, len: 20, dw: 120, dh: 40, y: 300, depth: 0.5 }));
+  for (let i = 0; i < 60 * 20; i += 1) schoolStep(fish, 1 / 60, W, { centre: () => 500 });
+  const xs = fish.map((f) => f.x).sort((a, b) => a - b);
+  const gap = Math.min(...xs.slice(1).map((x, i) => x - xs[i]));
+  assert.ok(gap >= 120 * 0.9, `gap ${gap.toFixed(0)} for sprites 120 wide`);
+  // Tall sprites at different depths still count as sharing one.
+  const tall = [{ sector: 'HEALTH', x: 500, vx: 5, speed: 5, face: 1, len: 10, dw: 40, dh: 60, y: 300 }, { sector: 'HEALTH', x: 501, vx: 5, speed: 5, face: 1, len: 10, dw: 40, dh: 60, y: 340 }];
+  for (let i = 0; i < 60 * 20; i += 1) schoolStep(tall, 1 / 60, W, { centre: () => 500 });
+  assert.ok(Math.abs(tall[0].x - tall[1].x) >= 40 * 0.9, `tall sprites overlap: ${Math.abs(tall[0].x - tall[1].x).toFixed(0)}`);
+  // The walls: a wide sprite never pokes out.
+  const edge = [{ sector: null, x: 5, vx: -30, speed: 30, face: -1, len: 10, dw: 100, dh: 30, y: 200 }, { sector: null, x: 995, vx: 30, speed: 30, face: 1, len: 10, dw: 100, dh: 30, y: 400 }];
+  for (let i = 0; i < 600; i += 1) {
+    schoolStep(edge, 1 / 60, W);
+    for (const f of edge) assert.ok(f.x - f.dw / 2 >= -1e-9 && f.x + f.dw / 2 <= W + 1e-9, `x ${f.x.toFixed(1)}`);
+  }
 });

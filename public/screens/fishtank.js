@@ -161,6 +161,10 @@ export function sectorCentre(key, t, W) {
 // spreads about as wide), matches its school's speed, keeps clear of fish at its own
 // depth, and turns before the walls. Depth (y) is data and is never
 // touched here. `hold` (the hovered fish) slows to a stop.
+// A fish's drawn sprite size in CSS px (dw, dh), or, before it has one, its length.
+const drawnW = (f) => (f.dw > 0 ? f.dw : f.len);
+const drawnH = (f) => (f.dh > 0 ? f.dh : f.len * 0.6);
+
 export function schoolStep(fish, dt, W, { centre = () => null, hold = null, spread = W * 0.11 } = {}) {
   if (!(dt > 0) || !(W > 0) || !fish.length) return;
   const span = Math.max(60, spread);
@@ -172,15 +176,15 @@ export function schoolStep(fish, dt, W, { centre = () => null, hold = null, spre
     m.v += f.vx; m.n += 1;
     mean.set(f.sector, m);
   }
-  // Separation: fish that share a depth push apart sideways. The reach follows the fish
-  // lengths (plus a fifth for room), and the push grows with FISH_SCALE, so bigger fish clear
-  // each other as fast as the old, smaller ones did.
+  // Separation: fish that share a depth push apart sideways. The reach follows the drawn
+  // sprite widths (plus a fifth for room), the depth test their drawn heights, and the push
+  // grows with FISH_SCALE, so bigger fish clear each other as fast as the old, smaller ones did.
   for (let i = 0; i < fish.length; i += 1) {
     const a = fish[i];
     for (let j = i + 1; j < fish.length; j += 1) {
       const b = fish[j];
-      const reach = (a.len + b.len) * 0.6;
-      if (Math.abs(a.y - b.y) > reach * 0.55) continue;
+      const reach = (drawnW(a) + drawnW(b)) * 0.6;
+      if (Math.abs(a.y - b.y) > (drawnH(a) + drawnH(b)) * 0.55) continue;
       const dx = b.x - a.x;
       if (Math.abs(dx) >= reach) continue;
       const push = (1 - Math.abs(dx) / reach) * 36 * FISH_SCALE;
@@ -196,13 +200,13 @@ export function schoolStep(fish, dt, W, { centre = () => null, hold = null, spre
     const m = mean.get(f.sector);
     if (m && m.n > 1) ax += (m.v / m.n - f.vx) * 0.35;
     ax += ((f.vx < 0 ? -1 : 1) * f.speed - f.vx) * 0.8; // cruise
-    const margin = Math.min(W / 2, f.len * 0.6 + 8);
+    const margin = Math.min(W / 2, drawnW(f) * 0.6 + 8);
     if (f.x < margin) ax += (margin - f.x) * 4;
     else if (f.x > W - margin) ax -= (f.x - (W - margin)) * 4;
     const vmax = f.speed * 1.6;
     f.vx = clamp(f.vx + ax * dt, -vmax, vmax);
     f.x += f.vx * dt;
-    const lo = Math.min(W / 2, f.len * 0.5);
+    const lo = Math.min(W / 2, drawnW(f) * 0.5);
     if (f.x < lo) { f.x = lo; f.vx = Math.abs(f.vx) * 0.3 + 0.5; } else if (f.x > W - lo) { f.x = W - lo; f.vx = -Math.abs(f.vx) * 0.3 - 0.5; }
     if (Math.abs(f.vx) > 1) f.face += (Math.sign(f.vx) - f.face) * Math.min(1, dt * 2.5);
   }
@@ -477,6 +481,10 @@ export const FISH_SPRITES = {
 const SPRITES = Object.fromEntries(Object.entries(FISH_SPRITES).map(([k, frames]) => [k, frames.map((rows, i) => parseSprite(rows, `${k} ${i}`))]));
 export const spriteOf = (kind, frame = 0) => (SPRITES[kind] || SPRITES.fish)[frame ? 1 : 0];
 
+// Whether a fish is drawn mirrored: facing left. The jellyfish drifts the same way up
+// whichever way it goes, so it never flips (a flip would jump its tentacles).
+export const mirrored = (kind, face) => kind !== 'jelly' && face < 0;
+
 // How long each species is drawn, as a share of its fish length: the round ones stay
 // shorter, so a jellyfish is not as tall as a swordfish is long.
 const FIT = { jelly: 0.65, puffer: 0.8, crab: 0.85, goldfish: 0.9, clown: 0.9, angler: 0.9 };
@@ -514,18 +522,21 @@ export function spriteColors(pct) {
   return { key: String(lv), body: hsl(c), shade: hsl({ ...c, l: clamp(c.l - 15, 8, 90) }), eye: EYE };
 }
 
-// A legend glyph: the species at a small whole scale, in ice blue, centred in its canvas.
+// A legend glyph: the species at the biggest whole scale that fits a 26 x 16 CSS px
+// box at this pixel ratio, in ice blue. The canvas is exactly the sprite times that scale
+// in device pixels and shown at that size, so every pixel is the same whole size.
 const GLYPH_COLORS = { body: 'hsl(201, 70%, 70%)', shade: 'hsl(201, 55%, 50%)', eye: EYE };
 export function drawGlyph(canvas, kind, dpr = 1) {
   const b = canvas?.getContext?.('2d');
   if (!b) return;
-  const d = clamp(Math.round(dpr) || 1, 1, 3);
-  canvas.width = 26 * d; canvas.height = 16 * d;
+  const d = clamp(dpr > 0 ? dpr : 1, 1, 3);
   const sp = spriteOf(kind);
   const p = Math.max(1, Math.floor(Math.min((26 * d) / sp.w, (16 * d) / sp.h)));
+  canvas.width = sp.w * p; canvas.height = sp.h * p;
+  if (canvas.style) { canvas.style.width = `${canvas.width / d}px`; canvas.style.height = `${canvas.height / d}px`; }
   b.imageSmoothingEnabled = false;
   b.clearRect?.(0, 0, canvas.width, canvas.height);
-  paintSprite(b, sp, Math.floor((canvas.width - sp.w * p) / 2), Math.floor((canvas.height - sp.h * p) / 2), p, GLYPH_COLORS);
+  paintSprite(b, sp, 0, 0, p, GLYPH_COLORS);
 }
 
 // ---- The tank ----------------------------------------------------------------------
@@ -575,7 +586,7 @@ export function makeRunner(frame, {
   };
 }
 
-function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
+function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprChanged = () => {} }) {
   const g = canvas.getContext('2d');
   const font = (getComputedStyle(host).fontFamily || 'monospace');
   let W = 0; let H = 0; let dpr = 1;
@@ -804,7 +815,7 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
   // pixels (the context is in device pixels here). The hovered fish gets a pale outline.
   function drawFish(f, t, lit, calm) {
     const sp = spriteOf(f.kind, animFrame(t, f.ph, f.rate, calm));
-    const img = sprites.get(sp, f.pal.key, f.pal, f.face < 0, lit ? LIT : null);
+    const img = sprites.get(sp, f.pal.key, f.pal, mirrored(f.kind, f.face), lit ? LIT : null);
     const p = f.px; const o = lit ? p : 0;
     g.globalAlpha = f.a;
     blit(g, img, Math.round(f.x * dpr - (sp.w * p) / 2) - o, Math.round(f.bobY * dpr - (sp.h * p) / 2) - o, p);
@@ -980,6 +991,7 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName }) {
   function onDpr() {
     watchDpr();
     if (W && H) resize(W, H);
+    dprChanged();
   }
   watchDpr();
 
@@ -1033,7 +1045,7 @@ export function render(el, cmd, ctx) {
 
   function mount() {
     host.innerHTML = '<canvas class="ft-canvas" role="img" aria-label="The S&amp;P 100 as fish"></canvas><div class="ft-tip" hidden></div><ul class="ft-sr" aria-label="Every fish"></ul>';
-    tank = makeTank(host, host.querySelector('canvas'), host.querySelector('.ft-tip'), { onOpen: (t) => ctx.run(t), reduced, sectorName });
+    tank = makeTank(host, host.querySelector('canvas'), host.querySelector('.ft-tip'), { onOpen: (t) => ctx.run(t), reduced, sectorName, onDpr: drawGlyphs });
     applyHolds();
   }
 
@@ -1047,9 +1059,14 @@ export function render(el, cmd, ctx) {
     legKey = key;
     if (active && !items.some((i) => i.key === active)) setActive(null);
     leg.innerHTML = legendHtml(items, active, names);
-    const d = Math.min(2, window.devicePixelRatio || 1);
-    leg.querySelectorAll?.('.ft-leg-btn').forEach((b) => drawGlyph(b.querySelector('canvas'), speciesOf(b.dataset.sector), d));
+    drawGlyphs();
     leg.hidden = !items.length;
+  }
+  // The legend glyphs at the current pixel ratio: after a build, and again when the
+  // ratio changes (a zoom, another monitor), so they stay crisp.
+  function drawGlyphs() {
+    const d = window.devicePixelRatio || 1;
+    leg?.querySelectorAll?.('.ft-leg-btn').forEach((b) => drawGlyph(b.querySelector('canvas'), speciesOf(b.dataset.sector), d));
   }
   function setActive(key) {
     active = key;

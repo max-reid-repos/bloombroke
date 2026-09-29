@@ -67,9 +67,12 @@ function paintOutline(ctx, sp, color, flip) {
 
 // Offscreen canvases, one per sprite, colour set, direction and outline, made on first
 // use. `make(w, h)` returns a canvas (document.createElement in the page; the tests pass
-// their own). The outline version is one pixel bigger on every side.
-export function spriteCache(make = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }, limit = 2000) {
+// their own). The outline version is one pixel bigger on every side. At most `limit`
+// canvases in all: past that it starts again empty (FISHTANK needs about a thousand at
+// the very most: 24 sprites x 11 colours x 2 directions x plain or outlined).
+export function spriteCache(make = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }, limit = 1500) {
   const map = new Map();
+  let count = 0;
   return {
     get(sp, colorKey, colors, flip = false, outline = null) {
       const key = `${colorKey}|${flip ? 1 : 0}|${outline || ''}`;
@@ -77,17 +80,18 @@ export function spriteCache(make = (w, h) => { const c = document.createElement(
       if (!per) { per = new Map(); map.set(sp, per); }
       let c = per.get(key);
       if (c) return c;
+      if (count >= limit) { map.clear(); count = 0; per = new Map(); map.set(sp, per); }
       const pad = outline ? 1 : 0;
       c = make(sp.w + pad * 2, sp.h + pad * 2);
       const b = c.getContext('2d');
       if (outline) paintOutline(b, sp, outline, flip);
       paintSprite(b, sp, pad, pad, 1, colors, flip);
-      if (per.size > limit) per.clear();
       per.set(key, c);
+      count += 1;
       return c;
     },
-    get size() { let n = 0; for (const per of map.values()) n += per.size; return n; },
-    clear() { map.clear(); },
+    get size() { return count; },
+    clear() { map.clear(); count = 0; },
   };
 }
 
