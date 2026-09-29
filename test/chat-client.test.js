@@ -192,7 +192,7 @@ test('the page: the badge by the seat, hidden, opens CHAT; only the badge loads 
   const shell = a.closure('app.js');
   // The badge's file comes in right after the first screen (app.js), the chat screen on first use.
   assert.ok(!shell.includes('chat-badge.js'));
-  assert.match(readFileSync('public/app.js', 'utf8'), /loadModule\('chat-badge\.js'\)\.then\(\(m\) => m\.mountChatBadge\(\$\('chat-badge'\), \{ timer: liveTimer \}\)/);
+  assert.match(readFileSync('public/app.js', 'utf8'), /loadModule\('chat-badge\.js', OPTIONAL\)\.then\(\(m\) => m\.mountChatBadge\(\$\('chat-badge'\), \{ timer: liveTimer \}\)/);
   assert.ok(!shell.includes('screens/chat.js'), 'the chat screen loads on first use');
   assert.match(readFileSync('public/app.js', 'utf8'), /'screens\/grid\.css', 'screens\/chat\.css',/);
 });

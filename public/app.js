@@ -302,6 +302,9 @@ export function parseCommand(raw, depth = 0) {
     const args = parseAffordArgs(rest);
     return { name: 'AFFORD', args, error: args.error, input: ['AFFORD', ...rest].join(' ') };
   }
+  // GO LIVE outside a chat (in one, CHAT's own hook takes it first): a small card that
+  // says how. Only the exact words: GO and $GO stay the stock.
+  if (toks.join(' ') === 'GO LIVE' && tokenize(raw)[0] === 'GO') return { name: 'LIVEHINT', input: 'GO LIVE' }; // not a command of its own
   // BUY was renamed AFFORD: typed, it says so; an old link (?c=BUY+...) opens AFFORD.
   if (head === 'BUY') {
     return { name: 'RENAMED', args: { from: 'BUY', to: ['AFFORD', ...rest].join(' ') }, input: ['BUY', ...rest].join(' ') };
@@ -776,6 +779,29 @@ export function resolvedNote(command, from) {
 // first use and fetched ahead once the page is idle. Also here-now.js, chat-badge.js and
 // trending.js come in after the first screen: none of them is needed to draw it.
 const CARDS = 'cards.js';
+// The optional extras above (and the menu): a file that does not load never reloads the page.
+const OPTIONAL = { recover: false };
+
+// The menu (Ctrl+K) loads on first use. load() -> Promise<menu>. While it loads, each
+// toggle flips whether it should open and cancel() (Esc) says no; when it arrives it
+// opens only if still wanted. A load that fails leaves the page as it is.
+export function lazyMenu(load) {
+  let real = null;
+  let want = false;
+  let loading = null;
+  const start = () => {
+    loading ||= Promise.resolve().then(load).then((m) => { real = m; if (want) m.open(); want = false; return m; }, () => { loading = null; want = false; return null; });
+    return loading;
+  };
+  return {
+    open() { if (real) real.open(); else { want = true; start(); } },
+    toggle() { if (real) real.toggle(); else { want = !want; start(); } },
+    cancel() { want = false; },
+    isOpen: () => Boolean(real?.isOpen()),
+    get pending() { return want; },
+    ready: () => start(),
+  };
+}
 
 function boot() {
   // One terminal per page, even if a second copy of this module were ever loaded.
@@ -822,7 +848,7 @@ function boot() {
   let h = null; // hints.js, once in
   let tried = 0;
   if (!embed) {
-    loadModule('hints.js').then((mod) => {
+    loadModule('hints.js', OPTIONAL).then((mod) => {
       h = mod;
       tried = h.triedCount();
       if (!hints && !h.hintsDone({ historyLength: cmdHistory.length })) {
@@ -951,13 +977,9 @@ function boot() {
   }
 
   // --- menu (Ctrl+K): menu.js comes in on first use (and ahead once the page is idle) ---
-  let menuReal = null;
-  const menuLoad = () => loadModule('menu.js').then((m) => { menuReal ||= m.createMenu({ onClose: () => { if (!coarse) input.focus(); } }); return menuReal; });
-  const menu = embed ? null : {
-    open() { if (menuReal) menuReal.open(); else menuLoad().then((m) => m.open(), () => {}); },
-    toggle() { if (menuReal) menuReal.toggle(); else this.open(); },
-    isOpen: () => Boolean(menuReal?.isOpen()),
-  };
+  const menu = embed ? null : lazyMenu(() => loadModule('menu.js', OPTIONAL).then((m) => m.createMenu({ onClose: () => { if (!coarse) input.focus(); } })));
+  // Esc while menu.js is still coming: it does not open when it arrives.
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') menu?.cancel(); }, true);
   $('menu-btn').addEventListener('click', (e) => { e.stopPropagation(); menu?.open(); });
   window.addEventListener('bb:run', (e) => run(String(e.detail || ''), { typed: true }));
 
@@ -1300,7 +1322,7 @@ function boot() {
         // --- TRENDING: count this ticker screen (public/trending.js, loaded here); not in DESK panels, not before the notice ---
         if (!embed && cmd.name === 'QUOTE' && cmd.args?.ticker) {
           const consentPending = consentNeeded();
-          loadModule('trending.js').then((t) => { if (t.countsAsOpen(cmd, { embed, consentPending })) t.sendSeen(cmd.args.ticker); }, () => {});
+          loadModule('trending.js', OPTIONAL).then((t) => { if (t.countsAsOpen(cmd, { embed, consentPending })) t.sendSeen(cmd.args.ticker); }, () => {});
         }
         // --- end TRENDING ---
       };
@@ -1341,6 +1363,9 @@ function boot() {
       const example = to === 'AFFORD' ? 'AFFORD 1200' : to;
       drawCard(view, signal, (c) => c.renamedHtml(example), 'Renamed');
       setStatus('BUY IS NOW AFFORD');
+    } else if (cmd.name === 'LIVEHINT') {
+      drawCard(view, signal, (c) => c.liveHintHtml(), 'GO LIVE');
+      setStatus('GO LIVE: OPEN A CHAT FIRST');
     } else if (cmd.name === 'SOON') {
       const s = cmd.args.soon;
       drawCard(view, signal, (c) => c.soonHtml(s), s.name);
@@ -1790,8 +1815,8 @@ function boot() {
     setInterval(tick, 1000);
     // N HERE NOW by the clock (GET /api/live) and CHAT 2 by the seat (unread chats, Pro):
     // their files come in after the first screen.
-    loadModule('here-now.js').then((m) => m.mountHereNow($('here-now'), { timer: liveTimer }), () => {});
-    loadModule('chat-badge.js').then((m) => m.mountChatBadge($('chat-badge'), { timer: liveTimer }), () => {});
+    loadModule('here-now.js', OPTIONAL).then((m) => m.mountHereNow($('here-now'), { timer: liveTimer }), () => {});
+    loadModule('chat-badge.js', OPTIONAL).then((m) => m.mountChatBadge($('chat-badge'), { timer: liveTimer }), () => {});
     // CHAT SOUND (ME): a soft beep when the unread count by the seat goes up.
     const badge = $('chat-badge');
     let unread = badgeCount(badge?.textContent);

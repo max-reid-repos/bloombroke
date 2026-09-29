@@ -1,7 +1,7 @@
 // The shell's own card pages (kit.js cardPage), loaded on first use like a screen, so
 // they are not in the startup JS: NO SUCH TICKER and an unknown command (didYouMeanHtml),
-// a link that wants to change a saved list, BUY renamed, COMING SOON, and a screen that
-// did not load. app.js loads this file (lazy.js loadModule) and draws what it returns.
+// a link that wants to change a saved list, BUY renamed, GO LIVE outside a chat, COMING
+// SOON, and a screen that did not load. app.js loads this file (lazy.js loadModule) and draws what it returns.
 
 import { cardPage, cardButton, cardLink, cardRows, raw } from './kit.js';
 import { dymRows } from './nosuch.js';
@@ -67,6 +67,16 @@ export function renamedHtml(example = 'AFFORD 1200') {
     hero: 'BUY is now AFFORD', heroSize: 44,
     sub: 'It is about things you buy, not investments.',
     act: raw(cardButton({ label: example, cmd: example, primary: true, attrs: 'data-example' })),
+  });
+}
+
+// GO LIVE typed outside a chat: where it works (CHAT's own hook takes it in a chat).
+export function liveHintHtml() {
+  return cardPage({
+    label: 'GO LIVE',
+    kicker: 'GO LIVE',
+    hero: 'Open a chat, then type GO LIVE.', heroSize: 32,
+    act: raw(cardButton({ label: 'CHAT', cmd: 'CHAT', primary: true })),
   });
 }
 

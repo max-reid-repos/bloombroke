@@ -49,7 +49,8 @@ import { cpiResultHtml } from '../public/screens/cpi.js';
 import { loanResultHtml } from '../public/screens/loan.js';
 import { mcpHtml, MCP_URL, MCP_RULE, MCP_APPS } from '../public/screens/mcp.js';
 import { tapeHtml } from '../public/screens/tape.js';
-import { linkConfirmHtml, renamedHtml, soonHtml, notLoadedHtml } from '../public/cards.js';
+import { linkConfirmHtml, renamedHtml, soonHtml, notLoadedHtml, liveHintHtml } from '../public/cards.js';
+import { parseCommand } from '../public/app.js';
 
 const all = () => true;
 const KEY = 'BB-7KQ2-M9XD-HT4P-WZ3C';
@@ -107,6 +108,7 @@ export const CARDS_B = [
   ['RENAMED', renamedHtml(), 15],
   ['COMING SOON', soonHtml({ name: 'AAPL EARNINGS', hint: 'EARNINGS for one ticker is on the way', ticker: 'AAPL' }), 15],
   ['A screen that did not load', notLoadedHtml(), 15],
+  ['GO LIVE outside a chat', liveHintHtml(), 15],
   ['TAPE on', tapeHtml({ on: true }), 20],
   ['TAPE off', tapeHtml({ on: false }), 20],
   ['TAPE, Pro, a note', tapeHtml({ on: true, isPro: true, custom: ['AAPL', 'MSFT', 'GOLD'], note: 'No ticker called XYZQ.', kind: 'warn' }).replace(TAPE_LIST, ''), 20],
@@ -543,6 +545,13 @@ test('Part B: the shell\'s own small cards (link confirm, RENAMED, COMING SOON, 
   assert.match(CARDS_B[11][1], /BUY is now AFFORD[\s\S]*data-cmd="AFFORD 1200" data-example>AFFORD 1200</);
   assert.match(CARDS_B[12][1], /card-kicker">Coming soon<\/p><h2 class="card-hero card-hero-44 num">AAPL EARNINGS<\/h2>/);
   assert.match(CARDS_B[13][1], /data-reload>RELOAD<\/button>/);
+  // GO LIVE typed outside a chat: the small card that says how, never the GO stock's error.
+  assert.deepEqual(parseCommand('GO LIVE'), { name: 'LIVEHINT', input: 'GO LIVE' });
+  assert.equal(parseCommand('go live').name, 'LIVEHINT');
+  for (const c of ['GO', '$GO', 'GO 1Y']) assert.equal(parseCommand(c).name, 'QUOTE', `${c} stays the stock`);
+  assert.notEqual(parseCommand('$GO LIVE').name, 'LIVEHINT', '$GO means the stock');
+  assert.match(liveHintHtml(), /card-kicker">GO LIVE<\/p><h2 class="card-hero card-hero-32 num">Open a chat, then type GO LIVE\.<\/h2>[\s\S]*data-cmd="CHAT">CHAT<\/a>/);
+  assert.match(app, /cmd\.name === 'LIVEHINT'\) \{\s*drawCard\(view, signal, \(c\) => c\.liveHintHtml\(\)/);
 });
 
 test('Part B: TAPE is a small card: ON or OFF, one line, the one switch, the tape as the media; the rest in + Details', () => {
@@ -559,4 +568,11 @@ test('Part B: TAPE is a small card: ON or OFF, one line, the one switch, the tap
   assert.match(proNote, /<div class="card-media">[\s\S]*<div class="tape-list"><p class="fx-from">Your tape: 1 of 40\.<\/p><ul class="pro-list">/, 'a Pro list stays as the media');
   assert.match(proNote.split('<details')[1], /data-cmd="TAPE ADD AAPL" data-example>[\s\S]*data-cmd="TAPE RESET" data-example>/);
   assert.doesNotMatch(on + off, /tape-set|tape-state|class="seg"/, 'the old switch panel is gone');
+  // The Pro rows in + Details prefill (they change the saved tape): data-example, and examplePlan says fill.
+  for (const c of ['TAPE ADD AAPL', 'TAPE RESET']) {
+    assert.match(proNote.split('<details')[1], new RegExp(`<a class="code" href="[^"]+" data-cmd="${c}" data-example>${c}</a>`), c);
+    assert.equal(examplePlan(c), 'fill', c);
+  }
+  // A card hero is text to read: no user-select: all (keys keep it, .pro-key).
+  assert.doesNotMatch(readFileSync('public/kit.css', 'utf8'), /user-select/);
 });

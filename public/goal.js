@@ -189,11 +189,14 @@ export function loadDataFast({ doc = globalThis.document, nav = globalThis.navig
   }
 }
 
-// Add the Ahrefs Web Analytics script once, past the same gates as DataFast. async,
-// with its data-key.
+// Add the Ahrefs Web Analytics script once, past the same gates as DataFast, and only on
+// bloombroke.com itself. async, with its data-key.
 export function loadAhrefs({ doc = globalThis.document, nav = globalThis.navigator, win = globalThis.window, pro = proKeyPresent } = {}) {
   try {
     if (analyticsBlocked({ doc, nav, win, pro })) return false;
+    // Only on the site itself (DataFast's data-domain): never on localhost, a test server
+    // or a copy of the page elsewhere.
+    if (win.location?.hostname !== DATAFAST.domain) return false;
     if (doc.querySelector('script[src^="https://analytics.ahrefs.com/"]')) return false;
     const s = doc.createElement('script');
     s.async = true;
