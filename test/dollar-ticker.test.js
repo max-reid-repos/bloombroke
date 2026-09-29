@@ -92,7 +92,7 @@ test('$: unknown $XXXXX is checked, then gets the NO SUCH TICKER screen', async 
   const r = await resolveInput('$XXXXX', deps);
   assert.equal(r.confident, false);
   assert.deepEqual(r.commands, [], 'no command suggestions for a $ word');
-  assert.match(didYouMeanHtml('$XXXXX', r, ticker), /No ticker called <span class="code">XXXXX<\/span>/);
+  assert.match(didYouMeanHtml('$XXXXX', r, ticker), /<p class="tag card-kicker">No such ticker\. Yet\.<\/p><h2 class="card-hero card-hero-60 num">\$XXXXX<\/h2>/);
   // $ never falls back to a name or an instrument: $APPLE is no Apple, $GOLDX no gold.
   const apple = await resolveInput('$APPLE', deps);
   assert.equal(apple.confident, false);

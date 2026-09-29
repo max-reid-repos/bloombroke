@@ -14,8 +14,9 @@ import { esc, q, panel, metaNote } from './markets.js';
 import { goal } from '../goal.js';
 import {
   findGrave, dayText, tombstoneLine, srcHost, graveLinks, stoneYears, flowersFor, respectsText, onThisDayLine, ytEmbed,
-  SECTIONS, sectionOf, siteCaption, timelinePoints, cliffOf,
+  SECTIONS, sectionOf, siteCaption, timelinePoints, cliffOf, eventLabel,
 } from '../nosuch.js';
+import { cardPage, cardRows, raw } from '../kit.js';
 
 const origin = () => (typeof location !== 'undefined' ? location.origin : 'https://bloombroke.com');
 export const code = (c, label = c, extra = '') => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}"${extra}>${esc(label)}</a>`;
@@ -144,13 +145,14 @@ export function peakLineHtml(e) {
 // The video: our own art (the company's doodle) and a play mark, with the channel. Nothing
 // is asked of YouTube or Google until the click; the click swaps in the
 // youtube-nocookie.com player (wireVideo).
-export function videoHtml(e) {
+// channel: false leaves the channel off the label (the stone card lists it in + Details).
+export function videoHtml(e, { channel = true } = {}) {
   if (!ytEmbed(e.video?.id)) return '';
   const label = `Play: ${e.video.title}${e.video.channel ? ` (${e.video.channel})` : ''}`;
   const doodle = e.art?.doodle;
   return `<button type="button" class="gv-video" data-yt="${esc(e.video.id)}" aria-label="${esc(label)}" title="${esc(label)}">
       ${doodle ? `<img src="${esc(doodle)}" width="384" height="384" alt="">` : ''}<span class="gv-play" aria-hidden="true"></span>
-      <span class="gv-vlabel">PLAY VIDEO${e.video.channel ? ` · ${esc(e.video.channel)}` : ''}</span>
+      <span class="gv-vlabel">PLAY VIDEO${channel && e.video.channel ? ` · ${esc(e.video.channel)}` : ''}</span>
     </button>`;
 }
 
@@ -169,22 +171,6 @@ export function wireVideo(el) {
       b.replaceWith(f);
     }, { once: true });
   }
-}
-
-export function respectsHtml(e, n) {
-  return `<p class="gv-respects"><button type="button" class="wi-btn gv-f" data-respect="${esc(e.ticker)}"><kbd>F</kbd> PAY RESPECTS</button> <span class="gv-count num" data-count>${esc(respectsText(n))}</span></p>`;
-}
-
-// The stone page's words and links beside the stone.
-export function factsHtml(e, n) {
-  const back = e.zombie ? `<p class="gv-fact gv-what">Came back ${esc(dayText(e.back.date))}.</p>` : '';
-  return `<div class="gv-facts">
-      <p class="gv-fact gv-what">${esc(e.what)} ${esc(dayText(e.date))}.</p>${back}
-      ${e.cause ? `<p class="gv-cause">${esc(e.cause)}</p>` : ''}
-      ${respectsHtml(e, n)}
-      ${shareRow(graveLinks(e, origin()), 'grave')}
-      ${sourcesHtml(e, { linkSite: !e.art?.site })}
-    </div>`;
 }
 
 // LAST WEBSITE as a picture: the Internet Archive's copy of the homepage near the end, in
@@ -214,17 +200,68 @@ export function timelineHtml(e) {
   return `<div class="gv-tl"><ol>${pts.map((p) => `<li><span class="gv-tl-l">${esc(p.label)}</span><span class="gv-tl-d">${esc(p.when)}</span></li>`).join('')}</ol>${svg}</div>`;
 }
 
-// Desk: the big stone left, the facts and the last website in the middle, a large video
-// right, the timeline across the bottom. A phone: stone, facts, video, website, timeline.
-export function stonePageHtml(e, n) {
-  const video = videoHtml(e);
-  return `<div class="gv-page3${video ? ' has-video' : ''}">
-      <div class="gv-a-stone">${stoneHtml(e, { n })}</div>
-      <div class="gv-a-facts">${factsHtml(e, n)}</div>
-      ${video ? `<div class="gv-a-video">${video}</div>` : ''}
-      ${siteHtml(e) ? `<div class="gv-a-site">${siteHtml(e)}</div>` : ''}
-      <div class="gv-a-tl">${timelineHtml(e)}</div>
-    </div>`;
+// One stone as a card page (kit.js cardPage), for GRAVEYARD LEH and for a dead ticker
+// typed on its own (NO SUCH TICKER, screens/nosuch.js). Above + Details: the ticker, what
+// happened and when, F PAY RESPECTS and the count, the facts (founded or listed, the year
+// it died, the peak, what $1,000 at the peak became), the stone, the video and the last
+// website (the art, never cropped), and the share links. + Details: the timeline and its
+// cliff, the name, the cause, the RIP WHATIF line, the comeback, the video's title, the
+// keys, every source.
+const money = (v) => `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+export function stoneFacts(e) {
+  const year = (d) => String(d || '').slice(0, 4);
+  const cliff = cliffOf(e);
+  const worth = cliff ? Number(cliff.to.replace(/[$,]/g, '')) : NaN;
+  const pct = Number.isFinite(worth) ? Math.round((worth / 1000 - 1) * 100) : null;
+  return [
+    Number.isInteger(e.founded) ? { label: 'Founded', value: String(e.founded) } : Number.isInteger(e.listed) ? { label: 'Listed', value: String(e.listed) } : null,
+    { label: eventLabel(e.what), value: year(e.date) },
+    e.zombie && e.back?.date ? { label: 'Returned', value: year(e.back.date) } : null,
+    e.peak?.price > 0 && e.peak.src?.length ? { label: 'Peak', value: money(e.peak.price) } : null,
+    // What $1,000 at the peak became: a loss, or a gain for a company bought out above it.
+    pct !== null ? { label: pct > 0 ? 'Gain' : 'Loss', value: `${Math.abs(pct)}%`, cls: pct < 0 ? 'down' : pct > 0 ? 'up' : '' } : null,
+  ].filter(Boolean);
+}
+
+// The card's slots, so NO SUCH TICKER can put its own kicker and links in.
+export function stoneSlots(e, n = 0) {
+  const video = videoHtml(e, { channel: false });
+  const site = siteHtml(e);
+  const links = graveLinks(e, origin());
+  const rows = [
+    ['Name', e.name],
+    e.cause ? ['Cause', e.cause] : null,
+    peakLineHtml(e) ? ['What if', e.peakLine] : null,
+    e.zombie && e.back?.date ? ['Came back', `${dayText(e.back.date)}.`] : null,
+    video ? ['Video', `${e.video.title}${e.video.channel ? ` (${e.video.channel})` : ''}`] : null,
+    ['Keys', 'Esc, then F pays respects.'],
+    ['Sources', raw(sourcesHtml(e, { linkSite: !e.art?.site }))],
+  ];
+  return {
+    wide: true, cls: 'gv-card', label: `Graveyard: ${e.ticker}`,
+    kicker: 'Graveyard',
+    hero: e.ticker, heroSize: 60,
+    // The name is on the stone (and in + Details); the words say what happened.
+    sub: `${e.what} ${dayText(e.date)}.`,
+    act: raw(`<button type="button" class="btn card-btn btn-solid gv-f" data-respect="${esc(e.ticker)}"><kbd>F</kbd> PAY RESPECTS</button>`),
+    note: raw(`<span class="gv-count num" data-count>${esc(respectsText(n))}</span>`),
+    facts: stoneFacts(e),
+    media: raw(`<div class="gv-card-media${video ? ' has-video' : ''}${site ? ' has-site' : ''}">`
+      + `<div class="gv-card-stone">${stoneHtml(e, { n })}</div>`
+      + (video ? `<div class="gv-card-video">${video}</div>` : '')
+      + (site ? `<div class="gv-card-site">${site}</div>` : '')
+      + '</div>'),
+    links: [
+      `<a class="card-link" href="${esc(links.x)}" target="_blank" rel="noopener noreferrer" data-share="grave" data-via="x">SHARE ON X</a>`,
+      `<button type="button" class="card-link" data-copy="${esc(links.url)}" data-share="grave" data-via="link">COPY LINK</button>`,
+    ],
+    details: raw(`${timelineHtml(e)}${cardRows(rows)}`),
+  };
+}
+
+export function stonePageHtml(e, n = 0) {
+  return cardPage(stoneSlots(e, n));
 }
 
 // A scene (a stone page, the cemetery, the table) takes its keys (F, T, arrows, Enter) only
@@ -577,7 +614,7 @@ export function zombiesHtml(list) {
 
 function renderStone(el, e, ctx) {
   const draw = (n) => {
-    el.innerHTML = panel('1', `Graveyard: ${e.ticker}`, stonePageHtml(e, n), { cls: 'panel-solo', meta: metaNote('ESC THEN F') });
+    el.innerHTML = stonePageHtml(e, n);
     wireShare(el, ctx.copy);
     wireVideo(el);
   };

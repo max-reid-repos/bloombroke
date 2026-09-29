@@ -129,11 +129,14 @@ test('router: an unchecked ticker screen is checked first; listed tickers and in
 
 test('router: Did you mean rows run on click and on keys 1 to 9', () => {
   const html = didYouMeanHtml('COCA', { commands: [{ cmd: 'HELP FINANCIALS', summary: 'Income' }], symbols: [{ cmd: 'KO', name: 'Coca-Cola Co' }] });
-  assert.match(html, /Nothing called <span class="code">COCA<\/span>/);
+  // The NO SUCH card (kit.js cardPage): the words typed as the hero, the best guess as
+  // the action (key 1), the others as links (keys 2...), what each is in + Details.
+  assert.match(html, /<p class="tag card-kicker">Unknown command<\/p><h2 class="card-hero card-hero-60 num">COCA<\/h2>/);
   assert.match(html, /Did you mean/);
-  assert.match(html, /data-cmd="HELP FINANCIALS" data-key="1">HELP FINANCIALS<\/a><span class="hc-sum">Income/);
-  assert.match(html, /data-cmd="KO" data-key="2">KO<\/a><span class="hc-sum">Coca-Cola Co/);
-  assert.match(didYouMeanHtml('XYZQ', {}, 'XYZQ'), /No ticker called <span class="code">XYZQ<\/span>/);
+  assert.match(html, /<a class="btn card-btn btn-solid" href="\?c=HELP\+FINANCIALS" data-cmd="HELP FINANCIALS" data-key="1" title="Income">HELP FINANCIALS<\/a>/);
+  assert.match(html, /<a class="card-link" href="\?c=KO" data-cmd="KO" data-key="2" title="Coca-Cola Co">KO<\/a>/);
+  assert.match(html, /<dt class="tag">KO<\/dt><dd>Coca-Cola Co<\/dd>/);
+  assert.match(didYouMeanHtml('XYZQ', {}, 'XYZQ'), /No such ticker\. Yet\.<\/p><h2 class="card-hero card-hero-60 num">\$XYZQ<\/h2>/);
   assert.doesNotMatch(didYouMeanHtml('<b>', {}), /<b>/, 'escaped');
   assert.equal(resolvedNote('NVDA', 'NVIDIA'), "Showing NVDA (from 'nvidia')");
 });

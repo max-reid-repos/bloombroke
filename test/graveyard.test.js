@@ -138,7 +138,7 @@ test('video: our own art and a play mark; nothing from YouTube or Google before 
   assert.equal(ytEmbed('<x>'), null);
   const src = readFileSync(new URL('../public/screens/graveyard.js', import.meta.url), 'utf8');
   assert.doesNotMatch(src, /ytimg|youtube\.com\/iframe_api|www\.youtube\.com\/embed/, 'no stills from YouTube, no YouTube script');
-  assert.match(page, /class="gv-page3 has-video"/, 'desk: the video in its own column');
+  assert.match(page, /class="gv-card-media has-video"/, 'the video beside the stone, in the card\'s media slot');
 });
 
 test('CSP: only the video still and the no-cookie player are added', () => {
@@ -547,6 +547,6 @@ test('scene keys: the stone, cemetery and table screens use them; hints in the t
   const src = readFileSync(new URL('../public/screens/graveyard.js', import.meta.url), 'utf8');
   assert.equal((src.match(/addEventListener\('keydown'/g) || []).length, 1, 'one key listener, in sceneKeys');
   assert.equal((src.match(/sceneKeys\(el,/g) || []).length, 3, 'stone (with respects), cemetery, table');
-  assert.match(src, /metaNote\('ESC THEN F'\)/);
+  assert.match(src, /\['Keys', 'Esc, then F pays respects\.'\]/, 'the stone card says it in + Details');
   assert.match(src, /metaNote\('ESC THEN ARROWS'\)/);
 });

@@ -196,3 +196,29 @@
 .gv-cliff.is-up { color: var(--up); }
 .gv-cliff.is-up .gv-cliff-b { color: var(--up); bottom: auto; top: 18px; }
 .gv-stone.is-small .gv-face { top: 34%; }
+
+/* ---- One stone as a card page (graveyard.js stonePageHtml, kit.js cardPage): the stone,
+   the video and the last website side by side in the media slot, never cropped. ---- */
+.gv-card-media { display: grid; grid-template-columns: 220px; justify-content: center; align-items: center; gap: 24px; width: 100%; }
+.gv-card-media.has-video { grid-template-columns: 220px minmax(0, 1fr); }
+.gv-card-media.has-site { grid-template-columns: 220px minmax(0, 240px); }
+.gv-card-media.has-video.has-site { grid-template-columns: 220px minmax(0, 1fr) minmax(0, 200px); }
+.gv-card-stone { min-width: 0; }
+.gv-card-stone .gv-stone { width: 100%; }
+.gv-card-stone .gv-doodle { right: -9%; width: 40%; }
+.gv-card-video, .gv-card-site { min-width: 0; }
+.gv-card-video .gv-video { width: 100%; }
+.gv-card-video .gv-video img { width: 30%; }
+.gv-card-site .gv-site { max-width: none; }
+.gv-card .card-fact dd.down { color: var(--down); }
+.gv-card .card-fact dd.up { color: var(--up); }
+.gv-card .card-details .gv-tl { margin-bottom: 16px; }
+@media (max-width: 1099px) {
+  .gv-card-media.has-video.has-site { grid-template-columns: 200px minmax(0, 1fr); }
+  .gv-card-media.has-video.has-site .gv-card-site { grid-column: 1 / -1; justify-self: center; width: min(100%, 330px); }
+}
+@media (max-width: 639px) {
+  .gv-card-media, .gv-card-media.has-video, .gv-card-media.has-site, .gv-card-media.has-video.has-site { grid-template-columns: minmax(0, 1fr); }
+  .gv-card-stone .gv-stone { width: 200px; margin: 0 auto; }
+  .gv-card-site { justify-self: center; width: min(100%, 330px); }
+}

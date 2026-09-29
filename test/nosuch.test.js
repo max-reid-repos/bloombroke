@@ -8,7 +8,8 @@ import sharp from 'sharp';
 import { parseCommand, didYouMeanHtml, urlFor } from '../public/app.js';
 import { findCommand } from '../public/registry.js';
 import { dymRows, graveBeatsQuote, pickGraves, ipoShape, matchNoSuch, findGrave, tombstoneLine, dayText, ipoLinks, graveLinks, FEEDBACK_PREFILL, MAX_ROWS } from '../public/nosuch.js';
-import { noSuchExtra, graveyardTable, tombstoneHtml, ipoHtml, ipoPreviewHtml, yardHtml, TITLE_YET } from '../public/screens/nosuch.js';
+import { noSuchExtra as extraSlots, graveyardTable, ipoHtml, ipoPreviewHtml, yardHtml, TITLE_YET } from '../public/screens/nosuch.js';
+import { stoneHtml } from '../public/screens/graveyard.js';
 import { setPrefill, takePrefill } from '../public/screens/feedback.js';
 import { GOALS, GOAL_PROPS, cleanProps } from '../public/goal.js';
 import {
@@ -19,6 +20,8 @@ import { W, H, makeRateLimit } from '../lib/og.js';
 const BANNED = new RegExp(['bloom', 'berg'].join(''), 'i');
 const RAW = JSON.parse(readFileSync(new URL('../data/graveyard.json', import.meta.url), 'utf8'));
 const GRAVE = loadGraveyard();
+// The NO SUCH card with this screen's slots in it, as app.js draws it.
+const noSuchExtra = (word, info, opts = {}) => didYouMeanHtml(word || '', {}, opts.ticker || null, { extra: extraSlots(word, info, opts) });
 // A made-up word list for the tests: the real one is data/ipo-blocklist.txt.
 const BLOCK = parseBlocklist('# test\nZZTOP\n*QQQX\nbad1\n');
 
@@ -36,8 +39,8 @@ test('did you mean: at most 3 rows, never the words typed', () => {
   assert.doesNotMatch(html, /data-cmd="DATA"/);
   assert.match(html, /data-key="3"/);
   assert.doesNotMatch(html, /data-key="4"/);
-  assert.match(html, /No ticker called <span class="code">DATA<\/span>/);
-  assert.match(html, /Type <a class="code"[^>]*>HELP<\/a> for every command\.<\/p>$/, 'HELP is the last line');
+  assert.match(html, /No such ticker\. Yet\.<\/p><h2 class="card-hero card-hero-60 num">\$DATA<\/h2>/);
+  assert.match(html, /<a class="card-link" href="\?c=HELP" data-cmd="HELP">ALL COMMANDS<\/a><\/p>/, 'HELP is the last link');
   assert.doesNotMatch(html, /A company name works too|A ticker is one word/, 'the old text is gone');
 });
 
@@ -78,7 +81,7 @@ test('graveyard: lookup by old ticker or by name word; the line reads right', ()
   assert.match(html, /SHARE ON X/);
   assert.match(html, /GRAVEYARD\+LEH/);
   assert.doesNotMatch(html, /IPO IT/, 'a tombstone, not a joke');
-  assert.match(tombstoneHtml(leh), /R\.I\.P\./);
+  assert.match(stoneHtml(leh), /R\.I\.P\./);
   const table = graveyardTable(GRAVE);
   assert.equal((table.match(/<tr>/g) || []).length, GRAVE.length + 1);
   assert.match(table, /data-cmd="GRAVEYARD LEH"/);
@@ -255,7 +258,7 @@ test('graveyard beats a non-US quote; a US listing wins', async () => {
     server.close();
   }
   const html = noSuchExtra('LEH', { grave: findGrave(GRAVE, 'LEH'), ipo: false, wins: true }, { ticker: 'LEH', quote: true });
-  assert.match(html, /Quote: <a class="code dim" href="\?c=%24LEH" data-cmd="\$LEH">\$LEH<\/a>/);
+  assert.match(html, /<a class="card-link" href="\?c=%24LEH" data-cmd="\$LEH" title="Quote: \$LEH, another listing">\$LEH<\/a>/);
   assert.doesNotMatch(noSuchExtra('LEH', { grave: findGrave(GRAVE, 'LEH') }, { ticker: 'LEH' }), /Quote:/);
 });
 
@@ -268,7 +271,7 @@ test('the unknown-word page: certificate preview and THE GRAVEYARD row', () => {
   assert.equal(pickGraves([], 4).length, 0);
   const html = noSuchExtra('MAXX', { grave: null, ipo: true }, { ticker: 'MAXX', next: 1, yard: four });
   assert.match(html, /class="ns-mini"[^>]*data-cmd="IPO IT MAXX" data-ipo/);
-  assert.match(html, /\$MAXX<\/span><span class="ns-mini-stamp">NOT A REAL SECURITY/);
+  assert.match(html, /\$MAXX<\/span><span class="ns-mini-stamp" aria-hidden="true">NOT A REAL SECURITY/);
   assert.equal((html.match(/class="ns-mini-stone"/g) || []).length, 4);
   for (const e of four) assert.match(html, new RegExp(`data-cmd="GRAVEYARD ${e.ticker}"`));
   assert.doesNotMatch(noSuchExtra('MAXX', { grave: null, ipo: false }, { ticker: 'MAXX', yard: four }), /ns-mini"/, 'no IPO, no preview');

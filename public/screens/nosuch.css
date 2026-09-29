@@ -66,3 +66,12 @@
   .ns-yard-row { gap: 8px; }
   .ns-mini-stone { width: calc((100% - 24px) / 4); height: 88px; font-size: 16px; }
 }
+
+/* The NO SUCH card (app.js didYouMeanHtml, kit.js cardPage): the certificate preview and
+   THE GRAVEYARD row in the media slot, centred. */
+.ns-media { display: flex; flex-direction: column; align-items: center; gap: 24px; width: 100%; }
+.ns-card .ns-mini { width: min(100%, 360px); margin: 0 auto; }
+.ns-card .ns-yard { margin: 0; }
+.ns-card .ns-yard-row { justify-content: center; }
+.ns-card .ns-ask { white-space: nowrap; }
+.ns-card .ns-ask a { color: var(--accent); }

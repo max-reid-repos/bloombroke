@@ -13,7 +13,7 @@ import { parseWatchArgs, watchInput, WATCH_SUBCOMMANDS, loadWatchlist, saveWatch
 import { parsePfArgs, pfInput } from './portfolio.js';
 import { panel, LOADING as LOADING_LINE } from './screens/markets.js';
 import { matchInstrument, searchInstruments, instrumentById, resolveInstrument, STOCK_RE, stockSymbol } from './instruments.js';
-import { edgeFade } from './kit.js';
+import { edgeFade, cardPage, cardButton, cardLink, cardRows, raw } from './kit.js';
 import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { updatedTitle } from './freshness.js';
 import { dotTitle, popoverHtml } from './provenance.js'; // Provenance: the dot's tooltip and list
@@ -766,22 +766,38 @@ export function resolvedNote(command, from) {
   return `Showing ${command} (from '${String(from).toLowerCase()}')`;
 }
 
-// The last line of the "Did you mean" screen (the same as screens/nosuch.js HELP_LINE;
+// The ALL COMMANDS link on the NO SUCH card (the same as screens/nosuch.js HELP_LINE;
 // test/speed.test.js checks), here so the page can draw it before that module loads.
-export const HELP_LINE = '<p class="muted ns-help">Type <a class="code" href="?c=HELP" data-cmd="HELP">HELP</a> for every command.</p>';
+export const HELP_LINE = '<a class="card-link" href="?c=HELP" data-cmd="HELP">ALL COMMANDS</a>';
 
-// The "Did you mean" screen: one clickable row per command or symbol (at most 3, never
-// the words typed), keys 1 to 3. extra: what goes under the rows (screens/nosuch.js:
-// a tombstone, IPO IT, "Tell us."); HELP is always the last line.
-export function didYouMeanHtml(typed, found = {}, ticker = null, { extra = '' } = {}) {
+// NO SUCH TICKER and an unknown command: one card page (kit.js cardPage). The kicker says
+// which; the hero is what was typed; one line under it; the action is the screen's own
+// (IPO IT, F PAY RESPECTS), else the best guess (key 1), else HELP; the other guesses
+// (keys 2 and 3, never the words typed) and ALL COMMANDS are the links, and what each
+// guess is goes in + Details. extra: the slots screens/nosuch.js adds (a tombstone, IPO
+// IT, THE GRAVEYARD row, "Tell us."), any of kit.js cardPage's; help: false leaves out
+// ALL COMMANDS (a tombstone has its own links).
+export function didYouMeanHtml(typed, found = {}, ticker = null, { extra = null } = {}) {
   const rows = dymRows(found, typed, ticker);
-  const lead = ticker
-    ? `No ticker called <span class="code">${escapeHtml(ticker)}</span>.`
-    : `Nothing called <span class="code">${escapeHtml(typed)}</span>.`;
-  const list = rows.length
-    ? `<h3 class="hs-h">Did you mean</h3><ol class="hc-list dym-list">${rows.map(([cmd, what], i) => `<li class="hc-row hc-row-fn"><a class="hc-name code" href="${toQuery(cmd)}" data-cmd="${escapeHtml(cmd)}" data-key="${i + 1}">${escapeHtml(cmd)}</a><span class="hc-sum">${escapeHtml(what || '')}</span></li>`).join('')}</ol>`
-    : '';
-  return `<p class="notice">${lead}</p>${list}${extra}${HELP_LINE}`;
+  const x = extra || {};
+  const tip = (what) => (what ? ` title="${escapeHtml(what)}"` : '');
+  const lead = !x.act && rows.length ? rows[0] : null;
+  const act = x.act || raw(lead
+    ? cardButton({ label: lead[0], cmd: lead[0], primary: true, attrs: `data-key="1"${tip(lead[1])}` })
+    : cardButton({ label: 'HELP', cmd: 'HELP', primary: true }));
+  const guesses = rows.slice(lead ? 1 : 0).map(([cmd, what], i) => cardLink({ label: cmd, cmd, attrs: `data-key="${i + (lead ? 2 : 1)}"${tip(what)}` }));
+  const links = [...(x.links || []), ...guesses, ...((x.act || lead) && x.help !== false ? [HELP_LINE] : [])];
+  const kicker = x.kicker || (ticker ? 'No such ticker. Yet.' : 'Unknown command');
+  const shown = ticker ? `$${ticker}` : typed;
+  const sub = x.sub || (lead ? 'Did you mean this?' : 'Check the spelling.');
+  const guessRows = rows.filter(([, what]) => what).map(([cmd, what]) => [cmd, what]);
+  const more = (guessRows.length ? cardRows(guessRows) : '') + (x.details?.html || '');
+  return cardPage({
+    ...x,
+    cls: `ns-card${x.cls ? ` ${x.cls}` : ''}`, label: x.label || kicker,
+    kicker, hero: x.hero || shown, heroSize: x.heroSize || (shown.length <= 7 ? 60 : shown.length <= 16 ? 44 : 32),
+    sub, act, links, details: more ? raw(more) : '',
+  });
 }
 
 function boot() {
@@ -1318,9 +1334,8 @@ function boot() {
         <p class="muted">${escapeHtml(s.hint)}. For now, try ${alt}<a class="code" href="${toQuery('HELP')}" data-cmd="HELP">HELP</a>.</p>`, { cls: 'panel-solo' });
       setStatus(`${s.name}: COMING SOON`);
     } else {
-      view.innerHTML = panel('1', 'Unknown command', `
-        <p class="notice">Unknown command. Type <a href="${toQuery('HELP')}" data-cmd="HELP">HELP</a>.</p>
-        <p class="muted">You typed <span class="code">${escapeHtml(cmd.input)}</span>. A ticker is one word, like <a class="code" href="${toQuery('AAPL')}" data-cmd="AAPL">AAPL</a> or <a class="code" href="${toQuery('BRK.B')}" data-cmd="BRK.B">BRK.B</a>.</p>`, { cls: 'panel-solo' });
+      // The same card as NO SUCH TICKER (didYouMeanHtml), without the look-up.
+      view.innerHTML = didYouMeanHtml(cmd.input, {}, null, { extra: { details: raw(cardRows([['Tickers', raw(`A ticker is one word, like <a class="code" href="${toQuery('AAPL')}" data-cmd="AAPL">AAPL</a> or <a class="code" href="${toQuery('BRK.B')}" data-cmd="BRK.B">BRK.B</a>.`)]])) } });
       setStatus('UNKNOWN COMMAND. TYPE HELP', 'warn');
     }
   }
@@ -1444,9 +1459,9 @@ function boot() {
     neutralHead(ticker || info.grave ? typed : 'Unknown command');
     const rows = dymRows(found, typed, ticker).length;
     const title = info.grave ? ns.TITLE_GONE : ticker ? (ns?.TITLE_YET || 'No such ticker') : 'Unknown command';
-    const extra = embed || !ns ? '' : ns.noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : yard });
+    const extra = embed || !ns ? {} : ns.noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : yard });
     view.classList.remove('is-loading');
-    view.innerHTML = panel('1', title, didYouMeanHtml(typed, found, ticker, { extra }), { cls: 'panel-solo', bodyCls: 'ns-page' });
+    view.innerHTML = didYouMeanHtml(typed, found, ticker, { extra: { ...extra, kicker: extra.kicker || title } });
     if (!embed && ns) cleanups.push(ns.wireNoSuch(view, word, info, { status: setStatus }));
     if (info.grave) setStatus(`${info.grave.ticker}: ${info.grave.what.toUpperCase()}`, 'warn');
     else setStatus(rows ? 'NOT FOUND. PICK ONE BELOW, OR TYPE HELP' : ticker ? 'NO SUCH TICKER. TYPE HELP' : 'UNKNOWN COMMAND. TYPE HELP', 'warn');

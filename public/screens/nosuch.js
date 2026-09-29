@@ -10,16 +10,18 @@
 import { esc, q, panel } from './markets.js';
 import { goal } from '../goal.js';
 import { setPrefill } from './feedback.js';
-import { tombstoneLine, graveLinks, ipoLinks, pickGraves, respectsText, IPO_STAMP, FEEDBACK_PREFILL } from '../nosuch.js';
+import { tombstoneLine, ipoLinks, pickGraves, respectsText, IPO_STAMP, FEEDBACK_PREFILL } from '../nosuch.js';
 import {
-  loadGraveyardAll, loadRespects, stoneHtml, flowersHtml, respectsHtml, sourcesHtml, shareRow, wireShare, wireRespects, renderGraveyard, graveyardTable,
+  loadGraveyardAll, loadRespects, flowersHtml, shareRow, wireShare, wireRespects, renderGraveyard, graveyardTable, stoneSlots,
 } from './graveyard.js';
+import { cardLink, usageCard, raw } from '../kit.js';
 
 export { graveyardTable };
 
 export const TITLE_YET = 'No such ticker. Yet.';
 export const TITLE_GONE = 'No such ticker. Not anymore.';
-export const HELP_LINE = `<p class="muted ns-help">Type <a class="code" href="${esc(q('HELP'))}" data-cmd="HELP">HELP</a> for every command.</p>`;
+// The ALL COMMANDS link on the card (the same as app.js HELP_LINE).
+export const HELP_LINE = cardLink({ label: 'ALL COMMANDS', cmd: 'HELP' });
 
 const origin = () => (typeof location !== 'undefined' ? location.origin : 'https://bloombroke.com');
 const code = (c, label = c, extra = '') => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}"${extra}>${esc(label)}</a>`;
@@ -54,18 +56,13 @@ export async function loadGraveyard(signal) {
 
 // ---- Pieces --------------------------------------------------------------------------------
 
-// The not-found screen's tombstone: the stone (with its flowers) and F to pay respects.
-export function tombstoneHtml(e, n = 0) {
-  return `<div class="ns-grave">${stoneHtml(e, { n })}</div>${respectsHtml(e, n)}`;
-}
-
 // A small live preview of the IPO IT certificate: the same paper, the word, the stamp.
 // A link: clicking it is IPO IT.
 export function ipoPreviewHtml(word) {
   const paper = '/img/whatif/certificate.webp';
   return `<a class="ns-mini" href="${esc(q(`IPO IT ${word}`))}" data-cmd="${esc(`IPO IT ${word}`)}" data-ipo aria-label="${esc(`IPO IT ${word}: make the listing certificate`)}">
       <img src="${paper}" width="1536" height="1024" alt="">
-      <span class="ns-mini-big">$${esc(word)}</span><span class="ns-mini-stamp">${esc(IPO_STAMP)}</span>
+      <span class="ns-mini-big" aria-hidden="true">$${esc(word)}</span><span class="ns-mini-stamp" aria-hidden="true">${esc(IPO_STAMP)}</span>
     </a>`;
 }
 
@@ -75,24 +72,33 @@ export function yardHtml(list) {
   return `<section class="ns-yard"><h3 class="hs-h">The graveyard</h3><div class="ns-yard-row">${list.map((e) => `<a class="ns-mini-stone" href="${esc(q(`GRAVEYARD ${e.ticker}`))}" data-cmd="${esc(`GRAVEYARD ${e.ticker}`)}" title="${esc(tombstoneLine(e))}" aria-label="${esc(tombstoneLine(e))}">${esc(e.ticker)}</a>`).join('')}</div></section>`;
 }
 
-// What goes under the "Did you mean" rows on the not-found screen. word: the one word
-// typed (or null); info: noSuchInfo's answer; next: the key number for IPO IT; quote: a
-// tombstone that beat a non-US quote links the quote ($LEH); yard: entries for THE
-// GRAVEYARD row.
+// The slots this screen adds to the NO SUCH card (app.js didYouMeanHtml, kit.js cardPage).
+// word: the one word typed (or null); info: noSuchInfo's answer; next: the key number for
+// IPO IT; quote: a tombstone that beat a non-US quote links the quote ($LEH); yard:
+// entries for THE GRAVEYARD row.
+//  - a famous dead ticker: its stone card (graveyard.js stoneSlots), "Not anymore.";
+//  - a word IPO IT can list: "Be the first.", IPO IT, the certificate and the row;
+//  - any other word: the row. And "Tell us." to ask us to add it.
 export function noSuchExtra(word, info, { ticker = null, next = 1, quote = false, yard = [] } = {}) {
   if (info?.grave) {
     const e = info.grave;
-    const hint = quote ? `<p class="muted ns-quote">Quote: <a class="code dim" href="?c=${encodeURIComponent(`$${e.ticker}`)}" data-cmd="${esc(`$${e.ticker}`)}">$${esc(e.ticker)}</a></p>` : '';
-    return `${tombstoneHtml(e)}${shareRow(graveLinks(e, origin()), 'grave')}${hint}${sourcesHtml(e)}`;
+    const s = stoneSlots(e, 0);
+    const q$ = `$${e.ticker}`;
+    // The share links, and the other listing's quote ($LEH on Frankfurt); no ALL COMMANDS.
+    return { ...s, kicker: TITLE_GONE, help: false, links: [...s.links, ...(quote ? [cardLink({ label: q$, cmd: q$, attrs: `title="${esc(`Quote: ${q$}, another listing`)}"` })] : [])] };
   }
-  if (!word) return '';
-  const w = esc(word);
+  if (!word) return {};
   const canIpo = Boolean(ticker && info?.ipo);
-  const ipo = canIpo
-    ? `<p class="ns-ipo"><span>Nobody has listed <span class="ns-tag">$${w}</span>. Be the first.</span> <button type="button" class="wi-btn ns-ipo-btn" data-cmd="${esc(`IPO IT ${word}`)}" data-ipo${next <= 9 ? ` data-key="${next}"` : ''}>IPO IT</button></p>`
-    : '';
-  const ask = `<p class="ns-ask">Want it on Bloombroke? <a href="${esc(q('FEEDBACK'))}" data-cmd="FEEDBACK" data-prefill="${esc(FEEDBACK_PREFILL(word))}">Tell us.</a></p>`;
-  return ipo + ask + (canIpo ? ipoPreviewHtml(word) : '') + yardHtml(yard);
+  const ask = `<span class="ns-ask">Want it on Bloombroke? <a href="${esc(q('FEEDBACK'))}" data-cmd="FEEDBACK" data-prefill="${esc(FEEDBACK_PREFILL(word))}">Tell us.</a></span>`;
+  const media = (canIpo ? ipoPreviewHtml(word) : '') + yardHtml(yard);
+  return {
+    ...(canIpo ? {
+      sub: 'Nobody has listed it. Be the first.',
+      act: raw(`<button type="button" class="btn card-btn btn-solid ns-ipo-btn" data-cmd="${esc(`IPO IT ${word}`)}" data-ipo${next <= 9 ? ` data-key="${next}"` : ''}>IPO IT</button>`),
+    } : {}),
+    media: media ? raw(`<div class="ns-media">${media}</div>`) : '',
+    links: [ask],
+  };
 }
 
 // n random entries for THE GRAVEYARD row; none when the list does not load in time.
@@ -134,8 +140,13 @@ export function wireNoSuch(el, word, info, { status = () => {} } = {}) {
 
 // ---- IPO IT --------------------------------------------------------------------------------
 
+// IPO IT without a word it can list: the kit's usage card.
+export function ipoUsage() {
+  return usageCard({ problem: 'IPO IT needs a made-up ticker.', format: 'IPO IT <1 to 5 letters>', example: 'IPO IT QXZV', notes: [raw(`Type <a class="code" href="${esc(q('HELP'))}" data-cmd="HELP">HELP</a> for every command.`)] });
+}
+
 function plainPage(el, ctx) {
-  el.innerHTML = panel('1', 'No such ticker', HELP_LINE, { cls: 'panel-solo' });
+  el.innerHTML = panel('1', 'No such ticker', ipoUsage(), { cls: 'panel-solo' });
   ctx.status('UNKNOWN COMMAND. TYPE HELP', 'warn');
 }
 
