@@ -42,14 +42,14 @@ import './goal.js'; // GOALS: loads DataFast unless Global Privacy Control is on
 export { FUNCTION_BAR, TICKER_FUNCTIONS };
 
 // The command bar's list: every listed, runnable command from registry.js, in the
-// registry's order, with the HELP and MENU entries last. Shape: { name, aliases, hint,
+// registry's order, with the MCP, HELP and MENU entries last. Shape: { name, aliases, hint,
 // usage, example, usageExample, keywords }.
 const toSuggestEntry = (c) => ({
   name: c.name, aliases: c.aliases, group: c.category, hint: c.summary, usage: c.syntax,
   example: c.examples[0], examples: c.examples, usageExample: c.usageExample, keywords: c.keywords || [],
 });
 const runnable = LISTED.filter((c) => !c.pattern && !c.soon);
-const LAST = ['HELP', 'MENU'];
+const LAST = ['MCP', 'HELP', 'MENU']; // the old Start here group: last, as before
 export const COMMANDS = [
   ...runnable.filter((c) => !LAST.includes(c.name)),
   ...LAST.map((n) => runnable.find((c) => c.name === n)).filter(Boolean),
