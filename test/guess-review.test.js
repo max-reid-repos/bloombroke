@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { mount, flush } from './fixtures/tiny-dom.js';
 import {
-  render, fmtCountdown, revealHtml, seriesMove, HOWTO, HOWTO_EXAMPLE, howtoExampleHtml, cellHtml, STORE_KEY, TRIES,
+  render, fmtCountdown, nextInner, revealHtml, seriesMove, HOWTO, HOWTO_EXAMPLE, howtoExampleHtml, cellHtml, STORE_KEY, TRIES,
 } from '../public/screens/guess.js';
 import { howtoHtml } from '../public/howto.js';
 import { hintCells } from '../data/guess.js';
@@ -30,12 +30,16 @@ test('GUESS layout: one column at every size, the chart on top and never taller 
   // Phones and the page layout: 2:1 by its width.
   assert.match(rule('.gs-chart'), /aspect-ratio: 2 \/ 1/);
   assert.match(rule('.gs-chart'), /width: 100%/);
-  // The desktop layout: the chart fills the room the guesses leave, but at most half its
-  // own panel's width tall (50cqw of the chart panel's body).
+  // The desktop layout: a column. The chart wants half its panel's width (50cqw of the
+  // chart panel's body) and only gives way (to 160 px); the guesses sit right under it
+  // at their own height and take any room left, so no empty band opens under the chart.
   const desk = css.slice(css.indexOf('@media (min-width: 1100px)'));
-  assert.match(desk, /\.grid-guess \{ grid-template-rows: minmax\(160px, 1fr\) auto; \}/, 'the guesses at their own height');
-  assert.match(desk, /\.gs-chart-panel > \.panel-body \{[^}]*container-type: inline-size/);
-  assert.match(desk, /\.grid-guess \.gs-chart \{[^}]*max-height: 50cqw/);
+  assert.match(desk, /\.view > \.grid-guess \{ display: flex; flex-direction: column; \}/);
+  assert.match(desk, /\.grid-guess > \.gs-chart-panel \{ flex: 0 1 auto; min-height: 160px; \}/, 'the chart panel: its content size, shrinks only');
+  assert.match(desk, /\.grid-guess > \.gs-play \{ flex: 1 0 auto; \}/, 'the guesses: never squeezed, take the rest');
+  assert.match(desk, /\.gs-chart-panel > \.panel-body \{[^}]*flex: 0 1 auto;[^}]*container-type: inline-size/);
+  assert.match(desk, /\.grid-guess \.gs-chart \{[^}]*flex: 0 1 auto;[^}]*height: 50cqw;[^}]*max-height: none/, '2:1 at most, and no bigger box than the chart');
+  assert.doesNotMatch(desk, /\.gs-chart \{[^}]*flex: 1/, 'the chart never grows past 2:1 (that was the empty band)');
   // Never a fixed height that could be taller than 2:1.
   assert.doesNotMatch(rule('.gs-chart'), /(^|[\s;{])height: \d/);
 });
@@ -98,6 +102,20 @@ test('GUESS countdown: hours and minutes, no seconds', () => {
   assert.equal(fmtCountdown(0), '0 h 0 m');
   assert.equal(fmtCountdown(-5), '0 h 0 m');
   assert.equal(fmtCountdown(24 * 3_600_000), '24 h 0 m');
+});
+
+test('GUESS next puzzle: NEXT IN while waiting; once the time has come, the new puzzle line, never 0 h 0 m', () => {
+  assert.equal(nextInner(0, 13 * 3_600_000 + 20 * 60_000), 'NEXT IN <span class="gs-cd">13 h 20 m</span>');
+  assert.equal(nextInner(1000, 1000), 'A NEW PUZZLE IS OUT. <a class="code" href="?c=GUESS" data-cmd="GUESS">GUESS</a>');
+  assert.equal(nextInner(5000, 1000), nextInner(1000, 1000));
+  assert.doesNotMatch(nextInner(999, 1000), /0 h 0 m/, 'the last second: a part minute is a whole one');
+});
+
+test('GUESS links: SHARE ON X and EMBED hover as the kit\'s card links (brighter), the underline unchanged', () => {
+  const hover = rule('.gs-share .gs-link:hover, .gs-share .gs-link:focus-visible');
+  assert.match(hover, /color: var\(--text\)/);
+  assert.match(hover, /text-decoration: underline/);
+  assert.match(rule('.gs-share .gs-link'), /text-decoration: underline/);
 });
 
 // The screen, on the tiny DOM. api: path -> the JSON the server sends.
@@ -185,4 +203,30 @@ test('GUESS end card: COPY RESULT is the one primary button; SHARE ON X and EMBE
   assert.deepEqual(s.every.map(([, ms]) => ms), [60_000], 'updated once a minute');
   s.every[0][0]();
   assert.match(share.querySelector('.gs-cd').textContent, /^\d{1,2} h \d{1,2} m$/);
+});
+
+test('GUESS end card after the rollover: the new puzzle line, on the next tick and when it is drawn late', async () => {
+  const realNow = Date.now;
+  try {
+    // Open, then the New York midnight passes: the minute tick swaps NEXT IN for the line.
+    const s = screen({ results: {}, game: { n: 9, rows: [row('SO', true)] } });
+    await flush(12);
+    assert.match(s.el.querySelector('.gs-next').textContent, /^NEXT IN \d/);
+    Date.now = () => realNow() + 25 * 3_600_000;
+    s.every[0][0]();
+    assert.equal(s.el.querySelector('.gs-next').textContent, 'A NEW PUZZLE IS OUT. GUESS');
+    assert.equal(s.el.querySelector('.gs-next').querySelector('[data-cmd]').getAttribute('data-cmd'), 'GUESS', 'the way to start it');
+    assert.equal(s.el.querySelector('.gs-cd'), null);
+    s.every[0][0]();
+    assert.equal(s.el.querySelector('.gs-next').textContent, 'A NEW PUZZLE IS OUT. GUESS', 'stays');
+    // Opened just before midnight, drawn after it (a slow answer): never "0 h 0 m".
+    Date.now = realNow;
+    const late = screen({ results: {}, game: { n: 9, rows: [row('SO', true)] } });
+    Date.now = () => realNow() + 25 * 3_600_000;
+    await flush(12);
+    assert.equal(late.el.querySelector('.gs-next').textContent, 'A NEW PUZZLE IS OUT. GUESS');
+    assert.doesNotMatch(late.el.querySelector('.gs-end').textContent, /0 h 0 m/);
+  } finally {
+    Date.now = realNow;
+  }
 });

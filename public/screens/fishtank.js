@@ -141,17 +141,15 @@ export function alwaysNamed(stocks, n = BIG) {
   return { big, winner: ex.winner?.ticker || null, loser: ex.loser?.ticker || null };
 }
 
-// L: every name on, or back to the always-named few. Not while typing in a text field
-// (the command bar is one), not with a modifier.
-export function isNamesKey(e) {
-  if (!e || (e.key !== 'l' && e.key !== 'L') || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return false;
-  const t = e.target;
-  return !(t && (t.id === 'cmd' || t.closest?.('input, select, textarea, [contenteditable]')));
+// NAMES: the toggle in the strip that names every fish (pressed) or only the always-named
+// few. A button, so a click, Enter or Space; never in a DESK panel.
+export function namesToggleHtml(on = false) {
+  return `<button type="button" class="chip ft-names" id="ft-names" aria-pressed="${on}" title="Show the ticker of every fish">NAMES</button>`;
 }
 
 // The ticker tags to draw, in order: [{ f, tag, must }] with tag crab, winner, loser, big,
 // sector or name. Nothing lit: every crab, the day's winner and loser, the biggest
-// companies (big), then with L (all) every other fish. A sector lit: only its own fish
+// companies (big), then with NAMES on (all) every other fish. A sector lit: only its own fish
 // are tagged (a dimmed tag would take the room first), in the same order, then the rest
 // of the sector. must: always drawn, even over another tag (the others give way).
 export function tagPlan(fish, { winner = null, loser = null, active = null, big = [], all = false } = {}) {
@@ -168,14 +166,11 @@ export function tagPlan(fish, { winner = null, loser = null, active = null, big 
   return out;
 }
 
-// Tab and the arrows walk the fish in this order: biggest company first (fish is kept
-// sorted by cap). -> the next index, or -1 to leave the tank (Tab past either end).
-export function nextFishIndex(i, key, n, shift = false) {
+// The tank is one Tab stop; inside it the arrows walk the fish in this order: biggest
+// company first (fish is kept sorted by cap), stopping at either end. -> the next index,
+// or i for a key that does not move (Tab leaves the tank as usual).
+export function nextFishIndex(i, key, n) {
   if (!(n > 0)) return -1;
-  if (key === 'Tab') {
-    const j = i < 0 ? (shift ? n - 1 : 0) : i + (shift ? -1 : 1);
-    return j >= 0 && j < n ? j : -1;
-  }
   if (key === 'ArrowRight' || key === 'ArrowDown') return i < 0 ? 0 : Math.min(n - 1, i + 1);
   if (key === 'ArrowLeft' || key === 'ArrowUp') return i < 0 ? 0 : Math.max(0, i - 1);
   if (key === 'Home') return 0;
@@ -631,7 +626,7 @@ export function makeRunner(frame, {
   };
 }
 
-function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprChanged = () => {}, onFocusFish = () => {} }) {
+function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprChanged = () => {}, onFocusFish = () => {}, keys = true }) {
   const g = canvas.getContext('2d');
   const font = (getComputedStyle(host).fontFamily || 'monospace');
   let W = 0; let H = 0; let dpr = 1;
@@ -641,7 +636,7 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprCh
   let bubbles = [];
   let weeds = [];
   let labels = { winner: null, loser: null, big: [] }; // the always-named tickers
-  let allNames = false; // L: every fish named
+  let allNames = false; // NAMES: every fish named
   let range = 0; // the % change at the surface (and, negative, at the floor)
   let active = null; // the lit sector, or null
   let last = 0; let clock = 0;
@@ -1072,7 +1067,10 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprCh
   }
   watchDpr();
 
-  // ---- the keyboard: Tab and the arrows walk the fish, Enter opens one, Esc leaves ----
+  // ---- the keyboard: one Tab stop; the arrows walk the fish, Enter opens one, Esc leaves.
+  // Tab and Shift+Tab leave the tank as they would anything else. Coming back, the focus
+  // starts on the fish it was on (or the biggest). Not in a DESK panel (keys: false).
+  let lastFocus = null; // the ticker in focus when the tank was left
   function setFocus(f) {
     if (f === focusF) return;
     focusF = f;
@@ -1080,14 +1078,13 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprCh
     onFocusFish(f ? f.s : null);
     if (!runner.running) frame(performance.now(), true);
   }
-  canvas.addEventListener('focus', (e) => {
+  if (keys) canvas.addEventListener('focus', () => {
     // Only a keyboard focus starts on a fish (a click opens the one under it instead).
     if (!canvas.matches?.(':focus-visible') || focusF || !fish.length) return;
-    const back = e.relatedTarget && (canvas.compareDocumentPosition(e.relatedTarget) & 4); // came from after it: Shift+Tab
-    setFocus(fish[back ? fish.length - 1 : 0]);
+    setFocus((lastFocus && byTicker.get(lastFocus)) || fish[0]);
   });
-  canvas.addEventListener('blur', () => setFocus(null));
-  canvas.addEventListener('keydown', (e) => {
+  if (keys) canvas.addEventListener('blur', () => { if (focusF) lastFocus = focusF.s.ticker; setFocus(null); });
+  if (keys) canvas.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey || !fish.length) return;
     const i = focusF ? fish.indexOf(focusF) : -1;
     if (e.key === 'Enter') {
@@ -1104,11 +1101,10 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprCh
       if (bar) bar.focus(); else canvas.blur?.();
       return;
     }
-    if (!['Tab', 'ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
-    const j = nextFishIndex(i, e.key, fish.length, e.shiftKey);
-    if (j < 0) { setFocus(null); return; } // Tab past the last (or first) fish: out of the tank
+    if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'].includes(e.key)) return; // Tab: out, as usual
+    const j = nextFishIndex(i, e.key, fish.length);
     e.preventDefault(); e.stopPropagation();
-    setFocus(fish[j]);
+    if (j >= 0) setFocus(fish[j]);
   });
 
   canvas.addEventListener('pointermove', (e) => {
@@ -1130,7 +1126,7 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprCh
     setStocks,
     setActive,
     resize,
-    // L: every fish named, or only the always-named few.
+    // NAMES: every fish named, or only the always-named few.
     setAllNames(on) { allNames = Boolean(on); if (!runner.running) frame(performance.now(), true); },
     get allNames() { return allNames; },
     get focused() { return focusF ? focusF.s.ticker : null; },
@@ -1146,9 +1142,13 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprCh
 }
 
 export function render(el, cmd, ctx) {
-  el.innerHTML = panel('1', 'Fishtank', `<div class="ft-leg" id="ft-leg" role="group" aria-label="Sectors" hidden></div><div class="ft-host" id="ft-host">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'ft-meta', bodyCls: 'flush' });
+  // The strip: the counts (refreshed), then NAMES (built once, so a refresh never takes
+  // the focus off it). No NAMES and no tank keys in a DESK panel.
+  const strip = `<span class="ft-head" id="ft-head"></span>${ctx.embed ? '' : `<span class="ft-sep"> · </span>${namesToggleHtml(false)}`}`;
+  el.innerHTML = panel('1', 'Fishtank', `<div class="ft-leg" id="ft-leg" role="group" aria-label="Sectors" hidden></div><div class="ft-host" id="ft-host">${LOADING}</div>`, { cls: 'panel-solo', metaId: 'ft-meta', bodyCls: 'flush', meta: strip });
   const host = el.querySelector('#ft-host');
-  const meta = el.querySelector('#ft-meta');
+  const meta = el.querySelector('#ft-head') || el.querySelector('#ft-meta');
+  const namesBtn = el.querySelector('#ft-names');
   const leg = el.querySelector('#ft-leg');
   const motion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   const reduced = () => Boolean(motion?.matches);
@@ -1158,20 +1158,22 @@ export function render(el, cmd, ctx) {
   let names = {}; // sector key -> GICS name, from the data
   let active = SPECIES[cmd.args?.sector] ? cmd.args.sector : null; // the lit sector (FISHTANK TECH lights one)
   let legKey = '';
-  let allNames = false; // L: every fish named
+  let allNames = false; // NAMES: every fish named
   const sectorName = (k) => names[k] || SPECIES[k]?.short || k;
   // What holds the animation, besides data: kept here so a tank made later starts right.
   const holds = { hidden: document.hidden, offscreen: typeof IntersectionObserver === 'function', reduced: reduced() };
   const applyHolds = () => { if (tank) for (const [k, v] of Object.entries(holds)) tank.hold(k, v); };
 
   function mount() {
-    // The canvas takes the focus (Tab): then Tab and the arrows walk the fish, Enter opens
-    // one, Esc leaves. The fish in focus is said in the live line for screen readers.
-    host.innerHTML = '<canvas class="ft-canvas" tabindex="0" role="img" aria-label="The S&amp;P 100 as fish"></canvas><div class="ft-tip" hidden></div>'
+    // The canvas is one Tab stop: then the arrows walk the fish, Enter opens one, Esc
+    // leaves. The fish in focus is said in the live line for screen readers. In a DESK
+    // panel it is a picture only (no Tab stop, no keys).
+    const canvasAttrs = ctx.embed ? 'role="img"' : 'tabindex="0" role="application" aria-roledescription="fish tank"';
+    host.innerHTML = `<canvas class="ft-canvas" ${canvasAttrs} aria-label="The S&amp;P 100 as fish"></canvas><div class="ft-tip" hidden></div>`
       + '<p class="offscreen ft-live" aria-live="polite"></p><ul class="ft-sr" aria-label="Every fish"></ul>';
     const live = host.querySelector('.ft-live');
     const onFocusFish = (s) => { if (live) live.textContent = s ? `${s.ticker} ${s.name} ${fmtPct(s.changePct)}. Enter opens it.` : ''; };
-    tank = makeTank(host, host.querySelector('canvas'), host.querySelector('.ft-tip'), { onOpen: (t) => ctx.run(t), reduced, sectorName, onDpr: drawGlyphs, onFocusFish });
+    tank = makeTank(host, host.querySelector('canvas'), host.querySelector('.ft-tip'), { onOpen: (t) => ctx.run(t), reduced, sectorName, onDpr: drawGlyphs, onFocusFish, keys: !ctx.embed });
     tank.setAllNames(allNames);
     applyHolds();
   }
@@ -1204,17 +1206,15 @@ export function render(el, cmd, ctx) {
     const b = e.target.closest?.('.ft-leg-btn');
     if (b) setActive(toggleSector(active, b.dataset.sector));
   });
-  // L names every fish (again: only the always-named few). Esc clears a lit sector first
-  // (and only then goes back a screen, as elsewhere); with a fish in focus, Esc leaves
-  // the fish first (the canvas's own keys).
+  // NAMES: every fish named; pressed again, only the always-named few.
+  namesBtn?.addEventListener('click', () => {
+    allNames = !allNames;
+    namesBtn.setAttribute('aria-pressed', String(allNames));
+    tank?.setAllNames(allNames);
+  });
+  // Esc clears a lit sector first (and only then goes back a screen, as elsewhere); with
+  // a fish in focus, Esc leaves the fish first (the canvas's own keys).
   const onKey = (e) => {
-    if (isNamesKey(e) && !ctx.embed) {
-      e.preventDefault();
-      e.stopPropagation();
-      allNames = !allNames;
-      tank?.setAllNames(allNames);
-      return;
-    }
     if (e.key !== 'Escape' || !active || tank?.focused) return;
     const t = e.target;
     if (t?.closest?.('select, textarea') || (t?.matches?.('input') && t.value)) return;
@@ -1266,9 +1266,8 @@ export function render(el, cmd, ctx) {
       buildLegend();
       const head = tankHeader(stocks, d.updated);
       meta.innerHTML = `<span class="ft-idx">S&amp;P 100 · </span><span class="up">${head.up} up</span> · <span class="down">${head.down} down</span>`
-        + `<span class="ft-upd"> · updated ${esc(nyTime(d.updated))}</span><span class="ft-key"><span class="ft-sep"> · </span><span class="ft-long">size = company size</span><span class="ft-short">size = cap</span> · depth = today's %</span>`
-        + (ctx.embed ? '' : '<span class="ft-lkey"><span class="ft-sep"> · </span><kbd>L</kbd> names</span>');
-      host.querySelector('canvas').setAttribute('aria-label', `The S&P 100 as fish: ${head.up} up, ${head.down} down. Tab moves between the fish, Enter opens one, L names them all.`);
+        + `<span class="ft-upd"> · updated ${esc(nyTime(d.updated))}</span><span class="ft-key"><span class="ft-sep"> · </span><span class="ft-long">size = company size</span><span class="ft-short">size = cap</span> · depth = today's %</span>`;
+      host.querySelector('canvas').setAttribute('aria-label', `The S&P 100 as fish: ${head.up} up, ${head.down} down.${ctx.embed ? '' : ' The arrow keys move between the fish, Enter opens one.'}`);
       // The same fish as links, for keyboards and screen readers (shown on focus).
       host.querySelector('.ft-sr').innerHTML = [...stocks].sort((a, b) => b.changePct - a.changePct)
         .map((s) => `<li><a href="${esc(q(s.ticker))}" data-cmd="${esc(s.ticker)}">${esc(`${s.ticker} ${s.name}${SPECIES[s.sector] ? ` ${SPECIES[s.sector].short}` : ''} ${fmtPct(s.changePct)}`)}</a></li>`).join('');

@@ -51,12 +51,14 @@
 }
 .is-embed .ft-host { height: calc(100vh - 28px); min-height: 160px; }
 .is-embed .ft-leg:not([hidden]) + .ft-host { height: calc(100vh - 58px); }
-/* The L key in the strip (a key: outlined); not on a touch screen. */
-.ft-lkey kbd { margin-right: 4px; }
-@media (pointer: coarse) { .ft-lkey { display: none; } }
+/* NAMES in the strip: an outlined chip (a toggle you press); on, it is filled ice blue
+   (where you are: the toggle is on). */
+.ft-names { height: 18px; padding: 0 6px; }
+.ft-names[aria-pressed="true"] { background: var(--here); border-color: var(--here); color: var(--ink); }
+.ft-names:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 .ft-short { display: none; }
 @media (max-width: 639px) {
-  .ft-idx, .ft-upd, .ft-sep, .ft-long, .ft-lkey { display: none; }
+  .ft-idx, .ft-upd, .ft-sep, .ft-long { display: none; }
   .ft-key { display: block; }
   .ft-short { display: inline; }
   .ft-leg { mask-image: linear-gradient(to right, #000 88%, transparent); -webkit-mask-image: linear-gradient(to right, #000 88%, transparent); }

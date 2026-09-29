@@ -12,10 +12,14 @@
 .grid-guess { grid-template-columns: minmax(0, 1fr); }
 .gs-chart { position: relative; width: 100%; aspect-ratio: 2 / 1; max-height: 360px; min-height: 0; overflow: hidden; }
 @media (min-width: 1100px) {
-  /* The guesses at their own height, the chart in the room left (and 2:1 at most). */
-  html:not(.is-embed) .view > .grid-guess { grid-template-rows: minmax(160px, 1fr) auto; }
-  html:not(.is-embed) .view > .grid-guess > .gs-chart-panel > .panel-body { display: flex; flex-direction: column; overflow: hidden; scrollbar-gutter: auto; container-type: inline-size; }
-  html:not(.is-embed) .view > .grid-guess .gs-chart { flex: 1 1 0; aspect-ratio: auto; height: auto; min-height: 120px; max-height: 50cqw; }
+  /* A column: the chart wants 2:1 (50cqw of its panel), and gives way (down to 160 px)
+     to the guesses at their own height, which sit right under it. Room left over goes
+     under the guesses, never between the chart and the table. */
+  html:not(.is-embed) .view > .grid-guess { display: flex; flex-direction: column; }
+  html:not(.is-embed) .view > .grid-guess > .gs-chart-panel { flex: 0 1 auto; min-height: 160px; }
+  html:not(.is-embed) .view > .grid-guess > .gs-play { flex: 1 0 auto; }
+  html:not(.is-embed) .view > .grid-guess > .gs-chart-panel > .panel-body { display: flex; flex-direction: column; flex: 0 1 auto; overflow: hidden; scrollbar-gutter: auto; container-type: inline-size; }
+  html:not(.is-embed) .view > .grid-guess .gs-chart { flex: 0 1 auto; aspect-ratio: auto; height: 50cqw; min-height: 120px; max-height: none; }
 }
 .gs-svg { display: block; }
 .gs-line { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; }
@@ -68,6 +72,8 @@
 .gs-pro { font-size: 12px; color: var(--dim); }
 /* SHARE ON X and EMBED: plain text links beside the one primary button (COPY RESULT). */
 .gs-share .gs-link { margin-left: 8px; font-size: 12px; letter-spacing: .06em; text-decoration: underline; text-underline-offset: 3px; }
+/* Hover and focus as the kit's .card-link: brighter text; the underline stays as it is. */
+.gs-share .gs-link:hover, .gs-share .gs-link:focus-visible { color: var(--text); text-decoration: underline; }
 /* The chart's strip once the game is over: the stock, named. */
 .panel-meta .gs-reveal { color: var(--text-2); font-size: 12px; text-transform: none; letter-spacing: 0; }
 .gs-reveal .gs-rtk { color: var(--text); font-weight: 600; }

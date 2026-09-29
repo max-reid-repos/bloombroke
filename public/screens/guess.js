@@ -99,6 +99,13 @@ export function msToNextPuzzle(nowMs) {
 
 // "13 h 20 m": hours and whole minutes, no ticking seconds (the screen updates it once a
 // minute). A part minute counts as a whole one, so it never reads 0 m before the new one.
+// The end card's NEXT IN; once the new puzzle is out (the New York midnight seen when the
+// screen opened has passed), a line and the way to start it instead, never "0 h 0 m".
+export function nextInner(now, at) {
+  return now < at
+    ? `NEXT IN <span class="gs-cd">${fmtCountdown(at - now)}</span>`
+    : `A NEW PUZZLE IS OUT. <a class="code" href="${esc(q('GUESS'))}" data-cmd="GUESS">GUESS</a>`;
+}
 export function fmtCountdown(ms) {
   const t = Math.max(0, Math.ceil(ms / 60_000));
   return `${Math.floor(t / 60)} h ${t % 60} m`;
@@ -404,7 +411,7 @@ export function render(el, cmd, ctx) {
         <a class="card-link gs-link gs-x" href="${esc(shareOnX(shareText(game.n, game.rows, solved())))}" target="_blank" rel="noopener">SHARE ON X</a>
         <button type="button" class="card-link gs-link gs-embed" title="Copy one line of HTML that puts today's GUESS on your site">EMBED</button>
         ${postChatHtml(chat?.pro, chat?.rooms)}
-        <span class="gs-next">NEXT IN <span class="gs-cd">${fmtCountdown(nextAt - Date.now())}</span></span>
+        <span class="gs-next">${nextInner(Date.now(), nextAt)}</span>
       </div>
       ${proChatLineHtml(!ctx.embed && chat?.visitor === true)}
     </div>`;
@@ -617,12 +624,9 @@ export function render(el, cmd, ctx) {
   load();
   // NEXT IN, once a minute.
   ctx.every(() => {
-    const cd = playBody.querySelector('.gs-cd');
-    if (!cd) return;
-    const now = Date.now();
-    if (now < nextAt) { cd.textContent = fmtCountdown(nextAt - now); return; }
+    if (!playBody.querySelector('.gs-cd')) return; // no count running (playing, or the new puzzle is out)
     const next = playBody.querySelector('.gs-next');
-    if (next) next.innerHTML = `A NEW PUZZLE IS OUT. <a class="code" href="${esc(q('GUESS'))}" data-cmd="GUESS">GUESS</a>`;
+    if (next) next.innerHTML = nextInner(Date.now(), nextAt);
   }, 60_000);
   return () => resize?.disconnect();
 }
