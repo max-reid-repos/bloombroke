@@ -32,24 +32,62 @@
   border: .5cqw solid var(--paper-red); border-radius: 1cqw; font-size: 2.1cqw; font-weight: 800; letter-spacing: .15cqw; color: var(--paper-red); opacity: .88;
 }
 
-.ns-yard { margin-top: 18px; }
-.ns-yard-row { display: flex; gap: 12px; flex-wrap: wrap; }
-.ns-mini-stone {
-  width: 84px; height: 100px; display: flex; align-items: center; justify-content: center; padding-top: 18px;
-  background: var(--stone); color: var(--stone-ink); border: 3px solid var(--stone-ink); border-radius: 42px 42px 4px 4px;
-  font-weight: 800; font-size: 18px; letter-spacing: -.02em;
+/* NOT A TICKER (screens/nosuch.js notFound): a numbered panel like every other screen,
+   as tall as its rows. CLOSEST and OR are rows: the name, "ticker · detail" (the detail
+   dim), the key at the right. The first row is the hero (24 px, 700). Nothing close: the
+   certificate is the result, words left and the picture right; one column on a phone. */
+.nf { display: flex; flex-direction: column; }
+.nf-panel .panel-body { padding: 16px 12px 24px; }
+.nf-back { display: flex; align-items: center; gap: 6px; color: var(--dim); }
+.nf-back:hover { color: var(--text); text-decoration: none; }
+.nf-list { display: flex; flex-direction: column; gap: 4px; width: fit-content; min-width: min(100%, 640px); max-width: 100%; }
+.nf-kick { margin: 0; padding: 0 12px; }
+.nf-kick ~ .nf-kick { margin-top: 16px; }
+.nf-row {
+  display: flex; align-items: baseline; gap: 8px; min-width: 0;
+  padding: 6px 12px; border: 1px solid transparent;
+  font-size: 14px; line-height: 1.5; color: var(--text); white-space: nowrap;
 }
-.ns-mini-stone:hover { text-decoration: none; background: var(--text); }
+.nf-row:hover, .nf-row:focus-visible { background: var(--panel-2); border-color: var(--rule-strong); text-decoration: none; }
+.nf-hero { font-size: 24px; padding-top: 8px; padding-bottom: 8px; }
+.nf-hero .nf-name { font-weight: 700; }
+.nf-meta { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin-right: 16px; color: var(--text-2); }
+.nf-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+.nf-dot { color: var(--dim); }
+.nf-key { flex: 0 0 auto; align-self: center; margin-left: auto; }
+.nf-hero .nf-key { font-size: 12px; line-height: 18px; padding: 0 6px; }
+
+.nf-joke { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
+.nf-none { margin: 0; font-size: 24px; font-weight: 700; color: var(--text); }
+.nf-sub { margin: 0; color: var(--text-2); }
+.nf-act { display: flex; }
+.nf-links { margin: 0; color: var(--dim); }
+.nf-links .ns-ask { color: var(--text-2); }
+.nf-links a { color: var(--accent); }
+.nf-cert { width: 100%; max-width: 440px; }
+.nf-cert .ns-mini { width: 100%; margin: 0; }
+@media (min-width: 900px) {
+  .nf-joke.has-cert {
+    display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 440px); column-gap: 48px; row-gap: 16px;
+    grid-template-rows: auto auto auto 1fr; align-items: start; justify-content: start;
+  }
+  .nf-joke.has-cert > .nf-cert { grid-column: 2; grid-row: 1 / span 4; }
+  .nf-joke.has-cert > :not(.nf-cert) { grid-column: 1; }
+}
 @media (max-width: 639px) {
-  .ns-yard-row { gap: 8px; }
-  .ns-mini-stone { width: calc((100% - 24px) / 4); height: 88px; font-size: 16px; }
+  .nf-list { width: 100%; min-width: 0; }
+  .nf-kick { padding: 0 8px; }
+  .nf-row {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; align-items: center;
+    padding: 8px; white-space: normal;
+  }
+  .nf-name { grid-column: 1; min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
+  .nf-meta { grid-column: 1; grid-row: 2; flex-wrap: wrap; row-gap: 0; margin-right: 0; font-size: 14px; }
+  .nf-what { white-space: normal; }
+  .nf-hero .nf-meta { font-size: 16px; }
+  .nf-meta > .nf-dot:first-child { display: none; }
+  .nf-key { grid-column: 2; grid-row: 1 / span 2; margin-left: 0; }
 }
 
-/* The NO SUCH card (app.js didYouMeanHtml, kit.js cardPage): the certificate preview and
-   THE GRAVEYARD row in the media slot, centred. */
-.ns-media { display: flex; flex-direction: column; align-items: center; gap: 24px; width: 100%; }
-.ns-card .ns-mini { width: min(100%, 360px); margin: 0 auto; }
-.ns-card .ns-yard { margin: 0; }
-.ns-card .ns-yard-row { justify-content: center; }
-.ns-card .ns-ask { margin: 0; white-space: nowrap; }
-.ns-card .ns-ask a { color: var(--accent); }
+/* The status line on NOT A TICKER: the second text colour, not the loss red. */
+.status-msg[data-kind="note"] { color: var(--text-2); }

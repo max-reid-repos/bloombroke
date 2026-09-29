@@ -29,7 +29,7 @@ import { parseDeskArgs, isEmbedSearch, tickerOf, TICKER_SCREENS } from './desk-l
 import { COMPANY_SCREENS, COMPANY_TAKES_ARGS, matchCompany } from './company.js';
 import { MARKETS_SCREENS, MARKETS_TAKES_ARGS, matchMarkets } from './commands-markets.js';
 import { WEIRD_SCREENS, matchWeird } from './commands-weird.js';
-import { matchNoSuch, dymRows } from './nosuch.js'; // NO SUCH TICKER. YET.: GRAVEYARD, IPO IT
+import { matchNoSuch } from './nosuch.js'; // NO SUCH TICKER. YET.: GRAVEYARD, IPO IT
 import { LISTED, ALIASES, FUNCTION_BAR, TICKER_FUNCTIONS, findCommand } from './registry.js';
 import { tapeOn, setTapeOn, mountTape, tapeItems } from './tape.js';
 import { compactEmbed } from './embed.js';
@@ -1495,31 +1495,38 @@ function boot() {
       await showDidYouMean(view, typed, {}, ticker, signal);
     }
   }
-  // NO SUCH TICKER. YET.: the rows, then a tombstone for a famous dead ticker, or IPO IT
-  // and "Tell us." for any other word (screens/nosuch.js).
+  // NOT A TICKER (screens/nosuch.js): the closest names, tickers and graveyard stones as
+  // numbered rows, or the IPO IT joke when nothing is close. A graveyard company's name
+  // (LEHMAN, ENRON) opens its stone; a dead ticker typed on its own (LEH) gets its stone card.
   async function showDidYouMean(view, typed, found, ticker, signal, { quote = false } = {}) {
     const toks = tokenize(typed);
     const word = ticker || (toks.length === 1 ? toks[0] : null);
-    // NO SUCH TICKER. YET. (screens/nosuch.js) loads with its stylesheet the first time.
+    // screens/nosuch.js loads with its stylesheet the first time.
     const [ns, cards] = await Promise.all([loadScreen(lazy(NOSUCH), stylesFor(lazy(NOSUCH))).catch(() => null), loadModule(CARDS).catch(() => null)]);
     if (signal?.aborted) return;
-    const [info, yard] = word && !embed && ns
-      ? await Promise.all([ns.noSuchInfo(word, { signal }), ns.yardPick(signal)])
-      : [{ grave: null, ipo: false }, []];
+    const none = { grave: null, ipo: false };
+    const [info, graves] = ns ? await Promise.all([word && !embed ? ns.noSuchInfo(word, { signal }) : none, ns.loadGraves(signal)]) : [none, []];
     if (signal?.aborted) return;
-    neutralHead(ticker || info.grave ? typed : 'Unknown command');
+    // (The server knows a stone by its other words too: ENRON is ENE.)
+    const stone = ns?.graveByName(typed, graves) || (info.grave && info.grave.ticker !== word ? info.grave : null);
+    if (stone) {
+      const c = `GRAVEYARD ${stone.ticker}`;
+      replaceUrl(c);
+      render(c, { checked: true, note: resolvedNote(c, typed) });
+      return;
+    }
+    neutralHead(typed);
     // GA4: a GRAVEYARD stone's ticker, or just UNKNOWN (never the words typed).
     if (!embed) window.dispatchEvent(new CustomEvent('bb:page', { detail: info.grave?.ticker || 'UNKNOWN' }));
-    const rows = dymRows(found, typed, ticker).length;
-    const title = info.grave ? ns.TITLE_GONE : ticker ? (ns?.TITLE_YET || 'No such ticker') : 'Unknown command';
-    const extra = embed || !ns ? {} : ns.noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : yard });
     view.classList.remove('is-loading');
+    if (ns && !info.grave) { cleanups.push(ns.notFound(view, { typed, ticker, found, info, graves, signal, status: setStatus })); return; }
+    const extra = ns ? ns.noSuchExtra(word, info, { quote }) : {};
     view.innerHTML = cards
-      ? cards.didYouMeanHtml(typed, found, ticker, { extra: { ...extra, kicker: extra.kicker || title } })
-      : panel('1', title, NOT_LOADED, { cls: 'panel-solo' });
-    if (!embed && ns) cleanups.push(ns.wireNoSuch(view, word, info, { status: setStatus }));
+      ? cards.didYouMeanHtml(typed, found, ticker, { extra: { ...extra, kicker: extra.kicker || 'Not found' } })
+      : panel('1', 'Not found', NOT_LOADED, { cls: 'panel-solo' });
+    if (ns) cleanups.push(ns.wireNoSuch(view, word, info, { status: setStatus }));
     if (info.grave) setStatus(`${info.grave.ticker}: ${info.grave.what.toUpperCase()}`, 'warn');
-    else setStatus(rows ? 'NOT FOUND. PICK ONE BELOW, OR TYPE HELP' : ticker ? 'NO SUCH TICKER. TYPE HELP' : 'UNKNOWN COMMAND. TYPE HELP', 'warn');
+    else setStatus('NOT FOUND. TYPE HELP');
   }
 
   function remember(clean) {

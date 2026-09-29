@@ -8,8 +8,8 @@ import sharp from 'sharp';
 import { parseCommand, urlFor } from '../public/app.js';
 import { didYouMeanHtml } from '../public/cards.js';
 import { findCommand } from '../public/registry.js';
-import { dymRows, graveBeatsQuote, pickGraves, ipoShape, matchNoSuch, findGrave, tombstoneLine, dayText, ipoLinks, graveLinks, FEEDBACK_PREFILL, MAX_ROWS } from '../public/nosuch.js';
-import { noSuchExtra as extraSlots, graveyardTable, ipoHtml, ipoPreviewHtml, yardHtml, TITLE_YET } from '../public/screens/nosuch.js';
+import { dymRows, graveBeatsQuote, ipoShape, matchNoSuch, findGrave, tombstoneLine, dayText, ipoLinks, graveLinks, FEEDBACK_PREFILL, MAX_ROWS } from '../public/nosuch.js';
+import { noSuchExtra as extraSlots, graveyardTable, ipoHtml, ipoPreviewHtml, notFoundHtml, TITLE_YET } from '../public/screens/nosuch.js';
 import { stoneHtml } from '../public/screens/graveyard.js';
 import { setPrefill, takePrefill } from '../public/screens/feedback.js';
 import { GOALS, GOAL_PROPS, cleanProps } from '../public/goal.js';
@@ -126,14 +126,15 @@ test('IPO IT guard: A-Z, 1 to 5 letters, never a live ticker, a word the library
   assert.ok(shipped.words instanceof Set && Array.isArray(shipped.roots));
   assert.equal(ipoAllowed('MAXX', loadBlocklist('/nonexistent/file')), 'MAXX', 'a missing extra list: the library still guards');
   assert.equal(ipoAllowed('A' + 'SS', loadBlocklist('/nonexistent/file')), null);
-  // The screen: IPO IT only when the server said yes, and only for a ticker.
-  assert.match(noSuchExtra('MAXX', { grave: null, ipo: true }, { ticker: 'MAXX', next: 2 }), /data-cmd="IPO IT MAXX" data-ipo data-key="2">IPO IT</);
-  assert.doesNotMatch(noSuchExtra('MAXX', { grave: null, ipo: false }, { ticker: 'MAXX' }), /IPO IT/);
+  // The screen: IPO only when the server said yes (notFound passes the word, or null).
+  const row = { kind: 'live', id: 'MAX', name: 'Max', cmd: 'MAX' };
+  assert.match(notFoundHtml({ typed: 'MAXX', rows: [row], ipo: 'MAXX' }), /data-cmd="IPO IT MAXX" data-key="2" data-ipo>/);
+  assert.doesNotMatch(notFoundHtml({ typed: 'MAXX', rows: [row], ipo: null }), /IPO IT/);
   assert.equal(TITLE_YET, 'No such ticker. Yet.');
 });
 
 test('FEEDBACK prefill: "Tell us." carries Please add: WORD, used once', () => {
-  const html = noSuchExtra('MAXX', { grave: null, ipo: false }, { ticker: 'MAXX' });
+  const html = notFoundHtml({ typed: 'MAXX', rows: [], ipo: null });
   assert.match(html, /Want it on Bloombroke\? <a [^>]*data-cmd="FEEDBACK" data-prefill="Please add: MAXX">Tell us\.<\/a>/);
   assert.equal(FEEDBACK_PREFILL('MAXX'), 'Please add: MAXX');
   setPrefill('Please add: MAXX');
@@ -263,21 +264,11 @@ test('graveyard beats a non-US quote; a US listing wins', async () => {
   assert.doesNotMatch(noSuchExtra('LEH', { grave: findGrave(GRAVE, 'LEH') }, { ticker: 'LEH' }), /Quote:/);
 });
 
-test('the unknown-word page: certificate preview and THE GRAVEYARD row', () => {
-  let i = 0;
-  const seq = [0.1, 0.9, 0.5, 0.3, 0.7];
-  const four = pickGraves(GRAVE, 4, () => seq[i++ % seq.length]);
-  assert.equal(four.length, 4);
-  assert.equal(new Set(four.map((e) => e.ticker)).size, 4, 'no repeats');
-  assert.equal(pickGraves([], 4).length, 0);
-  const html = noSuchExtra('MAXX', { grave: null, ipo: true }, { ticker: 'MAXX', next: 1, yard: four });
+test('the certificate preview: the paper, the word and its stamp, a link to IPO IT', () => {
+  const html = ipoPreviewHtml('MAXX');
+  assert.match(html, /certificate\.webp/);
   assert.match(html, /class="ns-mini"[^>]*data-cmd="IPO IT MAXX" data-ipo/);
   assert.match(html, /\$MAXX<\/span><span class="ns-mini-stamp" aria-hidden="true">NOT A REAL SECURITY/);
-  assert.equal((html.match(/class="ns-mini-stone"/g) || []).length, 4);
-  for (const e of four) assert.match(html, new RegExp(`data-cmd="GRAVEYARD ${e.ticker}"`));
-  assert.doesNotMatch(noSuchExtra('MAXX', { grave: null, ipo: false }, { ticker: 'MAXX', yard: four }), /ns-mini"/, 'no IPO, no preview');
-  assert.equal(yardHtml([]), '');
-  assert.match(ipoPreviewHtml('MAXX'), /certificate\.webp/);
 });
 
 test('IPO cards: memory only, bounded by entries and bytes', () => {
