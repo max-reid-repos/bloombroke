@@ -315,8 +315,8 @@ test('SPONSOR and BBRK: the globe under the numbers, in the first view, centred,
   assert.match(css, /\.spon-globe canvas \{[^}]*aspect-ratio: 1;/, 'always square: never cut in half');
   const bb = readFileSync('public/screens/bbrk.css', 'utf8');
   assert.match(bb, /\.bb-globe \{[^}]*width: min\(var\(--fit-w, var\(--globe-w\)\), 100%\);[^}]*margin: 0 auto;/, 'the room left, or --globe-w; centred');
-  // Six facts in one row once BBRK's column is its full 880 px, so the globe fits the first view.
-  assert.match(bb, /\.bb-card \{ container-type: inline-size; \}\s*@container \(min-width: 880px\) \{\s*\.bb-card \.card-facts \{ grid-template-columns: repeat\(6, minmax\(0, 1fr\)\); \}/);
+  // Five facts (MRR is in + Details) in one row once BBRK's column is its full 880 px, so the globe fits the first view.
+  assert.match(bb, /\.bb-card \{ container-type: inline-size; \}\s*@container \(min-width: 880px\) \{\s*\.bb-card \.card-facts \{ grid-template-columns: repeat\(5, minmax\(0, 1fr\)\); \}/);
   // Both screens fit it on render, on new numbers and on resize.
   for (const f of ['public/screens/sponsor.js', 'public/screens/bbrk.js']) {
     const src = readFileSync(f, 'utf8');
