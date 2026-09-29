@@ -68,11 +68,12 @@ test('dot labels: the folding rule (3 or more, from the server), cities and the 
     cities: [{ name: 'Tokyo', cc: 'JP', at: [140, 36], visitors: 12, live: true }],
   };
   const items = globeItems(globe, centres);
-  assert.equal(tipText(items.find((k) => k.cc === 'US'), names), 'United States · 45 this week');
-  assert.equal(tipText(items.find((k) => k.kind === 'city'), names), 'Tokyo · 12 this week');
-  assert.equal(tipText(items.find((k) => k.cc === 'JP' && k.kind === 'country'), names), 'Japan, elsewhere · 18 this week');
+  assert.equal(tipText(items.find((k) => k.cc === 'US'), names), 'United States · 45 visitors this week');
+  assert.equal(tipText(items.find((k) => k.kind === 'city'), names), 'Tokyo · 12 visitors this week');
+  assert.equal(tipText(items.find((k) => k.cc === 'JP' && k.kind === 'country'), names), 'Japan, elsewhere · 18 visitors this week');
+  assert.equal(tipText({ kind: 'city', name: 'Oslo', n: 1 }), 'Oslo · 1 visitor this week');
   assert.ok(!items.some((k) => k.cc === 'DE'), 'not on the map: no dot');
-  assert.equal(tipText(items.find((k) => k.cc === 'US'), { US: 'United States of America' }), 'United States · 45 this week', 'plain names');
+  assert.equal(tipText(items.find((k) => k.cc === 'US'), { US: 'United States of America' }), 'United States · 45 visitors this week', 'plain names');
   const noRest = globeItems({ countries: [{ cc: 'JP', visitors: 12, rest: 0, live: true }] }, centres);
   assert.equal(noRest.length, 1, 'kept only to pulse');
   assert.equal(tipText(noRest[0], names), '', 'no dot, no label');
@@ -268,16 +269,16 @@ test('pulses: live places pulse from 2 people on now; the loop keeps drawing the
 test('hover and tap: the label of the dot under the pointer; keys turn it only while it has focus', () => {
   const p = page();
   const g = mountGlobe(p.canvas, p.geo, { countries: [{ cc: 'US', visitors: 45 }], cities: [{ name: 'Tokyo', cc: 'JP', at: [140, 36], visitors: 12 }] }, p.opts);
-  assert.equal(p.children.length, 1, 'one label element beside the canvas');
+  assert.equal(p.children.length, 2, 'a label and the zoom buttons beside the canvas');
   const us = g.placed.find((x) => x.item.cc === 'US');
   assert.ok(us, 'the globe starts facing the top country');
   p.ev('pointermove', { clientX: us.x, clientY: us.y });
-  assert.equal(g.tip, 'United States · 45 this week');
+  assert.equal(g.tip, 'United States · 45 visitors this week');
   p.ev('pointerleave', {});
   assert.equal(g.tip, '');
   p.ev('pointerdown', { pointerType: 'touch', clientX: us.x + 3, clientY: us.y });
   p.ev('pointerup', { pointerType: 'touch', clientX: us.x + 3, clientY: us.y });
-  assert.equal(g.tip, 'United States · 45 this week', 'a tap shows it too');
+  assert.equal(g.tip, 'United States · 45 visitors this week', 'a tap shows it too');
   p.ev('pointerdown', { pointerType: 'touch', clientX: 5, clientY: 5 });
   p.ev('pointerup', { pointerType: 'touch', clientX: 5, clientY: 5 });
   assert.equal(g.tip, '', 'a tap elsewhere hides it');

@@ -19,20 +19,45 @@
 /* ---- The globe: --globe-w, or the room left in the first view (kit.js fitToView, which
    writes --fit-w), centred, square, never cut off ------------------------------------- */
 .bb-globe { position: relative; width: min(var(--fit-w, var(--globe-w)), 100%); margin: 0 auto; text-align: center; font-size: 12px; }
-/* Drag to turn it (public/globe.js); pan-y: a mostly vertical drag still scrolls the page. */
+/* Drag to turn it, the wheel or two fingers to zoom (public/globe.js); pan-y: a mostly
+   vertical one-finger drag still scrolls the page. */
 .bb-globe canvas {
   display: block; width: 100%; aspect-ratio: 1; cursor: grab; touch-action: pan-y; outline: 0;
   --globe-land: hsla(201, 100%, 71%, .38); --globe-hot: var(--text); --globe-rim: hsla(201, 100%, 71%, .22);
 }
 .bb-globe canvas:active { cursor: grabbing; }
 .bb-globe canvas:focus-visible { box-shadow: 0 0 0 1px var(--accent); border-radius: 50%; }
-/* The label of the dot under the pointer: 'Tokyo · 12 this week'. */
+/* The label of the bunch under the pointer: 'Tokyo · 12 visitors this week'. */
 .bb-globe .globe-tip {
   position: absolute; z-index: 2; padding: 2px 6px; pointer-events: none; transform: translateY(-100%);
   background: var(--panel); border: 1px solid var(--rule-strong); color: var(--text); font-size: 11px; white-space: nowrap;
 }
 .bb-globe .globe-tip[hidden] { display: none; }
+/* Zoom (public/globe.js): +, - and back to 1x, small and quiet, in the top right corner
+   the round globe leaves empty (an L: 1x beside +, - under it, so no button is on the
+   globe even at 220 px). Out of the flow, so fitToView's sizing is unchanged. */
+.bb-globe .globe-zoom {
+  position: absolute; top: 0; right: 0; z-index: 1; display: grid; gap: 2px;
+  grid-template-columns: 20px 20px; grid-template-areas: "reset in" ". out";
+}
+.bb-globe .globe-zoom-btn {
+  width: 20px; height: 20px; padding: 0; border: 1px solid var(--rule-strong); background: var(--bg);
+  color: var(--dim); font: inherit; font-size: 11px; line-height: 1; cursor: pointer;
+}
+.bb-globe .globe-zoom-btn[data-zoom="in"] { grid-area: in; }
+.bb-globe .globe-zoom-btn[data-zoom="out"] { grid-area: out; }
+.bb-globe .globe-zoom-btn[data-zoom="reset"] { grid-area: reset; }
+.bb-globe .globe-zoom-btn:hover { color: var(--text); border-color: var(--dim); }
+.bb-globe .globe-zoom-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.bb-globe .globe-zoom-btn[aria-disabled="true"] { opacity: .4; cursor: default; }
 .bb-globe figcaption { margin-top: 8px; color: var(--dim); }
+/* On a desktop, one line: at 220 px a long caption ('3 here now · top: United States
+   71%') would wrap after fitToView measured it and push the globe below the fold.
+   Centred, it may run a little past the globe on both sides. A phone scrolls, so there
+   it wraps as usual. */
+@media (min-width: 640px) {
+  .bb-globe figcaption { display: flex; justify-content: center; white-space: nowrap; }
+}
 
 /* ---- + Details: what a sponsor gets, from our own counters -------------------------- */
 .bb-card .bb-table { max-width: 60ch; margin: 0 auto 12px; }
