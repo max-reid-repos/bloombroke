@@ -10,6 +10,7 @@
 //   PRO_SECRET                32+ characters; encrypts the 24 hour key reveal
 //   PRO_DB_PATH               default var/pro.db
 //   PUBLIC_URL                default https://bloombroke.com
+//   VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT   PINGS (pro/push.js); without the keys pings are off
 
 import path from 'node:path';
 import { openDb } from './db.js';
@@ -19,7 +20,8 @@ import { createStripe, stripeEnv, DEFAULT_TERMS_VERSION } from './billing.js';
 import { mountPro, defaultLimits } from './routes.js';
 import { createFeedbackStore, mountFeedback } from './feedback.js';
 import { mountChat } from './chat-routes.js'; // CHAT: private chat between Pro seats
-import { getQuote } from '../data/quotes.js'; // CHAT: the price stamp on a $TICKER
+import { getQuote, getQuoteList } from '../data/quotes.js'; // CHAT: the price stamp on a $TICKER; PINGS: closed-tab ALERTS
+import { mountPush, pushConfig } from './push.js'; // PINGS: Web Push for CHAT and ALERTS
 import { parseCommand, linkChanges, screenTitle } from '../public/app.js'; // CHAT: what a card may open, and its title
 
 export function startPro(app, { dir, env = process.env, log = console, counters = null }) {
@@ -52,10 +54,19 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
     // FEEDBACK lives in the same database: POST /api/feedback, for everyone.
     const feedback = createFeedbackStore(db);
     mountFeedback(app, { store: feedback, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', log, onSaved: () => counters?.bump('feedback_sent') });
-    // CHAT: /api/chat, active Pro keys only (pro/chat-routes.js).
+    // PINGS: /api/push (pro/push.js). Off (404 push_off) without the VAPID keys.
+    const push = mountPush(app, {
+      db, store, guess: limits.guess, mode: se.mode, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', config: pushConfig(env, log), getQuoteList, log,
+    });
+    // CHAT: /api/chat, active Pro keys only (pro/chat-routes.js). A new message may ping;
+    // DELETE MY ACCOUNT takes the push rows too.
     const chat = mountChat(app, {
       db, store, guess: limits.guess, mode: se.mode, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', getQuote, parse: parseCommand, linkChanges, titleOf: (c) => screenTitle(c).title, log,
+      onMessage: (m) => push.onMessage(m), onAccountDelete: (id) => push.wipe(id),
     });
+    // NEW KEY logs out every device, so no device gets pings for this licence any more.
+    store.onKeyChange((id) => { try { push.forgetDevices(id); } catch (err) { log.error('[push] new key', err.message); } });
+    push.alerts?.start();
     const clean = () => {
       try { store.purgeReveals(); store.pruneEvents(); } catch (err) { log.error('[pro] clean-up', err.message); }
     };
@@ -83,11 +94,17 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
         const c = chat.purge();
         log.log(`[pro] purge: chat ${c.messages} messages, ${c.requests} requests, ${c.reports} reports, ${c.ended} rows of ended licences, ${c.rooms} empty rooms`);
       } catch (err) { log.error('[pro] chat purge', err.message); }
+      // Privacy Policy: push subscriptions, ping settings and server alerts go 30 days
+      // after the Pro ended (and at once for a deleted account).
+      try {
+        const p = push.purge();
+        log.log(`[pro] purge: pings ${p.subs} devices, ${p.prefs} settings, ${p.alerts} alerts`);
+      } catch (err) { log.error('[pro] push purge', err.message); }
     };
     purge();
     setInterval(purge, 24 * 60 * 60 * 1000).unref();
     log.log(`[pro] ${se.mode} mode, ${ready ? 'ready' : 'not configured: checkout is closed'}`);
-    return { db, store, feedback, chat, ready, mode: se.mode, proActive };
+    return { db, store, feedback, chat, push, ready, mode: se.mode, proActive };
   } catch (err) {
     log.error('[pro] could not start:', err.message);
     return null;

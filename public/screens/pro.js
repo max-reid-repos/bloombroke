@@ -34,7 +34,7 @@ export const PRO_ROWS = [
   ['A seat number', LIVE, ''],
   ['No sponsor line', LIVE, 'SPONSOR'],
   ['CHAT with friends who have Pro', LIVE, 'CHAT'],
-  ['Alerts when the tab is closed', COMING, ''],
+  ['Alerts and CHAT pings when the tab is closed', LIVE, 'ME'],
 ];
 // A row for a command that is not on this site (yet) is left out, never shown as live.
 export const shownRows = (rows) => rows.filter(([, , cmd]) => !cmd || findCommand(cmd));
@@ -604,6 +604,11 @@ export const loginCommand = {
 export const logoutCommand = {
   render(el, cmd, ctx) {
     const had = Boolean(pro.getKey());
+    // PINGS: this browser stops getting this key's pings (public/push.js).
+    if (had && typeof navigator !== 'undefined' && navigator.serviceWorker) {
+      const key = pro.getKey();
+      import('../push.js').then((m) => m.forgetDevice(key)).catch(() => {});
+    }
     pro.logout();
     page(el);
     loadNumbers(el, ctx);

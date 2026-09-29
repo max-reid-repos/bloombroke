@@ -6,8 +6,10 @@
 // line, PRO, and this device's settings.
 //
 // This device (bb.prefs, pro.js): START SCREEN (a visit with no ?c= opens on it), CLOCK
-// (the top bar only: New York or local), CHAT SOUND (Pro) and TAPE (Pro, the TAPE ON/OFF
-// setting). Everything is reachable by keyboard: Tab between the parts, arrows inside the
+// (the top bar only: New York or local), CHAT SOUND (Pro), TAPE (Pro, the TAPE ON/OFF
+// setting) and PINGS (Pro, when the site has pings: notifications with the tab closed,
+// public/push.js). What to ping about (CHAT MESSAGES, ALERTS WHEN THE TAB IS CLOSED,
+// SHOW MESSAGE TEXT) and TEST are in + Details, with the words that explain them. Everything is reachable by keyboard: Tab between the parts, arrows inside the
 // colour row and the pixel grid, Space or Enter to press. NEW KEY and DELETE ask first,
 // one line: Enter goes ahead, Esc does not; DELETE also wants the word typed.
 //
@@ -21,6 +23,7 @@ import {
 } from '../pixel-avatar.js';
 import { keyView, MANAGE, CANCEL } from './pro.js';
 import { findCommand } from '../registry.js';
+import * as push from '../push.js';
 
 export const NOT_PRO_LINE = 'Username, avatar and sync come with Pro.';
 export const USERNAME_RE = /^[A-Za-z][A-Za-z0-9_]{2,14}$/; // the server's rule (pro/chat.js)
@@ -32,6 +35,16 @@ export const RENEWING = 'Cancel first: press CANCEL. Then delete.';
 export const DELETED = 'Your account is deleted. This browser is logged out.';
 export const NEW_KEY_DONE = 'New key made. Your old key stops working everywhere.';
 export const START_NAMES = pro.START_SCREENS;
+
+// PINGS: the lines for a browser that cannot have them yet (public/push.js).
+export const PING_HINTS = { ios: push.IOS_HINT, denied: push.DENIED_HINT, no: push.UNSUPPORTED_HINT };
+// + Details, under PINGS: what they are.
+export const PING_ROWS = [
+  ['Pings', 'Notifications when the tab is closed. PINGS turns them on or off on this device; the three settings count for all your devices.'],
+  ['Chat messages', 'A new message while you are not on CHAT. One ping per chat every 5 minutes.'],
+  ['Alerts', 'Your price alerts, checked by our server every minute. WEIRD gauge alerts still need an open tab. Pings can be late or missed: do not rely on them.'],
+  ['Message text', 'Off: a ping only says who wrote. On: the first 80 characters of the message.'],
+];
 
 // + Details: the rules, as short rows.
 export const ME_ROWS = [
@@ -105,14 +118,16 @@ export function profileFormHtml(d, seat) {
     + '</form>';
 }
 
-// This device. pro: CHAT SOUND and TAPE too.
-export function deviceHtml({ prefs = pro.DEFAULT_PREFS, pro: isPro = false, tape = false } = {}) {
+// This device. pro: CHAT SOUND and TAPE too. pings: { device } when the site has pings
+// (null: no row).
+export function deviceHtml({ prefs = pro.DEFAULT_PREFS, pro: isPro = false, tape = false, pings = null } = {}) {
   const p = pro.cleanPrefs(prefs);
   const set = (label, pref, value, pressed = null) => `<div class="me-set"><span class="tag">${esc(label)}</span><button type="button" class="chip me-pref" data-pref="${pref}"${pressed === null ? '' : ` aria-pressed="${pressed}"`}>${esc(value)}</button></div>`;
   return '<div class="me-device" role="group" aria-label="This device"><p class="tag me-dev-k">THIS DEVICE</p>'
     + set('START', 'start', p.start)
     + set('CLOCK', 'clock', p.clock === 'local' ? 'LOCAL' : 'NEW YORK')
     + (isPro ? set('CHAT SOUND', 'sound', p.sound ? 'ON' : 'OFF', p.sound) + set('TAPE', 'tape', tape ? 'ON' : 'OFF', tape) : '')
+    + (isPro && pings ? set('PINGS', 'pings', pings.device ? 'ON' : 'OFF', Boolean(pings.device)) : '')
     + '</div>';
 }
 
@@ -129,8 +144,21 @@ export function confirmHtml(kind) {
   return '';
 }
 
-// + Details: KEY AND DATA, then the rules.
-export function keyDataHtml({ confirm = null } = {}) {
+// + Details, PINGS: the three settings (for every device of the licence), TEST, the line
+// for a browser that cannot have them yet, and what they are. pings: { device, prefs,
+// support, hint }.
+export function pingsHtml(pings) {
+  const pr = pings.prefs || {};
+  const set = (label, k) => `<div class="me-set"><span class="tag">${esc(label)}</span><button type="button" class="chip me-ping" data-ping="${k}" aria-pressed="${Boolean(pr[k])}">${pr[k] ? 'ON' : 'OFF'}</button></div>`;
+  const hint = pings.hint || PING_HINTS[pings.support] || '';
+  return `<p class="tag me-dk">PINGS</p><div class="me-pings" role="group" aria-label="Pings">`
+    + set('CHAT MESSAGES', 'chat') + set('ALERTS WHEN THE TAB IS CLOSED', 'alerts') + set('SHOW MESSAGE TEXT', 'show_text')
+    + `</div><p class="me-keys">${cardLink({ label: 'TEST', id: 'me-ping-test' })}</p>`
+    + `<p class="me-ping-hint" id="me-ping-hint" role="status"${hint ? '' : ' hidden'}>${esc(hint)}</p>${cardRows(PING_ROWS)}`;
+}
+
+// + Details: KEY AND DATA, then the rules. pings: PINGS first, when the site has them.
+export function keyDataHtml({ confirm = null, pings = null } = {}) {
   const links = [
     cardLink({ label: 'SHOW KEY', id: 'me-show' }),
     cardLink({ label: 'NEW KEY', id: 'me-newkey' }),
@@ -138,7 +166,7 @@ export function keyDataHtml({ confirm = null } = {}) {
     cardLink({ label: 'DOWNLOAD MY DATA', id: 'me-export' }),
     cardLink({ label: 'DELETE MY ACCOUNT', id: 'me-delete' }),
   ];
-  return `<p class="tag me-dk">KEY AND DATA</p><p class="me-keys">${links.join(' ')}</p><div id="me-confirm">${confirmHtml(confirm)}</div>${cardRows(ME_ROWS)}`;
+  return `<div id="me-pings-box">${pings ? pingsHtml(pings) : ''}</div><p class="tag me-dk">KEY AND DATA</p><p class="me-keys">${links.join(' ')}</p><div id="me-confirm">${confirmHtml(confirm)}</div>${cardRows(ME_ROWS)}`;
 }
 
 // The page. key/st/me: this browser's licence, status and profile (none: a visitor).
@@ -146,12 +174,12 @@ export function keyDataHtml({ confirm = null } = {}) {
 // has: whether a command exists (tests). confirm: 'key' or 'delete' while asking.
 export function meHtml(o = {}) {
   const {
-    key = null, st = null, me = null, prefs = pro.DEFAULT_PREFS, tape = false, alert = '', alertWarn = false, detailsOpen = false, confirm = null,
+    key = null, st = null, me = null, prefs = pro.DEFAULT_PREFS, tape = false, alert = '', alertWarn = false, detailsOpen = false, confirm = null, pings = null,
   } = o;
   const exists = o.has || ((c) => Boolean(findCommand(c)));
   const on = Boolean(key) && pro.statusActive(st);
   const gift = st?.status === 'gift' || st?.status === 'gift_ended';
-  const details = key ? raw(keyDataHtml({ confirm })) : '';
+  const details = key ? raw(keyDataHtml({ confirm, pings: on ? pings : null })) : '';
   const open = detailsOpen || Boolean(confirm);
   if (!on) {
     const links = key
@@ -187,7 +215,7 @@ export function meHtml(o = {}) {
     // PLAN: the facts, then MANAGE PLAN, CANCEL and GIFT right under them (CANCEL stays in
     // the first view), before this device.
     facts: `<div class="me-plan">${cardFacts(planFacts(st))}<p class="me-plan-links">${links.filter(Boolean).join(' ')}</p></div>`,
-    media: raw(deviceHtml({ prefs, pro: true, tape })),
+    media: raw(deviceHtml({ prefs, pro: true, tape, pings })),
     details,
     detailsOpen: open,
   });
@@ -220,7 +248,8 @@ function saveFile(name, text) {
 }
 
 export function render(el, cmd, ctx) {
-  const v = { draft: null, dirty: false, confirm: null, alert: '', warn: false, px: 0 };
+  // pings: null until the site says it has pings (then { device, prefs, support, hint }).
+  const v = { draft: null, dirty: false, confirm: null, alert: '', warn: false, px: 0, pings: null };
   const alive = () => !ctx.signal?.aborted && el.isConnected;
   const $ = (sel) => el.querySelector(sel);
   const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
@@ -232,7 +261,7 @@ export function render(el, cmd, ctx) {
     const s = state();
     const detailsOpen = Boolean($('.card-more')?.open);
     el.innerHTML = `<div class="me-page">${meHtml({
-      ...s, prefs: pro.getPrefs(), tape: Boolean(ctx.tapeOn?.()), draft: v.draft, alert: v.alert, alertWarn: v.warn, detailsOpen, confirm: v.confirm,
+      ...s, prefs: pro.getPrefs(), tape: Boolean(ctx.tapeOn?.()), draft: v.draft, alert: v.alert, alertWarn: v.warn, detailsOpen, confirm: v.confirm, pings: v.pings,
     })}</div>`;
     if (v.confirm && v.confirm !== 'renewing') {
       const c = $('.me-confirm');
@@ -310,7 +339,104 @@ export function render(el, cmd, ctx) {
     }
   }
 
+  const deviceNow = () => deviceHtml({ prefs: pro.getPrefs(), pro: pro.isPro(), tape: Boolean(ctx.tapeOn?.()), pings: v.pings });
+
+  // ---- PINGS (public/push.js) ----
+  let pingKey = null; // the site's public VAPID key
+  const pingsOnce = oneAtATime();
+  // The PINGS row and the Details part, redrawn in place (the editor keeps what is typed).
+  function paintPings(focus = null) {
+    if (!alive()) return;
+    const dev = $('.me-device');
+    if (dev) dev.outerHTML = deviceNow();
+    const box = $('#me-pings-box');
+    if (box) box.innerHTML = v.pings && pro.isPro() ? pingsHtml(v.pings) : '';
+    if (focus) $(focus)?.focus();
+  }
+  // Closed-tab alerts on this device: the tab leaves its quote alerts to the server.
+  function alertsFollow() {
+    const on = Boolean(v.pings?.device && v.pings.prefs.alerts);
+    push.setAlertsFlag(on);
+    if (on) push.syncAlerts(undefined, { force: true }).catch(() => {});
+  }
+  async function loadPings() {
+    if (!pro.isPro() || !alive()) return;
+    const key = await push.vapidKey();
+    if (!key || !alive() || !pro.isPro()) return;
+    pingKey = key;
+    let st;
+    try { st = await push.loadState(); } catch { return; }
+    if (!alive()) return;
+    v.pings = { device: st.device, prefs: st.prefs, support: push.supportOf(), hint: '' };
+    // This browser had pings: make sure the server still has it (NEW KEY, failed sends).
+    if (st.device && (st.prefs.chat || st.prefs.alerts)) push.resubscribe(st.sub).catch(() => {});
+    alertsFollow();
+    paintPings();
+  }
+  const pingFail = (err) => {
+    const p = v.pings;
+    if (err.code === 'denied') p.support = 'denied';
+    p.hint = PING_HINTS[err.code] || '';
+    ctx.status(String(err.message).toUpperCase(), 'warn');
+  };
+  // The PINGS row: this device on or off. On with nothing to ping about turns both on.
+  const pingsDevice = () => pingsOnce(async () => {
+    const p = v.pings;
+    if (!p) return;
+    try {
+      if (p.device) {
+        ctx.status('PINGS: TURNING OFF...');
+        await push.turnOffDevice();
+        p.device = false;
+        ctx.status('PINGS OFF ON THIS DEVICE');
+      } else {
+        if (p.support === 'ios' || p.support === 'no') throw Object.assign(new Error(PING_HINTS[p.support]), { code: p.support });
+        ctx.status('PINGS: ALLOW NOTIFICATIONS IN THE BROWSER...');
+        await push.turnOnDevice(pingKey);
+        p.device = true;
+        p.support = 'ok';
+        if (!p.prefs.chat && !p.prefs.alerts) p.prefs = await push.setPrefs({ chat: true, alerts: true });
+        ctx.status('PINGS ON. PRESS TEST IN DETAILS TO TRY ONE');
+      }
+      p.hint = '';
+    } catch (err) { pingFail(err); }
+    alertsFollow();
+    paintPings('.me-pref[data-pref="pings"]');
+  });
+  const PING_WORDS = { chat: 'CHAT MESSAGES', alerts: 'CLOSED-TAB ALERTS', show_text: 'MESSAGE TEXT' };
+  // CHAT MESSAGES, ALERTS, SHOW MESSAGE TEXT: for every device. Turning one on turns this
+  // device on too; turning the last of CHAT and ALERTS off turns this device off.
+  const pingsToggle = (k) => pingsOnce(async () => {
+    const p = v.pings;
+    if (!p) return;
+    const want = !p.prefs[k];
+    try {
+      if (want && k !== 'show_text' && !p.device) {
+        if (p.support === 'ios' || p.support === 'no') throw Object.assign(new Error(PING_HINTS[p.support]), { code: p.support });
+        await push.turnOnDevice(pingKey);
+        p.device = true;
+        p.support = 'ok';
+      }
+      p.prefs = await push.setPrefs({ [k]: want });
+      if (!p.prefs.chat && !p.prefs.alerts && p.device) {
+        await push.turnOffDevice();
+        p.device = false;
+      }
+      p.hint = '';
+      ctx.status(`${PING_WORDS[k]} ${want ? 'ON' : 'OFF'}`);
+    } catch (err) { pingFail(err); }
+    alertsFollow();
+    paintPings(`.me-ping[data-ping="${k}"]`);
+  });
+  const pingsTest = () => pingsOnce(async () => {
+    try {
+      const d = await push.sendTest();
+      ctx.status(`TEST PING SENT TO ${d.sent} DEVICE${d.sent === 1 ? '' : 'S'}`);
+    } catch (err) { ctx.status(String(err.message).toUpperCase(), 'warn'); }
+  });
+
   function setPref(pref, back = false) {
+    if (pref === 'pings') { pingsDevice(); return; }
     const p = pro.getPrefs();
     if (pref === 'start') {
       const i = START_NAMES.indexOf(p.start);
@@ -333,7 +459,7 @@ export function render(el, cmd, ctx) {
     // Redraw the device part only: the editor keeps what is typed.
     const dev = $('.me-device');
     if (dev) {
-      dev.outerHTML = deviceHtml({ prefs: pro.getPrefs(), pro: pro.isPro(), tape: Boolean(ctx.tapeOn?.()) });
+      dev.outerHTML = deviceNow();
       $(`.me-pref[data-pref="${pref}"]`)?.focus();
     }
   }
@@ -366,6 +492,7 @@ export function render(el, cmd, ctx) {
       ctx.status('MAKING A NEW KEY...');
       try {
         const d = await pro.rotateKey();
+        push.afterNewKey().catch(() => {}); // the server dropped every device: this one again
         if (!alive()) return;
         v.confirm = null;
         keyView(el, ctx, d.key, d.saved ? NEW_KEY_DONE : `${NEW_KEY_DONE} This browser could not save it, so copy it now.`, { warn: !d.saved });
@@ -382,6 +509,7 @@ export function render(el, cmd, ctx) {
     ctx.status('DELETING YOUR ACCOUNT...');
     try {
       await pro.deleteAccount();
+      push.turnOffDevice({ key: null }).catch(() => {}); // the server has already forgotten it
       if (!alive()) return;
       v.confirm = null;
       v.draft = null;
@@ -408,12 +536,14 @@ export function render(el, cmd, ctx) {
     if (t.dataset.color !== undefined) { setColor(Number(t.dataset.color)); return; }
     if (t.dataset.i !== undefined) { v.px = Number(t.dataset.i); togglePx(v.px); return; }
     if (t.dataset.pref) { setPref(t.dataset.pref); return; }
+    if (t.dataset.ping) { pingsToggle(t.dataset.ping); return; }
     if (t.dataset.act === 'yes' || t.dataset.act === 'no') { answer(t.dataset.act === 'yes'); return; }
     switch (t.id) {
       case 'me-reset': draft().bits = null; v.dirty = true; preview(); ctx.status('AVATAR: YOUR INITIALS. SAVE TO KEEP'); break;
       case 'me-clear': draft().bits = blank(); v.dirty = true; preview(); ctx.status('AVATAR: CLEARED. CLICK PIXELS TO DRAW'); break;
       case 'me-manage': busy('OPENING BILLING...', () => pro.openPortal()); break;
       case 'me-cancel': busy('OPENING BILLING. CANCEL IS THERE...', () => pro.openPortal()); break;
+      case 'me-ping-test': pingsTest(); break;
       case 'me-show': if (pro.getKey()) { keyView(el, ctx, pro.getKey()); ctx.status('YOUR KEY'); } break;
       case 'me-newkey': ask('key'); ctx.status('NEW KEY: ENTER TO GO AHEAD, ESC TO CANCEL'); break;
       case 'me-export': busy('GETTING YOUR DATA...', async () => {
@@ -489,7 +619,7 @@ export function render(el, cmd, ctx) {
   const onPro = () => { if (!v.dirty && !v.confirm) { v.draft = null; paint(); } };
   const onPrefs = () => {
     const dev = $('.me-device');
-    if (dev) dev.outerHTML = deviceHtml({ prefs: pro.getPrefs(), pro: pro.isPro(), tape: Boolean(ctx.tapeOn?.()) });
+    if (dev) dev.outerHTML = deviceNow();
   };
   window.addEventListener('bb:pro', onPro);
   window.addEventListener('bb:prefs', onPrefs);
@@ -505,6 +635,8 @@ export function render(el, cmd, ctx) {
         if (!v.dirty && !v.confirm) { v.draft = null; paint(); }
         ctx.status(pro.isPro() ? 'ME' : 'ME: USERNAME, AVATAR AND SYNC COME WITH PRO');
       })
+      .catch(() => {})
+      .then(() => loadPings())
       .catch(() => {});
   }
   if (!coarse && pro.isPro()) setTimeout(() => { if (alive() && !v.confirm) $('#me-name')?.focus({ preventScroll: true }); }, 0);

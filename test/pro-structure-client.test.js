@@ -39,7 +39,7 @@ test('PRO: free is what you look at, Pro is your own stuff; every row says LIVE 
   const pro = Object.fromEntries(PRO_ROWS.map(([n, s]) => [n, s]));
   for (const n of ['Watchlist, portfolio, DESK and GRID on every device', 'Your own ticker tape', 'A seat number', 'No sponsor line']) assert.equal(pro[n], LIVE, n);
   assert.ok(FREE_ROWS.some(([n, s]) => n === 'DESK and GRID, saved on this device' && s === LIVE), 'DESK and GRID are free on this device');
-  assert.equal(pro['Alerts when the tab is closed'], COMING);
+  assert.equal(pro['Alerts and CHAT pings when the tab is closed'], LIVE, 'closed-tab alerts are live (PINGS in ME)');
   assert.equal(pro['CHAT with friends who have Pro'], LIVE, 'CHAT is live for Pro');
   // WHATIF with your own purchase is free for everyone (owner, 27 Sep 2026).
   assert.equal(pro['WHATIF with your own purchase'], undefined);
@@ -50,7 +50,7 @@ test('PRO: free is what you look at, Pro is your own stuff; every row says LIVE 
   assert.match(html, />PRO</);
   assert.match(html, /\$42<\/span><span class="hero-unit">A MONTH/);
   assert.match(html, /\$420<\/span><span class="hero-unit">A YEAR/);
-  assert.equal((html.match(/COMING WHEN PRO LAUNCHES/g) || []).length, 1);
+  assert.equal((html.match(/COMING WHEN PRO LAUNCHES/g) || []).length, 0, 'nothing is coming any more');
   assert.equal(PRICE_BOTH, '$42 a month or $420 a year');
   // A row for a command this site does not have is left out, never shown as live.
   const guess = FREE_ROWS.find(([n]) => n === 'GUESS');
@@ -394,7 +394,7 @@ test('legal: version bumped, so everyone who accepted 1.0 is asked again', async
   const { LEGAL_UPDATED } = await import('../public/legal-version.js');
   const { needsConsent, acceptRecord } = await import('../public/consent.js');
   const { DEFAULT_TERMS_VERSION } = await import('../pro/billing.js');
-  assert.equal(TERMS_VERSION, '1.5', 'ME: usernames, avatars, DOWNLOAD MY DATA, DELETE MY ACCOUNT');
+  assert.equal(TERMS_VERSION, '1.6', 'PINGS: push subscriptions, ping settings, closed-tab alerts');
   assert.equal(LEGAL_UPDATED, '29 September 2026');
   assert.equal(needsConsent(acceptRecord('1.0')), true);
   assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
@@ -417,7 +417,7 @@ test('legal: terms s9, disclaimer and privacy say what the code does', () => {
   const privacy = read('privacy');
   assert.ok(privacy.includes('We do not share it with advertisers or data brokers.'), 'privacy s6 stays');
   for (const must of ['We add no tracking code to the link', 'one-way hash of the code and its last four characters', 'your seat number', 'We keep feedback for up to 12 months', 'We do not store your IP address with it', 'your email address only to reply to you',
-    'the Pro routes and gift codes (a 10 or 15 minute window), the ticker counter, the site counters, the GUESS game and the pay respects button on GRAVEYARD stones (a one minute window), the feedback form (a one hour window) and the MCP endpoint (a one minute, a 10 minute and a 24 hour window)', 'forgets it within one minute after the window ends', 'one minute for the ticker counter, the site counters, GUESS and pay respects; 10 or 15 minutes for the Pro routes and gift codes; one hour for feedback; one minute, 10 minutes and 24 hours for the MCP endpoint', 'DESK layouts',
+    'the Pro routes and gift codes (a 10 or 15 minute window), the ticker counter, the site counters, the GUESS game and the pay respects button on GRAVEYARD stones (a one minute window), the feedback form (a one hour window) and the MCP endpoint (a one minute, a 10 minute and a 24 hour window)', 'forgets it within one minute after the window ends', 'one minute for the ticker counter, the site counters, GUESS and pay respects; 10 or 15 minutes for the Pro routes and gift codes; one hour for feedback and for moving a ping subscription; one minute, 10 minutes and 24 hours for the MCP endpoint', 'DESK layouts',
     'sponsors get no data from us', 'DataFast, counts link clicks, including clicks on sponsor links',
     'kept while your licence exists and for 5 years after your subscription is cancelled', 'unpaid or overdue is kept until the subscription is cancelled', 'keeps only a count of the redeemed codes', '| Gift code records | Deleted 12 months after the code was used or expired.',
     'The licence record is kept for 5 years after the gift month ends']) {
@@ -480,12 +480,13 @@ test('privacy names every IP-keyed limiter in the code, with its window', () => 
     'lib/mcp/limits.js': [/shortWindowMs: 10 \* 60_000/, /dayWindowMs: 24 \* 60 \* 60_000/, /requestWindowMs: 60_000/],
     'lib/counters.js': [/windowMs: 60_000/], // BBRK site counters
     'lib/graveyard.js': [/max: 30, windowMs: 60_000/], // GRAVEYARD pay respects
+    'pro/push.js': [/windowMs: 15 \* MIN/, /resub: createLimiter\(\{ max: 20, windowMs: 60 \* MIN/], // PINGS: the shared wrong-key limiter; moving a subscription
   };
   for (const [f, res] of Object.entries(windows)) for (const re of res) assert.match(readFileSync(f, 'utf8'), re, `${f} window changed: update the Privacy Policy`);
-  for (const name of ['Pro routes', 'gift codes', 'ticker counter', 'site counters', 'GUESS game', 'pay respects', 'feedback form', 'MCP endpoint']) assert.ok(privacy.includes(name), name);
+  for (const name of ['Pro routes', 'gift codes', 'ticker counter', 'site counters', 'GUESS game', 'pay respects', 'feedback form', 'MCP endpoint', 'moving a ping subscription']) assert.ok(privacy.includes(name), name);
   // No other file keys a limiter on the IP.
   const users = [];
   const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = `${d}/${e.name}`; if (e.isDirectory()) walk(p); else if (p.endsWith('.js') && readFileSync(p, 'utf8').includes('clientIp(')) users.push(p); } };
   for (const d of ['data', 'lib', 'pro', 'public']) walk(d);
-  assert.deepEqual(users.sort(), ['data/guess.js', 'data/trending.js', 'lib/counters.js', 'lib/graveyard.js', 'lib/mcp/server.js', 'pro/chat-routes.js', 'pro/feedback.js', 'pro/me-routes.js', 'pro/ratelimit.js', 'pro/routes.js']);
+  assert.deepEqual(users.sort(), ['data/guess.js', 'data/trending.js', 'lib/counters.js', 'lib/graveyard.js', 'lib/mcp/server.js', 'pro/chat-routes.js', 'pro/feedback.js', 'pro/me-routes.js', 'pro/push.js', 'pro/ratelimit.js', 'pro/routes.js']);
 });

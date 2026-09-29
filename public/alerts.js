@@ -1,8 +1,7 @@
-// ALERTS: price and gauge alerts, kept in this browser only (localStorage, max 20).
-// Pure parts (parse, crossing, list maths, formatting) are exported for node:test. The
-// watcher (startAlerts) runs in the browser: while a Bloombroke tab is open it checks
-// every 60 seconds with one /api/quotes call (plus /api/weird when a gauge alert
-// exists), pauses while the tab is hidden, and lets only one open tab do the checking.
+// ALERTS: price and gauge alerts in this browser (localStorage, max 20; with closed-tab
+// alerts on, the server gets the quote alerts: push.js). Pure parts are exported for
+// node:test. The watcher (startAlerts): one open tab checks every 60 s, with one
+// /api/quotes call (plus /api/weird for a gauge).
 
 import { matchInstrument } from './instruments.js';
 import { tickerForName, LISTED_TICKERS, stockIdOf } from './known-tickers.js';
@@ -19,6 +18,8 @@ export const LEASE_MS = 90_000;
 export const TICK_MS = 5_000;
 export const MAX_QUOTES = 60;
 export const HONEST_LINE = 'Alerts check while Bloombroke is open in a tab.';
+// Closed-tab alerts on here (push.js): the server pings quote alerts.
+const PUSHED = 'bb.push.alerts';
 
 const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 const SYM_RE = /^[A-Z0-9.&/-]{1,16}$/;
@@ -134,12 +135,10 @@ export function conditionMet(op, value, level) {
 // Where the value for an alert comes from in a check: quote id or gauge:<id>.
 export const valueKey = (a) => (a.kind === 'gauge' ? `gauge:${a.gauge}` : a.sym);
 
-// A check's values against the list. Returns { list, fired } (new objects; the input is
-// not changed). A WAITING alert whose condition is true fires once and turns TRIGGERED:
-// a price that jumps past the level between two checks still fires. A re-armed alert
-// whose condition was still true waits until the value is back on the other side, so it
-// fires on a fresh crossing only. Missing values change nothing. values: { key: number }
-// or { key: { value, stale } }.
+// A check's values against the list -> { list, fired } (new objects). A WAITING alert
+// whose condition is true fires once and turns TRIGGERED, even after a jump past the
+// level. A re-armed alert still true waits for the value to cross back first. Missing
+// values change nothing. values: { key: number } or { key: { value, stale } }.
 export function evaluate(list, values, now = Date.now()) {
   const fired = [];
   const out = list.map((a) => {
@@ -259,6 +258,7 @@ export function loadAlerts(store) {
 
 export function saveAlerts(store, list) {
   store.set(ALERTS_KEY, cleanAlerts(list));
+  if (store.get(PUSHED, 0)) import('./push.js').then((m) => m.syncAlerts(cleanAlerts(list))).catch(() => {});
 }
 
 // The one batch call for the quote alerts, or null when there are none.
@@ -331,9 +331,9 @@ export function leaseFree(lease, tab, now) {
   return !lease || lease.tab === tab || !Number.isFinite(lease.at) || now - lease.at > LEASE_MS;
 }
 
-// One tick of the watcher: take (or keep) the lease, and check when the last check by
-// any tab is CHECK_MS old. A hidden tab keeps its lease and keeps checking (the browser
-// slows its timer to about once a minute), so alerts check while any tab is open.
+// One tick: take (or keep) the lease, and check when the last check by any tab is
+// CHECK_MS old. A hidden tab keeps its lease and checks too (its timer slows to about
+// once a minute), so alerts check while any tab is open.
 export function tickPlan({ hasAlerts, lease, tab, now, lastChecked }) {
   if (!hasAlerts) return { take: false, check: false };
   if (!leaseFree(lease, tab, now)) return { take: false, check: false };
@@ -377,7 +377,7 @@ export function startAlerts({ store, fetchJSON, status, run, statusline }) {
   function notify(a) {
     const text = firedText(a);
     status(text);
-    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted' || (a.kind === 'quote' && store.get(PUSHED, 0))) return;
     try {
       const n = new Notification(text, { body: 'Bloombroke ALERTS', tag: `bb-alert-${a.id}` });
       n.onclick = () => {

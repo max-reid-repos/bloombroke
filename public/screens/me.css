@@ -51,6 +51,13 @@
 .me-set .chip { justify-self: start; cursor: pointer; }
 .me-set .chip[aria-pressed="true"] { color: var(--ink); background: var(--text-2); border-color: var(--text-2); }
 
+/* + Details, PINGS: the three settings (a wider label column: ALERTS WHEN THE TAB IS
+   CLOSED), TEST, and the line for a browser that cannot have pings yet. */
+.me-pings { display: grid; gap: 8px; width: 100%; max-width: 480px; margin: 8px 0 0; text-align: left; }
+.me-pings .me-set { grid-template-columns: 32ch minmax(0, 1fr); }
+.me-ping-hint { margin: 0 0 12px; font-size: 13px; color: var(--text-2); }
+.me-ping-hint[hidden] { display: none; }
+
 /* + Details: KEY AND DATA, the question line, the rules. */
 .me-keys { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px 24px; margin: 8px 0 12px; font-size: 12px; letter-spacing: .06em; color: var(--dim); }
 .me-confirm { margin: 0 0 12px; }
@@ -65,4 +72,5 @@
   .me-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .me-grid { grid-template-columns: repeat(8, 24px); grid-auto-rows: 24px; }
   .me-px { width: 24px; height: 24px; }
+  .me-pings .me-set { grid-template-columns: minmax(0, 1fr) auto; }
 }
