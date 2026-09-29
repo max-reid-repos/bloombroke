@@ -16,6 +16,10 @@
 // beacon; that is outside this code.
 // Ahrefs Web Analytics (page views only, no goals) loads through exactly the same gates
 // as DataFast (analyticsBlocked): never with GPC, never for Pro, never in a DESK panel.
+// Google Analytics 4 (loadGa4, public/ga4.js) too, and only on bloombroke.com, never on
+// /embed/*, after the first screen. It gets clean page views (the command word, and for
+// stock, chart, WHATIF and GRAVEYARD screens the ticker or item, nothing else), the goals
+// in GA_EVENTS, and one 'share' event for every share button.
 // once: a key (the result, the puzzle number). The same goal with the same key is sent
 // once per browser tab session (sessionStorage 'bb.goals'); without storage, every time.
 
@@ -82,6 +86,47 @@ export const AHREFS = {
   site: 'PRP692zzb4D3HwxC/FRBpA', // public: every visitor's browser gets it; the script's data-key
 };
 
+// Google Analytics 4: gtag.js with the site's public measurement id.
+export const GA4 = {
+  id: 'G-N4VN8PCJXK', // public: every visitor's browser gets it
+  src: 'https://www.googletagmanager.com/gtag/js?id=G-N4VN8PCJXK',
+};
+const GA_SCRIPT = 'script[src^="https://www.googletagmanager.com/"]';
+
+// The GA4 event for each goal (snake_case, 40 characters or fewer). Its params are the
+// goal's own cleanProps (short fixed words), never anything else. The share goals
+// (whatif_share, whatif_video, whatif_embed, guess_shared, ipo_shared) are not here:
+// ga4.js sends one 'share' event for every share button, these included.
+export const GA_EVENTS = {
+  whatif_run: 'whatif_run',
+  guess_played: 'guess_played', // a GUESS game finished: { result: solved | missed }
+  pro_checkout_started: 'pro_checkout_start', // { plan: month | year }
+  news_why_opened: 'news_why_opened',
+  weird_gauge_opened: 'weird_gauge_opened',
+  mcp_screen_opened: 'mcp_screen_opened',
+  feedback_sent: 'feedback_sent',
+  desk_opened: 'desk_opened',
+  sponsor_click: 'sponsor_click',
+  notfound_seen: 'notfound_seen',
+  graveyard_seen: 'graveyard_seen',
+  ipo_made: 'ipo_made',
+  welcome_chip: 'welcome_chip',
+  welcome_typed: 'welcome_typed',
+  welcome_surprise: 'welcome_surprise',
+};
+export const GA_SHARE_GOALS = ['whatif_share', 'whatif_video', 'whatif_embed', 'guess_shared', 'ipo_shared'];
+
+// GA4 in this page: on once loadGa4 passed the gates; page and early hold the last
+// screen shown and the goals sent before ga4.js runs; run is ga4.js's { page, event }.
+const gaState = { on: false, page: null, early: [], run: null };
+function gaSend(event, params, state = gaState) {
+  if (!state.on) return false;
+  if (state.run) return state.run.event(event, params);
+  if (state.early.length >= QUEUE_MAX) return false;
+  state.early.push([event, params]);
+  return true;
+}
+
 // The licence key's storage name (public/pro.js LS.key; a test keeps them the same).
 export const PRO_KEY_STORAGE = 'bb.pro.key';
 const PRO_PENDING_STORAGE = 'bb.pro.session';
@@ -109,7 +154,7 @@ export function proKeyPresent({ local, session, loc } = {}) {
 // showKey: the PRO screen shows the key once after the reload (a REDEEM's new key).
 // True when it reloads. Never throws.
 export const SHOW_KEY_ONCE = 'bb.pro.showkey';
-const THIRD_PARTY = 'script[src^="https://datafa.st/"], script[src^="https://analytics.ahrefs.com/"], script[src*="cloudflareinsights.com"]';
+const THIRD_PARTY = 'script[src^="https://datafa.st/"], script[src^="https://analytics.ahrefs.com/"], script[src^="https://www.googletagmanager.com/"], script[src*="cloudflareinsights.com"]';
 export function reloadAfterKey({ doc = globalThis.document, loc = globalThis.location, session, showKey = false } = {}) {
   try {
     if (!doc?.querySelector?.(THIRD_PARTY) || !loc?.replace) return false;
@@ -209,8 +254,54 @@ export function loadAhrefs({ doc = globalThis.document, nav = globalThis.navigat
   }
 }
 
+// Add Google Analytics 4 past the same gates as DataFast and Ahrefs, only on
+// bloombroke.com itself and never on an /embed/* page, after the first screen (the page's
+// load event, then an idle moment), so start-up does not change. The gates are asked
+// again then (a key may have landed). ga4.js starts gtag with clean addresses and no
+// automatic page view; then the script tag goes in, async. Until then, the screen shown
+// (the terminal's bb:page event) and goals wait in gaState. True when it is on its way.
+function afterFirstScreen(win, fn) {
+  const idle = () => (typeof win.requestIdleCallback === 'function' ? win.requestIdleCallback(fn, { timeout: 5000 }) : setTimeout(fn, 1500));
+  if (win.document?.readyState === 'complete') idle(); else win.addEventListener('load', idle, { once: true });
+}
+export function loadGa4({
+  doc = globalThis.document, nav = globalThis.navigator, win = globalThis.window, pro = proKeyPresent,
+  state = gaState, later = (fn) => afterFirstScreen(win, fn), start = () => import('./ga4.js'),
+} = {}) {
+  try {
+    if (analyticsBlocked({ doc, nav, win, pro })) return false;
+    if (win.location?.hostname !== DATAFAST.domain) return false;
+    if (/^\/embed(\/|$)/i.test(win.location?.pathname || '')) return false;
+    if (state.on || doc.querySelector(GA_SCRIPT)) return false;
+    state.on = true;
+    win.addEventListener('bb:page', (e) => {
+      const c = typeof e?.detail === 'string' ? e.detail : null;
+      if (state.run) state.run.page(c); else state.page = c;
+    });
+    const blocked = () => analyticsBlocked({ doc, nav, win, pro });
+    later(() => {
+      if (blocked()) { state.on = false; return; }
+      Promise.resolve().then(start).then((m) => {
+        const run = m.startGa4({ win, doc, id: GA4.id, state, blocked });
+        if (!run) { state.on = false; return; }
+        state.run = run;
+        if (doc.querySelector(GA_SCRIPT)) return;
+        const s = doc.createElement('script');
+        s.async = true;
+        s.src = GA4.src;
+        doc.head.appendChild(s);
+      }).catch(() => { state.on = false; });
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // { datafast, counted }: what was sent. Never throws, never waits.
-export function goal(name, props, { once, win = globalThis.window, nav = globalThis.navigator, fetchImpl = globalThis.fetch, store, pro = proKeyPresent } = {}) {
+// ga(event, params): where the GA4 event goes (tests); by default GA4 in this page, if
+// loadGa4 started it. Same gates as DataFast: never with GPC, never for Pro.
+export function goal(name, props, { once, win = globalThis.window, nav = globalThis.navigator, fetchImpl = globalThis.fetch, store, pro = proKeyPresent, ga = gaSend } = {}) {
   const sent = { datafast: false, counted: false };
   if (!GOALS.includes(name)) return sent;
   if (seenBefore(name, once, store)) return sent;
@@ -223,6 +314,9 @@ export function goal(name, props, { once, win = globalThis.window, nav = globalT
         sent.datafast = true;
       }
     } catch { /* DataFast broken or blocked: nothing */ }
+    try {
+      if (GA_EVENTS[name]) ga(GA_EVENTS[name], cleanProps(name, props));
+    } catch { /* GA4 broken or blocked: nothing */ }
   }
   if (postsCount(name, props) && typeof fetchImpl === 'function') {
     try {
@@ -271,5 +365,5 @@ export function stripShownBatch({ send = (n) => countOnly('strip_shown', n), max
   };
 }
 
-// In a page (the terminal and the legal pages), load DataFast and Ahrefs unless a gate says no.
-if (typeof window !== 'undefined' && typeof document !== 'undefined') { loadDataFast(); loadAhrefs(); }
+// In a page (the terminal and the legal pages), load DataFast, Ahrefs and GA4 unless a gate says no.
+if (typeof window !== 'undefined' && typeof document !== 'undefined') { loadDataFast(); loadAhrefs(); loadGa4(); }

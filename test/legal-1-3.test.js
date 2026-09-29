@@ -29,7 +29,7 @@ test('legal pages render tables: a header row, row headers, escaped cells', () =
 test('privacy s6: the complete sub-processor table, name, purpose and place', () => {
   const s6 = section(privacy, 6);
   const rows = [...s6.matchAll(/^\| ([^|]+) \| ([^|]+) \| ([^|]+) \|$/gm)].map((m) => m[1].trim()).filter((n) => !/^(Provider|---)$/.test(n));
-  assert.deepEqual(rows, ['Stripe', 'Cloudflare', 'DataFast', 'Ahrefs', 'Hetzner', 'Google (Gmail)', 'Apple, Google, Mozilla, Microsoft (push services)']);
+  assert.deepEqual(rows, ['Stripe', 'Cloudflare', 'DataFast', 'Ahrefs', 'Google (Google Analytics)', 'Hetzner', 'Google (Gmail)', 'Apple, Google, Mozilla, Microsoft (push services)']);
   assert.match(s6, /\| Cloudflare \| Network, security and delivery for every visit, DNS, page-view counts \(Cloudflare Web Analytics\), and routing of email sent to \{\{CONTACT\}\} \|/);
   assert.match(s6, /\| Google \(Gmail\) \| The mailbox that receives email sent to \{\{CONTACT\}\} \|/);
   assert.match(s6, /\| DataFast \| Visit analytics, as described in section 3 \(not loaded when your browser sends GPC\) \| Mostly outside the EU, including the United States, as its data processing terms state \|/);
