@@ -90,7 +90,8 @@ test('seat: SEAT 00042 in the top bar, hidden until the server sends one', () =>
   for (const bad of [null, undefined, 0, -1, 1.5, '42']) assert.equal(seatLabel(bad), null);
   const html = readFileSync('public/index.html', 'utf8');
   const top = /<header class="topbar">[\s\S]*?<\/header>/.exec(html)[0];
-  assert.match(top, /class="wordmark"[^>]*>BLOOMBROKE<\/a><a id="seat" class="seat num" href="\/\?c=PRO" data-cmd="PRO" hidden><\/a>/, 'next to the name, empty and hidden');
+  // ME: the seat opens ME (it shows your avatar and username once the server sends them).
+  assert.match(top, /class="wordmark"[^>]*>BLOOMBROKE<\/a><a id="seat" class="seat num" href="\/\?c=ME" data-cmd="ME" hidden><\/a>/, 'next to the name, empty and hidden');
   // Only the display reads the seat; it is never sent back.
   const client = readFileSync('public/pro.js', 'utf8');
   assert.doesNotMatch(client, /headers\[[^\]]*\]\s*=\s*[^;]*seat/i);
@@ -393,8 +394,8 @@ test('legal: version bumped, so everyone who accepted 1.0 is asked again', async
   const { LEGAL_UPDATED } = await import('../public/legal-version.js');
   const { needsConsent, acceptRecord } = await import('../public/consent.js');
   const { DEFAULT_TERMS_VERSION } = await import('../pro/billing.js');
-  assert.equal(TERMS_VERSION, '1.4', 'CHAT: the Messages section and what CHAT stores');
-  assert.equal(LEGAL_UPDATED, '28 September 2026');
+  assert.equal(TERMS_VERSION, '1.5', 'ME: usernames, avatars, DOWNLOAD MY DATA, DELETE MY ACCOUNT');
+  assert.equal(LEGAL_UPDATED, '29 September 2026');
   assert.equal(needsConsent(acceptRecord('1.0')), true);
   assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
   assert.equal(DEFAULT_TERMS_VERSION, '2026-09-27', 'checkout records the new Terms');
@@ -473,6 +474,7 @@ test('privacy names every IP-keyed limiter in the code, with its window', () => 
     'pro/routes.js': [/windowMs: 10 \* MIN/, /windowMs: 15 \* MIN/],
     'pro/feedback.js': [/windowMs: HOUR/],
     'pro/chat-routes.js': [/windowMs: 15 \* MIN/], // CHAT: wrong keys count in the Pro routes' own limiter
+    'pro/me-routes.js': [/windowMs: 15 \* MIN/], // ME: the same shared wrong-key limiter (the Pro routes' window)
     'data/guess.js': [/windowMs: 60_000/],
     'data/trending.js': [/windowMs: MIN/],
     'lib/mcp/limits.js': [/shortWindowMs: 10 \* 60_000/, /dayWindowMs: 24 \* 60 \* 60_000/, /requestWindowMs: 60_000/],
@@ -485,5 +487,5 @@ test('privacy names every IP-keyed limiter in the code, with its window', () => 
   const users = [];
   const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = `${d}/${e.name}`; if (e.isDirectory()) walk(p); else if (p.endsWith('.js') && readFileSync(p, 'utf8').includes('clientIp(')) users.push(p); } };
   for (const d of ['data', 'lib', 'pro', 'public']) walk(d);
-  assert.deepEqual(users.sort(), ['data/guess.js', 'data/trending.js', 'lib/counters.js', 'lib/graveyard.js', 'lib/mcp/server.js', 'pro/chat-routes.js', 'pro/feedback.js', 'pro/ratelimit.js', 'pro/routes.js']);
+  assert.deepEqual(users.sort(), ['data/guess.js', 'data/trending.js', 'lib/counters.js', 'lib/graveyard.js', 'lib/mcp/server.js', 'pro/chat-routes.js', 'pro/feedback.js', 'pro/me-routes.js', 'pro/ratelimit.js', 'pro/routes.js']);
 });

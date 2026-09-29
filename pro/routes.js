@@ -16,6 +16,9 @@
 //   POST /api/pro/gifts        X-Pro-Key -> { code, gift }   (a paid, active licence; 3 at most)
 //   POST /api/pro/redeem       { code } -> a new 30 day licence: { key, ...status }, once
 //   GET  /api/pro/seat         -> { next }: the seat number the next licence gets (PRO's hero)
+//   POST /api/pro/rotate       X-Pro-Key -> { key, ...status }: NEW KEY in ME. The old key stops
+//                              working at once, everywhere; the licence (seat, billing, profile,
+//                              chats, gifts, synced data) stays the same. Any valid key, active or not.
 //
 // A seat number goes out with the status, for display. It is never read back as a
 // credential: every route that needs a licence takes the key.
@@ -27,6 +30,7 @@ import {
   checkoutParams, handleEvent, isProSession, isPaidSession, licenceFromSession, idOf, PRO_METADATA, DEFAULT_TERMS_VERSION, PLANS,
 } from './billing.js';
 import { createLimiter, clientIp } from './ratelimit.js';
+import { sameOrigin } from './feedback.js';
 
 export const KEY_HEADER = 'x-pro-key';
 export const SESSION_RE = /^cs_(test|live)_[A-Za-z0-9]{10,250}$/;
@@ -47,6 +51,8 @@ export function defaultLimits(now) {
     // Every REDEEM try counts, right or wrong, per IP.
     redeem: createLimiter({ max: 10, windowMs: 15 * MIN, now }),
     gift: createLimiter({ max: 20, windowMs: 10 * MIN, now }),
+    // NEW KEY: 3 a day per licence (on top of the wrong-key limit per IP).
+    rotate: createLimiter({ max: 3, windowMs: 24 * 60 * MIN, now }),
   };
 }
 
@@ -332,6 +338,21 @@ export function mountPro(app, {
       if (err instanceof SyncError) return fail(res, err.code === 'too_large' ? 413 : 400, err.code, err.message);
       throw err;
     }
+  });
+
+  // ---- NEW KEY (ME) -------------------------------------------------------------------
+  // A new key for the same licence, in one transaction (store.rotateKey): the old one
+  // stops working at once, so every other device is logged out on its next request. Any
+  // valid key may do it, so a lapsed plan can still lock its account. The new key goes
+  // out this once; only its hash is kept.
+  pro.post('/rotate', (req, res) => {
+    if (!sameOrigin(req, publicUrl)) return fail(res, 403, 'cross_origin', 'Use ME on bloombroke.com.');
+    const a = auth(req, res);
+    if (!a) return;
+    const r = limits.rotate.hit(`lic:${a.lic.id}`);
+    if (!r.ok) return limited(res, r);
+    const out = store.rotateKey(a.lic.id);
+    res.json({ key: out.key, ...publicStatus(out.licence, now(), mode) });
   });
 
   // ---- gifts ---------------------------------------------------------------------------

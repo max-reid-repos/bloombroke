@@ -13,6 +13,7 @@ import { sponsorHtml } from '../public/screens/sponsor.js';
 import { mainHtml, loginHtml, redeemHtml, giftHtml, giftLoggedOutHtml } from '../public/screens/pro.js';
 import { feedbackHtml } from '../public/screens/feedback.js';
 import { notProHtml } from '../public/screens/chat.js';
+import { meHtml } from '../public/screens/me.js';
 
 const all = () => true;
 const KEY = 'BB-7KQ2-M9XD-HT4P-WZ3C';
@@ -46,6 +47,12 @@ export const PAGES = [
   ['GIFT, a code made', giftHtml({ gifts: [], left: 2, canGift: true }, { shown: 'GIFT-ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-2345' }), 15],
   ['FEEDBACK', feedbackHtml(), 19], // 15 + "No IP address stored." (the reviewer's call, Sep 29)
   ['CHAT without Pro', notProHtml(), 15],
+  // ME: the hero, the profile editor, the plan, this device, the links; key and data in + Details.
+  ['ME', meHtml({ key: KEY, st: { ...ST, seat: 2 }, me: { seat: 2, username: 'Abcdefghijklmno', color: 3, avatar: null }, tape: true, has: all }), 30],
+  ['ME, no username yet', meHtml({ key: KEY, st: { ...ST, seat: 2 }, me: null, has: all }), 30],
+  ['ME, asking NEW KEY', meHtml({ key: KEY, st: ST, me: null, confirm: 'key', has: all }), 30],
+  ['ME without Pro', meHtml({ has: all }), 20],
+  ['ME, Pro ended', meHtml({ key: KEY, st: { ...ST, status: 'canceled' }, has: all }), 20],
 ];
 
 test('word budget: each card page says what it must above + Details, and no more', () => {
@@ -103,6 +110,7 @@ function cardCss() {
     ['sponsor.css', readFileSync('public/screens/sponsor.css', 'utf8')],
     ['pro.css', pro.slice(pro.indexOf('/* ==== PRO, LOGIN, REDEEM, GIFT: card pages'))],
     ['style.css FEEDBACK', style.slice(style.indexOf('/* FEEDBACK: a card page'), style.indexOf('.fb-hp'))],
+    ['me.css', readFileSync('public/screens/me.css', 'utf8')],
     // WELCOME's colours keep their fallbacks (it can paint before style.css): sizes only.
     ['welcome.css', readFileSync('public/screens/welcome.css', 'utf8'), { colours: false }],
   ];
@@ -151,7 +159,7 @@ test('copy rules on the card pages: no em dash, no emoji, no brand word, no ambe
     assert.doesNotMatch(html.split('<details')[0], /\b(advice|advise|you should|we recommend|buy now|invest in)\b/i, `${name}: advice words above Details`);
     assert.doesNotMatch(html, /DataFast|Yahoo|Polygon|Finnhub|Alpha Vantage|Twelve Data|Nasdaq Data/i, `${name}: a data vendor on screen`);
   }
-  for (const f of ['public/kit.js', 'public/kit.css', 'public/screens/bbrk.css', 'public/screens/sponsor.css', 'public/screens/pro.css', 'public/screens/feedback.js', 'public/screens/welcome.css']) {
+  for (const f of ['public/kit.js', 'public/kit.css', 'public/screens/bbrk.css', 'public/screens/sponsor.css', 'public/screens/pro.css', 'public/screens/feedback.js', 'public/screens/welcome.css', 'public/screens/me.js', 'public/screens/me.css', 'public/pixel-avatar.js']) {
     const src = readFileSync(f, 'utf8');
     assert.doesNotMatch(src, /—/, `${f}: em dash`);
     assert.doesNotMatch(src, brand, `${f}: brand word`);

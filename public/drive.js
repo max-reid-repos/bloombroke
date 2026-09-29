@@ -14,6 +14,7 @@
 // window, document and fetch so tests can run it without a browser.
 
 import { getKey, HEADER } from './pro.js';
+import { avatarSvg, nameHtml } from './pixel-avatar.js'; // ME: the driver's avatar and username
 
 export const DEBOUNCE_MS = 300;
 export const PAUSE_MS = 5000;
@@ -22,7 +23,13 @@ export const RECHECK_MS = 60_000; // a follower asks whether the drive is still 
 const BACKOFF_MS = 5000;
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-export const who = (by) => (by?.name ? `${by.name} ${by.seat}` : `SEAT ${by?.seat ?? '--'}`);
+export const who = (by) => (by?.name ? `${by.name} #${by.seat}` : `SEAT ${by?.seat ?? '--'}`);
+// The driver as the bar shows them: avatar, username in its colour, #seat dim.
+export function whoHtml(by) {
+  const p = { seat: by?.seat ?? null, name: by?.name || null, color: by?.color ?? null, avatar: by?.avatar || null };
+  const av = avatarSvg(p, { size: 16 });
+  return p.name ? `${av} ${nameHtml(p)} <span class="dim">#${esc(p.seat ?? '--')}</span>` : `${av} ${esc(who(p))}`;
+}
 
 // One line each, on every screen while driving or following.
 export function driverBarHtml(followers = 0) {
@@ -30,7 +37,7 @@ export function driverBarHtml(followers = 0) {
 }
 export function followBarHtml(by, cmd = '') {
   const screen = cmd ? `<span class="dv-sep">·</span><span class="dv-cmd">${esc(cmd)}</span>` : '';
-  return `<span class="dv-k">FOLLOWING</span> ${esc(who(by))}${screen}<span class="dv-sep">·</span><button type="button" class="dv-btn" data-dv="stop">ESC stops</button><span class="dv-sep">·</span><a class="dv-btn" href="?c=CHAT" data-cmd="CHAT">CHAT</a>`;
+  return `<span class="dv-k">FOLLOWING</span> ${whoHtml(by)}${screen}<span class="dv-sep">·</span><button type="button" class="dv-btn" data-dv="stop">ESC stops</button><span class="dv-sep">·</span><a class="dv-btn" href="?c=CHAT" data-cmd="CHAT">CHAT</a>`;
 }
 
 // A follower's events: the newest screen for this room after seq, and whether it ended.

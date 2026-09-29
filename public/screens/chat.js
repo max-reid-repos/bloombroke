@@ -1,7 +1,8 @@
 // CHAT: private chat between Pro members who added each other by seat number. One panel:
 // your chats on the left (requests first, then rooms by last activity), the open chat on
-// the right. CHAT 42 opens your chat with seat 42 or asks them; CHAT 42 88 makes a group
-// of your contacts. A $TICKER in a message carries the price when it was sent, so the
+// the right. CHAT 42 (or CHAT @tom, by username) opens your chat with seat 42 or asks
+// them; CHAT 42 88 makes a group of your contacts. People show as their pixel avatar,
+// their username in its colour and #42 (ME sets all three; NAME opens ME). A $TICKER in a message carries the price when it was sent, so the
 // chip shows the move since; a card opens a screen of the terminal. No links, no files.
 // New messages come by long-poll (GET /api/chat/wait) while this screen is open.
 // DRIVE (../drive.js): the thread head has DRIVE; a room someone drives shows one line
@@ -11,7 +12,8 @@
 // Pure *Html builders are exported for node:test; render() is the browser part.
 
 import { esc, panel, metaNote, fmtNum } from './markets.js';
-import { getKey, isPro, HEADER, normalizeKey, normalizeGiftCode } from '../pro.js';
+import { getKey, isPro, HEADER, normalizeKey, normalizeGiftCode, chatBeep } from '../pro.js';
+import { avatarSvg, nameHtml } from '../pixel-avatar.js';
 import { parseCommand, screenTitle, linkChanges, linkPlan } from '../app.js';
 import { drive, who as driverName } from '../drive.js';
 import { cardPage, cardButton, raw } from '../kit.js';
@@ -20,7 +22,7 @@ import { cardPage, cardButton, raw } from '../kit.js';
 export const MAX_TEXT = 500;
 export const COUNT_FROM = 400; // the character count shows past this
 export const CARD_RE = /^[A-Z0-9 .$&%<>=:/+-]{1,60}$/;
-export const CARD_DENY = ['HOME', 'CHAT', 'PRO', 'LOGIN', 'LOGOUT', 'REDEEM', 'GIFT', 'FEEDBACK', 'IDEA'];
+export const CARD_DENY = ['HOME', 'CHAT', 'PRO', 'LOGIN', 'LOGOUT', 'REDEEM', 'GIFT', 'FEEDBACK', 'IDEA', 'ME'];
 export const TICKER_WORD_RE = /(^|[^A-Za-z0-9$])\$([A-Z]{1,5}(?:\.[A-Z]{1,2})?)(?![A-Za-z0-9])/g;
 
 export const NOT_PRO = 'Private chat with friends who have Pro.';
@@ -30,11 +32,15 @@ export const emptyText = (seat) => `Your seat is ${seat}. Give it to a friend wi
 
 const MINUS = '\u2212';
 const q = (c) => '?' + new URLSearchParams({ c }).toString().replace(/%24/g, '$');
-export const label = (seat, name) => (name ? `${name} ${seat}` : `SEAT ${seat}`);
+export const label = (seat, name) => (name ? `${name} #${seat}` : `SEAT ${seat}`);
 
-// Name and seat, the seat in its own style so a name can never pass for another seat.
-export function whoHtml(seat, name, own = false) {
-  return `<span class="cm-who${own ? ' is-own' : ''}">${name ? `${esc(name)} ` : 'SEAT '}<span class="cm-seat">${esc(seat ?? '--')}</span></span>`;
+// Avatar, username in its colour, and the seat in its own style, so a name can never pass
+// for another seat. p: the person's { color, avatar } (ME).
+export function whoHtml(seat, name, own = false, p = null) {
+  const person = { seat: seat ?? null, name: name || null, color: p?.color ?? null, avatar: p?.avatar || null };
+  const av = avatarSvg(person, { size: 16, cls: 'cm-av' });
+  if (!name) return `<span class="cm-who${own ? ' is-own' : ''}">${av} SEAT <span class="cm-seat">${esc(seat ?? '--')}</span></span>`;
+  return `<span class="cm-who${own ? ' is-own' : ''}">${av} ${nameHtml(person)} <span class="cm-seat">#${esc(seat ?? '--')}</span></span>`;
 }
 
 // ---- the screen without Pro -------------------------------------------------------------
@@ -144,10 +150,10 @@ export function messageHtml(m, quotes = {}) {
   if (m.kind === 'sys') return `<div class="cm cm-sys" data-id="${Number(m.id)}"><span class="cm-t">${timeText(m.at)}</span><span class="cm-body">${esc(m.text)}</span></div>`;
   // A GUESS result: one line, a click opens GUESS.
   if (m.kind === 'guess' && m.guess) {
-    return `<div class="cm cm-guess" data-id="${Number(m.id)}"><span class="cm-t">${timeText(m.at)}</span>${whoHtml(m.seat, m.name, m.own)}<span class="cm-body"><button type="button" class="cm-card cm-gres" data-card="GUESS"><span class="cm-card-t">GUESS #${Number(m.guess.n)}</span><span class="num">${esc(scoreText(m.guess))}</span></button></span></div>`;
+    return `<div class="cm cm-guess" data-id="${Number(m.id)}"><span class="cm-t">${timeText(m.at)}</span>${whoHtml(m.seat, m.name, m.own, m)}<span class="cm-body"><button type="button" class="cm-card cm-gres" data-card="GUESS"><span class="cm-card-t">GUESS #${Number(m.guess.n)}</span><span class="num">${esc(scoreText(m.guess))}</span></button></span></div>`;
   }
   const body = `${m.text ? `<span class="cm-text">${textHtml(m.text, m.tickers, quotes)}</span>` : ''}${cardHtml(m.card)}`;
-  return `<div class="cm" data-id="${Number(m.id)}"><span class="cm-t">${timeText(m.at)}</span>${whoHtml(m.seat, m.name, m.own)}<span class="cm-body">${body}</span></div>`;
+  return `<div class="cm" data-id="${Number(m.id)}"><span class="cm-t">${timeText(m.at)}</span>${whoHtml(m.seat, m.name, m.own, m)}<span class="cm-body">${body}</span></div>`;
 }
 
 // Messages oldest first, with a day row where the day changes.
@@ -239,8 +245,9 @@ export function waitPause({ events = [], evicted = false, elapsed = 0 } = {}) {
 // ---- the list ---------------------------------------------------------------------------
 
 export function listHtml({ me, requests = { in: [] }, rooms = [] }, open = null) {
-  const you = `<div class="cl-me"><span class="cl-k">YOU</span>${whoHtml(me.seat, me.name, true)}<button type="button" class="chip cl-name" data-act="name">NAME</button></div>`;
-  const reqs = requests.in.map((r) => `<div class="cl-req"><span class="cl-title">${whoHtml(r.seat, r.name)}</span><span class="cl-acts">${['accept', 'ignore', 'block'].map((a) => `<button type="button" class="chip" data-req="${Number(r.seat)}" data-do="${a}">${a.toUpperCase()}</button>`).join('')}</span></div>`).join('');
+  // NAME opens ME, where the username, colour and avatar are set.
+  const you = `<div class="cl-me"><span class="cl-k">YOU</span>${whoHtml(me.seat, me.name, true, me)}<a class="chip cl-name" href="?c=ME" data-cmd="ME">NAME</a></div>`;
+  const reqs = requests.in.map((r) => `<div class="cl-req"><span class="cl-title">${whoHtml(r.seat, r.name, false, r)}</span><span class="cl-acts">${['accept', 'ignore', 'block'].map((a) => `<button type="button" class="chip" data-req="${Number(r.seat)}" data-do="${a}">${a.toUpperCase()}</button>`).join('')}</span></div>`).join('');
   const row = (r) => {
     const n = r.id === open ? 0 : Number(r.unread) || 0; // the open chat is being read
     return `<li><button type="button" class="cl-room${r.id === open ? ' is-open' : ''}${n ? ' is-unread' : ''}" data-room="${Number(r.id)}"${r.id === open ? ' aria-current="true"' : ''}>
@@ -437,6 +444,9 @@ export function render(el, cmd, ctx) {
       if (!alive() || st.open !== id) return;
       if (page === 0 && JSON.stringify(d.guess || null) !== JSON.stringify(st.guess)) { st.guess = d.guess || null; paintExtra(); }
       if (d.messages.length) {
+        // CHAT SOUND (ME): a new message from someone else in the open chat.
+        const known = new Set(st.msgs.map((m) => m.id));
+        if (d.messages.some((m) => !m.own && m.kind !== 'sys' && !known.has(m.id))) chatBeep();
         st.msgs = mergeMessages(st.msgs, d.messages);
         st.loadedId = Math.max(st.loadedId, d.messages[d.messages.length - 1].id);
         added = true;
@@ -551,16 +561,6 @@ export function render(el, cmd, ctx) {
     });
   }
 
-  function editName() {
-    const box = $('.cl-me');
-    if (!box) return;
-    box.innerHTML = `<form class="cl-name-form"><input class="ct-in" maxlength="16" aria-label="Your name" placeholder="Your name" value="${esc(st.me.name || '')}"><button type="submit" class="chip">SAVE</button></form>`;
-    const i = box.querySelector('input');
-    i.focus();
-    i.select();
-    i.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); $('.chat-list').innerHTML = listHtml(st, st.open); } });
-  }
-
   // ---- events ----
   el.addEventListener('click', (e) => {
     const t = e.target.closest('button');
@@ -610,7 +610,6 @@ export function render(el, cmd, ctx) {
         t.setAttribute('aria-pressed', String(st.attachOn));
         $('.cc-input')?.focus();
         break;
-      case 'name': editName(); break;
       default:
     }
   });
@@ -620,16 +619,6 @@ export function render(el, cmd, ctx) {
     const f = e.target;
     if (f.classList.contains('ct-compose')) { send(); return; }
     const val = f.querySelector('input')?.value || '';
-    if (f.classList.contains('cl-name-form')) {
-      act(async () => {
-        const d = await api('/api/chat/me', { method: 'PUT', body: { name: val }, signal });
-        st.me = d.me;
-        for (const m of st.msgs) if (m.own) m.name = d.me.name;
-        ctx.status('NAME SAVED');
-        await loadList();
-      });
-      return;
-    }
     const r = room();
     if (!r) return;
     if (f.dataset.kind === 'add') {
@@ -720,15 +709,16 @@ export function render(el, cmd, ctx) {
     try {
       let target = null;
       if (cmd.error) warn('Type CHAT and a seat number, like CHAT 42');
-      else if (cmd.args?.seats?.length) {
-        const d = await api('/api/chat/open', { method: 'POST', body: { seats: cmd.args.seats }, signal });
+      else if (cmd.args?.seats?.length || cmd.args?.name) {
+        const body = cmd.args.name ? { name: cmd.args.name } : { seats: cmd.args.seats };
+        const d = await api('/api/chat/open', { method: 'POST', body, signal });
         if (d.room) target = d.room.id;
         else ctx.status(d.message.toUpperCase());
       }
       await loadList();
       if (!target && wide() && st.rooms.length) target = st.rooms[0].id;
       if (target) await openRoom(target);
-      else if (!cmd.args?.seats?.length && !cmd.error) ctx.status('CHAT');
+      else if (!cmd.args?.seats?.length && !cmd.args?.name && !cmd.error) ctx.status('CHAT');
       ctx.live(loadQuotes, 60_000);
       loop();
     } catch (err) {

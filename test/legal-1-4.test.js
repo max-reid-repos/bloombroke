@@ -1,6 +1,7 @@
 // Legal 1.4: CHAT. The Terms get a Messages section (sections after it move up by one),
 // the Privacy Policy says what CHAT stores and for how long, and the version goes up so
-// everyone who accepted 1.3 is asked again.
+// everyone who accepted 1.3 is asked again. (1.5 since, ME: test/legal-1-5.test.js; the
+// pins below follow its wording.)
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,12 +16,12 @@ const terms = readFileSync('legal/terms.md', 'utf8');
 const privacy = readFileSync('legal/privacy.md', 'utf8');
 const section = (md, n) => md.slice(md.indexOf(`## ${n}.`), md.indexOf(`## ${n + 1}.`));
 
-test('legal 1.4: the version is bumped, so everyone who accepted 1.3 is asked again', () => {
-  assert.equal(TERMS_VERSION, '1.4');
-  assert.equal(LEGAL_UPDATED, '28 September 2026');
+test('legal 1.4: the version was bumped, so everyone who accepted 1.3 is asked again', () => {
+  assert.ok(Number(TERMS_VERSION) >= 1.4);
+  assert.ok(LEGAL_UPDATED);
   assert.equal(needsConsent(acceptRecord('1.3')), true);
-  assert.equal(needsConsent(acceptRecord('1.4')), false);
-  assert.match(legalPage('terms', terms), /Version 1\.4\. Last updated/);
+  assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
+  assert.match(legalPage('terms', terms), new RegExp(`Version ${TERMS_VERSION.replace('.', '\\.')}\\. Last updated`));
 });
 
 test('terms s10 Messages: plain words, the rules, reports, 30 days', () => {
@@ -51,7 +52,7 @@ test('terms s10 Messages: plain words, the rules, reports, 30 days', () => {
 test('privacy: what CHAT stores, who sees it, reports, and the retention rows match the code', () => {
   for (const must of [
     'CHAT messages between Pro members are seen only by the people in that chat, unless a chat is reported, and are deleted after 30 days.',
-    'we store your seat number, the display name you choose',
+    'we store your seat number, the username, colour and avatar you choose in ME',
     'we also store that ticker\'s price at the moment you sent it',
     'A message is shown only to the people in that chat.',
     `we store a copy of the last ${SNAPSHOT} messages of that chat, who reported it, the seats in it and the reason given`,
@@ -60,7 +61,7 @@ test('privacy: what CHAT stores, who sees it, reports, and the retention rows ma
   const s8 = section(privacy, 8);
   assert.ok(s8.includes('| Chat messages | Deleted 30 days after they were sent. Chat requests are deleted after 30 days too. |'));
   assert.ok(s8.includes('| Chat reports | Up to 12 months, then deleted. |'));
-  assert.ok(s8.includes('| Chat name, contacts and blocks | Deleted 30 days after your Pro ends, or sooner if you ask. |'));
+  assert.ok(s8.includes('| Chat contacts and blocks | Deleted 30 days after your Pro ends, at once when you delete your account in ME, or sooner if you ask. |'));
   assert.equal(KEEP_MS, 30 * DAY_MS);
   assert.equal(REPORT_KEEP_MS, 365 * DAY_MS);
   assert.equal(ENDED_KEEP_MS, 30 * DAY_MS);

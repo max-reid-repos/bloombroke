@@ -1,6 +1,8 @@
 // Pro in the browser: the licence key, status, checkout, the key reveal, sync across
-// devices, your own ticker tape, the seat number, gift codes and REDEEM. Pure helpers are exported for node:test; the parts
-// that touch the network or storage only run in a browser.
+// devices, your own ticker tape, the seat number, gift codes and REDEEM. ME: your profile
+// (username, colour, avatar), this device's preferences (bb.prefs: start screen, clock,
+// chat sound), NEW KEY, DOWNLOAD MY DATA and DELETE MY ACCOUNT. Pure helpers are exported
+// for node:test; the parts that touch the network or storage only run in a browser.
 
 import { INSTRUMENTS, resolveInstrument } from './instruments.js';
 import { stockIdOf } from './known-tickers.js';
@@ -16,14 +18,43 @@ export const PRICE_BOTH = '$42 a month or $420 a year';
 export const PRO_ONLY = `Your own ticker tape is a Pro feature, ${PRICE_LINE}.`;
 export const KEY_RE = /^BB-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/;
 export const HEADER = 'X-Pro-Key';
-export const LS = { key: 'bb.pro.key', status: 'bb.pro.status', meta: 'bb.sync.meta', tape: 'bb.tape' };
+export const LS = { key: 'bb.pro.key', status: 'bb.pro.status', meta: 'bb.sync.meta', tape: 'bb.tape', me: 'bb.me' };
 export const PENDING_KEY = 'bb.pro.session';
 
 // Synced documents: server name -> localStorage key. watch and pf are the WATCH and PF
 // lists; tape is your own ticker tape; desk is your saved DESK layouts; grid is your
-// last GRID board (screens/grid.js LAST_KEY).
+// last GRID board (screens/grid.js LAST_KEY); prefs is ME's device settings.
 export const GRID_LAST_KEY = 'bb.grid';
-export const SYNC_DOCS = { watch: WATCH_KEY, pf: PF_KEY, tape: 'bb.tape', desk: DESK_KEY, grid: GRID_LAST_KEY };
+export const PREFS_KEY = 'bb.prefs';
+export const SYNC_DOCS = { watch: WATCH_KEY, pf: PF_KEY, tape: 'bb.tape', desk: DESK_KEY, grid: GRID_LAST_KEY, prefs: PREFS_KEY };
+
+// ---- ME: this device's preferences ---------------------------------------------------------
+// start: the screen a visit opens on when the link names none (?c= wins). clock: the top
+// bar's clock, New York or local time (every data time on screen stays New York). sound:
+// a soft beep for new chat messages (Pro). Stored in bb.prefs; Pro syncs it.
+export const START_SCREENS = ['HOME', 'DESK', 'GRID', 'WATCH', 'MARKETS', 'NEWS'];
+export const DEFAULT_PREFS = { start: 'HOME', clock: 'ny', sound: false };
+export function cleanPrefs(v) {
+  const p = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  return {
+    start: START_SCREENS.includes(p.start) ? p.start : DEFAULT_PREFS.start,
+    clock: p.clock === 'local' ? 'local' : 'ny',
+    sound: p.sound === true,
+  };
+}
+// The command a visit opens on: the link's own (?c=), else the start screen.
+export function startCommand(search, prefs = DEFAULT_PREFS) {
+  const c = new URLSearchParams(search || '').get('c');
+  if (c && c.trim()) return null;
+  const start = cleanPrefs(prefs).start;
+  return start === 'HOME' ? null : start;
+}
+// The top bar clock: { label, time } for New York or this device's own time.
+export function clockFace(date, prefs = DEFAULT_PREFS, nyClock = null) {
+  if (cleanPrefs(prefs).clock !== 'local') return { label: 'NEW YORK', time: nyClock ? nyClock(date) : '' };
+  const two = (n) => String(n).padStart(2, '0');
+  return { label: 'LOCAL', time: `${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}` };
+}
 
 export const MAX_TAPE = 40;
 export const DEFAULT_TAPE = INSTRUMENTS.filter((i) => i.tape).map((i) => i.id);
@@ -215,6 +246,42 @@ export const getStatus = () => storage.get(LS.status, null);
 export const isPro = () => Boolean(getKey()) && statusActive(getStatus());
 // The seat to show in the top bar: Pro only.
 export const getSeat = () => (isPro() ? seatLabel(getStatus()?.seat) : null);
+// ME: { seat, username, color, avatar } as the server last said (GET /api/me), or null.
+export const getMe = () => {
+  const m = storage.get(LS.me, null);
+  return m && typeof m === 'object' ? m : null;
+};
+export const getPrefs = () => cleanPrefs(storage.get(PREFS_KEY, null));
+export function setPrefs(patch) {
+  const next = cleanPrefs({ ...getPrefs(), ...patch });
+  storage.set(PREFS_KEY, next);
+  if (hasWindow) window.dispatchEvent(new Event('bb:prefs'));
+  syncNow({ pull: false }).catch(() => {});
+  return next;
+}
+
+// CHAT SOUND: one soft short beep (WebAudio), at most one every 2 seconds, Pro only.
+let lastBeep = 0;
+let audio = null;
+export function chatBeep(now = Date.now()) {
+  if (!hasWindow || !isPro() || !getPrefs().sound || now - lastBeep < 2000) return false;
+  lastBeep = now;
+  try {
+    audio ||= new (window.AudioContext || window.webkitAudioContext)();
+    const t = audio.currentTime;
+    const osc = audio.createOscillator();
+    const gain = audio.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, t);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.06, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    osc.connect(gain).connect(audio.destination);
+    osc.start(t);
+    osc.stop(t + 0.2);
+    return true;
+  } catch { return false; }
+}
 const proChanged = () => { if (hasWindow) window.dispatchEvent(new Event('bb:pro')); };
 export function saveKey(key) { return storage.set(LS.key, key); }
 
@@ -352,6 +419,7 @@ export function logout() {
   storage.del(LS.key);
   storage.del(LS.status);
   storage.del(LS.meta);
+  storage.del(LS.me);
   if (hasWindow) window.dispatchEvent(new Event('bb:tape'));
   proChanged();
 }
@@ -377,6 +445,48 @@ export async function redeem(rawCode) {
   startSync();
   if (hasWindow) window.dispatchEvent(new Event('bb:tape'));
   return { ...d, saved };
+}
+
+// ---- ME ------------------------------------------------------------------------------------
+
+const saveMe = (m) => {
+  const me = { seat: Number.isInteger(m?.seat) ? m.seat : null, username: m?.username || null, color: Number.isInteger(m?.color) ? m.color : null, avatar: m?.avatar || null };
+  storage.set(LS.me, me);
+  proChanged();
+  return me;
+};
+// GET /api/me: your profile and plan. A key the server no longer knows is logged out.
+export async function refreshMe() {
+  if (!getKey()) return null;
+  try {
+    const d = await call('/api/me');
+    saveMe(d);
+    return d;
+  } catch (err) {
+    if (err.status === 401) logout();
+    throw err;
+  }
+}
+// SAVE in ME: { username?, color?, avatar? } -> your profile as saved.
+export async function saveProfile(patch) {
+  const d = await call('/api/me/profile', { method: 'PUT', body: patch });
+  return saveMe(d.me);
+}
+// NEW KEY: the same licence gets a new key; the old one stops working everywhere. This
+// browser keeps working on the new one. Returns { key, ...status }: the key this once.
+export async function rotateKey() {
+  const d = await call('/api/pro/rotate', { method: 'POST' });
+  const saved = saveKey(d.key) && getKey() === d.key;
+  saveStatus(d);
+  return { ...d, saved };
+}
+// DOWNLOAD MY DATA: the JSON the server makes.
+export const exportData = () => call('/api/me/export', { method: 'POST' });
+// DELETE MY ACCOUNT: refused while a subscription will renew. Logs this browser out.
+export async function deleteAccount() {
+  const d = await call('/api/me/delete', { method: 'POST', body: { confirm: 'DELETE' } });
+  logout();
+  return d;
 }
 
 // Ask the server again. A key the server no longer knows is removed.
@@ -435,6 +545,7 @@ export function syncNow({ pull = true } = {}) {
     if (changed.length && hasWindow) {
       window.dispatchEvent(new CustomEvent('bb:synced', { detail: changed }));
       if (changed.includes('tape')) window.dispatchEvent(new Event('bb:tape'));
+      if (changed.includes('prefs')) window.dispatchEvent(new Event('bb:prefs'));
     }
     return changed;
   })().finally(() => { syncing = null; });
@@ -457,7 +568,7 @@ export function startSync() {
 // On load: refresh the status, pull, then keep syncing.
 function onLoad() {
   if (!getKey()) return;
-  refreshStatus().then(() => syncNow()).catch(() => {});
+  refreshStatus().then(() => { refreshMe().catch(() => {}); return syncNow(); }).catch(() => {});
   startSync();
 }
 

@@ -7,12 +7,12 @@
 //   GET  /api/chat/unread                   -> { count }   unread messages + requests waiting
 //   GET  /api/chat/wait?after=<id>          -> { events, last }   long-poll, up to 25 s
 //   GET  /api/chat/rooms/:id/messages?before=&after=&limit=   -> { messages, more } (marks read)
-//   POST /api/chat/open        { seats }    -> { room } | { sent, message }
+//   POST /api/chat/open        { seats } | { name } -> { room } | { sent, message }   (CHAT 42, CHAT @name)
 //   POST /api/chat/rooms/:id/messages { text, card? } -> { message }
 //   POST /api/chat/requests/:seat { action: accept|ignore|block } -> { ok, room? }
 //   POST /api/chat/rooms/:id   { action: leave|add|block|unblock, seat? } -> { ok, room? }
 //   POST /api/chat/rooms/:id/report { reason? } -> { ok, message }
-//   PUT  /api/chat/me          { name }     -> { me }
+//   PUT  /api/chat/me          { name }     -> { me }   (an alias of ME's username: pro/me-routes.js)
 //   POST /api/chat/rooms/:id/drive { action: start|stop|follow|unfollow } -> { drive, cursor } | { ok }
 //   POST /api/chat/rooms/:id/drive/cmd { cmd } -> { ok, cmd, seq, followers }   the driver's screen
 //   POST /api/chat/guess       { n, guesses, rooms: [id] | 'all' } -> { posted, already, result }
@@ -25,7 +25,10 @@
 // (data/guess.js verifyPlay); TODAY'S GUESS rides on the messages answer ({ guess }), and
 // last week's winner line is posted on the first room load after the week ends.
 //
-// Nothing that goes out holds a key, a key hash or a licence id: people are { seat, name }.
+// Nothing that goes out holds a key, a key hash or a licence id: people are { seat, name,
+// color, avatar } (name: the username from ME).
+// ME's routes (/api/me) are mounted from here too (pro/me-routes.js): they share the CHAT
+// profile rows and the wrong-key limiter.
 
 import express from 'express';
 import { normalizeKey } from './licence.js';
@@ -33,8 +36,9 @@ import { publicStatus, KEY_HEADER } from './routes.js';
 import { createLimiter, clientIp } from './ratelimit.js';
 import { sameOrigin, cleanMessage } from './feedback.js';
 import {
-  ChatError, checkText, cleanCard, cleanName, cleanSeats, tickersIn, createHub, MAX_REASON, DAY_MS,
+  ChatError, checkText, cleanCard, cleanUsername, cleanSeats, tickersIn, createHub, MAX_REASON, DAY_MS, AT_NAME_RE,
 } from './chat.js';
+import { mountMe, meLimits } from './me-routes.js';
 import { createChatStore } from './chat-store.js';
 import {
   createDrives, drivingLine, stoppedLine, label, DRIVE_GONE_MS, DRIVE_CMDS_PER_MIN,
@@ -64,7 +68,6 @@ export function chatLimits(now = () => Date.now()) {
   return {
     send: createLimiter({ max: 30, windowMs: MIN, now }),
     request: createLimiter({ max: 10, windowMs: DAY_MS, now }),
-    name: createLimiter({ max: 10, windowMs: DAY_MS, now }),
     report: createLimiter({ max: 10, windowMs: DAY_MS, now }),
     // Every write but a message (open, requests, room actions, report, name) per licence.
     write: createLimiter({ max: 60, windowMs: 60 * MIN, now }),
@@ -82,9 +85,15 @@ export function mountChat(app, {
   db, store, guess = createLimiter({ max: 20, windowMs: 15 * MIN }), mode = 'live', publicUrl = 'https://bloombroke.com',
   getQuote = async () => null, parse, linkChanges, titleOf = null, now = () => Date.now(), limits = chatLimits(now),
   hub = createHub({ now }), stampMs = STAMP_MS, log = console, guessSecret = null, sweepMs = DRIVE_SWEEP_MS,
+  meLimitsFor = meLimits(now),
 }) {
   if (!parse || !linkChanges) throw new Error('mountChat needs the terminal parser');
   const chat = createChatStore(db, { now });
+  // Old display names that break a username rule now go back to SEAT 42 (015_profiles.sql).
+  try {
+    const n = chat.sweepNames();
+    if (n) log.log?.(`[chat] ${n} usernames that break a rule were cleared`);
+  } catch (err) { log.error('[chat] name sweep', err?.message); }
   const fail = (res, status, error, message) => res.status(status).json({ error, message });
   const limited = (res, r, message = 'Too many tries. Wait a minute and try again.') => {
     res.set('Retry-After', String(r.retryAfter));
@@ -198,9 +207,23 @@ export function mountChat(app, {
 
   r.post('/open', body, (req, res) => {
     const lic = req.lic;
-    const seats = cleanSeats(req.body?.seats);
     const isActive = (id) => { const l = store.findById(id); return Boolean(l && publicStatus(l, now(), mode).active); };
-    const out = chat.open(lic.id, seats, { allowRequest: () => limits.request.hit(`lic:${lic.id}`).ok, isActive });
+    const allowRequest = () => limits.request.hit(`lic:${lic.id}`).ok;
+    // CHAT @name: the same answer whether the name exists or not, and the same limits as
+    // CHAT 42. The seat behind a name is never sent back.
+    if (req.body?.name !== undefined) {
+      const m = AT_NAME_RE.exec(`@${String(req.body.name ?? '').replace(/^@/, '')}`);
+      if (!m) throw new ChatError('bad_name', 'Type CHAT and a username: CHAT @tom.');
+      const out = chat.openName(lic.id, m[1], { allowRequest, isActive });
+      if (out.sent) {
+        nudge(out, 'requests');
+        return res.json({ sent: true, message: `Request sent to @${m[1]}.` });
+      }
+      nudge(out, 'rooms', out.room);
+      return res.json({ room: chat.room(out.room, lic.id), accepted: Boolean(out.accepted) });
+    }
+    const seats = cleanSeats(req.body?.seats);
+    const out = chat.open(lic.id, seats, { allowRequest, isActive });
     if (out.sent) {
       nudge(out, 'requests');
       return res.json({ sent: true, seat: out.seat, message: `Request sent to SEAT ${out.seat}.` });
@@ -260,12 +283,11 @@ export function mountChat(app, {
     res.json({ ok: true, message: 'Reported. We will look at it.' });
   });
 
+  // The old NAME: now the username of ME, with its rules (3 changes a day, unique).
   r.put('/me', body, (req, res) => {
     if (!req.body || typeof req.body !== 'object' || !('name' in req.body)) return fail(res, 400, 'bad_request', 'Send { name }.');
-    const name = cleanName(req.body.name);
-    const hit = limits.name.hit(`lic:${req.lic.id}`);
-    if (!hit.ok) return limited(res, hit, 'That is a lot of name changes for one day. Try again tomorrow.');
-    const me = chat.setName(req.lic.id, name);
+    const username = cleanUsername(req.body.name);
+    const me = chat.setProfile(req.lic.id, { username });
     // Your other tabs redraw; the people you chat with see it on their next load.
     hub.emit([req.lic.id], { type: 'rooms' });
     res.json({ me });
@@ -402,5 +424,12 @@ export function mountChat(app, {
   });
 
   app.use('/api/chat', r);
+  // ME: /api/me (profile, export, delete). The account's drives end with it.
+  const endDrivesOf = (licId) => {
+    for (const [roomId, d] of drives.rooms()) if (d.driver === licId || d.followers.has(licId)) { if (d.driver === licId) endDrive(roomId); else d.followers.delete(licId); }
+  };
+  mountMe(app, {
+    db, store, chat, hub, guess, mode, publicUrl, now, log, limits: meLimitsFor, onDelete: endDrivesOf,
+  });
   return { chat, hub, drives, sweep, purge: (t) => chat.purge(t) };
 }

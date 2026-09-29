@@ -15,7 +15,7 @@ const section = (md, n) => md.slice(md.indexOf(`## ${n}.`), md.indexOf(`## ${n +
 
 test('legal 1.3: the version was bumped, so everyone who accepted 1.2 is asked again (1.4 since: test/legal-1-4.test.js)', () => {
   assert.ok(Number(TERMS_VERSION) >= 1.3);
-  assert.equal(LEGAL_UPDATED, '28 September 2026');
+  assert.ok(LEGAL_UPDATED);
   assert.equal(needsConsent(acceptRecord('1.2')), true);
   assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
 });
@@ -43,7 +43,8 @@ test('privacy s8: the retention table keeps the earlier promises, one row each',
   const s8 = section(privacy, 8);
   const rows = [...s8.matchAll(/^\| ([^|]+) \| ([^|]+) \|$/gm)].map((m) => m[1].trim()).filter((n) => !/^(Data|---)$/.test(n));
   assert.deepEqual(rows, ['IP addresses in our rate limiters', 'Ticker counter', 'Error logs on our server', 'Records kept by Cloudflare, DataFast and Google', 'Pro licence record', 'Synced data',
-    'Encrypted copy of your key', 'Payment records', 'Gift licences', 'Gift code records', 'Feedback', 'Chat messages', 'Chat reports', 'Chat name, contacts and blocks', 'Emails', 'Our own counters', 'Your browser storage']);
+    'Encrypted copy of your key', 'Payment records', 'Gift licences', 'Gift code records', 'Feedback', 'Chat messages', 'Chat reports', 'Chat contacts and blocks',
+    'Username, colour and avatar', 'A username you gave up', 'ME device settings', 'Emails', 'Our own counters', 'Your browser storage']);
   for (const kept of ['We aim to delete them within 14 days.', 'for 5 years after your subscription is cancelled', 'Deleted 30 days after your subscription ends, or sooner if you ask.',
     'at the latest 25 hours after checkout', 'normally five years, and are held mainly in Stripe', 'Up to 12 months, then deleted.', 'Until you clear it.']) assert.ok(s8.includes(kept), kept);
 });

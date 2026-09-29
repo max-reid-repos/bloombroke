@@ -191,8 +191,8 @@ test('weekly: last week\'s winner posts once per room on the first load after th
     assert.deepEqual(await sys(a, ab), []);
     // Next Monday, New York time.
     s.setNow(Date.UTC(2026, 9, 5, 14));
-    assert.deepEqual(await sys(b, ab), [`Last week's GUESS: Ann ${a.seat} and Tom ${b.seat} won with 10 points.`]);
-    assert.deepEqual(await sys(a, ab), [`Last week's GUESS: Ann ${a.seat} and Tom ${b.seat} won with 10 points.`], 'once per room');
+    assert.deepEqual(await sys(b, ab), [`Last week's GUESS: Ann #${a.seat} and Tom #${b.seat} won with 10 points.`]);
+    assert.deepEqual(await sys(a, ab), [`Last week's GUESS: Ann #${a.seat} and Tom #${b.seat} won with 10 points.`], 'once per room');
     assert.deepEqual(await sys(c, ac), [`Last week's GUESS: SEAT ${c.seat} won with 6 points.`], 'each room its own');
     // A late load the week after: nothing new for that old week.
     s.advance(DAY * 2);
@@ -251,7 +251,7 @@ test('the thread: a GUESS result is one line with the score; TODAY\'S GUESS stri
   const room = { id: 9, readOnly: false };
   const guess = { n: 2, of: 6, scores: [{ seat: 2, name: 'Ann', tries: 2, solved: true }, { seat: 1, name: 'Tom', tries: 6, solved: false }] };
   const x = extraHtml(room, null, guess);
-  assert.equal(strip(x), "TODAY'S GUESS Ann 2 2/6 · Tom 1 X/6");
+  assert.equal(strip(x), "TODAY'S GUESS Ann #2 2/6 · Tom #1 X/6");
   assert.match(x, /class="ct-line ct-guess" data-card="GUESS"/, 'a click opens GUESS');
   assert.equal(extraHtml(room, null, { n: 2, scores: [] }), '');
 });

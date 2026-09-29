@@ -28,6 +28,18 @@
   --cmp-2: hsl(222, 90%, 70%);
   --cmp-3: hsl(210, 10%, 60%);
 
+  /* Name colours (ME, CHAT, the top bar): 8 fixed ones a user picks from. Each is at
+     least 4.5:1 on --panel (8:1 or more), no warm yellows, none near --up or --down,
+     none the same as --accent. screens/me.css and pixel-avatar.js use them by number. */
+  --name-0: hsl(0, 0%, 94%);          /* white */
+  --name-1: hsl(225, 95%, 76%);       /* periwinkle */
+  --name-2: hsl(265, 90%, 80%);       /* violet */
+  --name-3: hsl(295, 70%, 76%);       /* orchid */
+  --name-4: hsl(325, 90%, 78%);       /* pink */
+  --name-5: hsl(175, 55%, 55%);       /* teal */
+  --name-6: hsl(85, 65%, 62%);        /* lime */
+  --name-7: hsl(210, 10%, 72%);       /* silver */
+
   --up: hsl(147, 70%, 55%);          /* #3DDC84 */
   --down: hsl(0, 100%, 68%);         /* #FF5C5C */
   --up-flash: hsla(147, 70%, 45%, .30);
@@ -1200,6 +1212,17 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
 
 /* ---- Pro structure: seat, sponsor line, PRO breakdown, GIFT, FEEDBACK ------------ */
 .brand { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+/* Name colours by number (pixel-avatar.js data-nc): the site's CSP allows no inline
+   styles, so the 8 are rules here. A pixel avatar sits on the line of text beside it. */
+[data-nc="0"] { color: var(--name-0); }
+[data-nc="1"] { color: var(--name-1); }
+[data-nc="2"] { color: var(--name-2); }
+[data-nc="3"] { color: var(--name-3); }
+[data-nc="4"] { color: var(--name-4); }
+[data-nc="5"] { color: var(--name-5); }
+[data-nc="6"] { color: var(--name-6); }
+[data-nc="7"] { color: var(--name-7); }
+.px-av { vertical-align: -4px; }
 .seat { font-size: 11px; font-weight: 600; letter-spacing: .12em; color: var(--accent); white-space: nowrap; }
 .seat:hover { text-decoration: none; color: var(--text); }
 .seat[hidden] { display: none; }

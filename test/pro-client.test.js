@@ -95,7 +95,8 @@ test('TAPE: rows come from one /api/quotes call, in tape order', async () => {
 });
 
 test('sync planning: pull newer server copies, push local changes once', () => {
-  assert.deepEqual(Object.keys(SYNC_DOCS), ['watch', 'pf', 'tape', 'desk', 'grid']);
+  assert.deepEqual(Object.keys(SYNC_DOCS), ['watch', 'pf', 'tape', 'desk', 'grid', 'prefs']);
+  assert.equal(SYNC_DOCS.prefs, 'bb.prefs', 'ME: this device\'s settings sync for Pro');
   assert.equal(SYNC_DOCS.grid, 'bb.grid', 'the last GRID board syncs for Pro');
   assert.equal(SYNC_DOCS.desk, 'bb.desks', 'saved DESK layouts sync for Pro');
   const meta = { watch: { raw: '["AAPL"]', updatedAt: 100 } };

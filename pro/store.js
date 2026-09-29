@@ -1,5 +1,6 @@
 // Pro storage: licences, processed Stripe events and synced documents.
 
+import { randomBytes } from 'node:crypto';
 import { tx } from './db.js';
 import {
   generateKey, hashKey, last4, encryptReveal, decryptReveal, REVEAL_MS,
@@ -118,6 +119,11 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
     docs: db.prepare('SELECT name, data, updated_at FROM sync_docs WHERE licence_id = ? ORDER BY name'),
     // PRO's hero: the seat the next licence would get. A number only, nothing else read.
     nextSeat: db.prepare(`SELECT ${NEXT_SEAT} AS n`),
+    // DELETE MY ACCOUNT (pro/me-routes.js): the synced documents, the codes nobody used,
+    // and a key hash no key can ever have (a SHA-256 hash is 64 hex characters).
+    closeDocs: db.prepare('DELETE FROM sync_docs WHERE licence_id = ?'),
+    closeGifts: db.prepare('DELETE FROM gift_codes WHERE giver_licence_id = ? AND redeemed_at IS NULL'),
+    closeKey: db.prepare("UPDATE licences SET key_hash = ?, last4 = '----', reveal_ciphertext = NULL, updated_at = ? WHERE id = ?"),
     docPut: db.prepare(`INSERT INTO sync_docs (licence_id, name, data, updated_at) VALUES (?, ?, ?, ?)
       ON CONFLICT (licence_id, name) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`),
   };
@@ -293,6 +299,18 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
         q.rotate.run(hash, last4(key), now(), licenceId);
         return { key, licence: q.byId.get(licenceId) };
       });
+    },
+
+    // DELETE MY ACCOUNT: the synced documents and the unused gift codes go, and the key
+    // stops working (its hash is replaced by one no key can match). The licence row stays
+    // (seat, dates, Stripe ids): the 5-year record rule. No transaction of its own: the
+    // route runs it inside one with the CHAT rows. Returns counts.
+    closeAccount(licenceId) {
+      if (!q.byId.get(licenceId)) throw new Error('no such licence');
+      const docs = Number(q.closeDocs.run(licenceId).changes);
+      const gifts = Number(q.closeGifts.run(licenceId).changes);
+      q.closeKey.run(`deleted:${randomBytes(32).toString('hex')}`, now(), licenceId);
+      return { docs, gifts };
     },
 
     isEventProcessed(id) { return Boolean(q.eventSeen.get(id)); },

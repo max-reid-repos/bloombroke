@@ -18,7 +18,8 @@ import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { updatedTitle } from './freshness.js';
 import { dotTitle, popoverHtml } from './provenance.js'; // Provenance: the dot's tooltip and list
 import { EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra, urlCommand, isSecret } from './commands.js';
-import { getTape, loadTapeRows, bareKey, looksLikeKey, bareGift, getSeat, isPro } from './pro.js';
+import { getTape, loadTapeRows, bareKey, looksLikeKey, bareGift, getSeat, isPro, getMe, getStatus, getPrefs, startCommand, clockFace, chatBeep } from './pro.js';
+import { avatarSvg, nameHtml } from './pixel-avatar.js'; // ME: your avatar and username by the name
 // --- Pro structure: GIFT, REDEEM, CHAT, SPONSOR, FEEDBACK ---
 import { stripItems, mountStrip, loadSponsors } from './sponsor-strip.js';
 import { countOnly, stripShownBatch } from './goal.js'; // BBRK: sponsor strip shown and clicked
@@ -250,11 +251,15 @@ export function tickerFunctions(ticker, current = 'CHART') {
 }
 
 // CHAT, CHAT 42 (open that chat or ask them), CHAT 42 88 (a group): 1 to 7 seat numbers,
-// leading zeros fine. With seats it changes something (a request, a group), so it shows
-// plain CHAT in the address bar and a link to it asks first.
+// leading zeros fine. CHAT @tom: the same by username (ME). With seats or a name it
+// changes something (a request, a group), so it shows plain CHAT in the address bar and a
+// link to it asks first.
 export const MAX_CHAT_SEATS = 7;
+export const AT_NAME_RE = /^@([A-Z][A-Z0-9_]{2,14})$/i;
 export function parseChat(rest) {
   if (!rest.length) return { name: 'CHAT', input: 'CHAT' };
+  const at = rest.length === 1 ? AT_NAME_RE.exec(rest[0]) : null;
+  if (at) return { name: 'CHAT', args: { name: at[1] }, input: `CHAT @${at[1]}`, mutates: true, view: 'CHAT' };
   const seats = [...new Set(rest.map((w) => (/^\d{1,9}$/.test(w) ? Number(w) : NaN)))];
   if (seats.some((n) => !(n >= 1)) || seats.length > MAX_CHAT_SEATS) return { name: 'CHAT', args: { error: 'usage' }, error: 'usage', input: ['CHAT', ...rest].join(' ') };
   return { name: 'CHAT', args: { seats }, input: `CHAT ${seats.join(' ')}`, mutates: true, view: 'CHAT' };
@@ -282,7 +287,7 @@ export function parseCommand(raw, depth = 0) {
   if (head === 'REDEEM') return { name: 'REDEEM', args: parseRedeem(rest), input: 'REDEEM', secret: true, url: 'REDEEM' };
   const giftCode = (!isCommandHead(head) || head === 'GIFT') && bareGift(toks);
   if (giftCode) return { name: 'REDEEM', args: { code: giftCode }, input: 'REDEEM', secret: true, url: 'REDEEM' };
-  if (head === 'GIFT' || head === 'SPONSOR' || head === 'FEEDBACK') return { name: head, input: head };
+  if (head === 'GIFT' || head === 'SPONSOR' || head === 'FEEDBACK' || head === 'ME') return { name: head, input: head };
   if (head === 'CHAT') return parseChat(rest);
   // --- end Pro structure ---
   const extra = matchExtra(head, rest);
@@ -497,6 +502,19 @@ export function marketStatus(date = new Date()) {
   return mins >= 9 * 60 + 30 && mins < close ? 'OPEN' : 'CLOSED';
 }
 
+// The top bar's seat: your avatar, your username in its colour (SEAT 00042 without one)
+// and #00042 small. It opens ME.
+export function seatHtml(me, seat) {
+  const n = Number.isInteger(seat) ? seat : (Number.isInteger(me?.seat) ? me.seat : null);
+  const pad = n ? String(n).padStart(5, '0') : '-----';
+  const p = { seat: n, name: me?.username || null, color: me?.color ?? null, avatar: me?.avatar || null };
+  const av = avatarSvg(p, { size: 16, cls: 'seat-av' });
+  if (!p.name) return `${av} SEAT ${pad}`;
+  return `${av} ${nameHtml(p)} <span class="seat-n dim">#${pad}</span>`;
+}
+// 'CHAT 3' -> 3, 'CHAT 99+' -> 99, '' -> 0.
+export const badgeCount = (t) => Number((/\d+/.exec(String(t ?? '')) || ['0'])[0]);
+
 export function nyClock(date = new Date()) {
   const { hour, minute, second } = nyParts(date);
   const p = (n) => String(n).padStart(2, '0');
@@ -563,6 +581,7 @@ const SCREENS = {
   MENU: help,
   // Pro structure
   GIFT: lazy('screens/pro.js', 'giftCommand'), REDEEM: lazy('screens/pro.js', 'redeemCommand'), CHAT: lazy('screens/chat.js'), SPONSOR: lazy('screens/sponsor.js'), FEEDBACK: lazy('screens/feedback.js'),
+  ME: lazy('screens/me.js'), // ME: profile, plan, this device, key and data (SETTINGS, ACCOUNT)
 };
 // NO SUCH TICKER. YET.: GRAVEYARD and IPO IT draw from screens/nosuch.js's own table.
 const NOSUCH = 'screens/nosuch.js';
@@ -585,7 +604,7 @@ export const SHEET_ORDER = [
   'screens/alerts.css', 'screens/pro.css', 'screens/why.css', 'screens/sectors.css', 'screens/heatmap.css',
   'screens/fxmatrix.css', 'screens/calendar.css', 'screens/bbrk.css', 'screens/options.css',
   'screens/worldmap.css', 'screens/help.css', 'screens/nosuch.css', 'screens/graveyard.css', 'screens/data.css',
-  'screens/welcome.css', 'screens/grid.css', 'screens/chat.css',
+  'screens/welcome.css', 'screens/grid.css', 'screens/chat.css', 'screens/me.css',
 ];
 export const stylesFor = (entry) => (entry?.js ? stylesOf(entry.js) : []);
 
@@ -707,6 +726,7 @@ export function linkQuestion(cmd) {
   if (cmd.name === 'WATCH' && a.action === 'add' && a.ids?.length) return { question: `Add ${a.ids.join(', ')} to your watchlist?`, verb: 'ADD' };
   if (cmd.name === 'WATCH' && a.action === 'remove' && a.ids?.length) return { question: `Remove ${a.ids.join(', ')} from your watchlist?`, verb: 'REMOVE' };
   if (cmd.name === 'CHAT' && a.seats?.length) return { question: `Chat with ${a.seats.map((n) => `SEAT ${n}`).join(', ')}?`, verb: 'CHAT' };
+  if (cmd.name === 'CHAT' && a.name) return { question: `Chat with @${a.name}?`, verb: 'CHAT' };
   return { question: `Run ${cmd.input}? It changes your ${LINK_CHANGES[cmd.name] || 'saved settings'}.`, verb: 'RUN' };
 }
 
@@ -1019,7 +1039,11 @@ function boot() {
   let stripKey = '';
   function paintPro() {
     const seat = embed ? null : getSeat();
-    if (seatEl) { seatEl.textContent = seat || ''; seatEl.hidden = !seat; }
+    if (seatEl) {
+      seatEl.innerHTML = seat ? seatHtml(getMe(), getStatus()?.seat) : '';
+      seatEl.hidden = !seat;
+      if (seat) seatEl.setAttribute('aria-label', `${getMe()?.username || seat}: ME`);
+    }
     if (!sponsorEl) return;
     const items = embed ? [] : stripItems(sponsorCfg, { pro: isPro() });
     const key = JSON.stringify(items);
@@ -1701,10 +1725,17 @@ function boot() {
 
   // --- clock ----------------------------------------------------------------
   const clockEl = $('clock');
+  const clockLabel = document.querySelector('.clock .label');
   const statusEl = $('market-status');
+  // ME's CLOCK: the top bar clock in New York or local time. The market status and
+  // every data time on screen stay New York.
+  let clockPrefs = getPrefs();
+  window.addEventListener('bb:prefs', () => { clockPrefs = getPrefs(); tick(); });
   function tick() {
     const now = new Date();
-    clockEl.textContent = nyClock(now);
+    const face = clockFace(now, clockPrefs, nyClock);
+    clockEl.textContent = face.time;
+    if (clockLabel && clockLabel.textContent !== face.label) clockLabel.textContent = face.label;
     const open = marketStatus(now) === 'OPEN';
     statusEl.dataset.open = String(open);
     statusEl.querySelector('.status-text').textContent = open ? 'MARKET OPEN' : 'MARKET CLOSED';
@@ -1715,6 +1746,16 @@ function boot() {
     setInterval(tick, 1000);
     mountHereNow($('here-now'), { timer: liveTimer });
     mountChatBadge($('chat-badge'), { timer: liveTimer });
+    // CHAT SOUND (ME): a soft beep when the unread count by the seat goes up.
+    const badge = $('chat-badge');
+    let unread = badgeCount(badge?.textContent);
+    if (badge && typeof MutationObserver === 'function') {
+      new MutationObserver(() => {
+        const n = badgeCount(badge.textContent);
+        if (n > unread) chatBeep();
+        unread = n;
+      }).observe(badge, { childList: true, characterData: true, subtree: true });
+    }
   }
   applyTape(tapeOn(store));
 
@@ -1811,7 +1852,9 @@ function boot() {
   }, true);
 
   // --- first render ---------------------------------------------------------
-  const plan = embed ? { url: urlFor(fromQuery(location.search)).url, ask: null } : linkPlan(fromQuery(location.search));
+  // ME's START SCREEN: a visit with no ?c= opens on it (a link's own screen always wins).
+  const start = embed ? null : startCommand(location.search, getPrefs());
+  const plan = embed ? { url: urlFor(fromQuery(location.search)).url, ask: null } : linkPlan(start || fromQuery(location.search));
   if (!plan.show) plan.show = plan.url;
   const initial = plan.url; // a link never runs LOGIN or TAPE ADD
   const openLink = () => {

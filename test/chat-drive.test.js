@@ -112,13 +112,13 @@ test('drive: start posts a line; takeover; STOP posts a line; only a member; lin
     assert.equal((await out.cmd(g, 'AAPL')).status, 404);
     const r = await a.drive(g, 'start');
     assert.equal(r.status, 200);
-    assert.deepEqual(r.body.drive, { by: { seat: a.seat, name: 'Tom' }, own: true, following: false, followers: 0 });
+    assert.deepEqual(r.body.drive, { by: { seat: a.seat, name: 'Tom', color: null, avatar: null }, own: true, following: false, followers: 0 });
     assert.ok(r.body.cursor > 0);
     let lines = (await b.msgs(g)).filter((m) => m.kind === 'sys').map((m) => m.text);
-    assert.deepEqual(lines, [`Tom ${a.seat} is driving.`]);
+    assert.deepEqual(lines, [`Tom #${a.seat} is driving.`]);
     // B sees the offer on the room; A sees own.
     const bRoom = (await b.list()).body.rooms.find((x) => x.id === g);
-    assert.deepEqual(bRoom.drive, { by: { seat: a.seat, name: 'Tom' }, own: false, following: false });
+    assert.deepEqual(bRoom.drive, { by: { seat: a.seat, name: 'Tom', color: null, avatar: null }, own: false, following: false });
     // Pressing DRIVE again changes nothing (no second line).
     await a.drive(g, 'start');
     assert.equal((await b.msgs(g)).filter((m) => m.kind === 'sys').length, 1);
@@ -134,7 +134,7 @@ test('drive: start posts a line; takeover; STOP posts a line; only a member; lin
     assert.equal((await b.list()).body.rooms.find((x) => x.id === g).drive.followers, 0, 'C followed A, not B');
     assert.equal((await b.drive(g, 'stop')).status, 200);
     lines = (await c.msgs(g)).filter((m) => m.kind === 'sys').map((m) => m.text);
-    assert.deepEqual(lines, [`Tom ${a.seat} is driving.`, `SEAT ${b.seat} is driving.`, `SEAT ${b.seat} stopped.`]);
+    assert.deepEqual(lines, [`Tom #${a.seat} is driving.`, `SEAT ${b.seat} is driving.`, `SEAT ${b.seat} stopped.`]);
     assert.equal((await c.list()).body.rooms.find((x) => x.id === g).drive, undefined);
     // Screens are never messages.
     const rows = s.db.prepare('SELECT body FROM chat_messages').all().map((x) => x.body);
@@ -150,7 +150,7 @@ test('drive cmd: goes to followers only, with seq; cards rules apply (mutating a
     await a.drive(g, 'start');
     const f = await b.drive(g, 'follow');
     assert.equal(f.status, 200);
-    assert.deepEqual(f.body.drive, { by: { seat: a.seat, name: 'Tom' }, cmd: null, seq: 0 });
+    assert.deepEqual(f.body.drive, { by: { seat: a.seat, name: 'Tom', color: null, avatar: null }, cmd: null, seq: 0 });
     const curB = f.body.cursor;
     const curC = (await c.list()).body.cursor;
     const sent = await a.cmd(g, 'aapl 1y');
@@ -231,7 +231,7 @@ test('drive: stops after 10 minutes without a screen, or 60 s after the driver s
     s.advance(DRIVE_IDLE_MS);
     s.chat.sweep();
     assert.equal(s.chat.drives.get(g), null);
-    assert.equal((await c.msgs(g)).filter((m) => m.kind === 'sys').at(-1).text, `Tom ${a.seat} stopped.`);
+    assert.equal((await c.msgs(g)).filter((m) => m.kind === 'sys').at(-1).text, `Tom #${a.seat} stopped.`);
     cancelA(); cancelB();
     // The driver's page gone for 60 s: stopped.
     await a.drive(g, 'start');
@@ -288,11 +288,11 @@ const TOM = { seat: 1, name: 'Tom' };
 
 test('bars: one line each; DRIVING with the count and STOP; FOLLOWING who, the screen, ESC stops, CHAT', () => {
   assert.equal(strip(driverBarHtml(2)), 'DRIVING · 2 following · STOP');
-  assert.equal(strip(followBarHtml(TOM, 'AAPL 1Y')), 'FOLLOWING Tom 1 · AAPL 1Y · ESC stops · CHAT');
+  assert.equal(strip(followBarHtml(TOM, 'AAPL 1Y')), 'FOLLOWING Tom #1 · AAPL 1Y · ESC stops · CHAT');
   assert.match(followBarHtml(TOM, 'AAPL'), /<a class="dv-btn" href="\?c=CHAT" data-cmd="CHAT">CHAT<\/a>/, 'fix 10: CHAT is an own command: it opens CHAT and ends following');
   assert.equal(strip(followBarHtml({ seat: 7, name: null }, '')), 'FOLLOWING SEAT 7 · ESC stops · CHAT');
-  assert.match(followBarHtml({ seat: 7, name: '<b>' }, '<i>'), /&lt;b&gt; 7.*&lt;i&gt;/);
-  assert.equal(who(TOM), 'Tom 1');
+  assert.match(followBarHtml({ seat: 7, name: '<b>' }, '<i>'), /&lt;b&gt;.*#7.*&lt;i&gt;/);
+  assert.equal(who(TOM), 'Tom #1');
   assert.deepEqual(pickFollow([{ type: 'drive', room: 9, cmd: 'A', seq: 2 }, { type: 'drive', room: 9, cmd: 'B', seq: 3 }, { type: 'drive', room: 8, cmd: 'C', seq: 9 }], 9, 1), { next: { cmd: 'B', seq: 3 }, ended: false });
   assert.deepEqual(pickFollow([{ type: 'drive', room: 9, cmd: 'A', seq: 2 }], 9, 2).next, null, 'an old screen is not run again');
   assert.equal(pickFollow([{ type: 'drive-end', room: 9 }], 9).ended, true);
@@ -309,8 +309,8 @@ test('the CHAT thread: DRIVE in the head (STOP while you drive), the offer line 
   assert.equal(driveChipHtml({ ...room, readOnly: true }), '', 'a closed chat has no DRIVE');
   assert.equal(extraHtml(room), '');
   const driven = { ...room, drive: { by: TOM, own: false, following: false } };
-  assert.equal(strip(extraHtml(driven)), 'Tom 1 is driving. FOLLOW');
-  assert.equal(strip(extraHtml(driven, { role: 'follow', room: 9 })), 'Following Tom 1. STOP');
+  assert.equal(strip(extraHtml(driven)), 'Tom #1 is driving. FOLLOW');
+  assert.equal(strip(extraHtml(driven, { role: 'follow', room: 9 })), 'Following Tom #1. STOP');
   assert.equal(extraHtml({ ...room, drive: { by: TOM, own: true } }), '', 'your own drive: the bar says it');
   const html = messagesHtml([{ id: 1, kind: 'sys', seat: null, text: 'Tom 1 is driving.', at: Date.now() }]);
   assert.match(html, /class="cm cm-sys".*<span class="cm-body">Tom 1 is driving\.<\/span>/);
@@ -545,7 +545,7 @@ test('fix 7: someone blocked either way with the driver cannot take over', async
   try {
     const { a, b, c, g } = await s.trio();
     await a.drive(g, 'start');
-    const ab = (await b.list()).body.rooms.find((r) => r.kind === 'dm' && r.title === `Tom ${a.seat}`).id;
+    const ab = (await b.list()).body.rooms.find((r) => r.kind === 'dm' && r.title === `Tom #${a.seat}`).id;
     await b.post(`/api/chat/rooms/${ab}`, { action: 'block' });
     const r = await b.drive(g, 'start');
     assert.deepEqual([r.status, r.body.error], [409, 'taken']);
@@ -558,7 +558,7 @@ test('fix 8: TAKE OVER asks first; server lines are never unread and never move 
   const room = { id: 9, readOnly: false, drive: { by: TOM, own: false } };
   assert.match(driveChipHtml(room), /data-act="take">TAKE OVER</);
   assert.match(driveChipHtml(room, { role: 'drive', room: 9 }), />STOP</);
-  assert.equal(strip(takeConfirmHtml(TOM)), 'Take over from Tom 1? ENTER: TAKE OVER ESC: CANCEL');
+  assert.equal(strip(takeConfirmHtml(TOM)), 'Take over from Tom #1? ENTER: TAKE OVER ESC: CANCEL');
   const src = readFileSync('public/screens/chat.js', 'utf8');
   assert.match(src, /\(e\.key === 'Enter' \|\| e\.key === 'Escape'\) && \$\('\.ct-confirm'\)/);
   const s = await setup();
