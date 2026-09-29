@@ -20,7 +20,7 @@ import {
   getQuoteCard, quotePng, quoteMeta, affordModel, affordPng, affordMeta,
   withCanonical, quoteTicker, SITE,
 } from './lib/og.js';
-import { commandMeta, mountSiteFiles } from './lib/seo.js';
+import { commandMeta, mountSiteFiles, noindexOtherHosts } from './lib/seo.js';
 import { whatifItemMeta } from './lib/whatif-seo.js'; // WHATIF item pages: plain title and description
 import { mountEmbeds } from './lib/embed-pages.js'; // /embed/whatif and /embed/guess
 import { parseCommand, screenFiles } from './public/app.js';
@@ -62,6 +62,7 @@ app.use((req, res, next) => {
   res.set(HEADERS);
   next();
 });
+app.use(noindexOtherHosts()); // only bloombroke.com is indexed (lib/seo.js)
 app.use('/api', provenanceJson()); // Provenance: { source, as_of, age_seconds, delay, ... } on every JSON answer
 
 app.get('/api/markets', async (req, res) => {
