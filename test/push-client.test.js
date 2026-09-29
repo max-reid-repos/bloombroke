@@ -145,10 +145,12 @@ function fakeBrowser({ flag = true, key = KEY, endpoint = 'https://fcm.googleapi
 
 test('alert sync: sent when the list changes, not for a new price; the server saying no hands the alerts back to the tab', async () => {
   const quote = { id: 'a1', kind: 'quote', sym: 'AAPL', op: '>', level: 350, vdp: 2, state: 'waiting' };
-  let b = fakeBrowser();
+  let b = fakeBrowser({ answer: { ok: true, on: true, armed: ['a1'], fired: [] } });
   try {
     assert.equal(await syncAlerts([quote], { now: 1000 }), true);
     assert.equal(b.calls.length, 1);
+    assert.deepEqual(JSON.parse(b.store.get(SIG_KEY)).armed, ['a1'], 'what the server pings, for the stand-down');
+    assert.equal(JSON.parse(b.store.get(SIG_KEY)).at, 1000);
     assert.equal(b.calls[0].url, '/api/push/alerts');
     assert.equal(b.calls[0].method, 'PUT');
     assert.equal(b.calls[0].headers['X-Pro-Key'], KEY);
@@ -159,6 +161,18 @@ test('alert sync: sent when the list changes, not for a new price; the server sa
     assert.equal(b.calls.length, 2, 'a change goes');
     await syncAlerts([{ ...quote, state: 'triggered' }], { now: 3000 + 5 * 60 * 1000 });
     assert.equal(b.calls.length, 3, 'asked again after 5 minutes, so the flag stays true');
+  } finally { b.restore(); }
+  // The server fired a1 while the tab was not looking: TRIGGERED here, and that list goes next.
+  b = fakeBrowser({ answer: { ok: true, on: true, armed: [], fired: ['a1'] } });
+  try {
+    b.store.set('bb.alerts', JSON.stringify([quote]));
+    assert.equal(await syncAlerts([quote], { now: 5000 }), true);
+    const after = JSON.parse(b.store.get('bb.alerts'));
+    assert.equal(after[0].state, 'triggered');
+    assert.equal(after[0].firedAt, 5000);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(b.calls.length, 2, 'the TRIGGERED list is sent at once');
+    assert.equal(b.calls[1].body.alerts[0].state, 'triggered');
   } finally { b.restore(); }
   b = fakeBrowser({ answer: { ok: true, on: false } });
   try {
@@ -249,7 +263,7 @@ test('LOGIN with another key: the old key lets the browser go; the new key takes
 
 // ---- the in-tab watcher stands down ------------------------------------------------------------------
 
-async function runWatcher({ flag }) {
+async function runWatcher({ flag, sig = null }) {
   const made = [];
   const saved = {};
   for (const k of ['window', 'document', 'Notification', 'setInterval', 'localStorage']) saved[k] = Object.getOwnPropertyDescriptor(globalThis, k);
@@ -265,6 +279,7 @@ async function runWatcher({ flag }) {
     { id: 'g1', kind: 'gauge', sym: 'CANAL', gauge: 'canal', op: '<', level: 5, state: 'waiting' },
   ]);
   if (flag) data.set('bb.push.alerts', true);
+  if (sig) data.set('bb.push.sig', sig);
   const store = { get: (k, d) => (data.has(k) ? data.get(k) : d), set: (k, v) => data.set(k, v) };
   const statuses = [];
   try {
@@ -282,11 +297,17 @@ async function runWatcher({ flag }) {
   return { made, statuses, list: data.get(ALERTS_KEY) };
 }
 
-test('ALERTS stand-down: with closed-tab alerts on, the tab shows the fire but only the server notifies a quote alert; a gauge alert stays with the tab', async () => {
+test('ALERTS stand-down: only for alerts the server said it pings, in a sync under 2 minutes old; a gauge alert stays with the tab', async () => {
   const off = await runWatcher({ flag: false });
   assert.deepEqual(off.made.map((n) => n.tag).sort(), ['bb-alert-g1', 'bb-alert-q1'], 'pings off: the tab notifies both, as today');
-  const on = await runWatcher({ flag: true });
+  const on = await runWatcher({ flag: true, sig: { sig: 'x', at: Date.now() - 30_000, armed: ['q1'] } });
   assert.deepEqual(on.made.map((n) => n.tag), ['bb-alert-g1'], 'pings on: the server pings AAPL; the tab still notifies the gauge');
+  const stale = await runWatcher({ flag: true, sig: { sig: 'x', at: Date.now() - 3 * 60_000, armed: ['q1'] } });
+  assert.deepEqual(stale.made.map((n) => n.tag).sort(), ['bb-alert-g1', 'bb-alert-q1'], 'the last sync is over 2 minutes old: the tab notifies');
+  const notArmed = await runWatcher({ flag: true, sig: { sig: 'x', at: Date.now(), armed: [] } });
+  assert.deepEqual(notArmed.made.map((n) => n.tag).sort(), ['bb-alert-g1', 'bb-alert-q1'], 'the server did not say it pings q1: the tab notifies');
+  const noSync = await runWatcher({ flag: true });
+  assert.equal(noSync.made.length, 2, 'the flag alone, no sync yet: the tab notifies');
   assert.equal(on.statuses.length, 2, 'both still show in the status line');
   assert.ok(on.list.every((a) => a.state === 'triggered'), 'and turn TRIGGERED on the ALERTS screen');
   // The ping uses the same tag as the tab's notification (bb-alert-<id>): one replaces the other.

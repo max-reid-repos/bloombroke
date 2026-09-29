@@ -6,6 +6,7 @@
 // end to end: the push service (Apple, Google, Mozilla, Microsoft) never reads it.
 // Sending is injected (send), so tests never call a real push service.
 
+import { parse as legacyParse } from 'node:url';
 import { TICKER_WORD_RE } from './chat.js';
 import { conditionMet } from '../public/alerts.js';
 
@@ -22,6 +23,37 @@ export const TEXT_MAX = 80;
 export const OPEN_CHAT = 'Open CHAT to read it.';
 const MAX_THROTTLE_KEYS = 50_000;
 const MAX_SEEN = 5_000;
+
+// ---- where a ping may go -----------------------------------------------------------------
+
+export const PUSH_HOSTS = new Set(['fcm.googleapis.com', 'updates.push.services.mozilla.com', 'web.push.apple.com']);
+export const PUSH_HOST_SUFFIXES = ['.push.apple.com', '.notify.windows.com'];
+// The raw address, before any parser: https://, a plain host (no port, no user), a path,
+// and none of the characters two URL parsers read differently. dev: host:port on this machine.
+const RAW_RE = /^https:\/\/([a-z0-9.-]+)\/[^\s\\"'{}|^`<>;]*$/i;
+const RAW_DEV_RE = /^https:\/\/((?:localhost|127\.0\.0\.1):\d{2,5})\/[^\s\\"'{}|^`<>;]*$/i;
+
+// Is this a push service we send to? web-push sends with the legacy url.parse(), the
+// check above uses the WHATWG URL: the raw host, both parsers' hosts and the allowlist
+// must all agree, so no address can mean one host here and another there.
+// devHosts (development only): host:port on this machine, a fake push service.
+export function pushHostOk(endpoint, devHosts = []) {
+  if (typeof endpoint !== 'string' || endpoint.length > 1024) return false;
+  let whatwg;
+  let legacy;
+  try { whatwg = new URL(endpoint); legacy = legacyParse(endpoint); } catch { return false; }
+  const dev = devHosts.length ? RAW_DEV_RE.exec(endpoint) : null;
+  if (dev) {
+    const h = dev[1].toLowerCase();
+    return devHosts.includes(h) && whatwg.protocol === 'https:' && whatwg.host === h && legacy.host === h;
+  }
+  const m = RAW_RE.exec(endpoint);
+  if (!m) return false;
+  const host = m[1].toLowerCase();
+  if (whatwg.protocol !== 'https:' || whatwg.username || whatwg.password || whatwg.port) return false;
+  if (whatwg.hostname !== host || legacy.hostname !== host || legacy.protocol !== 'https:' || legacy.port || legacy.auth) return false;
+  return PUSH_HOSTS.has(host) || PUSH_HOST_SUFFIXES.some((s) => host.endsWith(s) && host.length > s.length);
+}
 
 // ---- payloads --------------------------------------------------------------------------
 
@@ -74,8 +106,10 @@ export function usMarketOpen(date = new Date()) {
 // resolves when the push service took it, or rejects with { statusCode }.
 // 404 or 410: the subscription is gone, dropped. Anything else: one more failure, and
 // the subscription is dropped after MAX_FAILS in a row. A full queue drops the new ping.
+// hostOk: the allowlist again, right before sending (a row that got past it is dropped,
+// never sent to).
 export function createSender({
-  store, send, log = console, now = () => Date.now(), concurrency = 4, maxQueue = 2000,
+  store, send, log = console, now = () => Date.now(), concurrency = 4, maxQueue = 2000, hostOk = (e) => pushHostOk(e),
 }) {
   const queue = [];
   let running = 0;
@@ -88,6 +122,11 @@ export function createSender({
     for (const fn of w) fn();
   };
   async function run({ sub, body, opts }) {
+    if (!hostOk(sub.endpoint)) {
+      store.dropSub(sub.id);
+      log.error?.('[push] a subscription with an address we do not send to was dropped');
+      return;
+    }
     try {
       await send({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, body, opts);
       store.sendOk(sub.id, now());
@@ -180,7 +219,10 @@ export function createAlertLoop({
     if (busy) return { busy: true };
     busy = true;
     try {
-      const rows = store.waitingAlerts();
+      // Only licences with Pro now: an ended one never uses the symbol budget.
+      const active = new Map();
+      const live = (id) => { if (!active.has(id)) active.set(id, Boolean(isActive(id))); return active.get(id); };
+      const rows = store.waitingAlerts().filter((r) => live(r.licence_id));
       if (!rows.length) return { symbols: 0, fired: 0 };
       const all = [...new Set(rows.map((r) => r.symbol))].sort();
       let syms = all;
@@ -213,7 +255,7 @@ export function createAlertLoop({
         const v = quotes.get(r.symbol).last;
         const hit = conditionMet(r.op, v, r.level);
         if (!r.armed) { if (!hit) store.armAlert(r.id); continue; }
-        if (!hit || !isActive(r.licence_id)) continue;
+        if (!hit) continue;
         if (!store.fireAlert(r.id, now())) continue;
         sender.toLicence(r.licence_id, alertPayload(r, v), { ttl: ALERT_TTL, urgency: 'high', topic: `a${r.id}` });
         fired += 1;

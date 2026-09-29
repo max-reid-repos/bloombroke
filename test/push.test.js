@@ -7,6 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
+import { readFileSync } from 'node:fs';
 import { openDb } from '../pro/db.js';
 import { createStore } from '../pro/store.js';
 import { revealKeyFrom } from '../pro/licence.js';
@@ -148,13 +149,25 @@ test('pushConfig: both keys of the right size, or off; the subject; dev hosts on
   assert.equal(pushConfig({ VAPID_PUBLIC_KEY: pub }, quiet), null);
   assert.equal(pushConfig({ VAPID_PUBLIC_KEY: 'short', VAPID_PRIVATE_KEY: priv }, quiet), null);
   assert.equal(pushConfig({ VAPID_PUBLIC_KEY: pub, VAPID_PRIVATE_KEY: priv, VAPID_SUBJECT: 'hello' }, quiet), null);
-  const c = pushConfig({ VAPID_PUBLIC_KEY: pub, VAPID_PRIVATE_KEY: priv, PUSH_DEV_HOSTS: '127.0.0.1:3999, evil.example:443, localhost:8443' }, quiet);
+  const dev = { VAPID_PUBLIC_KEY: pub, VAPID_PRIVATE_KEY: priv, PUSH_DEV_HOSTS: '127.0.0.1:3999, evil.example:443, localhost:8443', PUBLIC_URL: 'http://127.0.0.1:3022' };
+  const c = pushConfig(dev, quiet);
   assert.equal(c.subject, 'mailto:hello@bloombroke.com');
-  assert.deepEqual(c.devHosts, ['127.0.0.1:3999', 'localhost:8443']);
+  assert.deepEqual(c.devHosts, ['127.0.0.1:3999', 'localhost:8443'], 'development: this machine only');
+  // Anywhere else the dev hosts are ignored, with a warning.
+  const warned = [];
+  const log = { log() {}, error: (m) => warned.push(m) };
+  for (const env of [{ ...dev, NODE_ENV: 'production' }, { ...dev, HOST: '0.0.0.0' }, { ...dev, PUBLIC_URL: 'https://bloombroke.com' }, { ...dev, PUBLIC_URL: undefined }]) {
+    assert.deepEqual(pushConfig(env, log).devHosts, [], JSON.stringify(env));
+  }
+  assert.equal(warned.length, 4);
+  assert.match(warned[0], /PUSH_DEV_HOSTS is set outside development: ignored/);
   // scripts/vapid-keys.js makes a pair pushConfig accepts, in .env format.
   const k = vapidKeys();
   assert.ok(pushConfig({ VAPID_PUBLIC_KEY: k.publicKey, VAPID_PRIVATE_KEY: k.privateKey }, quiet));
   assert.match(envLines(k), /^VAPID_PUBLIC_KEY=[\w-]{87}\nVAPID_PRIVATE_KEY=[\w-]{43}\nVAPID_SUBJECT=mailto:hello@bloombroke\.com\n$/);
+  // .env.example names the three, empty.
+  const example = readFileSync('.env.example', 'utf8');
+  for (const n of ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT']) assert.match(example, new RegExp(`^${n}=$`, 'm'), n);
 });
 
 test('GET /api/push/key: the public key, no licence needed', async () => {
@@ -170,12 +183,28 @@ test('GET /api/push/key: the public key, no licence needed', async () => {
 
 test('push hosts: https, the five services, no port, no user, no lookalikes', () => {
   for (const ok of ['https://fcm.googleapis.com/fcm/send/x', 'https://updates.push.services.mozilla.com/wpush/v2/x', 'https://web.push.apple.com/x',
-    'https://api.push.apple.com/3/x', 'https://wns2-by3p.notify.windows.com/w/?token=x']) assert.ok(pushHostOk(ok), ok);
+    'https://api.push.apple.com/3/x', 'https://wns2-by3p.notify.windows.com/w/?token=x',
+    // The real shapes: an FCM token with a colon, a Mozilla gAAAA token, an Apple path, a WNS token with %2b.
+    'https://fcm.googleapis.com/fcm/send/dGhpc2lzZmFrZQ:APA91bFAKE-token_value',
+    'https://updates.push.services.mozilla.com/wpush/v2/gAAAAABfakeFAKEfake_-=',
+    'https://web.push.apple.com/QFAKEfakeFAKE-_fake',
+    'https://wns2-par02p.notify.windows.com/w/?token=BQYAAABfake%2bFAKE%3d%3d']) assert.ok(pushHostOk(ok), ok);
   for (const bad of ['http://fcm.googleapis.com/fcm/send/x', 'https://fcm.googleapis.com:8443/x', 'https://u:p@fcm.googleapis.com/x', 'https://evil.com/x',
     'https://fcm.googleapis.com.evil.com/x', 'https://push.apple.com/x', 'https://evilpush.apple.com.evil/x', 'https://notify.windows.com/x', 'https://127.0.0.1/x', 'nonsense', '']) {
     assert.ok(!pushHostOk(bad), bad);
   }
+  // Addresses the WHATWG URL and the legacy url.parse() (what web-push sends with) read as
+  // different hosts: all refused (SSRF).
+  for (const bad of [
+    'https://evil.com;.push.apple.com/x', 'https://169.254.169.254;.push.apple.com/x', "https://127.0.0.1'.push.apple.com/", 'https://127.0.0.1".push.apple.com/',
+    'https://127.0.0.1{.push.apple.com/', 'https://evil.com;.notify.windows.com/x', "https://10.0.0.1'.notify.windows.com/x", 'https://169.254.169.254{.notify.windows.com/x',
+    'https:fcm.googleapis.com/fcm/send/x', 'https:/fcm.googleapis.com/fcm/send/x', 'https://fcm.googleapis.com', 'https://fcm.googleapis.com\\@evil.com/x',
+    'https://evil.com\\.push.apple.com/x', 'https://fcm.googleapis.com /x', 'https://FCM.googleapis.com.\t/x', 'https://evil.com%2f.push.apple.com/x',
+    'https://evil.com|.push.apple.com/x', 'https://evil.com^.push.apple.com/x', 'https://evil.com`.push.apple.com/x', 'https://evil.com<.push.apple.com/x',
+    'https://fcm.googleapis.com/x;y', 'https://[::1].push.apple.com/x', 'https://fcm.googleapis.com./x',
+  ]) assert.ok(!pushHostOk(bad), bad);
   assert.ok(pushHostOk('https://127.0.0.1:3999/fake', ['127.0.0.1:3999']), 'a dev host with its port');
+  assert.ok(!pushHostOk("https://127.0.0.1:3999'.push.apple.com/x", ['127.0.0.1:3999']));
   assert.ok(!pushHostOk('https://127.0.0.1:4000/fake', ['127.0.0.1:3999']));
   // The browser keys: a 65-byte point starting 0x04, a 16-byte secret.
   assert.throws(() => cleanSubscription({ ...sub(1), keys: { p256dh: Buffer.alloc(65, 7).toString('base64url'), auth: FAKE_AUTH } }), PushError);
@@ -275,19 +304,27 @@ test('alerts: validated like the client, 20 at most, quote alerts only, replaced
     }
     assert.equal((await a.alerts([al(1), al(1)])).status, 400, 'the same id twice');
     assert.equal((await a.alerts('x')).status, 400);
-    const r = await a.alerts([al(1), al(2, { sym: 'EUR/USD', op: '<=' }), al(3, { state: 'triggered' })]);
+    // ALERTS pings off: nothing is kept.
+    let r = await a.alerts([al(1)]);
+    assert.deepEqual(r.body, { ok: true, count: 0, on: false, armed: [], fired: [] });
+    assert.equal(s.count('server_alerts', a.id), 0);
+    await a.prefs({ alerts: true });
+    r = await a.alerts([al(1), al(2, { sym: 'EUR/USD', op: '<=' }), al(3, { state: 'triggered' })]);
     assert.equal(r.status, 200);
     assert.equal(r.body.count, 3);
-    assert.equal(r.body.on, false, 'no ALERTS pings and no device yet');
+    assert.equal(r.body.on, false, 'no device yet');
+    assert.deepEqual(r.body.armed, [], 'no device: the tab keeps its own notifications');
+    assert.deepEqual(r.body.fired, ['al3']);
     const rows = s.push.store.alertsOf(a.id);
     assert.deepEqual(rows.map((x) => [x.client_id, x.symbol, x.op, x.level, x.fired_at !== null]), [['al1', 'AAPL', '>', 101, false], ['al2', 'EUR/USD', '<=', 102, false], ['al3', 'AAPL', '>', 103, true]]);
     await a.alerts([al(2, { sym: 'EUR/USD', op: '<=' })]);
     assert.deepEqual(s.push.store.alertsOf(a.id).map((x) => x.client_id), ['al2'], 'replaced');
     assert.deepEqual(cleanServerAlerts([]), []);
-    // on: pings for ALERTS and this very device.
+    // on: pings for ALERTS and this very device; armed: what the server pings for the tab.
     await a.subscribe(sub(1));
-    await a.prefs({ alerts: true });
-    assert.equal((await a.alerts([], { endpoint: sub(1).endpoint })).body.on, true);
+    r = await a.alerts([al(2, { sym: 'EUR/USD', op: '<=' })], { endpoint: sub(1).endpoint });
+    assert.equal(r.body.on, true);
+    assert.deepEqual(r.body.armed, ['al2']);
     assert.equal((await a.alerts([], { endpoint: sub(2).endpoint })).body.on, false, 'another device');
   } finally { await s.close(); }
 });
@@ -357,7 +394,7 @@ test('alert loop: the open tab saw the crossing first (its notification stands d
   } finally { await s.close(); }
 });
 
-test('alert loop: the server fired while the tab was closed; the browser still says WAITING: no second ping on the same crossing', async () => {
+test('alert loop: fired while the tab was not looking: it stays fired, goes back as fired, never re-armed by a stale WAITING', async () => {
   const s = await setup({ quotes: { AAPL: { last: 351, stale: false } } });
   try {
     const a = s.person();
@@ -365,12 +402,39 @@ test('alert loop: the server fired while the tab was closed; the browser still s
     const x = { id: 'x1', sym: 'AAPL', op: '>', level: 350, dp: 2, state: 'waiting' };
     await a.alerts([x]);
     assert.equal((await s.push.alerts.cycle()).fired, 1);
-    await a.alerts([x]); // the tab had not checked yet
-    assert.equal((await s.push.alerts.cycle()).fired, 0, 'still above: no second ping');
+    // The tab had not caught up: WAITING, even after the price went back and forth.
+    s.quotes.AAPL = { last: 349, stale: false };
+    let r = await a.alerts([x]);
+    assert.deepEqual(r.body.fired, ['x1'], 'the tab learns it fired and marks it TRIGGERED');
+    assert.deepEqual(r.body.armed, []);
+    await s.push.alerts.cycle();
+    s.quotes.AAPL = { last: 352, stale: false };
+    assert.equal((await s.push.alerts.cycle()).fired, 0, 'no second ping: WAITING was not a re-arm');
+    // The tab shows TRIGGERED, then the person re-arms it: now it fires on the next crossing.
+    await a.alerts([{ ...x, state: 'triggered' }]);
+    r = await a.alerts([{ ...x, rearmed: true }]);
+    assert.deepEqual(r.body.armed, ['x1']);
+    assert.equal((await s.push.alerts.cycle()).fired, 0, 're-armed while above: waits');
     s.quotes.AAPL = { last: 349, stale: false };
     await s.push.alerts.cycle();
     s.quotes.AAPL = { last: 351, stale: false };
     assert.equal((await s.push.alerts.cycle()).fired, 1, 'the next crossing');
+  } finally { await s.close(); }
+});
+
+test('alert loop: licences without Pro are left out before the symbol budget', async () => {
+  const s = await setup({ quotes: { AAPL: { last: 1, stale: false }, MSFT: { last: 1, stale: false } } });
+  try {
+    const [a, b] = [s.person(), s.person()];
+    for (const [p, sym] of [[a, 'AAPL'], [b, 'MSFT']]) {
+      await s.pinged(p, { alerts: true });
+      await p.alerts([{ id: 'x1', sym, op: '>', level: 100, state: 'waiting' }]);
+    }
+    s.store.setStatus(b.id, 'canceled');
+    s.getQuoteList.calls.length = 0;
+    const r = await s.push.alerts.cycle();
+    assert.equal(r.symbols, 1);
+    assert.deepEqual(s.getQuoteList.calls, [['AAPL']], 'MSFT (an ended licence) is not asked for');
   } finally { await s.close(); }
 });
 
@@ -548,7 +612,7 @@ test('send errors: 404 or 410 drops the device at once; others count, 5 in a row
 });
 
 test('sender: a full queue drops new pings; drain waits for the ones in flight', async () => {
-  const push = { sendOk() {}, sendFailed: () => 1, dropSub() {}, subsOf: () => [{ id: 1, endpoint: 'e', p256dh: 'p', auth: 'a' }] };
+  const push = { sendOk() {}, sendFailed: () => 1, dropSub() {}, subsOf: () => [{ id: 1, endpoint: sub(1).endpoint, p256dh: 'p', auth: 'a' }] };
   let release;
   const gate = new Promise((r) => { release = r; });
   let n = 0;
@@ -562,6 +626,44 @@ test('sender: a full queue drops new pings; drain waits for the ones in flight',
   release();
   await done;
   assert.equal(n, 3);
+});
+
+test('a stored row with an address we do not send to: deleted at start, and never sent to by the sender', async () => {
+  // A row that got in before today's check (an older build, a hand edit): the start-up
+  // sweep deletes it.
+  const db = openDb(':memory:');
+  const store = createStore(db, { aesKey: AES, now: () => T0 });
+  const made = store.ensureLicence({ sessionId: 'cs_test_0000000001', customerId: 'cus_1', subscriptionId: 'sub_1', status: 'active' });
+  const put = db.prepare('INSERT INTO push_subs (licence_id, endpoint, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?)');
+  put.run(made.licence.id, 'https://169.254.169.254;.push.apple.com/x', FAKE_P256DH, FAKE_AUTH, T0);
+  put.run(made.licence.id, sub(1).endpoint, FAKE_P256DH, FAKE_AUTH, T0);
+  const fake = fakeSender();
+  const errors = [];
+  const push = mountPush(express(), { db, store, mode: 'test', config: FAKE_VAPID, send: fake.send, now: () => T0, log: { log() {}, error: (m) => errors.push(m) }, alertEveryMs: 0 });
+  assert.deepEqual(push.store.subsOf(made.licence.id).map((r) => r.endpoint), [sub(1).endpoint]);
+  assert.match(errors.join(' '), /1 stored subscriptions with an address we do not send to were deleted/);
+  // The sender checks again right before sending: a bad row that is there anyway is
+  // dropped, never handed to the push service.
+  const dropped = [];
+  const rows = [{ id: 9, endpoint: 'https:fcm.googleapis.com/fcm/send/x', p256dh: 'p', auth: 'a' }, { id: 10, endpoint: sub(2).endpoint, p256dh: 'p', auth: 'a' }];
+  const sender = createSender({ store: { subsOf: () => rows, dropSub: (id) => dropped.push(id), sendOk() {}, sendFailed: () => 0 }, send: fake.send, log: quiet });
+  sender.toLicence(1, { t: 'x' }, {});
+  await sender.drain();
+  assert.deepEqual(fake.sent.map((x) => x.endpoint), [sub(2).endpoint]);
+  assert.deepEqual(dropped, [9]);
+});
+
+test('resubscribe and subscribe refuse the SSRF addresses too', async () => {
+  const s = await setup();
+  try {
+    const a = s.person();
+    await a.subscribe(sub(1));
+    for (const endpoint of ['https://169.254.169.254;.push.apple.com/x', 'https:fcm.googleapis.com/fcm/send/x', "https://127.0.0.1'.notify.windows.com/x"]) {
+      assert.equal((await a.subscribe({ ...sub(2), endpoint })).status, 400, endpoint);
+      assert.equal((await s.req('POST', '/api/push/resubscribe', { body: { old: sub(1).endpoint, sub: { ...sub(2), endpoint } } })).status, 400, endpoint);
+    }
+    assert.deepEqual(s.push.store.subsOf(a.id).map((r) => r.endpoint), [sub(1).endpoint]);
+  } finally { await s.close(); }
 });
 
 test('TEST: one ping to every device, 3 an hour, none without a device', async () => {

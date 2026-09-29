@@ -10,9 +10,13 @@ import * as pro from './pro.js';
 // true while this device gets closed-tab alerts: public/alerts.js reads the same name
 // and leaves quote alerts to the server (no second notification from the tab).
 export const ALERTS_FLAG = 'bb.push.alerts';
-export const SIG_KEY = 'bb.push.sig'; // { sig, at }: the alert list the server has, and when it said so
+// { sig, at, armed }: the alert list the server has, when it last said so, and the alert
+// ids it pings for this device. public/alerts.js reads it: the tab's own notification
+// stands down only for those ids, and only while `at` is under FRESH_MS old.
+export const SIG_KEY = 'bb.push.sig';
+export const FRESH_MS = 2 * 60 * 1000; // public/alerts.js: 12e4
 export const ALERTS_KEY = 'bb.alerts'; // public/alerts.js
-export const RECHECK_MS = 5 * 60 * 1000;
+export const RECHECK_MS = 45 * 1000; // the open tab re-sends about every minute (its check), so `at` stays fresh
 export const SW_URL = '/sw.js';
 
 export const IOS_HINT = 'On iPhone, add Bloombroke to your Home Screen first.';
@@ -200,6 +204,27 @@ export async function afterNewKey() {
 // the tab takes its alerts back.
 let syncing = null;
 let queued = null;
+
+// The server fired these: WAITING ones turn TRIGGERED in this browser (the ALERTS screen
+// and the 1 ALERT flag repaint). Returns true when anything changed.
+export function markFired(ids, now = Date.now()) {
+  const list = ls.get(ALERTS_KEY, []);
+  if (!Array.isArray(list) || !ids.length) return false;
+  let changed = false;
+  const next = list.map((a) => {
+    if (!a || a.state !== 'waiting' || !ids.includes(a.id)) return a;
+    changed = true;
+    const { rearmed, ...rest } = a;
+    return { ...rest, state: 'triggered', firedAt: now, seen: false, rearmed: false };
+  });
+  if (!changed) return false;
+  ls.set(ALERTS_KEY, next);
+  try {
+    window.dispatchEvent(new CustomEvent('bb:alerts', { detail: { fired: 0 } }));
+    window.dispatchEvent(new Event('bb:alerts-seen'));
+  } catch { /* not in a page */ }
+  return true;
+}
 async function pushAlerts(list, { force = false, now = Date.now() } = {}) {
   if (!alertsFlag()) return false;
   if (!pro.getKey()) { setAlertsFlag(false); return false; }
@@ -212,7 +237,10 @@ async function pushAlerts(list, { force = false, now = Date.now() } = {}) {
   try {
     const r = await api('/api/push/alerts', { method: 'PUT', body: { alerts, endpoint: sub.endpoint } });
     if (!r?.on) { setAlertsFlag(false); return false; }
-    ls.set(SIG_KEY, { sig, at: now });
+    ls.set(SIG_KEY, { sig, at: now, armed: Array.isArray(r.armed) ? r.armed.filter((x) => typeof x === 'string').slice(0, 20) : [] });
+    // Fired by the server while this tab was not looking: TRIGGERED here too, so the next
+    // list never looks like a re-arm; that list goes next.
+    if (Array.isArray(r.fired) && markFired(r.fired, now) && !queued) queued = [ls.get(ALERTS_KEY, []), {}];
     return true;
   } catch (err) {
     // No key, no Pro, pings off here, or a list the server refused: the tab notifies again.

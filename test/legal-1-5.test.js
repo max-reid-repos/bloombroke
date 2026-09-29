@@ -18,7 +18,9 @@ const privacy = readFileSync('legal/privacy.md', 'utf8');
 const section = (md, n) => md.slice(md.indexOf(`## ${n}.`), md.indexOf(`## ${n + 1}.`));
 
 test('legal 1.5: the version was bumped, so everyone who accepted 1.4 is asked again', () => {
-  assert.ok(Number(TERMS_VERSION) >= 1.5);
+  // major.minor as integers: 1.10 comes after 1.5.
+  const [major, minor] = TERMS_VERSION.split('.').map(Number);
+  assert.ok(major > 1 || (major === 1 && minor >= 5), TERMS_VERSION);
   assert.ok(LEGAL_UPDATED);
   assert.equal(needsConsent(acceptRecord('1.4')), true);
   assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);

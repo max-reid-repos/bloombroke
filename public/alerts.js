@@ -18,7 +18,8 @@ export const LEASE_MS = 90_000;
 export const TICK_MS = 5_000;
 export const MAX_QUOTES = 60;
 export const HONEST_LINE = 'Alerts check while Bloombroke is open in a tab.';
-// Closed-tab alerts on here (push.js): the server pings quote alerts.
+// Closed-tab alerts on here (push.js): the server pings the ids its last sync (under 2
+// minutes old, bb.push.sig) reported armed; the tab notifies the rest.
 const PUSHED = 'bb.push.alerts';
 
 const TICKER_RE = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
@@ -321,9 +322,7 @@ export function firedText(a) {
 // The command a fired alert opens: the stock or the gauge's own screen.
 export const openCommand = (a) => a.sym;
 
-// ---------------------------------------------------------------------------
-// Browser: the watcher. One per page (never inside a DESK panel).
-// ---------------------------------------------------------------------------
+// ---- Browser: the watcher, one per page (never in a DESK panel) ----
 
 // The tab lease: { tab, at }. A tab holds it while visible and renews it on each tick;
 // a lease older than LEASE_MS belongs to nobody (that tab closed or slept).
@@ -377,7 +376,8 @@ export function startAlerts({ store, fetchJSON, status, run, statusline }) {
   function notify(a) {
     const text = firedText(a);
     status(text);
-    if (typeof Notification === 'undefined' || Notification.permission !== 'granted' || (a.kind === 'quote' && store.get(PUSHED, 0))) return;
+    const p = store.get('bb.push.sig', 0);
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted' || (p && Date.now() - p.at < 12e4 && p.armed?.includes(a.id))) return;
     try {
       const n = new Notification(text, { body: 'Bloombroke ALERTS', tag: `bb-alert-${a.id}` });
       n.onclick = () => {

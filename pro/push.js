@@ -32,16 +32,16 @@ import { createLimiter, clientIp } from './ratelimit.js';
 import { sameOrigin } from './feedback.js';
 import { isDeletedLicence, DELETED_PREFIX, ENDED_KEEP_MS } from './store.js';
 import {
-  createSender, createChatPinger, createAlertLoop, TEST_PAYLOAD, SEND_TIMEOUT_MS,
+  createSender, createChatPinger, createAlertLoop, TEST_PAYLOAD, SEND_TIMEOUT_MS, pushHostOk, PUSH_HOSTS, PUSH_HOST_SUFFIXES,
 } from './push-send.js';
+
+export { pushHostOk, PUSH_HOSTS, PUSH_HOST_SUFFIXES };
 
 const MIN = 60 * 1000;
 export const MAX_SUBS = 10;
 export const MAX_SERVER_ALERTS = 20;
 export const MAX_ENDPOINT = 1024;
 export const DEFAULT_SUBJECT = 'mailto:hello@bloombroke.com';
-export const PUSH_HOSTS = new Set(['fcm.googleapis.com', 'updates.push.services.mozilla.com', 'web.push.apple.com']);
-export const PUSH_HOST_SUFFIXES = ['.push.apple.com', '.notify.windows.com'];
 export const OFF_MESSAGE = 'Pings are not on at this site.';
 const OPS = new Set(['>', '<', '>=', '<=']);
 const ALERT_ID_RE = /^[a-z0-9]{1,24}$/; // public/alerts.js cleanAlerts
@@ -58,6 +58,23 @@ export class PushError extends Error {
 
 const b64len = (s) => Buffer.from(s, 'base64url').length;
 
+// PUSH_DEV_HOSTS: a fake push service on this machine, for development only. Ignored,
+// with a warning, unless NODE_ENV is not production, the server listens on this machine
+// only (HOST) and the site's own address (PUBLIC_URL) is this machine too.
+const LOCAL = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+export function devHostsOf(env = process.env, log = console) {
+  const want = String(env.PUSH_DEV_HOSTS || '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
+  if (!want.length) return [];
+  let site = '';
+  try { site = new URL(String(env.PUBLIC_URL || 'https://bloombroke.com')).hostname; } catch { /* not local */ }
+  const local = env.NODE_ENV !== 'production' && LOCAL.has(String(env.HOST || '127.0.0.1').trim()) && LOCAL.has(site);
+  if (!local) {
+    log.error?.('[push] PUSH_DEV_HOSTS is set outside development: ignored');
+    return [];
+  }
+  return want.filter((h) => /^(localhost|127\.0\.0\.1):\d{2,5}$/.test(h));
+}
+
 // The VAPID keys from the environment, or null (the feature is off). A key that is not
 // the right shape is off too, with a line in the log.
 export function pushConfig(env = process.env, log = console) {
@@ -73,21 +90,7 @@ export function pushConfig(env = process.env, log = console) {
     log.error?.('[push] VAPID_SUBJECT must be mailto: or https://: pings are off');
     return null;
   }
-  const devHosts = String(env.PUSH_DEV_HOSTS || '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean)
-    .filter((h) => /^(localhost|127\.0\.0\.1):\d{2,5}$/.test(h));
-  return { publicKey, privateKey, subject, devHosts };
-}
-
-// Is this a push service we send to? https, a known host, no user or password, the
-// default port. devHosts (development): host:port on this machine.
-export function pushHostOk(endpoint, devHosts = []) {
-  let u;
-  try { u = new URL(endpoint); } catch { return false; }
-  if (u.protocol !== 'https:' || u.username || u.password) return false;
-  const host = u.hostname.toLowerCase();
-  if (devHosts.includes(u.host.toLowerCase())) return true;
-  if (u.port) return false;
-  return PUSH_HOSTS.has(host) || PUSH_HOST_SUFFIXES.some((s) => host.endsWith(s) && host.length > s.length);
+  return { publicKey, privateKey, subject, devHosts: devHostsOf(env, log) };
 }
 
 // { endpoint, keys: { p256dh, auth } } as the browser's PushSubscription.toJSON() gives it.
@@ -167,9 +170,10 @@ export function createPushStore(db, { now = () => Date.now() } = {}) {
     setPrefs: db.prepare(`INSERT INTO push_prefs (licence_id, chat, alerts, show_text, updated_at) VALUES (@lic, @chat, @alerts, @show_text, @t)
       ON CONFLICT (licence_id) DO UPDATE SET chat = excluded.chat, alerts = excluded.alerts, show_text = excluded.show_text, updated_at = excluded.updated_at`),
     alertsOf: db.prepare('SELECT * FROM server_alerts WHERE licence_id = ? ORDER BY id'),
-    addAlert: db.prepare(`INSERT INTO server_alerts (licence_id, client_id, symbol, op, level, dp, armed, created_at, fired_at)
-      VALUES (@lic, @id, @sym, @op, @level, @dp, @armed, @t, @fired)`),
-    setAlert: db.prepare('UPDATE server_alerts SET dp = @dp, armed = @armed, fired_at = @fired WHERE id = @rid'),
+    addAlert: db.prepare(`INSERT INTO server_alerts (licence_id, client_id, symbol, op, level, dp, armed, created_at, fired_at, seen)
+      VALUES (@lic, @id, @sym, @op, @level, @dp, @armed, @t, @fired, @seen)`),
+    setAlert: db.prepare('UPDATE server_alerts SET dp = @dp, armed = @armed, fired_at = @fired, seen = @seen WHERE id = @rid'),
+    allSubs: db.prepare('SELECT id, endpoint FROM push_subs'),
     dropAlert: db.prepare('DELETE FROM server_alerts WHERE id = ?'),
     waiting: db.prepare(`SELECT a.* FROM server_alerts a JOIN push_prefs p ON p.licence_id = a.licence_id AND p.alerts = 1
       WHERE a.fired_at IS NULL AND EXISTS (SELECT 1 FROM push_subs s WHERE s.licence_id = a.licence_id) ORDER BY a.id`),
@@ -201,6 +205,12 @@ export function createPushStore(db, { now = () => Date.now() } = {}) {
       });
     },
     unsubscribe: (lic, endpoint) => Number(q.dropMine.run(endpoint, lic).changes) > 0,
+    // At start: every stored address through today's check; one that fails goes.
+    sweep(hostOk) {
+      let n = 0;
+      for (const r of q.allSubs.all()) if (!hostOk(r.endpoint)) n += Number(q.drop.run(r.id).changes);
+      return n;
+    },
     // The browser replaced a subscription: the old address becomes the new one, for the
     // same licence. False when the old address is not ours (any more).
     move(oldEndpoint, sub) {
@@ -229,31 +239,42 @@ export function createPushStore(db, { now = () => Date.now() } = {}) {
     // Closed-tab alerts off: the copy of the alerts goes (the Privacy Policy).
     clearAlerts: (lic) => Number(q.forgetAlerts.run(lic).changes),
     // Replace the licence's server alerts with the browser's list (cleanServerAlerts).
-    // New here and TRIGGERED there: it fired in the tab before the server had it, so it
-    // never fires here. Already here and TRIGGERED there since: the tab saw the crossing
-    // first (its notification stands down), so the server's own check still pings it,
-    // once. WAITING there: re-armed, or fired here while the tab was not looking, it
-    // waits for a fresh crossing (armed 0); a new one fires when its condition is true.
+    // Returns { count, armed, fired }: the browser ids the server will ping (the tab's
+    // own notification stands down for those) and the ones it has fired (the tab marks
+    // them TRIGGERED). seen: the browser has shown TRIGGERED since the server fired it.
+    //  - new here, TRIGGERED there: it fired in the tab first; it never fires here.
+    //  - TRIGGERED there, not fired here: the tab saw the crossing first; the server's own
+    //    check still pings it, once.
+    //  - fired here, WAITING there, not seen: the tab has not caught up; it stays fired
+    //    (never a second ping for the same crossing) and goes back in `fired`.
+    //  - fired here, seen, WAITING there: re-armed in the tab. rearmed (still past the
+    //    level): it waits for a fresh crossing (armed 0); otherwise it fires on the next.
     replaceAlerts(lic, list) {
       return tx(db, () => {
         const t = now();
         const rows = q.alertsOf.all(lic);
         const kept = new Set();
+        const armedIds = [];
+        const firedIds = [];
         for (const a of list) {
           const row = rows.find((r) => !kept.has(r.id) && sameAlert(r, a));
-          let fired = null;
-          let armed = row ? row.armed : 1;
-          if (a.state === 'triggered') fired = row ? row.fired_at : t;
-          else if (a.rearmed || row?.fired_at) armed = 0;
+          let fired = row ? row.fired_at : null;
+          let armed = row ? row.armed : (a.rearmed ? 0 : 1);
+          let seen = row ? row.seen : 0;
+          if (!row && a.state === 'triggered') { fired = t; seen = 1; }
+          else if (row && a.state === 'triggered') { if (fired !== null) seen = 1; }
+          else if (row && fired !== null && seen) { fired = null; seen = 0; armed = a.rearmed ? 0 : 1; }
+          else if (row && fired === null && a.rearmed) armed = 0;
           if (row) {
             kept.add(row.id);
-            q.setAlert.run({ rid: row.id, dp: a.dp, armed, fired });
+            q.setAlert.run({ rid: row.id, dp: a.dp, armed, fired, seen });
           } else {
-            q.addAlert.run({ lic, id: a.id, sym: a.sym, op: a.op, level: a.level, dp: a.dp, armed, t, fired });
+            q.addAlert.run({ lic, id: a.id, sym: a.sym, op: a.op, level: a.level, dp: a.dp, armed, t, fired, seen });
           }
+          (fired === null ? armedIds : firedIds).push(a.id);
         }
         for (const r of rows) if (!kept.has(r.id)) q.dropAlert.run(r.id);
-        return list.length;
+        return { count: list.length, armed: armedIds, fired: firedIds };
       });
     },
     // DOWNLOAD MY DATA: each device as its push service's host name and when it was
@@ -293,7 +314,8 @@ export function pushLimits(now = () => Date.now()) {
   return {
     read: createLimiter({ max: 600, windowMs: 10 * MIN, now }),
     write: createLimiter({ max: 60, windowMs: 60 * MIN, now }),
-    alerts: createLimiter({ max: 120, windowMs: 60 * MIN, now }),
+    // The open tab re-sends its list about once a minute, to keep its stand-down fresh.
+    alerts: createLimiter({ max: 300, windowMs: 60 * MIN, now }),
     test: createLimiter({ max: 3, windowMs: 60 * MIN, now }),
     // resubscribe, per IP (it has no key).
     resub: createLimiter({ max: 20, windowMs: 60 * MIN, now }),
@@ -329,6 +351,11 @@ export function mountPush(app, {
     forgetDevices: (lic) => push.forgetDevices(lic), wipe: (lic) => push.wipe(lic), purge: (t) => push.purge(t),
   };
   const fail = (res, status, error, message) => res.status(status).json({ error, message });
+  // Stored addresses that today's check refuses are never sent to: they go now.
+  try {
+    const bad = push.sweep((e) => pushHostOk(e, config?.devHosts || []));
+    if (bad) log.error?.(`[push] ${bad} stored subscriptions with an address we do not send to were deleted`);
+  } catch (err) { log.error?.('[push] sweep', err?.message); }
   if (!config) {
     app.use('/api/push', (req, res) => { res.set('Cache-Control', 'no-store'); fail(res, 404, 'push_off', OFF_MESSAGE); });
     return base;
@@ -339,7 +366,9 @@ export function mountPush(app, {
   let sendImpl = send;
   const ready = sendImpl ? Promise.resolve() : webPushSend(config).then((fn) => { sendImpl = fn; });
   ready.catch((err) => log.error?.('[push] web-push did not load:', err?.message));
-  const sender = createSender({ store: push, send: async (...a) => { await ready; return sendImpl(...a); }, log, now, concurrency });
+  const sender = createSender({
+    store: push, send: async (...a) => { await ready; return sendImpl(...a); }, log, now, concurrency, hostOk: (e) => pushHostOk(e, config.devHosts),
+  });
   const isActive = (id) => {
     const l = store.findById(id);
     return Boolean(l && !isDeletedLicence(l) && publicStatus(l, now(), mode).active);
@@ -428,11 +457,15 @@ export function mountPush(app, {
     const list = cleanServerAlerts(req.body?.alerts);
     const endpoint = req.body?.endpoint;
     if (endpoint !== undefined && (typeof endpoint !== 'string' || endpoint.length > MAX_ENDPOINT)) return fail(res, 400, 'bad_endpoint', 'Send { endpoint }.');
-    const n = push.replaceAlerts(lic.id, list);
+    // ALERTS pings off: nothing is kept (the Privacy Policy), and the tab notifies itself.
+    if (!push.prefs(lic.id).alerts) {
+      push.clearAlerts(lic.id);
+      return res.json({ ok: true, count: 0, on: false, armed: [], fired: [] });
+    }
+    const out = push.replaceAlerts(lic.id, list);
     // on: this licence's server alerts ping (with an endpoint: this very device).
-    const prefs = push.prefs(lic.id);
-    const on = prefs.alerts && (endpoint ? push.hasEndpoint(lic.id, endpoint) : push.hasSubs(lic.id));
-    res.json({ ok: true, count: n, on });
+    const on = endpoint ? push.hasEndpoint(lic.id, endpoint) : push.hasSubs(lic.id);
+    res.json({ ok: true, count: out.count, on, armed: on ? out.armed : [], fired: out.fired });
   });
 
   r.post('/test', (req, res) => {

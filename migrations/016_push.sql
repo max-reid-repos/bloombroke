@@ -35,6 +35,8 @@ CREATE TABLE push_prefs (
 -- client_id: the alert's id in the browser. op: the ALERTS operators. dp: the decimals
 -- the ping shows. armed: 1 fires when the condition is true; 0 waits until it is false
 -- first (a re-armed alert fires on a fresh crossing only). fired_at: set once, when it fired.
+-- seen: 1 once the browser has shown it TRIGGERED since it fired (so WAITING after that is
+-- a re-arm, and WAITING before it is a tab that has not caught up).
 CREATE TABLE server_alerts (
   id INTEGER PRIMARY KEY,
   licence_id INTEGER NOT NULL REFERENCES licences(id) ON DELETE CASCADE,
@@ -45,7 +47,8 @@ CREATE TABLE server_alerts (
   dp INTEGER NOT NULL DEFAULT 2 CHECK (dp BETWEEN 0 AND 8),
   armed INTEGER NOT NULL DEFAULT 1 CHECK (armed IN (0, 1)),
   created_at INTEGER NOT NULL,
-  fired_at INTEGER
+  fired_at INTEGER,
+  seen INTEGER NOT NULL DEFAULT 0 CHECK (seen IN (0, 1))
 );
 CREATE INDEX server_alerts_licence ON server_alerts(licence_id);
 CREATE INDEX server_alerts_waiting ON server_alerts(fired_at, symbol);
