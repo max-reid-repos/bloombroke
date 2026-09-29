@@ -4,12 +4,16 @@
 // of your contacts. A $TICKER in a message carries the price when it was sent, so the
 // chip shows the move since; a card opens a screen of the terminal. No links, no files.
 // New messages come by long-poll (GET /api/chat/wait) while this screen is open.
+// DRIVE (../drive.js): the thread head has DRIVE; a room someone drives shows one line
+// with FOLLOW. GUESS LEAGUE: GUESS results are one line each, and TODAY'S GUESS sits
+// over the thread when anyone in the room posted today's.
 //
 // Pure *Html builders are exported for node:test; render() is the browser part.
 
 import { esc, panel, metaNote, fmtNum } from './markets.js';
-import { getKey, isPro, HEADER } from '../pro.js';
+import { getKey, isPro, HEADER, normalizeKey, normalizeGiftCode } from '../pro.js';
 import { parseCommand, screenTitle, linkChanges, linkPlan } from '../app.js';
+import { drive, who as driverName } from '../drive.js';
 
 // The same rules as the server (pro/chat.js; test/chat.test.js checks they match).
 export const MAX_TEXT = 500;
@@ -84,10 +88,31 @@ export function cardHtml(card) {
   return `<button type="button" class="cm-card" data-card="${esc(card.cmd)}">${title}<span class="cm-card-c">${esc(card.cmd)}</span></button>`;
 }
 
+// A Pro key or a gift code anywhere in a command (HELP BB-XXXX-..., GRID AAPL bbxxxx...,
+// WHATIF 7K2M ABCD ...): such a command is never a card and never driven. Any four groups
+// of four joined by a sign; one word, or words after BB or GIFT, that make a key or a code
+// (case and signs do not matter); and words split by spaces that make one when a digit is
+// in them (AAPL MSFT NVDA TSLA stays four tickers). pro/chat.js has the same
+// (test/chat-drive.test.js checks they agree).
+export function secretIn(raw) {
+  const s = String(raw ?? '').toUpperCase();
+  if (/[A-Z0-9]{4}(?:[^A-Z0-9\s][A-Z0-9]{4}){3}/.test(s)) return true;
+  const toks = s.split(/\s+/).filter(Boolean);
+  for (let i = 0; i < toks.length; i++) {
+    for (let j = i + 1; j <= Math.min(toks.length, i + 9); j++) {
+      const part = toks.slice(i, j);
+      const joined = part.join('').replace(/[^A-Z0-9]/g, '');
+      if (!normalizeKey(joined) && !normalizeGiftCode(joined)) continue;
+      if (part.length === 1 || /^(BB|GIFT)/.test(part[0]) || /\d/.test(joined)) return true;
+    }
+  }
+  return false;
+}
+
 // The screen you came from as a card, or null when it cannot be attached.
 export function attachFor(previous) {
   const cmd = String(previous || '').replace(/\s+/g, ' ').trim().toUpperCase();
-  if (!cmd || !CARD_RE.test(cmd)) return null;
+  if (!cmd || !CARD_RE.test(cmd) || secretIn(cmd)) return null;
   const c = parseCommand(cmd);
   if (!c || c.name === 'UNKNOWN' || c.secret || c.mutates || c.error || linkChanges(c)) return null;
   if (CARD_DENY.includes(cmd.split(' ')[0]) || CARD_DENY.includes(c.name)) return null;
@@ -109,7 +134,17 @@ export function dayLabel(ms, now = Date.now()) {
 
 // ---- the thread -------------------------------------------------------------------------
 
+// GUESS LEAGUE: '4/6', or 'X/6' for a game not solved.
+export const GUESS_OF = 6;
+export const scoreText = (g, of = GUESS_OF) => `${g?.solved ? g.tries : 'X'}/${of}`;
+
 export function messageHtml(m, quotes = {}) {
+  // A line from the server: "Tom 1 is driving.", last week's GUESS winner.
+  if (m.kind === 'sys') return `<div class="cm cm-sys" data-id="${Number(m.id)}"><span class="cm-t">${timeText(m.at)}</span><span class="cm-body">${esc(m.text)}</span></div>`;
+  // A GUESS result: one line, a click opens GUESS.
+  if (m.kind === 'guess' && m.guess) {
+    return `<div class="cm cm-guess" data-id="${Number(m.id)}"><span class="cm-t">${timeText(m.at)}</span>${whoHtml(m.seat, m.name, m.own)}<span class="cm-body"><button type="button" class="cm-card cm-gres" data-card="GUESS"><span class="cm-card-t">GUESS #${Number(m.guess.n)}</span><span class="num">${esc(scoreText(m.guess))}</span></button></span></div>`;
+  }
   const body = `${m.text ? `<span class="cm-text">${textHtml(m.text, m.tickers, quotes)}</span>` : ''}${cardHtml(m.card)}`;
   return `<div class="cm" data-id="${Number(m.id)}"><span class="cm-t">${timeText(m.at)}</span>${whoHtml(m.seat, m.name, m.own)}<span class="cm-body">${body}</span></div>`;
 }
@@ -126,7 +161,39 @@ export function messagesHtml(list, quotes = {}, now = Date.now()) {
   return out;
 }
 
-export function headHtml(room) {
+// DRIVE in the thread head: DRIVE, STOP while you drive this room, TAKE OVER while
+// someone else does (it asks first). Not in a closed chat.
+export function driveChipHtml(room, dv = null) {
+  if (!room || room.readOnly) return '';
+  const mine = dv?.role === 'drive' && dv.room === room.id;
+  if (!mine && room.drive && !room.drive.own) return '<button type="button" class="chip ct-drive" data-act="take">TAKE OVER</button>';
+  return `<button type="button" class="chip ct-drive${mine ? ' is-on' : ''}" data-act="${mine ? 'drive-stop' : 'drive'}" aria-pressed="${mine}">${mine ? 'STOP' : 'DRIVE'}</button>`;
+}
+// TAKE OVER asks first, one line: Enter takes over, Esc keeps things as they are.
+export function takeConfirmHtml(by) {
+  return `<div class="desk-confirm ct-confirm" role="alertdialog" aria-label="Take over DRIVE" tabindex="-1"><span class="desk-confirm-text">Take over from ${esc(driverName(by))}?</span><button type="button" class="desk-btn" data-act="take-yes">ENTER: TAKE OVER</button><button type="button" class="desk-btn" data-act="take-no">ESC: CANCEL</button></div>`;
+}
+
+// The lines over the thread: someone drives (FOLLOW, or STOP while you follow), and
+// TODAY'S GUESS when anyone here posted today's. '' when neither.
+export function extraHtml(room, dv = null, guess = null) {
+  if (!room) return '';
+  let out = '';
+  const d = room.drive;
+  if (d && !d.own) {
+    const on = dv?.role === 'follow' && dv.room === room.id;
+    out += on
+      ? `<p class="ct-line ct-offer"><span>Following ${esc(driverName(d.by))}.</span><button type="button" class="chip" data-act="unfollow">STOP</button></p>`
+      : `<p class="ct-line ct-offer"><span>${esc(driverName(d.by))} is driving.</span><button type="button" class="chip" data-act="follow">FOLLOW</button></p>`;
+  }
+  if (guess?.scores?.length) {
+    const list = guess.scores.map((g) => `${esc(label(g.seat, g.name))} <span class="num">${esc(scoreText(g, guess.of || GUESS_OF))}</span>`).join('<span class="dv-sep">·</span>');
+    out += `<button type="button" class="ct-line ct-guess" data-card="GUESS" title="Open GUESS"><span class="ct-gk">TODAY'S GUESS</span><span class="ct-gl">${list}</span></button>`;
+  }
+  return out;
+}
+
+export function headHtml(room, dv = null) {
   if (!room) return '';
   const members = room.kind === 'group' ? `<span class="ct-members">${esc(room.members.map((p) => label(p.seat, p.name)).join(', '))}</span>` : '';
   const items = room.kind === 'group'
@@ -135,7 +202,7 @@ export function headHtml(room) {
   if (room.kind === 'group' && room.readOnly) items.shift();
   return `<button type="button" class="chip ct-back" data-act="back">BACK</button>
     <div class="ct-title"><span class="ct-name">${esc(room.title)}</span>${members}</div>
-    <button type="button" class="chip ct-more" data-act="menu" aria-haspopup="true" aria-expanded="false" aria-label="Chat menu">...</button>
+    ${driveChipHtml(room, dv)}<button type="button" class="chip ct-more" data-act="menu" aria-haspopup="true" aria-expanded="false" aria-label="Chat menu">...</button>
     <div class="ct-menu" role="menu" hidden>${items.map(([a, t]) => `<button type="button" role="menuitem" class="ct-mi" data-menu="${a}">${t}</button>`).join('')}</div>
     <form class="ct-inline" hidden></form>`;
 }
@@ -189,6 +256,7 @@ export function chatInnerHtml() {
       <nav class="chat-list" aria-label="Chats"></nav>
       <section class="chat-thread" aria-label="Messages">
         <header class="ct-head"></header>
+        <div class="ct-extra"></div>
         <div class="ct-msgs" role="log" aria-live="polite"></div>
         <div class="ct-foot"></div>
       </section>
@@ -236,7 +304,8 @@ export function render(el, cmd, ctx) {
   const { signal } = ctx;
   const wide = () => typeof matchMedia !== 'function' || matchMedia('(min-width: 700px)').matches;
   const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-  const st = { me: null, requests: { in: [] }, rooms: [], cursor: 0, open: null, msgs: [], loadedId: 0, more: false, quotes: {}, attach: attachFor(ctx.previous), attachOn: false, loadingOlder: false };
+  const st = { me: null, requests: { in: [] }, rooms: [], cursor: 0, open: null, msgs: [], loadedId: 0, more: false, quotes: {}, attach: attachFor(ctx.previous), attachOn: false, loadingOlder: false, guess: null };
+  const dv = drive({ shareable: attachFor }); // DRIVE: one for the page, lives on after this screen
   el.innerHTML = shellHtml();
   const body = () => el.querySelector('.chat-body');
   const alive = () => !signal.aborted && el.isConnected;
@@ -264,12 +333,53 @@ export function render(el, cmd, ctx) {
     const foot = $('.ct-foot');
     if (!head) return;
     const typed = foot.querySelector('.cc-input')?.value || '';
-    head.innerHTML = headHtml(r);
+    head.innerHTML = headHtml(r, dv.state());
+    paintExtra();
     foot.innerHTML = composerHtml(r, st.attach, st.attachOn);
     const input = foot.querySelector('.cc-input');
     if (input && typed) { input.value = typed; grow(input); }
     paintMessages(true);
   }
+  function paintExtra() {
+    const x = $('.ct-extra');
+    if (x) x.innerHTML = extraHtml(room(), dv.state(), st.guess);
+  }
+  // DRIVE started, ended or its count moved: the head and the lines over the thread.
+  const unsub = dv.subscribe(() => {
+    if (!alive()) return;
+    const head = $('.ct-head');
+    if (head && room()) head.innerHTML = headHtml(room(), dv.state());
+    paintExtra();
+  });
+  ctx.onCleanup(unsub);
+  // DRIVE typed in the command bar while a chat is open.
+  ctx.setCommandHook?.((clean) => {
+    const r = room();
+    if (clean !== 'DRIVE' || !r || r.readOnly) return false;
+    const now = dv.state();
+    if (now?.role === 'drive' && now.room === r.id) { ctx.status('DRIVING: OPEN ANY SCREEN'); return true; }
+    act(() => startDrive(r));
+    return true;
+  });
+  function askTake() {
+    const r = room();
+    const x = $('.ct-extra');
+    if (!r?.drive || !x) return;
+    $('.ct-confirm')?.remove();
+    x.insertAdjacentHTML('afterbegin', takeConfirmHtml(r.drive.by));
+    $('.ct-confirm').focus();
+  }
+  function answerTake(yes) {
+    $('.ct-confirm')?.remove();
+    const r = room();
+    if (yes && r) act(() => startDrive(r));
+    else if (!coarse) $('.cc-input')?.focus();
+  }
+  async function startDrive(r) {
+    await dv.start(r.id);
+    ctx.status('DRIVING: OPEN ANY SCREEN');
+  }
+
   function paintMessages(stick = false) {
     const box = $('.ct-msgs');
     if (!box) return;
@@ -294,12 +404,15 @@ export function render(el, cmd, ctx) {
     st.open = id;
     st.msgs = [];
     st.more = false;
+    st.guess = null;
     paint();
     const d = await api(`/api/chat/rooms/${id}/messages${document.hidden ? '?read=0' : ''}`, { signal });
     if (!alive() || st.open !== id) return;
     st.msgs = mergeMessages([], d.messages);
     st.loadedId = st.msgs.length ? st.msgs[st.msgs.length - 1].id : 0;
     st.more = d.more;
+    st.guess = d.guess || null;
+    paintExtra();
     const r = room();
     if (r) r.unread = 0;
     $('.chat-list') && ($('.chat-list').innerHTML = listHtml(st, st.open));
@@ -321,6 +434,7 @@ export function render(el, cmd, ctx) {
       const read = document.hidden ? '&read=0' : '';
       const d = await api(`/api/chat/rooms/${id}/messages?after=${st.loadedId}${read}`, { signal });
       if (!alive() || st.open !== id) return;
+      if (page === 0 && JSON.stringify(d.guess || null) !== JSON.stringify(st.guess)) { st.guess = d.guess || null; paintExtra(); }
       if (d.messages.length) {
         st.msgs = mergeMessages(st.msgs, d.messages);
         st.loadedId = Math.max(st.loadedId, d.messages[d.messages.length - 1].id);
@@ -426,6 +540,8 @@ export function render(el, cmd, ctx) {
     $('.ct-menu').hidden = true;
     if (!r) return;
     if (a === 'add' || a === 'report') { inline(a); return; }
+    // Leaving or blocking ends your drive or follow here first.
+    if ((a === 'leave' || a === 'block') && dv.state()?.room === r.id) await dv.stop();
     await act(async () => {
       const d = await api(`/api/chat/rooms/${r.id}`, { method: 'POST', body: { action: a }, signal });
       if (a === 'leave') { st.open = null; st.msgs = []; ctx.status('YOU LEFT THE GROUP'); } else ctx.status(a === 'block' ? 'BLOCKED' : 'UNBLOCKED');
@@ -472,6 +588,13 @@ export function render(el, cmd, ctx) {
     }
     if (t.dataset.menu) { menuAct(t.dataset.menu); return; }
     switch (t.dataset.act) {
+      case 'drive': { const r = room(); if (r) act(() => startDrive(r)); break; }
+      case 'take': askTake(); break;
+      case 'take-yes': answerTake(true); break;
+      case 'take-no': answerTake(false); break;
+      case 'drive-stop': dv.stop(); ctx.status('STOPPED DRIVING'); break;
+      case 'follow': { const r = room(); if (r) act(async () => { await dv.follow(r.id); if (alive()) ctx.status('FOLLOWING'); }); break; }
+      case 'unfollow': dv.stop(); ctx.status('STOPPED FOLLOWING'); break;
       case 'back': st.open = null; st.msgs = []; paint(); ctx.status('CHAT'); break;
       case 'menu': {
         const m = $('.ct-menu');
@@ -531,6 +654,11 @@ export function render(el, cmd, ctx) {
       if (e.key === 'Escape') { e.preventDefault(); document.getElementById('cmd')?.focus(); }
       return;
     }
+    if ((e.key === 'Enter' || e.key === 'Escape') && $('.ct-confirm') && !e.repeat && (t.closest?.('.ct-confirm') || t === document.body)) {
+      e.preventDefault();
+      answerTake(e.key === 'Enter');
+      return;
+    }
     if (e.key === 'Escape' && t.closest?.('.ct-inline, .ct-menu')) {
       e.preventDefault();
       $('.ct-menu').hidden = true;
@@ -570,7 +698,8 @@ export function render(el, cmd, ctx) {
         if (!alive()) return;
         backoff = 5000;
         if (Number.isFinite(d.last) && d.last > st.cursor) st.cursor = d.last;
-        if (d.events?.length) {
+        // DRIVE's own events (screens, counts) are for drive.js, not a reason to reload.
+        if (d.events?.some((e) => !String(e.type).startsWith('drive'))) {
           await newer(); // first, so the open chat is read before the list counts it
           await loadList();
         }

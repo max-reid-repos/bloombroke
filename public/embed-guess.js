@@ -4,7 +4,7 @@
 // site's own GUESS progress; nothing else is stored, and no analytics load here.
 
 import {
-  TRIES, chartSvg, matchPool, exactPick, readState, recordResult, endLine, dirArrow, dirText,
+  TRIES, chartSvg, matchPool, exactPick, readState, recordResult, endLine, dirArrow, dirText, checkQuery,
 } from './screens/guess.js';
 
 export const EMBED_STORE_KEY = 'bb.embed.guess';
@@ -104,6 +104,7 @@ export function start(doc = document) {
     if (answer) return;
     const hit = game.rows.find((r) => r.solved);
     if (hit) { answer = { ticker: hit.ticker, name: hit.name }; return; }
+    if (game.answer) { answer = game.answer; return; } // came with the last wrong guess
     try { answer = await getJSON(`/api/guess/reveal?${new URLSearchParams({ n: String(game.n) })}`); } catch { /* the line stays LOADING */ }
   }
 
@@ -123,8 +124,9 @@ export function start(doc = document) {
     busy = true;
     closeList();
     try {
-      const d = await getJSON(`/api/guess/check?${new URLSearchParams({ n: String(game.n), g: pick[0] })}`);
+      const d = await getJSON(`/api/guess/check?${checkQuery(game, pick[0])}`);
       game.rows.push({ ticker: d.guess.ticker, name: d.guess.name, cells: d.cells, solved: Boolean(d.solved) });
+      if (d.answer?.ticker) game.answer = { ticker: d.answer.ticker, name: d.answer.name };
       message = '';
       store(state, game);
       if (isDone()) await finish(); else paint();

@@ -66,10 +66,11 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
       WHERE r.kind = 'group' AND m.licence_id = ? AND m.left_at IS NULL`),
     maxId: db.prepare('SELECT COALESCE(MAX(id), 0) AS n FROM chat_messages WHERE room_id = ?'),
     lastMsg: db.prepare(`SELECT * FROM chat_messages c WHERE room_id = @room AND id > @from AND ${HIDDEN} ORDER BY id DESC LIMIT 1`),
-    unreadIn: db.prepare(`SELECT COUNT(*) AS n FROM chat_messages c WHERE room_id = @room AND id > @mark AND (licence_id IS NULL OR licence_id != @lic) AND ${HIDDEN}`),
+    // Server lines (kind 'sys': "Tom 1 is driving.") are never unread.
+    unreadIn: db.prepare(`SELECT COUNT(*) AS n FROM chat_messages c WHERE room_id = @room AND id > @mark AND (licence_id IS NULL OR licence_id != @lic) AND c.kind IS NOT 'sys' AND ${HIDDEN}`),
     unreadAll: db.prepare(`SELECT COUNT(*) AS n FROM chat_messages c JOIN chat_members m ON m.room_id = c.room_id AND m.licence_id = @lic AND m.left_at IS NULL
       JOIN chat_rooms r ON r.id = c.room_id
-      WHERE c.id > MAX(m.last_read_id, m.from_id) AND (c.licence_id IS NULL OR c.licence_id != @lic)
+      WHERE c.id > MAX(m.last_read_id, m.from_id) AND (c.licence_id IS NULL OR c.licence_id != @lic) AND c.kind IS NOT 'sys'
         AND (r.kind = 'dm' OR c.licence_id IS NULL OR c.licence_id NOT IN (SELECT blocked_licence FROM chat_blocks WHERE licence_id = @lic))`),
     page: db.prepare(`SELECT c.*, l.seat, p.name FROM chat_messages c LEFT JOIN licences l ON l.id = c.licence_id
       LEFT JOIN chat_profiles p ON p.licence_id = c.licence_id
@@ -82,6 +83,27 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
       WHERE c.room_id = @room AND c.id > @from ORDER BY c.id DESC LIMIT @limit`),
     read: db.prepare('UPDATE chat_members SET last_read_id = MAX(last_read_id, ?) WHERE room_id = ? AND licence_id = ?'),
     send: db.prepare('INSERT INTO chat_messages (room_id, licence_id, body, card_cmd, card_title, tickers_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'),
+    // DRIVE and GUESS LEAGUE (migrations/014_chat_drive_guess.sql)
+    sys: db.prepare("INSERT INTO chat_messages (room_id, licence_id, body, kind, created_at) VALUES (?, NULL, ?, 'sys', ?)"),
+    sendGuess: db.prepare("INSERT INTO chat_messages (room_id, licence_id, body, card_cmd, card_title, kind, created_at) VALUES (?, ?, ?, 'GUESS', ?, 'guess', ?)"),
+    guessOf: db.prepare('SELECT n, tries, solved FROM chat_guess WHERE message_id = ?'),
+    guessHas: db.prepare('SELECT 1 FROM chat_guess WHERE room_id = ? AND licence_id = ? AND n = ?'),
+    guessAdd: db.prepare(`INSERT INTO chat_guess (room_id, licence_id, n, day, tries, solved, points, message_id, created_at)
+      VALUES (@room, @lic, @n, @day, @tries, @solved, @points, @msg, @t)`),
+    guessDay: db.prepare(`SELECT g.licence_id, g.tries, g.solved, g.created_at, l.seat, p.name FROM chat_guess g JOIN licences l ON l.id = g.licence_id
+      JOIN chat_members m ON m.room_id = g.room_id AND m.licence_id = g.licence_id AND m.left_at IS NULL
+      LEFT JOIN chat_profiles p ON p.licence_id = g.licence_id
+      WHERE g.room_id = @room AND g.n = @n
+        AND (@filter = 0 OR g.licence_id NOT IN (SELECT blocked_licence FROM chat_blocks WHERE licence_id = @me))
+      ORDER BY g.solved DESC, g.tries ASC, g.created_at ASC`),
+    guessWeek: db.prepare(`SELECT g.licence_id, SUM(g.points) AS points, l.seat, p.name FROM chat_guess g JOIN licences l ON l.id = g.licence_id
+      JOIN chat_members m ON m.room_id = g.room_id AND m.licence_id = g.licence_id AND m.left_at IS NULL
+      LEFT JOIN chat_profiles p ON p.licence_id = g.licence_id
+      WHERE g.room_id = @room AND g.day >= @from AND g.day <= @to GROUP BY g.licence_id ORDER BY points DESC, l.seat ASC`),
+    weekDone: db.prepare('SELECT 1 FROM chat_guess_weeks WHERE room_id = ? AND week = ?'),
+    weekMark: db.prepare('INSERT OR IGNORE INTO chat_guess_weeks (room_id, week, created_at) VALUES (?, ?, ?)'),
+    oldGuess: db.prepare('DELETE FROM chat_guess WHERE created_at <= ?'),
+    oldWeeks: db.prepare('DELETE FROM chat_guess_weeks WHERE created_at <= ?'),
     msg: db.prepare(`SELECT c.*, l.seat, p.name FROM chat_messages c LEFT JOIN licences l ON l.id = c.licence_id
       LEFT JOIN chat_profiles p ON p.licence_id = c.licence_id WHERE c.id = ?`),
     // requests
@@ -121,6 +143,7 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     messages: db.prepare('DELETE FROM chat_messages WHERE licence_id = ?'),
     requestsFrom: db.prepare('DELETE FROM chat_requests WHERE from_licence = ?'),
     requestsTo: db.prepare('DELETE FROM chat_requests WHERE to_seat = ?'),
+    guess: db.prepare('DELETE FROM chat_guess WHERE licence_id = ?'),
     blocks: db.prepare('DELETE FROM chat_blocks WHERE licence_id = ? OR blocked_licence = ?'),
   };
 
@@ -196,7 +219,7 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
   function messageView(c, lic) {
     let tickers = [];
     try { tickers = c.tickers_json ? JSON.parse(c.tickers_json) : []; } catch { tickers = []; }
-    return {
+    const out = {
       id: c.id,
       seat: c.seat ?? null,
       name: c.name || null,
@@ -206,6 +229,14 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
       tickers,
       at: c.created_at,
     };
+    // A line the server posted (DRIVE, the weekly GUESS winner), or a GUESS result.
+    if (c.kind === 'sys') out.kind = 'sys';
+    if (c.kind === 'guess') {
+      const g = q.guessOf.get(c.id);
+      out.kind = 'guess';
+      out.guess = g ? { n: g.n, tries: g.tries, solved: Boolean(g.solved) } : null;
+    }
+    return out;
   }
 
   // A DM between two licences, made once (dm_key is unique), both in it.
@@ -221,8 +252,86 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     return room;
   }
 
+  // The room's members who may write now (in it, and it is not closed), or null.
+  function writable(roomId, lic) {
+    const x = memberOf(roomId, lic);
+    if (!x) return null;
+    const members = q.members.all(x.room.id);
+    return readOnly(x.room, lic, members) ? null : { ...x, members };
+  }
+
   const api = {
     me(lic) { return person(lic); },
+
+    // ---- DRIVE ----
+    // Can this licence write in this room now? (DRIVE needs an open room.)
+    canWrite(roomId, lic) { return Boolean(writable(roomId, lic)); },
+    isMember(roomId, lic) { return Boolean(memberOf(roomId, lic)); },
+    // Either blocked the other: no screens pass between them.
+    blockedEither(a, b) { return eitherBlocked(a, b); },
+    kind(roomId) { return q.room.get(roomId)?.kind || null; },
+    // A line from the server in a room ("Tom 1 is driving."). Returns { message, notify }.
+    system(roomId, text) {
+      return tx(db, () => {
+        const room = q.room.get(roomId);
+        if (!room) return { message: null, notify: [] };
+        const t = now();
+        const r = q.sys.run(room.id, text, t); // not moved to the top of the list: only a server line
+        return { message: messageView(q.msg.get(r.lastInsertRowid), 0), notify: activeIds(room.id) };
+      });
+    },
+
+    // ---- GUESS LEAGUE ----
+    // A checked result ({ n, day, tries, solved, points }) into each of these rooms: one per
+    // licence per room per puzzle. Returns { posted: [{ room, message, notify }], already: [room] };
+    // rooms the licence cannot write in are left out (never says why).
+    postGuess(roomIds, lic, r) {
+      return tx(db, () => {
+        const posted = [];
+        const already = [];
+        for (const id of roomIds) {
+          const x = writable(id, lic);
+          if (!x) continue;
+          if (q.guessHas.get(x.room.id, lic, r.n)) { already.push(x.room.id); continue; }
+          const t = now();
+          const score = `${r.solved ? r.tries : 'X'}/${r.of}`;
+          const m = q.sendGuess.run(x.room.id, lic, `GUESS #${r.n} ${score}`, `GUESS #${r.n}`, t);
+          q.guessAdd.run({ room: x.room.id, lic, n: r.n, day: r.day, tries: r.tries, solved: r.solved ? 1 : 0, points: r.points, msg: m.lastInsertRowid, t });
+          q.touch.run(t, x.room.id);
+          q.read.run(m.lastInsertRowid, x.room.id, lic);
+          const notify = x.members.map((mm) => mm.licence_id).filter((mid) => x.room.kind === 'dm' || !isBlocked(mid, lic));
+          posted.push({ room: x.room.id, message: messageView(q.msg.get(m.lastInsertRowid), lic), notify });
+        }
+        return { posted, already };
+      });
+    },
+    // TODAY'S GUESS for the strip: the room's results for puzzle n, best first, without
+    // the people this reader blocked (in a group). [] when nobody posted.
+    guessToday(roomId, lic, n) {
+      const x = memberOf(roomId, lic);
+      if (!x) return [];
+      return q.guessDay.all({ room: x.room.id, n, filter: x.room.kind === 'group' ? 1 : 0, me: lic })
+        .map((g) => ({ seat: g.seat, name: g.name || null, tries: g.tries, solved: Boolean(g.solved), own: g.licence_id === lic }));
+    },
+    // Last week's winner line, once per room: { week, from, to } (New York dates, Mon to
+    // Sun). Posts "Last week's GUESS: Ann 2 won with 11 points." when anyone scored, and
+    // returns { message, notify }; null when it was posted before or nobody played.
+    weekly(roomId, { week, from, to }) {
+      return tx(db, () => {
+        const room = q.room.get(roomId);
+        if (!room || q.weekDone.get(room.id, week)) return null;
+        const rows = q.guessWeek.all({ room: room.id, from, to });
+        if (!rows.length) return null;
+        q.weekMark.run(room.id, week, now());
+        const top = Number(rows[0].points);
+        if (!(top > 0)) return null;
+        const names = rows.filter((w) => Number(w.points) === top).map((w) => label(w.seat, w.name));
+        const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+        const t = now();
+        const r = q.sys.run(room.id, `Last week's GUESS: ${who} won with ${top} ${top === 1 ? 'point' : 'points'}.`, t);
+        return { message: messageView(q.msg.get(r.lastInsertRowid), 0), notify: activeIds(room.id) };
+      });
+    },
 
     setName(lic, name) {
       q.setName.run(lic, name, now());
@@ -445,16 +554,17 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
         const messages = Number(q.oldMessages.run(t - KEEP_MS).changes);
         const requests = Number(q.oldRequests.run(t - KEEP_MS).changes);
         const reports = Number(q.oldReports.run(t - REPORT_KEEP_MS).changes);
+        const guess = Number(q.oldGuess.run(t - KEEP_MS).changes) + Number(q.oldWeeks.run(t - KEEP_MS).changes);
         const ended = q.endedIds.all({ before: t - ENDED_KEEP_MS });
         let rows = 0;
         for (const l of ended) {
           rows += Number(del.profile.run(l.id).changes) + Number(del.members.run(l.id).changes) + Number(del.messages.run(l.id).changes)
-            + Number(del.requestsFrom.run(l.id).changes) + Number(del.blocks.run(l.id, l.id).changes)
+            + Number(del.requestsFrom.run(l.id).changes) + Number(del.blocks.run(l.id, l.id).changes) + Number(del.guess.run(l.id).changes)
             + (Number.isInteger(l.seat) ? Number(del.requestsTo.run(l.seat).changes) : 0);
           rows += Number(q.dmsOf.run({ id: String(l.id) }).changes); // their DMs, with the messages (cascade)
         }
         const rooms = Number(q.emptyRooms.run().changes) + Number(q.leftGroups.run().changes);
-        return { messages, requests, reports, ended: rows, rooms };
+        return { messages, requests, reports, guess, ended: rows, rooms };
       });
     },
   };

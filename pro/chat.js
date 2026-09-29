@@ -8,6 +8,7 @@
 // one optional card points at a screen of the terminal.
 
 import { cleanMessage } from './feedback.js';
+import { normalizeKey, normalizeGiftCode } from './licence.js';
 
 export const MAX_TEXT = 500;
 export const MAX_NAME = 16;
@@ -130,6 +131,26 @@ export function cleanSeats(list, { max = MAX_MEMBERS - 1 } = {}) {
   return seats;
 }
 
+// A Pro key or a gift code anywhere in a command (HELP BB-XXXX-..., GRID AAPL bbxxxx...,
+// WHATIF 7K2M ABCD ...): such a command is never a card and never driven. Any four groups
+// of four joined by a sign; one word, or words after BB or GIFT, that make a key or a code
+// (case and signs do not matter); and words split by spaces that make one when a digit is
+// in them (AAPL MSFT NVDA TSLA stays four tickers). public/screens/chat.js has the same.
+export function secretIn(raw) {
+  const s = String(raw ?? '').toUpperCase();
+  if (/[A-Z0-9]{4}(?:[^A-Z0-9\s][A-Z0-9]{4}){3}/.test(s)) return true;
+  const toks = s.split(/\s+/).filter(Boolean);
+  for (let i = 0; i < toks.length; i++) {
+    for (let j = i + 1; j <= Math.min(toks.length, i + 9); j++) {
+      const part = toks.slice(i, j);
+      const joined = part.join('').replace(/[^A-Z0-9]/g, '');
+      if (!normalizeKey(joined) && !normalizeGiftCode(joined)) continue;
+      if (part.length === 1 || /^(BB|GIFT)/.test(part[0]) || /\d/.test(joined)) return true;
+    }
+  }
+  return false;
+}
+
 // A card: { cmd, title } for a screen of the terminal, or null. parse is the terminal's
 // own parser (public/app.js parseCommand); linkChanges says whether a link to it would
 // change something saved. Throws ChatError.
@@ -141,7 +162,7 @@ export function cleanCard(card, { parse, linkChanges, titleOf = null }) {
   const cmd = typeof card.cmd === 'string' ? card.cmd.replace(/\s+/g, ' ').trim().toUpperCase() : '';
   // No link check here: the command must parse to a screen of the terminal (below), and a
   // card is a button, never a link (SAP.DE is a ticker).
-  if (!CARD_RE.test(cmd)) throw new ChatError('bad_card', 'That screen cannot be attached.');
+  if (!CARD_RE.test(cmd) || secretIn(cmd)) throw new ChatError('bad_card', 'That screen cannot be attached.');
   const head = cmd.split(' ')[0];
   const c = parse(cmd);
   if (!c || c.name === 'UNKNOWN' || c.secret || c.mutates || c.error || linkChanges(c) || CARD_DENY.includes(head) || CARD_DENY.includes(c.name)) {
@@ -172,7 +193,13 @@ export function createHub({ now = () => Date.now(), waitMs = WAIT_MS, perLicence
   const waiting = new Map(); // licence id -> [waiter]
   let open = 0;
 
+  const seen = new Map(); // licence id -> the last time a wait of theirs started or ended (DRIVE)
   const next = () => { seq = Math.max(now(), seq + 1); return seq; };
+  const touch = (lic) => {
+    seen.delete(lic);
+    seen.set(lic, now());
+    if (seen.size > MAX_LICENCES) seen.delete(seen.keys().next().value);
+  };
 
   // Events for a licence after this id: [] when none; a resync nudge when some were dropped.
   function since(lic, after) {
@@ -193,6 +220,14 @@ export function createHub({ now = () => Date.now(), waitMs = WAIT_MS, perLicence
   return {
     cursor: () => seq,
     open: () => open,
+    // DRIVE: is this licence still listening? A wait open now, or one that started or
+    // ended in the last `ms`. touch(lic) counts as one (the moment DRIVE or FOLLOW starts).
+    touch,
+    alive(lic, ms) {
+      if (waiting.get(lic)?.length) return true;
+      const at = seen.get(lic);
+      return at !== undefined && now() - at < ms;
+    },
     // Send an event to these licences: every waiting request of theirs answers now.
     emit(lics, event) {
       const e = { ...event, id: next() };
@@ -213,6 +248,7 @@ export function createHub({ now = () => Date.now(), waitMs = WAIT_MS, perLicence
     // there is something already, on the next event, or empty after waitMs. Returns
     // cancel() (the request closed), or null when the server holds too many waits.
     wait(lic, after, answer) {
+      touch(lic);
       const ready = since(lic, after);
       if (ready.length) { answer(ready, recent.get(lic).last); return () => {}; }
       if (open >= total) return null;
@@ -226,6 +262,7 @@ export function createHub({ now = () => Date.now(), waitMs = WAIT_MS, perLicence
           done = true;
           clearTimeout(w.timer);
           drop(lic, w);
+          touch(lic);
           const events = empty ? [] : since(lic, after);
           answer(events, Math.max(after, events.length ? recent.get(lic).last : after), evicted);
         },
@@ -240,7 +277,60 @@ export function createHub({ now = () => Date.now(), waitMs = WAIT_MS, perLicence
         done = true;
         clearTimeout(w.timer);
         drop(lic, w);
+        touch(lic);
       };
     },
+  };
+}
+
+// ---- DRIVE: friends' terminals follow the screens you open --------------------------------
+// One driver per room. In memory only (one server process): a restart ends every drive.
+// Followers opt in with FOLLOW; the server sends each screen the driver opens only to the
+// followers, as a hub event. Screens are never stored.
+
+export const DRIVE_IDLE_MS = 10 * 60 * 1000; // no screen sent for 10 minutes: it stops
+export const DRIVE_GONE_MS = 60 * 1000; // the driver's page stopped listening: it stops
+export const DRIVE_CMDS_PER_MIN = 60;
+export const drivingLine = (who) => `${who} is driving.`;
+export const stoppedLine = (who) => `${who} stopped.`;
+
+export function createDrives({ now = () => Date.now() } = {}) {
+  const rooms = new Map(); // room id -> { driver, by, cmd, seq, at, followers: Set }
+  return {
+    get: (room) => rooms.get(room) || null,
+    rooms: () => [...rooms.entries()],
+    // lic drives room now. Returns the drive it replaced (a takeover), or null.
+    start(room, lic, by) {
+      const prev = rooms.get(room) || null;
+      rooms.set(room, { driver: lic, by, cmd: null, seq: prev ? prev.seq : 0, at: now(), followers: new Set() });
+      return prev && prev.driver !== lic ? prev : null;
+    },
+    // Ends the drive of this room; returns it, or null when there was none.
+    stop(room) {
+      const d = rooms.get(room) || null;
+      rooms.delete(room);
+      return d;
+    },
+    // The driver's next screen: { cmd, seq }, or null when lic is not the driver.
+    send(room, lic, cmd) {
+      const d = rooms.get(room);
+      if (!d || d.driver !== lic) return null;
+      d.seq += 1;
+      d.cmd = cmd;
+      d.at = now();
+      return { cmd, seq: d.seq };
+    },
+    follow(room, lic) {
+      const d = rooms.get(room);
+      if (!d || d.driver === lic) return null;
+      d.followers.add(lic);
+      return d;
+    },
+    unfollow(room, lic) {
+      const d = rooms.get(room);
+      if (!d || !d.followers.delete(lic)) return null;
+      return d;
+    },
+    idle: (d) => now() - d.at >= DRIVE_IDLE_MS,
   };
 }

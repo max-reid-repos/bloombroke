@@ -13,6 +13,17 @@
 //   POST /api/chat/rooms/:id   { action: leave|add|block|unblock, seat? } -> { ok, room? }
 //   POST /api/chat/rooms/:id/report { reason? } -> { ok, message }
 //   PUT  /api/chat/me          { name }     -> { me }
+//   POST /api/chat/rooms/:id/drive { action: start|stop|follow|unfollow } -> { drive, cursor } | { ok }
+//   POST /api/chat/rooms/:id/drive/cmd { cmd } -> { ok, cmd, seq, followers }   the driver's screen
+//   POST /api/chat/guess       { n, guesses, rooms: [id] | 'all' } -> { posted, already, result }
+//
+// DRIVE: one driver per room; followers opt in with FOLLOW and get each screen as a hub
+// event { type: 'drive', room, by, cmd, seq }, never stored. 'drive-end' tells the driver
+// and followers it is over; 'drive-count' tells the driver how many follow. A drive stops
+// after 10 minutes without a screen, or when the driver's page has not listened (a wait)
+// for 60 seconds. GUESS LEAGUE: a result is the server's replay of the guesses
+// (data/guess.js verifyPlay); TODAY'S GUESS rides on the messages answer ({ guess }), and
+// last week's winner line is posted on the first room load after the week ends.
 //
 // Nothing that goes out holds a key, a key hash or a licence id: people are { seat, name }.
 
@@ -25,12 +36,29 @@ import {
   ChatError, checkText, cleanCard, cleanName, cleanSeats, tickersIn, createHub, MAX_REASON, DAY_MS,
 } from './chat.js';
 import { createChatStore } from './chat-store.js';
+import {
+  createDrives, drivingLine, stoppedLine, label, DRIVE_GONE_MS, DRIVE_CMDS_PER_MIN,
+} from './chat.js';
+import { verifyPlay, loadSecret, puzzleNumber, GuessError, TRIES as GUESS_TRIES } from '../data/guess.js';
+import { nyToday } from '../public/ranges.js';
 
 const MIN = 60 * 1000;
 export const STAMP_MS = 2500; // a quote that takes longer: the ticker goes without a price
 const ID_RE = /^\d{1,12}$/;
 const ACTIONS = new Set(['accept', 'ignore', 'block']);
 const ROOM_ACTIONS = new Set(['leave', 'add', 'block', 'unblock']);
+const DRIVE_ACTIONS = new Set(['start', 'stop', 'follow', 'unfollow']);
+export const DRIVE_SWEEP_MS = 15_000;
+
+// GUESS LEAGUE: the week before the one this New York date is in, Monday to Sunday.
+export function lastWeek(day) {
+  const t = Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)));
+  const mon = t - (((new Date(t).getUTCDay() + 6) % 7) + 7) * DAY_MS;
+  const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+  return { week: iso(mon), from: iso(mon), to: iso(mon + 6 * DAY_MS) };
+}
+// A day's GUESS points: 7 minus the tries when solved (1 try: 6 points), 0 when not.
+export const guessPoints = (tries, solved) => (solved ? GUESS_TRIES + 1 - tries : 0);
 
 export function chatLimits(now = () => Date.now()) {
   return {
@@ -42,6 +70,8 @@ export function chatLimits(now = () => Date.now()) {
     write: createLimiter({ max: 60, windowMs: 60 * MIN, now }),
     // Reads (list, messages, unread, wait) per licence: plenty for a few open tabs.
     read: createLimiter({ max: 3000, windowMs: 10 * MIN, now }),
+    // DRIVE: the driver's screens, per licence.
+    drive: createLimiter({ max: DRIVE_CMDS_PER_MIN, windowMs: MIN, now }),
   };
 }
 
@@ -51,7 +81,7 @@ export function chatLimits(now = () => Date.now()) {
 export function mountChat(app, {
   db, store, guess = createLimiter({ max: 20, windowMs: 15 * MIN }), mode = 'live', publicUrl = 'https://bloombroke.com',
   getQuote = async () => null, parse, linkChanges, titleOf = null, now = () => Date.now(), limits = chatLimits(now),
-  hub = createHub({ now }), stampMs = STAMP_MS, log = console,
+  hub = createHub({ now }), stampMs = STAMP_MS, log = console, guessSecret = null, sweepMs = DRIVE_SWEEP_MS,
 }) {
   if (!parse || !linkChanges) throw new Error('mountChat needs the terminal parser');
   const chat = createChatStore(db, { now });
@@ -111,7 +141,8 @@ export function mountChat(app, {
     if (!lic) return;
     req.lic = lic;
     // Messages have their own limit (30 a minute); every other write shares 60 an hour.
-    const sending = req.method === 'POST' && /^\/rooms\/\d+\/messages$/.test(req.path);
+    // DRIVE screens have theirs (60 a minute), counted in the route.
+    const sending = req.method === 'POST' && /^\/rooms\/\d+\/(messages|drive\/cmd)$/.test(req.path);
     if (!sending) {
       const hit = (req.method === 'GET' ? limits.read : limits.write).hit(`lic:${lic.id}`);
       if (!hit.ok) return limited(res, hit);
@@ -123,7 +154,7 @@ export function mountChat(app, {
   r.get('/', (req, res) => {
     const lic = req.lic.id;
     const cursor = hub.cursor();
-    res.json({ me: chat.me(lic), requests: chat.requests(lic), rooms: chat.list(lic), cursor });
+    res.json({ me: chat.me(lic), requests: chat.requests(lic), rooms: chat.list(lic).map((x) => withDrive(x, lic)), cursor });
   });
 
   r.get('/unread', (req, res) => res.json({ count: chat.unread(req.lic.id) }));
@@ -150,10 +181,19 @@ export function mountChat(app, {
   r.get('/rooms/:id/messages', (req, res) => {
     const id = roomId(req);
     const num = (v) => (ID_RE.test(String(v ?? '')) ? Number(v) : null);
+    const before = num(req.query.before);
+    const day = nyToday(new Date(now()));
+    // GUESS LEAGUE: the first load after a week ends posts last week's winner, once.
+    if (id !== null && before === null && chat.isMember(id, req.lic.id)) {
+      try { nudge(chat.weekly(id, lastWeek(day)), 'message', id); } catch (err) { log.error('[chat] weekly', err?.message); }
+    }
     // read=0: a tab in the background asks without marking anything read.
-    const out = id === null ? null : chat.messages(id, req.lic.id, { before: num(req.query.before), after: num(req.query.after), limit: num(req.query.limit) || undefined, read: req.query.read !== '0' });
+    const out = id === null ? null : chat.messages(id, req.lic.id, { before, after: num(req.query.after), limit: num(req.query.limit) || undefined, read: req.query.read !== '0' });
     if (!out) return fail(res, 404, 'not_found', 'No such chat.');
-    res.json(out);
+    // TODAY'S GUESS: the strip, when anyone here posted today's result.
+    const n = puzzleNumber(day);
+    const scores = chat.guessToday(id, req.lic.id, n);
+    res.json(scores.length ? { ...out, guess: { n, of: GUESS_TRIES, scores } } : out);
   });
 
   r.post('/open', body, (req, res) => {
@@ -203,6 +243,7 @@ export function mountChat(app, {
     if (action === 'add') [seat] = cleanSeats([req.body?.seat], { max: 1 });
     const out = chat.act(id, req.lic.id, action, seat);
     nudge(out, 'rooms', id);
+    checkDrive(id); // DRIVE: a driver who left, or a DM now closed, ends the drive
     res.json({ ok: true, room: out.left ? null : chat.room(id, req.lic.id) });
   });
 
@@ -230,6 +271,127 @@ export function mountChat(app, {
     res.json({ me });
   });
 
+  // ---- DRIVE --------------------------------------------------------------------------
+  const drives = createDrives({ now });
+  const driveView = (roomId, lic) => {
+    const d = drives.get(roomId);
+    if (!d || (d.driver !== lic && chat.blockedEither(d.driver, lic))) return null;
+    const out = { by: d.by, own: d.driver === lic, following: d.followers.has(lic) };
+    if (out.own) out.followers = d.followers.size;
+    return out;
+  };
+  function withDrive(view, lic) {
+    const drive = view ? driveView(view.id, lic) : null;
+    return drive ? { ...view, drive } : view;
+  }
+  const countTo = (roomId, d) => hub.emit([d.driver], { type: 'drive-count', room: roomId, followers: d.followers.size });
+  // The drive of this room is over: the driver and followers hear it, the room gets a line.
+  function endDrive(roomId) {
+    const d = drives.stop(roomId);
+    if (!d) return;
+    hub.emit([d.driver, ...d.followers], { type: 'drive-end', room: roomId });
+    nudge(chat.system(roomId, stoppedLine(label(d.by.seat, d.by.name))), 'message', roomId);
+  }
+  // Ends a drive that should not go on; drops followers who left or stopped listening.
+  function checkDrive(roomId) {
+    const d = drives.get(roomId);
+    if (!d) return;
+    if (drives.idle(d) || !hub.alive(d.driver, DRIVE_GONE_MS) || !chat.canWrite(roomId, d.driver)) { endDrive(roomId); return; }
+    let dropped = false;
+    for (const f of [...d.followers]) {
+      if (!hub.alive(f, DRIVE_GONE_MS) || !chat.isMember(roomId, f) || chat.blockedEither(f, d.driver)) { d.followers.delete(f); dropped = true; }
+    }
+    if (dropped) countTo(roomId, d);
+  }
+  const sweep = () => {
+    for (const [roomId] of drives.rooms()) {
+      try { checkDrive(roomId); } catch (err) { log.error('[chat] drive', err?.message); }
+    }
+  };
+  if (sweepMs > 0) setInterval(sweep, sweepMs).unref?.();
+
+  r.post('/rooms/:id/drive', body, (req, res) => {
+    const id = roomId(req);
+    const lic = req.lic.id;
+    const action = req.body?.action;
+    if (id === null || !chat.isMember(id, lic)) return fail(res, 404, 'not_found', 'No such chat.');
+    if (!DRIVE_ACTIONS.has(action)) return fail(res, 400, 'bad_request', 'Send { action: start, stop, follow or unfollow }.');
+    const d = drives.get(id);
+    if (action === 'start') {
+      if (!chat.canWrite(id, lic)) return fail(res, 409, 'read_only', 'This chat is closed.');
+      // No takeover across a block, either way.
+      if (d && d.driver !== lic && chat.blockedEither(d.driver, lic)) return fail(res, 409, 'taken', 'Someone else is driving here.');
+      hub.touch(lic);
+      if (d?.driver !== lic) {
+        const by = chat.me(lic);
+        const prev = drives.start(id, lic, by);
+        // A takeover: the old driver and their followers stop (following is opt-in).
+        if (prev) hub.emit([prev.driver, ...prev.followers], { type: 'drive-end', room: id });
+        nudge(chat.system(id, drivingLine(label(by.seat, by.name))), 'message', id);
+      }
+      return res.json({ drive: driveView(id, lic), cursor: hub.cursor() });
+    }
+    if (action === 'stop') {
+      if (!d || d.driver !== lic) return fail(res, 409, 'not_driver', 'You are not driving here.');
+      endDrive(id);
+      return res.json({ ok: true });
+    }
+    if (action === 'follow') {
+      if (!d || d.driver === lic || chat.blockedEither(d.driver, lic)) return fail(res, 409, 'no_drive', 'Nobody is driving here now.');
+      drives.follow(id, lic);
+      hub.touch(lic);
+      countTo(id, d);
+      return res.json({ drive: { by: d.by, cmd: d.cmd, seq: d.seq }, cursor: hub.cursor() });
+    }
+    if (d && drives.unfollow(id, lic)) countTo(id, d);
+    return res.json({ ok: true });
+  });
+
+  r.post('/rooms/:id/drive/cmd', body, (req, res, next) => {
+    try {
+      const id = roomId(req);
+      const lic = req.lic.id;
+      if (id === null || !chat.isMember(id, lic)) return fail(res, 404, 'not_found', 'No such chat.');
+      const hit = limits.drive.hit(`lic:${lic}`);
+      if (!hit.ok) return limited(res, hit, 'That is a lot of screens for one minute. Slow down a little.');
+      const d = drives.get(id);
+      if (!d || d.driver !== lic) return fail(res, 409, 'not_driver', 'You are not driving here.');
+      // The card rule: a known screen that changes nothing and holds no secret.
+      const card = cleanCard({ cmd: req.body?.cmd }, { parse, linkChanges, titleOf });
+      if (!chat.canWrite(id, lic)) { endDrive(id); return fail(res, 409, 'not_driver', 'This chat is closed.'); }
+      const sent = drives.send(id, lic, card.cmd);
+      for (const f of [...d.followers]) {
+        if (!chat.isMember(id, f) || chat.blockedEither(f, lic)) d.followers.delete(f);
+      }
+      if (d.followers.size) hub.emit([...d.followers], { type: 'drive', room: id, by: d.by, cmd: sent.cmd, seq: sent.seq });
+      res.json({ ok: true, cmd: sent.cmd, seq: sent.seq, followers: d.followers.size });
+    } catch (err) { next(err); }
+  });
+
+  // ---- GUESS LEAGUE ----------------------------------------------------------------------
+  let secret = guessSecret;
+  r.post('/guess', body, (req, res) => {
+    const lic = req.lic.id;
+    let play;
+    try {
+      secret ||= loadSecret({ log });
+      play = verifyPlay(req.body?.n, req.body?.guesses, { secret, now: () => new Date(now()) });
+    } catch (err) {
+      if (err instanceof GuessError) return fail(res, err.status, err.code, err.message);
+      throw err;
+    }
+    const want = req.body?.rooms;
+    const ids = want === 'all' ? chat.list(lic).map((x) => x.id)
+      : Array.isArray(want) ? want.filter((v) => Number.isInteger(v) && v > 0).slice(0, 100) : [];
+    if (!ids.length) return fail(res, 400, 'bad_request', 'Pick a chat.');
+    const out = chat.postGuess(ids, lic, { ...play, of: GUESS_TRIES, points: guessPoints(play.tries, play.solved) });
+    for (const p of out.posted) nudge(p, 'message', p.room);
+    if (!out.posted.length) {
+      return out.already.length ? fail(res, 409, 'already', 'Today\'s GUESS is in that chat already.') : fail(res, 404, 'not_found', 'No such chat.');
+    }
+    res.json({ posted: out.posted.map((p) => p.room), already: out.already, result: { n: play.n, tries: play.tries, solved: play.solved, of: GUESS_TRIES } });
+  });
+
   r.use((err, req, res, next) => {
     if (res.headersSent) return next(err);
     if (err instanceof ChatError) return fail(res, err.status, err.code, err.message);
@@ -240,5 +402,5 @@ export function mountChat(app, {
   });
 
   app.use('/api/chat', r);
-  return { chat, hub, purge: (t) => chat.purge(t) };
+  return { chat, hub, drives, sweep, purge: (t) => chat.purge(t) };
 }

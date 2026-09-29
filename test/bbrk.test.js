@@ -187,7 +187,7 @@ test('GUESS routes: a solved check counts one game played; a miss and a reveal d
     assert.equal(counters.stats().counts.guess_played.today, 0, 'a miss is not a game played');
     assert.equal((await (await fetch(`${base}/api/guess/check?n=2&g=${answer.ticker}`)).json()).solved, true);
     assert.equal(counters.stats().counts.guess_played.today, 1);
-    assert.equal((await fetch(`${base}/api/guess/reveal?n=2`)).status, 200);
+    assert.equal((await fetch(`${base}/api/guess/reveal?n=2`)).status, 409, 'today: only with the last wrong guess');
     assert.equal((await fetch(`${base}/api/guess/reveal?n=1`)).status, 200, 'an old puzzle');
     assert.equal(counters.stats().counts.guess_played.today, 1, 'a reveal never counts (a lost game is counted by the page)');
     assert.equal((await fetch(`${base}/api/guess/reveal?n=99`)).status, 400);
