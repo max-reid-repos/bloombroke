@@ -727,6 +727,8 @@ export function linkPlan(raw) {
   return { url: plain, show: plain, ask: { run: clean, url: plain, ...linkQuestion(cmd) } };
 }
 export const DEFAULT_TITLE = 'Bloombroke: a free market terminal. Pro $420 a year.';
+// DRIVE (drive.js): a screen from the driver opens like a link, so it never changes anything.
+export const driveTarget = (raw) => { const p = linkPlan(raw); return p.ask ? p.url : p.show; };
 
 // A ticker screen whose ticker is not known yet: check it has a quote before showing
 // the screen (TESLA is not a ticker; the resolver makes it TSLA). null when no check.
@@ -1180,6 +1182,7 @@ function boot() {
         return;
       }
     }
+    if (!embed) window.dispatchEvent(new CustomEvent('bb:screen', { detail: raw })); // DRIVE: the driver sends it
     setKeys(cmd.name === 'TICKERNEWS' ? '' : cmd.name);
     document.title = cmd.name === 'HOME' || cmd.name === 'UNKNOWN' ? DEFAULT_TITLE : `${cmd.name === 'QUOTE' ? cmd.input : fullName(cmd.input)} | Bloombroke`;
     setLabel(screenTitle(cmd).title);
@@ -1435,8 +1438,9 @@ function boot() {
 
   // typed: the command came from the command bar (Enter or a picked suggestion), so a
   // screen that takes typed commands (DESK sends them to its focused panel) gets it first.
-  function run(raw, { push = true, fromUrl = false, typed = false } = {}) {
+  function run(raw, { push = true, fromUrl = false, typed = false, drive = false } = {}) {
     const clean = tokenize(raw).join(' ') || DEFAULT_COMMAND;
+    if (!drive) window.dispatchEvent(new Event('bb:own')); // DRIVE: your own command ends following
     if (!fromUrl) noteTried();
     // MENU opens the launcher over the current screen; it is not a screen of its own.
     if (menu && !fromUrl && clean === 'MENU') {
@@ -1669,7 +1673,8 @@ function boot() {
     if (e.key.length === 1 || e.key === 'Backspace') input.focus();
   });
 
-  window.addEventListener('popstate', () => render(urlFor(fromQuery(location.search)).url, { fromUrl: true }));
+  window.addEventListener('popstate', () => { window.dispatchEvent(new Event('bb:own')); render(urlFor(fromQuery(location.search)).url, { fromUrl: true }); });
+  window.addEventListener('bb:drive-run', (e) => run(driveTarget(String(e.detail || '')), { drive: true }));
 
   // --- DESK panel: messages from the desk, and a click here focuses this panel --------
   if (embed) {

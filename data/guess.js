@@ -325,6 +325,33 @@ export function makeGuess({ getChart, getCaps, secret, now = () => new Date(), p
   };
 }
 
+// GUESS LEAGUE (CHAT): the server's own check of a finished game, for a result posted to
+// a chat. The page sends its guesses; the score comes from replaying them against the
+// answer, the same pick /api/guess/check compares with, never from a number the page
+// sends. Only today's puzzle (New York date). Returns { n, day, tries, solved }: tries is
+// how many guesses it took, or all six when it was not solved.
+export function verifyPlay(rawN, guesses, { secret, now = () => new Date(), pool = POOL } = {}) {
+  const day = nyToday(now());
+  const today = puzzleNumber(day);
+  const n = Number(rawN);
+  if (!Number.isInteger(n) || n < 1 || n > today) throw new GuessError(400, 'usage', `Puzzles run from #1 to #${today}.`);
+  if (n !== today) throw new GuessError(409, 'old_puzzle', `Only today's GUESS goes to CHAT: GUESS #${today}.`);
+  const bad = () => new GuessError(400, 'bad_play', 'That is not a finished GUESS. Play it on the GUESS screen.');
+  if (!Array.isArray(guesses) || !guesses.length || guesses.length > TRIES) throw bad();
+  const answer = pickAnswer(n, secret, pool);
+  const seen = new Set();
+  let solved = false;
+  for (const raw of guesses) {
+    const m = typeof raw === 'string' ? findMember(raw, pool) : null;
+    // A guess after the answer, the same stock twice, or one off the list: not a real game.
+    if (!m || solved || seen.has(m.ticker)) throw bad();
+    seen.add(m.ticker);
+    if (m.ticker === answer.ticker) solved = true;
+  }
+  if (!solved && guesses.length < TRIES) throw new GuessError(400, 'not_done', 'Finish today\'s GUESS first.');
+  return { n, day, tries: guesses.length, solved };
+}
+
 export const GUESS_LIMIT = { perMinute: 60 };
 
 // The routes. A mild limit per visitor over all three.

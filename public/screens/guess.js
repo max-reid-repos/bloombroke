@@ -6,6 +6,7 @@
 import { esc, q, panel, metaNote, LOADING } from './markets.js';
 import { guessEmbedSnippet } from '../embed-snippet.js'; // EMBED: the iframe line
 import { goal } from '../goal.js'; // GOALS
+import { loadModule } from '../lazy.js'; // POST TO CHAT: pro.js by name (the page's own copy, not in the embed)
 
 export const STORE_KEY = 'bb.guess';
 export const TRIES = 6;
@@ -222,6 +223,18 @@ export function rowsHtml(rows, tries = TRIES) {
   </table>`;
 }
 
+// GUESS LEAGUE: POST TO CHAT beside the share buttons, for Pro with at least one chat
+// that is open. rooms: [{ id, title, readOnly }] from GET /api/chat.
+export const postable = (rooms) => (Array.isArray(rooms) ? rooms.filter((r) => r && !r.readOnly) : []);
+export function postChatHtml(pro, rooms) {
+  return pro && postable(rooms).length ? '<button type="button" class="chip gs-chat" aria-expanded="false">POST TO CHAT</button>' : '';
+}
+// The chats to pick from: ALL, then each chat (up to 8; ALL covers the rest).
+export function roomsPickHtml(rooms) {
+  const list = postable(rooms).slice(0, 8);
+  return `<span class="gs-rooms">${['<button type="button" class="chip" data-room="all">ALL</button>', ...list.map((r) => `<button type="button" class="chip" data-room="${Number(r.id)}">${esc(r.title)}</button>`)].join('')}</span>`;
+}
+
 export function statsHtml(s) {
   const item = (k, v) => `<span class="gs-stat"><span class="gs-sk">${k}</span> <b>${esc(v)}</b></span>`;
   return `<p class="gs-stats">${item('PLAYED', String(s.played))}${item('WIN %', s.winPct === null ? '--' : String(s.winPct))}${item('STREAK', String(s.current))}</p>`;
@@ -251,6 +264,7 @@ export function render(el, cmd, ctx) {
   let active = -1;
   let matches = [];
   let resize = null;
+  let chat = null; // POST TO CHAT: { pro, key, header, rooms } once looked up
 
   const save = () => ctx.store.set(STORE_KEY, { results: state.results, game });
   const isDone = () => game.rows.some((r) => r.solved) || game.rows.length >= TRIES;
@@ -287,6 +301,7 @@ export function render(el, cmd, ctx) {
         <button type="button" class="pf-btn gs-copy">COPY RESULT</button>
         <a class="chip gs-x" href="${esc(shareOnX(shareText(game.n, game.rows, solved())))}" target="_blank" rel="noopener">SHARE ON X</a>
         <button type="button" class="chip gs-embed" title="Copy one line of HTML that puts today's GUESS on your site">EMBED</button>
+        ${postChatHtml(chat?.pro, chat?.rooms)}
         <span class="gs-next">NEXT IN <span class="gs-cd">${fmtCountdown(msToNextPuzzle(Date.now()))}</span></span>
       </div>
     </div>`;
@@ -331,6 +346,40 @@ export function render(el, cmd, ctx) {
     }
   }
 
+  // POST TO CHAT: only for Pro, only with a chat to post in. Looked up once the game is over.
+  async function lookUpChats() {
+    if (chat) return;
+    chat = { pro: false, rooms: [] };
+    try {
+      const pro = await loadModule('pro.js');
+      if (!pro.isPro()) return;
+      const res = await fetch('/api/chat', { headers: { Accept: 'application/json', [pro.HEADER]: pro.getKey() || '' }, cache: 'no-store', signal: ctx.signal });
+      if (!res.ok) return;
+      const d = await res.json();
+      chat = { pro: true, key: pro.getKey(), header: pro.HEADER, rooms: postable(d.rooms) };
+      if (!ctx.signal.aborted && chat.rooms.length && isDone()) paint();
+    } catch { /* no POST TO CHAT */ }
+  }
+  async function postToChat(which) {
+    const rooms = which === 'all' ? 'all' : [Number(which)];
+    try {
+      const res = await fetch('/api/chat/guess', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json', [chat.header]: chat.key || '' },
+        body: JSON.stringify({ n: game.n, guesses: game.rows.map((r) => r.ticker), rooms }),
+        cache: 'no-store',
+        signal: ctx.signal,
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok) { ctx.status(d?.message || 'COULD NOT POST TO CHAT', 'warn'); return; }
+      const n = d.posted.length;
+      ctx.status(n > 1 ? `POSTED TO ${n} CHATS` : 'POSTED TO CHAT');
+      playBody.querySelector('.gs-rooms')?.remove();
+    } catch (err) {
+      if (err.name !== 'AbortError') ctx.status('COULD NOT POST TO CHAT', 'warn');
+    }
+  }
+
   async function finish() {
     state = recordResult(state, game.n, game.rows.length, solved());
     save();
@@ -338,6 +387,7 @@ export function render(el, cmd, ctx) {
     paint();
     await reveal();
     if (!ctx.signal.aborted) paint();
+    lookUpChats();
   }
 
   async function submit(ticker) {
@@ -392,6 +442,16 @@ export function render(el, cmd, ctx) {
     const opt = e.target.closest('[data-pick]');
     if (opt) { submit(opt.dataset.pick); return; }
     if (e.target.closest('.gs-x')) goal('guess_shared', { via: 'x' }, { once: game.n });
+    // POST TO CHAT: pick a chat (or ALL), then it posts.
+    const toChat = e.target.closest('.gs-chat');
+    if (toChat && chat?.rooms?.length) {
+      const open = playBody.querySelector('.gs-rooms');
+      if (open) open.remove(); else toChat.insertAdjacentHTML('afterend', roomsPickHtml(chat.rooms));
+      toChat.setAttribute('aria-expanded', String(!open));
+      return;
+    }
+    const pickRoom = e.target.closest('.gs-rooms [data-room]');
+    if (pickRoom) { postToChat(pickRoom.dataset.room); return; }
     if (e.target.closest('.gs-copy')) {
       const ok = await ctx.copy(shareText(game.n, game.rows, solved()));
       ctx.status(ok ? 'RESULT COPIED' : 'COULD NOT COPY', ok ? '' : 'warn');
@@ -434,6 +494,7 @@ export function render(el, cmd, ctx) {
       paint();
       await reveal();
       if (!ctx.signal.aborted) paint();
+      lookUpChats();
     } else {
       paint();
     }
