@@ -3,90 +3,105 @@
 
 /* ==== from style.css ==== */
 
-/* ---- WHATIF ----------------------------------------------------------- */
-.wi-intro { color: var(--text-2); margin-bottom: 10px; }
-.wi-tabs { margin-bottom: 8px; }
-/* The shelf: doodle cards in a grid. */
-.wi-shelf {
-  --wi-bar-h: 40px;
-  list-style: none; margin: 0; padding: 0; outline: 0;
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 6px;
+/* ---- WHATIF picker: the shelf is the screen ---------------------------------------
+   Big doodle cards, four to a row (two on a phone), each row standing on a pencil line;
+   the tabs and the YOUR OWN line above; a family's model chips open under its row; the
+   RUN bar shows once the basket holds two or more. */
+.wi-panel { --wi-pencil: hsl(30, 26%, 58%); } /* the doodles' tan pencil shade */
+.wi-tabs { max-width: 1120px; margin: 0 auto 16px; }
+.wi-tabs .toolbar { padding-left: 0; padding-right: 0; }
+/* YOUR OWN: one line at the right of the tabs (under them on a phone). */
+.wi-own { display: flex; gap: 8px; width: 384px; max-width: 100%; }
+.wi-own .wi-own-add { flex: 0 0 auto; height: 28px; padding: 0 12px; }
+.wi-own-in {
+  flex: 1 1 auto; min-width: 0; width: 100%; height: 28px; padding: 0 8px;
+  border: 1px solid var(--rule-strong); background: var(--bg);
+  color: var(--text); font-family: var(--font); font-size: 13px; text-transform: uppercase;
+}
+.wi-own-in::placeholder { color: var(--dim); text-transform: none; }
+.wi-own-in:focus { outline: 1px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
+.wi-own-msg { max-width: 1120px; margin: -8px auto 12px; font-size: 12px; color: var(--down); text-align: right; }
+.wi-own-msg:empty { display: none; }
+.wi-shelf { max-width: 1120px; margin: 0 auto; outline: 0; }
+.wi-row {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px;
 }
 .wi-card {
   position: relative;
-  display: grid; grid-template-columns: 50px minmax(0, 1fr); grid-template-rows: 1fr auto; column-gap: 8px;
-  min-height: 64px; padding: 5px 8px 5px 4px;
-  border: 1px solid var(--rule); background: var(--bg);
-  cursor: pointer; user-select: none; color: var(--text-2);
-  scroll-margin-bottom: calc(var(--wi-bar-h) + 8px);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 12px 8px 8px; border: 1px solid transparent;
+  cursor: pointer; user-select: none; color: var(--text-2); text-align: center;
+  scroll-margin-bottom: 64px;
 }
 .wi-card:hover { background: var(--panel-2); }
-.wi-card:focus { outline: 0; border-color: var(--accent); background: var(--panel-3); }
-.wi-card.is-on { color: var(--text); background: var(--accent-tint); border-color: var(--rule-strong); }
-.wi-doodle { grid-row: 1 / span 2; align-self: center; width: 50px; height: 50px; object-fit: contain; }
-.wi-box { position: absolute; top: 3px; right: 6px; font-size: 11px; color: var(--faint); }
-.wi-card.is-on .wi-box { color: var(--accent); font-weight: 600; }
+.wi-card:focus { outline: 0; border-color: var(--accent); }
+.wi-card.is-on { color: var(--text); }
+.wi-fam.is-open { background: var(--panel-2); }
+.wi-doodle { display: block; width: 160px; height: 160px; max-width: 100%; object-fit: contain; }
 .wi-cname {
-  align-self: end; padding-right: 24px; font-size: 12px; line-height: 15px;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: 14px; line-height: 18px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-/* A card shows its doodle and name; the year and price only once it is picked. */
-.wi-card:has(> .wi-cmeta[hidden]) .wi-cname { grid-row: 1 / span 2; align-self: center; }
-.wi-cmeta { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 11px; white-space: nowrap; }
-.wi-cmeta[hidden] { display: none; }
+.wi-cmeta { margin-top: -4px; font-size: 12px; color: var(--dim); white-space: nowrap; }
+/* The basket box: an empty square, checked (an ice-blue tick, not a fill) once the card
+   is in the basket. */
+.wi-box {
+  position: absolute; top: 8px; right: 8px;
+  width: 18px; height: 18px; border: 1px solid var(--faint);
+}
+.wi-card:hover .wi-box, .wi-card:focus .wi-box { border-color: var(--dim); }
+.wi-card.is-on .wi-box, .wi-chip.is-on .wi-box { border-color: var(--accent); }
+.wi-card.is-on .wi-box::after, .wi-chip.is-on .wi-box::after {
+  content: ''; position: absolute; left: 5px; top: 1px; width: 5px; height: 10px;
+  border: solid var(--accent); border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.wi-mine .wi-cname { color: var(--text); }
+.wi-years { margin-top: auto; } /* the years boxes of a row line up */
 .wi-years input {
-  width: 8ch; height: 20px; padding: 0 4px;
+  width: 8ch; height: 24px; padding: 0 4px;
   border: 1px solid var(--rule-strong); background: var(--panel);
-  color: var(--text); font-family: var(--font); font-size: 12px; text-transform: uppercase; text-align: right;
+  color: var(--text); font-family: var(--font); font-size: 12px; text-transform: uppercase; text-align: center;
 }
 .wi-years input:focus { outline: 1px solid var(--accent); outline-offset: 0; }
-/* YOUR OWN: the first card on every shelf, and its inline form under the tabs. */
-.wi-own .wi-cname { color: var(--accent); font-weight: 600; letter-spacing: .06em; }
-/* The form reads as one sentence: [$ 15] [a week] in [AAPL] since [2015]  ADD. */
-.wi-ownform { margin-bottom: 8px; padding: 8px 10px; border: 1px solid var(--rule-strong); background: var(--panel); }
-.wi-ownform[hidden] { display: none; }
-.wo-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 14px; color: var(--text-2); }
-.wo-line input, .wo-line select {
-  height: 28px; padding: 0 6px;
-  border: 1px solid var(--rule-strong); background: var(--bg);
-  color: var(--text); font-family: var(--font); font-size: 14px;
+/* The pencil line a row stands on; every other row's is drawn the other way. */
+.wi-line { display: block; width: 100%; height: 12px; margin: 0 0 16px; overflow: visible; }
+.wi-row.is-odd + .wi-line { transform: scaleX(-1); }
+.wi-line path { fill: none; stroke: var(--wi-pencil); stroke-width: 1.6; stroke-linecap: round; }
+.wi-line .wi-line-2 { stroke-width: 1; opacity: .45; }
+/* A family's models, under its row: one chip each; a click runs it, the box adds it. */
+.wi-chips {
+  display: flex; align-items: center; gap: 12px;
+  margin: -8px 0 16px; padding: 8px 12px;
+  border: 1px solid var(--rule-strong); background: var(--panel);
 }
-.wo-line input::placeholder { color: var(--faint); }
-.wo-line input:focus, .wo-line select:focus { outline: 1px solid var(--accent); outline-offset: 0; }
-.wo-amt { position: relative; display: inline-flex; }
-.wo-cur { position: absolute; left: 7px; top: 50%; transform: translateY(-50%); color: var(--dim); pointer-events: none; }
-.wo-amt input { width: 9ch; padding-left: 18px; }
-.wo-tk { width: 7ch; text-transform: uppercase; }
-.wo-dt { width: 10ch; }
-.wi-ownform .wo-add { height: 28px; margin-left: 4px; }
-.wo-close { height: 28px; padding: 0 8px; border: 0; background: transparent; color: var(--dim); font-family: var(--font); font-size: 16px; cursor: pointer; }
-.wo-close:hover { color: var(--text); }
-.wo-msg { margin-top: 6px; font-size: 12px; color: var(--down); }
-.wo-msg:empty { display: none; }
-/* The RUN bar sticks right on the dock (no gap for cards to show through); a card moved
-   to by keys is never left under it (scroll-margin), and the card behind it fades. */
-@media (max-width: 639px) { .wi-shelf { --wi-bar-h: 40px; } }
-.wi-bar {
-  position: sticky; bottom: var(--dock-h);
-  margin-top: 10px; padding: 6px 8px;
-  background: var(--panel-2); border: 1px solid var(--rule-strong);
-  box-shadow: 0 -8px 10px -4px var(--bg);
-  font-size: 12px;
-}
-.wi-bar-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-/* A picked family's models, over the RUN bar: one chip each, the picked ones lit. The
-   row scrolls sideways (edge fades) and never wraps. */
-.wi-chips { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--rule); }
 .wi-chips[hidden] { display: none; }
 .wi-chips-label { flex: 0 0 auto; }
-.wi-chips-row { display: flex; gap: 6px; min-width: 0; }
-.wi-chip { flex: 0 0 auto; gap: 6px; height: 24px; letter-spacing: .04em; cursor: pointer; }
+.wi-chips-row { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.wi-chip { flex: 0 0 auto; gap: 6px; height: 28px; letter-spacing: .04em; cursor: pointer; }
+.wi-chip .wi-box { position: relative; top: auto; right: auto; width: 14px; height: 14px; }
+.wi-chip.is-on .wi-box::after { left: 3px; top: 0; width: 4px; height: 8px; }
 .wi-chip-y { color: var(--dim); font-weight: 400; }
-.wi-chip[aria-pressed="true"] { color: var(--ink); background: var(--here); border-color: var(--here); }
-.wi-chip[aria-pressed="true"] .wi-chip-y { color: var(--ink); }
-.wi-chip:focus-visible { outline: 1px solid var(--text); outline-offset: 1px; }
-.wi-count { color: var(--text); font-weight: 600; letter-spacing: .06em; white-space: nowrap; }
-.wi-cmd { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wi-chip:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+/* The RUN bar: two or more in the basket. It sticks to the bottom while the shelf scrolls. */
+.wi-bar {
+  position: sticky; bottom: var(--dock-h); z-index: 2;
+  display: flex; align-items: center; gap: 16px;
+  max-width: 1120px; margin: 0 auto; padding: 8px 12px;
+  background: var(--panel-2); border: 1px solid var(--rule-strong);
+  box-shadow: 0 -8px 12px -4px var(--bg);
+  font-size: 12px;
+}
+.wi-bar[hidden] { display: none; }
+.wi-count { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+/* The panel ends where the shelf (or the result) ends: no empty panel under it. */
+@media (min-width: 1100px) {
+  html:not(.is-embed) .view > .panel.wi-panel:not([hidden]) { flex: 0 1 auto !important; min-height: 96px; }
+  .wi-bar { bottom: 0; }
+}
+@media (max-width: 1099px), (max-height: 800px) {
+  .wi-doodle { width: 128px; height: 128px; }
+}
 .wi-table .is-loss .name a { color: var(--down); }
 .wi-when { color: var(--text-2); }
 .wi-when-m { display: none; }
@@ -95,16 +110,20 @@
 
 /* ---- WHATIF result: a split card page (kit.js cardPage split) ----------------------
    The certificate is the art (the hero); beside it on a desktop, under it on a phone:
-   the sentence (sub), SHARE and its menu (act), the note, the race (chart), the list of
-   things when there are two or more (media), REPLAY and CHANGE PICKS (links), + Details.
+   SHARE and its menu (act), the note, the race (chart), REPLAY and CHANGE PICKS (links),
+   + Details. On a phone one line under the certificate carries its small words.
    Sizes on the type and spacing scales (style.css); colours from its palette. */
 .wi-result .card-art { max-width: 100%; overflow-x: clip; } /* the seal's stamp and the sticker never scroll the page sideways */
-/* While the race runs only the certificate and the chart move: the sentence, the list and
-   (in + Details) the table and the worst drops wait for the end (their room is kept, so
+.wi-result .card-art { flex-direction: column; } /* the phone's line goes under the certificate */
+/* While the race runs only the certificate and the chart move: the phone's line and (in
+   + Details) the table and the worst drops wait for the end (their room is kept, so
    nothing jumps). */
-.wi-result.is-racing .card-sub, .wi-result.is-racing .wi-receipt, .wi-result.is-racing .wi-drop { visibility: hidden; }
-.wi-result .card-sub { color: var(--text); }
-.wi-line { display: block; }
+.wi-result.is-racing .wi-certline, .wi-result.is-racing .wi-receipt, .wi-result.is-racing .wi-drop { visibility: hidden; }
+/* The phone's line under the certificate: spent, shares, the multiple. */
+.wi-certline { display: none; }
+@media (max-width: 599px) {
+  .wi-certline { display: block; margin-top: 12px; font-size: 13px; color: var(--text); text-align: center; }
+}
 /* SHARE: one primary button; its menu opens under it, over what follows. */
 .wi-sharebox { position: relative; display: inline-flex; }
 .wi-menu {
@@ -122,10 +141,10 @@
 .wi-mi.is-off { max-width: 32ch; color: var(--dim); white-space: normal; cursor: default; }
 .wi-vmsg { flex: 1 0 100%; font-size: 11px; letter-spacing: .04em; color: var(--dim); }
 .wi-vmsg:empty { display: none; }
-/* The race: three thin lines, named at their ends; a little taller on a phone. */
+/* The race: two thin lines, named at their ends. */
 .wi-replay { width: 100%; }
-.wr-canvas { display: block; width: 100%; height: 130px; }
-/* The list of things (two or more): it reads left to right; in a narrow column the
+.wr-canvas { display: block; width: 100%; height: 260px; }
+/* The list of things (in + Details): it reads left to right; in a narrow column the
    BOUGHT and SHARES columns fold under the name. */
 .wi-result .card-media { align-items: stretch; }
 .wi-receipt { width: 100%; overflow-x: auto; container-type: inline-size; text-align: left; }
@@ -178,29 +197,41 @@
   background: var(--paper-red); transform: translate(-50%, -50%) rotate(-14deg);
 }
 .wc-dodged { left: 82.5%; top: 72%; font-family: 'Caveat', cursive; font-weight: 700; font-size: 2.4cqw; color: var(--paper-red); }
-/* On a phone the small lines grow a little; they still stay on the paper. */
+/* On a phone the certificate keeps its title, the big amount and "worth today"; the
+   small lines (the clip's list, spent, shares, the seal's words) leave the paper for the
+   line under it (.wi-certline). The share image and the download keep them all. */
 @container (max-width: 520px) {
   .wc-l1, .wc-l2 { --k: 1.15; }
   .wc-today { font-size: 3.4cqw; }
 }
+@media (max-width: 599px) {
+  .wi-cert .wc-receipt, .wi-cert .wc-l1, .wi-cert .wc-l2, .wi-cert .wc-seal { display: none; }
+}
+/* Nothing under 11 px on the paper: the clip's list never shrinks below it. */
+.wc-receipt { font-size: max(11px, .92cqw); line-height: max(16px, 2.18cqw); }
+.wc-receipt span {
+  max-width: 10.5cqw; white-space: normal; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; /* a long name wraps to two lines before it is cut */
+}
+/* The title wraps rather than leave the banner when 11 px is still too wide (a phone). */
+.wc-ribbon { max-width: 36%; white-space: normal; line-height: 1.05; }
 .wc-sticker { position: absolute; left: -3%; bottom: -5%; width: 17%; height: auto; transform: rotate(-8deg); pointer-events: none; }
 
 @media (max-width: 639px) {
-  .wi-shelf { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .wi-hint, .wi-cmd { display: none; }
-  .wi-bar-row { gap: 8px; flex-wrap: nowrap; }
-  .wi-chips { gap: 8px; }
-  .wr-canvas { height: 150px; }
+  .wi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .wi-doodle { width: 128px; height: 128px; }
+  .wi-tabs .toolbar-end { flex: 1 1 100%; margin-left: 0; }
+  .wi-own { width: 100%; }
+  .wi-own-msg { margin-top: -8px; text-align: left; }
+  .wi-hint { display: none; }
+  .wi-chips { gap: 8px; padding: 8px; }
+  .wi-chips-row { flex-wrap: nowrap; }
+  .wr-canvas { height: 240px; }
   .wi-panel .panel-head { flex-wrap: wrap; }
   .wi-panel .panel-label { flex: 1 1 100%; max-width: none; }
   .wi-panel .panel-meta { flex: 1 1 100%; justify-content: flex-start; text-align: left; padding-left: 8px; }
   .wi-panel .panel-meta > * + *::before { content: none; }
   .wi-panel .panel-meta:has(> .wi-hint:only-child) { display: none; }
-  .wo-line { gap: 6px; font-size: 13px; }
-  .wo-line input, .wo-line select { padding: 0 4px; font-size: 13px; }
-  .wo-amt input { width: 6ch; padding-left: 16px; }
-  .wo-cur { left: 5px; }
-  .wo-dt { width: 8ch; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -114,9 +114,10 @@ export const CARDS_B = [
   ['TAPE, Pro, a note', tapeHtml({ on: true, isPro: true, custom: ['AAPL', 'MSFT', 'GOLD'], note: 'No ticker called XYZQ.', kind: 'warn' }).replace(TAPE_LIST, ''), 20],
 ];
 
-// ---- WHATIF results: a split card page (kit.js cardPage split), 20 words ------------------
-// Fixed prices, so nothing touches the network. The list of things (two or more) is the
-// media: a list, not words (like TAPE's), so it is left out of the count.
+// ---- WHATIF results: a split card page (kit.js cardPage split), 12 words ------------------
+// Fixed prices, so nothing touches the network. The certificate says every amount (it is a
+// picture, role="img"); beside it only SHARE, the note, REPLAY and CHANGE PICKS. The list
+// of things is in + Details (WI_LIST: a list in view, only when there is no certificate).
 const WI_NOW = new Date('2026-09-27T12:00:00Z');
 const wiQuote = async () => ({ last: 100, asOf: '2026-09-25T20:00:00Z' });
 export async function whatifPage(tokens) {
@@ -125,12 +126,12 @@ export async function whatifPage(tokens) {
   d.cert = certModel(d, WHATIF_CATALOG, command);
   return whatifHtml(d, { key: command, links: whatifLinks(d.cert, 'https://bloombroke.com'), video: whatifVideo(d, 'webcodecs') });
 }
-export const WHATIF_WORDS = 24;
+export const WHATIF_WORDS = 12;
 const WI_LIST = /<div class="card-media"><div class="wi-receipt">[\s\S]*?<\/table>\s*<\/div><\/div>/;
 export const WHATIF = [
   ['WHATIF IPHONE6', await whatifPage(['IPHONE6'])],
   ['WHATIF BEER:10Y (a VICES habit)', await whatifPage(['BEER:10Y'])],
-  ['WHATIF IPHONE6 RTX3080 LATTE:3Y (the list is the media)', (await whatifPage(['IPHONE6', 'RTX3080', 'LATTE:3Y'])).replace(WI_LIST, '')],
+  ['WHATIF IPHONE6 RTX3080 LATTE:3Y (the list in + Details)', (await whatifPage(['IPHONE6', 'RTX3080', 'LATTE:3Y'])).replace(WI_LIST, '')],
 ];
 
 // [page, html, budget]: the words above + Details, numbers, keys and codes not counted.
@@ -165,8 +166,8 @@ export const PAGES = [
   ['ME, Pro ended', meHtml({ key: KEY, st: { ...ST, status: 'canceled' }, has: all }), 20],
   ...NOSUCH.map(([name, html]) => [name, html, 30]),
   ...CARDS_B.map(([name, html, budget]) => [name, html, budget]),
-  // WHATIF: 20, plus the four words of the legal note that stays in view ("Past returns do
-  // not predict future ones": the reviewer's call, Sep 29, conservative on the caution).
+  // WHATIF: 12. No sentence (the certificate says it): SHARE (1), the legal note that stays
+  // in view (8: "Hindsight. Past returns do not predict future ones."), REPLAY CHANGE PICKS (3).
   ...WHATIF.map(([name, html]) => [name, html, WHATIF_WORDS]),
 ];
 
@@ -609,7 +610,7 @@ test('split card: the art beside the other slots from 1100 px, one column below;
   assert.match(kit, /@media \(max-width: 1099px\), \(max-height: 800px\) \{\n  \.card, \.card-col \{ gap: 24px; \}/);
 });
 
-test('WHATIF: every result keeps to its budget (24 words), the certificate is the picture, one SHARE', async () => {
+test('WHATIF: every result keeps to its budget (12 words), the certificate is the picture, one SHARE', async () => {
   for (const [name, html] of WHATIF) {
     assert.match(html, /^<section class="card card-split wi-result"/, `${name}: a split card page`);
     assert.match(html, /<div class="card-art"><figure class="wi-cert[^"]*" role="img" aria-label="A certificate: /, `${name}: the certificate is the art, its words the picture's`);

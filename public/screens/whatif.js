@@ -3,8 +3,8 @@
 //
 // WHATIF                      the picker: a shelf of doodle cards in tabs
 // WHATIF VICES                the picker, on the VICES shelf (GADGETS, GAMES, HABITS too)
-// WHATIF IPHONE               the picker, with every iPhone picked
-// WHATIF EDIT IPHONE6 LATTE   the picker, with these picked
+// WHATIF IPHONE               the picker, with every iPhone in the basket
+// WHATIF EDIT IPHONE6 LATTE   the picker, with these in the basket
 // WHATIF IPHONE6 LATTE:3Y     the result, with the REPLAY race and SAVE VIDEO
 // WHATIF MY 1200 AAPL 2015    your own purchase (free for everyone)
 
@@ -12,7 +12,7 @@ import { esc, q, fmtNum, panel, metaNote, LOADING, nyTime } from './markets.js';
 import { toolbar, segmented, cardPage, cardButton, cardLink, raw, edgeFade } from '../kit.js';
 import { createReplay, isBehind } from '../whatif-replay.js';
 import { videoSupport, makeVideo, downloadBlob, VIDEO_NEEDS } from '../whatif-video.js';
-import { parseMine, formWords, mineLabel, MINE_DOODLE, MINE_EXAMPLES } from '../whatif-mine.js';
+import { parseMine, formWords, mineLabel, mineShort, MineError, MINE_DOODLE, MINE_EXAMPLES } from '../whatif-mine.js';
 import { whatifEmbedSnippet } from '../embed-snippet.js'; // EMBED: the iframe line
 import { goal } from '../goal.js'; // GOALS
 
@@ -179,13 +179,20 @@ export function dropList(rows) {
 }
 
 // ---- Picker ---------------------------------------------------------------------
-// A shelf of doodle cards per tab. Keys: arrows move, Space picks, Enter runs, [ and ]
-// change the shelf. On a habit card, typing a number goes into its years box.
-// A card shows its doodle and name; the year and price show once it is picked.
+// The shelf is the screen: big doodle cards, four to a row (two on a phone), a pencil
+// line under each row, in tabs (GADGETS CARS GAMES HABITS VICES).
+//   A click or Enter on a card runs it at once.
+//   A family card (iPhone, PlayStation, Xbox, GeForce) opens its model chips under its
+//   row; a click or Enter on a chip runs that model.
+//   Space (or a click on the small box) adds a card or chip to the basket. RUN, the
+//   page's one white button, shows once the basket holds two or more: "RUN 3".
+//   YOUR OWN is one line above the shelf: AAPL 2019-01-01 5000, Enter runs it.
+// Keys: arrows move (Down from a family card's row goes into its chips), Esc closes the
+// chips, [ and ] change the shelf. On a habit card, typing a number goes into its years box.
 
-// A family with many models (19 iPhones) is one card. Picking it picks one model, `pick`
-// (the one people share most), and shows a row of chips, one per model, to change it.
-// The commands stay the same: WHATIF IPHONE6, WHATIF IPHONE (every iPhone picked).
+// A family with many models (19 iPhones) is one card; its chips pick the model. The
+// commands stay the same: WHATIF IPHONE6, WHATIF IPHONE (every iPhone in the basket).
+// pick: the model Space adds from the card (the one people share most).
 export const FAMILY_CARDS = {
   IPHONE: { name: 'iPhone', pick: 'iphone6' },
   PLAYSTATION: { name: 'PlayStation', pick: 'ps4' },
@@ -211,436 +218,502 @@ export function shelfCards(cat, shelf) {
   }
   return out;
 }
-// The model a family card picks first.
+// The model Space on a family card adds.
 export const familyPick = (fam) => (fam.items.some((p) => p.id === FAMILY_CARDS[fam.fam]?.pick) ? FAMILY_CARDS[fam.fam].pick : fam.items[0].id);
 // Chip words: the model without the family's shared first word ("iPhone 6" -> "6") or a
-// note in brackets ("iPhone 3G (on contract)" -> "3G"; the card and tooltip keep it).
+// note in brackets ("iPhone 3G (on contract)" -> "3G"; the tooltip keeps it).
 export function chipLabels(items) {
   const names = items.map((p) => (p.short || p.name).replace(/\s*\([^)]*\)$/, ''));
   const first = `${names[0].split(' ')[0]} `;
   return names.every((n) => n.startsWith(first) && n.length > first.length) ? names.map((n) => n.slice(first.length)) : names;
 }
-// A chip picked: that model instead (add: false), or added or dropped (add: true). The
-// last one picked stays (the family card drops the family). ids: the family's models in
-// order; on: the picked ones. Returns the picked ones after, in the family's order.
-export function chipPick(ids, on, id, { add = false } = {}) {
-  const set = new Set(on);
-  if (!add) return [id];
-  if (!set.has(id)) set.add(id);
-  else if (set.size > 1) set.delete(id);
-  return ids.filter((x) => set.has(x));
-}
 // A key on a chip: what it does. i: the chip it is on, n: how many there are.
-export function chipKey(key, { shift = false, i = 0, n = 1 } = {}) {
+export function chipKey(key, { i = 0, n = 1 } = {}) {
   const go = (j) => ({ go: Math.max(0, Math.min(n - 1, j)) });
   switch (key) {
     case 'ArrowRight': return go(i + 1);
     case 'ArrowLeft': return go(i - 1);
     case 'Home': return go(0);
     case 'End': return go(n - 1);
-    case ' ': return { pick: true, add: shift };
+    case ' ': return { add: true };
     case 'Enter': return { run: true };
-    case 'Escape': case 'ArrowUp': return { back: true };
+    case 'Escape': return { close: true };
+    case 'ArrowUp': return { back: true };
+    case 'ArrowDown': return { down: true };
     case '[': return { shelf: -1 };
     case ']': return { shelf: 1 };
     default: return null;
   }
 }
-// The year and price a picked card shows.
+// The year and price a card's tooltip shows.
 const pickedMeta = (p) => `${p.date.slice(0, 4)} ${fmtUsd(p.price)}`;
 
 const EXAMPLES = ['WHATIF IPHONE6 IPHONE8 LATTE:3Y', 'WHATIF MODEL3 RTX3080', 'WHATIF BEER:10Y BETTING', MINE_EXAMPLES[0]];
 const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
-export const PICKER_KEYS = 'SPACE PICK · ENTER RUN';
-export const PICKER_KEYS_LONG = 'Arrows move. Space picks. Enter runs. [ and ] change the shelf. On a model chip, Shift+Space adds it.';
-export const PICKER_INTRO = 'Pick what you bought. See what the stock would be worth now.';
+export const PICKER_KEYS = 'ENTER RUN · SPACE ADD';
+export const PICKER_KEYS_LONG = 'Arrows move. Enter runs a card, or opens a family\'s models. Space adds it to the basket; RUN runs the basket. [ and ] change the shelf.';
+export const OWN_PLACEHOLDER = 'Your own: AAPL 2019-01-01 5000';
+const OWN_HOW = 'Type a ticker, a date and dollars, like AAPL 2019-01-01 5000.';
+// Cards to a row: four, two on a phone (the same width as whatif.css's phone rule).
+export const PHONE_MQ = '(max-width: 639px)';
+export const shelfCols = (phone) => (phone ? 2 : 4);
 
 const doodleImg = (doodle) => `<img class="wi-doodle" src="${esc(art(`doodle-${doodle || 'box'}.webp`))}" width="384" height="384" alt="" loading="lazy" decoding="async">`;
-const boxHtml = (on) => `<span class="wi-box" aria-hidden="true">${on ? '[x]' : '[ ]'}</span>`;
+// The small box in a card's corner: empty, or checked once the card is in the basket.
+// A click on it adds or drops the card (Space does the same).
+const BOX = '<span class="wi-box" data-box aria-hidden="true" title="Add to the basket (Space)"></span>';
+
+// The pencil line a row of cards stands on: one slightly uneven stroke and a fainter
+// second pass, in the doodles' pencil colour (whatif.css --wi-pencil). No image file.
+export const SHELF_LINE = '<svg class="wi-line" viewBox="0 0 400 12" preserveAspectRatio="none" aria-hidden="true" focusable="false">'
+  + '<path d="M2 6.4 C 44 5.2, 92 7.1, 140 6 S 226 4.9, 270 6.3 S 352 7.4, 398 5.6" vector-effect="non-scaling-stroke"/>'
+  + '<path class="wi-line-2" d="M9 8.1 C 88 8.8, 150 7.2, 224 8 S 332 8.9, 391 7.7" vector-effect="non-scaling-stroke"/></svg>';
 
 export function cardHtml(p, picks) {
   const on = picks.has(p.id);
   // A habit keeps its years box (typing a number on the card goes into it).
-  const meta = p.kind === 'monthly'
-    ? `<span class="wi-cmeta"><label class="wi-years"><span class="offscreen">Years or dates for ${esc(p.name)}</span><input type="text" inputmode="text" maxlength="9" value="${esc(picks.get(p.id) || `${p.defaultYears}Y`)}" data-spec="${esc(p.id)}" spellcheck="false" autocomplete="off"></label></span>`
-    : `<span class="wi-cmeta num" data-meta${on ? '' : ' hidden'}>${esc(pickedMeta(p))}</span>`;
-  return `<li class="wi-card${on ? ' is-on' : ''}" role="option" aria-selected="${on}" tabindex="-1" data-id="${esc(p.id)}" title="${esc(`${p.name}, ${p.company} ${p.ticker}`)}">
-    ${doodleImg(p.doodle)}${boxHtml(on)}<span class="wi-cname">${esc(p.name)}</span>${meta}
-  </li>`;
+  const years = p.kind === 'monthly'
+    ? `<label class="wi-years"><span class="offscreen">Years or dates for ${esc(p.name)}</span><input type="text" inputmode="text" maxlength="9" value="${esc(picks.get(p.id) || `${p.defaultYears}Y`)}" data-spec="${esc(p.id)}" spellcheck="false" autocomplete="off"></label>`
+    : '';
+  const tip = p.kind === 'monthly' ? `${p.name}, ${p.company} ${p.ticker}` : `${p.name}: ${pickedMeta(p)}, ${p.company} ${p.ticker}`;
+  return `<li class="wi-card${on ? ' is-on' : ''}" role="option" aria-selected="${on}" tabindex="-1" data-id="${esc(p.id)}" title="${esc(tip)}">${doodleImg(p.doodle)}${BOX}<span class="wi-cname">${esc(p.name)}</span>${years}</li>`;
 }
 
-// A family card: the family's name, or the model's once one is picked (with its year and
-// price); "3 PICKED" for several.
+// A family card: the family's name and how many models, or the model's name once one is
+// in the basket ("iPhone 6"); "iPhone, 2 models" for several.
 export function familyCardParts(fam, picks) {
   const on = fam.items.filter((p) => picks.has(p.id));
-  if (on.length === 1) return { on: true, name: on[0].name, meta: pickedMeta(on[0]) };
-  return { on: on.length > 0, name: fam.name, meta: on.length ? `${on.length} PICKED` : '' };
+  if (on.length === 1) return { on: true, name: on[0].name };
+  return { on: on.length > 0, name: on.length ? `${fam.name}, ${on.length} models` : fam.name };
 }
-export function familyCardHtml(fam, picks) {
-  const { on, name, meta } = familyCardParts(fam, picks);
+export function familyCardHtml(fam, picks, open = false) {
+  const { on, name } = familyCardParts(fam, picks);
   const p0 = fam.items[0];
-  return `<li class="wi-card wi-fam${on ? ' is-on' : ''}" role="option" aria-selected="${on}" tabindex="-1" data-fam="${esc(fam.fam)}" title="${esc(`${fam.name}: ${fam.items.length} models, ${p0.company} ${p0.ticker}`)}">
-    ${doodleImg(fam.doodle)}${boxHtml(on)}<span class="wi-cname">${esc(name)}</span><span class="wi-cmeta num" data-meta${meta ? '' : ' hidden'}>${esc(meta)}</span>
-  </li>`;
+  return `<li class="wi-card wi-fam${on ? ' is-on' : ''}${open ? ' is-open' : ''}" role="option" aria-selected="${on}" tabindex="-1" data-fam="${esc(fam.fam)}" title="${esc(`${fam.name}: ${fam.items.length} models, ${p0.company} ${p0.ticker}`)}">${doodleImg(fam.doodle)}${BOX}<span class="wi-cname">${esc(name)}</span><span class="wi-cmeta">${fam.items.length} models</span></li>`;
 }
 
-// The chips of a picked family, over the RUN bar: one per model, its year beside it.
-// The one the roving focus starts on is the first picked.
+// A family's chips, under its row: one button per model, its year beside it. A click or
+// Enter runs the model; Space or the box adds it to the basket (aria-pressed: in the
+// basket). The roving focus starts on the first one in the basket (or the first).
 export function chipsHtml(fam, picks) {
   const labels = chipLabels(fam.items);
   const start = Math.max(0, fam.items.findIndex((p) => picks.has(p.id)));
-  return `<span class="tag wi-chips-label">${esc(fam.name)}</span><span class="wi-chips-row" role="group" aria-label="${esc(`${fam.name}: which model`)}" data-chips="${esc(fam.fam)}">${fam.items.map((p, i) => `<button type="button" class="chip wi-chip" data-chip="${esc(p.id)}" aria-pressed="${picks.has(p.id)}" tabindex="${i === start ? 0 : -1}" title="${esc(`${p.name}: ${pickedMeta(p)}`)}" aria-label="${esc(`${p.name}, ${p.date.slice(0, 4)}`)}">${esc(labels[i])} <span class="wi-chip-y num">${esc(p.date.slice(0, 4))}</span></button>`).join('')}</span>`;
+  return `<span class="tag wi-chips-label">${esc(fam.name)}</span><span class="wi-chips-row" role="group" aria-label="${esc(`${fam.name}: which model`)}" data-chips="${esc(fam.fam)}">${fam.items.map((p, i) => `<button type="button" class="chip wi-chip${picks.has(p.id) ? ' is-on' : ''}" data-chip="${esc(p.id)}" aria-pressed="${picks.has(p.id)}" tabindex="${i === start ? 0 : -1}" title="${esc(`${p.name}: ${pickedMeta(p)}`)}" aria-label="${esc(`${p.name}, ${p.date.slice(0, 4)}`)}">${BOX}${esc(labels[i])} <span class="wi-chip-y num">${esc(p.date.slice(0, 4))}</span></button>`).join('')}</span>`;
+}
+// How far a phone's chip row scrolls so the chip starts in the middle of it (never before 0).
+export const chipScroll = ({ scrollLeft = 0, rowLeft, rowWidth, chipLeft, chipWidth }) => Math.max(0, scrollLeft + chipLeft - rowLeft - (rowWidth - chipWidth) / 2);
+
+// A purchase of your own (from the line above the shelf, or from WHATIF EDIT MY ...):
+// a card on every shelf, first. A click runs it; Space adds it to the basket or drops it.
+export function mineCardHtml(m, on = true) {
+  return `<li class="wi-card wi-mine${on ? ' is-on' : ''}" role="option" aria-selected="${on}" tabindex="-1" data-mine="${esc(m.id)}" title="${esc(mineLabel(m))}">
+    ${doodleImg(MINE_DOODLE)}${BOX}<span class="wi-cname">${esc(mineLabel(m))}</span><span class="wi-cmeta">YOUR OWN</span>
+  </li>`;
 }
 
-// The YOUR OWN card (first on every shelf) and a card per purchase of your own.
-export function ownCardHtml() {
-  return `<li class="wi-card wi-own" role="option" aria-selected="false" tabindex="-1" data-own title="Your own purchase: any stock or ETF, any date">
-    <img class="wi-doodle" src="${esc(art(`doodle-${MINE_DOODLE}.webp`))}" width="384" height="384" alt="" loading="lazy" decoding="async"><span class="wi-box" aria-hidden="true">[+]</span><span class="wi-cname">YOUR OWN</span><span class="wi-cmeta">Any stock</span>
-  </li>`;
+// YOUR OWN: one line above the shelf. Enter runs it alone; ADD (a key, an outline) puts
+// it in the basket, to run with other things.
+export function ownInputHtml() {
+  return `<form class="wi-own" data-own novalidate>`
+    + '<label class="offscreen" for="wi-own-in">Your own purchase: a ticker, a date and dollars</label>'
+    + `<input id="wi-own-in" class="wi-own-in" type="text" maxlength="80" placeholder="${esc(OWN_PLACEHOLDER)}" title="${esc(`${OWN_HOW} Or a habit: 5 A DAY SBUX SINCE 2018.`)}" spellcheck="false" autocomplete="off" autocapitalize="characters" enterkeyhint="go">`
+    + '<button type="button" class="btn wi-own-add" data-own-add title="Add it to the basket">ADD</button>'
+    + '</form>';
 }
-export function mineCardHtml(m) {
-  return `<li class="wi-card is-on" role="option" aria-selected="true" tabindex="-1" data-mine="${esc(m.id)}" title="${esc(mineLabel(m))}">
-    <img class="wi-doodle" src="${esc(art(`doodle-${MINE_DOODLE}.webp`))}" width="384" height="384" alt="" loading="lazy" decoding="async"><span class="wi-box" aria-hidden="true">[x]</span><span class="wi-cname">${esc(mineLabel(m))}</span><span class="wi-cmeta dim">YOUR OWN</span>
-  </li>`;
-}
-// The inline form, one sentence: [$ 15] [a week] in [AAPL] since [2015]  ADD.
-// "once" turns "since" into "on". TO stays in the command only.
-export const FORM_HOW = [['ONCE', 'once'], ['DAY', 'a day'], ['WEEK', 'a week'], ['MONTH', 'a month']];
-export const FORM_START = 'WEEK';
-export function formHints(how) {
-  return how === 'ONCE'
-    ? { word: 'on', amount: '1200', date: '2015-03', dateTitle: 'A year, a month or a day: 2015, 2015-03 or 2015-03-02' }
-    : { word: 'since', amount: '15', date: '2015', dateTitle: 'A year or a month: 2015 or 2015-03' };
-}
-export function ownFormHtml() {
-  const h = formHints(FORM_START);
-  const input = (name, label, attrs) => `<input ${attrs} data-f="${name}" aria-label="${label}" spellcheck="false" autocomplete="off">`;
-  return `<div class="wi-ownform" hidden>
-      <div class="wo-line">
-        <span class="wo-amt"><span class="wo-cur" aria-hidden="true">$</span>${input('amount', 'Amount in dollars', `type="text" inputmode="numeric" maxlength="11" placeholder="${h.amount}"`)}</span>
-        <select data-f="how" aria-label="How often">${FORM_HOW.map(([v, t]) => `<option value="${v}"${v === FORM_START ? ' selected' : ''}>${t}</option>`).join('')}</select>
-        <span class="wo-w">in</span>
-        ${input('ticker', 'Stock ticker', 'type="text" class="wo-tk" maxlength="8" placeholder="AAPL" autocapitalize="characters"')}
-        <span class="wo-w" data-wo="date">${h.word}</span>
-        ${input('date', 'Date', `type="text" class="wo-dt" maxlength="10" placeholder="${h.date}" title="${h.dateTitle}"`)}
-        <button type="button" class="wi-btn wo-add" data-wo="add">ADD</button>
-        <button type="button" class="wo-close" data-wo="close" aria-label="Close" title="Close (Esc)">&times;</button>
-      </div>
-      <p class="wo-msg" data-wo="msg" role="status"></p>
-    </div>`;
+
+// The line typed as YOUR OWN -> the command's words (MY ...), or throws MineError.
+// The command's own order works (1200 AAPL 2015, 5 A DAY SBUX SINCE 2018, with or
+// without WHATIF MY in front), and so does a ticker, a date and dollars in any order
+// (AAPL 2019-01-01 5000): whatif-mine.js parses both.
+export function ownWords(text, now = new Date()) {
+  const toks = String(text || '').toUpperCase().split(/\s+/).map((t) => t.replace(/,$/, '')).filter(Boolean);
+  if (toks[0] === 'WHATIF') toks.shift();
+  if (toks[0] === 'MY') toks.shift();
+  if (!toks.length) throw new MineError(OWN_HOW);
+  let first;
+  try {
+    const { mine, rest } = parseMine(['MY', ...toks], now);
+    if (mine.length && !rest.length) return mine.flatMap((m) => m.words);
+  } catch (err) {
+    first = err;
+  }
+  const ti = toks.findIndex((t) => /[A-Z]/.test(t));
+  if (toks.length === 3 && ti >= 0 && toks.filter((t) => /[A-Z]/.test(t)).length === 1) {
+    const [a, b] = toks.filter((_, i) => i !== ti);
+    // The date: the one with a dash; else the one that is not dollars ($, a comma);
+    // else the one that reads as a year (1900 to 2100); else the first.
+    const year = (t) => /^\d{4}$/.test(t) && Number(t) >= 1900 && Number(t) <= 2100;
+    const money = (t) => /[$,]/.test(t);
+    let dateFirst = true;
+    if (a.includes('-') !== b.includes('-')) dateFirst = a.includes('-');
+    else if (money(a) !== money(b)) dateFirst = money(b);
+    else if (year(a) !== year(b)) dateFirst = year(a);
+    const [date, amount] = dateFirst ? [a, b] : [b, a];
+    return formWords({ amount, ticker: toks[ti], date, how: 'ONCE' }, now);
+  }
+  throw first instanceof MineError ? first : new MineError(OWN_HOW);
 }
 
 function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
   let shelf = SHELVES.includes(startShelf) ? startShelf : SHELVES[0];
+  const mineOn = new Set(mine.map((m) => m.id)); // your own purchases in the basket
+  const phone = window.matchMedia(PHONE_MQ);
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const doc = globalThis.document;
   const tabs = () => segmented(SHELVES.map((x) => ({ label: x, value: x })), shelf, { label: 'Shelves' });
   el.innerHTML = panel('1', WHATIF_TITLE, `
-    <p class="wi-intro" title="${esc(`Or type it: ${EXAMPLES[0]}`)}">${esc(PICKER_INTRO)}</p>
-    <div class="wi-tabs">${toolbar({ left: tabs(), label: 'Shelves' })}</div>
-    ${ownFormHtml()}
-    <ul class="wi-shelf" role="listbox" aria-multiselectable="true" aria-label="Things you bought" data-own-focus></ul>
-    <div class="wi-bar">
-      <div class="wi-chips" hidden></div>
-      <div class="wi-bar-row">
-        <span class="wi-count" id="wi-count"></span>
-        <span class="wi-cmd code" id="wi-cmd"></span>
-        <button type="button" class="wi-run btn-solid" id="wi-run">RUN</button>
-      </div>
-    </div>`, { cls: 'panel-solo wi-panel', meta: `<span class="wi-hint">${metaNote(PICKER_KEYS, PICKER_KEYS_LONG)}</span>` });
+    <div class="wi-tabs">${toolbar({ left: tabs(), right: ownInputHtml(), label: 'Shelves' })}</div>
+    <p class="wi-own-msg" data-own-msg role="status"></p>
+    <div class="wi-shelf" data-own-focus></div>
+    <div class="wi-bar" hidden>
+      <span class="wi-count" id="wi-count"></span>
+      <button type="button" class="wi-run btn-solid" id="wi-run">RUN</button>
+    </div>`, { cls: 'panel-solo wi-panel wi-picker', meta: `<span class="wi-hint">${metaNote(PICKER_KEYS, PICKER_KEYS_LONG)}</span>` });
 
-  const list = el.querySelector('.wi-shelf');
+  const shelfEl = el.querySelector('.wi-shelf');
   const tabBox = el.querySelector('.wi-tabs');
+  const bar = el.querySelector('.wi-bar');
   const countEl = el.querySelector('#wi-count');
-  const cmdEl = el.querySelector('#wi-cmd');
-  const byId = new Map(allItems(cat).map((p) => [p.id, p]));
-  const tray = el.querySelector('.wi-chips');
-  let rows = [];
+  const runBtn = el.querySelector('#wi-run');
+  const ownForm = el.querySelector('[data-own]');
+  const ownIn = el.querySelector('#wi-own-in');
+  const ownMsg = el.querySelector('[data-own-msg]');
+  let cols = shelfCols(phone.matches);
+  let cards = []; // this shelf's card elements, in order
   let fams = new Map(); // this shelf's family cards, by family
   let famOpen = null; // the family whose chips show
+  let current = 0; // the card with the roving focus
   let stopFade = () => {};
-  ctx.onCleanup?.(() => stopFade());
 
+  const basketMine = () => mine.filter((m) => mineOn.has(m.id));
   function refresh() {
-    const once = [...picks.keys()].map((id) => byId.get(id)).filter((p) => p.kind === 'once');
-    const spent = once.reduce((n, p) => n + p.price, 0) + mine.filter((m) => m.kind === 'once').reduce((n, m) => n + m.amount, 0);
-    const n = picks.size + mine.length;
-    const onceN = once.length + mine.filter((m) => m.kind === 'once').length;
-    countEl.textContent = n ? `${n} PICKED${onceN ? `, ${fmtUsd(spent)} ONE-OFF` : ''}` : 'NOTHING PICKED';
-    cmdEl.textContent = n ? commandFor(picks, cat, mine) : '';
-    ctx.status(n ? `WHATIF: ${n} PICKED` : '');
+    const n = picks.size + mineOn.size;
+    bar.hidden = n < 2;
+    runBtn.textContent = `RUN ${n}`;
+    const names = [...allItems(cat).filter((p) => picks.has(p.id)).map((p) => p.name), ...basketMine().map(mineShort)];
+    countEl.textContent = n >= 2 ? names.join(', ') : '';
+    ctx.status('');
   }
 
-  function cols() {
-    if (rows.length < 2) return 1;
-    const top = rows[0].offsetTop;
-    const n = rows.findIndex((r) => r.offsetTop !== top);
-    return n < 0 ? rows.length : n;
+  // Years typed on this shelf are kept before its cards are redrawn.
+  function keepYears() {
+    for (const inp of shelfEl.querySelectorAll('input[data-spec]')) if (picks.has(inp.dataset.spec)) picks.set(inp.dataset.spec, inp.value);
   }
-
-  function focusRow(i, { scroll = true } = {}) {
-    if (!rows.length) return;
-    const r = rows[Math.max(0, Math.min(rows.length - 1, i))];
-    rows.forEach((x) => { x.tabIndex = -1; });
-    r.tabIndex = 0;
-    r.focus({ preventScroll: true });
-    if (scroll) r.scrollIntoView({ block: 'nearest' });
-  }
-
-  // ---- Family cards and their chips.
   const famPicked = (fam) => fam.items.some((p) => picks.has(p.id));
-  function drawFam(fam) {
-    const row = list.querySelector(`[data-fam="${fam.fam}"]`);
-    if (!row) return;
-    const { on, name, meta } = familyCardParts(fam, picks);
-    row.classList.toggle('is-on', on);
-    row.setAttribute('aria-selected', String(on));
-    row.querySelector('.wi-box').textContent = on ? '[x]' : '[ ]';
-    row.querySelector('.wi-cname').textContent = name;
-    const m = row.querySelector('[data-meta]');
-    m.textContent = meta;
-    m.hidden = !meta;
+
+  // Esc while the chips are open closes them, wherever the focus is (RUN, a tab, a chip),
+  // and never reaches the app's own Esc (back a screen): caught first, on the document.
+  const onEsc = (e) => {
+    if (e.key !== 'Escape' || !famOpen || e.ctrlKey || e.metaKey || e.altKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    closeChips({ refocus: Boolean(e.target?.closest?.('[data-chip]')) });
+  };
+  function setOpen(f) {
+    famOpen = f;
+    if (f) doc?.addEventListener('keydown', onEsc, true);
+    else doc?.removeEventListener('keydown', onEsc, true);
   }
-  // The chips show for the family last picked or moved to, while any of it is picked.
-  function drawChips(focusId = '') {
-    const fam = famOpen && fams.get(famOpen);
-    if (!fam || !famPicked(fam)) { famOpen = null; stopFade(); tray.hidden = true; tray.innerHTML = ''; return; }
-    tray.innerHTML = chipsHtml(fam, picks);
-    tray.hidden = false;
-    stopFade();
-    stopFade = edgeFade(tray.querySelector('.wi-chips-row'));
-    const chip = focusId && tray.querySelector(`[data-chip="${focusId}"]`);
-    if (chip) {
-      tray.querySelectorAll('.wi-chip').forEach((c) => { c.tabIndex = c === chip ? 0 : -1; });
-      chip.focus({ preventScroll: true });
-      chip.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    } else tray.querySelector('.wi-chip[tabindex="0"]')?.scrollIntoView({ block: 'nearest', inline: 'center' });
-  }
-  function toggleFam(row, { keys = false } = {}) {
-    const fam = fams.get(row.dataset.fam);
-    if (famPicked(fam)) {
-      fam.items.forEach((p) => picks.delete(p.id));
-      if (famOpen === fam.fam) famOpen = null;
-      drawFam(fam); drawChips(); refresh();
-      return;
+
+  // The shelf: a box per row: its cards (a listbox), its pencil line (a picture, hidden
+  // from screen readers) and a tray where a family's chips open.
+  function drawShelf() {
+    keepYears();
+    const items = [...mine.map((m) => ({ mine: m })), ...shelfCards(cat, shelf)];
+    fams = new Map(items.filter((c) => c.fam).map((c) => [c.fam, c]));
+    if (!fams.has(famOpen)) setOpen(null);
+    const n = Math.ceil(items.length / cols);
+    let html = '';
+    for (let r = 0; r < n; r += 1) {
+      const row = items.slice(r * cols, (r + 1) * cols);
+      html += `<div class="wi-rowbox"><ul class="wi-row${r % 2 ? ' is-odd' : ''}" role="listbox" aria-multiselectable="true" aria-label="${esc(`${shelf}, row ${r + 1} of ${n}`)}">`
+        + row.map((c) => (c.mine ? mineCardHtml(c.mine, mineOn.has(c.mine.id)) : c.fam ? familyCardHtml(c, picks, c.fam === famOpen) : cardHtml(c.item, picks))).join('')
+        + `</ul>${SHELF_LINE}<div class="wi-chips" data-tray hidden></div></div>`;
     }
-    const id = familyPick(fam);
-    picks.set(id, '');
-    famOpen = fam.fam;
-    drawFam(fam);
-    drawChips(keys ? id : '');
-    refresh();
+    shelfEl.innerHTML = html;
+    cards = [...shelfEl.querySelectorAll('.wi-card')];
+    current = Math.max(0, Math.min(cards.length - 1, current));
+    cards.forEach((c, i) => { c.tabIndex = i === current ? 0 : -1; });
+    paintTray();
   }
-  // A chip: pick this model instead (a click, Space); with Shift (or Ctrl or Cmd on a
-  // click), add or drop it, so several models can be picked. The last one stays: the
-  // family card drops the family.
-  function chooseChip(id, { add = false } = {}) {
-    const fam = fams.get(famOpen);
-    if (!fam) return;
-    const ids = fam.items.map((p) => p.id);
-    const after = chipPick(ids, ids.filter((x) => picks.has(x)), id, { add });
-    ids.forEach((x) => { if (!after.includes(x)) picks.delete(x); else if (!picks.has(x)) picks.set(x, ''); });
-    drawFam(fam);
-    drawChips(id);
-    refresh();
+
+  // Only what changed is redrawn: a card's state, the chips' state, the open tray.
+  function paintCard(card) {
+    if (!card) return;
+    let on;
+    if (card.dataset.mine) on = mineOn.has(card.dataset.mine);
+    else if (card.dataset.fam) {
+      const parts = familyCardParts(fams.get(card.dataset.fam), picks);
+      on = parts.on;
+      card.querySelector('.wi-cname').textContent = parts.name;
+      card.classList.toggle('is-open', card.dataset.fam === famOpen);
+    } else on = picks.has(card.dataset.id);
+    card.classList.toggle('is-on', on);
+    card.setAttribute('aria-selected', String(on));
+  }
+  function paintChips() {
+    for (const c of shelfEl.querySelectorAll('[data-chip]')) {
+      const on = picks.has(c.dataset.chip);
+      c.classList.toggle('is-on', on);
+      c.setAttribute('aria-pressed', String(on));
+    }
+  }
+  const famCard = (f) => cards.find((c) => c.dataset.fam === f);
+  function paintTray() {
+    stopFade();
+    stopFade = () => {};
+    const card = famOpen && famCard(famOpen);
+    const open = card?.closest('.wi-rowbox')?.querySelector('[data-tray]');
+    for (const t of shelfEl.querySelectorAll('[data-tray]')) {
+      if (t === open) continue;
+      if (!t.hidden) { t.hidden = true; t.innerHTML = ''; }
+    }
+    if (!open) return;
+    open.innerHTML = chipsHtml(fams.get(famOpen), picks);
+    open.hidden = false;
+    const row = open.querySelector('.wi-chips-row');
+    if (row && phone.matches) {
+      // A phone's chips scroll sideways: the first one in the basket starts in view.
+      stopFade = edgeFade(row);
+      const on = row.querySelector('.wi-chip[tabindex="0"]');
+      if (on) {
+        row.scrollLeft = chipScroll({ scrollLeft: row.scrollLeft, rowLeft: row.getBoundingClientRect().left, rowWidth: row.clientWidth, chipLeft: on.getBoundingClientRect().left, chipWidth: on.offsetWidth });
+      }
+    }
+  }
+
+  function focusCard(i, { scroll = true } = {}) {
+    if (!cards.length) return;
+    current = Math.max(0, Math.min(cards.length - 1, i));
+    cards.forEach((x, j) => { x.tabIndex = j === current ? 0 : -1; });
+    cards[current].focus({ preventScroll: true });
+    if (scroll) cards[current].scrollIntoView({ block: 'nearest' });
+  }
+  const famIndex = () => cards.findIndex((c) => c.dataset.fam === famOpen);
+  const rowOf = (i) => Math.floor(i / cols);
+  function focusChip(id = '') {
+    const chips = [...shelfEl.querySelectorAll('[data-chip]')];
+    const chip = (id && chips.find((c) => c.dataset.chip === id)) || chips.find((c) => c.tabIndex === 0) || chips[0];
+    if (!chip) return;
+    chips.forEach((c) => { c.tabIndex = c === chip ? 0 : -1; });
+    chip.focus({ preventScroll: true });
+    chip.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 
   function showShelf(name, { focus = true } = {}) {
-    // Years typed on this shelf are kept before its cards are redrawn.
-    for (const inp of list.querySelectorAll('input[data-spec]')) if (picks.has(inp.dataset.spec)) picks.set(inp.dataset.spec, inp.value);
+    keepYears();
     shelf = name;
-    tabBox.innerHTML = toolbar({ left: tabs(), label: 'Shelves' });
-    const cards = shelfCards(cat, shelf);
-    fams = new Map(cards.filter((c) => c.fam).map((c) => [c.fam, c]));
-    list.innerHTML = ownCardHtml() + mine.map(mineCardHtml).join('') + cards.map((c) => (c.fam ? familyCardHtml(c, picks) : cardHtml(c.item, picks))).join('');
-    list.setAttribute('aria-label', `${shelf}: things you bought`);
-    rows = [...list.querySelectorAll('.wi-card')];
-    if (!fams.has(famOpen)) famOpen = [...fams.values()].find(famPicked)?.fam || null;
-    drawChips();
-    const first = Math.max(0, rows.findIndex((r) => picks.has(r.dataset.id) || r.dataset.mine || (r.dataset.fam && famPicked(fams.get(r.dataset.fam)))));
-    if (rows[first]) rows[first].tabIndex = 0;
-    if (focus && !window.matchMedia('(pointer: coarse)').matches) focusRow(first, { scroll: false });
+    setOpen(null);
+    tabBox.querySelectorAll('.seg-item').forEach((b) => {
+      const on = b.dataset.value === shelf;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-pressed', String(on));
+      if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
+    });
+    current = 0;
+    drawShelf();
+    const first = cards.findIndex((c) => c.classList.contains('is-on'));
+    current = Math.max(0, first);
+    cards.forEach((c, i) => { c.tabIndex = i === current ? 0 : -1; });
+    if (focus && !coarse) focusCard(current, { scroll: false });
   }
   const moveShelf = (dir) => showShelf(SHELVES[(SHELVES.indexOf(shelf) + dir + SHELVES.length) % SHELVES.length]);
 
-  // YOUR OWN: the form. A purchase of your own: remove it.
-  const form = el.querySelector('.wi-ownform');
-  const f = (name) => form.querySelector(`[data-f="${name}"]`);
-  const wo = (name) => form.querySelector(`[data-wo="${name}"]`);
-  function syncForm() {
-    const h = formHints(f('how').value);
-    wo('date').textContent = h.word;
-    f('amount').placeholder = h.amount;
-    f('date').placeholder = h.date;
-    f('date').title = h.dateTitle;
+  // A family's chips (one family's at a time): open under its row, or closed.
+  function openChips(f, { keys = false } = {}) {
+    const was = famOpen;
+    setOpen(f);
+    paintCard(famCard(was));
+    paintCard(famCard(f));
+    paintTray();
+    if (keys) focusChip();
   }
-  function openForm() {
-    form.hidden = false;
-    syncForm();
-    f('amount').focus();
+  function closeChips({ refocus = false } = {}) {
+    const card = famCard(famOpen);
+    setOpen(null);
+    paintCard(card);
+    paintTray();
+    if (refocus && card) focusCard(cards.indexOf(card), { scroll: false });
   }
-  function closeForm() {
-    form.hidden = true;
-    const own = list.querySelector('[data-own]');
-    if (own) focusRow(rows.indexOf(own));
+  function toggleChips(f, opts = {}) {
+    if (famOpen === f) closeChips({ refocus: true });
+    else openChips(f, opts);
   }
-  // Adds the purchase in the form; true when it was added.
-  function addOwn() {
-    try {
-      const words = formWords({ amount: f('amount').value, ticker: f('ticker').value, date: f('date').value, how: f('how').value });
-      const [item] = parseMine(words).mine;
-      if (!mine.some((m) => m.id === item.id)) mine.push(item);
-      wo('msg').textContent = '';
-      ['amount', 'ticker', 'date'].forEach((k) => { f(k).value = ''; });
-      showShelf(shelf, { focus: false });
-      refresh();
-      return true;
-    } catch (err) {
-      wo('msg').textContent = err.message;
-      return false;
-    }
-  }
-  form.addEventListener('change', syncForm);
-  form.addEventListener('input', () => { wo('msg').textContent = ''; });
-  wo('add').addEventListener('click', () => { if (addOwn()) closeForm(); });
-  wo('close').addEventListener('click', closeForm);
-  form.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && e.target.matches('input, select')) {
-      e.preventDefault(); e.stopPropagation();
-      // Enter adds it and runs, like the years box.
-      const empty = !f('amount').value && !f('ticker').value && !f('date').value;
-      if (empty || addOwn()) runPicks();
-    } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeForm(); }
-  });
 
-  function toggle(row, opts) {
-    if (row.dataset.own !== undefined) { openForm(); return; }
-    if (row.dataset.fam) { toggleFam(row, opts); return; }
-    if (row.dataset.mine) {
-      mine = mine.filter((m) => m.id !== row.dataset.mine);
-      showShelf(shelf);
-      refresh();
-      return;
+  // ---- Running.
+  const run = (command) => ctx.run(command);
+  function runCard(card) {
+    if (card.dataset.mine) { run(commandFor(new Map(), cat, mine.filter((m) => m.id === card.dataset.mine))); return; }
+    const id = card.dataset.id;
+    run(commandFor(new Map([[id, card.querySelector('input[data-spec]')?.value || picks.get(id) || '']]), cat));
+  }
+  function runBasket() {
+    keepYears();
+    if (!picks.size && !mineOn.size) { ctx.status('ADD AT LEAST ONE THING', 'warn'); return; }
+    run(commandFor(picks, cat, basketMine()));
+  }
+  // A click or Enter: a family opens its chips; any other card runs.
+  function activate(card, opts) {
+    if (card.dataset.fam) toggleChips(card.dataset.fam, opts);
+    else runCard(card);
+  }
+
+  // ---- The basket.
+  function toggleBasket(card) {
+    if (card.dataset.mine) {
+      if (mineOn.has(card.dataset.mine)) mineOn.delete(card.dataset.mine); else mineOn.add(card.dataset.mine);
+    } else if (card.dataset.fam) {
+      // A family: its first model goes in (its chips open, to change it), or all of it out.
+      const fam = fams.get(card.dataset.fam);
+      if (famPicked(fam)) fam.items.forEach((p) => picks.delete(p.id));
+      else {
+        picks.set(familyPick(fam), '');
+        if (famOpen !== fam.fam) openChips(fam.fam);
+      }
+      paintChips();
+    } else {
+      const id = card.dataset.id;
+      if (picks.has(id)) picks.delete(id);
+      else picks.set(id, card.querySelector('input[data-spec]')?.value || '');
     }
-    const id = row.dataset.id;
-    if (picks.has(id)) picks.delete(id);
-    else picks.set(id, row.querySelector('input')?.value || '');
-    const on = picks.has(id);
-    row.classList.toggle('is-on', on);
-    row.setAttribute('aria-selected', String(on));
-    row.querySelector('.wi-box').textContent = on ? '[x]' : '[ ]';
-    const meta = row.querySelector('[data-meta]');
-    if (meta) meta.hidden = !on;
+    paintCard(card);
+    refresh();
+  }
+  function toggleChip(id) {
+    if (picks.has(id)) picks.delete(id); else picks.set(id, '');
+    paintChips();
+    paintCard(famCard(famOpen));
     refresh();
   }
 
-  function runPicks() {
-    for (const inp of el.querySelectorAll('input[data-spec]')) {
-      if (picks.has(inp.dataset.spec)) picks.set(inp.dataset.spec, inp.value);
-    }
-    if (!picks.size && !mine.length) { ctx.status('PICK AT LEAST ONE THING', 'warn'); return; }
-    ctx.run(commandFor(picks, cat, mine));
-  }
-
-  list.addEventListener('keydown', (e) => {
-    const inInput = e.target.matches('input');
-    const row = e.target.closest('.wi-card');
-    if (!row || e.ctrlKey || e.metaKey || e.altKey) return;
-    const i = rows.indexOf(row);
+  // ---- Keys on the shelf.
+  shelfEl.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const stop = () => { e.preventDefault(); e.stopPropagation(); };
-    if (inInput) {
-      if (e.key === 'Enter') { stop(); runPicks(); }
-      else if (e.key === 'Escape') { stop(); focusRow(i); }
-      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { stop(); focusRow(i + (e.key === 'ArrowDown' ? cols() : -cols())); }
+    const chip = e.target.closest('[data-chip]');
+    if (chip) {
+      const chips = [...shelfEl.querySelectorAll('[data-chip]')];
+      const act = chipKey(e.key, { i: chips.indexOf(chip), n: chips.length });
+      if (!act) return;
+      stop();
+      const fi = famIndex();
+      if ('go' in act) {
+        const c = chips[act.go];
+        chips.forEach((x) => { x.tabIndex = x === c ? 0 : -1; });
+        c.focus({ preventScroll: true });
+        c.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } else if (act.add) toggleChip(chip.dataset.chip);
+      else if (act.run) run(commandFor(new Map([[chip.dataset.chip, '']]), cat));
+      else if (act.close) closeChips({ refocus: true });
+      else if (act.back) focusCard(fi);
+      else if (act.down) { const next = (rowOf(fi) + 1) * cols; if (next < cards.length) focusCard(next); }
+      else if (act.shelf) moveShelf(act.shelf);
       return;
     }
-    const input = row.querySelector('input');
+    const card = e.target.closest('.wi-card');
+    if (!card) return;
+    const i = cards.indexOf(card);
+    if (e.target.matches('input')) {
+      if (e.key === 'Enter') { stop(); keepYears(); runCard(card); }
+      else if (e.key === 'Escape' && !famOpen) { stop(); focusCard(i); }
+      return;
+    }
+    const input = card.querySelector('input');
     // A habit card: a number (or Y) goes straight into its years box.
     if (input && /^[0-9Yy]$/.test(e.key)) { e.stopPropagation(); input.focus(); return; }
+    const fi = famOpen ? famIndex() : -1;
     const keys = {
-      ArrowRight: () => focusRow(i + 1),
-      ArrowLeft: () => focusRow(i - 1),
-      ArrowDown: () => focusRow(i + cols()),
-      ArrowUp: () => focusRow(i - cols()),
-      Home: () => focusRow(0),
-      End: () => focusRow(rows.length - 1),
+      ArrowRight: () => focusCard(i + 1),
+      ArrowLeft: () => focusCard(i - 1),
+      // Down from the row of an open family goes into its chips; Up from the row under it too.
+      ArrowDown: () => (fi >= 0 && rowOf(i) === rowOf(fi) ? focusChip() : rowOf(i) < rowOf(cards.length - 1) && focusCard(i + cols)),
+      ArrowUp: () => (fi >= 0 && rowOf(i) === rowOf(fi) + 1 ? focusChip() : i - cols >= 0 && focusCard(i - cols)),
+      Home: () => focusCard(0),
+      End: () => focusCard(cards.length - 1),
       '[': () => moveShelf(-1),
       ']': () => moveShelf(1),
-      ' ': () => toggle(row, { keys: true }),
-      Enter: () => runPicks(),
+      ' ': () => toggleBasket(card),
+      Enter: () => activate(card, { keys: true }),
     };
     if (keys[e.key]) { stop(); keys[e.key](); }
   });
 
-  // Moving to a picked family card shows its chips.
-  list.addEventListener('focusin', (e) => {
-    const row = e.target.closest('[data-fam]');
-    if (row && row.dataset.fam !== famOpen && famPicked(fams.get(row.dataset.fam))) { famOpen = row.dataset.fam; drawChips(); }
-  });
-
-  // The chips: arrows move, Space picks this model (Shift+Space adds it), Enter runs,
-  // Esc or Up goes back to the card.
-  tray.addEventListener('click', (e) => {
+  // ---- Clicks: the box (or Shift, Ctrl or Cmd) adds to the basket; else it runs.
+  shelfEl.addEventListener('click', (e) => {
+    if (e.target.closest('label, input')) return;
+    const add = Boolean(e.target.closest('[data-box]')) || e.shiftKey || e.ctrlKey || e.metaKey;
     const chip = e.target.closest('[data-chip]');
-    if (chip) chooseChip(chip.dataset.chip, { add: e.shiftKey || e.ctrlKey || e.metaKey });
+    if (chip) {
+      if (add) toggleChip(chip.dataset.chip);
+      else run(commandFor(new Map([[chip.dataset.chip, '']]), cat));
+      return;
+    }
+    const card = e.target.closest('.wi-card');
+    if (!card) return;
+    focusCard(cards.indexOf(card), { scroll: false });
+    if (add) toggleBasket(card);
+    else activate(card, { keys: e.detail === 0 });
   });
-  tray.addEventListener('keydown', (e) => {
-    const chip = e.target.closest('[data-chip]');
-    if (!chip || e.ctrlKey || e.metaKey || e.altKey) return;
-    const chips = [...tray.querySelectorAll('[data-chip]')];
-    const i = chips.indexOf(chip);
-    const go = (j) => {
-      const c = chips[Math.max(0, Math.min(chips.length - 1, j))];
-      chips.forEach((x) => { x.tabIndex = x === c ? 0 : -1; });
-      c.focus({ preventScroll: true });
-      c.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    };
-    const act = chipKey(e.key, { shift: e.shiftKey, i, n: chips.length });
-    if (!act) return;
-    e.preventDefault(); e.stopPropagation();
-    if ('go' in act) go(act.go);
-    else if (act.pick) chooseChip(chip.dataset.chip, { add: act.add });
-    else if (act.run) runPicks();
-    else if (act.back) { const r = list.querySelector(`[data-fam="${famOpen}"]`); if (r) focusRow(rows.indexOf(r)); }
-    else if (act.shelf) moveShelf(act.shelf);
+  shelfEl.addEventListener('input', (e) => { if (e.target.dataset.spec && picks.has(e.target.dataset.spec)) picks.set(e.target.dataset.spec, e.target.value); });
+  shelfEl.addEventListener('focusin', (e) => {
+    if (e.target.matches('input[data-spec]')) e.target.select();
+    const card = e.target.closest('.wi-card');
+    if (card && cards.includes(card)) current = cards.indexOf(card);
   });
 
   // [ and ] also work from the shelf tabs.
   tabBox.addEventListener('keydown', (e) => {
+    if (e.target === ownIn) return;
     if ((e.key === '[' || e.key === ']') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); moveShelf(e.key === ']' ? 1 : -1); }
   });
   tabBox.addEventListener('click', (e) => {
+    if (e.target.closest('[data-own-add]')) { addOwn(); return; }
     const b = e.target.closest('[data-value]');
     if (b) showShelf(b.dataset.value);
   });
 
-  list.addEventListener('click', (e) => {
-    const row = e.target.closest('.wi-card');
-    if (!row || e.target.closest('label, input')) return;
-    toggle(row);
-    rows.forEach((x) => { x.tabIndex = -1; });
-    row.tabIndex = 0;
-    row.focus({ preventScroll: true });
-  });
-
-  list.addEventListener('input', (e) => {
-    const id = e.target.dataset.spec;
-    if (!id) return;
-    if (!picks.has(id)) {
-      const row = e.target.closest('.wi-card');
-      row.classList.add('is-on');
-      row.setAttribute('aria-selected', 'true');
-      row.querySelector('.wi-box').textContent = '[x]';
+  // YOUR OWN: Enter runs it alone; ADD puts it in the basket (a card on the shelf, first).
+  // A line it cannot read says why, under it.
+  ownForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    try {
+      run(['WHATIF', ...ownWords(ownIn.value)].join(' '));
+    } catch (err) {
+      ownMsg.textContent = err.message;
     }
-    picks.set(id, e.target.value);
-    refresh();
+  });
+  function addOwn() {
+    try {
+      const { mine: items } = parseMine(ownWords(ownIn.value));
+      for (const m of items) {
+        if (!mine.some((x) => x.id === m.id)) mine.push(m);
+        mineOn.add(m.id);
+      }
+      ownIn.value = '';
+      ownMsg.textContent = '';
+      drawShelf();
+      refresh();
+    } catch (err) {
+      ownMsg.textContent = err.message;
+    }
+  }
+  ownIn.addEventListener('input', () => { ownMsg.textContent = ''; });
+  ownIn.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); focusCard(current); }
+    else if (e.key === 'Escape' && ownIn.value && !famOpen) { e.preventDefault(); e.stopPropagation(); ownIn.value = ''; ownMsg.textContent = ''; }
   });
 
-  list.addEventListener('focusin', (e) => { if (e.target.matches('input[data-spec]')) e.target.select(); });
-  el.querySelector('#wi-run').addEventListener('click', runPicks);
+  runBtn.addEventListener('click', runBasket);
+  // Four to a row, two on a phone: redrawn when the window crosses the line.
+  const onWidth = () => { cols = shelfCols(phone.matches); drawShelf(); };
+  phone.addEventListener?.('change', onWidth);
+  ctx.onCleanup?.(() => { stopFade(); setOpen(null); phone.removeEventListener?.('change', onWidth); });
+
   refresh();
-  // Start on the first picked card (or the first card) so the arrows work at once.
+  // Start on the first card in the basket (or the first card) so the arrows work at once.
   showShelf(shelf, { focus: false });
-  if (!window.matchMedia('(pointer: coarse)').matches) {
-    setTimeout(() => { const r = rows.find((x) => x.tabIndex === 0); if (r?.isConnected) r.focus({ preventScroll: true }); }, 0);
+  if (!coarse) {
+    setTimeout(() => { const r = cards[current]; if (r?.isConnected) r.focus({ preventScroll: true }); }, 0);
   }
 }
 
@@ -680,11 +753,24 @@ export function certHtml(m) {
     </figure>`;
 }
 
+// On a phone the certificate keeps its title, the big amount and "worth today"; its small
+// lines (spent, shares, the seal) leave the paper for this one line under it (whatif.css
+// shows it under 600 px). The same words and numbers as the certificate's (d.cert), so
+// nothing is worked out twice. aria-hidden: the certificate's label already says them.
+//   "Spent $649.00 · 25.7 shares · 13.2x", "... · 0.9x · less than you paid"
+export const LOSS_WORDS = 'less than you paid';
+const certParts = (m) => [String(m.spent || '').replace(/^You spent/, 'Spent'), String(m.holding || '').replace(/ of .*$/, '').replace(/^in /, ''), m.multiple].filter(Boolean);
+// A loss says so in words too (the phone's certificate has no seal): in the loss colour.
+export const certLine = (m) => [...certParts(m), ...(m.loss ? [LOSS_WORDS] : [])].join(' · ');
+export const certLineHtml = (m) => `<p class="wi-certline num" aria-hidden="true">${esc(certParts(m).join(' · '))}${m.loss ? ` · <span class="down">${LOSS_WORDS}</span>` : ''}</p>`;
+
+// The title never goes under 11 px (a long one is fitted smaller on a phone).
 function sizeCert(el) {
   for (const n of el.querySelectorAll('.wi-cert [data-fs]')) {
     const v = Number(n.dataset.fs);
     if (!Number.isFinite(v) || v <= 0) continue;
     if (n.matches('.wc-l1, .wc-l2')) n.style.setProperty('--fs', String(v));
+    else if (n.matches('.wc-ribbon')) n.style.fontSize = `max(11px, ${v}cqw)`;
     else n.style.fontSize = `${v}cqw`;
   }
 }
@@ -776,59 +862,18 @@ export function setupShare(el, ctx, key, { doc = globalThis.document } = {}) {
 
 // ---- Result ---------------------------------------------------------------------
 // A card page (kit.js cardPage, split): the certificate is the hero (it is the share
-// image and carries the amount); beside it (under it on a phone) one sentence with the
-// real values, SHARE, a short note, the race chart and REPLAY / CHANGE PICKS. Two or more
-// things: the list of them under the chart. Everything else (the small print, the worst
-// drop, the table, how it is worked out, sources) is behind + Details.
-// While the race runs only the certificate and the chart move; the sentence and the list
-// show when it ends, so one amount is on screen at a time.
-
-const NICE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-// '2015-01' -> 'Jan 2015'; '2015-01-02' -> '2 Jan 2015'.
-export function niceMonth(key) {
-  const [y, m] = String(key || '').split('-').map(Number);
-  return y && m ? `${NICE_MONTHS[m - 1]} ${y}` : '--';
-}
-export function niceDay(iso) {
-  const [y, m, d] = String(iso || '').split('-').map(Number);
-  return y && m && d ? `${d} ${NICE_MONTHS[m - 1]} ${y}` : '--';
-}
-// "Apple Inc." -> "Apple": the company as people say it.
-export const shortCompany = (c) => String(c || '').replace(/,?\s+(Inc\.?|Corp\.?|Corporation|Ltd\.?|plc)$/i, '').trim();
+// image and says every amount once); beside it (under it on a phone): SHARE, a short
+// note, the race chart and REPLAY / CHANGE PICKS. Everything else (the table, the small
+// print, the worst drop, how it is worked out, sources) is behind + Details.
+// While the race runs only the certificate and the chart move; the phone's line under
+// the certificate shows when it ends, so one amount is on screen at a time.
 
 // The short note under SHARE, always in view (legal: the past-returns caution stays up
 // front); the full small print (HINDSIGHT_NOTE) is first in + Details.
 export const RESULT_NOTE = 'Hindsight. Past returns do not predict future ones.';
 
-// The one sentence under the certificate: what was paid, when, and what it is worth now
-// as the maker's stock. What was bought is on the certificate, so it is not said again.
-// mine: the parsed MY items of the command (whatif-mine.js), matched to rows by id.
-//   "You paid $649.00 in Sep 2014. As Apple stock it is worth $8,701 today."
-//   "You paid $2,011 since Oct 2016. As McDonald's stock it is worth $3,418 today."
-//   "You paid $1,947 in all. As stock in 2 companies they are worth $9,120 today."
-export function resultSentence(d, mine = []) {
-  const rows = d.rows || [];
-  const t = d.total;
-  const worth = fmtUsd(t.value);
-  // A company of three words or more goes by its ticker, so the line stays one line.
-  const co = (r) => { const c = shortCompany(r.company); return c && c.split(/\s+/).length <= 2 ? c : r.ticker; };
-  if (rows.length !== 1) {
-    const tickers = new Set(rows.map((r) => r.ticker));
-    const where = tickers.size === 1 ? `${co(rows[0])} stock` : `stock in ${tickers.size} companies`;
-    return `You paid ${fmtUsd(t.paid)} in all. As ${where} they are worth ${worth} today.`;
-  }
-  const r = rows[0];
-  const item = mine.find((m) => m.id === r.id);
-  const now = String(d.asOf || '').slice(0, 7);
-  let when;
-  if (r.kind === 'once') when = item ? `on ${niceDay(r.bought)}` : `in ${niceMonth(String(r.bought).slice(0, 7))}`;
-  else if (item ? item.to : r.to && now && r.to < now) when = `${niceMonth(r.from)} to ${niceMonth(r.to)}`;
-  else when = `since ${niceMonth(r.from)}`;
-  return `You paid ${fmtUsd(t.paid)}${/^since|^on|^in/.test(when) ? ' ' : ', '}${when}. As ${co(r)} stock it is worth ${worth} today.`;
-}
-
 // The things bought, one row each: what, when, paid, shares, worth now, x. In + Details
-// for one thing; under the chart for two or more (its sums are the sentence).
+// (the certificate says the sums).
 export function tableHtml(d) {
   const rows = d.rows.map((r) => {
     const loss = r.multiple < 1;
@@ -878,7 +923,7 @@ function detailsHtml(d, { table = false } = {}) {
         <li>Habits: one buy a month, on the first trading day, of what that month cost you.</li>
         <li>Price return only. Dividends and spin-offs are left out, so long holds come out a little low.</li>
         <li>Worst drop: the biggest fall from a high to a later low, using the price on the day of the first buy, each month-end close after it and today's price. Falls within a month can be deeper.</li>
-        <li>REPLAY: STOCK is the shares bought so far at each first-of-month close (and on each purchase day). CASH IN A JAR is the same dollars kept as cash, each deflated by CPI-U (BLS) from the month it was spent. SPENT is the running total paid.</li>
+        <li>REPLAY: STOCK is the shares bought so far at each first-of-month close (and on each purchase day). CASH IN A JAR is the same dollars kept as cash, each deflated by CPI-U (BLS) from the month it was spent.</li>
         <li>Hindsight: the list is picked after the fact. Nobody knew these results when the money was spent. Costs, taxes and currency moves are left out.</li>
       </ul>
       <p class="how-h">Notes and sources</p>
@@ -887,24 +932,22 @@ function detailsHtml(d, { table = false } = {}) {
 }
 
 // The result page. key: the command as typed; links: shareLinks(d.cert); video: videoHtml(d).
-export function resultHtml(d, { key, links = null, mine = [], video = '' } = {}) {
-  const multi = d.rows.length > 1;
+// No certificate (it could not be made): the table stays in view instead.
+export function resultHtml(d, { key, links = null, video = '' } = {}) {
   const editCmd = `WHATIF EDIT ${String(key || '').replace(/^WHATIF\s*/, '')}`;
   const chart = replayHtml(d);
   return cardPage({
     split: Boolean(d.cert), cls: 'wi-result', label: 'WHATIF result',
-    art: d.cert ? raw(certHtml(d.cert)) : '',
-    // Each sentence on a line of its own (a phone wraps them as it must).
-    sub: raw(resultSentence(d, mine).split(/(?<=\.) (?=[A-Z])/).map((l) => `<span class="wi-line">${esc(l)}</span>`).join(' ')),
+    art: d.cert ? raw(certHtml(d.cert) + certLineHtml(d.cert)) : '',
     act: d.cert && links ? raw(shareHtml(d, links, video)) : '',
     note: RESULT_NOTE,
     chart: chart ? raw(chart) : '',
-    media: multi ? raw(tableHtml(d)) : '',
+    media: d.cert ? '' : raw(tableHtml(d)),
     links: [
       chart ? cardLink({ label: 'REPLAY', attrs: 'data-replay title="Replay (Space)"' }) : '',
       cardLink({ label: 'CHANGE PICKS', cmd: editCmd }),
     ],
-    details: raw(detailsHtml(d, { table: !multi })),
+    details: raw(detailsHtml(d, { table: Boolean(d.cert) })),
   });
 }
 
@@ -913,13 +956,13 @@ export function resultHtml(d, { key, links = null, mine = [], video = '' } = {})
 export const HABIT_LONG = 'Habits are bought once a month, on the first trading day. The month still running counts only the days so far.';
 export const jarLong = (last) => `CASH IN A JAR: the same cash, deflated by CPI-U from the BLS, to ${fmtMonth(last)}. Later months use the latest value.`;
 
-// The race: three thin lines, each named at its end on the chart (whatif-replay.js).
-// The values are in the chart's label, for a screen reader.
+// The race: two thin lines, STOCK and CASH IN A JAR, each named at its end on the chart
+// (whatif-replay.js). The values are in the chart's label, for a screen reader.
 export function replayHtml(d) {
   const pts = d.replay?.points;
   if (!pts?.length) return '';
   const last = pts[pts.length - 1];
-  const label = `Replay from ${fmtDay(pts[0].d)} to today: stock ${fmtUsd(last.stock)}, cash in a jar ${fmtUsd(last.jar)}, spent ${fmtUsd(last.spent)}.`;
+  const label = `Replay from ${fmtDay(pts[0].d)} to today: stock ${fmtUsd(last.stock)}, cash in a jar ${fmtUsd(last.jar)}.`;
   return `<div class="wi-replay"><canvas class="wr-canvas" role="img" aria-label="${esc(label)}"></canvas></div>`;
 }
 
@@ -956,7 +999,7 @@ function setupReplay(el, d, ctx, { onEnd = () => {} } = {}) {
     },
   });
   // The certificate shows from the start, its number rolling; the seal stamps at the end.
-  // The sentence and the list wait for the end (one amount on screen at a time).
+  // The phone's line under it waits for the end (one amount on screen at a time).
   const replay = () => {
     card?.classList.add('is-racing');
     cert?.classList.remove('is-stamped');
@@ -1024,12 +1067,12 @@ export function render(el, cmd, ctx) {
     return ctx.fetchJSON(`/api/whatif?${new URLSearchParams({ c: plan.words.join(' ') })}`, { signal: ctx.signal }).then((d) => {
       if (d.picker) { renderPicker(el, ctx, cat, plan.picks, plan.shelf, plan.mine); return; }
       const links = d.cert ? shareLinks(d.cert, location.origin) : null;
-      el.innerHTML = panel('1', WHATIF_TITLE, resultHtml(d, { key, links, mine: plan.mine, video: videoHtml(d) }), { cls: 'panel-solo wi-panel' });
+      el.innerHTML = panel('1', WHATIF_TITLE, resultHtml(d, { key, links, video: videoHtml(d) }), { cls: 'panel-solo wi-panel' });
       sizeCert(el);
       setupShare(el, ctx, key);
-      // The status line says the multiple when the race ends, not before (one amount at a time).
+      // The status line stays empty: the seal says the multiple. Old prices still warn.
       ctx.status('');
-      setupReplay(el, d, ctx, { onEnd: () => ctx.status(`WHATIF: ${fmtX(d.total.multiple)}${d.stale ? ' (LAST KNOWN PRICES)' : ''}`, d.stale ? 'warn' : '') });
+      setupReplay(el, d, ctx, { onEnd: () => { if (d.stale) ctx.status('WHATIF: LAST KNOWN PRICES', 'warn'); } });
       el.querySelector('[data-copy]')?.addEventListener('click', async (e) => {
         const ok = await copyText(e.currentTarget.dataset.copy);
         ctx.status(ok ? 'LINK COPIED' : 'COPY THE LINK FROM THE ADDRESS BAR', ok ? '' : 'warn');

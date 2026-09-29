@@ -191,7 +191,7 @@ test('family cards: one card per family, its chips the same item ids as the comm
     [['GEFORCE', ['gtx1080', 'rtx3080', 'rtx4090']], ['PLAYSTATION', ['ps4', 'ps5']], ['XBOX', ['xboxone', 'xboxseriesx']]]);
   assert.deepEqual(games.filter((c) => c.item).map((c) => c.item.id), ['switch', 'quest2']);
   assert.equal(shelfCards(cat, 'CARS').filter((c) => c.item).length, 4, 'the Teslas are different cars: a card each');
-  // The first chip picked is the one people share most: iPhone 6. Every default is in its family.
+  // Space on a family card adds the one people share most: iPhone 6. Every default is in its family.
   assert.equal(familyPick(fam), 'iphone6');
   for (const [f, { pick }] of Object.entries(FAMILY_CARDS)) assert.ok(familyIds(cat, f).includes(pick), `${f}: ${pick}`);
   // A chip runs the same command as typing the model: WHATIF IPHONE6, WHATIF IPHONE6 IPHONE8.
@@ -199,8 +199,8 @@ test('family cards: one card per family, its chips the same item ids as the comm
   const html = chipsHtml(fam, new Map([['iphone6', ''], ['iphone8', '']]));
   const ids = [...html.matchAll(/data-chip="([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(ids, fam.items.map((p) => p.id));
-  assert.deepEqual([...html.matchAll(/data-chip="([^"]+)" aria-pressed="true"/g)].map((m) => m[1]), ['iphone6', 'iphone8']);
-  assert.match(html, /data-chip="iphone6" aria-pressed="true" tabindex="0"/, 'the roving focus starts on the first picked');
+  assert.deepEqual([...html.matchAll(/data-chip="([^"]+)" aria-pressed="true"/g)].map((m) => m[1]), ['iphone6', 'iphone8'], 'the ones in the basket');
+  assert.match(html, /data-chip="iphone6" aria-pressed="true" tabindex="0"/, 'the roving focus starts on the first in the basket');
   assert.equal((html.match(/tabindex="0"/g) || []).length, 1);
   const edit = planWhatif(['EDIT', 'IPHONE6', 'IPHONE8'], cat);
   assert.equal(commandFor(edit.picks, cat), 'WHATIF IPHONE6 IPHONE8');
@@ -211,15 +211,18 @@ test('family cards: one card per family, its chips the same item ids as the comm
   assert.deepEqual(chipLabels(fam.items.map(({ short, ...p }) => p)).filter((l) => /\(|\s/.test(l)), [], 'no notes on a chip');
   assert.deepEqual(chipLabels(games.find((c) => c.fam === 'XBOX').items), ['One', 'Series X']);
   assert.deepEqual(chipLabels(games.find((c) => c.fam === 'GEFORCE').items), ['GTX 1080', 'RTX 3080', 'RTX 4090']);
-  assert.match(html, /data-chip="iphone6"[^>]*>6 <span class="wi-chip-y num">2014<\/span>/);
-  // The card: doodle and name only; the model, year and price once picked; "2 PICKED" for more.
+  assert.match(html, /data-chip="iphone6"[^>]*><span class="wi-box" data-box aria-hidden="true"[^>]*><\/span>6 <span class="wi-chip-y num">2014<\/span>/);
+  // The card: doodle, name and how many models; the model once one is in the basket.
   const none = familyCardHtml(fam, new Map());
-  assert.match(none, /doodle-phones\.webp[\s\S]*<span class="wi-cname">iPhone<\/span><span class="wi-cmeta num" data-meta hidden><\/span>/);
-  assert.doesNotMatch(none, /\$|20\d\d/);
-  assert.deepEqual(familyCardParts(fam, new Map([['iphone6', '']])), { on: true, name: 'iPhone 6', meta: '2014 $649.00' });
-  assert.deepEqual(familyCardParts(fam, edit.picks), { on: true, name: 'iPhone', meta: '2 PICKED' });
-  // A single card: the year and price are there but hidden until it is picked.
+  assert.match(none, /doodle-phones\.webp[\s\S]*<span class="wi-cname">iPhone<\/span><span class="wi-cmeta">18 models<\/span>/);
+  assert.doesNotMatch(none + familyCardHtml(fam, new Map(), true), /aria-expanded/, 'no aria-expanded on an option');
+  assert.match(familyCardHtml(fam, new Map(), true), /class="wi-card wi-fam is-open"/, 'its chips open');
+  assert.doesNotMatch(none, />[^<]*\$|20\d\d</);
+  assert.deepEqual(familyCardParts(fam, new Map([['iphone6', '']])), { on: true, name: 'iPhone 6' });
+  assert.deepEqual(familyCardParts(fam, edit.picks), { on: true, name: 'iPhone, 2 models' });
+  // A single card: doodle and name; the year and price only in its tooltip.
   const ipad = cat.products.find((p) => p.id === 'ipad');
-  assert.match(cardHtml(ipad, new Map()), /data-meta hidden>2010 \$499\.00</);
-  assert.match(cardHtml(ipad, new Map([['ipad', '']])), /data-meta>2010 \$499\.00</);
+  assert.match(cardHtml(ipad, new Map()), /title="iPad \(first\): 2010 \$499\.00, Apple AAPL"/);
+  assert.doesNotMatch(cardHtml(ipad, new Map()), /data-meta|wi-cmeta/);
+  assert.match(cardHtml(ipad, new Map([['ipad', '']])), /class="wi-card is-on" role="option" aria-selected="true"/);
 });
