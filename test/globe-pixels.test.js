@@ -307,7 +307,7 @@ test('mounted: nearby places are one critter with a count; the far side is hidde
   assert.ok(us.label[1] >= us.sprites[0][1] + us.size, 'under it');
   const [sx, sy] = us.sprites[0];
   p.ev('pointermove', { clientX: sx + 8, clientY: sy + 8 });
-  assert.equal(g.tip, 'Chicago, United States · 14 visitors this week');
+  assert.equal(g.tip, 'Chicago, United States (elsewhere) · 14 visitors this week');
   // Face Chicago and zoom in to 3x: they split, one critter a place.
   p.doc.activeElement = p.canvas;
   for (const key of ['ArrowUp', 'ArrowUp', 'ArrowUp', 'ArrowRight']) p.ev('keydown', { key });
@@ -538,6 +538,8 @@ test('zoomed in: hover finds only figures inside the lens', () => {
   assert.equal(inLens(145, 100, 16, 100, 50), true, 'partly inside');
   assert.equal(inLens(152, 100, 16, 100, 50), false);
   assert.equal(inLens(140, 140, 16, 100, 50), false, 'the corner');
+  assert.equal(inLens(100, 148, 30, 100, 50, 14), true, 'a wide box, its own height');
+  assert.equal(inLens(100, 151, 30, 100, 50, 14), false);
   const p = page();
   const heavy = { countries: [], cities: HEAVY.map((k) => ({ name: k.name, cc: k.cc, at: k.at, visitors: k.n })) };
   const g = mountGlobe(p.canvas, GEO, heavy, p.opts);
@@ -551,6 +553,7 @@ test('zoomed in: hover finds only figures inside the lens', () => {
       n += 1;
       assert.ok(inLens(sx, sy, pl.size, c, R), 'a hidden figure is not hoverable');
     }
+    if (pl.label) assert.ok(inLens(pl.label[0], pl.label[1], pl.label[2], c, R, pl.label[3]), 'nor a hidden count');
   }
   assert.ok(n > 0);
   // A corner of the canvas never finds a figure.

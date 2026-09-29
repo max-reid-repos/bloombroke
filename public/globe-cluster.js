@@ -41,7 +41,7 @@ export function countText(n) {
   const v = Math.max(0, Math.round(n));
   if (v < 1000) return String(v);
   if (v < 10_000) return `${(v / 1000).toFixed(1).replace(/\.0$/, '')}k`;
-  if (v < 1_000_000) return `${Math.round(v / 1000)}k`;
+  if (Math.round(v / 1000) < 1000) return `${Math.round(v / 1000)}k`; // 999,500 and up is 1M
   return `${(v / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
 }
 

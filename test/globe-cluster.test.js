@@ -35,8 +35,8 @@ const RS = [110, 164];
 test('levels, counts and critter sizes', () => {
   assert.deepEqual(CLUSTER_ZOOMS, [1, 1.5, 2, 3, 4, 5, 6]);
   assert.deepEqual([1, 1.4, 1.5, 1.99, 2, 2.9, 3, 4.5, 5, 5.99, 6].map(clusterLevel), [0, 0, 1, 1, 2, 2, 3, 4, 5, 5, 6]);
-  assert.deepEqual([0, 1, 12, 999, 1000, 1234, 9999, 12_345, 999_499, 1_250_000].map(countText),
-    ['0', '1', '12', '999', '1k', '1.2k', '10k', '12k', '999k', '1.3M']);
+  assert.deepEqual([0, 1, 12, 999, 1000, 1234, 9999, 12_345, 999_499, 999_500, 1_250_000].map(countText),
+    ['0', '1', '12', '999', '1k', '1.2k', '10k', '12k', '999k', '1M', '1.3M']);
   // 2 px a pixel for 1 to 9 visitors, 3 for 10 to 99, 4 for 100 or more; one step up zoomed in.
   assert.deepEqual([1, 9, 10, 99, 100, 10_000].map((n) => tierPx(n)), [2, 2, 3, 3, 4, 4]);
   assert.deepEqual([1, 9, 10, 99, 100].map((n) => tierPx(n, true)), [3, 3, 4, 4, 5]);
@@ -198,6 +198,12 @@ test('the same clusters however the globe is turned (made on the sphere, once pe
   listeners.keydown({ key: 'ArrowLeft', preventDefault() {} });
   listeners.keydown({ key: 'ArrowLeft', preventDefault() {} });
   assert.equal(g.placed.find((p) => p.item.key === first.key)?.item, first, 'cached, not made again');
+  // The same numbers again (a refresh, a resize): the same clusters; new numbers: new ones.
+  g.update(globe, null);
+  assert.equal(g.placed.find((p) => p.item.key === first.key)?.item, first, 'same numbers: kept');
+  const more = { ...globe, cities: globe.cities.map((c, i) => (i === 0 ? { ...c, visitors: c.visitors + 1 } : c)) };
+  g.update(more, null);
+  assert.notEqual(g.placed.find((p) => p.item.key === first.key)?.item, first, 'new numbers: made again');
   g.stop();
 });
 
@@ -211,7 +217,12 @@ test('the label: one place, two, or two and how many more', () => {
   assert.equal(clusterText({ n: 17, places: [k('Tokyo', 9), k('Osaka', 5), k('Kyoto', 3)] }, names), 'Tokyo, Osaka and 1 more place · 17 visitors this week');
   const us = { kind: 'country', cc: 'US', n: 15, part: true, at: [0, 0] };
   assert.equal(clusterText({ n: 15, places: [us] }, names), 'United States, elsewhere · 15 visitors this week');
-  assert.equal(clusterText({ n: 1515, places: [k('Boardman', 1500, { cc: 'US' }), us] }, names), 'Boardman, United States · 1,515 visitors this week');
+  assert.equal(clusterText({ n: 1515, places: [k('Boardman', 1500, { cc: 'US' }), us] }, names), 'Boardman, United States (elsewhere) · 1,515 visitors this week');
+  const jp = { kind: 'country', cc: 'JP', n: 6, part: true, at: [0, 0] };
+  assert.equal(clusterText({ n: 15, places: [k('Tokyo', 9), jp] }, names), 'Tokyo, Japan (elsewhere) · 15 visitors this week');
+  const sg = { kind: 'country', cc: 'SG', n: 3, at: [0, 0] };
+  assert.equal(clusterText({ n: 3, places: [sg] }, { SG: 'Singapore' }), 'Singapore · 3 visitors this week', 'a country with no cities: no elsewhere');
+  assert.equal(clusterText({ n: 7, places: [k('Tokyo', 4), sg] }, { SG: 'Singapore' }), 'Tokyo, Singapore · 7 visitors this week');
   assert.equal(clusterText({ n: 0, places: [] }), '');
 });
 

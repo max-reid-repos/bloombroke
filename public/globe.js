@@ -215,13 +215,18 @@ export function tipText(item, names = {}) {
   return `${place} · ${count(item.n)} ${item.n === 1 ? 'visitor' : 'visitors'} this week`;
 }
 
+// What the clusters are made from, as one string: each place's key, visitors, live and
+// place. The same string, the same clusters.
+export const signature = (items) => (Array.isArray(items) ? items : []).map((k) => `${k.kind}:${k.cc}:${k.name || ''}:${k.n}:${k.live ? 1 : 0}:${k.at?.[0]},${k.at?.[1]}`).join('|');
+
 // The label for a cluster: one place as tipText; more: its two biggest places, then how
 // many more: 'Tokyo, Osaka · 14 visitors this week', 'Tokyo, Osaka and 3 more places ·
-// 20 visitors this week'.
+// 20 visitors this week', 'Tokyo, Japan (elsewhere) · 15 visitors this week'.
 export function clusterText(c, names = {}) {
   if (!c || !(c.n > 0)) return '';
   const ps = Array.isArray(c.places) && c.places.length ? c.places : [c];
-  const nameOf = (k) => (k.kind === 'city' ? k.name : PLAIN_NAMES[k.cc] || names[k.cc] || k.cc);
+  // In a list, the rest of a country that also has cities reads 'Japan (elsewhere)'.
+  const nameOf = (k) => (k.kind === 'city' ? k.name : `${PLAIN_NAMES[k.cc] || names[k.cc] || k.cc}${k.part ? ' (elsewhere)' : ''}`);
   const all = [...new Set(ps.map(nameOf))];
   if (all.length <= 1) return tipText({ ...ps[0], n: c.n }, names);
   const more = all.length - 2;
@@ -317,10 +322,11 @@ export const overGlobe = (x, y, geom) => geom.R > 0 && Math.hypot(x - geom.c, y 
 export const LOD_STEP = { 2: 0.8, 3: 0.5, 4: 0.35 };
 export const levelFor = (zoom) => (zoom < 1.5 ? 1 : zoom < 3 ? 2 : zoom < 4.5 ? 3 : 4);
 
-// Does a size x size square at left, top reach inside the lens (centre c, c; radius R)?
-export function inLens(left, top, size, c, R) {
+// Does a size x size square (or size x h box) at left, top reach inside the lens (centre
+// c, c; radius R)?
+export function inLens(left, top, size, c, R, h = size) {
   const dx = Math.max(left - c, 0, c - (left + size));
-  const dy = Math.max(top - c, 0, c - (top + size));
+  const dy = Math.max(top - c, 0, c - (top + h));
   return Math.hypot(dx, dy) < R;
 }
 
@@ -612,6 +618,7 @@ export function mountGlobe(canvas, geo, globe = [], {
 
   // The clusters for a level and globe size, made once (again when the numbers change).
   const clusters = new Map();
+  let itemsSig = signature(items);
   const clustersFor = (level, R) => {
     const key = `${level}:${Math.round(R)}`;
     let cl = clusters.get(key);
@@ -782,12 +789,16 @@ export function mountGlobe(canvas, geo, globe = [], {
       const px = c + x * R * zoom;
       const py = c + y * R * zoom;
       if (Math.hypot(px - c, py - c) > R + k.r) return; // outside the lens
-      const f = k.spread > 1 ? groupOf(k.spread, zoomed) : footprint(k.n, zoomed);
-      const box = [px - f.w / 2 - GAP / 2, py - f.h / 2 - GAP / 2, px + f.w / 2 + GAP / 2, py + f.h / 2 + GAP / 2];
-      if (boxes.some((o) => box[0] < o[2] && o[0] < box[2] && box[1] < o[3] && o[1] < box[3])) return;
-      if (critters + k.spread > capFor(level)) return;
+      const boxOf = (f) => [px - f.w / 2 - GAP / 2, py - f.h / 2 - GAP / 2, px + f.w / 2 + GAP / 2, py + f.h / 2 + GAP / 2];
+      const free = (b) => !boxes.some((o) => b[0] < o[2] && o[0] < b[2] && b[1] < o[3] && o[1] < b[3]);
+      let f = k.spread > 1 ? groupOf(k.spread, zoomed) : footprint(k.n, zoomed);
+      let many = k.spread;
+      // A small place's group that is over the cap: one critter with its count instead.
+      if (many > 1 && critters + many > capFor(level)) { f = footprint(k.n, zoomed); many = 1; }
+      const box = boxOf(f);
+      if (!free(box) || critters + many > capFor(level)) return;
       boxes.push(box);
-      critters += k.spread;
+      critters += many;
       shown.push({ k, i, x: px, y: py, f });
     });
     // Clip to the globe: zoomed in, it is a round lens.
@@ -819,10 +830,11 @@ export function mountGlobe(canvas, geo, globe = [], {
       });
       const label = !f.spots && k.n > 1 ? [x - f.lw / 2, y - f.h / 2 + size + 2, f.lw, LABEL_H_PX] : null;
       if (label) labels.push([label, countText(k.n)]);
-      // What hover and tap can find: only critters at least partly inside the lens.
+      // What hover and tap can find: only critters and counts at least partly inside the lens.
       const inside = sprites.filter(([sx, sy]) => inLens(sx, sy, size, c, R));
-      if (!inside.length && !(label && inLens(label[0], label[1], label[3], c, R))) continue;
-      placed.push({ item: k, x, y, size, r: Math.max(f.w, f.h) / 2, sprites: inside, label, shown: sprites.length });
+      const hit = label && inLens(label[0], label[1], label[2], c, R, label[3]) ? label : null;
+      if (!inside.length && !hit) continue;
+      placed.push({ item: k, x, y, size, r: Math.max(f.w, f.h) / 2, sprites: inside, label: hit, shown: sprites.length });
     }
     // Someone on now: a soft square ring out from the critter; with reduced motion one
     // still ring.
@@ -1081,9 +1093,12 @@ export function mountGlobe(canvas, geo, globe = [], {
     update(next, nextLive = liveNow) {
       // The clusters are made again from the new numbers; an open label stays with its
       // cluster (the same biggest place), if it is still there.
+      // Only new numbers make new clusters: a resize or a refit sends the same ones (a new
+      // globe size has its own clusters anyway).
       items = globeItems(next, geo.centres);
       liveNow = nextLive;
-      clusters.clear();
+      const sig = signature(items);
+      if (sig !== itemsSig) { itemsSig = sig; clusters.clear(); }
       redraw();
     },
     // Zoom to z (1 to ZOOM_MAX) on the middle, like the buttons.
