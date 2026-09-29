@@ -47,3 +47,7 @@
 /* A stats label with a WHATIS card: the label's own look, a dotted underline on hover. */
 .stat-what { color: inherit; }
 .stat-what:hover, .stat-what:focus-visible { color: var(--text-2); text-decoration: underline dotted; text-underline-offset: 3px; }
+/* Phones (no hover): the underline always shows, so the label reads as a link. */
+@media (max-width: 639px), (hover: none) {
+  .stat-what { text-decoration: underline dotted; text-underline-offset: 3px; }
+}

@@ -74,18 +74,21 @@ export function rangeLine(d) {
 }
 
 // A stats label that has a WHATIS card links to it (the definitions load only then).
+// In embed mode (a DESK panel) it stays a plain label: a click there would swap the
+// panel's quote for a definition.
 export const STAT_TERMS = { 'Mkt cap': 'MKT CAP', 'P/E': 'P/E', EPS: 'EPS', 'Div yield': 'DIV YIELD', Volume: 'VOLUME', 'Prev close': 'PREV CLOSE' };
-export function statLabel(k) {
+const inEmbed = () => typeof document !== 'undefined' && Boolean(document.documentElement?.classList?.contains('is-embed'));
+export function statLabel(k, { embed = inEmbed() } = {}) {
   const term = STAT_TERMS[k] || (k.startsWith('52W') ? '52W RANGE' : '');
-  if (!term) return esc(k);
+  if (!term || embed) return esc(k);
   const cmd = `WHATIS ${term}`;
   return `<a class="stat-what" href="${esc(q(cmd))}" data-cmd="${esc(cmd)}" title="${esc(`${cmd}: what it means`)}">${esc(k)}</a>`;
 }
 
-function statsHtml(d) {
+export function statsHtml(d, { embed = inEmbed() } = {}) {
   // stat-range: the Day range and 52W cells, which a panel shows as rangeLine instead.
   const isRange = (k) => k === 'Day range' || k.startsWith('52W');
-  return `<dl class="stats">${statRows(d).map(([k, v, extra]) => `<div class="stat${isRange(k) ? ' stat-range' : ''}"><dt>${statLabel(k)}</dt><dd class="num">${esc(v)}${extra || ''}</dd></div>`).join('')}</dl>`;
+  return `<dl class="stats">${statRows(d).map(([k, v, extra]) => `<div class="stat${isRange(k) ? ' stat-range' : ''}"><dt>${statLabel(k, { embed })}</dt><dd class="num">${esc(v)}${extra || ''}</dd></div>`).join('')}</dl>`;
 }
 
 // "+1.9 bp" for yields, "+1.23 +0.37%" for everything else.

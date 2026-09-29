@@ -5,17 +5,20 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { TERMS, findTerm, closestTerms, suggestTerms, COMMON, linksIn, plainText, wordCount, termKey } from '../public/whatis-terms.js';
-import { render, termHtml, listHtml, unknownHtml, whatisView, definitionHtml, sortedTerms, FEEDBACK_PREFILL } from '../public/screens/whatis.js';
-import { statRows, statLabel } from '../public/screens/quote.js';
+import { render, termHtml, listHtml, unknownHtml, whatisView, definitionHtml, sortedTerms, FEEDBACK_PREFILL, echo, MAX_ECHO } from '../public/screens/whatis.js';
+import { statRows, statLabel, statsHtml } from '../public/screens/quote.js';
+import { resolveInput, whatisAsk } from '../public/resolve.js';
 import { cardWords } from '../public/kit.js';
 import { parseCommand, screenFor } from '../public/app.js';
 import { findCommand, commandGroups, START_HERE, REGISTRY } from '../public/registry.js';
 import { DETAIL } from '../public/registry-detail.js';
 import { buildAssets } from '../lib/assets.js';
 
-// Words a definition never uses: advice, judgement, prediction, and the copy rules.
-const BANNED = [/\bshould\b/i, /\bbuy\b/i, /\bsell\b/i, /\brecommend/i, /\bbest\b/i, /good investment/i, /will rise/i, /will fall/i,
-  /\byou must\b/i, /\bworth buying\b/i, /—/, /–/, /bloomberg/i, /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u];
+// Phrases a definition never uses: advice, judgement, prediction, and the copy rules. The
+// plain words buy and sell are fine in a definition (a call is the right to buy).
+const BANNED = [/should buy/i, /should sell/i, /must buy/i, /must sell/i, /time to (buy|sell)/i, /(buy|sell) signal/i, /\byou should\b/i,
+  /\brecommend/i, /good investment/i, /bad investment/i, /will rise/i, /will fall/i, /worth buying/i, /—/, /–/, /bloomberg/i,
+  /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u];
 
 test('WHATIS: about 40+ terms, each 45 words at most, one-line example, no banned words', () => {
   assert.ok(TERMS.length >= 40, `${TERMS.length} terms`);
@@ -222,4 +225,76 @@ test('QUOTE: the stats labels link to their WHATIS card', () => {
   }
   assert.equal(statLabel('Open'), 'Open', 'no card: the plain label');
   assert.match(statLabel('P/E'), /^<a class="stat-what" href="\?c=WHATIS\+P%2FE" data-cmd="WHATIS P\/E" title="WHATIS P\/E: what it means">P\/E<\/a>$/);
+});
+
+test('WHATIS: a word said back is 40 characters at most, with an ellipsis', () => {
+  const long = 'A'.repeat(80);
+  assert.equal(echo('XYZ'), 'XYZ');
+  assert.equal(echo('B'.repeat(MAX_ECHO)), 'B'.repeat(40), '40 stays whole');
+  assert.equal(echo(long).length, 40);
+  assert.ok(echo(long).endsWith('…'));
+  const html = unknownHtml(long);
+  assert.match(html, new RegExp(`No definition for A{39}… yet\\.`));
+  assert.doesNotMatch(/<h2[^>]*>[^<]*<\/h2>/.exec(html)[0], /A{40}/, 'the hero says 39 letters and the ellipsis');
+  assert.equal(MAX_ECHO, 40);
+  const v = whatisView(`${long} ${long}`);
+  assert.ok(v.status.length <= 'NO DEFINITION FOR  YET'.length + 40, v.status);
+});
+
+// The main command bar: GLOSSARY and JARGON open the list; "what is <term>" opens its card
+// only when the words are a WHATIS term and not a command or a known ticker.
+const deps = { search: async () => [], checkTicker: async () => false };
+test('WHATIS: glossary and jargon in the bar open WHATIS', async () => {
+  for (const w of ['glossary', 'jargon', 'definitions', 'GLOSSARY']) {
+    const r = await resolveInput(w, deps);
+    assert.equal(r.confident, true, w);
+    assert.equal(r.command, 'WHATIS', w);
+  }
+});
+
+test('WHATIS: "what is <term>" asks WHATIS; the VIX, AAPL, WHAT and IS stay quotes', () => {
+  const asks = { 'what is P/E': 'P/E', 'What is a bond?': 'bond', 'define yield': 'yield', 'explain bid ask': 'bid ask', "what's EPS": 'EPS',
+    'whats short interest': 'short interest', 'meaning of basis point': 'basis point', 'what is volatility': 'volatility' };
+  for (const [typed, words] of Object.entries(asks)) {
+    assert.equal(whatisAsk(typed), words, typed);
+    assert.ok(findTerm(words), `${typed}: a term`);
+    assert.equal(parseCommand(typed).name, 'UNKNOWN', `${typed}: looked up (app.js lookUp), never a quote of WHAT`);
+  }
+  // A command, a listed ticker, an instrument or a company name wins.
+  for (const typed of ['what is the vix', 'what is VIX', 'what is AAPL', 'what is apple', 'what is gold', 'what is CPI', 'what is $EPS', 'define HELP']) {
+    assert.equal(whatisAsk(typed), null, typed);
+  }
+  for (const typed of ['what', 'is', 'WHAT IS', 'whatever is', 'what is']) assert.equal(whatisAsk(typed), null, typed);
+  // The tickers WHAT and IS still open quotes; WHATIS is the command.
+  assert.equal(parseCommand('WHAT').name, 'QUOTE');
+  assert.equal(parseCommand('WHAT').args.ticker, 'WHAT');
+  assert.equal(parseCommand('IS').name, 'QUOTE');
+  assert.equal(parseCommand('IS').args.ticker, 'IS');
+  assert.equal(parseCommand('WHATIS').name, 'WHATIS');
+});
+
+test('WHATIS: "what is the vix" and "what is AAPL" still resolve to quotes', async () => {
+  assert.deepEqual(await resolveInput('what is the vix', deps).then((r) => [r.confident, r.command]), [true, 'VIX']);
+  assert.deepEqual(await resolveInput('what is AAPL', deps).then((r) => [r.confident, r.command]), [true, 'AAPL']);
+});
+
+test('WHATIS: app.js asks WHATIS before the resolver, with the terms loaded only then', () => {
+  const src = readFileSync('public/app.js', 'utf8');
+  const at = src.indexOf('const ask = ticker ? null : whatisAsk(raw);');
+  assert.ok(at > 0 && at < src.indexOf('const found = await resolveInput(raw, {'), 'WHATIS is asked first');
+  assert.match(src, /const WHATIS_TERMS = 'whatis-terms\.js';/);
+  assert.match(src.slice(at, at + 600), /loadModule\(WHATIS_TERMS\)[\s\S]*terms\?\.findTerm\(ask\)[\s\S]*render\(c, \{ fromUrl, checked: true/);
+});
+
+test('QUOTE: in embed mode (a DESK panel) the stats labels stay plain', () => {
+  const d = { kind: 'stock', ticker: 'XYZQ', last: 100, marketCap: '1.00B', pe: 20, eps: 5, divYield: '2.00%', volume: '1.2M', low52: 80, high52: 120, prevClose: 99 };
+  const page = statsHtml(d, { embed: false });
+  assert.equal((page.match(/class="stat-what"/g) || []).length, 7, 'seven labels link on the page');
+  const panel = statsHtml(d, { embed: true });
+  assert.doesNotMatch(panel, /stat-what|data-cmd/);
+  assert.match(panel, /<dt>P\/E<\/dt>/);
+  assert.equal(statLabel('P/E', { embed: true }), 'P/E');
+  assert.equal(statLabel('Mkt cap', { embed: true }), 'Mkt cap');
+  // Phones: the underline always shows.
+  assert.match(readFileSync('public/screens/quote.css', 'utf8'), /@media \(max-width: 639px\), \(hover: none\) \{\s*\.stat-what \{ text-decoration: underline dotted;/);
 });

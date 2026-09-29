@@ -39,7 +39,7 @@ export const TERMS = [
     term: '52-week range',
     aliases: ['52W range', '52 week range', '52W', '52-week high', '52-week low', '52 week high', '52 week low', 'year range'],
     text: 'The 52-week range is the lowest and the highest price over the last year (52 weeks). Some screens use each day\'s [closing price]; others use every trade during the day.',
-    example: 'A range of $40 - $60 means the price has been as low as $40 and as high as $60 this past year.',
+    example: 'A range of $40 to $60 means the price has been as low as $40 and as high as $60 this past year.',
     see: ['Closing price', 'Volatility'],
   },
   {
@@ -70,8 +70,8 @@ export const TERMS = [
   },
   {
     term: 'Bond',
-    aliases: ['bonds', 'fixed income', 'coupon', 'maturity'],
-    text: 'A bond is a loan that people or funds make to a government or a company. The borrower pays interest, often twice a year, and pays back the full amount on a set date, called maturity.',
+    aliases: ['bonds', 'fixed income', 'coupon', 'coupons', 'maturity'],
+    text: 'A bond is a loan that people or funds make to a government or a company. The borrower pays interest, often twice a year, and pays back the full amount on a set date, called maturity. The interest payments are called coupons.',
     example: 'A $1,000 bond paying 4% interest pays $40 a year until it is paid back.',
     see: ['Yield', 'Treasury', 'Basis point'],
   },
@@ -84,7 +84,7 @@ export const TERMS = [
   {
     term: 'Closing price',
     aliases: ['close', 'closing', 'previous close', 'prev close', 'market close', 'last close', 'closing bell'],
-    text: 'The closing price is the official last price of a trading day. The previous close is the last trading day\'s closing price; a day\'s change is usually measured from it.',
+    text: 'The closing price is the official last price of a trading day. The previous close is the closing price of the trading day before; a day\'s change is usually measured from it.',
     see: ['Pre-market and after hours', 'Market holiday'],
   },
   {
@@ -101,14 +101,14 @@ export const TERMS = [
   },
   {
     term: 'CPI',
-    aliases: ['consumer price index', 'CPI-U', 'consumer prices'],
+    aliases: ['consumer price index', 'consumer prices'],
     text: 'The CPI, or consumer price index, tracks the average price of a basket of things households pay for, such as food, rent and fuel. In the US it comes out every month. Its change over a year is a common measure of [inflation].',
     see: ['Inflation', 'Fed funds rate'],
   },
   {
     term: 'Crypto',
     aliases: ['cryptocurrency', 'cryptocurrencies', 'coin', 'coins', 'token', 'tokens', 'digital currency'],
-    text: 'Crypto, short for cryptocurrency, is digital money that runs on a shared public record called a blockchain, not issued by a bank or a government. Bitcoin and ether are two examples. Crypto trades all day, every day.',
+    text: 'Crypto, short for cryptocurrency, is a digital token recorded on a shared public ledger called a blockchain. It is not issued or backed by a central bank or a government. Bitcoin and ether are two examples, and crypto trades all day, every day.',
     see: ['Exchange rate', 'Volatility'],
   },
   {
@@ -146,14 +146,14 @@ export const TERMS = [
   },
   {
     term: 'ETF',
-    aliases: ['ETFs', 'exchange-traded fund', 'exchange traded fund', 'exchange-traded funds', 'fund', 'index fund'],
+    aliases: ['ETFs', 'exchange-traded fund', 'exchange traded fund', 'exchange-traded funds'],
     text: 'An ETF, or exchange-traded fund, is a fund that holds a basket of things, such as many [stocks|stock] or [bonds|bond], and trades on a [stock exchange] like a single share. Many ETFs follow an [index].',
     see: ['Index', 'Stock', 'Sector'],
   },
   {
     term: 'Ex-dividend date',
     aliases: ['ex-dividend', 'ex dividend', 'ex-date', 'ex date', 'exdiv', 'ex-div', 'ex dividend date'],
-    text: 'The ex-dividend date is the cut-off day for the next [dividend]. Whoever owns the shares before that day gets the payment; whoever gets them on or after it does not. The price often drops by about the dividend that day.',
+    text: 'The ex-dividend date is the cut-off day for the next [dividend]. A buyer before that day gets the payment; a buyer on or after it does not, and it stays with the seller. The price often drops by about the dividend that day.',
     see: ['Dividend', 'Dividend yield'],
   },
   {
@@ -178,7 +178,7 @@ export const TERMS = [
   {
     term: 'GDP',
     aliases: ['gross domestic product', 'economic growth', 'growth', 'output'],
-    text: 'GDP, or gross domestic product, is the total value of all the goods and services a country produces in a period. In the US it is reported every three months.',
+    text: 'GDP, or gross domestic product, is the total value of the final goods and services a country produces in a period, not counting parts used to make other things. In the US it is reported every three months.',
     see: ['Recession', 'Inflation'],
   },
   {
@@ -198,7 +198,7 @@ export const TERMS = [
   {
     term: 'Insider',
     aliases: ['insiders', 'insider trading', 'insider trade', 'insider trades', 'form 4'],
-    text: 'An insider is a top manager, a board member or an owner of more than 10% of a company. In the US, insiders must report their trades in the company\'s shares within two business days, on a filing called Form 4.',
+    text: 'An insider is a top manager, a board member or an owner of more than 10% of a company. In the US, insiders report their trades in its shares within two business days, on Form 4. Trading on secret company news is illegal.',
     see: ['13F filing', '8-K filing'],
   },
   {
@@ -229,7 +229,7 @@ export const TERMS = [
   {
     term: 'Option',
     aliases: ['options', 'call', 'calls', 'put', 'puts', 'call option', 'put option', 'strike', 'strike price', 'option chain', 'options chain', 'expiry', 'expiration'],
-    text: 'An option is a contract giving the right, but not the duty, to trade shares at a set price (the strike) by a set date. A call is the right to get shares at the strike; a put, the right to hand them over.',
+    text: 'An option is a contract giving the right, but not the duty, to buy or sell something, such as shares, at a set price (the strike) by a set date. A call is the right to buy; a put is the right to sell.',
     see: ['Futures', 'Volatility', 'VIX'],
   },
   {
@@ -265,14 +265,14 @@ export const TERMS = [
   },
   {
     term: 'Short interest',
-    aliases: ['days to cover', 'short ratio', 'short float', 'shorts'],
+    aliases: ['days to cover', 'short ratio', 'shorts'],
     text: 'Short interest is the number of a company\'s shares that have been [sold short|short selling] and not yet returned. In the US it is reported twice a month. Days to cover is short interest divided by average daily [volume].',
     see: ['Short selling', 'Volume'],
   },
   {
     term: 'Short selling',
     aliases: ['short', 'shorting', 'short sale', 'short seller', 'short sellers', 'sold short', 'going short'],
-    text: 'Short selling means borrowing shares, trading them away now, and later getting the same number back to return to the lender. It makes money if the price falls in between, and loses money if the price rises.',
+    text: 'Short selling means borrowing shares, selling them now, and later buying the same number back to return to the lender. It makes money if the price falls in between, and loses money if it rises, with no set limit on the loss.',
     see: ['Short interest', 'Stock'],
   },
   {
@@ -335,7 +335,7 @@ export const TERMS = [
   {
     term: 'Yield',
     aliases: ['yields', 'bond yield', 'bond yields'],
-    text: 'A yield is the yearly income from a [bond] or other investment, shown as a percent of its price. For a bond, when its price goes up its yield goes down, and the other way round.',
+    text: 'A yield is the yearly return on a [bond] or other investment, as a percent of its price. A bond\'s quoted yield also counts any gain or loss by [maturity|bond]. When a bond\'s price rises, its yield falls.',
     example: 'A $100 bond paying $5 a year yields 5%.',
     see: ['Bond', 'Dividend yield', 'Basis point'],
   },

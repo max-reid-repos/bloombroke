@@ -34,7 +34,7 @@ import { LISTED, ALIASES, FUNCTION_BAR, TICKER_FUNCTIONS, findCommand } from './
 import { tapeOn, setTapeOn, mountTape, tapeItems } from './tape.js';
 import { compactEmbed } from './embed.js';
 import { parseAffordArgs } from './afford.js';
-import { resolveInput } from './resolve.js';
+import { resolveInput, whatisAsk } from './resolve.js';
 import { tickerForName, LISTED_TICKERS, SHADOWED_TICKERS } from './known-tickers.js';
 import { startAlerts } from './alerts.js'; // ALERTS: the watcher
 import './goal.js'; // GOALS: loads DataFast unless Global Privacy Control is on
@@ -782,6 +782,7 @@ export function resolvedNote(command, from) {
 // first use and fetched ahead once the page is idle. Also here-now.js, chat-badge.js and
 // trending.js come in after the first screen: none of them is needed to draw it.
 const CARDS = 'cards.js';
+const WHATIS_TERMS = 'whatis-terms.js'; // WHATIS: the definitions, loaded when "what is ..." is typed
 // The optional extras above (and the menu): a file that does not load never reloads the page.
 const OPTIONAL = { recover: false };
 
@@ -1476,6 +1477,19 @@ function boot() {
         if (signal.aborted) return;
         if (ok !== false && info?.grave && info.wins) { await showDidYouMean(view, typed, {}, ticker, signal, { quote: true }); return; }
         if (ok !== false) { render(raw, { fromUrl, checked: true }); return; }
+      }
+      // "what is P/E", "define yield": WHATIS, when its terms know the words (and they are
+      // not a command or a known ticker, resolve.js whatisAsk).
+      const ask = ticker ? null : whatisAsk(raw);
+      if (ask) {
+        const terms = await loadModule(WHATIS_TERMS).catch(() => null);
+        if (signal.aborted) return;
+        if (terms?.findTerm(ask)) {
+          const c = `WHATIS ${tokenize(ask).join(' ')}`;
+          replaceUrl(c);
+          render(c, { fromUrl, checked: true, note: resolvedNote(c, typed) });
+          return;
+        }
       }
       let searchDown = false;
       const found = await resolveInput(raw, {

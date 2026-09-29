@@ -15,6 +15,9 @@ import { TERMS, findTerm, suggestTerms, plainText, LINK_RE } from '../whatis-ter
 export const RULE = 'Definitions only, not advice.';
 export const STATUS = 'WHATIS: DEFINITIONS ONLY, NOT ADVICE';
 export const FEEDBACK_PREFILL = (word) => `Please add to WHATIS: ${word}`;
+// A word with no card is said back at most this long, cut with an ellipsis.
+export const MAX_ECHO = 40;
+export const echo = (word) => { const w = String(word ?? '').trim(); return w.length > MAX_ECHO ? `${w.slice(0, MAX_ECHO - 1).trimEnd()}\u2026` : w; };
 
 // The command that opens a term.
 export const termCmd = (t) => `WHATIS ${t.term}`;
@@ -60,10 +63,10 @@ export function unknownHtml(typed) {
   const word = String(typed).trim();
   const { close, terms: near } = suggestTerms(word, 3);
   const act = near.map((t, i) => cardButton({ label: t.term, cmd: termCmd(t), primary: i === 0, attrs: `data-key="${i + 1}"` })).join('');
-  const tell = `<a class="card-link" href="${esc(q('FEEDBACK'))}" data-cmd="FEEDBACK" data-prefill="${esc(FEEDBACK_PREFILL(word))}">TELL US</a>`;
+  const tell = `<a class="card-link" href="${esc(q('FEEDBACK'))}" data-cmd="FEEDBACK" data-prefill="${esc(FEEDBACK_PREFILL(word.slice(0, 100)))}">TELL US</a>`;
   return cardPage({
     cls: 'wi-card wi-none', label: 'WHATIS: no definition',
-    kicker: 'WHATIS', hero: `No definition for ${word} yet.`, heroSize: 24,
+    kicker: 'WHATIS', hero: `No definition for ${echo(word)} yet.`, heroSize: 24,
     sub: close ? 'The closest terms:' : 'Some common terms:',
     act: raw(act),
     links: [tell, ALL_TERMS],
@@ -85,7 +88,7 @@ export function whatisView(words) {
   if (!typed) return { html: listHtml(), status: `${TERMS.length} TERMS. ${STATUS.replace('WHATIS: ', '')}`, found: null };
   const t = findTerm(typed);
   if (t) return { html: termHtml(t), status: STATUS, found: t };
-  return { html: unknownHtml(typed), status: `NO DEFINITION FOR ${typed.toUpperCase()} YET`, found: null };
+  return { html: unknownHtml(typed), status: `NO DEFINITION FOR ${echo(typed).toUpperCase()} YET`, found: null };
 }
 
 export function render(el, cmd, ctx) {

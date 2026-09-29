@@ -336,3 +336,18 @@ function didYouMean({ from = '', parts, phrases, symbols, unsure, fnNames, stock
   unsure.forEach((u) => u.candidates.forEach(addSym));
   return { commands, symbols: symRows };
 }
+
+// "what is P/E", "define yield", "explain bid ask": the words asked about (the P/E), or
+// null. Null too when the words are a command, a listed ticker, an instrument or a
+// company name, so "what is the VIX" and "what is AAPL" still open the quote. app.js
+// then opens WHATIS <words> only if whatis-terms.js knows them (loaded then, not at startup).
+const ASK_RE = /^(?:what\s+is|what\s+are|what's|whats|define|explain|meaning\s+of)\s+(.+?)[?!.]*$/i;
+export function whatisAsk(raw) {
+  const m = ASK_RE.exec(String(raw ?? '').trim().replace(/\s+/g, ' '));
+  if (!m) return null;
+  const words = m[1].replace(/^(?:an?|the)\s+/i, '').trim();
+  if (!words || words.length > 60) return null;
+  const up = words.toUpperCase().replace(/^\$/, '');
+  if (words.startsWith('$') || findCommand(up) || LISTED_TICKERS.has(up) || resolveInstrument(up)?.id === up || tickerForName(words)) return null;
+  return words;
+}
