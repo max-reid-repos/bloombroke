@@ -129,6 +129,8 @@
 .card-facts.n4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .card-fact { display: flex; flex-direction: column-reverse; gap: 4px; min-width: 0; }
 .card-fact dd { margin: 0; font-size: 24px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-fact dd.up { color: var(--up); }
+.card-fact dd.down { color: var(--down); }
 .card-media { display: flex; flex-direction: column; align-items: center; width: 100%; }
 /* Art: a small drawing above the head (SPONSOR's terminal), the column's width at most. */
 .card-art { display: flex; justify-content: center; width: 100%; }

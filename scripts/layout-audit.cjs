@@ -141,7 +141,8 @@ function inPage(scale, firstView, sel) {
   const ctx = document.createElement('canvas').getContext('2d');
   for (const el of card.querySelectorAll('*')) {
     const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
-    if (!own || !shown(el) || el.closest('[role="img"], [aria-hidden="true"]')) continue;
+    // The moving ticker tape (TAPE's media) keeps the look it has above the status line.
+    if (!own || !shown(el) || el.closest('[role="img"], [aria-hidden="true"], .tape-track')) continue;
     const s = getComputedStyle(el);
     const px = parseFloat(s.fontSize);
     if (!scale.includes(px)) out.font.push(`${el.tagName.toLowerCase()}.${el.className || ''} ${px}px`);
