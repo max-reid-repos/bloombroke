@@ -417,7 +417,12 @@ function renderPicker(el, ctx, cat, picks, startShelf = SHELVES[0], mine = []) {
     current = Math.max(0, Math.min(cards.length - 1, current));
     cards.forEach((c, i) => { c.tabIndex = i === current ? 0 : -1; });
     const row = shelfEl.querySelector('.wi-chips-row');
-    if (row && phone.matches) stopFade = edgeFade(row);
+    if (row && phone.matches) {
+      // A phone's chips scroll sideways: the first one in the basket starts in view.
+      stopFade = edgeFade(row);
+      const on = row.querySelector('.wi-chip[tabindex="0"]');
+      if (on) row.scrollLeft += on.getBoundingClientRect().left - row.getBoundingClientRect().left - (row.clientWidth - on.offsetWidth) / 2;
+    }
   }
 
   function focusCard(i, { scroll = true } = {}) {
