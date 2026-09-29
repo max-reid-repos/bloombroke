@@ -6,7 +6,7 @@
 import { esc, q, panel, metaNote, LOADING } from './markets.js';
 import { guessEmbedSnippet } from '../embed-snippet.js'; // EMBED: the iframe line
 import { goal } from '../goal.js'; // GOALS
-import { loadModule } from '../lazy.js'; // POST TO CHAT: pro.js by name (the page's own copy, not in the embed)
+import { loadModule, loadCss, stylesOf } from '../lazy.js'; // POST TO CHAT: pro.js by name (the page's own copy, not in the embed); HOW TO PLAY: howto.js
 
 export const STORE_KEY = 'bb.guess';
 export const TRIES = 6;
@@ -213,17 +213,19 @@ export function legendHtml() {
   return `<p class="gs-legend">${esc(LEGEND)}</p>`;
 }
 
+// One hint cell: the guess's value, the arrow to the answer, the words for screen readers.
+export function cellHtml(c) {
+  const arrow = dirArrow(c.dir);
+  const say = sayDir(c.dir);
+  return `<td class="gs-cell g-${esc(c.grade)}"${say ? ` title="${esc(say)}"` : ''}><span class="gs-v">${esc(c.value)}</span>${arrow ? `<span class="gs-d" aria-hidden="true">${arrow}</span>` : ''}${say ? `<span class="offscreen">${esc(say)}</span>` : ''}</td>`;
+}
+
 // The guess rows, then the tries still open as blank rows.
 export function rowsHtml(rows, tries = TRIES) {
-  const cell = (c) => {
-    const arrow = dirArrow(c.dir);
-    const say = sayDir(c.dir);
-    return `<td class="gs-cell g-${esc(c.grade)}"${say ? ` title="${esc(say)}"` : ''}><span class="gs-v">${esc(c.value)}</span>${arrow ? `<span class="gs-d" aria-hidden="true">${arrow}</span>` : ''}${say ? `<span class="offscreen">${esc(say)}</span>` : ''}</td>`;
-  };
   const done = rows.map((r, i) => `<tr class="gs-row${r.solved ? ' is-solved' : ''}">
       <td class="num gs-i">${i + 1}</td>
       <th scope="row" class="gs-g"><span class="gs-tk">${esc(r.ticker)}</span><span class="gs-nm">${esc(r.name)}</span></th>
-      ${(r.cells || []).map(cell).join('')}
+      ${(r.cells || []).map(cellHtml).join('')}
     </tr>`);
   const open = [];
   for (let i = rows.length; i < tries; i += 1) open.push(`<tr class="gs-row is-open"><td class="num gs-i">${i + 1}</td><th scope="row" class="gs-g">--</th>${HEADS.map(() => '<td class="gs-cell g-open"></td>').join('')}</tr>`);
@@ -231,6 +233,52 @@ export function rowsHtml(rows, tries = TRIES) {
     <thead><tr><th scope="col" class="num gs-i">#</th><th scope="col" class="gs-g">Guess</th>${HEADS.map((h) => `<th scope="col">${h}</th>`).join('')}</tr></thead>
     <tbody>${done.join('')}${open.join('')}</tbody>
   </table>`;
+}
+
+// ---- HOW TO PLAY (public/howto.js): the pop-up, opened once by itself, then by the
+// link under the table or ?. In a DESK panel the legend line stays instead.
+export const HOWTO_KEY = 'bb.guess.howto';
+// The example: guess KO (Coca-Cola) when the answer is MDLZ (Mondelez), graded as
+// data/guess.js grades it (a test checks): the same sector (green); a 1Y move 5 to 20
+// points under the answer's (blue, up); over twice the answer's size (dark, down); a first
+// letter 2 before the answer's (blue, up: later in A to Z).
+export const HOWTO_EXAMPLE = {
+  ticker: 'KO',
+  name: 'Coca-Cola',
+  cells: [
+    { key: 'SECTOR', value: 'STAPLES', dir: 'SAME', grade: 'hit' },
+    { key: '1Y MOVE', value: '+6.2%', dir: 'ANSWER HIGHER', grade: 'near' },
+    { key: 'SIZE', value: '$300B', dir: 'ANSWER SMALLER', grade: 'miss' },
+    { key: 'LETTER', value: 'K', dir: 'ANSWER AFTER', grade: 'near' },
+  ],
+};
+export const HOWTO = {
+  title: 'How to play',
+  goal: `Find the mystery stock in ${TRIES} guesses.`,
+  lines: [
+    'Chart: 1 year of its price, in %.',
+    '4 clues per guess: sector, 1-year move, size, first letter.',
+    'Arrows point to the answer.',
+  ],
+  legend: [
+    { cls: 'gs-cell g-hit', say: 'Green', label: 'right' },
+    { cls: 'gs-cell g-near', say: 'Blue', label: 'close' },
+    { cls: 'gs-cell g-miss', say: 'Dark', label: 'wrong' },
+  ],
+  foot: 'A new stock every day at midnight New York time.',
+  button: 'PLAY',
+};
+// The example row: the real cells of the table, under no header.
+export function howtoExampleHtml(ex = HOWTO_EXAMPLE) {
+  return `<table class="gs-table gs-howto-ex" aria-label="An example guess: ${esc(ex.ticker)}, ${esc(ex.name)}"><tbody><tr class="gs-row">
+      <th scope="row" class="gs-g"><span class="gs-tk">${esc(ex.ticker)}</span></th>
+      ${ex.cells.map(cellHtml).join('')}
+    </tr></tbody></table>`;
+}
+export const howtoSlots = () => ({ ...HOWTO, example: howtoExampleHtml() });
+// Under the table, where the legend line was. The ? beside it is the key that opens it.
+export function howtoLinkHtml() {
+  return '<p class="gs-legend"><button type="button" class="card-link gs-howto" aria-haspopup="dialog" aria-keyshortcuts="?">How to play</button><span class="gs-key" aria-hidden="true">?</span></p>';
 }
 
 // GUESS LEAGUE: POST TO CHAT beside the share buttons, for Pro with at least one chat
@@ -275,6 +323,17 @@ export function render(el, cmd, ctx) {
   let matches = [];
   let resize = null;
   let chat = null; // POST TO CHAT: { pro, key, header, rooms } once looked up
+  // HOW TO PLAY: howto.js and its stylesheet, loaded with this screen (never in a DESK
+  // panel). It opens by itself on a first visit only: a player with a result or a saved
+  // game has been here before.
+  const howto = ctx.embed ? Promise.resolve(null) : Promise.all([loadModule('howto.js', { recover: false }), ...stylesOf('howto.js').map(loadCss)])
+    .then(([m]) => {
+      if (ctx.signal.aborted) return null;
+      const played = Object.keys(state.results).length > 0 || Boolean(state.game?.rows?.length);
+      const h = m.mountHowto({ key: HOWTO_KEY, slots: howtoSlots(), auto: !played, fields: '.gs-in' });
+      ctx.onCleanup?.(() => h.destroy());
+      return h;
+    }, () => null);
 
   const save = () => ctx.store.set(STORE_KEY, { results: state.results, game });
   const isDone = () => game.rows.some((r) => r.solved) || game.rows.length >= TRIES;
@@ -320,7 +379,7 @@ export function render(el, cmd, ctx) {
   function paint() {
     const done = isDone();
     left.textContent = done ? '' : `GUESS ${game.rows.length + 1} OF ${TRIES}`;
-    playBody.innerHTML = `${done ? '' : formHtml()}${rowsHtml(game.rows)}${legendHtml()}${done ? endHtml() : ''}`;
+    playBody.innerHTML = `${done ? '' : formHtml()}${rowsHtml(game.rows)}${ctx.embed ? legendHtml() : howtoLinkHtml()}${done ? endHtml() : ''}`;
     if (!done && !coarse) playBody.querySelector('.gs-in')?.focus();
   }
 
@@ -453,6 +512,7 @@ export function render(el, cmd, ctx) {
   playBody.addEventListener('click', async (e) => {
     const opt = e.target.closest('[data-pick]');
     if (opt) { submit(opt.dataset.pick); return; }
+    if (e.target.closest('.gs-howto')) { howto.then((h) => h?.open()); return; }
     if (e.target.closest('.gs-x')) goal('guess_shared', { via: 'x' }, { once: game.n });
     // POST TO CHAT: pick a chat (or ALL), then it posts.
     const toChat = e.target.closest('.gs-chat');
