@@ -7,3 +7,6 @@
 ecb3a00eb3791ebb14afede399807c2b4df49db5:test/bbrk.test.js:generic-api-key:179
 # Fake licence key used in the PRO v3 test (test/pro-v3.test.js), not a secret.
 0b58d7bc77676fa1aaa41ca0df679d2e822752d7:test/pro-v3.test.js:generic-api-key:22
+013177a4d310bc7b8e9943a1547c17f5a1ae688c:test/chat-drive.test.js:generic-api-key:464
+cfd7927aa39fcee210f805cceb31b9b4a97276ab:test/layout-rules.test.js:generic-api-key:16
+732573da8dd4a3a16bbb480c3c36412f65b0ac9e:test/chat-guess.test.js:generic-api-key:19
