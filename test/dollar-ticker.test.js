@@ -39,8 +39,9 @@ test('$: every shadowed ticker opens the stock with $, and today\'s screen witho
     }
     assert.equal(stockId(t), `$${t}`);
     assert.equal(tickerToCheck(parseCommand(`$${t}`)), `$${t}`, 'a $ stock is checked for a quote first');
-    // DESK: no hint (it landed in the desk's tool bar as a panel's "Stock: $DESK").
-    assert.equal(stockHintFor(t, plain), t === 'DESK' ? null : `$${t}`, `${t} shows the hint`);
+    // The hint only where the word opens a price (GOLD: spot gold); a word that opens a
+    // screen of the site (HELP, M, DESK, CHAT, IPOS, LOAN, GIFT) means that screen.
+    assert.equal(stockHintFor(t, plain), TODAY[t][0] === 'QUOTE' ? `$${t}` : null, `${t}: the hint only on a price`);
     assert.equal(stockHintFor(`$${t}`, parseCommand(`$${t}`)), null, 'no hint on the stock itself');
     // The server asks the source for the plain symbol, never the instrument.
     assert.equal(normalizeTicker(`$${t}`), `$${t}`);
@@ -51,6 +52,16 @@ test('$: every shadowed ticker opens the stock with $, and today\'s screen witho
   assert.equal(stockHintFor('HELP SHORTS', parseCommand('HELP SHORTS')), null, 'the hint is for the word alone');
   assert.equal(stockHintFor('AAPL', parseCommand('AAPL')), null);
   assert.equal(stockHintFor('MARKETS', parseCommand('MARKETS')), null);
+});
+
+test('no "Stock: $HELP": navigation and function words show no stock hint; $WORD still opens the stock', () => {
+  const NAV = ['HELP', 'HOME', 'DESK', 'MARKETS', 'NEWS', 'WATCH', 'MENU', 'PRO', 'ME', 'CHAT', 'GRID', 'WEIRD', 'GUESS', 'WHATIF', 'GRAVEYARD', 'FISHTANK', 'SPONSOR', 'BBRK', 'M', 'H', 'W', 'IPOS', 'LOAN', 'GIFT'];
+  for (const w of NAV) {
+    assert.equal(stockHintFor(w, parseCommand(w)), null, w);
+    if (w.length <= 5) assert.equal(parseCommand(`$${w}`).name, 'QUOTE', `$${w} opens the stock`);
+  }
+  for (const w of ['GOLD', 'DOW', 'BTC', 'WTI']) assert.equal(stockHintFor(w, parseCommand(w)), `$${w}`, `${w}: a price, and a stock`);
+  assert.equal(stockHintFor('HELP SHORTS', parseCommand('HELP SHORTS')), null);
 });
 
 test('$DESK: DESK shows no "Stock: $DESK" in its bar, and $DESK still opens the stock', () => {

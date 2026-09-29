@@ -74,17 +74,14 @@ const shownInTest = (html) => html.replace('<span id="pro-test" hidden>', '<span
 const GRAVES = JSON.parse(readFileSync('data/graveyard.json', 'utf8'));
 const ART = (e) => ({ stone: '/img/graveyard/stone.webp', doodles: [e.ticker], sites: e.wayback ? [e.ticker] : [] });
 const graveOf = (t) => { const e = GRAVES.find((x) => x.ticker === t); return withArt(e, ART(e)); };
-const YARD = ['ATVI', 'WBVN', 'BBI', 'WFM'].map((t) => GRAVES.find((e) => e.ticker === t));
+// A dead ticker typed on its own keeps the NO SUCH card (its stone); every other word
+// gets the NOT A TICKER panel (test/not-found-panel.test.js).
 const noSuch = (typed, found, ticker, info, opts = {}) => {
   const word = ticker || typed;
-  const extra = noSuchExtra(word, info, { ticker, next: 1, yard: info.grave ? [] : YARD, ...opts });
-  return didYouMeanHtml(typed, found, ticker, { extra: { ...extra, kicker: extra.kicker || (ticker ? 'No such ticker. Yet.' : 'Unknown command') } });
+  const extra = noSuchExtra(word, info, opts);
+  return didYouMeanHtml(typed, found, ticker, { extra: { ...extra, kicker: extra.kicker || 'Not found' } });
 };
-const GUESSES = { commands: [{ cmd: 'EGGPRICE', summary: 'Average price of a dozen eggs in the US' }, { cmd: 'SPONSOR', summary: 'Sponsors: lines that rotate in the status bar' }], symbols: [{ cmd: 'BAR', name: 'Barrick' }] };
 export const NOSUCH = [
-  ['NO SUCH, a word IPO IT can list', noSuch('$QXZVW', {}, 'QXZVW', { grave: null, ipo: true })],
-  ['NO SUCH, a word it cannot', noSuch('ZORBLAT', {}, null, { grave: null, ipo: false })],
-  ['NO SUCH, an unknown command with guesses', noSuch('FOO BAR BAZ', GUESSES, null, { grave: null, ipo: false })],
   ['NO SUCH, a dead ticker (LEH, a quote elsewhere)', noSuch('LEH', {}, 'LEH', { grave: graveOf('LEH'), ipo: false }, { quote: true })],
   ['GRAVEYARD LEH', stonePageHtml(graveOf('LEH'), 12)],
   ['GRAVEYARD GM (a zombie)', stonePageHtml(graveOf('GM'), 0)],
@@ -117,9 +114,10 @@ export const CARDS_B = [
   ['TAPE, Pro, a note', tapeHtml({ on: true, isPro: true, custom: ['AAPL', 'MSFT', 'GOLD'], note: 'No ticker called XYZQ.', kind: 'warn' }).replace(TAPE_LIST, ''), 20],
 ];
 
-// ---- WHATIF results: a split card page (kit.js cardPage split), 20 words ------------------
-// Fixed prices, so nothing touches the network. The list of things (two or more) is the
-// media: a list, not words (like TAPE's), so it is left out of the count.
+// ---- WHATIF results: a split card page (kit.js cardPage split), 12 words ------------------
+// Fixed prices, so nothing touches the network. The certificate says every amount (it is a
+// picture, role="img"); beside it only SHARE, the note, REPLAY and CHANGE PICKS. The list
+// of things is in + Details (WI_LIST: a list in view, only when there is no certificate).
 const WI_NOW = new Date('2026-09-27T12:00:00Z');
 const wiQuote = async () => ({ last: 100, asOf: '2026-09-25T20:00:00Z' });
 export async function whatifPage(tokens) {
@@ -128,12 +126,12 @@ export async function whatifPage(tokens) {
   d.cert = certModel(d, WHATIF_CATALOG, command);
   return whatifHtml(d, { key: command, links: whatifLinks(d.cert, 'https://bloombroke.com'), video: whatifVideo(d, 'webcodecs') });
 }
-export const WHATIF_WORDS = 24;
+export const WHATIF_WORDS = 12;
 const WI_LIST = /<div class="card-media"><div class="wi-receipt">[\s\S]*?<\/table>\s*<\/div><\/div>/;
 export const WHATIF = [
   ['WHATIF IPHONE6', await whatifPage(['IPHONE6'])],
   ['WHATIF BEER:10Y (a VICES habit)', await whatifPage(['BEER:10Y'])],
-  ['WHATIF IPHONE6 RTX3080 LATTE:3Y (the list is the media)', (await whatifPage(['IPHONE6', 'RTX3080', 'LATTE:3Y'])).replace(WI_LIST, '')],
+  ['WHATIF IPHONE6 RTX3080 LATTE:3Y (the list in + Details)', (await whatifPage(['IPHONE6', 'RTX3080', 'LATTE:3Y'])).replace(WI_LIST, '')],
 ];
 
 // [page, html, budget]: the words above + Details, numbers, keys and codes not counted.
@@ -168,8 +166,8 @@ export const PAGES = [
   ['ME, Pro ended', meHtml({ key: KEY, st: { ...ST, status: 'canceled' }, has: all }), 20],
   ...NOSUCH.map(([name, html]) => [name, html, 30]),
   ...CARDS_B.map(([name, html, budget]) => [name, html, budget]),
-  // WHATIF: 20, plus the four words of the legal note that stays in view ("Past returns do
-  // not predict future ones": the reviewer's call, Sep 29, conservative on the caution).
+  // WHATIF: 12. No sentence (the certificate says it): SHARE (1), the legal note that stays
+  // in view (8: "Hindsight. Past returns do not predict future ones."), REPLAY CHANGE PICKS (3).
   ...WHATIF.map(([name, html]) => [name, html, WHATIF_WORDS]),
 ];
 
@@ -281,7 +279,7 @@ function cardCss() {
     ['style.css FEEDBACK', style.slice(style.indexOf('/* FEEDBACK: a card page'), style.indexOf('.fb-hp'))],
     ['me.css', readFileSync('public/screens/me.css', 'utf8')],
     ['graveyard.css stone card', (() => { const g = readFileSync('public/screens/graveyard.css', 'utf8'); return g.slice(g.indexOf('/* ---- One stone as a card page')); })()],
-    ['nosuch.css NO SUCH card', (() => { const n = readFileSync('public/screens/nosuch.css', 'utf8'); return n.slice(n.indexOf('/* The NO SUCH card')); })()],
+    ['nosuch.css NOT A TICKER panel', (() => { const n = readFileSync('public/screens/nosuch.css', 'utf8'); return n.slice(n.indexOf('/* NOT A TICKER')); })()],
     ['whatif.css result card', (() => { const w = readFileSync('public/screens/whatif.css', 'utf8'); return w.slice(w.indexOf('/* ---- WHATIF result: a split card page'), w.indexOf('/* Title strip parts')); })()],
     // WELCOME's colours keep their fallbacks (it can paint before style.css): sizes only.
     ['welcome.css', readFileSync('public/screens/welcome.css', 'utf8'), { colours: false }],
@@ -402,18 +400,7 @@ test('NO SUCH TICKER and a GRAVEYARD stone: card pages, 30 words; every stone in
     const words = cardWords(html.replace(/<p class="gv-story">[^<]*<\/p>/, ''));
     assert.ok(words.length <= 30, `${name}: ${words.join(' ')}`);
   }
-  const [ipo, word, guesses, grave, leh] = NOSUCH.map(([, html]) => html);
-  // IPO IT: the kicker, the ticker, "Be the first.", IPO IT, the certificate and the row.
-  assert.match(ipo, /card-kicker">No such ticker\. Yet\.<\/p><h2 class="card-hero card-hero-60 num">\$QXZVW<\/h2><p class="card-sub">Nobody has listed it\. Be the first\.<\/p>/);
-  assert.match(ipo, /<div class="card-act"><button type="button" class="btn card-btn btn-solid ns-ipo-btn" data-cmd="IPO IT QXZVW" data-ipo data-key="1">IPO IT<\/button>/);
-  assert.match(ipo, /<div class="card-media"><div class="ns-media"><a class="ns-mini"[\s\S]*class="ns-yard"/, 'the certificate and THE GRAVEYARD row are the media');
-  assert.match(word, /card-kicker">Unknown command<\/p>[\s\S]*data-cmd="HELP">HELP<\/a>/, 'no guess: HELP is the action');
-  assert.match(word, /data-prefill="Please add: ZORBLAT">Tell us\.<\/a>/);
-  // Guesses: the first is the action (key 1), the others links (keys 2, 3), what each is in + Details.
-  assert.match(guesses, /btn-solid" href="\?c=EGGPRICE" data-cmd="EGGPRICE" data-key="1"/);
-  assert.match(guesses, /class="card-link" href="\?c=SPONSOR" data-cmd="SPONSOR" data-key="2"/);
-  assert.match(guesses.split('<details')[1], /Average price of a dozen eggs/);
-  assert.ok(!cardWords(guesses).includes('Average'), 'the long words are in + Details (and the tooltip)');
+  const [grave, leh] = NOSUCH.map(([, html]) => html);
   // A dead ticker typed on its own: the stone card, "Not anymore.", the name as the hero,
   // F PAY RESPECTS, the quote.
   assert.match(grave, new RegExp(`card-kicker">${TITLE_GONE.replace(/\./g, '\\.')}</p><h2 class="card-hero card-hero-44 num">Lehman Brothers</h2>`));
@@ -621,7 +608,7 @@ test('split card: the art beside the other slots from 1100 px, one column below;
   assert.match(kit, /@media \(max-width: 1099px\), \(max-height: 800px\) \{\n  \.card, \.card-col \{ gap: 24px; \}/);
 });
 
-test('WHATIF: every result keeps to its budget (24 words), the certificate is the picture, one SHARE', async () => {
+test('WHATIF: every result keeps to its budget (12 words), the certificate is the picture, one SHARE', async () => {
   for (const [name, html] of WHATIF) {
     assert.match(html, /^<section class="card card-split wi-result"/, `${name}: a split card page`);
     assert.match(html, /<div class="card-art"><figure class="wi-cert[^"]*" role="img" aria-label="A certificate: /, `${name}: the certificate is the art, its words the picture's`);

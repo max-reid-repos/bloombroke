@@ -15,7 +15,7 @@ import {
 } from '../public/screens/news-page.js';
 import { mainHtml } from '../public/screens/pro.js';
 import { feedbackHtml } from '../public/screens/feedback.js';
-import { ownFormHtml } from '../public/screens/whatif.js';
+import { ownInputHtml } from '../public/screens/whatif.js';
 
 const src = (f) => readFileSync(f, 'utf8');
 const STYLE = src('public/style.css');
@@ -266,7 +266,7 @@ test('rule C: the one action on each page carries .btn-solid (white), one at mos
   one(mainHtml({ next: 4, has: () => true }), 'PRO SUBSCRIBE');
   one(feedbackHtml(), 'FEEDBACK SEND');
   assert.match(src('public/screens/whatif.js'), /<button type="button" class="wi-run btn-solid" id="wi-run">RUN<\/button>/);
-  assert.doesNotMatch(ownFormHtml(), /btn-solid/, 'WHATIF\'s ADD is a key, RUN is the action');
+  assert.doesNotMatch(ownInputHtml(), /btn-solid/, 'WHATIF\'s YOUR OWN line runs on Enter, RUN is the action');
   assert.match(src('public/screens/guess.js'), /class="chip gs-go btn-solid">GUESS</);
   assert.match(src('public/howto.js'), /class="btn card-btn btn-solid howto-go"/, 'PLAY');
   assert.match(src('public/consent.js'), /class="consent-accept btn-solid">START</);

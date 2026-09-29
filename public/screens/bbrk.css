@@ -10,10 +10,10 @@
 .bb-spark-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
 .bb-spark-dot { fill: none; stroke: var(--accent); stroke-width: 8; stroke-linecap: round; }
 
-/* ---- Six facts in one row once the column is its full 880 px --------------------- */
+/* ---- Five facts in one row once the column is its full 880 px -------------------- */
 .bb-card { container-type: inline-size; }
 @container (min-width: 880px) {
-  .bb-card .card-facts { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .bb-card .card-facts { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
 
 /* ---- The globe: --globe-w, or the room left in the first view (kit.js fitToView, which
