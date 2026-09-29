@@ -22,8 +22,9 @@
 // shows every tile's x (remove), and a click on a tile swaps its word. A click or Enter
 // opens a tile's own screen; arrows move between tiles; Alt+Arrows move the tile itself;
 // Delete removes one; / swaps its word; C copies the board's link. On a phone the tiles
-// are two to a row, the long name left out. In a DESK panel (embed) the board alone fills
-// the panel: no strip, no + tile.
+// are two to a row, the long name left out. "Prices may be delayed." is said once, in the
+// panel's title strip. In a DESK panel (embed) the board alone fills the panel: no strip,
+// no + tile, no note.
 // Free for everyone. The link is the save: the whole board is in the URL. This browser
 // keeps the last board (LAST_KEY); with Pro it syncs like DESK layouts (pro.js SYNC_DOCS).
 
@@ -532,7 +533,7 @@ export function render(el, cmd, ctx) {
   ctx.onCleanup(() => { for (const id of timers) clearTimeout(id); });
 
   el.innerHTML = `<section class="panel panel-solo gr-panel${ctx.embed ? ' is-embed' : ''}">
-    <header class="panel-head"><h2 class="panel-label">1) GRID</h2><span class="panel-meta gr-meta">${esc(NOTE_LINE)}</span></header>
+    <header class="panel-head"><h2 class="panel-label">1) GRID</h2><span class="panel-meta gr-meta">${ctx.embed ? '' : esc(NOTE_LINE)}</span></header>
     <div class="panel-body flush gr-body">
       <div class="gr-bar"><div class="gr-chips"></div><span class="gr-hint">${esc(EDIT_HINT)}</span><div class="gr-share"></div></div>
       <div class="gr-scene"><div class="gr-board"></div></div>
