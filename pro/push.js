@@ -277,7 +277,9 @@ export function createPushStore(db, { now = () => Date.now() } = {}) {
           let seen = row ? row.seen : 0;
           if (!row && a.state === 'triggered') { fired = t; seen = 1; }
           else if (row && a.state === 'triggered') {
-            if (fired === null) { fired = t; ping.push({ row: { ...row, dp: a.dp }, value: a.value }); }
+            // Pinged only when the tab stood down for it (armed); an armed-0 row the tab
+            // notified itself is just marked fired.
+            if (fired === null) { fired = t; if (row.armed === 1) ping.push({ row: { ...row, dp: a.dp }, value: a.value }); }
             seen = 1;
           }
           else if (row && fired !== null && seen) { fired = null; seen = 0; armed = a.rearmed ? 0 : 1; }
@@ -341,6 +343,8 @@ export function pushLimits(now = () => Date.now()) {
     test: createLimiter({ max: 3, windowMs: 60 * MIN, now }),
     // resubscribe, per IP (it has no key).
     resub: createLimiter({ max: 20, windowMs: 60 * MIN, now }),
+    // Pings sent from PUT /alerts (the tab saw the crossing first), per device.
+    routePing: createLimiter({ max: 20, windowMs: 60 * MIN, now }),
   };
 }
 
@@ -491,7 +495,10 @@ export function mountPush(app, {
     if (!device) return res.json(off);
     const out = push.replaceAlerts(lic.id, device.id, list);
     // The tab saw a crossing first and stood down: the one ping goes now, to this device.
-    for (const p of out.ping) sender.enqueue(device, alertPayload(p.row, p.value), { ttl: ALERT_TTL, urgency: 'high', topic: `a${p.row.id}` });
+    // At most 20 an hour per device, whatever the tab sends.
+    for (const p of out.ping) {
+      if (limits.routePing.hit(`sub:${device.id}`).ok) sender.enqueue(device, alertPayload(p.row, p.value), { ttl: ALERT_TTL, urgency: 'high', topic: `a${p.row.id}` });
+    }
     res.json({ ok: true, count: out.count, on: true, armed: out.armed, fired: out.fired });
   });
 

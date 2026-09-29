@@ -407,6 +407,35 @@ test('the open tab saw the crossing first (its notification stood down): the one
   } finally { await s.close(); }
 });
 
+test('pings sent from the sync: 20 an hour per device, however often the tab flips TRIGGERED and WAITING; an armed-0 row is only marked', async () => {
+  const s = await setup();
+  try {
+    const a = s.person();
+    const mine = await s.pinged(a, { alerts: true });
+    const list = (state) => Array.from({ length: 20 }, (_, i) => ({ id: `f${i}`, sym: 'AAPL', op: '>', level: 100 + i, state }));
+    await a.alerts(list('waiting'));
+    for (let i = 0; i < 10; i++) {
+      await a.alerts(list('triggered'));
+      await a.alerts(list('waiting')); // seen, then WAITING: a re-arm, armed again
+    }
+    await s.push.sender.drain();
+    assert.equal(s.fake.sent.filter((m) => m.endpoint === mine).length, 20, '200 flips, 20 pings');
+    s.advance(60 * 60 * 1000 + 1);
+    await a.alerts(list('triggered'));
+    await s.push.sender.drain();
+    assert.equal(s.fake.sent.length, 40, 'the next hour: 20 more at most');
+    // A row waiting for a fresh crossing (armed 0: the tab did not stand down for it)
+    // that the tab reports TRIGGERED: marked fired, no ping (the tab notified already).
+    const x = { id: 'z1', sym: 'MSFT', op: '<', level: 1, state: 'waiting', rearmed: true };
+    s.advance(60 * 60 * 1000 + 1);
+    await a.alerts([x]);
+    const r = await a.alerts([{ ...x, state: 'triggered', rearmed: false }]);
+    assert.deepEqual(r.body.fired, ['z1']);
+    await s.push.sender.drain();
+    assert.equal(s.fake.sent.length, 40, 'no ping for an armed-0 row');
+  } finally { await s.close(); }
+});
+
 test('alerts are per device: two devices keep their own lists; one sends [] and the other keeps its alerts; the owner alone is pinged', async () => {
   const s = await setup({ quotes: { AAPL: { last: 351, stale: false }, MSFT: { last: 100, stale: false } } });
   try {

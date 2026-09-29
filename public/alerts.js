@@ -28,8 +28,7 @@ const OP_WORDS = { ABOVE: '>', OVER: '>', BELOW: '<', UNDER: '<' };
 const MINUS = '−';
 const MAX_TIME = 8.64e15; // the largest valid Date
 
-// WEIRD gauges that have one clear number (data/weird/<id>.js gives value and unit).
-// dp: the decimals the headline shows.
+// WEIRD gauges with one clear number (data/weird/<id>.js); dp: the headline's decimals.
 export const ALERT_GAUGES = {
   CANAL: { id: 'canal', unit: 'ships/day', dp: 0, name: 'Hormuz ships a day, 7-day average' },
   WAFFLE: { id: 'waffle', unit: 'stores', dp: 0, name: 'Waffle Houses inside storm winds' },
@@ -165,8 +164,7 @@ export function evaluate(list, values, now = Date.now()) {
   return { list: out, fired };
 }
 
-// Back to WAITING. When the last value still meets the condition, it waits for a fresh
-// crossing (rearmed) instead of firing again at once.
+// Back to WAITING; still past the level, it waits for a fresh crossing (rearmed).
 export function rearm(list, id) {
   return list.map((a) => {
     if (a.id !== id) return a;
@@ -340,8 +338,8 @@ export function startAlerts({ store, fetchJSON, status, run, statusline }) {
   const tab = newId();
   let busy = false;
   let flag = null;
-  // Pings on: sync once before the first check (what the server fired turns TRIGGERED).
-  const first = store.get(PUSHED, 0) && import('./push.js').then((m) => m.syncAlerts(loadAlerts(store), { force: true })).catch(() => {});
+  // Pings on: sync once (5 s at most) before the first check; server-fired turns TRIGGERED.
+  const first = store.get(PUSHED, 0) && Promise.race([import('./push.js').then((m) => m.syncAlerts(loadAlerts(store), { force: true })), new Promise((r) => setTimeout(r, 5e3).unref?.())]).catch(() => {});
 
   function readLease() { return store.get(LEASE_KEY, null); }
   function takeLease(now, force = false) {
