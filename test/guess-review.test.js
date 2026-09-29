@@ -141,6 +141,7 @@ test('GUESS reveal: a won game names the stock in the chart strip, from the gues
   await flush(12);
   assert.equal(s.meta(), 'SO · Southern Company · −12.3% in a year');
   assert.equal(s.el.querySelector('.gs-result').textContent, 'Got it in 3.', 'the result line stays');
+  assert.equal(s.el.querySelectorAll('.gs-row').length, 3, 'no blank rows for tries never used');
   assert.ok(s.el.querySelector('.gs-stats'), 'the stats stay');
   assert.equal(s.data.get(STORE_KEY).results[9].w, 1);
 });

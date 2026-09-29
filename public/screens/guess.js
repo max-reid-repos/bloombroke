@@ -413,7 +413,8 @@ export function render(el, cmd, ctx) {
   function paint() {
     const done = isDone();
     left.textContent = done ? '' : `GUESS ${game.rows.length + 1} OF ${TRIES}`;
-    playBody.innerHTML = `${done ? '' : formHtml()}${rowsHtml(game.rows)}${ctx.embed ? legendHtml() : howtoLinkHtml(!done)}${done ? endHtml() : ''}`;
+    // After the game, no blank rows for tries never used (a win in 3 leaves room for the chart).
+    playBody.innerHTML = `${done ? '' : formHtml()}${rowsHtml(game.rows, done ? game.rows.length : TRIES)}${ctx.embed ? legendHtml() : howtoLinkHtml(!done)}${done ? endHtml() : ''}`;
     // The game is over: the chart's strip names the stock.
     chartMeta.innerHTML = (done && revealHtml(answer, seriesMove(puzzle?.series))) || MYSTERY;
     if (!done && !coarse) playBody.querySelector('.gs-in')?.focus();
