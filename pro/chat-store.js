@@ -173,6 +173,7 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
   q.unname = db.prepare(`UPDATE chat_messages SET body = replace(replace(body, @label || ' ', @seat || ' '), @label || ',', @seat || ',')
     WHERE kind = 'sys' AND (instr(body, @label || ' ') > 0 OR instr(body, @label || ',') > 0)`);
   q.guessBy = db.prepare('SELECT room_id, n, day, tries, solved, points FROM chat_guess WHERE licence_id = ? ORDER BY created_at');
+  q.forgetOldName = db.prepare('UPDATE chat_profiles SET name = NULL WHERE licence_id = ?');
   q.orphanReleases = db.prepare('UPDATE name_releases SET licence_id = NULL WHERE licence_id = ?');
 
   const person = (licId) => {
@@ -417,6 +418,8 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
         let window = Number.isFinite(cur.name_window) ? cur.name_window : null;
         const name = 'username' in patch ? (patch.username || null) : next.username;
         if (name !== next.username) {
+          // The first username write retires the old display name (before migration 015).
+          if (cur.name !== null && cur.name !== undefined) q.forgetOldName.run(lic);
           if (window === null || t - window >= DAY_MS) { window = t; changes = 0; }
           if (changes >= MAX_NAME_CHANGES) throw new ChatError('name_limit', `A username can change ${MAX_NAME_CHANGES} times a day. Try again tomorrow.`, 429);
           if (name) {

@@ -117,7 +117,17 @@ export function checkText(raw, { hasCard = false } = {}) {
 // digits), and every command word of the terminal (a name must never look like a command).
 export const RESERVED = ['admin', 'support', 'bloombroke', 'staff', 'mod', 'pro', 'chat', 'seat', 'official', 'root', 'system', 'help', 'me'];
 const COMMAND_WORDS = new Set(REGISTRY.flatMap((c) => [c.name, ...(c.aliases || [])]).map((w) => String(w).toLowerCase()));
-export const STAFF_WORDS = /bloombroke|admin|support|staff|official|moderator/i;
+// Staff-like names: bloombroke anywhere; admin, support, staff, official and moderator as
+// a whole word of the name (Stafford, Staffan and Badminton are fine), and any word that
+// starts with admin.
+export const STAFF_WORDS = ['admin', 'support', 'staff', 'official', 'moderator'];
+// A name's words: split on _, digits and a lower-case letter followed by a capital
+// (SupportTeam: support, team; admin_tom: admin, tom), lower case.
+export const nameTokens = (name) => String(name).split(/[_\d]+|(?<=[a-z])(?=[A-Z])/).filter(Boolean).map((t) => t.toLowerCase());
+export function staffLike(name) {
+  if (/bloombroke/i.test(String(name))) return true;
+  return nameTokens(name).some((t) => STAFF_WORDS.includes(t) || t.startsWith('admin'));
+}
 export const NAME_TAKEN = 'That name is taken. Pick another.';
 export const MAX_NAME_CHANGES = 3; // a day
 export const RELEASE_MS = 30 * DAY_MS; // a name given up is locked this long
@@ -138,8 +148,8 @@ export function reservedName(name) {
   const low = String(name).toLowerCase();
   if (RESERVED.includes(low) || COMMAND_WORDS.has(low)) return true;
   if (/^bb\d/.test(low) || /^seat[\d_]*$/.test(low) || /^\d+$/.test(low)) return true;
-  // Staff-like words anywhere in a name: support_team, TheAdmin, BloombrokeHQ.
-  if (STAFF_WORDS.test(low)) return true;
+  // Staff-like words: support_team, TheAdmin, BloombrokeHQ (not Stafford or Badminton).
+  if (staffLike(name)) return true;
   return obscene(low);
 }
 

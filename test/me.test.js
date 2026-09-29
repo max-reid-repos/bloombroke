@@ -22,7 +22,7 @@ import { isDeletedLicence } from '../pro/store.js';
 import { EXPORT_MAX_MESSAGES } from '../pro/chat-store.js';
 import { meLimits, willRenew, RENEWING, DELETED } from '../pro/me-routes.js';
 import {
-  cleanUsername, cleanColor, cleanAvatar, reservedName, usernameOk, RESERVED, NAME_TAKEN, MAX_NAME_CHANGES, RELEASE_MS, DAY_MS, KEEP_MS,
+  cleanUsername, cleanColor, cleanAvatar, reservedName, nameTokens, usernameOk, RESERVED, NAME_TAKEN, MAX_NAME_CHANGES, RELEASE_MS, DAY_MS, KEEP_MS,
 } from '../pro/chat.js';
 import { parseCommand, linkChanges } from '../public/app.js';
 
@@ -117,9 +117,14 @@ test('username rules: reserved words, seats, command words and bad words are ref
   }
   for (const ok of ['Tom', 'Ann', 'bbq_king', 'Bobby', 'Cassandra', 'Scunthorpe', 'Dickens', 'Maxwell', 'Seattle', 'Seatbelt_Sam']) assert.equal(cleanUsername(ok), ok, ok);
   // Seat look-alikes: seat, seat and digits or _ only. Staff-like words anywhere in a name.
-  for (const bad of ['seat_1', 'Seat00042', 'SupportTeam', 'the_admin', 'StaffPick', 'Official_Tom', 'moderator1', 'BloombrokeHQ', 'xBLOOMBROKEx']) {
+  for (const bad of ['seat_1', 'Seat00042', 'SupportTeam', 'the_admin', 'admin_tom', 'Adminx', 'StaffPick', 'Official_Tom', 'OfficialMax', 'Moderator', 'moderator1', 'BloombrokeHQ', 'xBLOOMBROKEx']) {
     assert.throws(() => cleanUsername(bad), { code: 'bad_name' }, bad);
   }
+  // Staff words count as whole words only (bloombroke anywhere).
+  for (const ok of ['Stafford', 'Staffan', 'Badminton', 'Supporter', 'Officially']) assert.equal(cleanUsername(ok), ok, ok);
+  assert.deepEqual(nameTokens('SupportTeam'), ['support', 'team']);
+  assert.deepEqual(nameTokens('admin_tom'), ['admin', 'tom']);
+  assert.deepEqual(nameTokens('Tom2Lee_x'), ['tom', 'lee', 'x']);
 });
 
 test('colour 0 to 7 or null; avatar 16 hex characters or null', () => {
@@ -169,6 +174,18 @@ test('profile: Pro only, same origin only, a wrong key counts as a guess', async
     assert.equal((await s.req('GET', '/api/me')).status, 401);
     for (let i = 0; i < 20; i++) await s.req('GET', '/api/me', { key: 'BB-AAAA-BBBB-CCCC-DDDD' });
     assert.equal((await a.me()).status, 429, 'the shared wrong-key limit, per IP');
+  } finally { await s.close(); }
+});
+
+test('username: the first username write clears the old display name (before migration 015)', async () => {
+  const s = await setup();
+  try {
+    const a = s.person();
+    s.db.prepare('INSERT INTO chat_profiles (licence_id, name, updated_at) VALUES (?, ?, ?)').run(a.id, 'Old Name', T0);
+    assert.equal((await a.set({ color: 2 })).status, 200);
+    assert.equal(s.db.prepare('SELECT name FROM chat_profiles WHERE licence_id = ?').get(a.id).name, 'Old Name', 'a colour alone leaves it');
+    assert.equal((await a.set({ username: 'Tom' })).status, 200);
+    assert.equal(s.db.prepare('SELECT name FROM chat_profiles WHERE licence_id = ?').get(a.id).name, null);
   } finally { await s.close(); }
 });
 
