@@ -1,0 +1,17 @@
+/* holidays.js's own styles, loaded with it (public/lazy.js). */
+
+/* The panel ends where its twelve rows end: no empty box under them. */
+html:not(.is-embed) .view > .panel.hol-panel:not([hidden]) { flex: 0 1 auto !important; min-height: 96px; }
+.hol-table td:first-child { white-space: nowrap; }
+/* The holiday column as wide as its longest name: closed or early close sits next to it. */
+.hol-table :is(th, td):nth-child(2) { width: 1%; padding-right: 48px; white-space: nowrap; }
+
+/* Phones: the date, then the holiday, then closed or early close under it. */
+@media (max-width: 639px) {
+  .hol-table thead { display: none; }
+  .hol-table, .hol-table tbody { display: block; }
+  .hol-table tr { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 0 12px; padding: 6px 8px; border-bottom: 1px solid var(--rule); }
+  .hol-table td, .hol-table :is(th, td):nth-child(2) { width: auto; padding: 0; border: 0; height: auto; white-space: normal; }
+  .hol-table td:first-child { font-size: 12px; color: var(--text-2); }
+  .hol-table td:last-child { grid-column: 2; color: var(--text-2); }
+}

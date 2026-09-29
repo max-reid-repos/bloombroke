@@ -254,6 +254,12 @@ export const REGISTRY = [
     name: 'EXDIV', category: 'Economy and calendars', summary: 'Ex-dividend dates for the next five weekdays',
     syntax: 'EXDIV [<day>]', examples: ['EXDIV', 'EXDIV 2026-10-01'], keywords: ['ex-dividend', 'dividend', 'record date'],
   },
+  // --- HOLIDAYS (screens/holidays.js; the dates are app.js NYSE_HOLIDAYS) ---
+  {
+    name: 'HOLIDAYS', category: 'Economy and calendars', summary: 'US stock market closures and early closes, the next 12 months, in your time zone',
+    syntax: 'HOLIDAYS', examples: ['HOLIDAYS'], keywords: ['holiday', 'holidays', 'market holidays', 'closed', 'closure', 'early close', 'half day', 'nyse', 'nasdaq'],
+  },
+  // --- end HOLIDAYS ---
 
   // --- Screens and lists ----------------------------------------------------------------
   {
@@ -610,6 +616,7 @@ export const PHRASES = {
   HEATMAP: ['heatmap', 'heat map'],
   SECTORS: ['sectors', 'sector performance'],
   CLOCK: ['market hours', 'market clock', 'is the market open'],
+  HOLIDAYS: ['market holidays', 'stock market holidays', 'early close', 'half day'],
   WATCH: ['watchlist', 'my watchlist'],
   PORTFOLIO: ['portfolio', 'my portfolio', 'holdings', 'my holdings'],
   LOAN: ['mortgage calculator', 'loan calculator', 'loan payment'],

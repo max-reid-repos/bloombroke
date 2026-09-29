@@ -57,6 +57,7 @@ export const EXTRA = [
   { name: 'CHANGES', screen: lazy('screens/changes.js') },
   { name: 'BBRK', screen: lazy('screens/bbrk.js') }, // BBRK: our own site numbers, not a security
   { name: 'MCP', screen: lazy('screens/mcp.js') }, // MCP: hook an AI app up to Bloombroke (lib/mcp/)
+  { name: 'HOLIDAYS', screen: lazy('screens/holidays.js') }, // HOLIDAYS: US market closures, next 12 months
 ];
 
 // Screens (lazy, see lazy.js) by internal name.
