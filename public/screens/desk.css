@@ -11,6 +11,7 @@
 .desk[data-editing="true"] .desk-hint { display: flex; }
 .desk[data-editing="true"] .desk-focus { display: none; }
 /* The quiet PRO line (a visitor, once per browser). */
+.desk-pro[hidden] { display: none; }
 .desk-pro { align-self: center; min-width: 0; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .desk[data-editing="true"] .desk-pro { display: none; }
 .desk-bar .desk-add { margin-left: auto; }

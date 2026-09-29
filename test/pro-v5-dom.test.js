@@ -1,15 +1,16 @@
 // PRO v5 in a small DOM (test/fixtures/tiny-dom.js): the real render() and its real
-// handlers on the visitor's page. The price line and M / Y (yearly not set up: monthly,
-// the year off), SUBSCRIBE buying the picked plan, the test-mode line in test mode, the
+// handlers on the visitor's page. The price line (yearly not set up: monthly, the year
+// off), SUBSCRIBE buying the picked plan with the prices off while checkout opens, typing
+// after a click on a price going on untouched, the test-mode line in test mode, the
 // status bar without the price, and the stage: the real screens/pro-demo.js loaded by
-// name, keys 1 to 4 and clicks on the key row, the command bar keeping its typing, and
-// everything off once the screen is left. Live mode is test/pro-v5-dom-live.test.js
+// name, keys 1 to 4 (focus on the stage) and clicks on the key row, the key row hidden
+// in an embed, and everything off once the screen is left. Live mode is test/pro-v5-dom-live.test.js
 // (getConfig keeps its first good answer for the page's life, so one mode per file).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { render } from '../public/screens/pro.js';
-import { STAGE_MS } from '../public/screens/pro-demo.js';
+import '../public/screens/pro-demo.js'; // loaded before the fake document (it pulls in app.js)
 import { mount, fakeDocument, flush } from './fixtures/tiny-dom.js';
 
 const QUOTES = [{ ticker: 'NVDA', kind: 'stock', last: 191.2, prevClose: 185.6, change: 5.6, changePct: 3.02, asOf: '2026-09-29' },
@@ -24,12 +25,16 @@ const until = async (fn, ms = 3000) => {
   }
 };
 
-function page(config) {
+// gate: a promise the checkout call waits on (checkout "opening" until it settles).
+function page(config, { gate = null, embed = false } = {}) {
   const calls = [];
   globalThis.fetch = async (url, opts = {}) => {
     calls.push({ url: String(url), body: opts.body ? JSON.parse(opts.body) : null });
     if (config === null) throw new Error('offline');
-    if (String(url).includes('/api/pro/checkout')) return { ok: true, json: async () => ({ url: 'https://example.com/not-checkout' }) };
+    if (String(url).includes('/api/pro/checkout')) {
+      if (gate) await gate;
+      return { ok: true, json: async () => ({ url: 'https://example.com/not-checkout' }) };
+    }
     return { ok: true, json: async () => config };
   };
   const el = mount();
@@ -41,6 +46,7 @@ function page(config) {
     status: (t, kind) => status.push([t, kind || '']),
     fetchJSON: async (url) => { fetched.push(url); return url.startsWith('/api/pro/seat') ? { next: 5 } : { quotes: QUOTES }; },
     store: { get: (k, fb) => (k === 'bb.watch' ? ['AAPL', 'NVDA'] : fb), set() {} },
+    embed,
   };
   render(el, { name: 'PRO', args: {} }, ctx);
   const body = mount('<main id="body"></main>', 'body').querySelector('#body');
@@ -57,7 +63,7 @@ function page(config) {
 
 // Yearly first in this file: getConfig() keeps a good answer for the page's life (a
 // failed one is asked again), so the failing config goes first.
-test('yearly not set up: monthly is picked, the yearly price dim and off; Y and a click do nothing', async () => {
+test('yearly not set up: monthly is picked, the yearly price dim and off; a click does nothing', async () => {
   const p = page(null);
   await flush();
   assert.ok(p.calls.some((c) => c.url === '/api/pro/config'));
@@ -68,15 +74,17 @@ test('yearly not set up: monthly is picked, the yearly price dim and off; Y and 
   assert.equal(p.el.querySelector('#pro-year-note').hidden, false);
   y.click();
   assert.equal(p.bits().plan, 'month', 'a disabled price does nothing');
-  const ev = doc.key('y', p.body);
-  assert.equal(p.bits().plan, 'month', 'nor does Y');
-  assert.equal(ev.prevented, true, 'the key is still PRO\'s, not typing');
+  // Checkout opens and fails: the prices come back, and yearly stays off.
+  p.el.querySelector('#pro-sub').click();
+  await flush();
+  assert.equal(p.el.querySelector('#pro-plan-month').disabled, false);
+  assert.equal(y.disabled, true, 'yearly stays off');
   // No config (so not test mode): no test-mode line.
   assert.equal(p.el.querySelector('#pro-test').hidden, true);
   p.ac.abort();
 });
 
-test('test mode: the price line, M and Y, SUBSCRIBE buys the picked plan; the test line shows; no price in the status bar', async () => {
+test('test mode: the price line, SUBSCRIBE buys the picked plan; the test line shows; no price in the status bar', async () => {
   const p = page({ mode: 'test', open: true, yearly: true });
   await until(() => !p.el.querySelector('#pro-test').hidden);
   assert.equal(p.el.querySelector('#pro-test').textContent, 'Test mode: no card is charged yet.');
@@ -87,23 +95,24 @@ test('test mode: the price line, M and Y, SUBSCRIBE buys the picked plan; the te
   // A click on the other price picks it.
   p.el.querySelector('#pro-plan-month').click();
   assert.deepEqual(p.bits(), { month: 'true', year: 'false', plan: 'month', button: 'SUBSCRIBE' });
-  // Y and M (either case), with the focus on the page.
-  let ev = doc.key('Y', p.body);
-  assert.equal(ev.prevented && ev.stopped, true);
-  assert.equal(p.bits().plan, 'year');
-  doc.key('m', p.body);
+  // Typing MSFT after a click on a price: every key goes on to the command bar untouched
+  // (app.js sends typing there), and the plan stays.
+  const price = p.el.querySelector('#pro-plan-month');
+  for (const k of ['M', 'S', 'F', 'T']) {
+    const ev = doc.key(k, price);
+    assert.equal(ev.prevented || ev.stopped, false, k);
+  }
+  for (const k of ['1', '3']) assert.equal(doc.key(k, price).prevented, false, `${k} after a price`);
+  assert.equal(doc.key('y', p.el.querySelector('#pro-sub')).prevented, false, 'after SUBSCRIBE too');
   assert.equal(p.bits().plan, 'month');
-  // In the command bar they are typing, never a plan.
-  ev = doc.key('y', p.bar);
-  assert.equal(ev.prevented, false);
-  assert.equal(p.bits().plan, 'month');
+  assert.deepEqual(p.on(), [1]);
   // SUBSCRIBE: the real checkout call with the picked plan.
   p.el.querySelector('#pro-sub').click();
   await flush();
   const buy = p.calls.filter((c) => c.url === '/api/pro/checkout');
   assert.equal(buy.length, 1);
   assert.deepEqual(buy[0].body, { plan: 'month' });
-  doc.key('y', p.body);
+  p.el.querySelector('#pro-plan-year').click();
   p.el.querySelector('#pro-sub').disabled = false; // the button comes back after a failed open
   p.el.querySelector('#pro-sub').click();
   await flush();
@@ -122,8 +131,12 @@ test('the stage on the page: PINGS first; keys 1 to 4 and the key row switch it;
   assert.deepEqual(p.on(), [1]);
   assert.match(view().textContent, /New message from @joe\$NVDA 191\.20 \+3\.0% since/);
   assert.match(view().textContent, /NVDA above 185/);
-  // Key 3, with the focus on the page: EVERY DEVICE, the visitor's own list.
+  // Key 3 with the focus on the page (not the stage): typing, not a stage.
   let ev = doc.key('3', p.body);
+  assert.equal(ev.prevented || ev.stopped, false);
+  assert.deepEqual(p.on(), [1]);
+  // Key 3 with the focus on the stage (after a click there): EVERY DEVICE, the own list.
+  ev = doc.key('3', p.el.querySelector('#pd-stagebox'));
   assert.equal(ev.prevented, true);
   assert.deepEqual(p.on(), [3]);
   assert.equal(p.el.querySelector('#pd-stage-label').textContent, 'EVERY DEVICE');
@@ -155,13 +168,35 @@ test('the stage on the page: PINGS first; keys 1 to 4 and the key row switch it;
   assert.equal(doc.count('visibilitychange'), 0, 'the stage stopped');
 });
 
-test('a hover on the stage keeps it where it is (about 6 s of real time)', async () => {
-  const p = page({ mode: 'test', open: true, yearly: true });
-  await until(() => p.el.querySelector('#pd-stage').children.length > 0);
-  p.el.querySelector('#pd-stagebox').dispatch('pointerenter');
-  // The move would come at STAGE_MS: wait past it (real time), and it has not moved.
-  await new Promise((r) => { setTimeout(r, STAGE_MS + 300); });
-  assert.deepEqual(p.on(), [1]);
+test('checkout opening: the prices are off, so the plan cannot change; back on when it fails', async () => {
+  let open;
+  const gate = new Promise((r) => { open = r; });
+  const p = page({ mode: 'test', open: true, yearly: true }, { gate });
+  await flush();
+  const [month, year, sub] = ['#pro-plan-month', '#pro-plan-year', '#pro-sub'].map((x) => p.el.querySelector(x));
+  sub.click();
+  assert.ok(p.status.some(([t]) => t === 'OPENING CHECKOUT...'));
+  assert.equal(sub.disabled, true);
+  assert.equal(month.disabled, true);
+  assert.equal(year.disabled, true);
+  month.click();
+  assert.equal(p.bits().plan, 'year', 'the plan holds while checkout opens');
+  open();
+  await flush(12);
+  const buy = p.calls.filter((c) => c.url === '/api/pro/checkout');
+  assert.deepEqual(buy.map((c) => c.body), [{ plan: 'year' }]);
+  // It did not open (not a Stripe address): the prices and the button come back.
+  assert.equal(month.disabled, false);
+  assert.equal(year.disabled, false);
+  assert.equal(sub.disabled, false);
   p.ac.abort();
-  assert.equal(doc.count('keydown'), 0);
+});
+
+test('an embed or a DESK panel: the key row is hidden (it is not wired there), no key listener', async () => {
+  const before = doc.count('keydown');
+  const p = page({ mode: 'test', open: true, yearly: true }, { embed: true });
+  await flush();
+  assert.equal(p.el.querySelector('.pd-keys').hidden, true);
+  assert.equal(doc.count('keydown'), before);
+  p.ac.abort();
 });

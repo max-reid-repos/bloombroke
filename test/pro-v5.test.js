@@ -20,10 +20,10 @@ import { alertPayload, chatPayload } from '../pro/push-send.js';
 import { puzzleNumber } from '../data/guess.js';
 import { cardWords } from '../public/kit.js';
 import { emptyWatchHtml, WATCH_PRO_LINE } from '../public/screens/watch.js';
-import { topLineHtml, ALERTS_PRO_LINE, ALERT_SET_PRO_LINE, alertSetLineHtml, PUSH_FLAG } from '../public/screens/alerts.js';
+import { topLineHtml, ALERTS_PRO_LINE } from '../public/screens/alerts.js';
 import { HONEST_LINE } from '../public/alerts.js';
 import { proChatLineHtml, CHAT_PRO_LINE } from '../public/screens/guess.js';
-import { deskProLineHtml, DESK_PRO_LINE, DESK_PRO_FLAG } from '../public/screens/desk.js';
+import { deskProLineHtml, deskProLineFor, DESK_PRO_LINE, DESK_PRO_FLAG } from '../public/screens/desk.js';
 import { FKEYS, panelByNumber, numberedItem } from '../public/app.js';
 import { mount, fakeDocument, fakeTimers, flush } from './fixtures/tiny-dom.js';
 
@@ -142,22 +142,26 @@ test('member views unchanged: the key view and REACTIVATE have no stage, no keys
 
 // ---- the keys ----------------------------------------------------------------------------
 
-test('keys: 1 to 4 pick a stage, M and Y a plan, never from the command bar or a field; no clash', () => {
+test('keys: 1 to 4 pick a stage only with the focus on the stage or its key row; everything else is typing; no clash', () => {
+  const page0 = mount(mainHtml({ has: all }));
+  const box = page0.querySelector('#pd-stagebox');
+  const tab = page0.querySelector('[data-stage="2"]');
+  const price = page0.querySelector('#pro-plan-month');
+  const sub = page0.querySelector('#pro-sub');
   const body = mount('<div id="x"></div>', 'body');
   const cmd = mount('<input id="cmd">').querySelector('#cmd');
-  const input = mount('<form><input id="login-key"></form>').querySelector('input');
-  const key = (k, target = body, mods = {}) => stageKeyFor({ key: k, target, metaKey: false, ctrlKey: false, altKey: false, repeat: false, ...mods });
+  const key = (k, focus = box, mods = {}) => stageKeyFor({ key: k, target: focus, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, repeat: false, ...mods }, focus);
   assert.deepEqual(['1', '2', '3', '4'].map((k) => key(k)), [{ stage: 0 }, { stage: 1 }, { stage: 2 }, { stage: 3 }]);
-  assert.deepEqual([key('m'), key('M'), key('y'), key('Y')], [{ plan: 'month' }, { plan: 'month' }, { plan: 'year' }, { plan: 'year' }]);
+  assert.deepEqual(key('3', tab), { stage: 2 }, 'a key of the key row');
+  // No plan keys any more: the prices are picked by a click.
+  for (const k of ['m', 'M', 'y', 'Y']) assert.equal(key(k), null, k);
   for (const k of ['0', '5', '9', 'F1', 'Enter', 'Escape', ' ', 'a', 'ArrowDown']) assert.equal(key(k), null, k);
-  // The command bar and any field keep their typing (3988.HK, MSFT, a key or a code).
-  for (const k of ['1', '3', 'm', 'Y']) { assert.equal(key(k, cmd), null, k); assert.equal(key(k, input), null, k); }
+  // Anywhere else a digit is typing: the command bar, the page, a price, SUBSCRIBE.
+  for (const focus of [cmd, body, price, sub, null]) for (const k of ['1', '3']) assert.equal(key(k, focus), null, `${k} on ${focus?.id || focus?.tag}`);
   // Modifiers and a held key: not ours (Ctrl K is the menu; Alt+digit and Cmd+digit the browser's).
-  for (const mods of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { repeat: true }]) assert.equal(key('1', body, mods), null);
-  // A dialog (MENU, the welcome) keeps its keys.
-  assert.equal(key('2', mount('<div role="dialog"><button id="b">x</button></div>').querySelector('#b')), null);
+  for (const mods of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { shiftKey: true }, { repeat: true }]) assert.equal(key('1', box, mods), null);
   // No clash with the function keys, the panel numbers or the did-you-mean digits.
-  assert.ok(!FKEYS.some((f) => ['1', '2', '3', '4', 'M', 'Y', 'm', 'y'].includes(f.key)));
+  assert.ok(!FKEYS.some((f) => ['1', '2', '3', '4'].includes(f.key)));
   const page = mount(mainHtml({ has: all }));
   for (const n of [1, 2, 3, 4]) {
     assert.equal(panelByNumber(page, n), null, `no panel "${n})" on PRO`);
@@ -169,6 +173,8 @@ test('keys: 1 to 4 pick a stage, M and Y a plan, never from the command bar or a
   assert.match(src, /ctx\?\.signal\?\.addEventListener\?\.\('abort', off, \{ once: true \}\);/);
   assert.match(src, /v\.keysOff\?\.\(\);/);
   assert.match(src, /if \(!box \|\| ctx\?\.embed\) return;/, 'no keys in an embed or a DESK panel');
+  assert.match(src, /if \(!k\) return; \/\/ not ours/, 'not ours: no preventDefault, no stopPropagation');
+  assert.doesNotMatch(src, /PLAN_KEYS/);
 });
 
 // ---- the stages: builders ------------------------------------------------------------------
@@ -213,6 +219,18 @@ test('no quote, no number: the pings, the chat and the rows without a single pri
     const st = stageOf(id, { byId: {}, ids: DEMO_WATCH, now: NOW });
     assert.doesNotMatch(text(st.draw(st.frames - 1, false)), /\d+\.\d\d|% since/, id);
   }
+});
+
+test('the receipt is stamped when its price was the price: 4:00 PM New York on the trading day before the quote', () => {
+  // The quote's day is Monday Sep 28: its previous close is Friday Sep 25, 4:00 PM EDT (20:00 UTC).
+  assert.equal(prevCloseAt({ asOf: '2026-09-28' }, NOW), Date.UTC(2026, 8, 25, 20));
+  assert.equal(prevCloseAt({ asOf: '2026-09-29T11:02:00.000-0400' }, NOW), Date.UTC(2026, 8, 28, 20));
+  // Winter time: 4:00 PM EST is 21:00 UTC.
+  assert.equal(prevCloseAt({ asOf: '2026-12-08' }, NOW), Date.UTC(2026, 11, 7, 21));
+  // No quote: the weekday before today in New York (Tuesday Sep 29: Monday).
+  assert.equal(prevCloseAt(null, NOW), Date.UTC(2026, 8, 28, 20));
+  // A Sunday rolls back to Friday.
+  assert.equal(prevCloseAt(null, Date.UTC(2026, 8, 27, 15)), Date.UTC(2026, 8, 25, 20), 'a Sunday: Friday');
 });
 
 test('2 CHAT: the real chat builders, three messages, @ana and @joe with no seat numbers, the receipt at the previous close', () => {
@@ -467,9 +485,9 @@ test('the status bar: PRO does not say the price again', () => {
 
 // ---- the quiet PRO lines -----------------------------------------------------------------------
 
-test('moment lines: WATCH, ALERTS, GUESS as before; an alert set and DESK too; short, PRO a link', () => {
-  for (const line of [WATCH_PRO_LINE, ALERTS_PRO_LINE, CHAT_PRO_LINE, ALERT_SET_PRO_LINE, DESK_PRO_LINE]) {
-    assert.ok(line.split(/\s+/).length <= 11, line); // the alert line is the owner's 11 words
+test('moment lines: WATCH, ALERTS, GUESS as before; DESK too; 10 words at most, PRO a link', () => {
+  for (const line of [WATCH_PRO_LINE, ALERTS_PRO_LINE, CHAT_PRO_LINE, DESK_PRO_LINE]) {
+    assert.ok(line.split(/\s+/).length <= 10, line);
     assert.match(line, /\bPRO\b/);
     assert.doesNotMatch(line, /—|\p{Extended_Pictographic}/u);
   }
@@ -483,22 +501,16 @@ test('moment lines: WATCH, ALERTS, GUESS as before; an alert set and DESK too; s
   assert.equal(proChatLineHtml(false), '');
 });
 
-test('an alert set: "Fires while this tab is open. On your phone too: PRO", a visitor only, not in an embed', () => {
-  const s = { get: () => false };
-  assert.equal(alertSetLineHtml(s, false, false), `<p class="al-set-pro">Fires while this tab is open. On your phone too: ${LINK}</p>`);
-  assert.equal(alertSetLineHtml(s, true, false), '', 'never for Pro');
-  assert.equal(alertSetLineHtml(s, false, true), '', 'never in an embed or a DESK panel');
-  assert.equal(alertSetLineHtml({ get: (k) => k === PUSH_FLAG }, false, false), '', 'this device pings already');
-  // Drawn under "Added ...", only after an alert is added (source).
+test('ALERTS: one PRO line only, the top one; nothing more after an alert is set', () => {
   const src = readFileSync('public/screens/alerts.js', 'utf8');
-  assert.match(src, /setLine = alertSetLineHtml\(ctx\.store, isPro\(\), Boolean\(ctx\.embed\)\);/);
-  assert.match(src, /<\/p>` : ''\}\$\{setLine\}\$\{perm\}`;/);
+  assert.doesNotMatch(src, /setLine|al-set-pro|Fires while this tab is open/);
+  assert.equal((src.match(/proLine\(/g) || []).length, 1);
 });
 
-test('DESK: "Saved in this browser only. Everywhere: PRO", once per browser, a visitor only', () => {
+test('DESK: "Saved in this browser only. Everywhere: PRO", once per browser, a visitor only, once Pro is known', async () => {
   const mem = () => { const m = new Map(); return { m, getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); } }; };
   const st = mem();
-  assert.equal(deskProLineHtml(false, st), `<span class="desk-pro">Saved in this browser only. Everywhere: ${LINK}</span>`);
+  assert.equal(deskProLineHtml(false, st), `Saved in this browser only. Everywhere: ${LINK}`);
   assert.equal(st.m.get(DESK_PRO_FLAG), '1');
   assert.equal(deskProLineHtml(false, st), '', 'once');
   assert.equal(deskProLineHtml(true, mem()), '', 'never for Pro');
@@ -509,16 +521,41 @@ test('DESK: "Saved in this browser only. Everywhere: PRO", once per browser, a v
   assert.equal(deskProLineHtml(false, { getItem() { throw new Error('blocked'); }, setItem() {} }), '');
   assert.equal(deskProLineHtml(false, { getItem: () => null, setItem() { throw new Error('full'); } }), '');
   assert.equal(deskProLineHtml(false, null), '');
-  // In DESK's bar, after the embed check (a DESK panel never draws DESK).
+  // Pro known first. No key: a visitor, at once, no status call.
+  const fake = ['BB', 'AAAA', 'BBBB', 'CCCC', 'DDDD'].join('-'); // a fake key, built from parts (gitleaks)
+  let calls = 0;
+  const refresh = async () => { calls += 1; };
+  let s = mem();
+  assert.match(await deskProLineFor({ key: () => '', status: () => null, refresh, pro: () => false, storage: s }), /Everywhere/);
+  assert.equal(calls, 0);
+  // A Pro key on a fresh device (no status yet): asks first; Pro: no line and the once kept.
+  s = mem();
+  let status = null;
+  assert.equal(await deskProLineFor({ key: () => fake, status: () => status, refresh: async () => { status = { status: 'active' }; }, pro: () => Boolean(status), storage: s }), '');
+  assert.equal(s.m.size, 0, 'a Pro user never uses up the once');
+  // A key whose status cannot be had (offline, a failed call): no line, the once kept.
+  s = mem();
+  assert.equal(await deskProLineFor({ key: () => fake, status: () => null, refresh, pro: () => false, storage: s }), '');
+  assert.equal(await deskProLineFor({ key: () => fake, status: () => null, refresh: async () => { throw new Error('offline'); }, pro: () => false, storage: s }), '');
+  assert.equal(s.m.size, 0);
+  // A key whose Pro is off (status known): a visitor, the line.
+  s = mem();
+  assert.match(await deskProLineFor({ key: () => fake, status: () => ({ status: 'canceled' }), refresh, pro: () => false, storage: s }), /Everywhere/);
+  // The page left before it was known: the once kept.
+  s = mem();
+  assert.equal(await deskProLineFor({ key: () => '', status: () => null, refresh, pro: () => false, alive: () => false, storage: s }), '');
+  assert.equal(s.m.size, 0);
+  // In DESK's bar, after the embed check (a DESK panel never draws DESK), hidden until known.
   const src = readFileSync('public/screens/desk.js', 'utf8');
-  assert.match(src, /<span class="desk-focus" aria-live="polite"><\/span>\s*\$\{deskProLineHtml\(isPro\(\)\)\}/);
-  assert.ok(src.indexOf('if (ctx.embed) {') < src.indexOf('${deskProLineHtml(isPro())}'));
+  assert.match(src, /<span class="desk-focus" aria-live="polite"><\/span>\s*<span class="desk-pro" hidden><\/span>/);
+  assert.match(src, /deskProLineFor\(\{ alive: \(\) => proEl\.isConnected \}\)/);
+  assert.ok(src.indexOf('if (ctx.embed) {') < src.indexOf('deskProLineFor({ alive'));
 });
 
 // ---- house rules -------------------------------------------------------------------------------
 
 test('copy rules on the new words: plain, no em dash, no emoji, no brand word, no vendor, no advice', () => {
-  const words = [HERO, CANCEL_NOTE, TEST_LINE, KEY_Q, ...STAGES.flatMap((s) => [s.label, s.meta, s.aria]), ...LINES, ALERT_SET_PRO_LINE, DESK_PRO_LINE].join(' ');
+  const words = [HERO, CANCEL_NOTE, TEST_LINE, KEY_Q, ...STAGES.flatMap((s) => [s.label, s.meta, s.aria]), ...LINES, DESK_PRO_LINE].join(' ');
   assert.doesNotMatch(words, /—|\p{Extended_Pictographic}/u);
   assert.doesNotMatch(words, new RegExp(['bloom', 'berg'].join(''), 'i'));
   assert.doesNotMatch(words, /Yahoo|Polygon|Finnhub|Alpha Vantage|Twelve Data|Nasdaq Data|CNBC|DataFast/i);

@@ -503,6 +503,7 @@ function startStage(el, host, ctx) {
   v.held = false;
   // In an embed or a DESK panel: the first stage, still (no quotes call, no timers).
   if (ctx?.embed && host.querySelector('#pd-stage')) {
+    host.querySelector('.pd-keys')?.setAttribute('hidden', ''); // not wired here
     Promise.all([loadModule(DEMO_JS, { recover: false }), ...stylesOf(DEMO_JS).map(loadCss)])
       .then(([m]) => { if (host.isConnected && host.querySelector('#pd-stage')) m.drawStill(host, ctx); }).catch(() => {});
   }
@@ -515,18 +516,16 @@ function startStage(el, host, ctx) {
   }).catch(() => { /* the page works without its stage */ });
 }
 
-// The stage's keys: 1 to 4 (a key, or a click on the key row) pick a stage; M and Y pick
-// the plan. Only while the focus is not in the command bar or any other field: typing
-// 3988.HK or MSFT there is typing. A hover on the stage keeps it where it is. Stopped
-// when the screen is left or redrawn.
-export const PLAN_KEYS = { M: 'month', Y: 'year' };
-export function stageKeyFor(e) {
-  if (!e || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return null;
-  const t = e.target;
-  if (t?.id === 'cmd' || t?.closest?.('input, select, textarea, [contenteditable], dialog, [role="dialog"]')) return null;
-  if (/^[1-4]$/.test(e.key)) return { stage: Number(e.key) - 1 };
-  const k = String(e.key || '').toUpperCase();
-  return PLAN_KEYS[k] ? { plan: PLAN_KEYS[k] } : null;
+// The stage's keys: 1 to 4 pick a stage, only while the focus is on the stage or its key
+// row (after a click there). Anywhere else a key is typing: it goes on to the command
+// bar untouched (MSFT after a click on a price, 3988.HK). The prices are picked by a
+// click. A hover on the stage keeps it where it is. Stopped when the screen is left or
+// redrawn. focus: the element with the focus (document.activeElement).
+export function stageKeyFor(e, focus = e?.target) {
+  if (!e || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.repeat) return null;
+  if (!/^[1-4]$/.test(e.key)) return null;
+  if (!focus?.closest?.('#pd-stagebox')) return null;
+  return { stage: Number(e.key) - 1 };
 }
 function wireStage(el, host, ctx, { doc = globalThis.document } = {}) {
   const v = viewOf(el);
@@ -542,18 +541,16 @@ function wireStage(el, host, ctx, { doc = globalThis.document } = {}) {
   };
   for (const t of host.querySelectorAll('[data-stage]')) t.addEventListener('click', () => pick(Number(t.dataset.stage) - 1));
   box.addEventListener('pointerenter', () => { if (v.demo) v.demo.hold(); else v.held = true; });
-  // A click on the stage takes the focus there, so its keys work at once.
-  box.addEventListener('pointerdown', (e) => { if (!e.target?.closest?.('button, a')) box.focus?.({ preventScroll: true }); });
+  // A click on the stage or a key takes the focus there, so 1 to 4 work at once (a
+  // browser that does not focus a clicked button still lands inside the stage).
+  box.addEventListener('pointerdown', (e) => { if (!e.target?.closest?.('button')) box.focus?.({ preventScroll: true }); });
+  for (const t of host.querySelectorAll('[data-stage]')) t.addEventListener('pointerdown', () => { t.focus?.({ preventScroll: true }); });
   if (!doc?.addEventListener) return;
   const onKey = (e) => {
     if (!host.isConnected || ctx?.signal?.aborted) { off(); return; }
-    const k = stageKeyFor(e);
-    if (!k) return;
-    if (k.plan) {
-      const b = host.querySelector(`#pro-plan-${k.plan}`);
-      if (!b) return;
-      if (!b.disabled) b.click();
-    } else pick(k.stage);
+    const k = stageKeyFor(e, doc.activeElement || e.target);
+    if (!k) return; // not ours: typing, on its way to the command bar
+    pick(k.stage);
     e.preventDefault();
     e.stopPropagation();
   };
@@ -563,6 +560,11 @@ function wireStage(el, host, ctx, { doc = globalThis.document } = {}) {
   v.keysOff = off;
 }
 
+// The prices off while checkout opens; back on (yearly stays off when it is not set up).
+function lockPlans(host, v, on) {
+  for (const p of host.querySelectorAll('.pro3-plan')) p.disabled = on || (p.id === 'pro-plan-year' && v.noYear === true);
+}
+
 // Yearly not set up on the server: monthly only, the yearly price dim and off, and say so.
 function yearlyReady(host, v) {
   pro.getConfig().then((c) => {
@@ -570,6 +572,7 @@ function yearlyReady(host, v) {
     const y = host.querySelector('#pro-plan-year');
     if (!y) return;
     v.plan = 'month';
+    v.noYear = true;
     setPlan(host, 'month');
     y.disabled = true;
     y.title = YEARLY_NOT_YET;
@@ -602,7 +605,11 @@ function renderAccount(el, ctx, alert = '', plan = null, { warn = false } = {}) 
   for (const p of host.querySelectorAll('.pro3-plan')) {
     p.addEventListener('click', () => { v.plan = p.dataset.plan; setPlan(host, v.plan); });
   }
-  wire(host, ctx, '#pro-sub', 'OPENING CHECKOUT...', () => pro.startCheckout(host.querySelector('#pro-sub').dataset.plan));
+  // While checkout opens, the plan cannot change: the prices are off until it fails.
+  wire(host, ctx, '#pro-sub', 'OPENING CHECKOUT...', () => {
+    lockPlans(host, v, true);
+    return pro.startCheckout(host.querySelector('#pro-sub').dataset.plan).catch((err) => { lockPlans(host, v, false); throw err; });
+  });
   yearlyReady(host, v);
   // MANAGE PLAN and CANCEL: the same Stripe billing portal, where cancel lives.
   wire(host, ctx, '#pro-manage', 'OPENING BILLING...', () => pro.openPortal());
