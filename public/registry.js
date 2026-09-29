@@ -93,6 +93,13 @@ export const REGISTRY = [
     syntax: 'NEWS [MACRO|SEC|WIRES|WSB|<ticker>]', examples: ['NEWS', 'NEWS AAPL', 'TSLA NEWS', 'NEWS MACRO', 'NEWS SEC', 'NEWS WIRES', 'NEWS WSB'],
     keywords: ['headlines', 'stories', 'articles', 'press', 'press releases', 'fed', 'bls', '8-k', 'wires', 'reddit', 'wallstreetbets', 'wsb'],
   },
+  // --- WHATIS (screens/whatis.js; the definitions are whatis-terms.js, loaded with it) ---
+  {
+    name: 'WHATIS', category: 'News and info', summary: 'Market words in plain English: P/E, yield, ETF and more',
+    syntax: 'WHATIS [<term>]', examples: ['WHATIS', 'WHATIS P/E', 'WHATIS YIELD'],
+    keywords: ['what is', 'define', 'definition', 'definitions', 'meaning', 'glossary', 'jargon', 'explain', 'terms', 'dictionary'],
+  },
+  // --- end WHATIS ---
   // --- MCP (screens/mcp.js, server lib/mcp/) ---
   {
     name: 'MCP', category: 'News and info', summary: 'Use Bloombroke from Claude, ChatGPT, Grok or Cursor: the MCP link',
@@ -628,6 +635,7 @@ export const PHRASES = {
   LOAN: ['mortgage calculator', 'loan calculator', 'loan payment'],
   COMPOUND: ['compound interest'],
   FX: ['exchange rate', 'exchange rates', 'currency converter'],
+  WHATIS: ['glossary', 'definitions', 'jargon'],
 };
 
 // START HERE: the five commands to know first, in reading order, one short line each.

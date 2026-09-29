@@ -43,3 +43,7 @@
 @media (max-height: 560px) {
   .is-embed .q-top .stats, .is-embed .q-ranges, .is-embed .q-ext { display: none; }
 }
+
+/* A stats label with a WHATIS card: the label's own look, a dotted underline on hover. */
+.stat-what { color: inherit; }
+.stat-what:hover, .stat-what:focus-visible { color: var(--text-2); text-decoration: underline dotted; text-underline-offset: 3px; }

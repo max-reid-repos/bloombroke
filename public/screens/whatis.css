@@ -1,0 +1,24 @@
+/* whatis.js's own styles, loaded with it (public/lazy.js). */
+
+/* A term (kit.js cardPage): the words it uses that have their own card are links, in the
+   definition's own colour, underlined with dots. */
+.wi-def { color: inherit; text-decoration: underline dotted; text-underline-offset: 4px; }
+.wi-def:hover, .wi-def:focus-visible { color: var(--text); text-decoration: underline; }
+.wi-see { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
+.wi-see .tag { margin-right: 4px; }
+.wi-chip { text-transform: uppercase; }
+
+/* WHATIS alone: one panel, as tall as its list; the terms A to Z in columns. */
+html:not(.is-embed) .view > .panel.wi-panel:not([hidden]) { flex: 0 1 auto !important; min-height: 96px !important; }
+.wi-panel .panel-body { padding: 12px 8px 16px; }
+.wi-list { columns: 4 200px; column-gap: 24px; margin: 0; padding: 0; list-style: none; }
+.wi-list li { break-inside: avoid; }
+.wi-item { display: flex; align-items: baseline; gap: 8px; padding: 4px 8px; font-size: 14px; line-height: 1.5; color: var(--text); }
+.wi-item:hover, .wi-item:focus-visible { background: var(--panel-2); text-decoration: none; }
+.wi-n { flex: 0 0 24px; font-size: 12px; text-align: right; color: var(--dim); }
+.wi-foot { margin: 16px 0 0; padding: 0 8px; font-size: 12px; color: var(--dim); }
+
+@media (max-width: 639px) {
+  .wi-list { columns: 2 140px; column-gap: 12px; }
+  .wi-item { padding: 6px 4px; }
+}

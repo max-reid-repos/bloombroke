@@ -40,6 +40,10 @@ export function parseEmbed(args) {
   return { target: null, asked: args.join(' '), mine: head === 'WHATIF' && rest.includes('MY') };
 }
 
+// ---- WHATIS [<term>] -------------------------------------------------------------------------
+// The words after WHATIS, as typed (screens/whatis.js looks them up). None: the list.
+export const parseWhatis = (args) => ({ words: args.join(' ') });
+
 // ---- NEWS <ticker> (TICKERNEWS) ----------------------------------------------------------
 // NEWS <ticker>. Returns null for plain NEWS so the market-wide screen handles it.
 export function parseTickerNews(args) {

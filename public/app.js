@@ -605,6 +605,7 @@ export const SHEET_ORDER = [
   'screens/fxmatrix.css', 'screens/calendar.css', 'screens/bbrk.css', 'screens/options.css',
   'screens/worldmap.css', 'screens/help.css', 'screens/nosuch.css', 'screens/graveyard.css', 'screens/data.css',
   'screens/welcome.css', 'screens/grid.css', 'screens/chat.css', 'screens/me.css', 'screens/pro-demo.css', 'screens/holidays.css', 'screens/embed.css',
+  'screens/whatis.css',
 ];
 export const stylesFor = (entry) => (entry?.js ? stylesOf(entry.js) : []);
 

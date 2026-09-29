@@ -73,10 +73,19 @@ export function rangeLine(d) {
   return `<p class="q-ranges num">${parts.map(([k, v]) => `<span class="q-rg"><span class="dim">${k}</span> ${esc(v)}</span>`).join('<span class="q-rg-sep dim" aria-hidden="true"> · </span>')}</p>`;
 }
 
+// A stats label that has a WHATIS card links to it (the definitions load only then).
+export const STAT_TERMS = { 'Mkt cap': 'MKT CAP', 'P/E': 'P/E', EPS: 'EPS', 'Div yield': 'DIV YIELD', Volume: 'VOLUME', 'Prev close': 'PREV CLOSE' };
+export function statLabel(k) {
+  const term = STAT_TERMS[k] || (k.startsWith('52W') ? '52W RANGE' : '');
+  if (!term) return esc(k);
+  const cmd = `WHATIS ${term}`;
+  return `<a class="stat-what" href="${esc(q(cmd))}" data-cmd="${esc(cmd)}" title="${esc(`${cmd}: what it means`)}">${esc(k)}</a>`;
+}
+
 function statsHtml(d) {
   // stat-range: the Day range and 52W cells, which a panel shows as rangeLine instead.
   const isRange = (k) => k === 'Day range' || k.startsWith('52W');
-  return `<dl class="stats">${statRows(d).map(([k, v, extra]) => `<div class="stat${isRange(k) ? ' stat-range' : ''}"><dt>${esc(k)}</dt><dd class="num">${esc(v)}${extra || ''}</dd></div>`).join('')}</dl>`;
+  return `<dl class="stats">${statRows(d).map(([k, v, extra]) => `<div class="stat${isRange(k) ? ' stat-range' : ''}"><dt>${statLabel(k)}</dt><dd class="num">${esc(v)}${extra || ''}</dd></div>`).join('')}</dl>`;
 }
 
 // "+1.9 bp" for yields, "+1.23 +0.37%" for everything else.
