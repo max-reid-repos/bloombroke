@@ -400,9 +400,7 @@ function attrs(el, a) {
 
 // ---- The SVG --------------------------------------------------------------------------
 
-// Where the previous close's axis tag (16px tall) goes: on its line, or one tag height off
-// the last value's tag when the two would overlap; always whole inside the plot [top,
-// bottom] (a nudge that would leave it goes to the last tag's other side instead).
+// The prev close axis tag: on its line, or 16px off the last value's tag; inside the plot.
 export function prevTagAt(prevY, lastY, { top = PAD_T, bottom = Infinity } = {}) {
   const clamp = (v) => Math.min(bottom - 8, Math.max(top + 8, v));
   if (!Number.isFinite(lastY) || Math.abs(prevY - lastY) >= 16) return clamp(prevY);
@@ -411,9 +409,8 @@ export function prevTagAt(prevY, lastY, { top = PAD_T, bottom = Infinity } = {})
   return Math.abs(y - lastY) >= 16 ? y : clamp(lastY - side * 16);
 }
 
-// The words PREV CLOSE at the right end of its line: a 13px box above the line, else
-// below it, that no bar reaches (span(x0, x1): the pixel rows the bars between x0 and x1
-// cover, [top, bottom], or null). null when both sides are taken.
+// PREV CLOSE at the line's right end, above or below it where no bar is (span: the
+// bars' pixel rows there), else null.
 export function prevWordsBox({ W, py, lw, top, bottom }, span) {
   const x0 = W - lw - 2;
   const x1 = W - 2;
@@ -426,8 +423,7 @@ export function prevWordsBox({ W, py, lw, top, bottom }, span) {
   return null;
 }
 
-// The pixel rows [top, bottom] the drawn bars cover between x0 and x1 (a line's segments
-// into and out of that stretch included), or null when none is there.
+// [top, bottom] pixel rows the bars cover between x0 and x1, or null.
 function barsYSpan(points, main, candles, x, y, i0, i1, x0, x1) {
   let lo = Infinity;
   let hi = -Infinity;
@@ -531,8 +527,6 @@ export function svgFor(model, win, width, height) {
   const ticks = niceTicks(min, max, Math.max(2, Math.round(priceH / 48)));
   const lastI = i1;
   const lastY = Number.isFinite(main[lastI]) ? y(main[lastI]) : -99;
-  // The previous close's value tag on the price axis: next to the last value's tag, one
-  // tag height away from it.
   const prevLineY = showPrev ? y(prev) : null;
   const prevTagY = showPrev ? prevTagAt(prevLineY, lastY, { top: PAD_T, bottom: PAD_T + priceH }) : null;
   for (const t of ticks) {
@@ -544,7 +538,6 @@ export function svgFor(model, win, width, height) {
   if (pct) s += `<line class="ch-zero" x1="0" x2="${f1(W)}" y1="${f1(y(0))}" y2="${f1(y(0))}"/>`;
 
   // Time labels.
-  // model.axisInfo: the bar info with the empty slots of a young 1D session filled in.
   for (const lab of axisLabels(model.axisInfo || info, a, b, pxPerBar, { intraday: model.intraday })) {
     const lx = x(lab.i);
     if (lx < -1 || lx > W + 1) continue;
@@ -555,9 +548,7 @@ export function svgFor(model, win, width, height) {
   s += `<line class="ch-axis" x1="${f1(W)}" x2="${f1(W)}" y1="${PAD_T}" y2="${f1(PAD_T + plotH)}"/>`;
   s += `<line class="ch-axis" x1="0" x2="${f1(W)}" y1="${f1(PAD_T + plotH)}" y2="${f1(PAD_T + plotH)}"/>`;
 
-  // The previous close, dashed, with its value on the price axis. The words PREV CLOSE sit
-  // at the right end of the line only where no bar is (above it, else below it), never
-  // over the bars: a busy right edge keeps just the axis tag.
+  // The previous close: dashed, its value on the axis, its words never over the bars.
   if (showPrev) {
     const py = prevLineY;
     s += `<line class="ch-ref ch-ref-prev" x1="0" x2="${f1(W)}" y1="${f1(py)}" y2="${f1(py)}"/>`;
@@ -648,7 +639,6 @@ export function svgFor(model, win, width, height) {
   if (showPrev) {
     s += `<g class="ch-prev"><title>Previous close</title><rect class="ch-prev-bg" x="${f1(W + 0.5)}" y="${f1(prevTagY - 8)}" width="${PAD_R - 1}" height="16"/><text class="ch-prev-t" x="${f1(W + 6)}" y="${f1(prevTagY + 4)}">${esc(fmtAxis(prev))}</text></g>`;
   }
-  // The previous close's tag is taken space too: the compare tags step off it.
   let usedY = showPrev ? [prevTagY] : [];
   for (const t of tags) {
     let ty = y(t.v);

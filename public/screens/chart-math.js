@@ -340,17 +340,11 @@ export function barInfo(points, barMins = 1) {
   });
 }
 
-// ---- The 1D time axis ----------------------------------------------------------------
-
-// A 1D chart of today's session fits the bars there are, but never opens narrower than
-// this: 36 minutes of bars fill the left part of a 2-hour window, not the left tenth of an
-// empty 6.5-hour session. A chart never opens on an empty range.
+// ---- The 1D axis: fits the bars, never under 2 hours (no chart opens on an empty range)
 export const MIN_WINDOW_MINS = 120;
 
-// How many empty bar slots follow the last bar of a 1D chart of today. info: barInfo of
-// the chart's bars; endMins: when the session ends (16:00, or 20:00 with after hours);
-// barMins: the bar size. Once the bars span MIN_WINDOW_MINS, or the session is over, 0:
-// the axis ends at the last bar (after the close that is the whole session).
+// Empty bar slots after today's last bar: up to MIN_WINDOW_MINS from the first bar,
+// never past endMins; 0 once the bars span it.
 export function sessionPad(info, { endMins = 960, barMins = 1, minWindow = MIN_WINDOW_MINS } = {}) {
   if (!info?.length || !(barMins > 0)) return 0;
   const last = info[info.length - 1];
@@ -359,25 +353,20 @@ export function sessionPad(info, { endMins = 960, barMins = 1, minWindow = MIN_W
   return Math.max(0, (want - last.mins) / barMins);
 }
 
-// Whether a symbol's 1D chart is a session (a stock, or a US index that is not traded
-// all day): crypto, FX, futures and the all-day indexes (the dollar index, MOVE) are not,
-// and are never padded.
+// A stock or a US index with a session: crypto, FX, futures, DXY and MOVE are not.
 export function hasSession(inst, isStock = !inst) {
   return Boolean(isStock || (inst?.us && inst.kind === 'index' && !inst.allDay));
 }
 
-// The empty bar slots after the last bar of a 1D chart: only for a session symbol whose
-// last bar is from today (New York day), per sessionPad. A holiday or a weekend shows the
-// last session as it is; so does a half day once its 13:00 close has passed.
+// Only a session symbol's bars of today are padded: a holiday, a weekend or a finished
+// half day shows the session as it was.
 export function oneDayPad(info, { today, session = true, ext = false, barMins = 1 } = {}) {
   const last = info?.[info.length - 1];
   if (!session || !last || last.day !== today) return 0;
   return sessionPad(info, { endMins: ext ? 20 * 60 : 16 * 60, barMins });
 }
 
-// The axis labels' bar info with the empty slots after the last bar filled in (their
-// clock times on the same day), so a 2-hour window of a young session still shows
-// 10:00 10:30 11:00 under the empty part.
+// Bar info with the empty slots filled in, for clock labels under the empty part.
 export function padInfo(info, pad, barMins = 1) {
   const n = Math.floor(pad);
   if (!info?.length || n <= 0) return info;

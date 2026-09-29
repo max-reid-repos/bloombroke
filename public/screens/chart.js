@@ -491,10 +491,8 @@ export function chartStyleToggle(style) {
   return `<button type="button" class="tab ch-sty" data-style-toggle data-style="${cur}" aria-label="Chart type ${now}, switch to ${next}" title="Switch to ${next}">${now.toUpperCase()}</button>`;
 }
 
-// What a chart's bar shows. 'chips': a chart in a panel (HOME, a DESK panel) shows the
-// range chips only; 'full': the chart's own screen, or a panel maximised with its number
-// key, adds the bar period, the date boxes, LINE or CANDLES and + COMPARE. (A box too
-// short for them, is-tight, drops to the chips as well.)
+// A chart in a panel (HOME, DESK) shows the range chips only; maximised or on its own
+// screen, the full bar.
 export function chartBarMode({ panel = false, maximised = false } = {}) {
   return panel && !maximised ? 'chips' : 'full';
 }
@@ -535,9 +533,6 @@ export function rangeChart(root, ctx, opts) {
   const decimalsFor = (pts) => opts.decimals ?? priceDecimals(pts[pts.length - 1].v);
   const fmtYFor = (pts) => opts.fmtY || ((v) => fmtNum(v, decimalsFor(pts)));
   const compact = () => compactOpt || root.classList.contains('is-tight');
-  // Panel mode (HOME's chart, and any chart in a DESK panel): the range chips only. The bar
-  // period, the date boxes, LINE or CANDLES and + COMPARE come with FULL: the panel's
-  // number key (a maximised panel) or the chart's own screen.
   const panelOpt = Boolean(opts.panel || ctx.embed);
   const chipsOnly = () => chartBarMode({ panel: panelOpt, maximised: Boolean(root.closest?.('.panel.is-max')) }) === 'chips';
   // A narrow bar (a container query in style.css sets --ch-yy) shows 09/25/26.
@@ -583,7 +578,6 @@ export function rangeChart(root, ctx, opts) {
         : `<button type="button" class="${cls}" data-range="${p}"${on ? ' aria-pressed="true"' : ''}>${p}</button>`;
     }).join('');
     if (compact()) return `<div class="ch-bar"><nav class="tabs ch-tabs" aria-label="Chart range">${tabs}</nav></div>`;
-    // Compare lines typed as +QQQ keep their chips (colour key and remove) in panel mode.
     if (chipsOnly()) return `<div class="ch-bar is-chips"><nav class="tabs ch-tabs" aria-label="Chart range">${tabs}</nav>${compare.length ? `<div class="ch-tools">${compareChips()}</div>` : ''}</div>`;
     const per = periodMenu({
       cur: data?.bar || barFor(w), merged: data?.merged || 1, open: perOpen, id: perId,
@@ -683,9 +677,7 @@ export function rangeChart(root, ctx, opts) {
     const intraday = isIntradayBar(bar);
     const times = pts.map((p) => p.t);
     const oneDay = intraday && !fetchWin && !range.from && range.range === '1D';
-    // A 1D chart of today fits the bars there are, at least a 2-hour window (sessionPad):
-    // early in the session the bars do not sit in the left tenth of an empty axis. After
-    // the close (or on a weekend) the bars are the whole session.
+    // Today's 1D fits its bars, at least a 2-hour window (oneDayPad).
     const last = info[info.length - 1];
     const barMins = isIntradayBar(bar) ? BAR_MS[bar] / 60_000 : 1;
     const pad = oneDay ? oneDayPad(info, { today, session: hasSession(inst, isStock), ext: data.ext, barMins }) : 0;
@@ -1183,7 +1175,6 @@ export function rangeChart(root, ctx, opts) {
   let shortWas = null;
   let chipsWas = chipsOnly();
   const ro = typeof ResizeObserver === 'function' && !compactOpt ? new ResizeObserver(() => {
-    // A panel maximised (its number key) or back: the full controls come and go with it.
     if (chipsOnly() !== chipsWas) { chipsWas = chipsOnly(); repaintBar(); }
     // The date form follows the box width at once (before paint), so no long date
     // shows clipped in a short box.

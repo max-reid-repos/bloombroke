@@ -1,35 +1,17 @@
 // HOME: the default screen. A dense MARKETS list, the S&P 500 chart and the news.
 
-import { esc, fmtNum, fmtSigned, fmtPct, dirOf, panel, LOADING, marketsColumns, nameCell, rowAttrs, rerender, tick, settleTicks, HOME_MARKETS, homeMarkets } from './markets.js';
+import { esc, fmtNum, panel, LOADING, marketsColumns, rerender, settleTicks, HOME_MARKETS, homeMarkets, MARKETS_FULL } from './markets.js';
 import { rangeChart } from './chart.js';
-import { delayTag, freshLegend } from '../freshness.js';
+import { freshLegend } from '../freshness.js';
 import { newsList, liveNews, dedupeNews, mergePushed, newsStream, NEWS_POLL_MS } from './news.js';
 import { startSince } from '../since.js'; // SINCE line
-import { lazyScreen, loadScreen, stylesOf } from '../lazy.js';
+import { lazyScreen, loadScreen, stylesOf, prefetch } from '../lazy.js';
 
 // GRAVEYARD: ON THIS DAY comes from screens/graveyard.js, loaded (with its stylesheet)
 // once HOME has drawn, so the page does not wait for the whole graveyard.
 const GRAVEYARD = lazyScreen('screens/graveyard.js');
 
-export function fxTable(pairs) {
-  const rows = pairs.map((p) => {
-    const d = dirOf(p.change);
-    return `<tr${rowAttrs(p.id)}>
-      ${nameCell(p.pair || p.name, p.id)}
-      <td class="tag">${delayTag(p)}</td>
-      <td class="num last${tick(`fx:${p.id}:last`, p.last)}">${fmtNum(p.last, p.decimals)}</td>
-      <td class="num chg ${d}">${fmtSigned(p.change, p.decimals)}</td>
-      <td class="num pct ${d}">${fmtPct(p.changePct)}</td>
-    </tr>`;
-  }).join('');
-  return `<table class="grid-table">
-    <thead><tr><th scope="col">Pair</th><th scope="col" class="tag"><span class="offscreen">Delayed</span></th><th scope="col" class="num">Last</th><th scope="col" class="num chg">Chg</th><th scope="col" class="num">%Chg</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
-}
-
-// HOME's MARKETS list (HOME_MARKETS, homeMarkets) lives in markets.js, which lays out
-// the MARKETS screen in the same groups and order.
+// HOME's list lives in markets.js (MARKETS uses its groups too).
 export { HOME_MARKETS, homeMarkets };
 
 const HOME_NEWS_ROWS = 30;
@@ -58,8 +40,7 @@ export function render(el, cmd, ctx) {
   loadScreen(GRAVEYARD, stylesOf(GRAVEYARD.js))
     .then((g) => { if (!ctx.signal.aborted) g.mountOnThisDay(el.querySelector('#h-mk-meta')?.parentElement, { signal: ctx.signal }); }, () => {});
 
-  // RT and DLY, said once in the MARKETS strip (only delayed rows carry a mark). Its own
-  // span, after the SINCE line (which repaints the strip's meta).
+  // RT · DLY once in the strip, its own span (SINCE repaints the meta).
   const mkHead = el.querySelector('#h-mk-meta')?.parentElement;
   function paintLegend(rows) {
     if (!mkHead) return;
@@ -77,6 +58,7 @@ export function render(el, cmd, ctx) {
       rerender(mkBody, marketsColumns(rows, { chg: false, cls: 'mk-cols h-mk' }));
       settleTicks(mkBody);
       paintLegend(rows);
+      if (!ctx.embed) prefetch(MARKETS_FULL); // F4 draws at once (once only: lazy.js)
       const spx = d.instruments.find((m) => m.id === 'SPX');
       if (spx) chart.setLive({ t: Date.parse(spx.asOf), v: spx.last });
       since.markets(d.instruments);

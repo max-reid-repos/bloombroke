@@ -23,13 +23,12 @@ export function freshTag(item) {
     : `<span class="fresh is-dly" title="${DLY_TITLE}">DLY</span>`;
 }
 
-// In a list of prices (HOME's MARKETS list, MARKETS): only a delayed row carries a mark,
-// the small dim DLY; real time is the rule, said once in the panel's strip (freshLegend).
+// In a price list only a delayed row has a mark (DLY); the strip says the rest once.
 export function delayTag(item) {
   return item?.realTime === false ? freshTag(item) : '';
 }
 
-// The strip's one line on the marks: "RT · DLY WHERE MARKED", only when a row is delayed.
+// The strip's line, only when a row is delayed.
 export const LEGEND_TEXT = 'RT · DLY WHERE MARKED';
 export function freshLegend(items) {
   if (!(items || []).some((it) => it?.realTime === false)) return '';

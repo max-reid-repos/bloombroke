@@ -6,12 +6,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { barInfo, sessionPad, padInfo, axisLabels, MIN_WINDOW_MINS, oneDayPad, hasSession } from '../public/screens/chart-math.js';
 import { instrumentById } from '../public/instruments.js';
-import { fxTable } from '../public/screens/home.js';
+import { fxTable } from '../public/screens/markets-full.js';
 import { svgFor, prevTagAt, prevWordsBox } from '../public/screens/chart-view.js';
 import { chartBarMode } from '../public/screens/chart.js';
-import {
-  HOME_MARKETS, homeMarkets, marketsColumns, marketsGroups, packColumns, marketsFull, marketsFit, nameChars, fmtNum, staleDay,
-} from '../public/screens/markets.js';
+import { HOME_MARKETS, homeMarkets, marketsColumns, fmtNum } from '../public/screens/markets.js';
+import { marketsGroups, packColumns, marketsFull, marketsFit, nameChars, staleDay } from '../public/screens/markets-full.js';
 import { delayTag, freshLegend, LEGEND_TEXT } from '../public/freshness.js';
 import { watchTable } from '../public/screens/watch.js';
 import { rangeLine } from '../public/screens/quote.js';
@@ -208,7 +207,7 @@ test('RT/DLY: no RT on any row; delayed rows keep a small DLY; the strip says it
   assert.equal(freshLegend(api.filter((m) => m.realTime)), '', 'no delayed row, no legend');
   // HOME paints it in the MARKETS strip, MARKETS in its meta, WATCH next to its count.
   assert.match(src('screens/home.js'), /const html = freshLegend\(rows\);/);
-  assert.match(src('screens/markets.js'), /freshLegend\(rows\)/);
+  assert.match(src('screens/markets-full.js'), /freshLegend\(rows\)/);
   assert.match(src('screens/watch.js'), /freshLegend\(list\.map/);
   const fx = fxTable([{ id: 'EURUSD', pair: 'EUR/USD', last: 1.1, change: 0, changePct: 0, decimals: 4, realTime: true }, { id: 'X', pair: 'X/Y', last: 1, change: 0, changePct: 0, decimals: 4, realTime: false }]);
   assert.doesNotMatch(fx, />RT</, 'HOME fxTable: no RT');
