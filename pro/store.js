@@ -32,6 +32,11 @@ export function giftState(g, t) {
   return t >= g.expires_at ? 'expired' : 'unused';
 }
 
+// DELETE MY ACCOUNT (pro/me-routes.js) replaces the key hash with this prefix and 64 random
+// hex characters: no key can match it, and the licence is never a target again.
+export const DELETED_PREFIX = 'deleted:';
+export const isDeletedLicence = (lic) => Boolean(lic) && String(lic.key_hash || '').startsWith(DELETED_PREFIX);
+
 export class GiftError extends Error {
   constructor(code, message) {
     super(message);
@@ -128,6 +133,10 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
       ON CONFLICT (licence_id, name) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`),
   };
 
+  // Told the licence id after its key changed (NEW KEY): CHAT ends that licence's open
+  // long-polls at once, so a device on the old key hears 401 on its next call.
+  const keyListeners = new Set();
+
   function setStatus(id, status, at = now()) {
     q.status.run(status, status, at, null, status, now(), now(), id);
     return q.byId.get(id);
@@ -163,7 +172,10 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
           const licence = existing.status === status ? q.byId.get(existing.id) : setStatus(existing.id, status);
           return { licence, created: false };
         }
-        const target = licenceId ? q.byId.get(licenceId) : null;
+        // A REACTIVATE checkout opened before its licence was deleted: a new licence with a
+        // fresh key, never a subscription on a deleted one.
+        const found = licenceId ? q.byId.get(licenceId) : null;
+        const target = found && !isDeletedLicence(found) ? found : null;
         if (target) {
           const t = now();
           q.attach.run(subscriptionId, status, status, t, customerId || null, termsAcceptedAt || null, version, live, t, target.id);
@@ -291,7 +303,7 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
 
     // A lost key: give the licence a new one. The old key stops working at once.
     rotateKey(licenceId) {
-      return tx(db, () => {
+      const out = tx(db, () => {
         if (!q.byId.get(licenceId)) throw new Error('no such licence');
         let key;
         let hash;
@@ -299,7 +311,11 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
         q.rotate.run(hash, last4(key), now(), licenceId);
         return { key, licence: q.byId.get(licenceId) };
       });
+      for (const fn of keyListeners) { try { fn(licenceId); } catch { /* a listener's own problem */ } }
+      return out;
     },
+    // fn(licenceId) after a key changed. Returns a function that stops it.
+    onKeyChange(fn) { keyListeners.add(fn); return () => keyListeners.delete(fn); },
 
     // DELETE MY ACCOUNT: the synced documents and the unused gift codes go, and the key
     // stops working (its hash is replaced by one no key can match). The licence row stays
@@ -309,7 +325,7 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
       if (!q.byId.get(licenceId)) throw new Error('no such licence');
       const docs = Number(q.closeDocs.run(licenceId).changes);
       const gifts = Number(q.closeGifts.run(licenceId).changes);
-      q.closeKey.run(`deleted:${randomBytes(32).toString('hex')}`, now(), licenceId);
+      q.closeKey.run(`${DELETED_PREFIX}${randomBytes(32).toString('hex')}`, now(), licenceId);
       return { docs, gifts };
     },
 

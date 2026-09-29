@@ -117,6 +117,7 @@ export function checkText(raw, { hasCard = false } = {}) {
 // digits), and every command word of the terminal (a name must never look like a command).
 export const RESERVED = ['admin', 'support', 'bloombroke', 'staff', 'mod', 'pro', 'chat', 'seat', 'official', 'root', 'system', 'help', 'me'];
 const COMMAND_WORDS = new Set(REGISTRY.flatMap((c) => [c.name, ...(c.aliases || [])]).map((w) => String(w).toLowerCase()));
+export const STAFF_WORDS = /bloombroke|admin|support|staff|official|moderator/i;
 export const NAME_TAKEN = 'That name is taken. Pick another.';
 export const MAX_NAME_CHANGES = 3; // a day
 export const RELEASE_MS = 30 * DAY_MS; // a name given up is locked this long
@@ -136,7 +137,9 @@ function obscene(name) {
 export function reservedName(name) {
   const low = String(name).toLowerCase();
   if (RESERVED.includes(low) || COMMAND_WORDS.has(low)) return true;
-  if (/^bb\d/.test(low) || /^seat/.test(low) || /^\d+$/.test(low)) return true;
+  if (/^bb\d/.test(low) || /^seat[\d_]*$/.test(low) || /^\d+$/.test(low)) return true;
+  // Staff-like words anywhere in a name: support_team, TheAdmin, BloombrokeHQ.
+  if (STAFF_WORDS.test(low)) return true;
   return obscene(low);
 }
 

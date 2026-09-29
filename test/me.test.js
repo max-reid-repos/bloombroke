@@ -16,6 +16,10 @@ import { revealKeyFrom, hashKey } from '../pro/licence.js';
 import { createLimiter } from '../pro/ratelimit.js';
 import { mountPro, defaultLimits } from '../pro/routes.js';
 import { mountChat, chatLimits } from '../pro/chat-routes.js';
+import { createHub } from '../pro/chat.js';
+import { licenceFromSession, PRO_METADATA } from '../pro/billing.js';
+import { isDeletedLicence } from '../pro/store.js';
+import { EXPORT_MAX_MESSAGES } from '../pro/chat-store.js';
 import { meLimits, willRenew, RENEWING, DELETED } from '../pro/me-routes.js';
 import {
   cleanUsername, cleanColor, cleanAvatar, reservedName, usernameOk, RESERVED, NAME_TAKEN, MAX_NAME_CHANGES, RELEASE_MS, DAY_MS, KEEP_MS,
@@ -26,7 +30,7 @@ const AES = revealKeyFrom('z'.repeat(40));
 const T0 = Date.UTC(2026, 8, 29, 12);
 const quiet = { log() {}, error() {} };
 
-async function setup() {
+async function setup({ waitMs = 4000 } = {}) {
   const db = openDb(':memory:');
   let t = T0;
   const now = () => t;
@@ -42,7 +46,7 @@ async function setup() {
   mountPro(app, { store, now, limits, loginDelayMs: 0, log: quiet, config: { mode: 'test' } });
   const chat = mountChat(app, {
     db, store, mode: 'test', parse: parseCommand, linkChanges, now, log: quiet, sweepMs: 0,
-    guess: limits.guess, limits: chatLimits(now), meLimitsFor: meLimits(now),
+    guess: limits.guess, limits: chatLimits(now), meLimitsFor: meLimits(now), hub: createHub({ now, waitMs }),
   });
   const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -111,7 +115,11 @@ test('username rules: reserved words, seats, command words and bad words are ref
     'Graveyard', 'news', 'MARKETS', 'watchlist', 'Settings', 'account', 'fuck', 'shit_head', 'Fuckface']) {
     assert.throws(() => cleanUsername(bad), { code: 'bad_name' }, bad);
   }
-  for (const ok of ['Tom', 'Ann', 'bbq_king', 'Bobby', 'Cassandra', 'Scunthorpe', 'Dickens', 'Maxwell']) assert.equal(cleanUsername(ok), ok, ok);
+  for (const ok of ['Tom', 'Ann', 'bbq_king', 'Bobby', 'Cassandra', 'Scunthorpe', 'Dickens', 'Maxwell', 'Seattle', 'Seatbelt_Sam']) assert.equal(cleanUsername(ok), ok, ok);
+  // Seat look-alikes: seat, seat and digits or _ only. Staff-like words anywhere in a name.
+  for (const bad of ['seat_1', 'Seat00042', 'SupportTeam', 'the_admin', 'StaffPick', 'Official_Tom', 'moderator1', 'BloombrokeHQ', 'xBLOOMBROKEx']) {
+    assert.throws(() => cleanUsername(bad), { code: 'bad_name' }, bad);
+  }
 });
 
 test('colour 0 to 7 or null; avatar 16 hex characters or null', () => {
@@ -294,6 +302,25 @@ test('NEW KEY: a new key for the same licence; the old one is 401 at once; every
   } finally { await s.close(); }
 });
 
+test('NEW KEY: the licence\'s open CHAT long-polls answer at once, and the old key is 401 after', async () => {
+  const s = await setup({ waitMs: 4000 });
+  try {
+    const [a, b] = [s.person(), s.person()];
+    await s.connect(a, b);
+    const cursor = (await a.list()).body.cursor;
+    const t0 = Date.now();
+    const waiting = s.req('GET', `/api/chat/wait?after=${cursor}`, { key: a.key });
+    await new Promise((r) => { setTimeout(r, 150); });
+    const old = a.key;
+    assert.equal((await a.rotate()).status, 200);
+    const w = await waiting;
+    assert.equal(w.status, 200);
+    assert.ok(Date.now() - t0 < 2000, `answered at once, not after the 4 s hold (${Date.now() - t0} ms)`);
+    assert.ok(w.body.events.some((e) => e.type === 'rooms'));
+    assert.equal((await s.req('GET', `/api/chat/wait?after=${w.body.last}`, { key: old })).status, 401);
+  } finally { await s.close(); }
+});
+
 test('NEW KEY: any valid key, active or not; 3 a day per licence', async () => {
   const s = await setup();
   try {
@@ -439,20 +466,20 @@ test('migration 015: old names that pass and are unique become usernames; the re
     mkdirSync(before);
     for (const f of readdirSync('migrations').filter((x) => x < '015')) copyFileSync(path.join('migrations', f), path.join(before, f));
     const db = openDb(':memory:', { migrationsDir: before });
-    const names = ['Tom', 'tom', 'Ann Lee', 'Bob', 'x', 'Admin', 'Seat 4', 'bb2', 'Kim_2', '9lives', null, 'Graveyard'];
+    const names = ['Tom', 'tom', 'Ann Lee', 'Bob', 'x', 'Admin', 'Seat 4', 'bb2', 'Kim_2', '9lives', null, 'Graveyard', 'Amy', 'Zed'];
     names.forEach((name, i) => {
       db.prepare("INSERT INTO licences (key_hash, last4, status, created_at, updated_at, seat) VALUES (?, 'AAAA', 'active', 1, 1, ?)").run(`h${i}`, i + 1);
       db.prepare('INSERT INTO chat_profiles (licence_id, name, updated_at) VALUES (?, ?, 1)').run(i + 1, name);
     });
     migrate(db, 'migrations');
     const kept = db.prepare('SELECT username FROM chat_profiles WHERE username IS NOT NULL ORDER BY licence_id').all().map((r) => r.username);
-    assert.deepEqual(kept, ['Bob', 'Kim_2', 'Graveyard'], 'Tom and tom clash; the rest break a rule');
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM chat_profiles WHERE name IS NOT NULL').get().n, 0, 'the old column is emptied');
+    assert.deepEqual(kept, ['Bob', 'Kim_2', 'Graveyard', 'Amy', 'Zed'], 'Tom and tom clash; the rest break a rule');
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM chat_profiles WHERE name IS NOT NULL').get().n, 13, 'the old column is kept, so a rollback still has the names');
     // Start-up: command words and bad words go too.
     const store = createStore(db, { aesKey: AES });
     const app = express();
     mountChat(app, { db, store, parse: parseCommand, linkChanges, log: quiet, sweepMs: 0 });
-    assert.deepEqual(db.prepare('SELECT username FROM chat_profiles WHERE username IS NOT NULL ORDER BY licence_id').all().map((r) => r.username), ['Bob', 'Kim_2']);
+    assert.deepEqual(db.prepare('SELECT username FROM chat_profiles WHERE username IS NOT NULL ORDER BY licence_id').all().map((r) => r.username), ['Bob', 'Kim_2', 'Amy', 'Zed'], '1 of 5 (20%) goes');
     // A name cleared at start-up is locked 30 days for others, like any name given up;
     // its licence (seat 12) may take any valid name at once.
     assert.deepEqual(db.prepare('SELECT name_key, licence_id FROM name_releases').all(), [{ name_key: 'graveyard', licence_id: 12 }]);
@@ -461,6 +488,88 @@ test('migration 015: old names that pass and are unique become usernames; the re
     assert.throws(() => db.prepare('UPDATE chat_profiles SET color = 8 WHERE licence_id = 1').run(), /CHECK/);
     assert.throws(() => db.prepare("UPDATE chat_profiles SET avatar = 'nothex' WHERE licence_id = 1").run(), /CHECK/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('delete: drives end quietly, the name leaves the server lines, no request reaches the old seat', async () => {
+  const s = await setup();
+  try {
+    const [a, b, c] = [s.person(), s.person(), s.person()];
+    await s.connect(a, b);
+    await s.connect(a, c);
+    const ab = (await a.open({ seats: [b.seat, c.seat] })).body.room.id; // a group: it outlives A
+    await a.set({ username: 'Tom' });
+    await b.set({ username: 'Bee' });
+    // Old server lines that name Tom: a drive and last week's GUESS winner.
+    assert.equal((await a.post(`/api/chat/rooms/${ab}/drive`, { action: 'start' })).status, 200);
+    assert.equal((await b.post(`/api/chat/rooms/${ab}/drive`, { action: 'follow' })).status, 200);
+    s.db.prepare("INSERT INTO chat_messages (room_id, licence_id, body, kind, created_at) VALUES (?, NULL, ?, 'sys', ?)").run(ab, `Last week's GUESS: Tom #${a.seat}, Bee #${b.seat} and SEAT 9 won with 9 points.`, T0);
+    s.db.prepare("INSERT INTO chat_messages (room_id, licence_id, body, kind, created_at) VALUES (?, NULL, ?, 'sys', ?)").run(ab, `Tom #${a.seat}1 is driving.`, T0);
+    s.store.setBilling(a.id, { cancelAtPeriodEnd: true, currentPeriodEnd: T0 + 5 * DAY_MS });
+    assert.equal((await a.del()).status, 200);
+    assert.equal(s.chat.drives.get(ab), null, 'the drive ended');
+    const lines = s.db.prepare("SELECT body FROM chat_messages WHERE kind = 'sys' ORDER BY id").all().map((r) => r.body);
+    assert.ok(!lines.some((l) => /stopped/.test(l)), 'no "stopped" line');
+    assert.ok(!lines.some((l) => l.includes(`Tom #${a.seat} `) || l.includes(`Tom #${a.seat},`)), lines.join(' | '));
+    assert.ok(lines.includes(`SEAT ${a.seat} is driving.`));
+    assert.ok(lines.includes(`Last week's GUESS: SEAT ${a.seat}, Bee #${b.seat} and SEAT 9 won with 9 points.`));
+    assert.ok(lines.includes(`Tom #${a.seat}1 is driving.`), 'another seat that starts with the same digits is left alone');
+    // A deleted account has no Pro to chat with: a request to its seat is not kept.
+    assert.equal(isDeletedLicence(s.store.findById(a.id)), true);
+    assert.equal(s.store.findById(a.id).status, 'active', 'still paid to the period end');
+    const d = s.person();
+    assert.deepEqual((await d.open({ seats: [a.seat] })).body.sent, true);
+    assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM chat_requests WHERE to_seat = ?').get(a.seat).n, 0);
+    assert.equal(EXPORT_MAX_MESSAGES, 20000);
+  } finally { await s.close(); }
+});
+
+test('money: a REACTIVATE checkout opened before a delete makes a new licence, never one on the deleted', async () => {
+  const s = await setup();
+  try {
+    const a = s.person('canceled');
+    assert.equal((await a.del()).status, 200);
+    const deleted = s.store.findById(a.id);
+    // The store on its own.
+    const made = s.store.ensureLicence({ sessionId: 'cs_test_after_delete1', customerId: 'cus_x1', subscriptionId: 'sub_after1', status: 'active', licenceId: a.id });
+    assert.equal(made.created, true);
+    assert.notEqual(made.licence.id, a.id);
+    assert.match(made.key, /^BB-/);
+    assert.equal(made.reactivated, undefined);
+    // Through the checkout path (the webhook and the success page).
+    const calls = [];
+    const stripe = {
+      subscriptions: {
+        async retrieve(id) { calls.push(['retrieve', id]); return { id, status: 'active', customer: 'cus_x2', cancel_at_period_end: false, items: { data: [] } }; },
+        async update(id) { calls.push(['update', id]); return { id }; },
+        async cancel(id) { calls.push(['cancel', id]); return { id }; },
+      },
+    };
+    const session = {
+      id: 'cs_test_after_delete2', mode: 'subscription', status: 'complete', payment_status: 'paid', subscription: 'sub_after2', customer: 'cus_x2', livemode: false,
+      client_reference_id: String(a.id), metadata: { ...PRO_METADATA, licence_id: String(a.id) },
+    };
+    const out = await licenceFromSession(session, { store: s.store, stripe, log: quiet });
+    assert.equal(out.created, true);
+    assert.notEqual(out.licence.id, a.id);
+    assert.ok(!calls.some(([c]) => c === 'cancel'), 'nothing cancelled or refunded');
+    const after = s.store.findById(a.id);
+    assert.deepEqual([after.stripe_subscription_id, after.status, after.key_hash], [deleted.stripe_subscription_id, deleted.status, deleted.key_hash], 'the deleted licence is untouched');
+  } finally { await s.close(); }
+});
+
+test('start-up name check: more than 20% of names would go: nothing is cleared, and it is logged', () => {
+  const db = openDb(':memory:');
+  ['Graveyard', 'News', 'Amy', 'Zed'].forEach((u, i) => {
+    db.prepare("INSERT INTO licences (key_hash, last4, status, created_at, updated_at, seat) VALUES (?, 'AAAA', 'active', 1, 1, ?)").run(`s${i}`, i + 1);
+    db.prepare('INSERT INTO chat_profiles (licence_id, username, updated_at) VALUES (?, ?, 1)').run(i + 1, u);
+  });
+  const errors = [];
+  const store = createStore(db, { aesKey: AES });
+  mountChat(express(), { db, store, parse: parseCommand, linkChanges, log: { log() {}, error: (...a) => errors.push(a.join(' ')) }, sweepMs: 0 });
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM chat_profiles WHERE username IS NOT NULL').get().n, 4, 'nothing cleared');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM name_releases').get().n, 0);
+  assert.match(errors.join(), /name sweep stopped, nothing cleared: 2 of 4 names would go/);
+  assert.equal(usernameOk('Alice'), true, 'the known-good name the sweep checks first');
 });
 
 test('copy: no em dash, no emoji, no brand word in the ME server files', () => {

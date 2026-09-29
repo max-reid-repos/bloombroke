@@ -194,7 +194,8 @@ export function extraHtml(room, dv = null, guess = null) {
       : `<p class="ct-line ct-offer"><span>${esc(driverName(d.by))} is driving.</span><button type="button" class="chip" data-act="follow">FOLLOW</button></p>`;
   }
   if (guess?.scores?.length) {
-    const list = guess.scores.map((g) => `${esc(label(g.seat, g.name))} <span class="num">${esc(scoreText(g, guess.of || GUESS_OF))}</span>`).join('<span class="dv-sep">·</span>');
+    // Each player as everywhere else: avatar, username in its colour, #seat.
+    const list = guess.scores.map((g) => `${whoHtml(g.seat, g.name, Boolean(g.own), g)} <span class="num">${esc(scoreText(g, guess.of || GUESS_OF))}</span>`).join('<span class="dv-sep">·</span>');
     out += `<button type="button" class="ct-line ct-guess" data-card="GUESS" title="Open GUESS"><span class="ct-gk">TODAY'S GUESS</span><span class="ct-gl">${list}</span></button>`;
   }
   return out;

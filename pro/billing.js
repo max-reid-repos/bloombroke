@@ -3,6 +3,7 @@
 // STRIPE_PRICE_ID_YEARLY for yearly), never from the client. The client only picks the plan.
 
 import Stripe from 'stripe';
+import { isDeletedLicence } from './store.js';
 
 export const STRIPE_API_VERSION = '2026-08-26.dahlia';
 
@@ -129,7 +130,9 @@ export async function licenceFromSession(session, { store, stripe, log = console
   const sub = await stripe.subscriptions.retrieve(subId);
   const accepted = termsAcceptedAt(session, at);
   const licenceId = reactivateLicenceId(session);
-  const target = licenceId ? store.findById(licenceId) : null;
+  // A licence deleted in ME since this checkout opened is no target: a new licence is made.
+  const found = licenceId ? store.findById(licenceId) : null;
+  const target = found && !isDeletedLicence(found) ? found : null;
   // Already known (a resent event, a reloaded success page): only the status is read
   // again below. Nothing is cancelled or refunded, and no licence moves.
   const known = Boolean(store.findBySubscription(subId) || store.findBySession(session.id));

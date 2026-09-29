@@ -1,6 +1,7 @@
 -- ME: a username, a name colour and a pixel avatar per licence, in the CHAT profile row
 -- (chat_profiles, keyed by licence id; it goes with the licence). Additive: new columns,
--- one new table, new indexes, and the old display name moved over.
+-- one new table, new indexes, and the old display name copied over (the old name column
+-- is kept as it was, so a rollback of the code still has it).
 -- Retention (pro/chat-store.js): a profile goes 30 days after the Pro ended, or at once
 -- when the account is deleted in ME; a released name is locked for 30 days, then its
 -- row is deleted.
@@ -29,7 +30,6 @@ UPDATE chat_profiles SET username = name
     AND lower(name) NOT IN ('admin', 'support', 'bloombroke', 'staff', 'mod', 'pro', 'chat', 'seat', 'official', 'root', 'system', 'help', 'me')
     AND lower(name) NOT GLOB 'bb[0-9]*'
     AND NOT EXISTS (SELECT 1 FROM chat_profiles o WHERE o.licence_id != chat_profiles.licence_id AND o.name IS NOT NULL AND lower(o.name) = lower(chat_profiles.name));
-UPDATE chat_profiles SET name = NULL;
 
 CREATE UNIQUE INDEX chat_profiles_username ON chat_profiles(lower(username)) WHERE username IS NOT NULL;
 

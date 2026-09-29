@@ -40,6 +40,10 @@
 .me-av-acts { display: flex; gap: 16px; font-size: 12px; letter-spacing: .06em; }
 .me-row-save .card-btn { justify-self: start; }
 
+/* PLAN: the facts, and MANAGE PLAN, CANCEL, GIFT right under them (kit.css .card-links). */
+.me-plan { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
+.me-plan-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 24px; font-size: 12px; letter-spacing: .06em; color: var(--dim); }
+
 /* This device: four short rows. */
 .me-device { display: grid; gap: 8px; width: 100%; max-width: 480px; text-align: left; }
 .me-dev-k, .me-dk { letter-spacing: .2em; }
@@ -48,7 +52,7 @@
 .me-set .chip[aria-pressed="true"] { color: var(--ink); background: var(--text-2); border-color: var(--text-2); }
 
 /* + Details: KEY AND DATA, the question line, the rules. */
-.me-keys { justify-content: flex-start; margin: 8px 0 12px; }
+.me-keys { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px 24px; margin: 8px 0 12px; font-size: 12px; letter-spacing: .06em; color: var(--dim); }
 .me-confirm { margin: 0 0 12px; }
 .me-warn { margin: 0 0 12px; font-size: 13px; color: var(--down); }
 .me-del-in { width: 10ch; height: 24px; padding: 0 6px; border: 1px solid var(--rule-strong); border-radius: 0; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; text-transform: uppercase; }

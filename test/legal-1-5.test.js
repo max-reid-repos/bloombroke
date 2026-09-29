@@ -38,6 +38,7 @@ test('terms s9: cancel from ME, NEW KEY, usernames and avatars, deleting the acc
     'Your seat number never changes.',
     'A username you give up cannot be taken by anyone else for 30 days.',
     'You can delete your account yourself in ME once no subscription on it will renew: cancel first.',
+    'Anyone who has your key can also make a new key or delete your account in ME. If that happens, write to us at {{CONTACT}}.',
   ]) assert.ok(s9.includes(must), must);
   assert.ok(!terms.includes('press MANAGE,'), 'the old "press MANAGE" is gone');
   assert.ok(section(terms, 10).includes('always with their seat number, so nobody can pass for another seat'));
@@ -55,6 +56,7 @@ test('privacy: what ME stores, NEW KEY, download, delete (kept and removed), ret
     'It never holds your key, its hash or any Stripe ID.',
     'We keep the licence record (seat number, Stripe IDs and dates) for the 5 years in section 8',
     'we make your key unusable',
+    'the messages and chat requests you sent (except copies inside reports others made, kept as section 8 says)',
     'the username, colour and avatar you choose in ME',
     'DOWNLOAD MY DATA gives you a copy of what we hold about you, and DELETE MY ACCOUNT deletes it',
   ]) assert.ok(privacy.includes(must), must);

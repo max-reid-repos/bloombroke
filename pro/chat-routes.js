@@ -39,6 +39,7 @@ import {
   ChatError, checkText, cleanCard, cleanUsername, cleanSeats, tickersIn, createHub, MAX_REASON, DAY_MS, AT_NAME_RE,
 } from './chat.js';
 import { mountMe, meLimits } from './me-routes.js';
+import { isDeletedLicence } from './store.js';
 import { createChatStore } from './chat-store.js';
 import {
   createDrives, drivingLine, stoppedLine, label, DRIVE_GONE_MS, DRIVE_CMDS_PER_MIN,
@@ -92,7 +93,8 @@ export function mountChat(app, {
   // Old display names that break a username rule now go back to SEAT 42 (015_profiles.sql).
   try {
     const n = chat.sweepNames();
-    if (n) log.log?.(`[chat] ${n} usernames that break a rule were cleared`);
+    if (n.aborted) log.error(`[chat] name sweep stopped, nothing cleared: ${n.aborted}`);
+    else if (n.cleared) log.log?.(`[chat] ${n.cleared} usernames that break a rule were cleared`);
   } catch (err) { log.error('[chat] name sweep', err?.message); }
   const fail = (res, status, error, message) => res.status(status).json({ error, message });
   const limited = (res, r, message = 'Too many tries. Wait a minute and try again.') => {
@@ -207,7 +209,8 @@ export function mountChat(app, {
 
   r.post('/open', body, (req, res) => {
     const lic = req.lic;
-    const isActive = (id) => { const l = store.findById(id); return Boolean(l && publicStatus(l, now(), mode).active); };
+    // A deleted account (ME) has no Pro to chat with, whatever its billing status says.
+    const isActive = (id) => { const l = store.findById(id); return Boolean(l && !isDeletedLicence(l) && publicStatus(l, now(), mode).active); };
     const allowRequest = () => limits.request.hit(`lic:${lic.id}`).ok;
     // CHAT @name: the same answer whether the name exists or not, and the same limits as
     // CHAT 42. The seat behind a name is never sent back.
@@ -424,10 +427,18 @@ export function mountChat(app, {
   });
 
   app.use('/api/chat', r);
-  // ME: /api/me (profile, export, delete). The account's drives end with it.
+  // ME: /api/me (profile, export, delete). A deleted account's drives end quietly: the
+  // driver and followers hear drive-end, and no "stopped" line names the account.
   const endDrivesOf = (licId) => {
-    for (const [roomId, d] of drives.rooms()) if (d.driver === licId || d.followers.has(licId)) { if (d.driver === licId) endDrive(roomId); else d.followers.delete(licId); }
+    for (const [roomId, d] of drives.rooms()) {
+      if (d.driver === licId) {
+        drives.stop(roomId);
+        hub.emit([d.driver, ...d.followers], { type: 'drive-end', room: roomId });
+      } else if (d.followers.delete(licId)) countTo(roomId, d);
+    }
   };
+  // NEW KEY: the licence's open long-polls answer at once; the old key's next call is 401.
+  store.onKeyChange?.((licId) => hub.emit([licId], { type: 'rooms' }));
   mountMe(app, {
     db, store, chat, hub, guess, mode, publicUrl, now, log, limits: meLimitsFor, onDelete: endDrivesOf,
   });

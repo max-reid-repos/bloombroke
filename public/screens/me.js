@@ -14,7 +14,7 @@
 // Pure *Html builders are exported for node:test; render() is the browser part.
 
 import { esc } from './markets.js';
-import { cardPage, cardButton, cardLink, cardRows, raw } from '../kit.js';
+import { cardPage, cardButton, cardLink, cardFacts, cardRows, raw } from '../kit.js';
 import * as pro from '../pro.js';
 import {
   avatarSvg, encode, bitsFromHex, blank, initialsBits, initialsOf, colorOf, COLORS, SIZE,
@@ -25,7 +25,8 @@ import { findCommand } from '../registry.js';
 export const NOT_PRO_LINE = 'Username, avatar and sync come with Pro.';
 export const USERNAME_RE = /^[A-Za-z][A-Za-z0-9_]{2,14}$/; // the server's rule (pro/chat.js)
 export const NAME_HINT = 'A username is 3 to 15 letters, numbers or _, starting with a letter.';
-export const NEW_KEY_ASK = 'Your old key stops working everywhere.';
+export const SAVE_NOW = 'Save it right away. If this page fails, write to hello@bloombroke.com.';
+export const NEW_KEY_ASK = `Your old key stops working everywhere. ${SAVE_NOW}`;
 export const DELETE_ASK = 'Type DELETE to delete your account.';
 export const RENEWING = 'Cancel first: press CANCEL. Then delete.';
 export const DELETED = 'Your account is deleted. This browser is logged out.';
@@ -38,7 +39,7 @@ export const ME_ROWS = [
   ['Colour, avatar', 'The people you chat with see them. Nothing that pretends to be someone else, nothing offensive: we may reset it.'],
   ['This device', 'Saved in this browser. With Pro they sync to your other devices.'],
   ['Clock', 'LOCAL changes the clock in the top bar only. Every time on the data stays New York.'],
-  ['New key', 'The same seat, plan, chats and synced lists on a new key. The old key stops working everywhere.'],
+  ['New key', `The same seat, plan, chats and synced lists on a new key. The old key stops working everywhere. ${SAVE_NOW}`],
   ['Download', 'What we hold about you, as a JSON file.'],
   ['Delete', 'Cancel first. Your username, avatar, settings, synced lists and chats go. The billing record stays 5 years (Privacy Policy).'],
 ];
@@ -137,7 +138,7 @@ export function keyDataHtml({ confirm = null } = {}) {
     cardLink({ label: 'DOWNLOAD MY DATA', id: 'me-export' }),
     cardLink({ label: 'DELETE MY ACCOUNT', id: 'me-delete' }),
   ];
-  return `<p class="tag me-dk">KEY AND DATA</p><p class="card-links me-keys">${links.join(' ')}</p><div id="me-confirm">${confirmHtml(confirm)}</div>${cardRows(ME_ROWS)}`;
+  return `<p class="tag me-dk">KEY AND DATA</p><p class="me-keys">${links.join(' ')}</p><div id="me-confirm">${confirmHtml(confirm)}</div>${cardRows(ME_ROWS)}`;
 }
 
 // The page. key/st/me: this browser's licence, status and profile (none: a visitor).
@@ -183,12 +184,26 @@ export function meHtml(o = {}) {
     heroLabel: `${shown}, seat ${pad(seat)}`,
     sub: raw(`<span class="me-badge" id="me-badge"${person.name ? '' : ' hidden'}>#${pad(seat)}</span>`),
     act: raw(profileFormHtml(d, seat)),
-    facts: planFacts(st),
+    // PLAN: the facts, then MANAGE PLAN, CANCEL and GIFT right under them (CANCEL stays in
+    // the first view), before this device.
+    facts: `<div class="me-plan">${cardFacts(planFacts(st))}<p class="me-plan-links">${links.filter(Boolean).join(' ')}</p></div>`,
     media: raw(deviceHtml({ prefs, pro: true, tape })),
-    links: links.filter(Boolean),
     details,
     detailsOpen: open,
   });
+}
+
+// One call at a time: while fn runs, another call does nothing and returns false. NEW KEY
+// and DELETE go through it, so a double Enter never sends two requests.
+export function oneAtATime() {
+  let busy = false;
+  const run = async (fn) => {
+    if (busy) return false;
+    busy = true;
+    try { await fn(); return true; } finally { busy = false; }
+  };
+  run.busy = () => busy;
+  return run;
 }
 
 // ---- the browser -----------------------------------------------------------------------------
@@ -333,16 +348,20 @@ export function render(el, cmd, ctx) {
     if (!$('#me-name')) return;
     draft().username = $('#me-name').value;
   }
+  const once = oneAtATime(); // NEW KEY and DELETE: never two requests in flight
   async function answer(yes) {
     const kind = v.confirm;
-    if (!kind || kind === 'renewing') return;
+    if (!kind || kind === 'renewing' || once.busy()) return;
     if (!yes) { v.confirm = null; paint(); $(kind === 'key' ? '#me-newkey' : '#me-delete')?.focus(); ctx.status('NOTHING CHANGED'); return; }
     if (kind === 'delete' && String($('#me-del')?.value || '').trim().toUpperCase() !== 'DELETE') {
       ctx.status('TYPE DELETE TO CONFIRM', 'warn');
       $('#me-del')?.focus();
       return;
     }
-    for (const b of el.querySelectorAll('.me-confirm button')) b.disabled = true;
+    await once(() => sendAnswer(kind));
+  }
+  async function sendAnswer(kind) {
+    for (const b of el.querySelectorAll('.me-confirm button, .me-confirm input')) b.disabled = true;
     if (kind === 'key') {
       ctx.status('MAKING A NEW KEY...');
       try {

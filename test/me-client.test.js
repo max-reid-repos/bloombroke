@@ -9,8 +9,9 @@ import { readFileSync } from 'node:fs';
 import { cardWords } from '../public/kit.js';
 import {
   meHtml, planFacts, renewing, draftOf, draftPerson, shownBits, gridHtml, swatchesHtml, deviceHtml, confirmHtml, keyDataHtml,
-  NOT_PRO_LINE, RENEWING, NEW_KEY_ASK, DELETE_ASK, USERNAME_RE,
+  NOT_PRO_LINE, RENEWING, NEW_KEY_ASK, DELETE_ASK, USERNAME_RE, oneAtATime, SAVE_NOW, ME_ROWS,
 } from '../public/screens/me.js';
+import { extraHtml } from '../public/screens/chat.js';
 import {
   encode, decode, draw, initials, initialsOf, initialsBits, bitsOf, colorOf, avatarSvg, nameHtml, pathOf, flat, blank, FONT, COLORS,
 } from '../public/pixel-avatar.js';
@@ -82,6 +83,45 @@ test('ME with Pro: the avatar and username in its colour, #00002, the editor, th
   const gift = meHtml({ key: KEY, st: { status: 'gift', seat: 9, giftUntil: new Date(Date.now() + 9e8).toISOString() }, me: TOM, has: all });
   assert.doesNotMatch(gift, /me-manage|me-cancel/);
   assert.match(gift, /<dd class="num">Gift<\/dd>/);
+});
+
+test('ME: NEW KEY and DELETE never send two requests: a second Enter while one runs does nothing', async () => {
+  const once = oneAtATime();
+  let calls = 0;
+  let finish;
+  const slow = () => new Promise((r) => { calls += 1; finish = r; });
+  const first = once(slow);
+  assert.equal(once.busy(), true);
+  assert.equal(await once(slow), false, 'the second press is dropped');
+  assert.equal(await once(slow), false);
+  finish();
+  assert.equal(await first, true);
+  assert.equal(calls, 1);
+  assert.equal(once.busy(), false);
+  // A failed request frees it again.
+  await assert.rejects(once(async () => { throw new Error('offline'); }));
+  assert.equal(once.busy(), false);
+  // The screen sends both through it, and checks it before anything else.
+  const src = readFileSync('public/screens/me.js', 'utf8');
+  assert.match(src, /if \(!kind \|\| kind === 'renewing' \|\| once\.busy\(\)\) return;/);
+  assert.match(src, /await once\(\(\) => sendAnswer\(kind\)\);/);
+  assert.match(src, /async function sendAnswer\(kind\) \{[\s\S]*pro\.rotateKey\(\)[\s\S]*pro\.deleteAccount\(\)/);
+});
+
+test('ME: NEW KEY says save it at once and where to write; the plan links sit right under the plan', () => {
+  assert.equal(SAVE_NOW, 'Save it right away. If this page fails, write to hello@bloombroke.com.');
+  assert.ok(NEW_KEY_ASK.endsWith(SAVE_NOW));
+  assert.ok(ME_ROWS.find(([k]) => k === 'New key')[1].endsWith(SAVE_NOW));
+  const html = meHtml({ key: KEY, st: ST, me: TOM, has: all });
+  const at = (s) => html.indexOf(s);
+  assert.ok(at('RENEWS') < at('id="me-manage"') && at('id="me-cancel"') < at('class="me-device"'), 'MANAGE PLAN and CANCEL before THIS DEVICE');
+  assert.match(html, /<p class="me-plan-links">.*id="me-manage">MANAGE PLAN<.*id="me-cancel">CANCEL<.*data-cmd="GIFT">GIFT</s);
+});
+
+test('CHAT: TODAY\'S GUESS shows each player with their avatar and coloured username', () => {
+  const x = extraHtml({ id: 9, readOnly: false }, null, { n: 2, of: 6, scores: [{ seat: 2, name: 'Ann', color: 4, avatar: null, tries: 2, solved: true }, { seat: 7, name: null, tries: 6, solved: false }] });
+  assert.match(x, /<svg class="px-av cm-av"[^>]*data-nc="4">.*<span data-nc="4">Ann<\/span> <span class="cm-seat">#2<\/span>/s);
+  assert.match(x, /SEAT <span class="cm-seat">7<\/span>/);
 });
 
 test('ME: the questions, one line each; DELETE also wants the word; renewing says cancel first', () => {

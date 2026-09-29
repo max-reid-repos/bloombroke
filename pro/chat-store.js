@@ -14,6 +14,8 @@ import {
 import { ENDED_KEEP_MS } from './store.js';
 
 const PREVIEW = 60;
+export const SWEEP_MAX_SHARE = 0.2; // sweepNames: more than this share of names would go: stop
+export const EXPORT_MAX_MESSAGES = 20000;
 // In a group, messages from someone you blocked are hidden for you (@filter = 1 in a
 // group, 0 in a DM, which turns read-only instead). @me is the reader.
 const HIDDEN = '(@filter = 0 OR c.licence_id IS NULL OR c.licence_id NOT IN (SELECT blocked_licence FROM chat_blocks WHERE licence_id = @me))';
@@ -164,7 +166,11 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
   };
   // DOWNLOAD MY DATA and DELETE MY ACCOUNT (ME).
   q.blocksOf = db.prepare('SELECT blocked_licence FROM chat_blocks WHERE licence_id = ? ORDER BY created_at');
-  q.sentBy = db.prepare('SELECT room_id, body, card_cmd, tickers_json, kind, created_at FROM chat_messages WHERE licence_id = ? AND created_at > ? ORDER BY id');
+  q.sentBy = db.prepare(`SELECT room_id, body, card_cmd, tickers_json, kind, created_at FROM chat_messages WHERE licence_id = ? AND created_at > ? ORDER BY id LIMIT ${EXPORT_MAX_MESSAGES}`);
+  // DELETE MY ACCOUNT: the name in the server's own lines ("Tom #1 is driving.", last week's
+  // GUESS winner) becomes SEAT 1. A label is always followed by a space or a comma there.
+  q.unname = db.prepare(`UPDATE chat_messages SET body = replace(replace(body, @label || ' ', @seat || ' '), @label || ',', @seat || ',')
+    WHERE kind = 'sys' AND (instr(body, @label || ' ') > 0 OR instr(body, @label || ',') > 0)`);
   q.guessBy = db.prepare('SELECT room_id, n, day, tries, solved, points FROM chat_guess WHERE licence_id = ? ORDER BY created_at');
   q.orphanReleases = db.prepare('UPDATE name_releases SET licence_id = NULL WHERE licence_id = ?');
 
@@ -436,17 +442,22 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
     // At start-up: usernames that break a rule now (a name carried over from the old
     // display name, or one that became a command word) go back to SEAT 42. Like any name
     // given up, it is locked 30 days for others; its licence may pick a valid name at once
-    // (a clearing is not one of its 3 changes a day). Returns how many.
+    // (a clearing is not one of its 3 changes a day). A broken check must not wipe good
+    // names: when a plain name like Alice fails, or more than 20% would go, nothing is
+    // cleared. Returns { cleared, total, aborted } (aborted: why, or null).
     sweepNames() {
       return tx(db, () => {
-        let n = 0;
+        const rows = q.allNames.all();
+        if (!usernameOk('Alice')) return { cleared: 0, total: rows.length, aborted: 'the name check refuses a plain name' };
+        const bad = rows.filter((r) => !usernameOk(r.username));
+        if (bad.length && bad.length > rows.length * SWEEP_MAX_SHARE) return { cleared: 0, total: rows.length, aborted: `${bad.length} of ${rows.length} names would go` };
         const t = now();
-        for (const r of q.allNames.all()) {
-          if (usernameOk(r.username)) continue;
+        let cleared = 0;
+        for (const r of bad) {
           q.release.run(r.username.toLowerCase(), r.licence_id, t);
-          n += Number(q.dropName.run(r.licence_id).changes);
+          cleared += Number(q.dropName.run(r.licence_id).changes);
         }
-        return n;
+        return { cleared, total: rows.length, aborted: null };
       });
     },
 
@@ -487,6 +498,7 @@ export function createChatStore(db, { now = () => Date.now() } = {}) {
       const p = q.profileOf.get(lic);
       const seat = q.seatOf.get(lic)?.seat;
       if (p?.username) q.release.run(p.username.toLowerCase(), null, t);
+      if (p?.username && Number.isInteger(seat)) q.unname.run({ label: label(seat, p.username), seat: `SEAT ${seat}` });
       q.orphanReleases.run(lic);
       let rows = Number(del.profile.run(lic).changes) + Number(del.messages.run(lic).changes) + Number(del.members.run(lic).changes)
         + Number(del.requestsFrom.run(lic).changes) + Number(del.blocks.run(lic, lic).changes) + Number(del.guess.run(lic).changes)
