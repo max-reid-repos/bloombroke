@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { cleanCommand, cleanUrl, cleanPath, cleanReferrer, pageFor, startGa4, shareMethod, contentType, SITE } from '../public/ga4.js';
+import { cleanCommand, cleanUrl, cleanPath, cleanReferrer, cleanUtm, pageFor, startGa4, shareMethod, contentType, SITE } from '../public/ga4.js';
 import { loadGa4, goal, GA4, GA_EVENTS, GA_SHARE_GOALS, GOALS, reloadAfterKey, analyticsBlocked } from '../public/goal.js';
 import { securityHeaders } from '../lib/embed.js';
 import { buildAssets } from '../lib/assets.js';
@@ -92,9 +92,10 @@ test('startGa4: set before config, no automatic page view, Signals and ad person
   assert.equal(typeof win.gtag, 'function');
   const c = calls(win);
   assert.equal(win.dataLayer[0][0], 'js');
-  assert.deepEqual(c[0], ['set', { page_location: `${SITE}/?c=AAPL+1Y`, page_referrer: 'https://www.google.com/', page_title: 'AAPL 1Y | Bloombroke' }]);
+  // The landing link's campaign tag rides on the first page view (and the set before it).
+  assert.deepEqual(c[0], ['set', { page_location: `${SITE}/?c=AAPL+1Y&utm_source=x`, page_referrer: 'https://www.google.com/', page_title: 'AAPL 1Y | Bloombroke' }]);
   assert.deepEqual(c[1], ['config', 'G-N4VN8PCJXK', { send_page_view: false, allow_google_signals: false, allow_ad_personalization_signals: false }]);
-  assert.deepEqual(c[3], ['event', 'page_view', { page_location: `${SITE}/?c=AAPL+1Y`, page_referrer: 'https://www.google.com/', page_title: 'AAPL 1Y | Bloombroke' }]);
+  assert.deepEqual(c[3], ['event', 'page_view', { page_location: `${SITE}/?c=AAPL+1Y&utm_source=x`, page_referrer: 'https://www.google.com/', page_title: 'AAPL 1Y | Bloombroke' }]);
   // gtag.js reads arguments objects, not arrays.
   assert.equal(Object.prototype.toString.call(win.dataLayer[1]), '[object Arguments]');
   // The next screen: its referrer is the last clean page. The same screen again: no second view.
@@ -105,7 +106,7 @@ test('startGa4: set before config, no automatic page view, Signals and ad person
 });
 
 test('startGa4: no key, code, amount, chat text, username, email, alert price or checkout id ever reaches gtag', () => {
-  const secretHref = 'https://bloombroke.com/?c=LOGIN+BB-7K2M-9QXR-4TYP-ABCD&session_id=cs_live_a1B2&utm_source=alice';
+  const secretHref = 'https://bloombroke.com/?c=LOGIN+BB-7K2M-9QXR-4TYP-ABCD&session_id=cs_live_a1B2&utm_source=alice%40example.com&utm_content=BB-7K2M-9QXR-4TYP-ABCD';
   const { win, doc, listeners } = fakePage({ href: secretHref, referrer: 'https://bloombroke.com/?c=CHAT+%40alice+hello&session_id=cs_live_b' });
   const run = startGa4({ win, doc, id: GA4.id, state: { page: null, early: [['guess_played', { result: 'someone@example.com' }], ['whatif_run', { note: 'alice' }]] } });
   for (const c of SECRET_COMMANDS) run.page(c);
@@ -169,6 +170,69 @@ test('share: one event for SHARE, COPY LINK, SAVE VIDEO, DOWNLOAD IMAGE, EMBED, 
   p.listeners.find((l) => l.type === 'click').fn({ target: el(['a[download][href^="/og/"]']) });
   p.listeners.find((l) => l.type === 'click').fn({ target: el([]) });
   assert.deepEqual(calls(p.win).filter((a) => a[1] === 'share'), [['event', 'share', { method: 'image', content_type: 'whatif' }]]);
+});
+
+// ---- campaign tags: the first page view of a visit only --------------------------------------
+
+test('utm: the four campaign tags, lower-cased and short, in order; anything else dropped', () => {
+  assert.equal(cleanUtm('?utm_campaign=Oct-Launch&utm_source=X&utm_medium=social&utm_content=v1.2_a&utm_term=secret&gclid=abc&fbclid=def&c=AAPL'),
+    'utm_source=x&utm_medium=social&utm_campaign=oct-launch&utm_content=v1.2_a');
+  assert.equal(cleanUtm('?utm_source=newsletter&utm_campaign=launch2026'), 'utm_source=newsletter&utm_campaign=launch2026');
+  for (const bad of [
+    'utm_source=two%20words', 'utm_source=a%40b', 'utm_medium=someone%40example.com', `utm_campaign=${'a'.repeat(41)}`, 'utm_source=',
+    'utm_content=BB-7K2M-9QXR-4TYP-ABCD', 'utm_content=bb_7k2m_9qxr_4typ_abcd', 'utm_content=promo.bb.7k2m.9qxr.4typ.abcd', 'utm_content=7k2m-9qxr-4typ-abcd',
+    'utm_content=bb7k2m9qxr4typabcd', 'utm_content=GIFT-ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-2345', 'utm_content=gift-abcd-efgh', 'utm_content=cs_live_a1b2c3',
+    'utm_content=x_sk_test_abc', 'utm_source=whsec_abc', 'utm_source=%2Fetc%2Fpasswd', 'utm_source=a%26c%3DLOGIN', 'utm_source=%C3%A9t%C3%A9',
+    'gclid=abc', 'fbclid=def', 'utm_id=1', 'utm_term=word',
+  ]) assert.equal(cleanUtm(`?${bad}`), '', bad);
+  assert.equal(cleanUtm('?utm_source=ok&utm_content=BB-7K2M-9QXR-4TYP-ABCD'), 'utm_source=ok', 'one bad tag drops only itself');
+  assert.equal(cleanUtm(null), '');
+  // Where they go: after ?c=, or on their own.
+  assert.equal(pageFor({ path: '/', command: 'AAPL 1Y', utm: '?utm_source=x&utm_medium=social' }).location, `${SITE}/?c=AAPL+1Y&utm_source=x&utm_medium=social`);
+  assert.equal(pageFor({ path: '/', command: 'HOME', utm: '?utm_source=x' }).location, `${SITE}/?utm_source=x`);
+  assert.equal(pageFor({ path: '/privacy', utm: '?utm_campaign=oct' }).location, `${SITE}/privacy?utm_campaign=oct`);
+  assert.equal(cleanUrl('/?c=AAPL&utm_source=x'), `${SITE}/?c=AAPL`, 'a referrer or an address alone never keeps them');
+});
+
+test('utm: on the first page view of a visit only; later views and the referrer are tag-free', () => {
+  const href = 'https://bloombroke.com/?c=GUESS&utm_source=x.com&utm_medium=social&utm_campaign=oct-launch&utm_content=BB-7K2M-9QXR-4TYP-ABCD&gclid=abc&fbclid=def';
+  const { win, doc } = fakePage({ href });
+  // The terminal rewrote the address before GA4 ran; goal.js kept the landing search.
+  win.location.search = '?c=GUESS';
+  const run = startGa4({ win, doc, id: GA4.id, state: { page: null, early: [], search: new URL(href).search } });
+  assert.equal(calls(win)[0][1].page_location, `${SITE}/?c=GUESS&utm_source=x.com&utm_medium=social&utm_campaign=oct-launch`, 'the set before config');
+  run.page('GUESS');
+  run.page('GUESS'); // the same screen again: no second view
+  run.page('WHATIF IPHONE6');
+  run.page('GUESS');
+  const views = calls(win).filter((a) => a[1] === 'page_view').map((a) => a[2]);
+  assert.deepEqual(views.map((v) => v.page_location), [
+    `${SITE}/?c=GUESS&utm_source=x.com&utm_medium=social&utm_campaign=oct-launch`, `${SITE}/?c=WHATIF+IPHONE6`, `${SITE}/?c=GUESS`,
+  ]);
+  assert.equal(views[1].page_referrer, `${SITE}/?c=GUESS`, 'the referrer is the clean page, without tags');
+  const sets = calls(win).filter((a) => a[0] === 'set').slice(2);
+  assert.ok(sets.every((a) => !a[1].page_location.includes('utm_')), 'later sets carry no tags');
+  const text = JSON.stringify(calls(win));
+  for (const m of ['gclid', 'fbclid', '7K2M', '7k2m']) assert.ok(!text.includes(m), m);
+  // A legal page: the tags on its one page view.
+  const l = fakePage({ href: 'https://bloombroke.com/privacy?utm_source=mail&gclid=x' });
+  startGa4({ win: l.win, doc: l.doc, id: GA4.id });
+  assert.equal(calls(l.win).find((a) => a[1] === 'page_view')[2].page_location, `${SITE}/privacy?utm_source=mail`);
+});
+
+test('utm: goal.js keeps the landing search when it arms GA4, before the terminal rewrites the address', async () => {
+  const { doc, win } = loaderPage();
+  win.location.search = '?c=AAPL&utm_source=launch';
+  const state = freshState();
+  let later = null;
+  assert.equal(loadGa4({ doc, nav: {}, win, pro: () => false, state, later: (fn) => { later = fn; }, start: ga4Module }), true);
+  assert.equal(state.search, '?c=AAPL&utm_source=launch');
+  win.location.search = '?c=AAPL';
+  win.fire('bb:page', 'AAPL');
+  later();
+  await new Promise((r) => { setTimeout(r, 50); });
+  win.fire('bb:page', 'MARKETS');
+  assert.deepEqual(calls(win).filter((a) => a[1] === 'page_view').map((a) => a[2].page_location), [`${SITE}/?c=AAPL&utm_source=launch`, `${SITE}/?c=MARKETS`]);
 });
 
 // ---- the loader: the same gates as DataFast and Ahrefs --------------------------------------

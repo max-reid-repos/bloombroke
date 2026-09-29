@@ -8,7 +8,10 @@
 // path + ?c=<a listed command word>, and for stock, chart, WHATIF and GRAVEYARD screens
 // the ticker or catalogue item and fixed range words (1Y, MAX). Every other word and every
 // other query parameter is dropped: keys, gift codes, LOGIN, REDEEM and GIFT words,
-// Stripe's session_id, amounts, alert prices, chat text, @usernames, emails, utm_*.
+// Stripe's session_id, amounts, alert prices, chat text, @usernames, emails, gclid, fbclid.
+// One exception, for campaign attribution: the FIRST page view of a visit keeps the
+// link's utm_source, utm_medium, utm_campaign and utm_content (cleanUtm: short lower-case
+// tags only, never a key, a gift code or a checkout id). Later page views have none.
 // The referrer is the previous clean page, or another site's origin only.
 // Config: no automatic page view, Google Signals and ad personalisation off.
 // Never throws into the page.
@@ -84,14 +87,44 @@ export function cleanPath(pathname) {
   return LEGAL_PATHS.has(p) ? p : '/not-found';
 }
 
+// Campaign tags kept on the first page view of a visit, in this order.
+export const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'];
+const UTM_VALUE = /^[a-z0-9._-]{1,40}$/;
+// Never a tag, even when it fits UTM_VALUE: a licence key or gift code (BB-XXXX-...,
+// GIFT-XXXX-..., four-character groups without the prefix, any separator, or run
+// together: 16 or more letters and digits in a row with two digits or more) or a Stripe
+// id (cs_live_, sk_test_, whsec_).
+const UTM_SECRET = /(?:bb|gift)(?:[-._][a-z0-9]{4}){2,}|(?:[a-z0-9]{4}[-._]){3}[a-z0-9]{4}|(?:^|[^a-z0-9])(?:cs|sk|rk|pk)_(?:live|test)_|whsec_/;
+const secretTag = (v) => UTM_SECRET.test(v) || (v.match(/[a-z0-9]{16,}/g) || []).some((run) => (run.match(/\d/g) || []).length >= 2);
+
+// A landing page's search -> a query string of only the four campaign tags (UTM_KEYS,
+// in that order), each lower-cased and a short plain tag, else left out; '' for none.
+export function cleanUtm(search) {
+  try {
+    const q = new URLSearchParams(String(search || ''));
+    const out = new URLSearchParams();
+    for (const k of UTM_KEYS) {
+      const v = String(q.get(k) ?? '').trim().toLowerCase();
+      if (UTM_VALUE.test(v) && !secretTag(v)) out.set(k, v);
+    }
+    return out.toString();
+  } catch {
+    return '';
+  }
+}
+
 const query = (c) => `?${new URLSearchParams({ c }).toString().replace(/%24/g, '$')}`;
 
-// { location, title } for a page: a path and, on the terminal, its command.
-export function pageFor({ path = '/', command = null } = {}) {
+// { location, title } for a page: a path and, on the terminal, its command. utm: a
+// cleanUtm string, after ?c= (or on its own), for the first page view only.
+export function pageFor({ path = '/', command = null, utm = '' } = {}) {
   const p = cleanPath(path);
-  if (p !== '/') return { location: SITE + p, title: `${p.slice(1).replace(/-/g, ' ').toUpperCase()} | Bloombroke` };
+  const tags = cleanUtm(utm);
+  if (p !== '/') return { location: SITE + p + (tags ? `?${tags}` : ''), title: `${p.slice(1).replace(/-/g, ' ').toUpperCase()} | Bloombroke` };
   const c = cleanCommand(command);
-  return c ? { location: `${SITE}/${query(c)}`, title: `${c} | Bloombroke` } : { location: `${SITE}/`, title: 'Bloombroke' };
+  const base = c ? `${SITE}/${query(c)}` : `${SITE}/`;
+  const location = tags ? `${base}${c ? '&' : '?'}${tags}` : base;
+  return { location, title: c ? `${c} | Bloombroke` : 'Bloombroke' };
 }
 
 // Any address -> its clean page_location. Only ?c= is read; everything else is dropped.
@@ -150,7 +183,9 @@ const VALUE_RE = /^[a-z0-9_]{1,16}$/;
 
 // Start GA4: the gtag queue, the clean page, the config, the first page view. Returns
 // { page(command), event(name, params) }, or null when blocked. goal.js adds the script.
-// state: { page, early } from goal.js: the last screen shown and goals sent before now.
+// state: { page, early, search } from goal.js: the last screen shown, goals sent before
+// now, and the landing address's search (read before the terminal rewrites the address
+// bar), whose campaign tags go on the first page view only.
 // blocked(): the gates again, asked before every send (a key can land at any time).
 export function startGa4({ win, doc, id, state = { page: null, early: [] }, blocked = () => false }) {
   try {
@@ -164,17 +199,20 @@ export function startGa4({ win, doc, id, state = { page: null, early: [] }, bloc
     let referrer = cleanReferrer(doc.referrer);
     let last = null;
     let current = '';
+    let utm = cleanUtm(state.search ?? win.location?.search); // the first page view's only
 
     const page = (command) => {
       try {
         if (blocked()) return false;
-        const pg = pageFor({ path, command });
-        if (pg.location === last) return false;
+        const plain = pageFor({ path, command });
+        if (plain.location === last) return false;
+        const pg = utm ? pageFor({ path, command, utm }) : plain;
         const params = { page_location: pg.location, page_referrer: referrer, page_title: pg.title };
         gtag('set', params);
         gtag('event', 'page_view', params);
-        referrer = pg.location;
-        last = pg.location;
+        utm = ''; // later page views stay tag-free
+        referrer = plain.location;
+        last = plain.location;
         current = cleanCommand(command);
         return true;
       } catch {
@@ -196,7 +234,7 @@ export function startGa4({ win, doc, id, state = { page: null, early: [] }, bloc
     };
 
     // Before config: the clean address, so nothing automatic ever carries the real one.
-    const first = pageFor({ path, command: state.page ?? new URLSearchParams(win.location?.search || '').get('c') });
+    const first = pageFor({ path, command: state.page ?? new URLSearchParams(win.location?.search || '').get('c'), utm });
     gtag('js', new Date());
     gtag('set', { page_location: first.location, page_referrer: referrer, page_title: first.title });
     gtag('config', id, { send_page_view: false, allow_google_signals: false, allow_ad_personalization_signals: false });

@@ -18,7 +18,8 @@
 // as DataFast (analyticsBlocked): never with GPC, never for Pro, never in a DESK panel.
 // Google Analytics 4 (loadGa4, public/ga4.js) too, and only on bloombroke.com, never on
 // /embed/*, after the first screen. It gets clean page views (the command word, and for
-// stock, chart, WHATIF and GRAVEYARD screens the ticker or item, nothing else), the goals
+// stock, chart, WHATIF and GRAVEYARD screens the ticker or item, and on the first page
+// view only the link's utm_source/medium/campaign/content tags; nothing else), the goals
 // in GA_EVENTS, and one 'share' event for every share button.
 // once: a key (the result, the puzzle number). The same goal with the same key is sent
 // once per browser tab session (sessionStorage 'bb.goals'); without storage, every time.
@@ -118,7 +119,7 @@ export const GA_SHARE_GOALS = ['whatif_share', 'whatif_video', 'whatif_embed', '
 
 // GA4 in this page: on once loadGa4 passed the gates; page and early hold the last
 // screen shown and the goals sent before ga4.js runs; run is ga4.js's { page, event }.
-const gaState = { on: false, page: null, early: [], run: null };
+const gaState = { on: false, page: null, early: [], run: null, search: '' };
 function gaSend(event, params, state = gaState) {
   if (!state.on) return false;
   if (state.run) return state.run.event(event, params);
@@ -274,6 +275,7 @@ export function loadGa4({
     if (/^\/embed(\/|$)/i.test(win.location?.pathname || '')) return false;
     if (state.on || doc.querySelector(GA_SCRIPT)) return false;
     state.on = true;
+    state.search = win.location?.search || ''; // the landing link's campaign tags, before the terminal rewrites the address
     win.addEventListener('bb:page', (e) => {
       const c = typeof e?.detail === 'string' ? e.detail : null;
       if (state.run) state.run.page(c); else state.page = c;
