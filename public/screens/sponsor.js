@@ -1,21 +1,20 @@
-// SPONSOR: a card page (kit.js cardPage). A small drawn terminal with its bottom strip lit
-// (YOUR COMPANY HERE), so it is plain the line runs on every screen, not on this page;
-// the headline; about how many views a line gets a week; EMAIL (the one primary button)
-// and BBRK NUMBERS; the rule line; three of our own numbers (/api/bbrk: our analytics and
-// the strip inventory); BBRK's globe of visitor places under them, at --globe-w. The rest
-// is behind + Details. While SPONSOR
-// is open the real strip at the bottom is outlined, with a small label above it. The
-// numbers and the globe's dots come again every minute while the tab is visible (the
-// shell's ctx.live).
+// SPONSOR: a card page (kit.js cardPage), one column. It sells the one rotating line at
+// the bottom of every screen: the kicker, the headline, how many times the strip was
+// shown this week (and what that counts), the price when SPONSOR_PRICE is set, EMAIL (the
+// one primary button), the rules in one line, then TRY YOUR LINE: what the visitor types
+// shows in the REAL strip at the bottom of the screen while this page is open (never
+// saved, never sent; it goes into the EMAIL body only). BBRK's numbers are a text link;
+// the rest (where it runs, what is refused, the audience) is behind + Details.
+// While SPONSOR is open the real strip is outlined, with a small label above it. The
+// numbers come again every minute while the tab is visible (the shell's ctx.live).
 // Also the browser side of the sponsor config (/api/sponsors, from data/sponsors.json via
 // lib/sponsors.js), and the "SPONSORED BY" note on a WEIRD gauge. The strip itself is
-// public/sponsor-strip.js. Plain text and plain links: no pixels, no scripts, no tracking.
+// public/sponsor-strip.js. Plain text and plain links: no pixels, no scripts, no tracking code.
 
 import { esc, metaNote, q } from './markets.js';
-import { cardPage, cardButton, cardFacts, cardRows, raw, fitToView } from '../kit.js';
+import { cardPage, cardButton, cardLink, cardRows, raw } from '../kit.js';
 import { findCommand } from '../registry.js';
-import { stripItems, loadSponsors } from '../sponsor-strip.js';
-import { loadDots, mountGlobe, globeLabel } from '../globe.js';
+import { loadSponsors } from '../sponsor-strip.js';
 import { isPro } from '../pro.js'; // no SPONSORED BY on screen for Pro
 
 export { loadSponsors }; // the config, asked once per page load: the status line needs it at startup
@@ -24,78 +23,121 @@ export const CONTACT = 'hello@bloombroke.com';
 export const SUBJECT = 'Sponsor Bloombroke';
 export const MAILTO = `mailto:${CONTACT}?subject=${encodeURIComponent(SUBJECT)}`;
 export const HERO = 'Your line on every screen.';
-export const STRIP = 'YOUR COMPANY HERE'; // lit in the drawn terminal's bottom strip
 export const POINT = '↓ this line, every screen';
 export const REFRESH_MS = 60_000;
 export const PHONE_MQ = '(max-width: 639px)'; // kit.css's phone layout
-export const FINE = 'One rotating line. No tracking. No finance products. Hidden for Pro.';
+// The rules, true of the code: one line at a time (sponsor-strip.js), plain text and a link
+// with its query string taken off (lib/sponsors.js), no strip for Pro (stripItems).
+export const FINE = 'One rotating line. No tracking code. Hidden for Pro.';
+// What "Shown N times this week" counts: inventory.stripShown.d7 (lib/counters.js
+// strip_shown). One showing is ROTATE_MS (4 s) of a strip line on a visible screen,
+// however many lines rotate (public/sponsor-strip.js mountStrip).
+export const SHOWN_DEF = 'One showing = 4 seconds on a visible screen.';
+export const SHOWN_DETAIL = 'Showings in the last 7 days (New York days, today included), counted by our server. Lines share the showings: with 3 lines in rotation, each gets about a third.';
+export const TRY_LABEL = 'TRY YOUR LINE';
+export const TRY_MAX = 100; // lib/sponsors.js TEXT_MAX: the longest line text we run
+export const TRY_HOLDER = 'Acme: plain words about Acme';
+export const NOT_FOR = 'No investment products, brokers, exchanges, crypto, funds or tips.';
 
 const fin = (v) => typeof v === 'number' && Number.isFinite(v);
-const count = (v) => v.toLocaleString('en-US');
-// Country names from our analytics, short enough for one line. Any other name as it comes.
-const SHORT = { 'United States': 'US', 'United States of America': 'US', 'United Kingdom': 'UK', 'United Arab Emirates': 'UAE' };
+const count = (v) => Math.round(v).toLocaleString('en-US');
 
-// 429 -> '7 min', 40 -> '40 s'. Unknown: '-- min'.
-export function visitLen(sec) {
-  if (!fin(sec) || sec < 0) return '-- min';
-  return sec < 60 ? `${Math.round(sec)} s` : `${Math.round(sec / 60)} min`;
+// The line under the headline: the real count of strip lines shown in the last 7 days.
+// null: unknown (while it loads, or no counters): '--'.
+export function shownCount(b) {
+  const n = b?.inventory?.stripShown?.d7;
+  return fin(n) && n >= 0 ? n : null;
 }
 
-// Three of our own numbers, as card facts: page views this week, visit length, the top
-// country. Each is -- when missing.
-export function sponFacts(b) {
+export function shownLine(n) {
+  if (n === null || n === undefined) return 'Shown -- times this week.';
+  if (n === 0) return 'Not shown yet this week.';
+  return `Shown ${count(n)} ${n === 1 ? 'time' : 'times'} this week.`;
+}
+
+export function subHtml(b) {
+  return `<span id="spon-views">${esc(shownLine(shownCount(b)))}</span><span class="spon-def">${esc(SHOWN_DEF)}</span>`;
+}
+
+// '$99 a week', or '' (no price line at all) when SPONSOR_PRICE is unset or not a price.
+export function priceText(cfg) {
+  const p = cfg?.price;
+  return Number.isInteger(p) && p > 0 ? `$${count(p)} a week` : '';
+}
+
+export function priceHtml(cfg) {
+  const t = priceText(cfg);
+  return `<p class="spon-price" id="spon-price"${t ? '' : ' hidden'}>${esc(t)}</p>`;
+}
+
+// The EMAIL link: the subject, and the typed line (if any) as the body. Encoded, so an &,
+// a # or a new line cannot end the body or start another field.
+export function mailtoFor(line = '') {
+  const t = String(line ?? '').replace(/\s+/g, ' ').trim().slice(0, TRY_MAX);
+  return t ? `${MAILTO}&body=${encodeURIComponent(`Our line: ${t}`)}` : MAILTO;
+}
+
+// 'US 77% · Japan 12%' (the top countries, as BBRK names them), or null.
+function topLine(list) {
+  const rows = Array.isArray(list) ? list.filter((x) => x?.name && fin(x.pct)) : [];
+  return rows.length ? rows.map((x) => `${x.name} ${Math.round(x.pct)}%`).join(' · ') : null;
+}
+
+// 68 -> '1m 08s' (BBRK's AVG VISIT).
+function visitTime(sec) {
+  if (!fin(sec) || sec < 0) return null;
+  const s = Math.round(sec);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+}
+
+// Who sees the line, in BBRK's words: visitors in 7 days, the average visit, the countries.
+export function audienceRows(b) {
   const a = b?.audience || {};
-  const d7 = a.pageviews?.d7;
-  const top = Array.isArray(a.countries) ? a.countries[0] : null;
-  const known = top?.name && fin(top.pct);
-  return [
-    { value: fin(d7) && d7 >= 0 ? count(d7) : '--', label: 'PAGE VIEWS, 7D' },
-    { value: visitLen(a.avgVisitSec), label: 'VISITS' },
-    { value: known ? `${Math.round(top.pct)}%` : '--', label: known ? (SHORT[top.name] || top.name) : 'TOP COUNTRY' },
-  ];
+  const d7 = a.visitors?.d7;
+  const visit = visitTime(a.avgVisitSec);
+  const people = fin(d7) && d7 >= 0 ? `${count(d7)} in 7 days${visit ? `, ${visit} average visit` : ''}` : '--';
+  return [['Visitors', people], ['Countries', topLine(a.countries) || '--']];
 }
 
-// Paid lines already in rotation (a non-Pro visitor's strip). House lines do not count:
-// the first paid line replaces them all.
-export function paidLines(cfg) {
-  return stripItems(cfg, { pro: false }).filter((i) => i.kind === 'paid').length;
+// What + Details holds: what the number counts, where the line runs, what we refuse, the
+// WEIRD gauges, who sees it, where the numbers come from.
+export function detailsHtml(exists, b = null) {
+  const weird = exists('WEIRD') ? raw(`<a class="spon-weird" href="${esc(q('WEIRD'))}" data-cmd="WEIRD">Or a WEIRD gauge</a>: your name in its title strip.`) : '';
+  return cardRows([
+    ['Shown', SHOWN_DETAIL],
+    ['Where', 'The line at the bottom of every screen, for everyone without Pro.'],
+    ['Not for', NOT_FOR],
+    ['Your line', 'Plain text and one link. No pixels, no scripts, no tracking code. Sponsors get no data from us.'],
+    weird ? ['Gauges', weird] : null,
+    ...audienceRows(b),
+    ['Numbers', 'Visitors: our analytics. Strip: our server counters.'],
+  ]);
 }
 
-// Rounded down to a clean number: under 100 as it is, then two leading digits
-// (192 -> 190, 5678 -> 5600, 12345 -> 12000).
-export function cleanDown(n) {
-  if (!fin(n) || n < 0) return null;
-  const v = Math.floor(n);
-  if (v < 100) return v;
-  const step = 10 ** (String(v).length - 2);
-  return Math.floor(v / step) * step;
+// TRY YOUR LINE: a label and one input, no form (nothing to submit), no name (its value
+// never goes into a URL). What is typed shows in the real strip (tryLine).
+export function tryHtml() {
+  return `<div class="spon-try"><label class="tag" for="spon-try">${esc(TRY_LABEL)}</label>`
+    + `<input class="card-input spon-try-input" id="spon-try" type="text" maxlength="${TRY_MAX}" autocomplete="off" spellcheck="false" enterkeyhint="done" placeholder="${esc(TRY_HOLDER)}"></div>`;
 }
 
-// Times one more line would be seen a week: the last 7 days' strip_shown shared with the
-// paid lines already there (all of it when there are none). null when unknown.
-export function weeklyViews(b, cfg) {
-  const shown = b?.inventory?.stripShown?.d7;
-  if (!fin(shown) || shown < 0) return null;
-  return cleanDown(shown / (paidLines(cfg) + 1));
-}
-
-export function viewsLine(n) {
-  return n === null || n === undefined ? 'About -- views a week.' : `About ${count(n)} views a week.`;
-}
-
-// The drawing at the top: a small terminal (a top bar, three faint panels, a chart line)
-// with the bottom strip lit and YOUR COMPANY HERE in it. A picture: its words are its own
-// (role="img"), and it scales down with the column on a phone. Colours: sponsor.css.
-export function termHtml() {
-  const line = '<svg class="spon-term-line" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,34 10,30 20,32 30,22 40,26 50,16 60,20 70,10 80,14 90,6 100,9"/></svg>';
-  return `<figure class="spon-term" role="img" aria-label="A drawing of a Bloombroke screen, your company's line lit in the strip at the bottom">`
-    + '<span class="spon-term-top"><span class="spon-term-dot"></span><span class="spon-term-bar"></span></span>'
-    + `<span class="spon-term-body"><span class="spon-term-panel is-chart">${line}</span><span class="spon-term-panel"></span><span class="spon-term-panel"></span></span>`
-    + `<span class="spon-term-strip">${esc(STRIP)}</span></figure>`;
-}
-
-export function factsHtml(b) {
-  return cardFacts(sponFacts(b), { id: 'spon-facts' });
+// b: /api/bbrk (null while it loads: --). cfg: /api/sponsors. has: whether a command exists.
+export function sponsorHtml({ has, bbrk = null, cfg = null } = {}) {
+  const exists = has || ((c) => Boolean(findCommand(c)));
+  const act = priceHtml(cfg) + cardButton({ label: `EMAIL ${CONTACT}`, primary: true, href: MAILTO, id: 'spon-email' });
+  return cardPage({
+    label: 'Sponsor',
+    cls: 'spon-card',
+    kicker: 'SPONSOR',
+    hero: HERO,
+    heroSize: 44,
+    sub: raw(subHtml(bbrk)),
+    act: raw(act),
+    note: FINE,
+    media: raw(tryHtml()),
+    links: exists('BBRK') ? [`<span class="spon-numbers">Numbers: ${cardLink({ label: 'BBRK', cmd: 'BBRK' })}</span>`] : [],
+    details: raw(`<div id="spon-details">${detailsHtml(exists, bbrk)}</div>`),
+  });
 }
 
 // A WEIRD gauge's title strip: SPONSORED BY <name>, or '' when the gauge has no sponsor.
@@ -118,38 +160,27 @@ export function markGaugeSponsor(metaEl, id, { pro = isPro } = {}) {
   });
 }
 
-// What + Details holds: where the line runs, how "your line" is counted, the WEIRD
-// gauges, where the numbers come from.
-export function detailsHtml(exists) {
-  const weird = exists('WEIRD') ? raw(`<a class="spon-weird" href="${esc(q('WEIRD'))}" data-cmd="WEIRD">Or a WEIRD gauge</a>: your name in its title strip.`) : '';
-  return cardRows([
-    ['Where', 'The line at the bottom of every screen, for everyone without Pro.'],
-    ['Your line', 'Last 7 days of strip views, shared with the paid lines, rounded down.'],
-    weird ? ['Gauges', weird] : null,
-    ['Numbers', 'Visitors: our analytics. Strip: our server counters.'],
-  ]);
+// Whether TRY YOUR LINE has a strip to show in: not for Pro (no strip), not in an embed
+// (no status bar), not while the strip is hidden.
+export function canTry(real, { pro = isPro, doc = globalThis.document } = {}) {
+  if (!real || real.hidden) return false;
+  if (doc?.documentElement?.classList?.contains('is-embed')) return false;
+  return !pro();
 }
 
-// b: /api/bbrk (null while it loads: --). cfg: /api/sponsors. has: whether a command exists.
-export function sponsorHtml({ has, bbrk = null, cfg = null } = {}) {
-  const exists = has || ((c) => Boolean(findCommand(c)));
-  const act = cardButton({ label: `EMAIL ${CONTACT}`, primary: true, href: MAILTO })
-    + (exists('BBRK') ? cardButton({ label: 'BBRK NUMBERS', cmd: 'BBRK' }) : '');
-  return cardPage({
-    label: 'Sponsor',
-    wide: true,
-    cls: 'spon-card',
-    art: raw(termHtml()),
-    hero: HERO,
-    heroSize: 44,
-    sub: viewsLine(weeklyViews(bbrk, cfg)),
-    subId: 'spon-views',
-    act: raw(act),
-    note: FINE,
-    facts: factsHtml(bbrk),
-    media: raw(`<figure class="spon-globe"><canvas role="img" aria-label="${esc(globeLabel(bbrk))}"></canvas></figure>`),
-    details: raw(detailsHtml(exists)),
-  });
+// The typed line in the REAL strip at the bottom: its lines hidden, the text drawn by the
+// CSS from data-try (sponsor.css), so it is never markup. The strip holds still and counts
+// nothing while it shows (app.js isHidden). '' puts the strip back. Nothing is stored.
+export function tryLine(real, text) {
+  if (!real) return;
+  const t = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, TRY_MAX);
+  if (t) {
+    real.setAttribute('data-try', t);
+    real.classList.add('is-try');
+  } else {
+    real.classList.remove('is-try');
+    real.removeAttribute('data-try');
+  }
 }
 
 // The real strip at the bottom, while SPONSOR is open: outlined (a short glow first; still
@@ -164,19 +195,21 @@ export function pointAtStrip(doc = globalThis.document, win = globalThis.window)
   tag.setAttribute('aria-hidden', 'true');
   tag.textContent = POINT;
   doc.body.appendChild(tag);
-  // Above the line itself, clear of the screen edges.
+  // Above the line itself, clear of the screen edges. A typed line hides the strip's own
+  // line: then above the strip.
   const place = () => {
-    const box = (real.querySelector?.('.spon-item') || real).getBoundingClientRect();
+    const item = real.classList?.contains?.('is-try') ? null : real.querySelector?.('.spon-item');
+    const box = (item || real).getBoundingClientRect();
     const w = tag.offsetWidth || 0;
     const vw = win?.innerWidth || box.right;
     const left = Math.max(8, Math.min(box.left + box.width / 2 - w / 2, vw - w - 8));
     tag.style.left = `${Math.round(left)}px`;
     tag.style.top = `${Math.round(box.top - (tag.offsetHeight || 0) - 4)}px`;
   };
-  // When the page scrolls (a phone; a desktop too, down to the big globe), the label would
-  // sit on the buttons or the globe: then it shows only while the page is scrolled to the
-  // bottom, where the screen keeps room for it (sponsor.css). A page that does not scroll
-  // shows it all the time. The page is the document on a phone, #screen on a desktop.
+  // When the page scrolls (a phone), the label would sit on the buttons: then it shows
+  // only while the page is scrolled to the bottom, where the screen keeps room for it
+  // (sponsor.css). A page that does not scroll shows it all the time. The page is the
+  // document on a phone, #screen on a desktop.
   const show = () => {
     const boxes = [doc.scrollingElement || doc.documentElement, doc.getElementById?.('screen')]
       .filter((el, i, a) => el && typeof el.scrollHeight === 'number' && a.indexOf(el) === i)
@@ -192,7 +225,8 @@ export function pointAtStrip(doc = globalThis.document, win = globalThis.window)
   win?.addEventListener?.('resize', onResize);
   // Capture: #screen's own scroll does not bubble to the window.
   win?.addEventListener?.('scroll', onScroll, { passive: true, capture: true });
-  // stop.refresh(): again after the screen's own content changes height (sponsor render).
+  // stop.refresh(): again after the screen's own content changes height (sponsor render);
+  // stop.place(): again after the strip's line changes (TRY YOUR LINE).
   const stop = () => {
     win?.removeEventListener?.('resize', onResize);
     win?.removeEventListener?.('scroll', onScroll, { capture: true });
@@ -200,53 +234,64 @@ export function pointAtStrip(doc = globalThis.document, win = globalThis.window)
     real.classList.remove('is-spot');
   };
   stop.refresh = show;
+  stop.place = place;
   return stop;
 }
 
 export function render(el, cmd, ctx) {
   let cfg = null;
   let bbrk = null;
-  el.innerHTML = sponsorHtml();
+  const exists = (c) => Boolean(findCommand(c));
+  el.innerHTML = sponsorHtml({ has: exists });
   ctx.status('SPONSOR: EMAIL US');
-  let globe = null;
-  const canvas = el.querySelector('.spon-globe canvas');
-  // The globe takes the room left in the first view (never below the fold on a desktop).
-  const fit = () => fitToView(el.querySelector('.spon-globe'));
+  const input = el.querySelector?.('#spon-try');
+  const email = el.querySelector?.('#spon-email');
+  const real = () => globalThis.document?.getElementById?.('status-sponsor') || null;
+  // TRY YOUR LINE only where the strip shows: never for Pro or in an embed (no strip).
+  const tryBox = input?.closest?.('.card-media');
+  const fitTry = () => { if (tryBox) tryBox.hidden = !canTry(real()); };
+  fitTry();
+  let typed = '';
   const paint = () => {
-    const f = el.querySelector('#spon-facts');
-    if (f) f.outerHTML = factsHtml(bbrk);
     const v = el.querySelector('#spon-views');
-    if (v) v.textContent = viewsLine(weeklyViews(bbrk, cfg));
-    canvas?.setAttribute('aria-label', globeLabel(bbrk));
-    fit();
-    globe?.update(bbrk?.audience?.globe || null, bbrk?.audience?.live ?? null);
+    if (v) v.textContent = shownLine(shownCount(bbrk));
+    const p = el.querySelector('#spon-price');
+    if (p) { const t = priceText(cfg); p.textContent = t; p.hidden = !t; }
+    const d = el.querySelector('#spon-details');
+    if (d) d.innerHTML = detailsHtml(exists, bbrk);
     unpoint.refresh?.(); // the new numbers may change the page's height
   };
   // After the sponsor config arrives (the status bar paints its strip from the same
   // request first), point at the real strip.
   let unpoint = () => {};
   let open = true;
-  const refit = () => { fit(); globe?.update(bbrk?.audience?.globe || null, bbrk?.audience?.live ?? null); };
-  let frame = 0; // a resize fits once a frame, not once an event
-  const onResize = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; if (open) refit(); }); };
-  fit();
-  globalThis.document?.fonts?.ready.then(() => { if (open) refit(); });
-  globalThis.window?.addEventListener?.('resize', onResize);
-  ctx.onCleanup(() => { open = false; unpoint(); globe?.stop(); globalThis.window?.removeEventListener?.('resize', onResize); if (frame) cancelAnimationFrame(frame); });
-  // BBRK's globe: places with 3 visitors or more only (the server folds the rest).
-  const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  loadDots().then((geo) => {
-    if (!open || !canvas?.isConnected) return;
-    globe = mountGlobe(canvas, geo, bbrk?.audience?.globe || null, { reduceMotion, live: bbrk?.audience?.live ?? null });
-  }).catch(() => { const f = el.querySelector('.spon-globe'); if (open && f) f.hidden = true; });
+  // TRY YOUR LINE: into the real strip and the EMAIL body as it is typed; nowhere else.
+  const onInput = () => {
+    typed = input.value;
+    tryLine(real(), typed);
+    email?.setAttribute('href', mailtoFor(typed));
+    unpoint.place?.();
+  };
+  input?.addEventListener('input', onInput);
+  const onPro = () => { fitTry(); if (tryBox?.hidden) tryLine(real(), ''); };
+  globalThis.window?.addEventListener?.('bb:pro', onPro);
+  ctx.onCleanup(() => {
+    open = false;
+    input?.removeEventListener('input', onInput);
+    globalThis.window?.removeEventListener?.('bb:pro', onPro);
+    tryLine(real(), '');
+    unpoint();
+  });
   loadSponsors().then((c) => {
     if (!open || !el.isConnected) return;
     cfg = c;
     unpoint = pointAtStrip();
+    fitTry();
+    if (typed) tryLine(real(), typed);
     paint();
   });
-  // Our own numbers and the globe's dots, again every minute while the tab is visible
-  // (ctx.live skips a hidden tab and catches up when it is shown).
+  // Our own numbers, again every minute while the tab is visible (ctx.live skips a hidden
+  // tab and catches up when it is shown).
   const load = () => {
     if (!ctx.fetchJSON) return;
     ctx.fetchJSON('/api/bbrk', { signal: ctx.signal }).then((d) => { if (open) { bbrk = d; paint(); } }).catch(() => {});

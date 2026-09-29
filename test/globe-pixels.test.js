@@ -674,16 +674,16 @@ test('someone on now: the first figure of a live place bobs (not with reduced mo
 });
 
 test('the screens: zoom buttons styled in the corner, out of the flow; the globe files keep the house rules', () => {
-  for (const [f, cls] of [['public/screens/bbrk.css', 'bb-globe'], ['public/screens/sponsor.css', 'spon-globe']]) {
+  for (const [f, cls] of [['public/screens/bbrk.css', 'bb-globe']]) { // SPONSOR has no globe (Sep 29)
     const css = readFileSync(f, 'utf8');
     assert.match(css, new RegExp(`\\.${cls} \\.globe-zoom \\{[^}]*position: absolute;[^}]*top: 0; right: 0;`), f);
     assert.match(css, new RegExp(`\\.${cls} \\.globe-zoom-btn:focus-visible`), `${f}: keyboard focus shows`);
     assert.doesNotMatch(css, /btn-solid/, `${f}: tertiary, not a primary button`);
   }
-  // BBRK's caption stays one line at any desktop globe size: fitToView measures it once, so a
-  // caption that wrapped at 220 px would push the globe below the fold (1536x730).
-  // On a phone (the page scrolls there) it wraps as usual.
-  assert.match(readFileSync('public/screens/bbrk.css', 'utf8'), /@media \(min-width: 640px\) \{\s*\.bb-globe figcaption \{[^}]*justify-content: center;[^}]*white-space: nowrap;/);
+  // BBRK's caption (what a figure is) is set to 40ch, so it is the same two lines at any
+  // globe size from about 290 px: fitToView measures it with the globe, and a caption that
+  // wrapped again after that could push the globe below the fold (1536x730).
+  assert.match(readFileSync('public/screens/bbrk.css', 'utf8'), /\.bb-globe figcaption \{ max-width: 40ch;[^}]*text-wrap: balance; \}/);
   const src = readFileSync('public/globe.js', 'utf8');
   assert.match(src, /\['wheel', onWheel, \{ passive: false \}\]/);
   assert.doesNotMatch(src, /DataFast|datafa\.st|Mapbox/i);

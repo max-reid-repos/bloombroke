@@ -1,26 +1,32 @@
-// BBRK: Bloombroke's own site numbers for sponsors, drawn as a card page (kit.js
-// cardPage). A joke ticker: BBRK is on no exchange (checked against the SEC
-// company_tickers list and the Nasdaq and NYSE symbol lists, Sep 27 2026). The hero is
-// visitors so far today, set against yesterday up to the same time; the last 30 days as
-// a chart across the column; six key numbers; the globe of visitor places under them.
-// Everything else (countries, referrers, what a sponsor gets from our own counters, the
-// sources) is behind + Details. Totals only, from GET /api/bbrk (lib/counters.js,
-// lib/datafast.js). Anything missing shows --.
-// The globe (public/globe.js), at --globe-w, centred under the numbers: visitor places of
-// the last 7 days, countries and cities of 3 or more visitors rounded to about 100 km
-// (the server folds the rest).
+// BBRK: Bloombroke's own site numbers for sponsors, drawn as a split card page (kit.js
+// cardPage split): the numbers left, the globe of visitor places right (on a phone the
+// numbers first, then the globe). A joke ticker: BBRK is on no exchange (checked against
+// the SEC company_tickers list and the Nasdaq and NYSE symbol lists, Sep 27 2026).
+// The hero reads alone: "N visitors today", set against yesterday up to the same time in
+// the line under it; the visitors a day from launch day (the first day with any visitor)
+// as a chart; three facts at most; the Pro seats taken, in words; the globe with one line
+// saying what a figure is. Everything else (countries, referrers, 30 days when it says
+// nothing new, desktop share, MRR, the strip counters, the sources) is behind + Details.
+// Totals only, from GET /api/bbrk (lib/counters.js, lib/datafast.js). Missing shows --.
+// The globe (public/globe.js): visitor places of the last 7 days, countries and cities of
+// 3 or more visitors rounded to about 100 km (the server folds the rest).
 // Command only: a row on HOME would push the markets grid past its share of a 1536x730
 // screen (tested Sep 27 2026).
 
 import { esc, fmtSigned, dirOf } from './markets.js';
-import { cardPage, cardFacts, cardRows, raw, fitToView } from '../kit.js';
-import { loadDots, mountGlobe, globeCaption, globeLabel } from '../globe.js';
-import { HERE_MIN } from '../here-now.js';
+import { cardPage, cardFacts, cardRows, raw, fitToView, fmtDate } from '../kit.js';
+import { loadDots, mountGlobe, globeLabel } from '../globe.js';
 
 export const BBRK = 'BBRK';
 export const KICKER = 'BBRK · OUR OWN SITE NUMBERS';
 export const STRIP = 'OUR OWN SITE NUMBERS. NOT A SECURITY. NOT FOR SALE.';
 export const SOURCE = 'Visitors: our analytics. Strip, embeds, MCP: our server counters. Days in New York time.';
+// What a figure on the globe is (globe.js: a place of the last 7 days, a country or a city
+// of 3 or more; nearby places merge into one figure, and the number under it is their
+// visitors, drawn from 2 up). One line, the same "7 days" as the fact.
+export const GLOBE_CAPTION = 'Each figure is a place or a cluster of nearby places with visitors in 7 days; the number counts visitors, shown from 2.';
+export const MAX_FACTS = 3;
+export const GLOBE_MAX = 560; // px: the globe in the right column, at most (fitToView)
 
 // [inventory key, label]: today and the last 7 days.
 export const INVENTORY = [
@@ -41,6 +47,14 @@ export function visitTime(sec) {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
 }
 
+// The hero, a sentence that reads alone: '12 visitors today', '1 visitor today', 'No
+// visitors yet today' (a zero said, not printed), '-- visitors today' while unknown.
+export function heroText(today) {
+  if (!fin(today) || today < 0) return '-- visitors today';
+  if (today === 0) return 'No visitors yet today';
+  return `${count(today)} ${Math.round(today) === 1 ? 'visitor' : 'visitors'} today`;
+}
+
 // Today so far against yesterday up to the same time: { text, dir }. '+12', '−3', '±0';
 // '--' when either is unknown (never '0 0.00%').
 export function heroChange(today, before) {
@@ -49,10 +63,12 @@ export function heroChange(today, before) {
   return { text: ch === 0 ? '±0' : fmtSigned(ch, 0), dir: dirOf(ch) };
 }
 
-// The line under the hero: 'visitors today · +12 vs same time yesterday'.
+// The line under the hero: '+12 vs same time yesterday', or '' (no line) when either
+// number is unknown.
 export function subHtml(v) {
-  const chg = heroChange(v?.today, v?.yesterdaySoFar);
-  return `visitors today · <span class="num ${chg.dir}">${esc(chg.text)}</span> vs same time yesterday`;
+  if (!fin(v?.today) || !fin(v?.yesterdaySoFar)) return '';
+  const chg = heroChange(v.today, v.yesterdaySoFar);
+  return `<span class="num ${chg.dir}">${esc(chg.text)}</span> vs same time yesterday`;
 }
 
 // 'US 41% · UK 9% · Canada 6%', or '--'.
@@ -61,20 +77,49 @@ export function topLine(list) {
   return rows.length ? rows.map((x) => `${x.name} ${pct(x.pct)}`).join(' · ') : '--';
 }
 
+// Visitors a day from launch day: the points from the first one with any visitor on,
+// never the empty days before. days: each point's New York date (/api/bbrk spark30Days).
+// { values, from, to, launch }: from and to the first and last point's dates (null when
+// not known), launch whether the series reaches back to launch day (a day with no visitor
+// before the first one; else the 30 days start after launch). null with no visitor yet.
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+export function sinceLaunch(spark, days = []) {
+  const v = (Array.isArray(spark) ? spark : []).map((n) => (fin(n) ? n : 0));
+  const first = v.findIndex((n) => n > 0);
+  if (first < 0) return null;
+  const d = Array.isArray(days) && days.length === v.length ? days : [];
+  const date = (i) => (DAY.test(String(d[i])) ? d[i] : null);
+  return { values: v.slice(first), from: date(first), to: date(v.length - 1), launch: first > 0 };
+}
+
 // Visitors a day, across the column: an area from zero, the line, a dot on the last day.
 // No axes. The SVG stretches to the column (the line and the dot keep their width).
-export function chartSvg(values, { w = 300, h = 96 } = {}) {
+// label: what the points are, for a screen reader.
+export function chartSvg(values, { w = 300, h = 96, label = '' } = {}) {
   const v = (Array.isArray(values) ? values : []).filter(fin);
   if (v.length < 2) return '';
   const hi = Math.max(...v, 1);
   const pts = v.map((y, i) => [(i / (v.length - 1)) * w, h - 4 - (Math.max(0, y) / hi) * (h - 12)]);
   const line = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
   const [lx, ly] = pts[pts.length - 1];
-  const label = `Visitors a day, last ${v.length} days. Latest day: ${count(v[v.length - 1])}.`;
-  return `<svg class="bb-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}">`
+  const say = `${label || `Visitors a day, ${v.length} days`}. Last day: ${count(v[v.length - 1])}.`;
+  return `<svg class="bb-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="${esc(say)}">`
     + `<path class="bb-spark-area" d="${line} L${w} ${h} L0 ${h} Z"/>`
     + `<path class="bb-spark-line" d="${line}" vector-effect="non-scaling-stroke"/>`
     + `<path class="bb-spark-dot" d="M${lx.toFixed(1)} ${ly.toFixed(1)} h0" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+// The chart and its two ends: the first point's date at the left (launch day, or the
+// start of the 30 days), the last one's at the right (TODAY when it is today). '' before
+// launch or with one day only.
+export function chartHtml(d) {
+  const s = sinceLaunch(d?.audience?.spark30, d?.audience?.spark30Days);
+  if (!s) return '';
+  const span = s.launch ? `since launch day${s.from ? `, ${fmtDate(s.from, 'prose')}` : ''}` : `last ${s.values.length} days`;
+  const svg = chartSvg(s.values, { label: `Visitors a day, ${span}` });
+  if (!svg) return '';
+  const end = s.to && s.to === d?.day ? 'TODAY' : s.to ? fmtDate(s.to) : '';
+  return svg + `<p class="bb-ends" aria-hidden="true"><span>${esc(s.from ? fmtDate(s.from) : '')}</span><span>${esc(end)}</span></p>`;
 }
 
 // 'MRR $0 (test mode)' -> '$0, test mode': a row in + Details, never a tile up front
@@ -84,43 +129,74 @@ export function mrrText(mrr) {
   return m ? `${m[1]}${m[2] ? `, ${m[2]}` : ''}` : null;
 }
 
-export function factsOf(d) {
+// Three facts at most, in this order: visitors in 7 days, in 30 days (only when it says
+// something new), the average visit, returning visitors. What does not fit is in + Details.
+export function allFacts(d) {
   const a = d?.audience || {};
   const v = a.visitors || {};
+  const d30 = fin(v.d30) && v.d30 !== v.d7;
   return [
-    { value: count(v.d7), label: '7 DAYS' },
-    { value: count(v.d30), label: '30 DAYS' },
-    { value: visitTime(a.avgVisitSec), label: 'AVG VISIT' },
-    { value: pct(a.returningPct), label: 'RETURNING' },
-    { value: pct(a.desktopPct), label: 'DESKTOP' },
-  ];
+    { value: count(v.d7), label: '7 DAYS', key: 'd7' },
+    d30 ? { value: count(v.d30), label: '30 DAYS', key: 'd30' } : null,
+    { value: visitTime(a.avgVisitSec), label: 'AVG VISIT', key: 'visit' },
+    { value: pct(a.returningPct), label: 'RETURNING', key: 'returning' },
+  ].filter(Boolean);
 }
 
-// The globe's one line: '3 here now · top: United States 71%'. Here now from HERE_MIN,
-// like the top bar (1 is most likely the viewer).
-export function bbrkCaption(d) {
-  const a = d?.audience || {};
-  const parts = [];
-  if (Number.isInteger(a.live) && a.live >= HERE_MIN) parts.push(`${count(a.live)} here now`);
-  const top = Array.isArray(a.countries) ? a.countries.find((c) => c?.name) : null;
-  if (top) parts.push(`top: ${top.name} ${pct(top.pct)}`);
-  return parts.length ? parts.join(' · ') : globeCaption(null);
+export const factsOf = (d) => allFacts(d).slice(0, MAX_FACTS).map(({ value, label }) => ({ value, label }));
+
+// The Pro seats taken: the licences of the current Stripe mode (lib/counters.js seats.all).
+// Live: '3 Pro seats taken', and a calm 'No Pro seats taken yet' for none. Test mode: no
+// one has paid, so 'No paid Pro seats yet' (the test seats are a row in + Details). ''
+// when unknown (no Stripe, no database).
+export function seatsText(d) {
+  const all = d?.seats?.all;
+  if (!Number.isInteger(all) || all < 0) return '';
+  if (d.mode === 'test') return 'No paid Pro seats yet';
+  if (d.mode !== 'live') return '';
+  return all === 0 ? 'No Pro seats taken yet' : `${count(all)} Pro ${all === 1 ? 'seat' : 'seats'} taken`;
+}
+
+export function seatsHtml(d) {
+  const t = seatsText(d);
+  const html = esc(t).replace(/^([\d,]+) /, '<span class="num">$1</span> ');
+  return `<p class="bb-seats" id="bb-seats"${t ? '' : ' hidden'}>${html}</p>`;
+}
+
+export function factsHtml(d) {
+  return `<div class="bb-numbers">${cardFacts(factsOf(d), { id: 'bb-facts' })}${seatsHtml(d)}</div>`;
 }
 
 export function detailsHtml(d) {
   const a = d?.audience || {};
   const inv = d?.inventory || {};
+  const shown = new Set(allFacts(d).slice(0, MAX_FACTS).map((f) => f.key));
+  const rest = allFacts(d).filter((f) => !shown.has(f.key));
+  const v30 = a.visitors?.d30;
   const invRows = INVENTORY.map(([k, label]) => `<tr><th scope="row">${esc(label)}</th><td class="num">${count(inv[k]?.today)}</td><td class="num">${count(inv[k]?.d7)}</td></tr>`).join('');
-  return cardRows([['Countries', topLine(a.countries)], ['Referrers', topLine(a.referrers)]])
+  const testSeats = d?.mode === 'test' && Number.isInteger(d?.seats?.all) ? `${count(d.seats.all)} in test mode, no card charged` : null;
+  return cardRows([
+    ['Countries', topLine(a.countries)],
+    ['Referrers', topLine(a.referrers)],
+    // 30 days: here when it is not a fact up front (the same as 7 days, or no room).
+    shown.has('d30') ? null : ['30 days', fin(v30) ? `${count(v30)} visitors` : '--'],
+    ...rest.filter((f) => f.key !== 'd30').map((f) => [f.label === 'AVG VISIT' ? 'Avg visit' : 'Returning', f.value]),
+    ['Desktop', pct(a.desktopPct)],
+  ])
     + `<table class="grid-table bb-table">
     <thead><tr><th scope="col"><span class="offscreen">Sponsor inventory</span></th><th scope="col" class="num">Today</th><th scope="col" class="num">7D</th></tr></thead>
     <tbody>${invRows}</tbody>
   </table>`
-    + cardRows([...(mrrText(d?.mrr) ? [['MRR', mrrText(d.mrr)]] : []), ['Sources', SOURCE], ['BBRK', 'Not a security. Not for sale.']]);
+    + cardRows([
+      ...(mrrText(d?.mrr) ? [['MRR', mrrText(d.mrr)]] : []),
+      ...(testSeats ? [['Pro seats', testSeats]] : []),
+      ['Sources', SOURCE],
+      ['BBRK', 'Not a security. Not for sale.'],
+    ]);
 }
 
 export function globeHtml(d) {
-  return `<figure class="bb-globe"><canvas role="img" aria-label="${esc(globeLabel(d))}"></canvas><figcaption class="bb-caption">${esc(bbrkCaption(d))}</figcaption></figure>`;
+  return `<figure class="bb-globe"><canvas role="img" aria-label="${esc(globeLabel(d))}"></canvas><figcaption class="bb-caption">${esc(GLOBE_CAPTION)}</figcaption></figure>`;
 }
 
 // The whole card. d: /api/bbrk, or null while it loads (-- everywhere).
@@ -128,39 +204,36 @@ export function bbrkHtml(d) {
   const v = d?.audience?.visitors || {};
   return cardPage({
     label: 'BBRK, our own site numbers',
-    wide: true,
+    split: true,
     cls: 'bb-card',
+    art: raw(globeHtml(d)),
     kicker: KICKER,
-    hero: count(v.today),
+    hero: heroText(v.today),
     heroId: 'bb-hero',
-    heroSize: 60,
-    sub: raw(subHtml(v)),
-    subId: 'bb-sub',
-    chart: raw(`<div class="bb-chart" id="bb-chart">${chartSvg(d?.audience?.spark30)}</div>`),
-    facts: cardFacts(factsOf(d), { id: 'bb-facts' }),
-    media: raw(globeHtml(d)),
+    heroSize: 44,
+    sub: raw(`<span id="bb-sub">${subHtml(v)}</span>`),
+    chart: raw(`<div class="bb-chart" id="bb-chart">${chartHtml(d)}</div>`),
+    facts: factsHtml(d),
     details: raw(`<div id="bb-details">${detailsHtml(d)}</div>`),
   });
 }
 
-// The globe's caption and its words for a screen reader live with the globe (SPONSOR
-// shows the same globe).
+// The globe's words for a screen reader live with the globe (globe.js).
 export { globeCaption, globeLabel } from '../globe.js';
 
 export function render(el, cmd, ctx) {
   el.innerHTML = bbrkHtml(null);
   const fig = el.querySelector('.bb-globe');
   const canvas = fig.querySelector('canvas');
-  const caption = fig.querySelector('figcaption');
   const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   let globe = null;
   let latest = null;
-  // The globe takes the room left in the first view (never below the fold on a desktop);
-  // again when the window or the numbers above it change size.
-  const fit = () => { fitToView(fig); globe?.update(latest?.audience?.globe || null, latest?.audience?.live ?? null); };
+  // The globe takes the room left in the first view, up to GLOBE_MAX in the right column
+  // (never below the fold on a desktop); again when the window or the numbers change size.
+  const fit = () => { fitToView(fig, { max: GLOBE_MAX }); globe?.update(latest?.audience?.globe || null, latest?.audience?.live ?? null); };
   let frame = 0; // a resize fits once a frame, not once an event
   const onResize = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; fit(); }); };
-  fitToView(fig);
+  fitToView(fig, { max: GLOBE_MAX });
   document.fonts?.ready.then(() => { if (fig.isConnected) fit(); });
   window.addEventListener('resize', onResize);
   loadDots().then((geo) => {
@@ -173,13 +246,13 @@ export function render(el, cmd, ctx) {
   // + Details stays open.
   const paint = (d) => {
     const set = (sel, html) => { const n = el.querySelector(sel); if (n) n.innerHTML = html; };
-    const f = el.querySelector('#bb-facts');
-    if (f) f.outerHTML = cardFacts(factsOf(d), { id: 'bb-facts' });
-    set('#bb-hero', esc(count(d?.audience?.visitors?.today)));
+    const swap = (sel, html) => { const n = el.querySelector(sel); if (n) n.outerHTML = html; };
+    swap('#bb-facts', cardFacts(factsOf(d), { id: 'bb-facts' }));
+    swap('#bb-seats', seatsHtml(d));
+    set('#bb-hero', esc(heroText(d?.audience?.visitors?.today)));
     set('#bb-sub', subHtml(d?.audience?.visitors));
-    set('#bb-chart', chartSvg(d?.audience?.spark30));
+    set('#bb-chart', chartHtml(d));
     set('#bb-details', detailsHtml(d));
-    caption.textContent = bbrkCaption(d);
     canvas.setAttribute('aria-label', globeLabel(d));
   };
   async function load() {

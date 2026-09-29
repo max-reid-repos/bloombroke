@@ -21,7 +21,7 @@ import { EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra, urlCommand, isSecret } fro
 import { getTape, loadTapeRows, bareKey, looksLikeKey, bareGift, getSeat, isPro, getMe, getStatus, getPrefs, startCommand, clockFace, chatBeep } from './pro.js';
 import { avatarSvg, nameHtml } from './pixel-avatar.js'; // ME: your avatar and username by the name
 // --- Pro structure: GIFT, REDEEM, CHAT, SPONSOR, FEEDBACK ---
-import { stripItems, mountStrip, loadSponsors } from './sponsor-strip.js';
+import { stripItems, mountStrip, loadSponsors, stripHidden } from './sponsor-strip.js';
 import { countOnly, stripShownBatch } from './goal.js'; // BBRK: sponsor strip shown and clicked
 // --- end Pro structure ---
 import { ensureConsent, consentNeeded, loadWelcome } from './consent.js';
@@ -1083,7 +1083,7 @@ function boot() {
     stripKey = key;
     strip?.stop();
     if (items.length) shown ||= stripShownBatch();
-    strip = items.length ? mountStrip(sponsorEl, items, { reduceMotion: reduceMotion.matches, isHidden: () => document.hidden, onShow: () => shown.add(), onAnyClick: () => countOnly('strip_click') }) : null;
+    strip = items.length ? mountStrip(sponsorEl, items, { reduceMotion: reduceMotion.matches, isHidden: () => stripHidden(sponsorEl), onShow: () => shown.add(), onAnyClick: () => countOnly('strip_click') }) : null;
     if (!items.length) sponsorEl.innerHTML = '';
     sponsorEl.hidden = !items.length;
   }

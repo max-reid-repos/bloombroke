@@ -91,6 +91,22 @@ test('counters: Pro seats count the licences of the current Stripe mode only', (
   assert.equal(c.stats().seats, null, 'no mode, no seats');
 });
 
+test('counters: Pro seats are the licences with Pro now: not cancelled, unpaid, ended or an expired gift', () => {
+  const db = openDb(':memory:');
+  const add = db.prepare('INSERT INTO licences (key_hash, last4, status, created_at, updated_at, livemode, gift_expires_at, past_due_since) VALUES (?, ?, ?, ?, ?, 1, ?, ?)');
+  add.run('a1', 'AAA1', 'active', T0, T0, null, null);
+  add.run('a2', 'AAA2', 'trialing', T0 - DAY, T0 - DAY, null, null);
+  add.run('c1', 'CCC1', 'canceled', T0 - DAY, T0, null, null);
+  add.run('u1', 'UUU1', 'unpaid', T0 - DAY, T0, null, null);
+  add.run('p1', 'PPP1', 'past_due', T0 - DAY, T0, null, T0 - DAY); // inside its grace days
+  add.run('p2', 'PPP2', 'past_due', T0 - 30 * DAY, T0, null, T0 - 30 * DAY); // grace over
+  add.run('g1', 'GGG1', 'active', T0 - DAY, T0 - DAY, T0 + 10 * DAY, null); // a gift month running
+  add.run('g2', 'GGG2', 'active', T0 - 40 * DAY, T0 - 40 * DAY, T0 - 10 * DAY, null); // a gift month over
+  const c = createCounters({ now: () => T0 }).attach(db);
+  assert.equal(c.stats({ mode: 'live' }).seats.all, 4, 'active, trialing, past_due in grace, a running gift');
+  assert.equal(c.stats({ mode: 'test' }).seats.all, 0);
+});
+
 test('counters: MRR comes from the config, never a guess', () => {
   assert.equal(mrrLine('test'), 'MRR $0 (test mode)');
   assert.equal(mrrLine('live'), null);

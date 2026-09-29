@@ -1,23 +1,45 @@
 /* bbrk.js's own styles, loaded with it (public/lazy.js) the first time a screen that
    uses it opens; the page's always-on styles are in the stylesheets public/index.html links.
-   The page itself is a card (kit.css, "Card pages"); only its chart, globe and the
-   counters table are here. */
+   The page itself is a split card (kit.css, "Card pages"): the numbers left, the globe
+   right; only its layout, chart, seats line, globe and the counters table are here. */
 
-/* ---- The 30-day chart, across the column, no axes ---------------------------------- */
-.bb-chart { height: 96px; }
-.bb-spark { display: block; width: 100%; height: 100%; overflow: visible; }
+/* ---- The two columns: the numbers left, the globe right, from 1100 px, in the middle
+   of the screen's height (no empty half below). Below that one column, the numbers first,
+   then the globe, then + Details. ------------------------------------------------------ */
+@media (min-width: 1100px) {
+  .bb-card.card-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-content: center; }
+  .view > .bb-card.card-split { flex: 1 0 auto; }
+  /* fitToView gives the globe the room down to the dock: no padding under it, or the
+     screen would scroll by that much. */
+  .bb-card.card-split { padding-bottom: 0; }
+  .bb-card > .card-art { order: 1; align-self: center; }
+}
+@media (max-width: 1099px) {
+  .bb-card .card-col { display: contents; }
+  .bb-card > .card-art { order: 1; }
+  .bb-card .card-foot { order: 2; }
+}
+/* No line under the hero when yesterday is unknown. */
+.bb-card .card-sub:has(> #bb-sub:empty) { display: none; }
+
+/* ---- The chart from launch day, across the column, no axes; its two ends under it ---- */
+.bb-chart { display: flex; flex-direction: column; gap: 4px; }
+.bb-spark { display: block; width: 100%; height: 96px; overflow: visible; }
 .bb-spark-area { fill: var(--accent-tint); stroke: none; }
 .bb-spark-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
 .bb-spark-dot { fill: none; stroke: var(--accent); stroke-width: 8; stroke-linecap: round; }
+.bb-card .card-chart:has(.bb-chart:empty) { display: none; }
+.bb-ends { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: .12em; color: var(--dim); }
 
-/* ---- Five facts in one row once the column is its full 880 px -------------------- */
-.bb-card { container-type: inline-size; }
-@container (min-width: 880px) {
-  .bb-card .card-facts { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-}
+/* ---- The facts, and the seats line under them (one group) ---------------------------- */
+.bb-numbers { display: flex; flex-direction: column; gap: 16px; width: 100%; }
+.bb-card .card-facts { max-width: 480px; }
+.bb-seats { font-size: 14px; color: var(--text-2); }
+.bb-seats .num { color: var(--text); }
+.bb-seats[hidden] { display: none; }
 
-/* ---- The globe: --globe-w, or the room left in the first view (kit.js fitToView, which
-   writes --fit-w), centred, square, never cut off ------------------------------------- */
+/* ---- The globe: the room left in the first view (kit.js fitToView writes --fit-w, up to
+   GLOBE_MAX), else --globe-w; centred, square, never cut off ---------------------------- */
 .bb-globe { position: relative; width: min(var(--fit-w, var(--globe-w)), 100%); margin: 0 auto; text-align: center; font-size: 12px; }
 /* Drag to turn it, the wheel or two fingers to zoom (public/globe.js); pan-y: a mostly
    vertical one-finger drag still scrolls the page. */
@@ -30,19 +52,20 @@
 /* The label of the critter under the pointer: 'Tokyo, Osaka · 14 visitors this week'. */
 .bb-globe .globe-tip {
   position: absolute; z-index: 2; padding: 2px 6px; pointer-events: none; transform: translateY(-100%);
-  background: var(--panel); border: 1px solid var(--rule-strong); color: var(--text); font-size: 11px; white-space: nowrap;
+  background: var(--panel); border: 1px solid var(--rule-strong); color: var(--text); font-size: 12px; white-space: nowrap;
 }
 .bb-globe .globe-tip[hidden] { display: none; }
-/* Zoom (public/globe.js): +, - and back to 1x, small and quiet, in the top right corner
-   the round globe leaves empty (an L: 1x beside +, - under it, so no button is on the
-   globe even at 220 px). Out of the flow, so fitToView's sizing is unchanged. */
+/* Zoom (public/globe.js): +, - and back to 1x, 32 px keys (a finger's target) with 14 px
+   signs, in the top right corner the round globe leaves empty (an L: 1x beside +, - under
+   it; clear of a 340 px globe on a phone). Out of the flow, so fitToView's sizing is
+   unchanged. */
 .bb-globe .globe-zoom {
-  position: absolute; top: 0; right: 0; z-index: 1; display: grid; gap: 2px;
-  grid-template-columns: 20px 20px; grid-template-areas: "reset in" ". out";
+  position: absolute; top: 0; right: 0; z-index: 1; display: grid; gap: 4px;
+  grid-template-columns: 32px 32px; grid-template-areas: "reset in" ". out";
 }
 .bb-globe .globe-zoom-btn {
-  width: 20px; height: 20px; padding: 0; border: 1px solid var(--rule-strong); background: var(--bg);
-  color: var(--dim); font: inherit; font-size: 11px; line-height: 1; cursor: pointer;
+  width: 32px; height: 32px; padding: 0; border: 1px solid var(--rule-strong); background: var(--bg);
+  color: var(--text-2); font: inherit; font-size: 14px; line-height: 1; cursor: pointer;
 }
 .bb-globe .globe-zoom-btn[data-zoom="in"] { grid-area: in; }
 .bb-globe .globe-zoom-btn[data-zoom="out"] { grid-area: out; }
@@ -50,23 +73,17 @@
 .bb-globe .globe-zoom-btn:hover { color: var(--text); border-color: var(--dim); }
 .bb-globe .globe-zoom-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 .bb-globe .globe-zoom-btn[aria-disabled="true"] { opacity: .4; cursor: default; }
-.bb-globe figcaption { margin-top: 8px; color: var(--dim); }
-/* On a desktop, one line: at 220 px a long caption ('3 here now · top: United States
-   71%') would wrap after fitToView measured it and push the globe below the fold.
-   Centred, it may run a little past the globe on both sides. A phone scrolls, so there
-   it wraps as usual. */
-@media (min-width: 640px) {
-  .bb-globe figcaption { display: flex; justify-content: center; white-space: nowrap; }
-}
+/* The one line under it: what a figure is. It wraps inside the globe's width. */
+.bb-globe figcaption { max-width: 40ch; margin: 8px auto 0; color: var(--dim); text-wrap: balance; }
 
 /* ---- + Details: what a sponsor gets, from our own counters -------------------------- */
 .bb-card .bb-table { max-width: 60ch; margin: 0 auto 12px; }
 
-/* A short window: a lower chart, so more of the globe is in the first view. */
+/* A short window: a lower chart. */
 @media (max-height: 800px) {
-  .bb-chart { height: 64px; }
+  .bb-spark { height: 64px; }
 }
 @media (max-width: 639px) {
-  .bb-chart { height: 64px; }
+  .bb-spark { height: 64px; }
   .bb-card .bb-table { table-layout: fixed; }
 }

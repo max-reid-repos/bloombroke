@@ -8,14 +8,14 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import express from 'express';
 import { openDb } from '../pro/db.js';
 import { createLimiter } from '../pro/ratelimit.js';
-import { createCounters, mountCounters, makeCountGate, inventoryOf, BATCH_MAX } from '../lib/counters.js';
+import { createCounters, mountCounters, makeCountGate, makeShownGate, inventoryOf, BATCH_MAX, SHOWN_STEP_MS, SHOWN_BURST } from '../lib/counters.js';
 import {
-  makeDataFast, shapeAudience, emptyAudience, plan, nyMidnight, countryCode, globeOf, resolveCity, snapDeg, API_BASE, TZ, TTL_MS, GLOBE_MIN, ENV_KEY,
+  makeDataFast, shapeAudience, emptyAudience, plan, nyMidnight, nyAt, soFarWindows, countryCode, globeOf, resolveCity, snapDeg, API_BASE, TZ, TTL_MS, GLOBE_MIN, ENV_KEY,
 } from '../lib/datafast.js';
 import { mountEmbeds } from '../lib/embed-pages.js';
 import { stripItems, mountStrip } from '../public/sponsor-strip.js';
 import { countOnly, stripShownBatch } from '../public/goal.js';
-import { bbrkHtml, heroChange, visitTime, topLine, globeCaption, globeLabel, bbrkCaption, chartSvg, mrrText, SOURCE, STRIP, KICKER, INVENTORY } from '../public/screens/bbrk.js';
+import { subHtml as bbrkSub, bbrkHtml, heroChange, heroText, visitTime, topLine, globeCaption, globeLabel, chartSvg, chartHtml, sinceLaunch, factsOf, seatsText, seatsHtml, mrrText, SOURCE, STRIP, KICKER, INVENTORY, GLOBE_CAPTION, MAX_FACTS } from '../public/screens/bbrk.js';
 import { cardWords } from '../public/kit.js';
 import { ortho, dotRadius, startLon, mountGlobe } from '../public/globe.js';
 import { build as buildDots, rings } from '../scripts/build-globe-dots.js';
@@ -46,8 +46,7 @@ function keyOf(url) {
   const path = u.pathname.replace('/api/v1/', '');
   const q = u.searchParams;
   if (path === 'analytics/overview') {
-    if (q.get('startAt').includes('T')) return `${path}:ySoFar`;
-    if (q.get('startAt') === q.get('endAt')) return `${path}:today`;
+    if (q.get('startAt').includes('T')) return q.get('startAt') === '2026-09-26T04:00:00.000Z' ? `${path}:ySoFar` : `${path}:today`;
     return q.get('startAt') === '2026-09-21' ? `${path}:week` : `${path}:month`;
   }
   if (path === 'analytics/countries' || path === 'analytics/cities') {
@@ -94,12 +93,38 @@ test('DataFast: the calls are read-only GETs with the key as a Bearer token, New
     if (!c.url.includes('realtime')) assert.equal(new URL(c.url).searchParams.get('timezone'), TZ);
   }
   const p = plan(T0);
-  assert.equal(p.today[1].startAt, '2026-09-27');
+  assert.equal(p.today[1].startAt, '2026-09-27T04:00:00.000Z', 'today from New York midnight');
+  assert.equal(p.today[1].endAt, '2026-09-27T16:00:00.000Z', 'to now: the same kind of window as yesterday');
   assert.equal(p.week[1].startAt, '2026-09-21');
   assert.equal(p.month[1].startAt, '2026-08-29');
   assert.equal(p.ySoFar[1].startAt, '2026-09-26T04:00:00.000Z', 'yesterday from New York midnight');
   assert.equal(p.ySoFar[1].endAt, '2026-09-26T16:00:00.000Z', 'to the same time yesterday');
   assert.equal(nyMidnight('2026-01-15'), Date.parse('2026-01-15T05:00:00Z'), 'winter: UTC-5');
+});
+
+test('DataFast: same time yesterday is the same New York clock time, across the clock changes', () => {
+  const iso = (t) => new Date(t).toISOString();
+  const w = (now) => { const x = soFarWindows(Date.parse(now)); return [x.today.map(iso), x.yesterday.map(iso)]; };
+  // Spring (Mar 8 2026, 2:00 EST -> 3:00 EDT). The day of: noon EDT against noon EST
+  // yesterday, not 24 hours back (11:00).
+  assert.deepEqual(w('2026-03-08T16:00:00Z'), [['2026-03-08T05:00:00.000Z', '2026-03-08T16:00:00.000Z'], ['2026-03-07T05:00:00.000Z', '2026-03-07T17:00:00.000Z']]);
+  // The day after, 01:30 EDT: yesterday up to 01:30 EST (06:30Z), not 00:30.
+  assert.deepEqual(w('2026-03-09T05:30:00Z'), [['2026-03-09T04:00:00.000Z', '2026-03-09T05:30:00.000Z'], ['2026-03-08T05:00:00.000Z', '2026-03-08T06:30:00.000Z']]);
+  // The day after, at noon: both days are EDT.
+  assert.deepEqual(w('2026-03-09T16:00:00Z')[1], ['2026-03-08T05:00:00.000Z', '2026-03-08T16:00:00.000Z']);
+  // Autumn (Nov 1 2026, 2:00 EDT -> 1:00 EST). The day of: noon EST against noon EDT.
+  assert.deepEqual(w('2026-11-01T17:00:00Z')[1], ['2026-10-31T04:00:00.000Z', '2026-10-31T16:00:00.000Z']);
+  // The day after, 00:30 EST: yesterday up to 00:30 EDT (04:30Z), not 01:30.
+  assert.deepEqual(w('2026-11-02T05:30:00Z'), [['2026-11-02T05:00:00.000Z', '2026-11-02T05:30:00.000Z'], ['2026-11-01T04:00:00.000Z', '2026-11-01T04:30:00.000Z']]);
+  assert.deepEqual(w('2026-11-02T17:00:00Z')[1], ['2026-11-01T04:00:00.000Z', '2026-11-01T17:00:00.000Z']);
+  assert.equal(nyAt('2026-07-04', 9, 15), Date.parse('2026-07-04T13:15:00Z'));
+  // The plan asks for exactly these windows.
+  const p = plan(Date.parse('2026-03-08T16:00:00Z'));
+  assert.equal(p.ySoFar[1].endAt, '2026-03-07T17:00:00.000Z');
+  assert.equal(p.today[1].startAt, '2026-03-08T05:00:00.000Z');
+  // Either number unknown: no line under the hero (bbrk.js subHtml).
+  assert.equal(bbrkSub({ today: 4, yesterdaySoFar: null }), '');
+  assert.equal(bbrkSub({ today: null, yesterdaySoFar: 3 }), '');
 });
 
 test('DataFast: the audience contract, from mocked answers', async () => {
@@ -231,12 +256,12 @@ test('DataFast: kept 5 minutes; then the last answer at once while it refreshes'
 });
 
 // ---- counters and /api/bbrk ----------------------------------------------------------
-async function serve({ audience = null, max = 5 } = {}) {
+async function serve({ audience = null, max = 5, clock = () => T0 } = {}) {
   const db = openDb(':memory:');
   const counters = createCounters({ now: () => T0 }).attach(db);
   counters.enable('mcp_call');
   const app = express();
-  mountCounters(app, { counters, mode: 'test', now: () => T0, audience, limiter: createLimiter({ max, windowMs: 60_000, now: () => T0, sweepEvery: 0 }) });
+  mountCounters(app, { counters, mode: 'test', now: () => T0, audience, limiter: createLimiter({ max, windowMs: 60_000, now: () => T0, sweepEvery: 0 }), shownGate: makeShownGate({ now: clock }) });
   const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const post = async (body) => (await fetch(`${base}/api/count`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: JSON.stringify(body) })).status;
@@ -301,7 +326,7 @@ test('POST /api/count: strip_shown in batches of 1 to 20, strip_click one at a t
     assert.equal(await s.post({ name: 'strip_click', n: 2 }), 400, 'clicks are never batched');
     assert.equal(await s.post({ name: 'whatif_share', n: 5 }), 400);
     const d = await s.get();
-    assert.deepEqual(d.inventory.stripShown, { today: 21, d7: 21 });
+    assert.deepEqual(d.inventory.stripShown, { today: 15, d7: 15 }, 'one IP: a minute of showings at most at once (the gate)');
     assert.deepEqual(d.inventory.stripClicks, { today: 1, d7: 1 });
     assert.equal(BATCH_MAX, 20);
   } finally { await s.close(); }
@@ -310,6 +335,52 @@ test('POST /api/count: strip_shown in batches of 1 to 20, strip_click one at a t
     for (let i = 0; i < 5; i += 1) assert.equal(await r.post({ name: 'strip_shown', n: 20 }), 204);
     assert.equal(await r.post({ name: 'strip_shown', n: 1 }), 429, 'rate limited');
   } finally { await r.close(); }
+});
+
+test('strip_shown gate: one showing per 4 s per IP, about 21,600 a day; a forged loop cannot pump it', async () => {
+  assert.equal(SHOWN_STEP_MS, 4000);
+  assert.equal(SHOWN_BURST, 15, 'one minute of showings, the browser\'s batch');
+  let t = T0;
+  const g = makeShownGate({ now: () => t });
+  assert.equal(g.take('1.2.3.4', 20), 15, 'a new address: a minute of credit');
+  assert.equal(g.take('1.2.3.4', 20), 0, 'no time passed: nothing');
+  t += 60_000;
+  assert.equal(g.take('1.2.3.4', 20), 15, 'a minute later: 15 more');
+  t += 10_000;
+  assert.equal(g.take('1.2.3.4', 5), 2, '10 s: 2 showings');
+  assert.equal(g.take('5.6.7.8', 3), 3, 'another address has its own credit');
+  // A whole day of posts every second from one address: about 21,600.
+  const d = makeShownGate({ now: () => t });
+  let sum = 0;
+  const start = t;
+  for (; t < start + 86_400_000; t += 1000) sum += d.take('9.9.9.9', 20);
+  assert.ok(sum <= 86_400_000 / SHOWN_STEP_MS + SHOWN_BURST, `${sum} in a day`);
+  assert.ok(sum >= 21_000, `an honest screen is not cut short: ${sum}`);
+  // Held in memory no longer than its minute, plus the minute's sweep.
+  mock.timers.enable({ apis: ['setInterval'] });
+  try {
+    let tt = T0;
+    const h = makeShownGate({ now: () => tt });
+    h.take('a', 15);
+    tt += 30_000;
+    mock.timers.tick(60_000);
+    assert.equal(h.size(), 1, 'its credit is not full yet: kept');
+    tt += 30_000;
+    mock.timers.tick(60_000);
+    assert.equal(h.size(), 0, 'full again: forgotten');
+  } finally { mock.timers.reset(); }
+  // Through the route: a loop of posts gets one minute of credit, then one per 4 s.
+  let now = T0;
+  const s = await serve({ max: 1000, clock: () => now });
+  try {
+    for (let i = 0; i < 10; i += 1) assert.equal(await s.post({ name: 'strip_shown', n: 20 }), 204, 'still 204: the page never learns');
+    assert.equal((await s.get()).inventory.stripShown.today, 15);
+    now += 40_000;
+    for (let i = 0; i < 10; i += 1) await s.post({ name: 'strip_shown', n: 20 });
+    assert.equal((await s.get()).inventory.stripShown.today, 25, '40 s later: 10 more');
+    assert.equal(await s.post({ name: 'strip_click' }), 204);
+    assert.equal((await s.get()).inventory.stripClicks.today, 1, 'clicks are not gated by it');
+  } finally { await s.close(); }
 });
 
 test('inventoryOf: null numbers for a counter that is missing', () => {
@@ -460,10 +531,14 @@ const FULL = {
 const text = (html) => html.replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/g, ' ');
 const words = (html) => text(html).split(/\s+/).filter((w) => /[A-Za-z]/.test(w)).length;
 
-test('BBRK screen: a card: visitors hero, the chart, five facts, the globe; the rest (MRR too) behind Details', () => {
+test('BBRK screen: a split card: the numbers left, the globe right; the hero reads alone; the rest (MRR too) behind Details', () => {
   const html = bbrkHtml(FULL);
-  assert.match(html, /<h2 class="card-hero card-hero-60 num" id="bb-hero">412<\/h2>/);
-  assert.match(html, /visitors today · <span class="num up">\+35<\/span> vs same time yesterday/);
+  // The hero is a sentence on its own, the change against yesterday in the line under it.
+  assert.match(html, /<h2 class="card-hero card-hero-44 num" id="bb-hero">412 visitors today<\/h2>/);
+  assert.match(html, /<p class="card-sub"><span id="bb-sub"><span class="num up">\+35<\/span> vs same time yesterday<\/span><\/p>/);
+  assert.equal(heroText(1), '1 visitor today');
+  assert.equal(heroText(0), 'No visitors yet today', 'a zero said, not printed');
+  assert.equal(heroText(null), '-- visitors today');
   assert.match(html, /class="bb-spark"/);
   for (const s of ['3,180', '11,890', '1m 37s', '31%', '68%', 'United States 41% · Germany 6%', 'x.com 23%', '1,840', '12,950', '390', '160']) assert.ok(html.includes(s), s);
   for (const [, label] of INVENTORY) assert.ok(html.includes(label), label);
@@ -472,33 +547,95 @@ test('BBRK screen: a card: visitors hero, the chart, five facts, the globe; the 
   assert.doesNotMatch(html, /DataFast/, 'no data vendor on screen');
   assert.equal(STRIP, 'OUR OWN SITE NUMBERS. NOT A SECURITY. NOT FOR SALE.');
   assert.equal(KICKER, 'BBRK · OUR OWN SITE NUMBERS');
-  // The slots in order: kicker, hero, sub, chart, facts, globe, then + Details.
+  // The split card (kit.js cardPage split): the globe is the art; the numbers are the column.
+  assert.match(html, /^<section class="card card-split bb-card" aria-label="BBRK, our own site numbers"><div class="card-art"><figure class="bb-globe">/);
   const at = (x) => html.indexOf(x);
-  const order = ['card-kicker', 'id="bb-hero"', 'id="bb-sub"', 'id="bb-chart"', 'id="bb-facts"', 'class="bb-globe"', 'card-more'];
+  const order = ['card-kicker', 'id="bb-hero"', 'id="bb-sub"', 'id="bb-chart"', 'id="bb-facts"', 'id="bb-seats"', 'card-more'];
   for (let i = 1; i < order.length; i++) assert.ok(at(order[i - 1]) >= 0 && at(order[i - 1]) < at(order[i]), `${order[i - 1]} before ${order[i]}`);
-  // Countries, referrers, the counters and the sources are in Details, not above it.
+  // Countries, referrers, the counters, desktop, the sources are in Details, not above it.
   const [top, details] = html.split('<details class="how card-more"');
-  for (const x of ['United States 41% · Germany 6%', 'x.com 23%', '1,840', SOURCE, 'Not a security. Not for sale.', '<dt class="tag">MRR</dt><dd>$0, test mode</dd>']) {
+  for (const x of ['United States 41% · Germany 6%', 'x.com 23%', '1,840', '68%', SOURCE, 'Not a security. Not for sale.', '<dt class="tag">MRR</dt><dd>$0, test mode</dd>']) {
     assert.ok(details.includes(x), x);
     assert.ok(!top.includes(x), `${x} not above Details`);
   }
-  assert.match(top, /3 here now|7 here now/);
-  assert.equal(bbrkCaption(FULL), '7 here now · top: United States 41%');
-  assert.equal(bbrkCaption({ audience: { live: 1, countries: [] } }), '7D by place', 'one here now is most likely the viewer');
   // MRR: a row in + Details, never a tile (no TEST MODE up front); no MRR, no row.
   assert.doesNotMatch(top, /MRR|TEST MODE/i);
-  assert.equal((top.match(/<dt class="tag">/g) || []).length, 5, 'five facts');
   assert.equal(mrrText('MRR $0 (test mode)'), '$0, test mode');
   assert.equal(mrrText('MRR $120'), '$120');
   assert.equal(mrrText(null), null);
   assert.doesNotMatch(bbrkHtml({ ...FULL, mrr: null }), />MRR</);
   const w = cardWords(html);
-  assert.ok(w.length <= 25, `${w.length} words: ${w.join(' ')}`);
+  assert.ok(w.length <= 42, `${w.length} words: ${w.join(' ')}`);
+  // No sub when yesterday is unknown (the CSS hides the empty line).
+  assert.match(bbrkHtml({ audience: { visitors: { today: 3 } } }), /<span id="bb-sub"><\/span>/);
+  assert.match(readFileSync('public/screens/bbrk.css', 'utf8'), /\.bb-card \.card-sub:has\(> #bb-sub:empty\) \{ display: none; \}/);
 });
 
-test('BBRK chart: across the column, no axes, a dot on the last day; nothing without two days', () => {
-  const svg = chartSvg([0, 0, 18, 37, 19, 15]);
-  assert.match(svg, /^<svg class="bb-spark" viewBox="0 0 300 96" preserveAspectRatio="none" role="img" aria-label="Visitors a day, last 6 days\. Latest day: 15\.">/);
+test('BBRK facts: three at most; 30 days only when it differs from 7 days, else in + Details', () => {
+  const labels = (d) => factsOf(d).map((f) => f.label);
+  assert.equal(MAX_FACTS, 3);
+  assert.deepEqual(labels(FULL), ['7 DAYS', '30 DAYS', 'AVG VISIT'], '30 days differs: it is a fact, RETURNING goes to Details');
+  const same = { ...FULL, audience: { ...FULL.audience, visitors: { ...FULL.audience.visitors, d7: 96, d30: 96 } } };
+  assert.deepEqual(labels(same), ['7 DAYS', 'AVG VISIT', 'RETURNING']);
+  for (const d of [FULL, same, null]) assert.ok(factsOf(d).length <= 3);
+  const top = (d) => bbrkHtml(d).split('<details')[0];
+  const det = (d) => bbrkHtml(d).split('<details')[1];
+  assert.equal((top(FULL).match(/<dt class="tag">/g) || []).length, 3, 'three facts');
+  assert.match(det(FULL), /<dt class="tag">Returning<\/dt><dd>31%<\/dd>/, 'the fact left out is in Details');
+  assert.doesNotMatch(det(FULL), />30 days</);
+  assert.doesNotMatch(top(same), />30 DAYS</);
+  assert.match(det(same), /<dt class="tag">30 days<\/dt><dd>96 visitors<\/dd>/);
+  assert.match(det(same), /<dt class="tag">Desktop<\/dt><dd>68%<\/dd>/);
+});
+
+test('BBRK seats: the real count of Pro seats taken; none is said calmly; test mode is not a sale', () => {
+  const live = (n) => ({ ...FULL, mode: 'live', seats: { today: 0, yesterday: 0, d7: n, all: n } });
+  assert.equal(seatsText(live(3)), '3 Pro seats taken');
+  assert.equal(seatsText(live(1)), '1 Pro seat taken');
+  assert.equal(seatsText(live(1200)), '1,200 Pro seats taken');
+  assert.equal(seatsText(live(0)), 'No Pro seats taken yet', 'a zero said, never "0"');
+  assert.match(seatsHtml(live(3)), /^<p class="bb-seats" id="bb-seats"><span class="num">3<\/span> Pro seats taken<\/p>$/);
+  assert.doesNotMatch(bbrkHtml(live(0)).split('<details')[0], />0</);
+  // Test mode: the licences are test ones; no one has paid. The count is a row in Details.
+  const test = { ...FULL, mode: 'test', seats: { today: 0, yesterday: 2, d7: 3, all: 3 } };
+  assert.equal(seatsText(test), 'No paid Pro seats yet');
+  assert.match(bbrkHtml(test).split('<details')[1], /<dt class="tag">Pro seats<\/dt><dd>3 in test mode, no card charged<\/dd>/);
+  // Unknown (no Stripe, no database): no line.
+  for (const d of [null, { ...FULL, seats: null }, { ...FULL, mode: null, seats: { all: 2 } }]) {
+    assert.equal(seatsText(d), '');
+    assert.match(seatsHtml(d), /^<p class="bb-seats" id="bb-seats" hidden><\/p>$/);
+  }
+});
+
+test('BBRK chart: from launch day (the first day with a visitor), never the empty days before; dates from the points themselves', () => {
+  const spark = [0, 0, 0, 0, 18, 37, 19, 15];
+  // A gap: the answer skipped Sep 27, so the first visitor day is Sep 25, not "today - 3".
+  const days = ['2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25', '2026-09-26', '2026-09-28', '2026-09-29'];
+  assert.deepEqual(sinceLaunch(spark, days), { values: [18, 37, 19, 15], from: '2026-09-25', to: '2026-09-29', launch: true });
+  assert.deepEqual(sinceLaunch([0, 0, 3], null), { values: [3], from: null, to: null, launch: true });
+  assert.deepEqual(sinceLaunch([5, 6], ['2026-09-28', 'x']), { values: [5, 6], from: '2026-09-28', to: null, launch: false });
+  assert.equal(sinceLaunch([0, 0, 0]), null);
+  assert.equal(sinceLaunch(null), null);
+  const html = chartHtml({ day: '2026-09-29', audience: { spark30: spark, spark30Days: days } });
+  assert.match(html, /aria-label="Visitors a day, since launch day, Sep 25, 2026\. Last day: 15\."/);
+  // The line starts at the first visitor: its first point is 18 of 37, not zero.
+  const y0 = Number(/class="bb-spark-line" d="M0\.0 (\d+\.\d) /.exec(html)[1]);
+  assert.ok(y0 < 92 - 1, `the line starts above zero (${y0})`);
+  assert.match(html, /<p class="bb-ends" aria-hidden="true"><span>SEP 25<\/span><span>TODAY<\/span><\/p>$/);
+  // 30 days that all had visitors do not reach back to launch day: "last 30 days".
+  const full = Array.from({ length: 30 }, (_, i) => 10 + i);
+  const fullDays = Array.from({ length: 30 }, (_, i) => new Date(Date.UTC(2026, 7, 31 + i)).toISOString().slice(0, 10));
+  const f = chartHtml({ day: '2026-09-29', audience: { spark30: full, spark30Days: fullDays } });
+  assert.match(f, /aria-label="Visitors a day, last 30 days\. Last day: 39\."/);
+  assert.doesNotMatch(f, /launch/);
+  assert.match(f, /<span>AUG 31<\/span><span>TODAY<\/span>/);
+  // The last point is not today (the answer lags): its own date, never TODAY.
+  assert.match(chartHtml({ day: '2026-09-30', audience: { spark30: spark, spark30Days: days } }), /<span>SEP 25<\/span><span>SEP 29<\/span>/);
+  // No dates (an old answer): no date at either end, never a guessed one.
+  assert.match(chartHtml({ day: '2026-09-29', audience: { spark30: spark } }), /aria-label="Visitors a day, since launch day\. Last day: 15\."[\s\S]*<span><\/span><span><\/span>/);
+  assert.equal(chartHtml({ audience: { spark30: [0, 0, 0] } }), '', 'no visitor yet: no chart');
+  assert.equal(chartHtml({ audience: { spark30: [0, 0, 5] } }), '', 'one day: no line');
+  const svg = chartSvg([18, 37, 19, 15]);
   assert.match(svg, /class="bb-spark-line"[^>]*vector-effect="non-scaling-stroke"/);
   assert.match(svg, /class="bb-spark-dot" d="M300\.0 /, 'the dot on the last day, at the right edge');
   assert.doesNotMatch(svg, /<text|axis/);
@@ -506,13 +643,31 @@ test('BBRK chart: across the column, no axes, a dot on the last day; nothing wit
   assert.equal(chartSvg(null), '');
 });
 
+test('BBRK globe: one caption line that says exactly what a figure and its number are; zoom keys a 32 px target', () => {
+  const html = bbrkHtml(FULL);
+  assert.equal(GLOBE_CAPTION, 'Each figure is a place or a cluster of nearby places with visitors in 7 days; the number counts visitors, shown from 2.');
+  assert.match(html, /<figcaption class="bb-caption">Each figure is a place or a cluster of nearby places with visitors in 7 days; the number counts visitors, shown from 2\.<\/figcaption>/);
+  // globe-cluster.js: the count label is drawn only for more than one visitor.
+  assert.match(readFileSync('public/globe-cluster.js', 'utf8'), /const lw = n > 1 \? countText\(n\)/);
+  assert.equal((html.match(/<figcaption/g) || []).length, 1, 'one line');
+  assert.doesNotMatch(html, /here now|top: /, 'the caption says what a figure is, nothing else');
+  // True to globe.js: the figures are the places of the last 7 days (the server's window),
+  // and the number under a figure is its visitors.
+  assert.equal(FULL.audience.globe.window, '7d');
+  const css = readFileSync('public/screens/bbrk.css', 'utf8');
+  const px = (sel, prop) => Number(new RegExp(`${sel.replace(/[.[\]"=]/g, '\\$&')} \\{[^}]*${prop}: (\\d+)px`).exec(css)?.[1]);
+  assert.ok(px('.bb-globe .globe-zoom-btn', 'font-size') >= 12, 'zoom signs 12 px or more');
+  assert.ok(px('.bb-globe .globe-zoom-btn', 'width') >= 32 && px('.bb-globe .globe-zoom-btn', 'height') >= 32, 'zoom keys a 32 px target');
+  assert.match(css, /\.bb-globe \.globe-zoom \{[^}]*grid-template-columns: 32px 32px;/);
+  assert.ok(px('.bb-globe .globe-tip', 'font-size') >= 12, 'the hover label too');
+});
+
 test('BBRK screen: -- for everything missing, and nothing breaks', () => {
   const html = bbrkHtml(null);
   assert.doesNotMatch(html, /NaN|undefined|null|Infinity/);
-  assert.ok((html.match(/--/g) || []).length >= 12);
-  assert.doesNotMatch(html, /class="spark"/, 'no sparkline without data');
+  assert.ok((html.match(/--/g) || []).length >= 10);
+  assert.doesNotMatch(html, /class="bb-spark"/, 'no chart without data');
   assert.equal(globeCaption(null), '7D by place');
-  assert.equal(globeCaption(FULL), '7D by place · 7 live now');
   assert.equal(globeLabel(FULL), 'Globe of visitors by country, last 7 days: US 1,310, other 45.');
   assert.deepEqual(heroChange(null, 3), { text: '--', dir: 'flat' });
   assert.deepEqual(heroChange(2, 0), { text: '+2', dir: 'up' });

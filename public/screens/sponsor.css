@@ -14,78 +14,40 @@
   .wd-tile .panel-body { min-height: 0; padding: 6px 8px; }
 }
 
-/* SPONSOR: a card page (kit.css, "Card pages"). A small drawn terminal (sponsor.js
-   termHtml) with its bottom strip lit, so the line is plainly on every screen, not on this
-   page; BBRK's globe under the numbers at --globe-w. Room at the end for the label over
-   the strip (sponsor.js pointAtStrip), so at the bottom it covers nothing. On a desktop
-   the globe takes the room left in the first view (kit.js fitToView writes --fit-w). */
+/* SPONSOR: a card page (kit.css, "Card pages"), one column of 560 px at most, the same
+   column on a phone: the kicker, the headline, how many times the strip was shown (and
+   what that counts, a small dim line), the price and EMAIL, the rule line, TRY YOUR LINE,
+   the link to BBRK, + Details. Room at the end for the label over the strip (sponsor.js
+   pointAtStrip), so at the bottom it covers nothing. */
 .spon-card { padding-bottom: 48px; }
-/* The terminal: 480 x 200 at most, smaller with the column. A top bar, three faint panels
-   (one with a chart line), the strip at the bottom lit with the accent. */
-.spon-term {
-  display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 6px;
-  width: 100%; max-width: 480px; aspect-ratio: 12 / 5; margin: 0; padding: 8px;
-  border: 1px solid var(--rule-strong); background: var(--bg);
+.spon-card { max-width: min(560px, 100%); }
+/* A desktop: the column in the middle of the screen's height, not a void under it. */
+@media (min-width: 1100px) {
+  .view > .spon-card { flex: 1 0 auto; justify-content: center; }
 }
-.spon-term-top { display: flex; align-items: center; gap: 6px; }
-.spon-term-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
-.spon-term-bar { flex: 1 1 auto; height: 6px; max-width: 40%; background: var(--panel-3); }
-.spon-term-body { display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: 1fr 1fr; gap: 6px; min-height: 0; }
-.spon-term-panel { min-height: 0; border: 1px solid var(--rule); background: var(--panel); }
-.spon-term-panel.is-chart { grid-row: 1 / span 2; display: flex; align-items: flex-end; padding: 8px; }
-.spon-term-line { display: block; width: 100%; height: 60%; overflow: visible; }
-.spon-term-line polyline { fill: none; stroke: var(--faint); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-.spon-term-strip {
-  display: block; padding: 4px 8px; overflow: hidden;
-  border: 1px solid var(--accent); background: var(--accent-tint); color: var(--accent);
-  box-shadow: 0 0 12px var(--accent-tint), 0 0 24px var(--accent-tint);
-  font-family: var(--font); font-size: 12px; font-weight: 700; letter-spacing: .12em; line-height: 1.4;
-  text-align: center; white-space: nowrap; text-overflow: ellipsis;
+.spon-card .spon-def { display: block; margin-top: 4px; font-size: 12px; color: var(--dim); }
+/* The price and the one button: a group of its own, one under the other. */
+.spon-card .card-act { flex-direction: column; align-items: center; gap: 8px; }
+.spon-price { font-size: 18px; color: var(--text); }
+.spon-price[hidden] { display: none; }
+/* TRY YOUR LINE: a label over one input, the column's width. Mixed case, as it will run. */
+/* Hidden where there is no strip to show it in: Pro, an embed (sponsor.js canTry). */
+.spon-card > .card-media[hidden] { display: none; }
+.spon-try { display: flex; flex-direction: column; align-items: stretch; gap: 8px; width: 100%; text-align: left; }
+.spon-try .spon-try-input { flex: 0 0 auto; width: 100%; font-size: 14px; text-transform: none; }
+.spon-numbers { white-space: nowrap; }
+.spon-numbers .card-link { color: var(--accent); }
+/* The typed line in the real strip (sponsor.js tryLine): the strip's own line hidden, the
+   typed text drawn from data-try, marked SPONSOR like a paid line. Text only, never markup. */
+.status-sponsor.is-try > * { display: none; }
+.status-sponsor.is-try::before {
+  content: 'SPONSOR'; flex: 0 0 auto; padding-right: 16px;
+  color: var(--faint); font-size: 11px; font-weight: 400; letter-spacing: .12em;
 }
-/* A desktop: the terminal at the left (360 px wide), the headline, the line, the two
-   buttons on one row and the rule at its right, so the globe still fits the first view
-   of a 730 px high window. */
-@media (min-width: 900px) {
-  .spon-card { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); column-gap: 24px; }
-  .spon-card > .card-art { grid-column: 1; grid-row: 1 / span 2; align-self: center; }
-  .spon-card > .card-head { grid-column: 2; grid-row: 1; align-self: end; align-items: flex-start; text-align: left; }
-  .spon-card > .card-cta { grid-column: 2; grid-row: 2; align-self: start; align-items: flex-start; text-align: left; }
-  .spon-card > .card-cta .card-act { justify-content: flex-start; }
-  .spon-card > .card-facts, .spon-card > .card-media, .spon-card > .card-foot { grid-column: 1 / -1; }
+.status-sponsor.is-try::after {
+  content: attr(data-try); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text); font-weight: 600;
 }
-.spon-globe { position: relative; width: min(var(--fit-w, var(--globe-w)), 100%); margin: 0 auto; text-align: center; font-size: 12px; }
-.spon-globe[hidden] { display: none; }
-/* Drag to turn it, the wheel or two fingers to zoom (public/globe.js); pan-y: a mostly
-   vertical one-finger drag still scrolls the page. */
-.spon-globe canvas {
-  display: block; width: 100%; aspect-ratio: 1; cursor: grab; touch-action: pan-y; outline: 0;
-  --globe-land: hsla(201, 100%, 71%, .38); --globe-hot: var(--text); --globe-rim: hsla(201, 100%, 71%, .22);
-}
-.spon-globe canvas:active { cursor: grabbing; }
-.spon-globe canvas:focus-visible { box-shadow: 0 0 0 1px var(--accent); border-radius: 50%; }
-/* The label of the critter under the pointer: 'Tokyo, Osaka · 14 visitors this week'. */
-.spon-globe .globe-tip {
-  position: absolute; z-index: 2; padding: 2px 6px; pointer-events: none; transform: translateY(-100%);
-  background: var(--panel); border: 1px solid var(--rule-strong); color: var(--text); font-size: 11px; white-space: nowrap;
-}
-.spon-globe .globe-tip[hidden] { display: none; }
-/* Zoom (public/globe.js): +, - and back to 1x, small and quiet, in the top right corner
-   the round globe leaves empty (an L: 1x beside +, - under it, so no button is on the
-   globe even at 220 px). Out of the flow, so fitToView's sizing is unchanged. */
-.spon-globe .globe-zoom {
-  position: absolute; top: 0; right: 0; z-index: 1; display: grid; gap: 2px;
-  grid-template-columns: 20px 20px; grid-template-areas: "reset in" ". out";
-}
-.spon-globe .globe-zoom-btn {
-  width: 20px; height: 20px; padding: 0; border: 1px solid var(--rule-strong); background: var(--bg);
-  color: var(--dim); font: inherit; font-size: 11px; line-height: 1; cursor: pointer;
-}
-.spon-globe .globe-zoom-btn[data-zoom="in"] { grid-area: in; }
-.spon-globe .globe-zoom-btn[data-zoom="out"] { grid-area: out; }
-.spon-globe .globe-zoom-btn[data-zoom="reset"] { grid-area: reset; }
-.spon-globe .globe-zoom-btn:hover { color: var(--text); border-color: var(--dim); }
-.spon-globe .globe-zoom-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
-.spon-globe .globe-zoom-btn[aria-disabled="true"] { opacity: .4; cursor: default; }
 /* The label just above the real strip (sponsor.js pointAtStrip), while SPONSOR is open. */
 .spon-point {
   position: fixed; z-index: 30; padding: 2px 6px; pointer-events: none;
@@ -93,11 +55,6 @@
 }
 .spon-point[hidden] { display: none; }
 
-@media (max-width: 639px) {
-  /* The page scrolls on a phone: room at the end for the label over the strip, so at the
-     bottom (the only place the label shows, sponsor.js pointAtStrip) it covers nothing. */
-  .spon-card { padding-bottom: 48px; }
-}
 
 /* A WEIRD gauge with a sponsor: SPONSORED BY in its title strip. */
 .panel-head > .wd-sponsor { margin-left: auto; padding-right: 0; }

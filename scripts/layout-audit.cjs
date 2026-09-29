@@ -18,7 +18,7 @@
 //             13 px; a tracked uppercase label may be 12
 //   cut       MARKETS only (its own page, no card checks): a market name cut short (an
 //             ellipsis or clipped), at 1440x900, 1536x730 and 390x844
-//   fold      on a desktop size, BBRK's and SPONSOR's globe, or GRAVEYARD LEH's stone, video
+//   fold      on a desktop size, BBRK's globe, SPONSOR's TRY YOUR LINE, or GRAVEYARD LEH's stone, video
 //             and last website, not wholly in the first view (the media's bottom below the
 //             scroll box's visible bottom, scrolled to the top); for WHATIF, at every size,
 //             the certificate and SHARE
@@ -196,7 +196,8 @@ function inPage(scale, firstView, sel, fold, names) {
       if (!el) out.fold.push(`no ${s}`);
       else if (el.getBoundingClientRect().bottom > bottom + 0.5) out.fold.push(`${s} bottom ${Math.round(el.getBoundingClientRect().bottom)} > visible ${Math.round(bottom)}`);
     }
-    const media = card.querySelector('.card-media');
+    // BBRK's globe is the split card's art (the picture right of the numbers); else the media.
+    const media = card.querySelector('.card-art canvas')?.closest('.card-art') || card.querySelector('.card-media');
     if (firstView && !media) out.fold.push('no media');
     else if (firstView) {
       const r = media.getBoundingClientRect();
