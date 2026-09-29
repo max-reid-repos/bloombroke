@@ -170,8 +170,9 @@ function wire(el, ctx, sel, label, fn) {
 }
 
 // ---- the PRO page --------------------------------------------------------------------
-// A visitor (or a key whose Pro is off): the seat, big, the price with the plan switch in
-// it, one button, one note line, what Pro gives as four facts, small links, + Details.
+// A visitor: the minis, the price, one button, one note line, small links, + Details
+// (visitorHtml below). A key whose Pro is off: its seat, big, the price with the plan
+// switch in it, one button, one note line, small links, + Details.
 // A key with Pro on: YOUR KEY (masked until SHOW KEY), COPY and DOWNLOAD, the seat and
 // the renewal as facts, small links. Everything else (FREE vs PRO, the terms as short
 // rows, gifts) is behind + Details.
@@ -518,7 +519,12 @@ function startMinis(el, host, ctx) {
   v.demo?.stop();
   v.demo = null;
   v.demoToken = null;
-  if (!host.querySelector('#pd-chat') || !ctx?.signal) return;
+  // In an embed or a DESK panel: the still pictures only (no quotes call, no timers).
+  if (ctx?.embed && host.querySelector('#pd-chat')) {
+    Promise.all([loadModule(DEMO_JS, { recover: false }), ...stylesOf(DEMO_JS).map(loadCss)])
+      .then(([m]) => { if (host.isConnected && host.querySelector('#pd-chat')) m.drawStill(host, ctx); }).catch(() => {});
+  }
+  if (ctx?.embed || !host.querySelector('#pd-chat') || !ctx?.signal) return;
   const token = {};
   v.demoToken = token;
   Promise.all([loadModule(DEMO_JS, { recover: false }), ...stylesOf(DEMO_JS).map(loadCss)]).then(([m]) => {

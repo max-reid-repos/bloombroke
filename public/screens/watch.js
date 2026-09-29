@@ -178,9 +178,10 @@ function readSort(store) {
 }
 
 // An empty list: the kit's empty state, and one button back to the starter list (WATCH RESET).
-// Without Pro, one quiet line: the list lives in this browser only, and PRO syncs it.
+// Without Pro, one quiet line: the list lives in this browser only, and PRO syncs it. Not
+// in an embed or a DESK panel (embed).
 export const WATCH_PRO_LINE = 'Saved on this device. PRO syncs it.';
-export const emptyWatchHtml = ({ pro = false } = {}) => emptyState({ title: 'The watchlist is empty.', hint: 'Add symbols above, like AAPL MSFT GOLD.', action: { label: 'STARTER LIST', cmd: 'WATCH RESET' }, note: pro ? '' : raw(proLine(WATCH_PRO_LINE)) });
+export const emptyWatchHtml = ({ pro = false, embed = false } = {}) => emptyState({ title: 'The watchlist is empty.', hint: 'Add symbols above, like AAPL MSFT GOLD.', action: { label: 'STARTER LIST', cmd: 'WATCH RESET' }, note: pro || embed ? '' : raw(proLine(WATCH_PRO_LINE)) });
 
 export function render(el, cmd, ctx) {
   const a = cmd.args || { action: 'show' };
@@ -240,7 +241,7 @@ export function render(el, cmd, ctx) {
 
   function draw() {
     if (!list.length) {
-      body.innerHTML = emptyWatchHtml({ pro: isPro() });
+      body.innerHTML = emptyWatchHtml({ pro: isPro(), embed: Boolean(ctx.embed) });
       return;
     }
     const rows = sortRows(list.map((id) => ({ id, quote: byId[id] || null })), sort.key, sort.dir);

@@ -56,9 +56,34 @@ export function chipPrices(qt) {
   return { tickers: [t], quotes: Number.isFinite(last) && last > 0 ? { [CHAT_SYM]: last } : {} };
 }
 
-// The four messages, a minute apart, the last one now. qt: the real NVDA quote, or null.
+// When the receipt's price was the price: the previous close is the close of the trading
+// day before the quote's own day (asOf; today in New York without one), at 4:00 PM New
+// York. Weekends skipped; market holidays are not known here, so after a holiday the day
+// shown is one weekday too late at most.
+const NY_PARTS = typeof Intl !== 'undefined' ? new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit' }) : null;
+function nyAt(y, m, d, hour) {
+  // The UTC time whose New York wall clock reads y-m-d hour:00 (EDT is UTC-4, EST UTC-5).
+  for (const off of [4, 5]) {
+    const ms = Date.UTC(y, m - 1, d, hour + off);
+    if (!NY_PARTS) return ms;
+    const p = Object.fromEntries(NY_PARTS.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+    if (Number(p.hour) === hour && Number(p.day) === d) return ms;
+  }
+  return Date.UTC(y, m - 1, d, hour + 4);
+}
+export function prevCloseAt(qt, now = Date.now()) {
+  const own = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(qt?.asOf || ''));
+  const day = own ? own.slice(1).join('-') : (NY ? NY.format(new Date(now)) : new Date(now).toISOString().slice(0, 10));
+  const d = new Date(`${day}T12:00:00Z`);
+  do d.setUTCDate(d.getUTCDate() - 1); while (d.getUTCDay() === 0 || d.getUTCDay() === 6);
+  return nyAt(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), 16);
+}
+
+// The four messages: the receipt when its price was the price (the previous close, so its
+// own day row above TODAY's), then three a minute apart, the last one now. qt: the real
+// NVDA quote, or null.
 export function chatScript(qt, now = Date.now()) {
-  const at = (i) => now - (3 - i) * 60_000;
+  const at = (i) => (i === 0 ? prevCloseAt(qt, now) : now - (3 - i) * 60_000);
   const person = (p) => ({ seat: p.seat, name: p.name, color: p.color, avatar: p.avatar, own: false });
   const { tickers } = chipPrices(qt);
   return [
@@ -119,7 +144,7 @@ export function devicesHtml(ids, byId, { laptop = 0, phone = 0, fresh = null } =
 
 // ---- pings when closed -------------------------------------------------------------------
 
-// The same words as pro/push-send.js (test/pro-demo.test.js checks they match).
+// The same words as pro/push-send.js (test/pro-v4.test.js checks they match).
 const fmtLevel = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 8 });
 const fmtValue = (n, dp = 2) => Number(n).toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
 export const OPEN_CHAT = 'Open CHAT to read it.';
@@ -285,6 +310,13 @@ export function demoTracks(els, { byId = {}, ids = FALLBACK_WATCH, now = () => D
     });
   }
   return tracks;
+}
+
+// Embeds and DESK panels: the still pictures, with no quotes call and no timer (no
+// numbers, so none made up).
+export function drawStill(root, ctx) {
+  const els = { chat: root.querySelector('#pd-chat'), dev: root.querySelector('#pd-dev'), pings: root.querySelector('#pd-pings'), ads: root.querySelector('#pd-ads') };
+  return play(demoTracks(els, { byId: {}, ids: deviceIds(ctx?.store) }), { reduce: true });
 }
 
 // Start the minis in root (PRO's card): one quotes call, then play. Returns { stop }.

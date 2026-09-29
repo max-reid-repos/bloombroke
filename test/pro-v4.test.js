@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import {
   chatScript, chatHtml, chipPrices, typingMs, deviceIds, devicesHtml, alertLevel, alertPing, chatPing,
   pingsHtml, adsHtml, play, demoTracks, startDemo, guessNumber, LINES, ANA, JOE, FALLBACK_WATCH, HOUSE_LINE,
+  LEGAL_LINE, prevCloseAt, drawStill,
 } from '../public/screens/pro-demo.js';
 import { mainHtml, visitorHtml, seedBits, seatCardInner, CAPTIONS, KEY_Q, HERO_PRICE } from '../public/screens/pro.js';
 import { alertPayload, chatPayload } from '../pro/push-send.js';
@@ -109,6 +110,25 @@ test('chat mini: four messages from @ana and @joe, the real chat builders, a rea
   assert.equal(guessNumber(NOW), puzzleNumber('2026-09-29'));
 });
 
+test('the receipt is stamped when its price was the price: 4:00 PM New York on the trading day before the quote', () => {
+  // The quote's day is Monday Sep 28: its previous close is Friday Sep 25, 4:00 PM EDT (20:00 UTC).
+  assert.equal(prevCloseAt({ asOf: '2026-09-28' }, NOW), Date.UTC(2026, 8, 25, 20));
+  assert.equal(prevCloseAt({ asOf: '2026-09-29T11:02:00.000-0400' }, NOW), Date.UTC(2026, 8, 28, 20));
+  // Winter time: 4:00 PM EST is 21:00 UTC.
+  assert.equal(prevCloseAt({ asOf: '2026-12-08' }, NOW), Date.UTC(2026, 11, 7, 21));
+  // No quote: the weekday before today in New York (Tuesday Sep 29: Monday).
+  assert.equal(prevCloseAt(null, NOW), Date.UTC(2026, 8, 28, 20));
+  assert.equal(prevCloseAt(null, Date.UTC(2026, 8, 27, 15)), Date.UTC(2026, 8, 25, 20), 'a Sunday: Friday');
+  // The chat: the receipt under its own day row, the rest under TODAY.
+  const list = chatScript({ ...NVDA, asOf: '2026-09-28' }, NOW);
+  assert.equal(list[0].at, Date.UTC(2026, 8, 25, 20));
+  assert.ok(list.slice(1).every((m) => m.at > NOW - 5 * 60_000 && m.at <= NOW));
+  const html = chatHtml(list, 4, chipPrices(NVDA).quotes, NOW);
+  const days = [...html.matchAll(/<div class="cm-day" role="separator">([^<]+)<\/div>/g)].map((m) => m[1]);
+  assert.deepEqual(days, ['SEP 25', 'TODAY']);
+  assert.ok(html.indexOf('SEP 25') < html.indexOf('$NVDA') && html.indexOf('$NVDA') < html.indexOf('TODAY'));
+});
+
 test('chat mini: friendly lines, no advice (MAS): no buy or sell, targets, ratings, signals', () => {
   const words = LINES.join(' ');
   assert.doesNotMatch(words, /\b(buy|sell|target|going up|rating|signal|advice|should|moon|bullish|bearish|undervalued|overvalued)\b/i);
@@ -176,8 +196,18 @@ test('every device: the visitor own watchlist (4 at most), AAPL NVDA TSLA when e
   assert.match(devicesHtml(['AAPL'], {}, { laptop: 1 }), /<td class="num last">--<\/td>/);
 });
 
+test('no drift: the AD line is a house line of data/sponsors.json, the clean line the status line of index.html', () => {
+  const house = JSON.parse(readFileSync('data/sponsors.json', 'utf8')).house;
+  assert.ok(house.some((l) => l.text === HOUSE_LINE.text && l.cmd === HOUSE_LINE.cmd), HOUSE_LINE.text);
+  assert.equal(HOUSE_LINE.label, 'AD');
+  const index = readFileSync('public/index.html', 'utf8');
+  const legal = /<span id="status-legal" class="status-legal">([^]*?)<\/span>\s*<\/div>|<span id="status-legal" class="status-legal">([^\n]*)/.exec(index);
+  assert.ok(legal, 'the status line is in index.html');
+  const words = (legal[1] || legal[2]).replace(/<span class="legal-sep"[^>]*>[^<]*<\/span>/g, '|').replace(/<[^>]+>/g, '').split('|').map((w) => w.trim());
+  assert.deepEqual(LEGAL_LINE, words.slice(0, 2), words.join(' | '));
+});
+
 test('no ads: the real sponsor line (the house line), then it slides away and leaves a clean line', () => {
-  assert.equal(HOUSE_LINE.text, JSON.parse(readFileSync('data/sponsors.json', 'utf8')).house[1].text);
   assert.match(adsHtml({ state: 'ad' }), /<a class="spon-item" href="\?c=SPONSOR" data-cmd="SPONSOR"><span class="sponsor-k">AD<\/span><span class="spon-text">This line is for rent\. No tracking, no pop-ups\.<\/span><\/a>/);
   assert.match(adsHtml({ state: 'leaving' }), /spon-strip pd-out/);
   // The clean line: the status line's own legal words, no AD.
@@ -324,6 +354,24 @@ test('leaving PRO stops everything: the abort signal, a mini gone from the page,
   assert.equal(t2.q.size, 0);
 });
 
+test('embeds and DESK panels: the still pictures, no quotes call, no timer, no number', async () => {
+  const root = fakeRoot();
+  const ctx = ctxWith();
+  const p = drawStill(root, { ...ctx, embed: true });
+  await flush();
+  assert.equal(ctx.calls.length, 0, 'no quotes call');
+  assert.equal(p.pending, 0);
+  assert.equal((root.els['#pd-chat'].innerHTML.match(/class="cm[ "]/g) || []).length, 4);
+  assert.match(root.els['#pd-chat'].innerHTML, />\$NVDA<\/button>/);
+  assert.doesNotMatch(text(root.els['#pd-chat'].innerHTML + root.els['#pd-pings'].innerHTML + root.els['#pd-dev'].innerHTML), /\d+\.\d\d/);
+  assert.match(root.els['#pd-ads'].innerHTML, /pd-struck/);
+  // PRO never starts the live minis there.
+  const src = readFileSync('public/screens/pro.js', 'utf8');
+  assert.match(src, /if \(ctx\?\.embed \|\| !host\.querySelector\('#pd-chat'\) \|\| !ctx\?\.signal\) return;/);
+  assert.match(src, /if \(ctx\?\.embed && host\.querySelector\('#pd-chat'\)\) \{\s*Promise\.all\(\[loadModule\(DEMO_JS[^\n]*\n\s*\.then\(\(\[m\]\) => \{ if \(host\.isConnected && host\.querySelector\('#pd-chat'\)\) m\.drawStill\(host, ctx\); \}\)/);
+  assert.ok(src.indexOf('m.drawStill(host, ctx)') < src.indexOf('m.startDemo(host, ctx)'));
+});
+
 test('a hidden tab: the minis wait, and go on when it is shown again', async () => {
   const root = fakeRoot();
   const timers = fakeTimers();
@@ -346,7 +394,7 @@ test('the screen code: PRO loads the minis by name for a visitor only, stops the
   assert.match(src, /export const DEMO_JS = 'screens\/pro-demo\.js';/);
   assert.match(src, /loadModule\(DEMO_JS, \{ recover: false \}\)/);
   assert.match(src, /v\.demo\?\.stop\(\);/);
-  assert.match(src, /if \(!host\.querySelector\('#pd-chat'\) \|\| !ctx\?\.signal\) return;/);
+  assert.match(src, /if \(ctx\?\.embed \|\| !host\.querySelector\('#pd-chat'\) \|\| !ctx\?\.signal\) return;/);
   assert.doesNotMatch(src, /import[^;]*pro-demo/, 'not a static import: LOGIN, REDEEM and GIFT never load it');
 });
 
@@ -404,9 +452,13 @@ test('moment lines: WATCH empty, ALERTS and the GUESS end say what PRO adds, 10 
   const link = '<a class="pro-line-link" href="?c=PRO" data-cmd="PRO">PRO</a>';
   assert.ok(emptyWatchHtml().includes(`<p class="empty-note">Saved on this device. ${link} syncs it.</p>`));
   assert.doesNotMatch(emptyWatchHtml({ pro: true }), /empty-note|data-cmd="PRO"/);
+  assert.doesNotMatch(emptyWatchHtml({ embed: true }), /empty-note|data-cmd="PRO"/, 'not in an embed or a DESK panel');
+  assert.match(readFileSync('public/screens/watch.js', 'utf8'), /emptyWatchHtml\(\{ pro: isPro\(\), embed: Boolean\(ctx\.embed\) \}\)/);
   const s = { get: () => false };
   assert.equal(topLineHtml(s, false), `${HONEST_LINE} <span class="al-pro">${link} pings your phone when the tab is closed.</span>`);
   assert.equal(topLineHtml(s, true), HONEST_LINE);
+  assert.equal(topLineHtml(s, false, true), HONEST_LINE, 'not in an embed or a DESK panel');
+  assert.match(readFileSync('public/screens/alerts.js', 'utf8'), /topLineHtml\(ctx\.store, isPro\(\), Boolean\(ctx\.embed\)\)/);
   // With closed-tab alerts on (a Pro device), the line says so and nothing more.
   assert.doesNotMatch(topLineHtml({ get: () => true }, false), /data-cmd="PRO"/);
   // No pop-ups: a line, not a dialog.

@@ -81,7 +81,7 @@
 .pd-cap { font-size: 13px; color: var(--text-2); }
 .pd-mini { width: 100%; overflow: hidden; }
 .pd-chat-fig { max-width: 480px; }
-.pd-mini-chat { height: 216px; text-align: left; }
+.pd-mini-chat { height: 248px; text-align: left; }
 .pro-v4 .card-media { gap: 32px; }
 .pd-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; width: 100%; }
 .pd-tile .pd-mini { height: 168px; }
@@ -117,7 +117,7 @@
   .pro-v4 > .card-media, .pro-v4 > .card-foot { grid-column: 1 / -1; }
 }
 @media (max-width: 639px) {
-  .pd-mini-chat { height: 224px; }
+  .pd-mini-chat { height: 280px; }
   .pd-tiles { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .pd-tile .pd-mini { max-width: 320px; margin: 0 auto; }
   .pd-bonus { gap: 24px; }

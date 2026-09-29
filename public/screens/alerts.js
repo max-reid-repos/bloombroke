@@ -20,11 +20,12 @@ export const parse = (args) => parseAlertArgs(args);
 export const PUSH_FLAG = 'bb.push.alerts';
 export const PUSH_LINE = 'Alerts also ping this device when the tab is closed.';
 export const topLine = (store) => (store?.get?.(PUSH_FLAG, false) === true ? PUSH_LINE : HONEST_LINE);
-// After the open-tab line, for a visitor: what Pro adds. Never for Pro.
+// After the open-tab line, for a visitor: what Pro adds. Never for Pro, never in an embed
+// or a DESK panel.
 export const ALERTS_PRO_LINE = 'PRO pings your phone when the tab is closed.';
-export const topLineHtml = (store, pro = false) => {
+export const topLineHtml = (store, pro = false, embed = false) => {
   const line = topLine(store);
-  return `${esc(line)}${line === HONEST_LINE && !pro ? ` <span class="al-pro">${proLine(ALERTS_PRO_LINE)}</span>` : ''}`;
+  return `${esc(line)}${line === HONEST_LINE && !pro && !embed ? ` <span class="al-pro">${proLine(ALERTS_PRO_LINE)}</span>` : ''}`;
 };
 
 const ERRORS = {
@@ -96,7 +97,7 @@ export function render(el, cmd, ctx) {
   let confirming = false;
   let perm = '';
 
-  el.innerHTML = panel('1', 'Alerts', `${toolbar({ left: `<span class="al-honest">${topLineHtml(ctx.store, isPro())}</span>`, right: '<span class="list-tools"></span>', label: 'Alerts' })}<div class="wl-top al-top"></div><div class="al-body"></div>`,
+  el.innerHTML = panel('1', 'Alerts', `${toolbar({ left: `<span class="al-honest">${topLineHtml(ctx.store, isPro(), Boolean(ctx.embed))}</span>`, right: '<span class="list-tools"></span>', label: 'Alerts' })}<div class="wl-top al-top"></div><div class="al-body"></div>`,
     { cls: 'panel-solo', metaId: 'al-meta', meta: '', bodyCls: 'flush' });
   const top = el.querySelector('.al-top');
   const body = el.querySelector('.al-body');

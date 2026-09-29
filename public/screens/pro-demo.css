@@ -18,10 +18,6 @@
 .pd-dots, .pd-term-top { display: flex; gap: 4px; }
 .pd-dots i, .pd-term-top i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
 .pd-msgs.ct-msgs { overflow: hidden; scrollbar-gutter: auto; padding: 6px 12px; }
-/* A phone: no day row, so the four messages fit. */
-@media (max-width: 639px) {
-  .pd-msgs .cm-day { display: none; }
-}
 
 /* ---- Every device: a laptop and a phone, the same rows --------------------------------- */
 .pd-dev { position: relative; width: 100%; max-width: 280px; height: 100%; margin: 0 auto; }
