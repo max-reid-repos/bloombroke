@@ -7,15 +7,19 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  tileHtml, tileFace, hoverText, hereWords, editButtons, shareHtml, boardKeyAction, NO_CHART, EDIT_HINT,
+  tileHtml, tileFace, hoverText, hereWords, editButtons, shareHtml, boardKeyAction, creditHtml, NO_CHART, EDIT_HINT,
 } from '../public/screens/grid.js';
 import { gridItem } from '../public/command-args.js';
 import { marketTile, cpiTile, loadCpiMonthly, weirdTile, bbrkTile, ripTile } from '../lib/grid.js';
-import { HERE_MIN, hereText } from '../public/here-now.js';
+import { HERE_MIN, hereText, latestHere, onHere, mountHereNow } from '../public/here-now.js';
+import { gridCardModel, gridTree, heroFit, CHAR_EM, HERO_MIN_PX } from '../lib/og-grid.js';
+import { renderPng } from '../lib/og.js';
+import { parseGrid } from '../public/command-args.js';
 import {
-  WEIRD_GAUGES, HEROES, MEANINGS, heroOf, heroText, meaningOf, tileCredit, tileCreditHtml,
+  WEIRD_GAUGES, HEROES, heroOf, heroText, meaningOf, tileCredit, tileCreditHtml,
 } from '../public/screens/weird-gauges.js';
 import { tile, tileBody, recordTag, rowSizes, spanClasses } from '../public/screens/weird.js';
+import { sourceHtml } from '../public/screens/weird-gauges.js';
 import { cardBody } from '../public/screens/desk-cards.js';
 import { loadGraveyardData } from '../lib/graveyard.js';
 
@@ -32,7 +36,7 @@ test('GRID: every kind of tile is the one template: head, one number, one change
     [gridItem('CPI'), cpiTile('1Y', cpi)],
     [gridItem('W:EGGPRICE'), weirdTile(gridItem('W:EGGPRICE'), { ok: true, headline: '$2.27 A DOZEN', spark: [1, 2, 3] })],
     [gridItem('RIP:LEH'), ripTile(gridItem('RIP:LEH'), GRAVES.stones.find((e) => e.ticker === 'LEH'))],
-    [gridItem('BBRK'), bbrkTile({ pageviews: { d7: 332 }, live: 3, spark30: [1, 4, 2, 6] })],
+    [gridItem('BBRK'), bbrkTile({ visitors: { d7: 332 }, live: 3, spark30: [1, 4, 2, 6] })],
   ];
   for (const [item, t] of tiles) {
     const html = tileHtml(item, t, { i: 0, range: '1Y' });
@@ -92,25 +96,41 @@ test('GRID strip: + TILE and EDIT at its right end, in DESK\'s words and look; s
   assert.equal(boardKeyAction('Enter', { inScene: true, tileAt: 2, phone: true }), 'open', 'a phone opens the tile too');
 });
 
-test('GRID BBRK: the top bar\'s here now, from the same source, a zero in words, and a line', () => {
+test('GRID BBRK: the top bar\'s own here now (shared, no second request), a zero in words', async () => {
   // The same rule as the top bar (here-now.js): the number from HERE_MIN up.
   for (const n of [2, 3, 17, 1200]) assert.equal(hereWords(n).toUpperCase(), hereText(n), `${n}`);
   for (const n of [0, 1]) assert.equal(hereWords(n), 'no one else here', `${n} is never printed as a bare number`);
   assert.equal(hereWords(null), '');
   assert.equal(HERE_MIN, 2);
+  // The top bar shares each number it gets: the latest, and to every listener.
+  const heard = [];
+  const stop = onHere((n) => heard.push(n));
+  const el = { hidden: true, textContent: '', title: '', ownerDocument: null, getBoundingClientRect: () => ({ left: 0 }) };
+  const stopBar = mountHereNow(el, { fetchImpl: async () => ({ ok: true, json: async () => ({ here: 3 }) }), isHidden: () => false, timer: () => () => {}, win: null });
+  await new Promise((r) => { setTimeout(r, 0); });
+  assert.equal(latestHere(), 3);
+  assert.deepEqual(heard, [3]);
+  stop(); stopBar();
+  // GRID takes it from there: no request while the top bar has a number.
   const js = read('public/screens/grid.js');
-  assert.match(js, /getJSON\('\/api\/live'/, 'the top bar\'s own endpoint');
-  assert.match(read('public/here-now.js'), /fetchImpl\('\/api\/live'/);
-  assert.match(js, /if \(\(d\.tiles \|\| \[\]\)\.some\(\(t\) => t\.kind === 'bbrk' && !t\.error\)\) hereNow\(\);/, 'asked at once when the tile loads, not a minute later');
-  // The tile: one number (the week of page views), here now as its change, a line of visitors a day.
-  const t = bbrkTile({ pageviews: { d7: 332 }, live: 3, spark30: [5, 9, 7, 12] });
-  assert.deepEqual(t.points.map((p) => p.v), [5, 9, 7, 12]);
+  assert.match(js, /ctx\.onCleanup\(onHere\(takeHere\)\);/, 'each new top bar number reaches the tile');
+  assert.match(js, /const shared = latestHere\(\);\n\s+if \(shared !== null\) \{ takeHere\(shared\); return; \}\n\s+const d = await getJSON\('\/api\/live'/, '/api/live only while the top bar has none');
+  assert.match(js, /if \(\(d\.tiles \|\| \[\]\)\.some\(\(t\) => t\.kind === 'bbrk' && !t\.error\)\) hereNow\(\);/, 'taken at once when the tile loads');
+  // The number and the line say the same thing: visitors in 7 days, visitors a day over those 7 days.
+  const t = bbrkTile({ visitors: { d7: 332 }, pageviews: { d7: 900 }, live: 3, spark30: [1, 2, 3, 40, 50, 60, 70, 80, 90, 100] });
+  assert.equal(t.name, 'Visitors, 7 days');
+  assert.deepEqual(t.points.map((p) => p.v), [40, 50, 60, 70, 80, 90, 100], 'the last 7 days of visitors a day');
   const f = tileFace(gridItem('BBRK'), t);
-  assert.deepEqual([f.big, f.chg], ['332', '3 here now']);
+  assert.deepEqual([f.big, f.chg], ['332', '3 here now'], 'visitors, not page views');
+  assert.match(hoverText(t), /^Visitors in the last 7 days\. The line: visitors a day, the same 7 days\.$/);
   // A zero: said calmly, never a bare 0 as the hero.
-  const zero = tileFace(gridItem('BBRK'), bbrkTile({ pageviews: { d7: 0 }, live: 0 }));
+  const zero = tileFace(gridItem('BBRK'), bbrkTile({ visitors: { d7: 0 }, live: 0 }));
   assert.deepEqual([zero.big, zero.chg], ['none yet', 'no one else here']);
-  assert.equal(bbrkTile({ pageviews: { d7: 1 } }).points, undefined, 'no visitors a day: no line');
+  assert.equal(bbrkTile({ visitors: { d7: 1 } }).points, undefined, 'no visitors a day: no line');
+  // The share card draws the same: visitors, never page views.
+  const grid = { cached: (it) => (it.kind === 'bbrk' ? t : null) };
+  const m = gridCardModel(parseGrid(['BBRK']), grid);
+  assert.deepEqual([m.tiles[0].big, m.tiles[0].points.length], ['332', 7]);
 });
 
 test('GRID: a tile with nothing to draw says "no chart yet"', () => {
@@ -140,7 +160,7 @@ const SAMPLES = {
   panic: ['+24%', '−3%'],
   hiring: ['1.45 PER JOB'],
   hotdog: ['$4.66'],
-  omens: ['WANING GIBBOUS'],
+  omens: ['WANING GIBBOUS', 'FULL MOON', 'NEW MOON'],
   undies: ['+7.7% YOY'],
   bigmac: ['SWITZERLAND +45%', 'UNITED STATES +0%'],
   billions: ['MUSK +$12.0B', 'NO BIG MOVES TODAY'],
@@ -179,6 +199,8 @@ test('WEIRD heroes read alone: every gauge has its own noun and number, never a 
   assert.equal(eg('canal', 'HORMUZ 3 SHIPS/DAY'), 'Hormuz 3 ships a day');
   assert.equal(eg('lipstick', '+2.8% YOY'), 'Cosmetics prices +2.8% a year');
   assert.equal(eg('waffle', '0 STORES IN STORMS'), 'Waffle House none in storms', 'a zero in words');
+  assert.equal(eg('omens', 'FULL MOON'), 'Moon full', 'never "Moon full moon"');
+  assert.equal(eg('hotdog', '$4.47'), "Costco's 1985 hot dog $4.47 in today's money", 'what 1985 money is worth now, not a price Costco charges');
   // A shape no hero knows keeps the gauge's own label as its noun; no reading, no hero.
   assert.equal(heroText(WEIRD_GAUGES[0], { ok: true, headline: 'SOMETHING NEW 5' }), 'Canal SOMETHING NEW 5');
   assert.equal(heroOf(WEIRD_GAUGES[0], { ok: false, headline: 'NO DATA' }), null);
@@ -208,21 +230,108 @@ test('WEIRD: one tile template for every gauge; the DESK card and the GRID W: ti
 
 test('WEIRD credits: the short credit a licence asks for stays on the tile; vendors never named otherwise', () => {
   const g = (id) => WEIRD_GAUGES.find((x) => x.id === id);
-  assert.equal(tileCredit(g('waffle'), { credit: '© OpenStreetMap contributors, ODbL' }), '© OSM');
+  const OSM = '© OpenStreetMap contributors, ODbL';
+  assert.equal(tileCredit(g('waffle'), { credit: OSM }), '© OpenStreetMap');
+  const osmLink = /<a href="https:\/\/www\.openstreetmap\.org\/copyright" target="_blank" rel="noopener noreferrer" title="© OpenStreetMap contributors, ODbL">© OpenStreetMap<\/a>/;
+  assert.match(tileCreditHtml(g('waffle'), { credit: OSM }), osmLink);
   assert.equal(tileCredit(g('bigmac'), { credit: 'The Economist, CC BY 4.0' }), 'The Economist, CC BY 4.0');
   assert.match(tileCreditHtml(g('rides'), { credit: 'Powered by Queue-Times.com' }), /Powered by <a href="https:\/\/queue-times\.com\/"[^>]*>Queue-Times\.com<\/a>/);
   assert.equal(tileCredit(g('wsb'), { source: 'ApeWisdom' }), '', 'no credit asked for: none on the tile');
-  const osm = tileBody(g('waffle'), { ok: true, headline: '0 STORES IN STORMS', line: 'x', source: 'NHC', credit: '© OpenStreetMap contributors, ODbL', asOf: '2026-09-29' });
-  assert.match(osm, /<p class="wd-src">© OSM<\/p>/);
-  // The long form stays on the gauge's own screen.
+  const waffleRow = { ok: true, headline: '0 STORES IN STORMS', line: 'x', source: 'NHC', credit: OSM, asOf: '2026-09-29' };
+  assert.match(tileBody(g('waffle'), waffleRow), new RegExp(`<p class="wd-src">${osmLink.source}</p>`));
+  // The full panel: the long form, linked to the copyright page.
+  assert.match(sourceHtml(g('waffle'), waffleRow), /NHC, <a href="https:\/\/www\.openstreetmap\.org\/copyright"[^>]*>© OpenStreetMap contributors<\/a>, ODbL · /);
   assert.match(read('public/screens/weird.js'), /<p class="wd-src">\$\{sourceHtml\(g, d\)\}<\/p>/);
-  const VENDORS = /FRED|Forbes|Polymarket|ApeWisdom|Drewry|Wikimedia|Wikipedia|Algolia|\bHN\b|Cass|PortWatch|\bIMF\b|pizzint|App Store|Apple|Bloomberg/;
+  // GRID W: tiles carry the same credit, linked (WAFFLE) or plain (BIGMAC).
+  const wt = weirdTile(gridItem('W:WAFFLE'), waffleRow);
+  assert.deepEqual([wt.credit, wt.creditLink?.href], ['© OpenStreetMap', 'https://www.openstreetmap.org/copyright']);
+  assert.match(tileHtml(gridItem('W:WAFFLE'), wt), new RegExp(`<p class="gr-credit">${osmLink.source}</p>`));
+  const bm = weirdTile(gridItem('W:BIGMAC'), { ok: true, headline: 'SWITZERLAND +45%', credit: 'The Economist, CC BY 4.0' });
+  assert.equal(creditHtml(bm), '<p class="gr-credit">The Economist, CC BY 4.0</p>');
+  assert.equal(creditHtml(weirdTile(gridItem('W:WSB'), { ok: true, headline: 'SPY 238 MENTIONS', source: 'ApeWisdom' })), '');
+  assert.match(read('public/screens/grid.js'), /if \(e\.target\.closest\('a\[href\^="https:\/\/"\]'\)\) return;/, 'a credit link opens its site, not the tile');
+  // Hacker News may be named on HIRING (its own threads); data vendors never.
+  const VENDORS = /FRED|Forbes|Polymarket|ApeWisdom|Drewry|Wikimedia|Wikipedia|Algolia|Cass|PortWatch|\bIMF\b|pizzint|App Store|Apple|Bloomberg/;
   for (const x of WEIRD_GAUGES) {
-    for (const h of SAMPLES[x.id]) assert.doesNotMatch(heroText(x, { ok: true, headline: h, line: '' }), VENDORS, x.id);
-    if (MEANINGS[x.id]) assert.doesNotMatch(MEANINGS[x.id], VENDORS, x.id);
+    for (const h of SAMPLES[x.id]) {
+      const d = { ok: true, headline: h, line: 'Box output vs a year ago' };
+      assert.doesNotMatch(heroText(x, d), VENDORS, x.id);
+      assert.doesNotMatch(meaningOf(x, { ...d, line: '' }), VENDORS, x.id);
+    }
     const body = tileBody(x, { ok: true, headline: SAMPLES[x.id][0], line: 'y', source: 'FRED', asOf: '2026-09-01' });
     assert.doesNotMatch(body, /FRED/, `${x.id}: the source is not on the tile`);
   }
+});
+
+test('WEIRD meaning lines say what is measured', () => {
+  const m = (id, d = {}) => meaningOf(WEIRD_GAUGES.find((x) => x.id === id), d);
+  assert.match(m('panic'), /stagflation/);
+  assert.match(m('hiring'), /Hacker News "Who is hiring\?"/, 'a thread measure, not a national labour figure');
+  assert.match(m('boxes', { line: 'Box output vs a year ago (Jun)' }), /^Box demand/);
+  assert.match(m('boxes', { line: 'Box prices vs a year ago (Aug)' }), /^Box prices/);
+  assert.equal(m('beige', { headline: 'SLOW 38 TIMES' }), 'Top of five words; "slowing" counts too');
+  assert.equal(m('beige', { headline: 'UNCERTAIN 29 TIMES' }), 'Top of five words; "uncertainty" counts too');
+  assert.doesNotMatch(m('hotdog'), /\$\d/, 'one money number per tile (the hero)');
+});
+
+test('GRID card: a W: hero never cuts its number; the noun shortens (16 tiles and 4)', async () => {
+  const LONG = [
+    ['W:MACAU', '\u221212.3% YOY'], ['W:BIGMAC', 'SWITZERLAND +45%'], ['W:WAFFLE', '212 STORES IN STORMS (PARTIAL)'],
+    ['W:TRUCKS', 'TRUCKS \u22120.4% YOY'], ['W:BILLIONS', 'ZUCKERBERG +$14.0B'], ['W:BEIGE', 'UNCERTAIN 1,029 TIMES'],
+    ['W:UNDIES', '+17.7% YOY'], ['W:PANIC', '+1,024%'],
+  ];
+  const rows = Object.fromEntries(LONG);
+  const tileOf = (it) => (it.kind === 'weird' ? weirdTile(it, { ok: true, headline: rows[it.token], credit: it.gauge === 'WAFFLE' ? '© OpenStreetMap contributors, ODbL' : it.gauge === 'BIGMAC' ? 'The Economist, CC BY 4.0' : undefined }) : null);
+  const grid = { cached: tileOf };
+  const all = LONG.map(([t]) => t);
+  const pad = ['W:EGGPRICE', 'W:CANAL', 'W:HIRING', 'W:SICK', 'W:BOXES', 'W:LIPSTICK', 'W:RIDES', 'W:WSB'];
+  Object.assign(rows, { 'W:EGGPRICE': '$2.27 A DOZEN', 'W:CANAL': 'HORMUZ 3 SHIPS/DAY', 'W:HIRING': '1.45 PER JOB', 'W:SICK': 'COVID 2.7', 'W:BOXES': '+0.6% YOY', 'W:LIPSTICK': '+2.8% YOY', 'W:RIDES': '20 MIN AVERAGE WAIT', 'W:WSB': 'SPY 238 MENTIONS' });
+  const texts = (node, out = []) => {
+    if (typeof node === 'string') out.push(node);
+    else for (const c of [].concat(node?.props?.children ?? [])) texts(c, out);
+    return out;
+  };
+  for (const board of [[...all, ...pad], all.slice(0, 4)]) {
+    const parsed = parseGrid(board);
+    const m = gridCardModel(parsed, grid);
+    assert.equal(m.tiles.length, board.length);
+    const tree = gridTree(m);
+    const words = texts(tree);
+    // The tiles' boxes (the absolute divs with a border) and each hero inside.
+    const boxes = tree.props.children.filter((c) => c?.props?.style?.border);
+    assert.equal(boxes.length, board.length);
+    for (const [i, box] of boxes.entries()) {
+      const t = m.tiles[i];
+      const parts = t.parts;
+      assert.ok(parts, `${board[i]}: its hero's parts`);
+      const hero = box.props.children.find((c) => c?.props?.style?.whiteSpace === 'nowrap' && [].concat(c.props.children).some((k) => k?.props?.children?.[0] === parts.num));
+      assert.ok(hero, `${board[i]}: the number is drawn on its own`);
+      const s = hero.props.style;
+      const drawn = texts(hero);
+      assert.ok(drawn.includes(parts.num), `${board[i]} (${board.length} tiles): the whole number ${parts.num}`);
+      if (parts.unit) assert.ok(drawn.includes(parts.unit), `${board[i]}: its unit ${parts.unit}`);
+      // Every glyph is CHAR_EM wide: what is drawn fits the tile's width, so nothing is cut.
+      const chars = drawn.join(' ').length;
+      assert.ok(chars * CHAR_EM * s.fontSize <= s.width + 0.5, `${board[i]} (${board.length} tiles): ${drawn.join(' ')} fits ${s.width}px at ${s.fontSize}px`);
+      assert.ok(s.fontSize >= HERO_MIN_PX);
+      assert.ok(!('overflow' in s), 'never clipped');
+    }
+    for (const [tok, h] of LONG.slice(0, board.length)) {
+      const g = WEIRD_GAUGES.find((x) => x.command === tok.slice(2));
+      const x = heroOf(g, { ok: true, headline: h });
+      assert.ok(words.includes(x.num), `${tok}: ${x.num} is on the card`);
+    }
+    // The licence credits are on the card with their tiles.
+    assert.ok(words.includes('© OpenStreetMap'));
+    assert.ok(words.includes('The Economist, CC BY 4.0'));
+    const png = await renderPng(tree);
+    assert.ok(png.length > 1000, 'it renders');
+  }
+  // The fit itself: a noun that does not fit is shortened, never the number.
+  const f = heroFit({ noun: 'Macau casino revenue', num: '\u221212.3%', unit: 'a year' }, 150, 18);
+  assert.equal(f.num, '\u221212.3%');
+  assert.ok(f.noun === '' || f.noun.endsWith('...') || f.noun === 'Macau casino revenue');
+  assert.ok((f.noun.length + 1 + f.whole.length) * CHAR_EM * f.size <= 150);
 });
 
 test('WEIRD rows: always full, for 22 or 23 tiles at 1440, 1536 and 390 px', () => {

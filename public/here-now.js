@@ -6,6 +6,22 @@
 
 export const HERE_MS = 60_000;
 
+// The top bar's latest number, shared: a screen that shows here now too (GRID's BBRK tile)
+// reads it and hears each new one, and never asks /api/live on its own while there is one.
+// This module is one instance per page (lazy.js loads it by its one hashed URL).
+let latest = null;
+const listeners = new Set();
+export const latestHere = () => latest;
+export function onHere(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+function share(n) {
+  if (!Number.isInteger(n) || n < 0) return;
+  latest = n;
+  for (const fn of listeners) { try { fn(n); } catch { /* one listener never stops the rest */ } }
+}
+
 // 7 -> '7 HERE NOW'. Unknown, 0, 1 (most likely the viewer) or nonsense: '' (the token hides).
 export const HERE_MIN = 2;
 export function hereText(n) {
@@ -39,7 +55,7 @@ export function mountHereNow(el, { fetchImpl = globalThis.fetch, isHidden = () =
   if (!el || typeof fetchImpl !== 'function') return () => {};
   let busy = false;
   let last = null;
-  const paint = (n) => { last = n; paintHere(el, n, { fits }); };
+  const paint = (n) => { last = n; share(n); paintHere(el, n, { fits }); };
   // A narrower window may leave no room (or give it back).
   const onResize = () => paintHere(el, last, { fits });
   win?.addEventListener?.('resize', onResize);

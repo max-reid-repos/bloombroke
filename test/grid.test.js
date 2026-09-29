@@ -200,7 +200,7 @@ test('GRID tiles: one template, one number and one change as coloured text, high
   const rf = tileFace(gridItem('RIP:LEH'), rip);
   assert.deepEqual([rf.big, rf.pill, rf.chg, rf.chgDir], ['FILED', 'RIP', 'RIP', 'down'], 'a stone that went to nothing: its word, the zero is drawn by the line');
   assert.match(hoverText(rip), /FILED SEP 2008/, 'its marks on hover');
-  const bb = tileFace(gridItem('BBRK'), { kind: 'bbrk', views7: 12345, here: 7 });
+  const bb = tileFace(gridItem('BBRK'), { kind: 'bbrk', visitors7: 12345, here: 7 });
   assert.deepEqual([bb.big, bb.chg, bb.chgDir, bb.pill], ['12,345', '7 here now', 'flat', '7D']);
   assert.deepEqual(['NVDA', '$GOLD', 'CPI', 'W:EGGS', 'RIP:LEH', 'BBRK'].map((t) => openCmd(gridItem(t), '5Y')), ['NVDA 5Y', '$GOLD 5Y', 'CPI', 'EGGPRICE 5Y', 'GRAVEYARD LEH', 'BBRK']);
   for (const c of ['NVDA 5Y', '$GOLD 5Y', 'CPI', 'EGGPRICE 5Y', 'GRAVEYARD LEH', 'BBRK']) assert.notEqual(parseCommand(c).name, 'UNKNOWN', c);
@@ -277,7 +277,7 @@ function fakeDeps() {
   };
   let weirdCalls = 0;
   const getWeird = async () => { weirdCalls += 1; return { gauges: [{ id: 'eggs', ok: true, headline: '$2.27 A DOZEN', spark: [3, 2, 6, 1] }, { id: 'pizza', ok: false, headline: 'NO DATA' }] }; };
-  const audience = { get: async () => ({ pageviews: { d7: 4321 }, live: 5 }) };
+  const audience = { get: async () => ({ visitors: { d7: 4321 }, live: 5 }) };
   // A fixed clock in the New York session (11:00 on a Monday), so 1D asks for 1-minute bars.
   const t0 = Date.now();
   const now = () => Date.UTC(2026, 8, 28, 15) + (Date.now() - t0);
@@ -311,7 +311,7 @@ test('/api/grid: every tile in one answer, 4 charts at a time, a busy one to try
     assert.equal(f.weirdCalls(), 1, 'one WEIRD read for every gauge tile');
     assert.equal(by['RIP:LEH'].kind, 'rip');
     assert.equal(by.CPI.kind, 'cpi');
-    assert.deepEqual([by.BBRK.views7, by.BBRK.here], [4321, 5]);
+    assert.deepEqual([by.BBRK.visitors7, by.BBRK.here], [4321, 5]);
     // The retry: only the failed ones, and a clean answer is kept a minute.
     const again = await fetch(`${base}/api/grid?s=AA,BB&r=5Y`);
     assert.equal(again.headers.get('cache-control'), 'public, max-age=60');
@@ -440,7 +440,7 @@ test('GRID card: a cold cache loads the missing tiles through the loader, 4 at a
   const egg = m.tiles[parsed.tokens.indexOf('W:EGGPRICE')];
   assert.deepEqual([egg.sym, egg.big], ['EGGPRICE', 'Eggs $2.27 a dozen'], 'the WEIRD hero: a noun and its number');
   const bb = m.tiles[parsed.tokens.indexOf('BBRK')];
-  assert.deepEqual([bb.sym, bb.big, bb.pill], ['BBRK', '4,321', '7D'], 'the week of page views, like the page tile');
+  assert.deepEqual([bb.sym, bb.big, bb.pill], ['BBRK', '4,321', '7D'], 'the week of visitors, like the page tile');
   // Again: from memory, nothing loaded, nothing drawn.
   const b = await cards.png('STARTER', '1Y', '1.1.1.1');
   assert.deepEqual([b.png, b.maxAge, renders, c.calls.length], [a.png, 14400, 1, markets]);
@@ -503,19 +503,19 @@ test('GRID card: a request turned away by the per-address limit or the budget lo
   assert.deepEqual([f.calls.length, f.weirdCalls()], [0, 0], 'no getChart, no WEIRD read');
 });
 
-test('GRID card: BBRK without its page views is not kept and not drawn; with them it is', async () => {
+test('GRID card: BBRK without its week of visitors is not kept and not drawn; with them it is', async () => {
   const f = fakeDeps();
-  let aud = { pageviews: { d7: null }, live: null };
+  let aud = { visitors: { d7: null }, live: null };
   const grid = makeGrid({ ...f.deps, audience: { get: async () => aud } });
   const it = gridItem('BBRK');
   const first = (await grid.board([it], '1Y'))[0];
-  assert.deepEqual([first.views7, first.error], [null, undefined], 'the page still gets its -- tile');
+  assert.deepEqual([first.visitors7, first.error], [null, undefined], 'the page still gets its -- tile');
   assert.equal(grid.cached(it, '1Y'), null, 'but it is not kept');
   const cards = makeGridCards({ grid, fallback: async () => Buffer.from('site'), render: async () => Buffer.from('x') });
   const a = await cards.png('BBRK,CPI', '1Y', '1.1.1.1');
-  assert.equal(a.maxAge, 60, 'no page views yet: incomplete');
+  assert.equal(a.maxAge, 60, 'no visitors yet: incomplete');
   assert.equal(gridCardModel(cardBoard('BBRK', '1Y'), grid).tiles[0].missing, true, 'never drawn as --');
-  aud = { pageviews: { d7: 250 }, live: 0 };
+  aud = { visitors: { d7: 250 }, live: 0 };
   const b = await cards.png('BBRK,CPI', '1Y', '1.1.1.1');
   assert.equal(b.maxAge, 14400);
   const m = gridCardModel(cardBoard('BBRK', '1Y'), grid);

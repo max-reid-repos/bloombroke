@@ -80,6 +80,9 @@
 /* The line is drawn at the chart box's own size (grid.js): absolute, so it never
    changes the size it was measured at. */
 .gr-chart { position: relative; flex: 1 1 auto; min-height: 28px; margin-top: 6px; }
+/* A W: tile's licence credit, small, under its line. */
+.gr-credit { flex: 0 0 auto; margin-top: 2px; font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gr-credit a { color: var(--text-2); text-decoration: underline; text-underline-offset: 2px; }
 /* No points to draw: said, calmly, where the line would be. */
 .gr-nochart { position: absolute; left: 0; bottom: 0; font-size: 11px; color: var(--dim); }
 .gr-chart > .gr-svg { position: absolute; left: 0; top: 0; }

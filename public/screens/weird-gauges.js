@@ -428,6 +428,7 @@ export const WEIRD_GAUGES = [
   },
   {
     id: 'waffle', command: 'WAFFLE', title: 'Waffle', period: 'time', detail: waffleDetail, chart: { label: 'Stores inside storm winds, one reading a day', fmtY: n0 },
+    creditLink: { text: '© OpenStreetMap contributors', short: '© OpenStreetMap', href: 'https://www.openstreetmap.org/copyright', title: '© OpenStreetMap contributors, ODbL' },
     method: [
       'Active storms come from the National Hurricane Center. For each storm, a store counts when it is inside the tropical-storm-force wind radius (34 knots) in the latest forecast advisory. The advisory gives one radius per quadrant: NE, SE, SW, NW.',
       'A storm whose advisory has no 34-knot radius (a depression) counts zero. A storm more than 800 miles from every store counts zero. If a nearby storm\'s advisory will not load, its row shows -- and the count is marked partial; if no nearby storm could be counted, the gauge shows its last reading or NO DATA.',
@@ -623,10 +624,13 @@ export const HEROES = {
       : { noun: 'Waffle House', num: m[1], unit: `${m[1] === '1' ? 'store' : 'stores'} in storms${part}` };
   },
   panic: (h) => { const m = new RegExp(`^(${SIGNED})$`).exec(h); return m && { noun: 'Crash-page views', num: m[1], unit: 'vs average' }; },
-  hiring: (h) => { const m = /^([\d.,]+) PER JOB$/.exec(h); return m && { noun: 'Job seekers', num: m[1], unit: 'per job post' }; },
-  hotdog: (h) => { const m = /^(\$[\d.,]+)$/.exec(h); return m && { noun: 'Costco hot dog', num: m[1], unit: 'today' }; },
-  omens: (h) => (/^[A-Z ]+$/.test(h) ? { noun: 'Moon', num: h.toLowerCase(), unit: '' } : null),
-  undies: yoyHero('Underwear prices'),
+  // Hacker News's own threads: seekers ("Who wants to be hired?") per job ad ("Who is hiring?").
+  hiring: (h) => { const m = /^([\d.,]+) PER JOB$/.exec(h); return m && { noun: 'HN job seekers', num: m[1], unit: 'per job ad' }; },
+  // $1.50 of 1985 money in today's money (Costco still charges $1.50).
+  hotdog: (h) => { const m = /^(\$[\d.,]+)$/.exec(h); return m && { noun: "Costco's 1985 hot dog", num: m[1], unit: "in today's money" }; },
+  // The phase: "Moon waning gibbous", "Moon full" (never "Moon full moon").
+  omens: (h) => (/^[A-Z ]+$/.test(h) ? { noun: 'Moon', num: h.toLowerCase().replace(/ moon$/, ''), unit: '' } : null),
+  undies: yoyHero("Men's underwear prices"),
   bigmac: (h) => {
     const m = new RegExp(`^(.+?) (${SIGNED})$`).exec(h);
     return m && { noun: `Big Mac in ${titleCase(m[1])}`, num: m[2], unit: 'vs US' };
@@ -634,12 +638,12 @@ export const HEROES = {
   billions: (h) => {
     if (h === 'NO BIG MOVES TODAY') return { noun: 'Billionaires', num: 'no big moves', unit: 'today' };
     const m = /^(.+?) ([+−-]\$[\d.,]+[BM])$/.exec(h);
-    return m && { noun: titleCase(m[1]), num: m[2], unit: 'today' };
+    return m && { noun: titleCase(m[1]), num: m[2], unit: 'in a day' };
   },
   wsb: (h) => { const m = /^(\S+) ([\d,]+) MENTIONS$/.exec(h); return m && { noun: m[1], num: m[2], unit: 'mentions in 24h' }; },
   odds: (h) => {
     const m = /^(RECESSION|FED) ([<>]?\d+%)$/.exec(h);
-    return m && { noun: m[1] === 'RECESSION' ? 'Recession chance' : 'Fed call chance', num: m[2], unit: '' };
+    return m && { noun: m[1] === 'RECESSION' ? 'Recession chance' : 'Fed meeting, top outcome', num: m[2], unit: '' };
   },
   boxrate: (h) => { const m = /^(\$[\d.,]+)$/.exec(h); return m && { noun: '40ft container', num: m[1], unit: 'to ship' }; },
   eggs: (h) => { const m = /^(\$[\d.,]+) A DOZEN$/.exec(h); return m && { noun: 'Eggs', num: m[1], unit: 'a dozen' }; },
@@ -651,7 +655,7 @@ export const HEROES = {
   buzz: (h) => { const m = /^([\d,]+\+?) AI FILINGS$/.exec(h); return m && { noun: 'Filings naming AI', num: m[1], unit: '' }; },
   beige: (h) => {
     const m = /^(.+?) ([\d,]+) TIMES$/.exec(h);
-    return m && { noun: `Fed says "${m[1] === 'AI' ? 'AI' : m[1].toLowerCase()}"`, num: m[2], unit: m[2] === '1' ? 'time' : 'times' };
+    return m && { noun: `Beige Book "${m[1] === 'AI' ? 'AI' : m[1].toLowerCase()}"`, num: m[2], unit: m[2] === '1' ? 'time' : 'times' };
   },
   trucks: (h) => {
     const m = new RegExp(`^(\\S+) (${SIGNED}) YOY$`).exec(h);
@@ -682,36 +686,55 @@ export function heroText(g, d) {
 export const MEANINGS = {
   canal: 'Ship crossings, 7-day average',
   degen: 'Best placed of five trading apps',
-  panic: 'Views of the recession, crash and bank-run pages',
-  hiring: 'People looking for work per job ad, monthly',
-  hotdog: 'Its 1985 price in today\'s money',
+  panic: 'Views of recession, crash, stagflation, bank-run pages',
+  hiring: 'Hacker News "Who is hiring?" threads, monthly',
+  hotdog: 'Costco still charges its 1985 price',
   undies: 'Folklore: men buy fewer when money is tight',
   boxrate: 'Spot price on eight main routes',
   rides: 'Posted waits across five Disney parks',
   trucks: 'US freight volume, monthly',
-  boxes: 'Box demand, an early read on shipping',
+  // Output leads (box demand); prices only when output has no reading.
+  boxes: (d) => (/^Box prices/.test(d?.line || '') ? 'Box prices, a read on shipping costs' : 'Box demand, an early read on shipping'),
   lipstick: 'Folklore: lipstick sells when money is tight',
   sick: 'National median of sewage sites; 1 is the lowest',
   macau: 'Gross gaming revenue, monthly',
+  // The count takes each word's plain forms (data/weird/beige.js): say which.
+  beige: (d) => {
+    const w = /^(\S+) [\d,]+ TIMES$/.exec(d?.headline || '')?.[1]?.toLowerCase();
+    const v = { uncertain: 'uncertainty', tariff: 'tariffs', slow: 'slowing', recession: 'recessions', ai: 'artificial intelligence' }[w];
+    return v ? `Top of five words; "${v}" counts too` : 'Top word in the latest Beige Book';
+  },
 };
-export const meaningOf = (g, d) => MEANINGS[g?.id] || String(d?.line || '');
+export function meaningOf(g, d) {
+  const m = MEANINGS[g?.id];
+  return (typeof m === 'function' ? m(d) : m) || String(d?.line || '');
+}
 
 // ---- The credit a tile must carry ----------------------------------------------------------
 // Only a credit the source's licence or terms ask for sits on a tile, short: the rest of
 // the source line (who, when) is in the gauge's own screen. OpenStreetMap (ODbL) is
 // "© OSM" here; its long form stays on the gauge's screen and in How is this measured.
 export const SHORT_CREDITS = {
-  '© OpenStreetMap contributors, ODbL': '© OSM',
+  '© OpenStreetMap contributors, ODbL': '© OpenStreetMap',
 };
 export function tileCredit(g, d) {
   const c = d?.credit;
   if (!c || typeof c !== 'string') return '';
   return SHORT_CREDITS[c] || c;
 }
-// The tile credit as HTML: a credit that asks for a link keeps it (RIDES: Queue-Times.com).
+// The link a tile credit carries, if its source asks for one: { text, href, title } or
+// null (RIDES: Queue-Times.com; WAFFLE: © OpenStreetMap, to its copyright page).
+export function tileCreditLink(g, d) {
+  const c = g?.creditLink;
+  const text = tileCredit(g, d);
+  if (!c || !text) return null;
+  const word = c.short && text.includes(c.short) ? c.short : c.text;
+  return text.includes(word) ? { text: word, href: c.href, title: c.title || c.text } : null;
+}
+// The tile credit as HTML, its link kept.
 export function tileCreditHtml(g, d) {
   const text = esc(tileCredit(g, d));
-  const c = g?.creditLink;
-  if (!text || !c) return text;
-  return text.replace(esc(c.text), `<a href="${esc(c.href)}" target="_blank" rel="noopener noreferrer" title="${esc(c.title || c.text)}">${esc(c.text)}</a>`);
+  const l = tileCreditLink(g, d);
+  if (!text || !l) return text;
+  return text.replace(esc(l.text), `<a href="${esc(l.href)}" target="_blank" rel="noopener noreferrer" title="${esc(l.title)}">${esc(l.text)}</a>`);
 }

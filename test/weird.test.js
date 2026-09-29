@@ -23,12 +23,24 @@ import { parseFredCsv } from '../data/economy.js';
 import { UA, signedPct, sourceClient, MAX_BYTES } from '../data/weird/source.js';
 import { tileBody, tileTitle } from '../public/screens/weird.js';
 import { CPI_RETRY_MS } from '../data/cpi.js';
-import { WEIRD_GAUGES } from '../public/screens/weird-gauges.js';
+import { WEIRD_GAUGES, HEROES, heroText } from '../public/screens/weird-gauges.js';
 import { findCommand } from '../public/registry.js';
 import { parseCommand } from '../public/app.js';
 
 const fx = (f) => readFileSync(new URL(`./fixtures/weird/${f}`, import.meta.url), 'utf8');
 const fxj = (f) => JSON.parse(fx(f));
+
+// The tile's hero for a real build() output: read by the gauge's own rule (never the
+// fallback), its numbers exactly as the headline has them (a 0 is said in words).
+function builtHero(id, g) {
+  const gauge = WEIRD_GAUGES.find((x) => x.id === id);
+  assert.ok(HEROES[id](g.headline, g), `${id}: "${g.headline}" is read by its own hero`);
+  const text = heroText(gauge, { ok: true, ...g });
+  for (const n of g.headline.match(/\d[\d,.]*\d|\d/g) || []) if (n !== '0') assert.ok(text.includes(n), `${id}: "${text}" keeps ${n}`);
+  assert.match(text.split(' ')[0], /[A-Za-z]/, `${id}: "${text}" starts with its noun`);
+  return text;
+}
+
 
 test('canal: Hormuz 7-day average against the 1-year average, plus the latest day', () => {
   const asOf = canal.latestDate(fxj('canal-top.json'));
@@ -38,6 +50,7 @@ test('canal: Hormuz 7-day average against the 1-year average, plus the latest da
   assert.equal(Object.keys(avgs).length, 6);
   const g = canal.build(daily, avgs, asOf);
   // Sep 14 to 20: 2, 2, 1, 3, 7, 6, 1 ships -> 22 / 7 = 3.14.
+  assert.match(builtHero('canal', g), /^Hormuz [\d.,]+ ships? a day$/);
   assert.ok(Math.abs(g.rows[0].week - 22 / 7) < 1e-9);
   assert.equal(g.headline, 'HORMUZ 3 SHIPS/DAY');
   assert.match(g.line, /^7-day average; 1-year average \d+$/);
@@ -64,6 +77,7 @@ test('pizza: an empty feed is NO DATA, a full one parses', () => {
     data: [{ name: 'Dominos Pizza', current_popularity: 80, percentage_of_usual: 160, is_spike: true }],
   });
   const g = pizza.build(p);
+  assert.match(builtHero('pizza', g), /^Pentagon pizza (DEFCON \d|index [\d.,]+)$/);
   assert.equal(g.headline, 'DEFCON 4');
   assert.equal(g.places[0].vsUsual, 160);
   assert.equal(g.credit, 'pizzint.watch');
@@ -72,6 +86,7 @@ test('pizza: an empty feed is NO DATA, a full one parses', () => {
 test('degen: ranks in the top 100, or not in it', () => {
   const g = degen.build(degen.parse(fxj('degen.json')));
   const by = Object.fromEntries(g.apps.map((a) => [a.name, a.rank]));
+  assert.match(builtHero('degen', g), /^[A-Z][\w .]* #\d+ in free apps$/);
   assert.equal(by.Kalshi, 12);
   assert.equal(by.Polymarket, 25);
   assert.equal(by.Robinhood, null);
@@ -115,6 +130,7 @@ test('waffle: far storms count zero; no radius counts zero; a failed advisory is
   const rows = await Promise.all(storms.map((s) => waffle.stormRow(s, async () => { fetched += 1; return ''; })));
   assert.equal(fetched, 0, 'every storm on Sep 26 was far from any store');
   const g = waffle.build(rows, '2026-09-26T04:00:00Z');
+  assert.match(builtHero('waffle', g), /^Waffle House (none in storms|\d[\d,]* stores? in storms)( \(partial\))?$/);
   assert.equal(g.headline, '0 STORES IN STORMS');
   assert.equal(g.credit, '© OpenStreetMap contributors, ODbL');
   assert.equal(g.partial, false);
@@ -157,6 +173,7 @@ test('panic: latest day against the 30 days before, per article and in total', (
   const scaled = (k) => rec.map((p) => ({ date: p.date, views: p.views * k }));
   const g = panic.build({ Recession: rec, Stock_market_crash: scaled(2), Stagflation: scaled(1), Bank_run: scaled(1) });
   const v = panic.vsAverage(rec.map((p) => p.views));
+  assert.match(builtHero('panic', g), /^Crash-page views [+\u2212]?\d+% vs average$/);
   assert.ok(Math.abs(g.pct - v.pct) < 1e-9, 'same shape, same % change');
   assert.equal(g.articles.length, 4);
   assert.equal(g.asOf, '2026-09-25');
@@ -175,6 +192,7 @@ test('hiring: seekers per job post by month', () => {
   assert.equal(months[0].hiring, 397);
   assert.equal(months[0].seeking, 575);
   const g = hiring.build(months, Date.parse('2026-09-26T00:00:00Z'));
+  assert.match(builtHero('hiring', g), /^HN job seekers \d+\.\d\d per job ad$/);
   assert.equal(g.headline, '1.45 PER JOB');
   assert.equal(g.month, '2026-09');
   // Three days after the September threads: too fresh, so August is the headline.
@@ -191,6 +209,7 @@ test('hotdog: $1.50 x latest CPI / 1985 average CPI', () => {
   const annual = hotdog.annualAverages(obs);
   assert.ok(Math.abs(annual[1985] - 107.6) < 0.2, String(annual[1985]));
   const g = hotdog.build(obs);
+  assert.match(builtHero('hotdog', g), /^Costco's 1985 hot dog \$\d+\.\d\d in today's money$/, 'what $1.50 of 1985 money is worth now, not a Costco price');
   assert.equal(g.cpiNow, 334.131);
   assert.ok(Math.abs(g.price - (1.5 * 334.131) / annual[1985]) < 1e-9);
   assert.equal(g.headline, `$${g.price.toFixed(2)}`);
@@ -222,6 +241,7 @@ test('omens: sky and sunspots parse; the moon shows even when both feeds fail', 
   assert.equal(sun[sun.length - 1].ssn, 76);
   const t = Date.parse('2026-09-26T12:00:00Z');
   const g = omens.build({ moon: moonPhase(t), sky: null, sun: null, now: t });
+  assert.match(builtHero('omens', g), /^Moon (new|full|first quarter|last quarter|waxing crescent|waxing gibbous|waning gibbous|waning crescent)$/);
   assert.equal(g.headline, 'FULL MOON');
   assert.equal(g.sky, null);
   assert.equal(g.sunspots, null);
@@ -231,6 +251,7 @@ test('omens: sky and sunspots parse; the moon shows even when both feeds fail', 
 test('undies: year-on-year and month-on-month from BLS', () => {
   const rows = undies.parse(fxj('bls-undies.json'));
   const g = undies.build(rows);
+  assert.match(builtHero('undies', g), /^Men's underwear prices [+\u2212]?\d+\.\d% a year$/);
   assert.equal(g.month, '2026-08');
   assert.equal(g.index, 194.315);
   const aug25 = rows.find((r) => r.month === '2025-08').value;
@@ -244,6 +265,7 @@ test('bigmac: latest date, most over and under valued against the dollar', () =>
   const p = bigmac.parse(fx('bigmac.csv'));
   assert.equal(p.latest, '2026-07-01');
   const g = bigmac.build(p);
+  assert.match(builtHero('bigmac', g), /^Big Mac in [A-Z][\w .]* [+\u2212]?\d+% vs US$/);
   assert.equal(g.over[0].name, 'Switzerland');
   assert.equal(g.headline, 'SWITZERLAND +45%');
   assert.equal(g.under[0].name, 'India');

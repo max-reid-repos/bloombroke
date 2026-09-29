@@ -13,8 +13,8 @@
 // /api/grid again every REFETCH_MS for the real bars (1-minute on 1D, 5-minute on 5D).
 // Both go through the shell's ctx.live (paused while the tab is hidden or a DESK panel
 // is off screen), never two at once, and skip a turn after an error (guarded). BBRK's
-// "here now" comes from /api/live, the top bar's own source: at once when the tile loads,
-// then every minute. CPI, W: and RIP: tiles do not tick.
+// "here now" is the top bar's own number (here-now.js), taken when the tile loads and each
+// time the top bar gets a new one; /api/live is asked only while the top bar has none. CPI, W: and RIP: tiles do not tick.
 //
 // The strip: the range chips switch every tile in place (the URL follows); STARTER brings
 // the starter board back; COPY LINK and POST ON X are text links; + TILE and EDIT sit at
@@ -31,7 +31,7 @@
 import { esc, q, fmtNum, fmtPct, dirOf } from './markets.js';
 import { PRESETS, nyToday } from '../ranges.js';
 import { GRID_LAST_KEY } from '../pro.js';
-import { HERE_MIN } from '../here-now.js';
+import { HERE_MIN, latestHere, onHere } from '../here-now.js';
 import {
   parseGrid as parse, gridCmd, gridItem, isGridStarter,
   GRID_MAX, GRID_RANGE, GRID_STARTER, GRID_RANGE_CHIPS, WEIRD_PERIODS,
@@ -170,13 +170,13 @@ export function tileFace(item, tile) {
   if (tile.error === 'not_found' || item.kind === 'unknown') return { msg: 'NO SUCH TICKER', suggest: tile.suggest || item.suggest || null };
   if (tile.error) return { msg: RETRY.includes(tile.error) ? 'LOADING...' : 'NO DATA' };
   switch (tile.kind) {
-    case 'weird': return { big: tile.hero || tile.headline || '--', text: true, stale: Boolean(tile.stale), chg: '', chgDir: 'flat' };
+    case 'weird': return { big: tile.hero || tile.headline || '--', parts: tile.heroParts || null, text: true, stale: Boolean(tile.stale), chg: '', chgDir: 'flat' };
     case 'rip': {
       const paid = Number.isFinite(tile.final) && tile.final > 0;
       return { big: paid ? `$${fmtNum(tile.final, 2)}` : tile.what || 'GONE', text: !paid, pill: 'RIP', pillDir: 'rip', chg: 'RIP', chgDir: 'down' };
     }
     case 'bbrk': {
-      const v = tile.views7;
+      const v = tile.visitors7;
       return {
         big: Number.isInteger(v) ? (v > 0 ? fmtNum(v, 0) : 'none yet') : '--', text: v === 0, pill: '7D', pillDir: 'flat',
         chg: hereWords(tile.here), chgDir: 'flat',
@@ -190,11 +190,23 @@ export function tileFace(item, tile) {
   }
 }
 
+// A W: tile's credit, where its source's licence asks for one next to the data (WAFFLE:
+// © OpenStreetMap, linked to its copyright page; BIGMAC: The Economist, CC BY 4.0).
+export function creditHtml(tile) {
+  if (tile?.kind !== 'weird' || tile.error || !tile.credit) return '';
+  const text = esc(tile.credit);
+  const l = tile.creditLink;
+  const html = l?.text && l.href && tile.credit.includes(l.text)
+    ? text.replace(esc(l.text), `<a href="${esc(l.href)}" target="_blank" rel="noopener noreferrer"${l.title ? ` title="${esc(l.title)}"` : ''}>${esc(l.text)}</a>`)
+    : text;
+  return `<p class="gr-credit">${html}</p>`;
+}
+
 // The tile's title (on hover): what the line holds that the tile does not print. A
 // market or CPI tile: its high and its low; a stone: its marks; BBRK: what it counts.
 export function hoverText(tile) {
   if (!tile || tile.error) return '';
-  if (tile.kind === 'bbrk') return 'Page views this week. The line: visitors a day, the last 30 days.';
+  if (tile.kind === 'bbrk') return 'Visitors in the last 7 days. The line: visitors a day, the same 7 days.';
   if (tile.kind === 'weird') return tile.name || '';
   return marksFor(tile).map((m) => m.text.replace(/^H /, 'High ').replace(/^L /, 'Low ')).join(' · ');
 }
@@ -212,7 +224,7 @@ export function tileHtml(item, tile, { i = 0, range = GRID_RANGE } = {}) {
   const chg = `<span class="gr-chg num ${esc(f.chgDir || 'flat')}">${esc(f.chg || '')}</span>`;
   const body = f.msg
     ? `<div class="gr-hero"><span class="gr-msg">${esc(f.msg)}</span></div>${dym}`
-    : `<div class="gr-hero"><span class="gr-big num${f.text ? ' is-text' : ''}${f.stale ? ' is-stale' : ''}">${esc(f.big)}</span>${chg}${own}</div><div class="gr-chart"></div>`;
+    : `<div class="gr-hero"><span class="gr-big num${f.text ? ' is-text' : ''}${f.stale ? ' is-stale' : ''}">${esc(f.big)}</span>${chg}${own}</div><div class="gr-chart"></div>${creditHtml(tile)}`;
   const kind = tile?.kind && tile.kind !== 'unknown' ? tile.kind : item.kind;
   const hover = hoverText(tile);
   return `<div class="gr-tile is-${esc(kind)}" data-i="${i}" data-token="${esc(item.token)}" tabindex="0"${hover ? ` title="${esc(hover)}"` : ''} aria-label="${esc(`${sym}${name ? `, ${name}` : ''}${cmd ? '. Enter opens it' : ''}`)}">
@@ -337,7 +349,7 @@ export function stepIndex(cur, key, cols, n) {
 // new one shows here within about 8 s.
 export const TICK_MS = 8_000;
 export const REFETCH_MS = 60_000; // /api/grid again, 1D and 5D only (the real bars)
-export const HERE_MS = 60_000; // BBRK's here now (/api/live)
+export const HERE_MS = 60_000; // BBRK's here now (the top bar's number; /api/live without one)
 export const FLASH_MS = 700;
 // The bar a tick fills: 1D draws 1-minute bars (lib/grid.js GRID_BARS), 5D 5-minute bars.
 export const BUCKET_MS = { '1D': 60_000, '5D': 5 * 60_000 };
@@ -666,7 +678,7 @@ export function render(el, cmd, ctx) {
       takeQuote(t.token, { patch: false }); // the last quote seen moves it on at once
     }
     drawBoard();
-    // BBRK's here now from the top bar's own source (/api/live), at once, not a minute later.
+    // BBRK's here now: the top bar's number, at once, not a minute later.
     if ((d.tiles || []).some((t) => t.kind === 'bbrk' && !t.error)) hereNow();
     // A market tile with no quote yet (the first load, an added tile): ask now, not a tick later.
     if ((d.tiles || []).some((t) => t.kind === 'market' && !t.error && !quotes.has(t.token))) tick();
@@ -735,15 +747,23 @@ export function render(el, cmd, ctx) {
     if (d?.updated) ctx.updated?.(d.updated, false);
   });
   const refetch = async () => { const r = await refetchOnce(); return r === 'ok' ? (moved ? 'changed' : 'same') : r; };
-  // Every HERE_MS with a BBRK tile: its "here now" (/api/live, cached on the server).
+  // BBRK's "here now": the top bar's own number (here-now.js latestHere, and each new one it
+  // gets, onHere), never a second request while the top bar has one. Only when it has none
+  // yet (a DESK panel, the first seconds) does the tile ask /api/live itself (cached there).
+  function takeHere(n) {
+    const cur = data.get('BBRK');
+    if (!Number.isInteger(n) || !cur || cur.error || cur.here === n) return;
+    data.set('BBRK', { ...cur, here: n });
+    if (indexOf('BBRK') >= 0) patchTile(indexOf('BBRK'), cur);
+  }
+  ctx.onCleanup(onHere(takeHere));
   const hereNow = guarded(async () => {
     const had = data.get('BBRK');
     if (!had || had.error) return;
+    const shared = latestHere();
+    if (shared !== null) { takeHere(shared); return; }
     const d = await getJSON('/api/live', { signal: ctx.signal });
-    const cur = data.get('BBRK');
-    if (!Number.isInteger(d?.here) || !cur || cur.error || cur.here === d.here) return;
-    data.set('BBRK', { ...cur, here: d.here });
-    if (indexOf('BBRK') >= 0) patchTile(indexOf('BBRK'), cur);
+    takeHere(d?.here);
   });
 
   // ---- edits ----
@@ -886,7 +906,7 @@ export function render(el, cmd, ctx) {
     else if (e.target.closest('[data-edit]')) { e.preventDefault(); setEditing(!editing); }
   });
   board.addEventListener('click', (e) => {
-    if (e.target.closest('.gr-open')) return; // a data-cmd link: the page runs it
+    if (e.target.closest('a[href^="https://"]')) return; // a credit link opens its site, not the tile
     const node = e.target.closest('.gr-tile');
     if (!node) return;
     if (node.classList.contains('gr-add')) { node.querySelector('.gr-in')?.focus(); return; }
