@@ -1,7 +1,7 @@
 /* holidays.js's own styles, loaded with it (public/lazy.js). */
 
 /* The panel ends where its twelve rows end: no empty box under them. */
-html:not(.is-embed) .view > .panel.hol-panel:not([hidden]) { flex: 0 1 auto !important; min-height: 96px; }
+html:not(.is-embed) .view > .panel.hol-panel:not([hidden]) { flex: 0 1 auto !important; min-height: 96px !important; }
 .hol-table td:first-child { white-space: nowrap; }
 /* The holiday column as wide as its longest name: closed or early close sits next to it. */
 .hol-table :is(th, td):nth-child(2) { width: 1%; padding-right: 48px; white-space: nowrap; }

@@ -1,10 +1,12 @@
 /* embed.js's own styles, loaded with it (public/lazy.js). */
 
 /* The panel ends where its content ends: no empty box under it. */
-html:not(.is-embed) .view > .panel.emb-panel:not([hidden]) { flex: 0 1 auto !important; min-height: 96px; }
+html:not(.is-embed) .view > .panel.emb-panel:not([hidden]) { flex: 0 1 auto !important; min-height: 96px !important; }
 
 .emb-note { margin: 0; padding: 12px 16px; color: var(--text); }
 .emb-name { font-weight: 600; white-space: nowrap; }
+/* Each column as wide as its words: the command to type sits next to them. */
+.emb-table :is(th, td):not(:last-child) { width: 1%; padding-right: 48px; white-space: nowrap; }
 .emb-foot { margin: 0; padding: 12px 16px; font-size: 12px; color: var(--dim); }
 
 /* One embed: the words and the code left, the preview right (the picture). */
@@ -28,4 +30,5 @@ html:not(.is-embed) .view > .panel.emb-panel:not([hidden]) { flex: 0 1 auto !imp
   .emb { gap: 24px; padding: 12px 8px; }
   .emb-frame { width: 100%; }
   .emb-table .emb-what { display: none; }
+  .emb-table :is(th, td):not(:last-child) { padding-right: 16px; }
 }
