@@ -103,8 +103,9 @@ html:not(.is-embed) .view > .panel.gv-panel:not([hidden]) { flex: 0 1 auto !impo
 .gv-live .down { color: var(--down); }
 /* Where you are: the stone lifts, its name gets the blue fill. */
 .gv-plot:hover .gv-stone, .gv-plot.is-on .gv-stone, .gv-plot:focus-visible .gv-stone { transform: translateY(-4px); }
-.gv-plot.is-on .gv-pname, .gv-plot:focus-visible .gv-pname { background: var(--accent); color: var(--ink); padding: 0 4px; }
+.gv-plot.is-on .gv-pname { background: var(--here); color: var(--ink); padding: 0 4px; }
 .gv-plot:focus-visible { outline: none; }
+.gv-plot:focus-visible .gv-pname { outline: 1px solid var(--accent); outline-offset: 2px; }
 /* BOUGHT OUT: a cooler, paler stone. */
 .gv-plot.is-bought .gv-stone { filter: saturate(.55) hue-rotate(160deg) brightness(1.05); }
 /* The hover and focus label: how and when it died, and the respects above zero. */
