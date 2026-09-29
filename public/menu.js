@@ -1,6 +1,7 @@
 // MENU (Ctrl+K): START HERE, then every command by category, in a quick overlay with a
 // find box. The same groups as HELP (registry.js commandGroups). Picking a command runs
-// its first example.
+// its first example. The columns hold names only: the picked (or pointed at) command's
+// line shows in the footer. A find lists its matches with their lines.
 
 import { LISTED, commandGroups, inGroups, searchCommands } from './registry.js';
 
@@ -11,14 +12,28 @@ const q = (c) => '?' + new URLSearchParams({ c }).toString();
 export const menuItems = () => LISTED.filter(inGroups);
 
 // it: a group item ({ name, cmd, summary }) or a registry entry (a search result).
-function item(it) {
+// In the columns (sum false) the line waits in data-sum for the footer.
+function item(it, sum) {
   const cmd = it.cmd || it.examples[0];
-  return `<li><a class="mn-item" href="${esc(q(cmd))}" data-cmd="${esc(cmd)}"><span class="mn-name">${esc(it.name)}</span><span class="mn-sum">${esc(it.summary)}</span></a></li>`;
+  return sum
+    ? `<li><a class="mn-item" href="${esc(q(cmd))}" data-cmd="${esc(cmd)}"><span class="mn-name">${esc(it.name)}</span><span class="mn-sum">${esc(it.summary)}</span></a></li>`
+    : `<li><a class="mn-item" href="${esc(q(cmd))}" data-cmd="${esc(cmd)}" data-sum="${esc(it.summary)}"><span class="mn-name">${esc(it.name)}</span></a></li>`;
 }
 
-// The menu's groups as HTML: START HERE first, then the categories.
+// The menu's groups as HTML: START HERE first, then the categories. Names only.
 export function menuGroupsHtml(groups = commandGroups()) {
-  return `<div class="mn-grid">${groups.map((g) => `<section class="mn-cat" data-group="${esc(g.name)}"><h3 class="mn-h">${esc(g.name)}</h3><ul class="mn-list">${g.items.map(item).join('')}</ul></section>`).join('')}</div>`;
+  return `<div class="mn-grid">${groups.map((g) => `<section class="mn-cat" data-group="${esc(g.name)}"><h3 class="mn-h">${esc(g.name)}</h3><ul class="mn-list">${g.items.map((it) => item(it, false)).join('')}</ul></section>`).join('')}</div>`;
+}
+
+// A find's matches, each with its line.
+export function menuFoundHtml(found) {
+  return `<ul class="mn-list mn-found">${found.map((c) => item(c, true)).join('')}</ul>`;
+}
+
+// The footer: the picked command and its line, or (nothing picked) where the syntax is.
+export const MENU_FOOT = `<a class="code" href="${esc(q('HELP'))}" data-cmd="HELP">HELP</a> has the syntax and examples for every command.`;
+export function menuFootHtml(name, sum) {
+  return sum ? `<span class="mn-foot-name">${esc(name)}</span> ${esc(sum)}` : MENU_FOOT;
 }
 
 export function createMenu({ onClose } = {}) {
@@ -32,11 +47,12 @@ export function createMenu({ onClose } = {}) {
         <span class="menu-keys" aria-hidden="true"><kbd>Enter</kbd> run <kbd>Esc</kbd> close</span>
       </div>
       <div class="menu-body"></div>
-      <p class="menu-foot"><a class="code" href="${esc(q('HELP'))}" data-cmd="HELP">HELP</a> has the syntax and examples for every command.</p>
+      <p class="menu-foot">${MENU_FOOT}</p>
     </div>`;
   document.body.appendChild(root);
   const body = root.querySelector('.menu-body');
   const input = root.querySelector('.menu-q');
+  const footEl = root.querySelector('.menu-foot');
   let active = -1;
   let returnFocus = null;
 
@@ -44,20 +60,31 @@ export function createMenu({ onClose } = {}) {
     const text = input.value.trim();
     const items = menuItems();
     active = -1;
+    foot(null);
     if (text) {
       const found = searchCommands(text, items);
       body.innerHTML = found.length
-        ? `<ul class="mn-list mn-found">${found.map(item).join('')}</ul>`
+        ? menuFoundHtml(found)
         : '<p class="mn-none">No command matches. Press Enter to run what you typed.</p>';
       return;
     }
     body.innerHTML = menuGroupsHtml();
   }
 
+  // The footer line for a column row (a found row has its line already).
+  let shown;
+  function foot(a) {
+    if (a === shown) return;
+    shown = a;
+    footEl.innerHTML = menuFootHtml(a?.querySelector('.mn-name')?.textContent || '', a?.dataset.sum || '');
+  }
+
   function links() { return [...body.querySelectorAll('.mn-item')]; }
   function mark() {
-    links().forEach((a, i) => a.classList.toggle('is-active', i === active));
-    links()[active]?.scrollIntoView({ block: 'nearest' });
+    const list = links();
+    list.forEach((a, i) => a.classList.toggle('is-active', i === active));
+    list[active]?.scrollIntoView({ block: 'nearest' });
+    foot(list[active] || null);
   }
 
   function open() {
@@ -77,6 +104,9 @@ export function createMenu({ onClose } = {}) {
   }
 
   input.addEventListener('input', paint);
+  // Pointing at a row shows its line; leaving it shows the picked row's again.
+  body.addEventListener('mouseover', (e) => foot(e.target.closest('.mn-item') || links()[active] || null));
+  body.addEventListener('mouseleave', () => foot(links()[active] || null));
   root.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
     const list = links();

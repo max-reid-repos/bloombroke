@@ -81,29 +81,36 @@ body.has-tape .dock > .tape:not([hidden]) { display: block; }
   box-shadow: 0 15px 35px hsla(0, 0%, 0%, .5);
 }
 .menu-search {
+  flex: none;
   display: flex; align-items: center; gap: 12px;
   height: 48px; padding: 0 16px;
   border-bottom: 1px solid var(--rule-strong);
 }
-.menu-q {
+.menu-q, .help-q {
   flex: 1; min-width: 0;
   padding: 0; border: 0; outline: 0;
   background: transparent;
   color: var(--text);
   font-family: var(--font); font-size: 16px;
 }
-.menu-q::placeholder { color: var(--dim); opacity: 1; }
-.menu-q::-webkit-search-cancel-button { display: none; }
+.menu-q::placeholder, .help-q::placeholder { color: var(--dim); opacity: 1; }
+.menu-q::-webkit-search-cancel-button, .help-q::-webkit-search-cancel-button { display: none; }
 .menu-keys { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--dim); white-space: nowrap; }
 .menu-keys kbd:not(:first-child) { margin-left: 6px; }
-.menu-body { overflow: auto; padding: 16px; }
-.mn-grid { columns: 3 280px; column-gap: 32px; }
-.mn-cat { break-inside: avoid; margin-bottom: 16px; }
+.menu-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 16px; }
+/* Every command on one screen with no scroll: names only, 20px rows, four columns (five
+   on a shorter screen, like 1280x800). A long group runs on into the next column; its
+   header always keeps its first rows. */
+.mn-grid { columns: 4 150px; column-gap: 32px; }
+.mn-cat + .mn-cat { margin-top: 12px; } /* dropped at the top of a column */
 .mn-h, .hs-h {
   margin: 0 0 6px;
   font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
   color: var(--dim);
 }
+.mn-h { break-after: avoid; }
+.mn-grid .mn-list > li:nth-child(-n+3) { break-before: avoid; }
+.mn-grid .mn-item { display: block; padding: 0 8px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mn-item {
   display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px; align-items: baseline;
   margin: 0 -8px; padding: 2px 8px;
@@ -115,10 +122,26 @@ body.has-tape .dock > .tape:not([hidden]) { display: block; }
 .mn-found .mn-item { grid-template-columns: 136px minmax(0, 1fr); padding: 6px 8px; }
 .mn-found .mn-sum { color: var(--text-2); white-space: normal; }
 .mn-none { color: var(--dim); }
-.menu-foot { padding: 8px 16px; border-top: 1px solid var(--rule); font-size: 12px; color: var(--dim); }
+.menu-foot {
+  flex: none;
+  padding: 8px 16px; border-top: 1px solid var(--rule);
+  font-size: 12px; color: var(--dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mn-foot-name { margin-right: 8px; font-weight: 600; color: var(--text); }
 body.menu-open { overflow: hidden; }
 
-/* ---- HELP <ticker>: the function rows (screens/help.css has the rest) ---------- */
+/* ---- HELP: search on top, categories left, commands right --------------------- */
+.help { display: grid; gap: 16px; padding-top: 4px; }
+.help-search {
+  display: flex; align-items: center; gap: 12px;
+  height: 44px; padding: 0 16px;
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+}
+.help-search:focus-within { border-color: var(--accent); }
+.help-search .prompt { font-size: 14px; }
+
 .hc-list { margin: 0 0 8px; }
 .hc-row {
   display: grid;
@@ -150,6 +173,10 @@ body.menu-open { overflow: hidden; }
 .is-embed .tape-panel { border-bottom: 0; }
 
 /* ---- Narrower screens --------------------------------------------------------- */
+@media (min-width: 640px) and (max-height: 890px) {
+  .mn-grid { columns: 5 150px; column-gap: 24px; }
+}
+
 @media (max-width: 1100px) {
   .hc-row { grid-template-columns: 136px minmax(0, 1fr) minmax(0, 208px); }
 }
@@ -168,6 +195,6 @@ body.menu-open { overflow: hidden; }
   .menu-keys { display: none; }
   .mn-grid { columns: 1; }
 
-  .menu-q { font-size: 16px; }
+  .help-q, .menu-q { font-size: 16px; }
   .hc-row, .hc-row-fn { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 8px; }
 }

@@ -28,7 +28,11 @@
    Rule A: one number and one change per screen, each change labelled by its range
    ("today", "1Y"). Rule B: sources, times, LIVE, RT/DLY once per panel, in its strip.
    Rule D (phones): readable text 13 px at least; 11-12 px only for tracked uppercase
-   labels. */
+   labels.
+   Rule E: Art screens (GRAVEYARD, the WHATIF catalogue, FISHTANK) are their own layout.
+   The picture is the screen. The two-layouts rule applies to text and data screens only.
+   Rule F: Never reflow, crop or restructure a drawn scene without showing the plan first
+   and getting an OK. */
 .btn-solid, .btn.btn-solid, .chip.btn-solid { background: var(--primary); border-color: var(--primary); color: var(--ink); }
 .btn-solid:hover, .btn.btn-solid:hover, .chip.btn-solid:hover { background: var(--primary-hover); border-color: var(--primary-hover); color: var(--ink); text-decoration: none; }
 .btn-solid:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

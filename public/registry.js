@@ -651,7 +651,7 @@ export const START_GROUP = 'Start here';
 
 // HELP's key row, first on the page.
 export const START_KEYS = [
-  ['Enter', 'run'], ['Tab', 'complete'], ['Esc', 'back'], ['Ctrl K', 'menu'], ['/', 'find'],
+  ['Enter', 'run'], ['Tab', 'complete'], ['Esc', 'back'], ['Ctrl K', 'menu'], ['/', 'search'],
   ['F1-F10', 'screens'], ['1-9', 'the numbered thing on screen'],
 ];
 
