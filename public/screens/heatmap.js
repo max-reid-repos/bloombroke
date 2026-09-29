@@ -55,13 +55,16 @@ export function squarify(values, rect) {
 
 // ---- Colour and labels -------------------------------------------------------
 
-// % change -> fill. Grey at 0, deeper green or red up to +-3%.
+// % change -> fill. Grey at 0, deeper green or red up to +-3%. The colours run at about
+// 70% of their old saturation (HEAT_SAT): full-strength fills pulled the eye off the
+// numbers, above all in a DESK panel. Green is still up and red still down.
+export const HEAT_SAT = 0.7;
 export function heatFill(pct) {
   if (!Number.isFinite(pct) || Math.abs(pct) < 0.005) return 'hsl(212, 18%, 20%)';
   const t = Math.min(1, Math.abs(pct) / 3);
   return pct > 0
-    ? `hsl(147, ${Math.round(28 + 34 * t)}%, ${Math.round(20 + 12 * t)}%)`
-    : `hsl(0, ${Math.round(34 + 40 * t)}%, ${Math.round(24 + 14 * t)}%)`;
+    ? `hsl(147, ${Math.round((28 + 34 * t) * HEAT_SAT)}%, ${Math.round(20 + 12 * t)}%)`
+    : `hsl(0, ${Math.round((34 + 40 * t) * HEAT_SAT)}%, ${Math.round(24 + 14 * t)}%)`;
 }
 
 // Font size for a ticker label in a w x h box, or 0 when it does not fit.

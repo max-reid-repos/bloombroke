@@ -340,6 +340,39 @@ export function barInfo(points, barMins = 1) {
   });
 }
 
+// ---- The 1D time axis ----------------------------------------------------------------
+
+// A 1D chart of today's session fits the bars there are, but never opens narrower than
+// this: 36 minutes of bars fill the left part of a 2-hour window, not the left tenth of an
+// empty 6.5-hour session. A chart never opens on an empty range.
+export const MIN_WINDOW_MINS = 120;
+
+// How many empty bar slots follow the last bar of a 1D chart of today. info: barInfo of
+// the chart's bars; endMins: when the session ends (16:00, or 20:00 with after hours);
+// barMins: the bar size. Once the bars span MIN_WINDOW_MINS, or the session is over, 0:
+// the axis ends at the last bar (after the close that is the whole session).
+export function sessionPad(info, { endMins = 960, barMins = 1, minWindow = MIN_WINDOW_MINS } = {}) {
+  if (!info?.length || !(barMins > 0)) return 0;
+  const last = info[info.length - 1];
+  const first = info.find((x) => x.day === last.day) || last;
+  const want = Math.min(endMins, first.mins + minWindow);
+  return Math.max(0, (want - last.mins) / barMins);
+}
+
+// The axis labels' bar info with the empty slots after the last bar filled in (their
+// clock times on the same day), so a 2-hour window of a young session still shows
+// 10:00 10:30 11:00 under the empty part.
+export function padInfo(info, pad, barMins = 1) {
+  const n = Math.floor(pad);
+  if (!info?.length || n <= 0) return info;
+  const last = info[info.length - 1];
+  const more = Array.from({ length: n }, (_, k) => {
+    const mins = last.mins + (k + 1) * barMins;
+    return { day: last.day, mins, session: mins + barMins <= 570 ? 'pre' : mins >= 960 ? 'post' : 'regular', weekday: last.weekday, empty: true };
+  });
+  return [...info, ...more];
+}
+
 // ---- Header numbers ------------------------------------------------------------------
 
 // The strip over the chart for bars i0..i1: last, change from base, the high and low (bar

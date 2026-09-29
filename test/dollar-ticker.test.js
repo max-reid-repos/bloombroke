@@ -3,6 +3,7 @@
 // hint when the word is also a listed stock.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   parseCommand, stockId, stockHintFor, tickerToCheck, tickerFunctions, toQuery, fromQuery, urlFor,
   suggest, stockRows, symbolSuggestions, completeFrom,
@@ -38,7 +39,8 @@ test('$: every shadowed ticker opens the stock with $, and today\'s screen witho
     }
     assert.equal(stockId(t), `$${t}`);
     assert.equal(tickerToCheck(parseCommand(`$${t}`)), `$${t}`, 'a $ stock is checked for a quote first');
-    assert.equal(stockHintFor(t, plain), `$${t}`, `${t} shows the hint`);
+    // DESK: no hint (it landed in the desk's tool bar as a panel's "Stock: $DESK").
+    assert.equal(stockHintFor(t, plain), t === 'DESK' ? null : `$${t}`, `${t} shows the hint`);
     assert.equal(stockHintFor(`$${t}`, parseCommand(`$${t}`)), null, 'no hint on the stock itself');
     // The server asks the source for the plain symbol, never the instrument.
     assert.equal(normalizeTicker(`$${t}`), `$${t}`);
@@ -49,6 +51,16 @@ test('$: every shadowed ticker opens the stock with $, and today\'s screen witho
   assert.equal(stockHintFor('HELP SHORTS', parseCommand('HELP SHORTS')), null, 'the hint is for the word alone');
   assert.equal(stockHintFor('AAPL', parseCommand('AAPL')), null);
   assert.equal(stockHintFor('MARKETS', parseCommand('MARKETS')), null);
+});
+
+test('$DESK: DESK shows no "Stock: $DESK" in its bar, and $DESK still opens the stock', () => {
+  for (const raw of ['DESK', 'DESK 2', 'DESK WEIRD', 'DESK RESET']) assert.equal(stockHintFor(raw, parseCommand(raw)), null, raw);
+  assert.equal(parseCommand('DESK').name, 'DESK');
+  const c = parseCommand('$DESK');
+  assert.deepEqual([c.name, c.args.ticker], ['QUOTE', '$DESK']);
+  // The hint's place in the page: a panel's title strip or HELP's search bar, never the DESK bar.
+  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(app, /view\.querySelector\('\.panel-head, \.help-search'\)/);
 });
 
 test('$: periods and functions after the stock; no $ needed where nothing clashes', () => {

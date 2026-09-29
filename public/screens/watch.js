@@ -2,7 +2,7 @@
 // rows open their screen, reorder by drag or Alt+Up / Alt+Down. Stored in this browser.
 
 import { esc, q, fmtNum, fmtSigned, fmtPct, dirOf, panel, tick, settleTicks, rerender } from './markets.js';
-import { freshTag } from '../freshness.js';
+import { delayTag, freshLegend } from '../freshness.js';
 import { rangeBar, decimalsOf } from './quote.js';
 import {
   loadWatchlist, saveWatchlist, isDefaultList, addIds, removeIds, moveItem, exportText,
@@ -95,7 +95,7 @@ export function watchTable(rows, { sort = {}, missing = new Set() } = {}) {
     return `<tr class="row-link" data-cmd="${esc(id)}" data-id="${esc(id)}" tabindex="0"${canMove ? ' draggable="true"' : ''}>
       <th scope="row" class="wl-sym"><a href="${esc(q(id))}" data-cmd="${esc(id)}" tabindex="-1">${esc(id)}</a></th>
       <td class="name">${esc(nameOf(id, qt, missing.has(id)))}</td>
-      <td class="tag">${freshTag(qt)}</td>
+      <td class="tag">${delayTag(qt)}</td>
       <td class="num last${qt ? tick(`wl:${id}:last`, qt.last) : ''}">${qt ? fmtIn(qt, qt.last) : '--'}</td>
       <td class="num chg ${d}">${qt ? fmtSigned(qt.change, dec) : '--'}</td>
       <td class="num pct ${d}">${qt ? fmtPct(qt.changePct) : '--'}</td>
@@ -122,7 +122,7 @@ export function watchCompact(list, byId) {
     const dec = qt ? decimalsOf(qt) : 2;
     return `<tr class="row-link" data-cmd="${esc(id)}" tabindex="0">
       <th scope="row" class="name"><a href="${esc(q(id))}" data-cmd="${esc(id)}" tabindex="-1">${esc(id)}</a> <span class="dim wl-cname">${esc(qt ? (qt.label || qt.name) : '')}</span></th>
-      <td class="tag">${freshTag(qt)}</td>
+      <td class="tag">${delayTag(qt)}</td>
       <td class="num last${qt ? tick(`hw:${id}:last`, qt.last) : ''}">${qt ? fmtIn(qt, qt.last) : '--'}</td>
       <td class="num chg ${d}">${qt ? fmtSigned(qt.change, dec) : '--'}</td>
       <td class="num pct ${d}">${qt ? fmtPct(qt.changePct) : '--'}</td>
@@ -236,7 +236,14 @@ export function render(el, cmd, ctx) {
     drawTools();
     top.innerHTML = `${msg ? `<p class="wl-msg${warn ? ' is-warn' : ''}" role="status">${esc(msg)}</p>` : ''}${exportBox}${note}`;
     if (a.error) top.insertAdjacentHTML('beforeend', `<p class="muted examples">Try ${EXAMPLES.map(code).join(' ')}</p>`);
-    meta.textContent = `${list.length} OF ${MAX_WATCH} SYMBOLS`;
+    paintMeta();
+  }
+
+  // The strip: the count, and RT · DLY WHERE MARKED once when a row is delayed (only
+  // delayed rows carry a mark).
+  function paintMeta() {
+    const legend = freshLegend(list.map((id) => byId[id]).filter(Boolean));
+    meta.innerHTML = `${esc(`${list.length} OF ${MAX_WATCH} SYMBOLS`)}${legend ? `<span class="dim"> · </span>${legend}` : ''}`;
   }
 
   function draw() {
@@ -247,6 +254,7 @@ export function render(el, cmd, ctx) {
     const rows = sortRows(list.map((id) => ({ id, quote: byId[id] || null })), sort.key, sort.dir);
     rerender(body, watchTable(rows, { sort, missing }));
     settleTicks(body);
+    paintMeta();
   }
 
   async function load() {

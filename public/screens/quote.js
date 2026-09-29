@@ -56,6 +56,20 @@ export function statRows(d) {
   return rows;
 }
 
+// The key ranges as one line for a panel (a DESK panel, embed mode), where the stats
+// grid's narrow cells stacked "15.73 -" over "16.19": "day 15.73 to 16.19 · 52w 13.38 to
+// 35.30". Each part stays whole; a very narrow panel wraps between the parts only.
+export function rangeLine(d) {
+  const dec = decimalsOf(d);
+  const r52dec = d.range52Basis !== 'daily closes' && Number.isInteger(d.range52Dp) && d.range52Dp < dec ? d.range52Dp : dec;
+  const f = (v, k) => (isYield(d) ? `${fmtNum(v, k)}%` : fmtNum(v, k));
+  const parts = [];
+  if (Number.isFinite(d.low) && Number.isFinite(d.high)) parts.push(['day', `${f(d.low, dec)} to ${f(d.high, dec)}`]);
+  if (Number.isFinite(d.low52) && Number.isFinite(d.high52)) parts.push(['52w', `${f(d.low52, r52dec)} to ${f(d.high52, r52dec)}`]);
+  if (!parts.length) return '';
+  return `<p class="q-ranges num">${parts.map(([k, v]) => `<span class="q-rg"><span class="dim">${k}</span> ${esc(v)}</span>`).join('<span class="q-rg-sep dim" aria-hidden="true"> · </span>')}</p>`;
+}
+
 function statsHtml(d) {
   return `<dl class="stats">${statRows(d).map(([k, v, extra]) => `<div class="stat"><dt>${esc(k)}</dt><dd class="num">${esc(v)}${extra || ''}</dd></div>`).join('')}</dl>`;
 }
@@ -103,6 +117,7 @@ function quoteHtml(d) {
       <p class="q-chg num ${dir}">${esc(changeText(d))}</p>
       ${ext}
       <p class="q-asof dim">${lastTradeLine(d)}${d.stale ? ' (LAST KNOWN)' : ''}</p>
+      ${rangeLine(d)}
     </div>
     ${statsHtml(d)}
   </div>`;

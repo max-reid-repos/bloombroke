@@ -32,7 +32,12 @@
 .is-embed .q-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; }
 .is-embed .q-chg, .is-embed .q-ext, .is-embed .q-asof { margin: 0; }
 .is-embed .q-chg { font-size: 14px; }
-.is-embed .q-top .stats { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); column-gap: 16px; }
+/* The key ranges: the stats grid on the full screen; in a panel one line instead
+   (rangeLine), since the grid's narrow cells stacked each range over its dash. */
+.q-ranges { display: none; }
+.is-embed .q-top .stats { display: none; }
+.is-embed .q-ranges { display: block; flex: 1 1 100%; margin: 0; font-size: 12px; color: var(--text-2); }
+.is-embed .q-rg { white-space: nowrap; }
 @media (max-height: 560px) {
-  .is-embed .q-top .stats, .is-embed .q-ext { display: none; }
+  .is-embed .q-ranges, .is-embed .q-ext { display: none; }
 }

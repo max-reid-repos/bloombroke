@@ -303,7 +303,7 @@ a.panel-label:hover { text-decoration: none; background: var(--text); }
   font-size: 11px; color: var(--dim); letter-spacing: .04em; white-space: nowrap;
 }
 .stock-hint:hover, .stock-hint:focus-visible { color: var(--text); text-decoration: none; }
-.help-search .stock-hint, .desk-bar .stock-hint { margin-right: 0; margin-left: auto; }
+.help-search .stock-hint { margin-right: 0; margin-left: auto; }
 /* Phones: a long panel title wraps inside its label instead of pushing the page wide. */
 @media (max-width: 639px) {
   .panel-head { height: auto; min-height: 22px; }
@@ -438,6 +438,36 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .mk-group .c-pct { width: 8ch; }
 .mk-group .c-time { width: 7ch; }
 .mk-group .name { width: auto; }
+
+/* ---- MARKETS: HOME's list at full size (markets.js marketsFull) ---------------------
+   2 or 3 columns (1 in a narrow panel), each at least as wide as the widest name plus the
+   numbers, so a name is never cut; the panel ends where the columns end. Every block in
+   a column opens with its own group's title bar or sub-heading bar. */
+.mk-full { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+.mk-full.mk-n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mk-full.mk-n1 { grid-template-columns: minmax(0, 1fr); }
+.mk-full .mk-col { min-width: 0; }
+.mk-full .mk-col + .mk-col { border-left: 1px solid var(--rule-strong); }
+.mk-full .mk-group .name { max-width: none; overflow: visible; text-overflow: clip; }
+.mk-full .mk-group td.num { padding: 0 6px; }
+.mk-full .mk-group .c-pct { width: 9ch; }
+.mk-full.is-wrap .mk-group .name { white-space: normal; line-height: 1.3; }
+.mk-full .mk-group .sub-row th {
+  height: 18px; padding: 0 10px;
+  font-size: 11px; font-weight: 600; letter-spacing: .1em;
+  color: var(--text-2); background: var(--accent-tint); border-bottom: 0;
+}
+.mk-full .mk-group td.pct.is-big { outline: 1px solid currentColor; outline-offset: -3px; }
+/* The width one column needs: the same parts as the colgroup above (name, DLY mark, last,
+   chg, %) plus the name cell's side padding. Measured, never shown. */
+.mk-probe {
+  position: absolute; visibility: hidden; pointer-events: none; height: 0;
+  width: calc(var(--mk-name, 24ch) + 20px + 34px + 11ch + 9ch + 9ch);
+}
+.mk-probe.no-chg { width: calc(var(--mk-name, 24ch) + 20px + 34px + 11ch + 9ch); }
+/* The strip's one line on the marks (freshLegend). */
+.fresh-legend { white-space: nowrap; cursor: help; }
+.panel-head > .fresh-legend { display: flex; align-items: center; flex: 0 0 auto; padding-right: 8px; font-size: 11px; color: var(--dim); letter-spacing: .04em; }
 .mk-group td.num { padding: 0 6px; }
 .mk-cols-time { columns: 3 400px; }
 
@@ -623,6 +653,9 @@ button.tab { border: 0; background: transparent; font-family: var(--font); curso
 .ch-lab-bg { fill: var(--bg); opacity: .82; }
 .ch-ref-prev-lab { fill: var(--text-2); }
 .ch-ref-open-lab { fill: var(--dim); }
+/* The previous close's value on the price axis: an outlined tag, quieter than the last value's. */
+.ch-prev-bg { fill: var(--bg); stroke: var(--text-2); stroke-width: 1; stroke-dasharray: 3 2; shape-rendering: crispEdges; }
+.ch-prev-t { fill: var(--text-2); font-family: var(--font); font-size: 11px; }
 .ch-mk-lab { fill: var(--text); }
 .ch-mk-lab.up, .ch-mk-move.up { fill: var(--up); }
 .ch-mk-lab.down, .ch-mk-move.down { fill: var(--down); }
@@ -1116,6 +1149,10 @@ a.ch-flag:focus-visible .ch-flag-box { fill: var(--panel-3); stroke: var(--accen
      last one takes the room left; the ones above keep their size. */
   html:not(.is-embed) .view > :is(.panel, .stack, .grid, .with-side, #er-host) { flex: 0 1 auto; min-height: 96px; }
   html:not(.is-embed) .view > :nth-last-child(1 of :is(.panel, .stack, .grid, .with-side, #er-host):not([hidden])) { flex: 1 1 auto; min-height: 240px; }
+  /* MARKETS ends where its columns end (no empty panel under them); taller than the
+     window, it scrolls inside. */
+  /* !important: the rule above names #er-host, and an id outweighs any class list here. */
+  html:not(.is-embed) .view > .panel.mk-panel:not([hidden]) { flex: 0 1 auto !important; min-height: 96px; }
   html:not(.is-embed) .view > .panel > .panel-body,
   html:not(.is-embed) .view > #er-host > .panel > .panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
   html:not(.is-embed) .view > #er-host { display: flex; flex-direction: column; }

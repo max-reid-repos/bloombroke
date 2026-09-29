@@ -1,8 +1,8 @@
 // HOME: the default screen. A dense MARKETS list, the S&P 500 chart and the news.
 
-import { esc, fmtNum, fmtSigned, fmtPct, dirOf, panel, LOADING, marketsColumns, nameCell, rowAttrs, rerender, tick, settleTicks } from './markets.js';
+import { esc, fmtNum, fmtSigned, fmtPct, dirOf, panel, LOADING, marketsColumns, nameCell, rowAttrs, rerender, tick, settleTicks, HOME_MARKETS, homeMarkets } from './markets.js';
 import { rangeChart } from './chart.js';
-import { freshTag } from '../freshness.js';
+import { freshTag, freshLegend } from '../freshness.js';
 import { newsList, liveNews, dedupeNews, mergePushed, newsStream, NEWS_POLL_MS } from './news.js';
 import { startSince } from '../since.js'; // SINCE line
 import { lazyScreen, loadScreen, stylesOf } from '../lazy.js';
@@ -28,47 +28,9 @@ export function fxTable(pairs) {
   </table>`;
 }
 
-// HOME's MARKETS list: four columns, each a group of the MARKETS screen's own
-// instruments under short names (the full list and full names stay on MARKETS). A plain
-// string starts a sub-heading bar inside the column (Europe, Asia, Commodities...). Every
-// column is the same shape, two sub-headings and ten rows, so all four end on one line.
-export const HOME_MARKETS = [
-  { name: 'US', rows: [
-    'Indexes', ['SPX', 'S&P 500'], ['NDX', 'Nasdaq 100'], ['DJI', 'Dow'], ['RUT', 'Russell 2000'], ['SPXEW', 'Equal weight'],
-    ['SOX', 'Semis'], ['DJTRANS', 'Transports'],
-    'Futures + vol', ['SPFUT', 'S&P 500 fut'], ['NDFUT', 'Nasdaq 100 fut'], ['VIX', 'VIX'],
-  ] },
-  { name: 'World', rows: [
-    'Europe', ['STOXX50', 'Euro Stoxx 50'], ['FTSE', 'FTSE 100'], ['DAX', 'DAX'], ['CAC40', 'CAC 40'],
-    'Asia', ['N225', 'Nikkei 225'], ['HSI', 'Hang Seng'], ['SHANGHAI', 'Shanghai'], ['KOSPI', 'KOSPI'], ['NIFTY50', 'Nifty 50'], ['ASX200', 'ASX 200'],
-  ] },
-  { name: 'Commodities + crypto', rows: [
-    'Commodities', ['WTI', 'WTI oil'], ['BRENT', 'Brent oil'], ['NATGAS', 'Natural gas'], ['GOLD', 'Gold (spot)'],
-    ['SILVER', 'Silver (spot)'], ['COPPER', 'Copper'], ['WHEAT', 'Wheat'], ['BALTICDRY', 'Baltic Dry'],
-    'Crypto', ['BTC', 'Bitcoin'], ['ETH', 'Ether'],
-  ] },
-  { name: 'FX + rates', rows: [
-    'FX', ['DXY', 'Dollar index'], ['EURUSD', 'EUR/USD'], ['USDJPY', 'USD/JPY'], ['GBPUSD', 'GBP/USD'], ['USDCNH', 'USD/CNH'],
-    'Rates', ['US3M', 'US 3M'], ['US2Y', 'US 2Y'], ['US10Y', 'US 10Y'], ['US30Y', 'US 30Y'], ['US2S10S', '2s10s'],
-  ] },
-];
-
-// The HOME rows from /api/markets, regrouped in the order above, each with its group,
-// sub-heading and short name. A missing id drops out; a sub-heading with no rows left
-// drops with it (it only shows above a row).
-export function homeMarkets(instruments) {
-  const byId = new Map((instruments || []).map((m) => [m.id, m]));
-  return HOME_MARKETS.flatMap((g) => {
-    let sub = null;
-    const out = [];
-    for (const r of g.rows) {
-      if (typeof r === 'string') { sub = r; continue; }
-      const [id, name] = r;
-      if (byId.has(id)) out.push({ ...byId.get(id), name, group: g.name, sub });
-    }
-    return out;
-  });
-}
+// HOME's MARKETS list (HOME_MARKETS, homeMarkets) lives in markets.js, which lays out
+// the MARKETS screen in the same groups and order.
+export { HOME_MARKETS, homeMarkets };
 
 const HOME_NEWS_ROWS = 30;
 
@@ -89,12 +51,24 @@ export function render(el, cmd, ctx) {
 
   const chart = rangeChart(el.querySelector('#h-rc'), ctx, {
     symbol: 'SPX', range: { range: '1D' }, meta: el.querySelector('#h-ch-meta'), hostCls: 'chart-host-home',
-    label: 'S&P 500', decimals: 2, fmtY: (v) => fmtNum(v, 0),
+    label: 'S&P 500', decimals: 2, fmtY: (v) => fmtNum(v, 0), panel: true,
   });
   const since = startSince(el.querySelector('#h-mk-meta'), ctx); // SINCE: in the MARKETS title strip
   // GRAVEYARD: ON THIS DAY, one quiet line in the MARKETS title strip
   loadScreen(GRAVEYARD, stylesOf(GRAVEYARD.js))
     .then((g) => { if (!ctx.signal.aborted) g.mountOnThisDay(el.querySelector('#h-mk-meta')?.parentElement, { signal: ctx.signal }); }, () => {});
+
+  // RT and DLY, said once in the MARKETS strip (only delayed rows carry a mark). Its own
+  // span, after the SINCE line (which repaints the strip's meta).
+  const mkHead = el.querySelector('#h-mk-meta')?.parentElement;
+  function paintLegend(rows) {
+    if (!mkHead) return;
+    const html = freshLegend(rows);
+    const had = mkHead.querySelector(':scope > .fresh-legend');
+    if (!html) had?.remove();
+    else if (had) had.outerHTML = html;
+    else mkHead.insertAdjacentHTML('beforeend', html);
+  }
 
   async function loadMarkets() {
     try {
@@ -102,6 +76,7 @@ export function render(el, cmd, ctx) {
       const rows = homeMarkets(d.instruments);
       rerender(mkBody, marketsColumns(rows, { chg: false, cls: 'mk-cols h-mk' }));
       settleTicks(mkBody);
+      paintLegend(rows);
       const spx = d.instruments.find((m) => m.id === 'SPX');
       if (spx) chart.setLive({ t: Date.parse(spx.asOf), v: spx.last });
       since.markets(d.instruments);
