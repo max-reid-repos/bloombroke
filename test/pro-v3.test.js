@@ -244,8 +244,10 @@ test('note and test mode: one dim line on the page; Details keeps every term as 
   for (const [, t] of TERMS_ROWS) assert.ok(t.split(/\s+/).length <= 14, `${t}: 14 words or fewer`);
   // The full wording stays exported (and in the Terms).
   assert.match(BUY_TERMS.join(' '), /Cancel any time: type PRO and press MANAGE PLAN or CANCEL\./);
-  // The page shows the test bits only when the server says test mode.
-  assert.match(readFileSync('public/screens/pro.js', 'utf8'), /if \(c\.mode !== 'test' \|\| !el\.isConnected\) return;/);
+  // The page shows the test bits only when the server says test mode, and never when
+  // checkout is closed (PRO_CHECKOUT=closed shows "Pro opens soon." instead).
+  const src = readFileSync('public/screens/pro.js', 'utf8');
+  assert.match(src, /if \(c\.closed\) \{ showSoon\(el\); return; \}\n\s+if \(c\.mode !== 'test'\) return;/);
 });
 
 // ---- few words -------------------------------------------------------------------------------
