@@ -16,7 +16,7 @@ import { getCatalog, getWhatif, getFunding, catalog } from './data/whatif-servic
 import { WhatifError } from './data/whatif.js';
 import { whatifTokens, normalizeWhatif, certModel } from './data/whatif-cert.js';
 import {
-  getCert, whatifCard, defaultPng, withMeta, certMeta, DEFAULT_META,
+  getCert, rememberCert, whatifCard, defaultPng, withMeta, certMeta, DEFAULT_META,
   getQuoteCard, quotePng, quoteMeta, affordModel, affordPng, affordMeta,
   withCanonical, quoteTicker, SITE,
 } from './lib/og.js';
@@ -246,6 +246,8 @@ app.get('/api/whatif', async (req, res) => {
     // The certificate: the same words and numbers as the share image.
     const norm = data.rows ? normalizeWhatif(tokens.join(' '), catalog) : null;
     if (norm) data.cert = certModel(data, catalog, norm.command);
+    // The share card, meta and embed take these same numbers (lib/og.js getCert).
+    if (data.cert) rememberCert(data.cert, { stale: data.stale }).catch((e) => console.error('[og]', e.message));
     if (data.rows && countGate.allow(req, `whatif:${tokens.join(' ')}`)) siteCounters.bump('whatif_run'); // BBRK: a WHATIF result
     res.set('Cache-Control', 'public, max-age=60');
     res.json(data);

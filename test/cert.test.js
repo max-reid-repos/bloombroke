@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, rmSync, utimesSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
 import { whatifTokens, normalizeWhatif, certKey, certModel, certVersion, DOODLES, fit, span } from '../data/whatif-cert.js';
 import { getWhatif, catalog } from '../data/whatif-service.js';
-import { withMeta, certMeta, DEFAULT_META, getCert, whatifCard, renderPng, certificateTree, defaultTree, W, H, CERT_TTL_MS } from '../lib/og.js';
+import { withMeta, certMeta, DEFAULT_META, getCert, rememberCert, whatifCard, renderPng, certificateTree, defaultTree, W, H, CERT_TTL_MS } from '../lib/og.js';
 import { whatifItemMeta } from '../lib/whatif-seo.js';
 import { shareLinks, certHtml } from '../public/screens/whatif.js';
 
@@ -180,6 +180,38 @@ test('cert cache: the numbers are kept 10 minutes, then redone; a new number is 
     assert.notDeepEqual(cardB.png, cardA.png, 'the image is redrawn, never the old picture');
     const pngs = readdirSync(dir).filter((f) => f.endsWith('.png')).sort();
     assert.deepEqual(pngs, [`cert-${a.v}.png`, `cert-${b.v}.png`].sort(), 'one image per version');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the page\'s result becomes the share numbers: getCert kept P0, /api/whatif runs on P1, getCert gives P1', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'bb-og-'));
+  try {
+    let aapl = 250;
+    const quote = async (t) => ({ ...(await quoteImpl(t)), last: t === 'AAPL' ? aapl : (await quoteImpl(t)).last });
+    let calls = 0;
+    const deps = { catalog, cacheDir: dir, getWhatif: (tokens) => { calls += 1; return getWhatif(tokens, { quoteImpl: quote, now: NOW }); } };
+    const p0 = await getCert('WHATIF IPHONE6', deps);
+    aapl = 262.5;
+    // server.js /api/whatif: the page's model on the new price, then kept.
+    const page = await getWhatif(['IPHONE6'], { quoteImpl: quote, now: NOW, risk: true, chartImpl: async () => null, riskWaitMs: 0 });
+    const pageCert = certModel(page, catalog, normalizeWhatif('IPHONE6', catalog).command);
+    assert.notEqual(pageCert.big, p0.big);
+    await rememberCert(pageCert, { stale: page.stale, cacheDir: dir });
+    const after = await getCert('WHATIF IPHONE6', deps);
+    assert.equal(calls, 1, 'no new fetch: the page\'s numbers are used');
+    assert.equal(after.big, pageCert.big);
+    assert.equal(after.multiple, pageCert.multiple);
+    assert.equal(after.v, pageCert.v);
+    assert.ok(certMeta(after).image.endsWith(`&v=${pageCert.v}`));
+    // Last-known prices are never kept.
+    aapl = 300;
+    const stalePage = certModel({ ...(await getWhatif(['IPHONE6'], { quoteImpl: quote, now: NOW })), stale: true }, catalog, 'WHATIF IPHONE6');
+    await rememberCert(stalePage, { stale: true, cacheDir: dir });
+    assert.equal((await getCert('WHATIF IPHONE6', deps)).v, pageCert.v, 'a stale page result leaves the kept numbers');
+    const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+    assert.match(server, /if \(data\.cert\) rememberCert\(data\.cert, \{ stale: data\.stale \}\)/, '/api/whatif keeps its result');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
