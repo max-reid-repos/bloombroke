@@ -39,6 +39,7 @@ export const CARD_RE = /^[A-Z0-9 .$&%<>=:/+-]{1,60}$/;
 // Screens a card may never point at: account, chat itself, feedback.
 export const CARD_DENY = ['HOME', 'CHAT', 'PRO', 'LOGIN', 'LOGOUT', 'REDEEM', 'GIFT', 'FEEDBACK', 'IDEA', 'ME'];
 export const NO_LINKS = 'No links. Attach a screen instead.';
+export const NO_KEYS = 'That looks like a Pro key or a gift code. Keys never go in CHAT.';
 
 export class ChatError extends Error {
   constructor(code, message, status = 400) {
@@ -107,6 +108,7 @@ export function checkText(raw, { hasCard = false } = {}) {
   if (!text && !hasCard) throw new ChatError('empty', 'Write something first.');
   if (text.length > MAX_TEXT) throw new ChatError('too_long', `Keep it under ${MAX_TEXT} characters.`);
   if (hasLink(text)) throw new ChatError('no_links', NO_LINKS);
+  if (secretInText(text)) throw new ChatError('no_keys', NO_KEYS);
   return text;
 }
 
@@ -211,6 +213,29 @@ export function secretIn(raw) {
       const joined = part.join('').replace(/[^A-Z0-9]/g, '');
       if (!normalizeKey(joined) && !normalizeGiftCode(joined)) continue;
       if (part.length === 1 || /^(BB|GIFT)/.test(part[0]) || /\d/.test(joined)) return true;
+    }
+  }
+  return false;
+}
+
+// A Pro key or a gift code in a CHAT message: secretIn's rules, except that words split by
+// spaces count only when each word is whole key groups of 4 characters ("7k2m abcd efgh
+// jkmn", "BB 7K2M ABCD EFGH JKMN"; a leading BB or GIFT does not count). Chat is
+// sentences, and secretIn's rule for commands would take ordinary words ("LATTE 3Y WAS
+// BRUTAL" joins into 16 key characters with a digit).
+export function secretInText(raw) {
+  const s = String(raw ?? '').toUpperCase();
+  if (/[A-Z0-9]{4}(?:[^A-Z0-9\s][A-Z0-9]{4}){3}/.test(s)) return true;
+  const toks = s.split(/\s+/).filter(Boolean);
+  const clean = (t) => t.replace(/[^A-Z0-9]/g, '');
+  for (let i = 0; i < toks.length; i++) {
+    for (let j = i + 1; j <= Math.min(toks.length, i + 9); j++) {
+      const part = toks.slice(i, j);
+      const joined = part.map(clean).join('');
+      if (!normalizeKey(joined) && !normalizeGiftCode(joined)) continue;
+      if (part.length === 1) return true;
+      const whole = part.every((t, k) => (k === 0 ? clean(t).replace(/^(BB|GIFT)/, '') : clean(t)).length % 4 === 0);
+      if (whole && (/^(BB|GIFT)/.test(clean(part[0])) || /\d/.test(joined))) return true;
     }
   }
   return false;
