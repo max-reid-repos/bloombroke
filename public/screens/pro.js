@@ -480,7 +480,9 @@ function showSoon(el, ctx) {
 // ---- PRO WAITLIST ------------------------------------------------------------------------
 // Only while checkout is closed: one email box and TELL ME under "Pro opens soon.", one
 // line under them. POST /api/pro/waitlist (pro/waitlist.js). After it worked, the form
-// gives way to one line, for the rest of this page's life. Errors go to the status line.
+// gives way to one line, for the rest of this page's life. Errors go to the status line
+// and, since a phone's status line cuts them, into the line under the form too (warn); the
+// next try puts that line back.
 // Enter sends (the form's own submit); Esc hands the keyboard back to the command bar.
 // Analytics get one goal, waitlist_joined, with nothing else: never the address.
 export const WAIT_LABEL = 'Your email';
@@ -497,7 +499,7 @@ export function waitHtml() {
     + '<input class="pro-wait-hp" id="pro-wait-hp" name="hp" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">'
     + `<button type="submit" class="btn card-btn btn-solid" id="pro-wait-send">${esc(WAIT_BUTTON)}</button>`
     + '</form>'
-    + `<p class="pro-wait-note" id="pro-wait-note">${esc(WAIT_NOTE)}</p>`;
+    + `<p class="pro-wait-note" id="pro-wait-note" aria-live="polite">${esc(WAIT_NOTE)}</p>`;
 }
 const waitDoneHtml = () => `<p class="pro-wait-done" id="pro-wait-done" role="status">${esc(WAIT_DONE)}</p>`;
 
@@ -525,13 +527,21 @@ function showWait(el, ctx) {
   const form = box.querySelector('#pro-wait-form');
   const input = form.querySelector('#pro-wait-email');
   const btn = form.querySelector('#pro-wait-send');
+  const note = box.querySelector('#pro-wait-note');
+  const say = (text, warn = false) => {
+    if (!note) return;
+    note.textContent = text;
+    note.classList.toggle('warn', warn);
+  };
+  const oops = (msg) => { ctx?.status?.(msg, 'warn'); say(msg, true); };
   let busy = false;
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (busy) return;
+    say(WAIT_NOTE); // the next try: the usual line back
     const email = input.value.trim();
     if (!WAIT_RE.test(email) || email.length > 254) {
-      ctx?.status?.(WAIT_BAD, 'warn');
+      oops(WAIT_BAD);
       input.focus();
       return;
     }
@@ -547,7 +557,7 @@ function showWait(el, ctx) {
       goal('waitlist_joined');
     } catch (err) {
       if (!box.isConnected) return;
-      ctx?.status?.(err.message, 'warn');
+      oops(err.message);
       btn.disabled = false;
       busy = false;
     }

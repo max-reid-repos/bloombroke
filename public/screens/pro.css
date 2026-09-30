@@ -134,6 +134,7 @@
 .pro-wait-input { text-transform: none; }
 .pro-wait-hp { position: absolute; left: -10000px; width: 1px; height: 1px; opacity: 0; }
 .pro-wait-note { margin: 0; max-width: 60ch; font-size: 12px; color: var(--dim); }
+.pro-wait-note.warn { color: var(--down); }
 .pro-wait-done { margin: 0; max-width: 60ch; font-size: 14px; color: var(--text-2); }
 @media (min-width: 1100px) {
   .card-split .pro-wait { align-items: flex-start; }

@@ -84,6 +84,19 @@ test('a bad address stays in the browser and says so in the status line', async 
   }
   assert.equal(posts.length, n, 'nothing sent');
   assert.deepEqual(status.at(-1), [WAIT_BAD, 'warn']);
+  // A phone cuts the status line: the error is in the line under the form too.
+  const note = el.querySelector('#pro-wait-note');
+  assert.equal(note.textContent, WAIT_BAD);
+  assert.ok(note.classList.contains('warn'));
+  assert.equal(note.getAttribute('aria-live'), 'polite');
+  // The next try puts the usual line back (here it fails again, with the same words).
+  input.value = 'still-bad';
+  let seen = null;
+  const orig = note.classList.toggle;
+  note.classList.toggle = (c, on) => { if (seen === null) seen = [note.textContent, on]; return orig(c, on); };
+  el.querySelector('#pro-wait-form').dispatch('submit');
+  await flush(4);
+  assert.deepEqual(seen, [WAIT_NOTE, false], 'the usual line first');
   assert.equal(input.focused, true);
   assert.equal(el.querySelector('#pro-wait-form') !== null, true, 'the form stays');
 });
@@ -119,6 +132,8 @@ test('a server error goes to the status line; the form stays and can send again'
   el.querySelector('#pro-wait-form').dispatch('submit');
   await flush(8);
   assert.deepEqual(status.at(-1), ['Too many tries. Wait an hour and try again.', 'warn']);
+  assert.equal(el.querySelector('#pro-wait-note').textContent, 'Too many tries. Wait an hour and try again.');
+  assert.ok(el.querySelector('#pro-wait-note').classList.contains('warn'));
   assert.ok(el.querySelector('#pro-wait-form'), 'the form stays');
   assert.equal(el.querySelector('#pro-wait-send').disabled, false);
   assert.deepEqual(df, [], 'no goal');
