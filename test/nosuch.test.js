@@ -166,7 +166,7 @@ test('share meta: GRAVEYARD <ticker> and IPO IT <word> only', () => {
   assert.equal(nosuchMeta('GRAVEYARD LEHMAN', deps).url, m.url);
   assert.equal(nosuchMeta('GRAVEYARD', deps), null);
   assert.equal(nosuchMeta('GRAVEYARD MAXX', deps), null);
-  assert.match(nosuchMeta('ipo it maxx', deps).image, /\/og\/ipo\.png\?t=MAXX$/);
+  assert.match(nosuchMeta('ipo it maxx', deps).image, /\/og\/ipo\.png\?t=MAXX&d=\d{4}-\d{2}-\d{2}&v=\d+$/);
   assert.equal(nosuchMeta('IPO IT ZZTOP', deps), null);
   assert.equal(nosuchMeta(`IPO IT ${'SE' + 'X'}`, { graveyard: GRAVE, block: parseBlocklist('') }), null, 'the library refuses it');
   assert.equal(nosuchMeta('AAPL', deps), null);
@@ -331,7 +331,7 @@ test('IPO cards: per-address, all-address and waiting limits give the site card,
   const a1 = await cards.ipo(words[0], '1.1.1.1');
   const a2 = await cards.ipo(words[1], '1.1.1.1');
   assert.equal(a1.drawn && a2.drawn, true);
-  assert.equal(a1.maxAge, 604800);
+  assert.equal(a1.maxAge, IPO_MAX_AGE, 'no issue day asked: today\'s card, kept an hour');
   const a3 = await cards.ipo(words[2], '1.1.1.1');
   assert.deepEqual([a3.png, a3.maxAge, a3.drawn], [site, BUSY_MAX_AGE, false], 'per address');
   assert.deepEqual((await cards.ipo(words[0], '1.1.1.1')).png, a1.png, 'a kept card costs nothing');
