@@ -30,8 +30,8 @@ import { emptyPfHtml } from '../public/screens/portfolio.js';
 import { emptyAlertsHtml } from '../public/screens/alerts.js';
 import { deskEmptyHtml } from '../public/screens/desk.js';
 import { emptyHtml as chatEmptyHtml } from '../public/screens/chat.js';
-import { noSuchExtra, ipoUsage, TITLE_GONE, closeMatch, keysAfterLine } from '../public/screens/nosuch.js';
-import { stonePageHtml, stoneFacts, fitStone, GV_ROW } from '../public/screens/graveyard.js';
+import { ipoUsage, notFoundPage, TITLE_GONE } from '../public/screens/nosuch.js';
+import { stonePageHtml, stoneFacts } from '../public/screens/graveyard.js';
 import { wageUsage } from '../public/screens/buy.js';
 import { usage as earningsUsage } from '../public/screens/earnings.js';
 import { usageHtml as compareUsage } from '../public/screens/compare.js';
@@ -74,29 +74,31 @@ const shownInTest = (html) => html.replace('<span id="pro-test" hidden>', '<span
 const GRAVES = JSON.parse(readFileSync('data/graveyard.json', 'utf8'));
 const ART = (e) => ({ stone: '/img/graveyard/stone.webp', doodles: [e.ticker], sites: e.wayback ? [e.ticker] : [] });
 const graveOf = (t) => { const e = GRAVES.find((x) => x.ticker === t); return withArt(e, ART(e)); };
-const YARD = ['ATVI', 'WBVN', 'BBI', 'WFM'].map((t) => GRAVES.find((e) => e.ticker === t));
-// The NO SUCH card as app.js showDidYouMean draws it: a close match adds the Did-you-mean
-// line on top (test/not-found-panel.test.js).
-const noSuch = (typed, found, ticker, info, opts = {}) => {
-  const word = ticker || typed;
-  const top = info.grave ? null : closeMatch(typed, { found, graves: GRAVES });
-  const extra = noSuchExtra(word, info, { ticker, next: 1, yard: info.grave ? [] : YARD, top, ...opts });
-  const html = didYouMeanHtml(typed, found, ticker, { extra: { ...extra, kicker: extra.kicker || (ticker ? 'No such ticker. Yet.' : 'Unknown command') } });
-  return top ? keysAfterLine(html) : html;
-};
+// NOT FOUND as app.js showDidYouMean draws it (screens/nosuch.js notFoundPage): a
+// ticker-shaped word is NO SUCH TICKER (a close match adds the Did-you-mean line on top),
+// anything else the UNKNOWN COMMAND panel (test/not-found-panel.test.js).
+const noSuch = (typed, found, ticker, info, opts = {}) => notFoundPage({ typed, word: ticker || typed, found, ticker, info, graves: GRAVES, day: '2026-09-30', ...opts }).html;
 const GUESSES = { commands: [{ cmd: 'EGGPRICE', summary: 'Average price of a dozen eggs in the US' }, { cmd: 'SPONSOR', summary: 'Sponsors: lines that rotate in the status bar' }], symbols: [{ cmd: 'BAR', name: 'Barrick' }] };
-// Words drawn as pictures on the stone page (the video's label, the homepage's caption)
-// and the short story (its own budget) are left out of the 30 words.
-const PICTURE_WORDS = (html) => html.replace(/<p class="gv-story">[^<]*<\/p>/, '').replace(/<span class="gv-(?:vlabel|sitecap)">[^<]*<\/span>/g, '');
+// Words drawn as pictures on the stone page (the video's label, the homepage's caption,
+// inside their boxes) and the short story (its own budget) are left out of the 30 words.
+const PICTURE_WORDS = (html) => html.replace(/<p class="gv-story">[^<]*<\/p>/, '').replace(/<span class="gv-cap gv-(?:vlabel|sitecap)">[^<]*<\/span>/g, '');
 export const NOSUCH = [
   ['NO SUCH, a word IPO IT can list', noSuch('$QXZVW', {}, 'QXZVW', { grave: null, ipo: true })],
-  ['NO SUCH, a word it cannot', noSuch('ZORBLAT', {}, null, { grave: null, ipo: false })],
-  ['NO SUCH, an unknown command with guesses', noSuch('FOO BAR BAZ', GUESSES, null, { grave: null, ipo: false })],
-  // 30, and the Did-you-mean line's own 6 words ("Did you mean LEH, Lehman Brothers?").
-  ['NO SUCH, a close match (LEHM): the Did-you-mean line', noSuch('LEHM', {}, 'LEHM', { grave: null, ipo: true }), 36],
+  ['NO SUCH, a word it cannot', noSuch('ZORBL', {}, 'ZORBL', { grave: null, ipo: false })],
+  // 30, and the Did-you-mean line's own 6 words ("Did you mean LEH, Lehman Brothers?") and
+  // the matching stones' heading (3: "In the graveyard").
+  ['NO SUCH, a close match (LEHM): the Did-you-mean line', noSuch('LEHM', {}, 'LEHM', { grave: null, ipo: true }), 39],
   ['NO SUCH, a dead ticker (LEH, a quote elsewhere)', noSuch('LEH', {}, 'LEH', { grave: graveOf('LEH'), ipo: false }, { quote: true })],
   ['GRAVEYARD LEH', stonePageHtml(graveOf('LEH'), 12)],
   ['GRAVEYARD GM (a zombie)', stonePageHtml(graveOf('GM'), 0)],
+];
+// UNKNOWN COMMAND: the kit's numbered panel, not a card page. Its budget: the title (2),
+// Esc back (2), the one line (10), CLOSEST and TRY ONE (3), the five START HERE rows
+// (about 15), Ctrl K every command and Tell us what you wanted (7): 45 at most.
+export const UNKNOWN = [
+  ['UNKNOWN COMMAND', noSuch('ZORBLATTER', {}, null, { grave: null, ipo: false })],
+  ['UNKNOWN COMMAND with guesses (none close)', noSuch('FOO BAR BAZ', GUESSES, null, { grave: null, ipo: false })],
+  ['UNKNOWN COMMAND, CLOSEST', noSuch('MARKTS', { commands: [{ name: 'MARKETS', cmd: 'MARKETS', summary: 'World markets' }] }, null, { grave: null, ipo: false })],
 ];
 
 // ---- Part B: result screens, TAPE, SPONSOR's terminal, the shell's own small cards -------
@@ -420,22 +422,24 @@ test('NO SUCH TICKER and a GRAVEYARD stone: card pages, 30 words; every stone in
     const words = cardWords(PICTURE_WORDS(html));
     assert.ok(words.length <= budget, `${name}: ${words.join(' ')}`);
   }
-  const [ipo, word, guesses, lehm, grave, leh] = NOSUCH.map(([, html]) => html);
-  // IPO IT: the kicker, the ticker, "Be the first.", IPO IT, the certificate and the row.
-  assert.match(ipo, /card-kicker">No such ticker\. Yet\.<\/p><h2 class="card-hero card-hero-60 num">\$QXZVW<\/h2><p class="card-sub">Nobody has listed it\. Be the first\.<\/p>/);
+  for (const [name, html] of UNKNOWN) {
+    assert.match(html, /^<section class="panel panel-solo ns-unk">/, `${name}: the numbered panel`);
+    const words = cardWords(html.replace(/<span class="ns-cmd">[^<]*<\/span>/g, ''));
+    assert.ok(words.length <= 45, `${name}: ${words.length} words: ${words.join(' ')}`);
+    assert.doesNotMatch(html, /EGGPRICE|SPONSOR|Barrick/, `${name}: guesses by meaning alone are not listed`);
+  }
+  const [ipo, word, lehm, grave, leh] = NOSUCH.map(([, html]) => html);
+  // NO SUCH TICKER: the kicker, the ticker, "Be the first.", IPO IT, the certificate on the right.
+  assert.match(ipo, /card-kicker">No such ticker\. Yet\.<\/p><h2 class="card-hero card-hero-96 num">\$QXZVW<\/h2><p class="card-sub">Nobody has listed it\. Be the first\.<\/p>/);
   assert.match(ipo, /<div class="card-act"><button type="button" class="btn card-btn btn-solid ns-ipo-btn" data-cmd="IPO IT QXZVW" data-ipo data-key="1">IPO IT<\/button>/);
-  assert.match(ipo, /<div class="card-media"><div class="ns-media"><a class="ns-mini"[\s\S]*class="ns-yard"/, 'the certificate and THE GRAVEYARD row are the media');
-  assert.doesNotMatch(ipo, /card-alert|Did you mean/, 'nothing close: no line');
-  assert.match(word, /card-kicker">Unknown command<\/p>[\s\S]*data-cmd="HELP">HELP<\/a>/, 'no guess: HELP is the action');
-  assert.match(word, /data-prefill="Please add: ZORBLAT">Tell us\.<\/a>/);
-  // Guesses: the first is the action (key 1), the others links (keys 2, 3), what each is in + Details.
-  assert.match(guesses, /btn-solid" href="\?c=EGGPRICE" data-cmd="EGGPRICE" data-key="1"/);
-  assert.match(guesses, /class="card-link" href="\?c=SPONSOR" data-cmd="SPONSOR" data-key="2"/);
-  assert.match(guesses.split('<details')[1], /Average price of a dozen eggs/);
-  assert.ok(!cardWords(guesses).includes('Average'), 'the long words are in + Details (and the tooltip)');
-  // A close match: the one line on top (the alert slot), key 1; the rest one key down.
-  assert.match(lehm, /^<section class="card ns-card"[^>]*><p class="card-alert" role="status"><span class="ns-dym">Did you mean <a href="\?c=GRAVEYARD\+LEH" data-cmd="GRAVEYARD LEH" data-key="1" data-dym>LEH, Lehman Brothers<\/a>\?/);
+  assert.match(ipo, /<div class="card-art"><div class="ns-cert-col"><figure class="ns-cert2" role="img" aria-label="[^"]+">/, 'the certificate is the picture');
+  assert.doesNotMatch(ipo, /card-alert|Did you mean|gv-stone/, 'nothing close: no line, no stones');
+  assert.match(word, /card-kicker">No such ticker\. Yet\.<\/p>[\s\S]*data-cmd="HELP" data-key="1">HELP<\/a>/, 'no IPO IT: HELP is the action');
+  assert.match(word, /data-prefill="Please add: ZORBL">Tell us\.<\/a>/);
+  // A close match: the one line on top (the alert slot), key 1; IPO IT key 2; LEH's stone.
+  assert.match(lehm, /^<section class="card card-wide card-split ns-card ns-tk"[^>]*><p class="card-alert" role="status"><span class="ns-dym">Did you mean <a href="\?c=GRAVEYARD\+LEH" data-cmd="GRAVEYARD LEH" data-key="1" data-enter data-dym>LEH, Lehman Brothers<\/a>\?/);
   assert.match(lehm, /data-cmd="IPO IT LEHM" data-ipo data-key="2">IPO IT</);
+  assert.match(lehm, /class="ns-rip-stone"/);
   // A dead ticker typed on its own: the stone card, "Not anymore.", the name as the hero,
   // F PAY RESPECTS, the quote.
   assert.match(grave, new RegExp(`card-kicker">${TITLE_GONE.replace(/\./g, '\\.')}</p><h2 class="card-hero card-hero-44 num">Lehman Brothers</h2>`));
@@ -456,9 +460,11 @@ test('NO SUCH TICKER and a GRAVEYARD stone: card pages, 30 words; every stone in
   // The filing date once above + Details (the sub), and never "0 respects".
   assert.equal((cardWords(top).join(' ').match(/Filed/g) || []).length, 1);
   assert.doesNotMatch(top, /\d respects?|0 respects/);
-  // The share links, the story, then the video and the last homepage side by side, in the
-  // media slot, in that order.
-  assert.match(leh, /<div class="card-media"><div class="gv-body"><p class="card-links gv-share"><a class="card-link" href="https:\/\/x\.com\/intent\/post[^"]*"[^>]*data-share="grave" data-via="x">SHARE ON X<\/a> <button type="button" class="card-link" data-copy="[^"]+" data-share="grave" data-via="link">COPY LINK<\/button><\/p><p class="gv-story">Lehman Brothers was a 158-year-old[^<]*<\/p><div class="gv-card-media has-video has-site"><div class="gv-card-video"><button type="button" class="gv-video"[\s\S]*?<span class="gv-vlabel">PLAY VIDEO<\/span>\s*<\/button><\/div><div class="gv-card-site"><a class="gv-site"[\s\S]*?<span class="gv-sitecap">lehman\.com, Sep 2008 · Internet Archive<\/span>\s*<\/a><\/div><\/div><\/div><\/div>/);
+  // The share links under the stone; the story in the words' column; under both columns
+  // the video and the last homepage, two boxes, their captions inside.
+  assert.match(leh, /<\/figure><p class="gv-share"><a class="card-link" href="https:\/\/x\.com\/intent\/post[^"]*"[^>]*data-share="grave" data-via="x">SHARE ON X<\/a> <button type="button" class="card-link" data-copy="[^"]+" data-share="grave" data-via="link">COPY LINK<\/button><\/p><\/div><\/div><div class="card-col">/);
+  assert.match(leh, /<div class="card-media"><p class="gv-story">Lehman Brothers was a 158-year-old[^<]*<\/p><\/div>/);
+  assert.match(leh, /<div class="gv-media n2"><button type="button" class="gv-video gv-box"[\s\S]*?<span class="gv-cap gv-vlabel">PLAY VIDEO[^<]*<\/span>\s*<\/button><a class="gv-site gv-box"[\s\S]*?<span class="gv-cap gv-sitecap">lehman\.com, Sep 2008 · Internet Archive<\/span>\s*<\/a><\/div><\/section>$/);
   const more = leh.split('<details class="how card-more">')[1];
   for (const bit of ['Real estate losses, Chapter 11', 'class="gv-tl"', 'SOURCES (', 'Esc, then F pays respects.', 'Weighing The Lehman Collapse']) assert.ok(more.includes(bit), `+ Details has ${bit}`);
   // The budgets: 30 words above + Details besides the story and the picture captions, the
@@ -479,7 +485,7 @@ test('NO SUCH TICKER and a GRAVEYARD stone: card pages, 30 words; every stone in
   assert.deepEqual(cardWords('<div role="img"><span>no label</span></div>'), ['no', 'label'], 'role="img" without an aria-label counts');
   // aria-hidden hides words from the count only on the known pictures (the certificate's
   // ticker and stamp): anywhere else it may not wrap more than 3 words.
-  const PICTURES = /class="(ns-mini-big|ns-mini-stamp|gv-play)"/;
+  const PICTURES = /class="(nsc nsc-[a-z0-9]+|nsc-stamp|gv-play)"/;
   for (const [name, html] of [...PAGES, ...USAGE, ...EMPTY].map(([n, h]) => [n, h])) {
     for (const m of html.matchAll(/<([a-z0-9]+)\b[^>]*\saria-hidden="true"[^>]*>([\s\S]*?)<\/\1>/gi)) {
       if (PICTURES.test(m[0])) continue;
@@ -507,7 +513,7 @@ test('every replaced site uses the kit: usage card, empty state, the NO SUCH car
   assert.doesNotMatch(app, /Unknown command\. Type <a/, 'the unknown-command screen is the NO SUCH card');
   // The NO SUCH card is in cards.js, loaded on first use (not in the startup JS).
   assert.match(app, /drawCard\(view, signal, \(c\) => c\.unknownHtml\(cmd\.input\)/);
-  assert.match(app, /\? cards\.didYouMeanHtml\(typed, found, ticker,/);
+  assert.match(app, /cleanups\.push\(ns\.showNotFound\(view, \{ typed, word, found, ticker, info, graves, quote, embed, status: setStatus \}\)\);/, 'NOT FOUND: screens/nosuch.js draws it');
   assert.doesNotMatch(app, /from '\.\/cards\.js'/, 'cards.js is never a static import of app.js');
   assert.match(src('public/screens/graveyard.js'), /el\.innerHTML = stonePageHtml\(e, counts\?\.\[e\.ticker\] \|\| 0\);/, 'GRAVEYARD LEH is the stone card');
 });
@@ -551,53 +557,23 @@ test('GRAVEYARD stone: text left, the stone right; a phone shows the stone first
   const css = readFileSync('public/screens/graveyard.css', 'utf8');
   const card = css.slice(css.indexOf('/* ---- One stone as a card page'));
   assert.match(card, /@media \(min-width: 1100px\) \{\n  \.gv-card\.card-split \{ grid-template-columns: minmax\(0, 640px\) 320px;[^}]*\}\n  \.gv-card\.card-split > \.card-art \{ order: 2; \}/, 'the stone in the right column');
-  assert.match(card, /\.gv-card-stone \{ width: 320px; max-width: 100%; \}/);
+  assert.match(card, /\.gv-card-stone \{ width: 320px; max-width: 100%; display: flex; flex-direction: column; align-items: center; gap: 16px; \}/, 'the stone, the share links under it');
   assert.match(card, /@media \(max-width: 1099px\) \{\n  \.gv-card-stone \{ width: 200px; \}/, '200 px wide is about 278 px tall');
   assert.match(card, /\.gv-story \{ max-width: 65ch;/);
   assert.doesNotMatch(css, /gv-page3|gv-a-stone|\.gv-page\b|gv-vcol|gv-respects|gv-flower|gv-more/, 'the older stone pages are gone');
   assert.doesNotMatch(readFileSync('public/screens/nosuch.css', 'utf8') + readFileSync('public/nosuch.css', 'utf8'), /ns-page|ns-grave|\.ns-stone|ns-quote|\.ns-ipo\b/, 'the older NO SUCH page is gone');
 });
 
-test('GRAVEYARD stone: the video and the homepage under the story, one height sized to the first view', () => {
-  // A fake page: the row starts 500 px down, the dock at 841 (a 1440x900 window); the words'
-  // column is 640 px wide.
-  const row = {
-    isConnected: true, style: { props: {}, setProperty(k, v) { this.props[k] = v; }, removeProperty(k) { delete this.props[k]; } },
-    parentElement: { clientWidth: 640 },
-    getBoundingClientRect: () => ({ top: 500 }),
-    querySelector: (q) => (['.gv-card-video', '.gv-card-site'].includes(q) ? {} : null),
-  };
-  const listeners = [];
-  const win = { matchMedia: () => ({ matches: false }), getComputedStyle: () => ({ overflowY: 'auto' }), innerHeight: 900, scrollY: 0, addEventListener: (t, f) => listeners.push(f), removeEventListener: () => listeners.pop() };
-  const doc = { getElementById: () => ({ scrollTop: 0, getBoundingClientRect: () => ({ bottom: 880 }) }), querySelector: () => ({ getBoundingClientRect: () => ({ top: 841 }) }) };
-  const stop = fitStone({ querySelector: () => row }, { win, doc });
-  const byWidth = Math.floor((640 - GV_ROW.gap - GV_ROW.siteExtra) / (GV_ROW.video + GV_ROW.site));
-  assert.equal(row.style.props['--gv-h'], `${Math.min(byWidth, 841 - 500 - 8 - GV_ROW.caption)}px`, 'the width or the room left, whichever is less');
-  assert.ok(byWidth * (GV_ROW.video + GV_ROW.site) + GV_ROW.gap + GV_ROW.siteExtra <= 640, 'side by side, within the column');
-  assert.equal(listeners.length, 1, 'again on resize');
-  stop();
-  assert.equal(listeners.length, 0);
-  // Tall room: the width decides; one item alone is as big as the column allows.
-  row.getBoundingClientRect = () => ({ top: 100 });
-  fitStone({ querySelector: () => row }, { win, doc });
-  assert.equal(row.style.props['--gv-h'], `${byWidth}px`);
-  row.querySelector = (q) => (q === '.gv-card-video' ? {} : null);
-  fitStone({ querySelector: () => row }, { win, doc });
-  assert.equal(row.style.props['--gv-h'], `${Math.min(GV_ROW.max, Math.floor(640 / GV_ROW.video))}px`, 'the video alone');
-  // A phone: no size, the row stacks and scrolls.
-  fitStone({ querySelector: () => row }, { win: { ...win, matchMedia: () => ({ matches: true }) }, doc });
-  assert.equal(row.style.props['--gv-h'], undefined);
-  // No media row: nothing to size.
-  assert.equal(typeof fitStone({ querySelector: () => null }, { win, doc }), 'function');
-  // One height: the video 16:9, the monitor (a 16:10 screen in a frame 25 px taller and
-  // 20 px wider) as tall as the video.
+test('GRAVEYARD stone: the video and the homepage under both columns, two boxes of one size', () => {
   const css = readFileSync('public/screens/graveyard.css', 'utf8');
-  for (const w of ['.gv-card-video { flex: 0 0 auto; width: calc(var(--gv-h) * 16 / 9); }', '.gv-card-site { flex: 0 0 auto; width: calc((var(--gv-h) - 25px) * 1.6 + 20px); }', '.gv-screen {\n  display: block; padding: 9px 9px 14px;']) assert.ok(css.includes(w), w);
-  assert.equal(GV_ROW.site, 1.6);
-  assert.equal(GV_ROW.siteExtra, 20 - 25 * 1.6);
-  // Both screens wire it.
-  assert.match(readFileSync('public/screens/graveyard.js', 'utf8'), /ctx\.onCleanup\(fitStone\(el\)\);/);
-  assert.match(readFileSync('public/screens/nosuch.js', 'utf8'), /const stopFit = info\?\.grave \? fitStone\(el\) : \(\) => \{\};/);
+  const card = css.slice(css.indexOf('/* ---- One stone as a card page'));
+  assert.match(card, /\.gv-card\.card-split > \.gv-media \{ order: 3; grid-column: 1 \/ -1; \}/, 'the row spans both columns');
+  assert.ok(card.includes('.gv-media { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; width: 100%; }'), 'half the row each');
+  assert.match(css, /\.gv-box \{\n  position: relative; display: block; width: 100%; aspect-ratio: 16 \/ 9;/, 'one shape: 16:9');
+  for (const m of css.slice(css.indexOf('/* The media boxes')).matchAll(/font-size:\s*(\d+)px/g)) assert.ok(Number(m[1]) >= 11, m[0]);
+  // No first-view sizing: nothing wires it any more.
+  assert.doesNotMatch(readFileSync('public/screens/graveyard.js', 'utf8'), /fitStone|GV_ROW/);
+  assert.doesNotMatch(readFileSync('public/screens/nosuch.js', 'utf8'), /fitStone/);
 });
 
 test('Part B: result screens are card pages; each keeps its facts, the rest in + Details', () => {

@@ -19,43 +19,80 @@
 
 
 
-.ns-mini {
-  --paper-ink: #2A1A10; --paper-red: #C23B2A;
-  position: relative; display: block; container-type: inline-size; width: 100%; max-width: 440px; margin: 14px 0 0;
+/* The certificate: the WHATIF paper, the words drawn on it in % of its width (cqw),
+   never under 11 px. */
+.ns-cert2 {
+  --paper-ink: #2A1A10; --paper-soft: #5B4636; --paper-red: #C23B2A;
+  position: relative; width: 100%; max-width: 600px; margin: 0; container-type: inline-size;
 }
-.ns-mini img { display: block; width: 100%; height: auto; }
-.ns-mini:hover { text-decoration: none; filter: brightness(1.06); }
-.ns-mini-big, .ns-mini-stamp { position: absolute; white-space: nowrap; line-height: 1; pointer-events: none; }
-.ns-mini-big { left: 49%; top: 43.5%; transform: translate(-50%, -50%) rotate(-1.5deg); font-size: 11cqw; font-weight: 800; letter-spacing: -.04em; color: var(--paper-ink); }
-.ns-mini-stamp {
-  left: 4%; top: 55%; transform: rotate(-10deg); padding: .5cqw 1.4cqw;
-  border: .5cqw solid var(--paper-red); border-radius: 1cqw; font-size: 2.1cqw; font-weight: 800; letter-spacing: .15cqw; color: var(--paper-red); opacity: .88;
-}
-
-.ns-yard { margin-top: 18px; }
-.ns-yard-row { display: flex; gap: 12px; flex-wrap: wrap; }
-.ns-mini-stone {
-  width: 84px; height: 100px; display: flex; align-items: center; justify-content: center; padding-top: 18px;
-  background: var(--stone); color: var(--stone-ink); border: 3px solid var(--stone-ink); border-radius: 42px 42px 4px 4px;
-  font-weight: 800; font-size: 18px; letter-spacing: -.02em;
-}
-.ns-mini-stone:hover { text-decoration: none; background: var(--text); }
-@media (max-width: 639px) {
-  .ns-yard-row { gap: 8px; }
-  .ns-mini-stone { width: calc((100% - 24px) / 4); height: 88px; font-size: 16px; }
+.ns-paper { display: block; width: 100%; height: auto; }
+.nsc { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; text-align: center; line-height: 1; color: var(--paper-ink); pointer-events: none; }
+.nsc-ribbon { left: 49.6%; top: 20.2%; font-family: 'Caveat', cursive; font-weight: 700; font-size: max(13px, 4.4cqw); }
+.nsc-big { left: 49%; top: 45%; font-size: 13cqw; font-weight: 800; letter-spacing: -.04em; transform: translate(-50%, -50%) rotate(-1.5deg); }
+.is-long .nsc-big { font-size: 10cqw; }
+.nsc-l1, .nsc-l2 { left: 49.9%; font-size: max(11px, 2.6cqw); }
+.nsc-l1 { top: calc(71.3% - .62em); font-weight: 800; }
+.nsc-l2 { top: calc(76.9% - .62em); font-weight: 600; color: var(--paper-soft); }
+.nsc-seal { left: 82.5%; top: 68.4%; font-size: max(11px, 3cqw); font-weight: 800; transform: translate(-50%, -50%) rotate(-8deg); }
+/* The stamp across the lower left, clear of the date and the serial. */
+.nsc-stamp {
+  position: absolute; left: 31%; top: 59%; transform: translate(-50%, -50%) rotate(-14deg); padding: .8cqw 2cqw; white-space: nowrap; pointer-events: none;
+  border: .7cqw solid var(--paper-red); border-radius: 1.2cqw; font-size: max(11px, 3.2cqw); font-weight: 800; letter-spacing: .3cqw; color: var(--paper-red); opacity: .85;
 }
 
-/* The NO SUCH card (app.js didYouMeanHtml, kit.js cardPage): the certificate preview and
-   THE GRAVEYARD row in the media slot, centred. */
-.ns-media { display: flex; flex-direction: column; align-items: center; gap: 24px; width: 100%; }
-.ns-card .ns-mini { width: min(100%, 360px); margin: 0 auto; }
-.ns-card .ns-yard { margin: 0; }
-.ns-card .ns-yard-row { justify-content: center; }
+/* Dead tickers whose letters match: the cemetery's small stones, each a link. */
+.ns-rip { display: flex; flex-direction: column; gap: 8px; }
+.ns-h { margin: 0; }
+.ns-rip-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.ns-rip-stone { display: block; width: 72px; }
+.ns-rip-stone:hover .gv-stone, .ns-rip-stone:focus-visible .gv-stone { filter: brightness(1.12); }
+
+/* The NO SUCH card: NO SUCH TICKER. YET. (nosuch.js tickerPageHtml, kit.js cardPage
+   split). The words left ($XQZT the hero, IPO IT, the matching stones, Tell us), the
+   certificate right, generous, with its share links under it. A phone: the words first,
+   then the certificate. */
+@media (min-width: 1100px) {
+  .ns-tk.card-split { grid-template-columns: minmax(0, 400px) minmax(0, 600px); justify-content: center; max-width: 100%; gap: 48px; align-items: center; }
+  .ns-tk.card-split .card-media { align-items: flex-start; }
+}
+.ns-tk > .card-art { order: 2; }
 .ns-card .ns-ask { margin: 0; white-space: nowrap; }
 .ns-card .ns-ask a { color: var(--accent); }
+.ns-cert-col { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; }
+
 /* The Did-you-mean line on top (kit.js cardPage alert): one line, the match a link. */
 .ns-card > .card-alert { font-size: 14px; color: var(--text-2); }
 .ns-dym a { color: var(--accent); font-weight: 700; }
+
+/* UNKNOWN COMMAND (nosuch.js unknownHtml): the kit's numbered panel, as tall as its lines
+   (no empty room under them). */
+html:not(.is-embed) .view > .panel.ns-unk { flex: 0 1 auto !important; min-height: 0; }
+.ns-unk .panel-body { display: flex; flex-direction: column; gap: 8px; padding: 12px 12px 16px; }
+.ns-unk-line { margin: 0 0 8px; font-size: 14px; color: var(--text-2); }
+.ns-unk .ns-h { margin-top: 8px; }
+.ns-rows { display: flex; flex-direction: column; max-width: 760px; }
+.ns-row {
+  display: grid; grid-template-columns: 18ch minmax(0, 1fr) auto 7ch; align-items: baseline; gap: 16px;
+  padding: 6px 8px; border-bottom: 1px solid var(--rule); color: var(--text-2); font-size: 14px; text-decoration: none;
+}
+.ns-row:hover, .ns-row:focus-visible { background: var(--panel-2); text-decoration: none; }
+.ns-cmd { color: var(--accent); font-weight: 700; white-space: nowrap; }
+.ns-what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ns-live { color: var(--text); white-space: nowrap; }
+.ns-live .up { color: var(--up); }
+.ns-live .down { color: var(--down); }
+.ns-k { justify-self: end; font-size: 12px; }
+.ns-unk-foot { margin: 12px 0 0; font-size: 12px; color: var(--dim); }
+.ns-unk-foot a { color: var(--text-2); }
+.ns-unk-foot a:hover { color: var(--text); text-decoration: none; }
+.ns-esc { font-size: 12px; color: var(--dim); }
+@media (max-width: 639px) {
+  .ns-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
+  .ns-row .ns-what { grid-column: 1; grid-row: 2; font-size: 12px; }
+  .ns-row .ns-live { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+  .ns-row .ns-k, .ns-row .ns-live:empty { display: none; }
+  .ns-rip-stone { width: 64px; }
+}
 
 /* The status line after a lookup that failed (app.js lookupFailed): the second text
    colour, not the loss red. */

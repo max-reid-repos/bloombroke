@@ -9,7 +9,7 @@ import { parseCommand, urlFor } from '../public/app.js';
 import { didYouMeanHtml } from '../public/cards.js';
 import { findCommand } from '../public/registry.js';
 import { dymRows, graveBeatsQuote, pickGraves, ipoShape, matchNoSuch, findGrave, tombstoneLine, dayText, ipoLinks, graveLinks, FEEDBACK_PREFILL, MAX_ROWS } from '../public/nosuch.js';
-import { noSuchExtra as extraSlots, graveyardTable, ipoHtml, ipoPreviewHtml, yardHtml, TITLE_YET } from '../public/screens/nosuch.js';
+import { noSuchExtra as extraSlots, graveyardTable, ipoHtml, tickerPageHtml, certHtml, certSerial, graveMatches, ripRowHtml, TITLE_YET } from '../public/screens/nosuch.js';
 import { stoneHtml } from '../public/screens/graveyard.js';
 import { setPrefill, takePrefill } from '../public/screens/feedback.js';
 import { GOALS, GOAL_PROPS, cleanProps } from '../public/goal.js';
@@ -127,13 +127,14 @@ test('IPO IT guard: A-Z, 1 to 5 letters, never a live ticker, a word the library
   assert.equal(ipoAllowed('MAXX', loadBlocklist('/nonexistent/file')), 'MAXX', 'a missing extra list: the library still guards');
   assert.equal(ipoAllowed('A' + 'SS', loadBlocklist('/nonexistent/file')), null);
   // The screen: IPO IT only when the server said yes, and only for a ticker.
-  assert.match(noSuchExtra('MAXX', { grave: null, ipo: true }, { ticker: 'MAXX', next: 2 }), /data-cmd="IPO IT MAXX" data-ipo data-key="2">IPO IT</);
-  assert.doesNotMatch(noSuchExtra('MAXX', { grave: null, ipo: false }, { ticker: 'MAXX' }), /IPO IT/);
+  const page = (ipo, top = null) => tickerPageHtml({ typed: 'MAXX', word: 'MAXX', info: { grave: null, ipo }, top, graves: GRAVE });
+  assert.match(page(true, { kind: 'live', id: 'MAX', name: 'MAX', cmd: 'MAX' }), /data-cmd="IPO IT MAXX" data-ipo data-key="2">IPO IT</, 'key 2 under the Did-you-mean line');
+  assert.doesNotMatch(page(false), /IPO IT/);
   assert.equal(TITLE_YET, 'No such ticker. Yet.');
 });
 
 test('FEEDBACK prefill: "Tell us." carries Please add: WORD, used once', () => {
-  const html = noSuchExtra('MAXX', { grave: null, ipo: false }, { ticker: 'MAXX' });
+  const html = tickerPageHtml({ typed: 'MAXX', word: 'MAXX', info: { grave: null, ipo: false }, graves: GRAVE });
   assert.match(html, /Want it on Bloombroke\? <a [^>]*data-cmd="FEEDBACK" data-prefill="Please add: MAXX">Tell us\.<\/a>/);
   assert.equal(FEEDBACK_PREFILL('MAXX'), 'Please add: MAXX');
   setPrefill('Please add: MAXX');
@@ -263,21 +264,38 @@ test('graveyard beats a non-US quote; a US listing wins', async () => {
   assert.doesNotMatch(noSuchExtra('LEH', { grave: findGrave(GRAVE, 'LEH') }, { ticker: 'LEH' }), /Quote:/);
 });
 
-test('the unknown-word page: certificate preview and THE GRAVEYARD row', () => {
-  let i = 0;
-  const seq = [0.1, 0.9, 0.5, 0.3, 0.7];
-  const four = pickGraves(GRAVE, 4, () => seq[i++ % seq.length]);
-  assert.equal(four.length, 4);
-  assert.equal(new Set(four.map((e) => e.ticker)).size, 4, 'no repeats');
-  assert.equal(pickGraves([], 4).length, 0);
-  const html = noSuchExtra('MAXX', { grave: null, ipo: true }, { ticker: 'MAXX', next: 1, yard: four });
-  assert.match(html, /class="ns-mini"[^>]*data-cmd="IPO IT MAXX" data-ipo/);
-  assert.match(html, /\$MAXX<\/span><span class="ns-mini-stamp" aria-hidden="true">NOT A REAL SECURITY/);
-  assert.equal((html.match(/class="ns-mini-stone"/g) || []).length, 4);
-  for (const e of four) assert.match(html, new RegExp(`data-cmd="GRAVEYARD ${e.ticker}"`));
-  assert.doesNotMatch(noSuchExtra('MAXX', { grave: null, ipo: false }, { ticker: 'MAXX', yard: four }), /ns-mini"/, 'no IPO, no preview');
-  assert.equal(yardHtml([]), '');
-  assert.match(ipoPreviewHtml('MAXX'), /certificate\.webp/);
+test('NO SUCH TICKER: the certificate is made out to what was typed; stones only when the letters match', () => {
+  const four = pickGraves(GRAVE, 4, () => 0.5);
+  assert.equal(four.length, 4, 'pickGraves stays for other callers');
+  // The certificate: the typed ticker, ONE SHARE, today's date, a serial from the letters.
+  const cert = certHtml('MAXX', { day: '2026-09-30' });
+  assert.match(cert, /certificate\.webp/);
+  assert.match(cert, /<span class="nsc nsc-big" aria-hidden="true">\$MAXX<\/span>/);
+  assert.match(cert, /ONE SHARE/);
+  assert.match(cert, /Issued 30 Sep 2026/);
+  assert.match(cert, new RegExp(`No\\. ${certSerial('MAXX')}`));
+  assert.match(cert, /class="nsc-stamp" aria-hidden="true">NOT A REAL SECURITY</);
+  assert.match(cert, /role="img" aria-label="A listing certificate: one share of \$MAXX, issued 30 Sep 2026/);
+  assert.equal(certSerial('MAXX'), certSerial('maxx'), 'the same letters, the same serial');
+  assert.notEqual(certSerial('MAXX'), certSerial('MAXY'));
+  assert.match(certSerial('Q'), /^\d{6}$/);
+  // The page: the hero, IPO IT, the certificate right with its share links (the IPO IT page).
+  const html = tickerPageHtml({ typed: 'MAXX', word: 'MAXX', info: { ipo: true }, graves: GRAVE, day: '2026-09-30' });
+  assert.match(html, /^<section class="card card-wide card-split ns-card ns-tk"/);
+  assert.match(html, /card-hero-96 num">\$MAXX<\/h2><p class="card-sub">Nobody has listed it\. Be the first\./);
+  assert.match(html, /data-cmd="IPO IT MAXX" data-ipo data-key="1">IPO IT</);
+  assert.match(html, /<div class="card-art"><div class="ns-cert-col"><figure class="ns-cert2"[\s\S]*SHARE ON X[\s\S]*data-copy="https:\/\/bloombroke\.com\/\?c=IPO\+IT\+MAXX"/);
+  assert.doesNotMatch(html, /gv-stone|ns-rip/, 'no dead ticker matches MAXX: no stones, never random ones');
+  // Not listable (a blocked word): the words alone, no certificate, no share.
+  const bare = tickerPageHtml({ typed: 'MAXX', word: 'MAXX', info: { ipo: false }, graves: GRAVE });
+  assert.doesNotMatch(bare, /ns-cert2|SHARE ON X|card-split/);
+  // LEHM: LEH stands under the words, in the stone art, a link to its page.
+  assert.deepEqual(graveMatches('LEHM', GRAVE).map((e) => e.ticker), ['LEH']);
+  assert.deepEqual(graveMatches('XQZT', GRAVE), []);
+  assert.ok(graveMatches('ENR', GRAVE).length <= 3);
+  const lehm = tickerPageHtml({ typed: 'LEHM', word: 'LEHM', info: { ipo: true }, graves: GRAVE });
+  assert.match(lehm, /<a class="ns-rip-stone" href="\?c=GRAVEYARD\+LEH" data-cmd="GRAVEYARD LEH"[^>]*><figure class="gv-stone is-small/);
+  assert.equal(ripRowHtml([]), '');
 });
 
 test('IPO cards: memory only, bounded by entries and bytes', () => {

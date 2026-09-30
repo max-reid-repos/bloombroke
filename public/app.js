@@ -1510,15 +1510,13 @@ function boot() {
     view.innerHTML = panel('1', typed, '<p class="notice">Could not look that up. Try again in a minute.</p>', { cls: 'panel-solo' });
     setStatus('COULD NOT LOOK THAT UP. TRY AGAIN', 'note');
   }
-  // NO SUCH TICKER. YET. (screens/nosuch.js): IPO IT and the certificate, THE GRAVEYARD
-  // row, "Tell us." and the guesses; a tombstone for a famous dead ticker typed on its own
-  // (LEH). A graveyard company's name (LEHMAN, ENRON) opens its stone. A close match by
-  // ticker or name adds one line on top ("Did you mean LEH, Lehman Brothers?"): Enter opens it.
+  // NOT FOUND (screens/nosuch.js showNotFound): NO SUCH TICKER. YET. for ticker-shaped
+  // words, the UNKNOWN COMMAND panel for anything else, a dead ticker's stone card (LEH).
+  // A graveyard company's name (LEHMAN, ENRON) opens its stone.
   async function showDidYouMean(view, typed, found, ticker, signal, { quote = false } = {}) {
     const toks = tokenize(typed);
     const word = ticker || (toks.length === 1 ? toks[0] : null);
-    // NO SUCH TICKER. YET. (screens/nosuch.js) loads with its stylesheet the first time.
-    const [ns, cards] = await Promise.all([loadScreen(lazy(NOSUCH), stylesFor(lazy(NOSUCH))).catch(() => null), loadModule(CARDS).catch(() => null)]);
+    const ns = await loadScreen(lazy(NOSUCH), stylesFor(lazy(NOSUCH))).catch(() => null);
     if (signal?.aborted) return;
     const none = { grave: null, ipo: false };
     const [info, graves] = ns ? await Promise.all([word && !embed ? ns.noSuchInfo(word, { signal }) : none, ns.loadGraves(signal)]) : [none, []];
@@ -1534,22 +1532,9 @@ function boot() {
     neutralHead(ticker || info.grave ? typed : 'Unknown command');
     // GA4: a GRAVEYARD stone's ticker, or just UNKNOWN (never the words typed).
     if (!embed) window.dispatchEvent(new CustomEvent('bb:page', { detail: info.grave?.ticker || 'UNKNOWN' }));
-    // The close match for the line on top (not on a stone card); the guesses never repeat it.
-    const top = ns && !info.grave ? ns.closeMatch(typed, { found, graves }) : null;
-    if (ns) found = ns.withoutMatch(found, top);
-    const rows = ns ? ns.guessCount(found, typed, ticker) : 0;
-    const title = info.grave ? ns.TITLE_GONE : ticker ? (ns?.TITLE_YET || 'No such ticker') : 'Unknown command';
-    const extra = !ns ? {} : embed ? ns.noSuchExtra(null, none, { top })
-      : ns.noSuchExtra(word, info, { ticker, next: rows + 1, quote, yard: info.grave ? [] : ns.yardPick(graves.filter((g) => `GRAVEYARD ${g.ticker}` !== top?.cmd)), top });
     view.classList.remove('is-loading');
-    const html = cards
-      ? cards.didYouMeanHtml(typed, found, ticker, { extra: { ...extra, kicker: extra.kicker || title } })
-      : panel('1', title, NOT_LOADED, { cls: 'panel-solo' });
-    view.innerHTML = cards && top ? ns.keysAfterLine(html) : html;
-    if (!embed && ns) cleanups.push(ns.wireNoSuch(view, word, info, { status: setStatus, enter: Boolean(top) }));
-    if (info.grave) setStatus(`${info.grave.ticker}: ${info.grave.what.toUpperCase()}`, 'warn');
-    else if (top) setStatus(`NOT FOUND. ENTER OPENS ${String(top.id || top.name).toUpperCase()}, OR TYPE HELP`, 'warn');
-    else setStatus(rows ? 'NOT FOUND. PICK ONE BELOW, OR TYPE HELP' : ticker ? 'NO SUCH TICKER. TYPE HELP' : 'UNKNOWN COMMAND. TYPE HELP', 'warn');
+    if (!ns) { view.innerHTML = panel('1', 'Unknown command', NOT_LOADED, { cls: 'panel-solo' }); setStatus('UNKNOWN COMMAND. TYPE HELP', 'warn'); return; }
+    cleanups.push(ns.showNotFound(view, { typed, word, found, ticker, info, graves, quote, embed, status: setStatus }));
   }
 
   function remember(clean) {
