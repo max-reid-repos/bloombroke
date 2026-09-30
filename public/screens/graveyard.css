@@ -47,27 +47,32 @@
 .gv-sources[open] > summary { color: var(--text); }
 .gv-sources ul { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 2px 12px; }
 
-/* The video: our own drawing and a play mark; a click swaps in the player. */
-.gv-video {
-  position: relative; display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 16 / 9; padding: 0;
-  border: 1px solid var(--rule-strong); background: radial-gradient(ellipse at 50% 60%, var(--panel-3), var(--bg)); cursor: pointer; overflow: hidden;
+/* The media boxes (graveyard.js videoHtml, siteHtml): one shape, 16:9, the same 1px
+   border, the caption inside at the bottom edge on a scrim, 11px caps. */
+.gv-box {
+  position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; margin: 0; padding: 0; overflow: hidden;
+  border: 1px solid var(--rule-strong); border-radius: 0; background: var(--panel-2); cursor: pointer; text-decoration: none;
 }
-.gv-video img { position: absolute; left: 50%; top: 46%; width: 46%; height: auto; transform: translate(-50%, -50%) rotate(-4deg); opacity: .9; }
-.gv-video:hover img, .gv-video:focus-visible img { opacity: 1; }
-.gv-play { position: absolute; left: 50%; top: 50%; width: 56px; height: 40px; transform: translate(-50%, -50%); background: var(--accent); border-radius: 8px; }
-.gv-play::after { content: ''; position: absolute; left: 22px; top: 11px; border-style: solid; border-width: 9px 0 9px 15px; border-color: transparent transparent transparent var(--ink); }
-.gv-vlabel { position: absolute; left: 10px; bottom: 8px; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--text-2); }
-
-/* The last website, in an old monitor. */
-.gv-site { display: block; max-width: 330px; text-decoration: none; }
-.gv-site:hover { text-decoration: none; }
-.gv-screen {
-  display: block; padding: 9px 9px 14px; background: linear-gradient(180deg, #D9D3C4, #BDB6A6); border: 1px solid #6F6A5E; border-radius: 9px;
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .25), 0 3px 0 #6F6A5E;
+.gv-box:hover { text-decoration: none; border-color: var(--accent); }
+.gv-box:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gv-cap {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 10px 7px; overflow: hidden;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, .78) 55%);
+  font-size: 11px; font-weight: 700; line-height: 1.2; letter-spacing: .08em; text-transform: uppercase; text-align: left;
+  color: #fff; white-space: nowrap; text-overflow: ellipsis;
 }
-.gv-screen img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; object-position: top; border: 2px solid #2B2A26; border-radius: 3px; background: #fff; }
-.gv-site:hover .gv-screen img, .gv-site:focus-visible .gv-screen img { outline: 2px solid var(--accent); }
-.gv-sitecap { display: block; margin-top: 7px; font-size: 11px; color: var(--dim); letter-spacing: .02em; }
+/* The video: our own doodle, large and centred on a paper ground, and a big play mark. */
+.gv-video { background: radial-gradient(ellipse at 50% 45%, #F4EBD6, #DCCDAA); }
+.gv-video img { position: absolute; left: 50%; top: 44%; width: auto; height: 78%; transform: translate(-50%, -50%) rotate(-4deg); }
+.gv-play {
+  position: absolute; left: 50%; top: 50%; width: 72px; height: 72px; transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, .72); border: 2px solid #fff; border-radius: 50%;
+}
+.gv-play::after { content: ''; position: absolute; left: 27px; top: 20px; border-style: solid; border-width: 15px 0 15px 24px; border-color: transparent transparent transparent #fff; }
+.gv-video:hover .gv-play, .gv-video:focus-visible .gv-play { background: #fff; }
+.gv-video:hover .gv-play::after, .gv-video:focus-visible .gv-play::after { border-left-color: #000; }
+/* The last website: its masthead (the top of the archived homepage), cropped, not squeezed. */
+.gv-site img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; background: #fff; }
 
 /* ---- The cemetery ---- */
 /* The LATEST line: one line of text above the painting, the stone Enter opens. */
@@ -157,36 +162,32 @@
 }
 
 /* ---- One stone as a card page (graveyard.js stonePageHtml, kit.js cardPage split) ----
-   Two layouts only: here the words on the left and the stone, the one picture, on the
-   right (a phone and a narrow window: the stone first, then the words). The stone keeps
-   its engraving; respects are candles at its foot, none at zero. Above + Details: the
-   name, one line, F PAY RESPECTS (the count only after it), two facts at most, the share
-   links, the short story (65ch), and under it the video and the last homepage side by
-   side at one height (--gv-h, graveyard.js fitStone), each with its caption; a phone
-   stacks them. Text and data screens only. Art screens (GRAVEYARD, the WHATIF catalogue,
-   FISHTANK) are their own layout; see kit.css Rule E. */
+   Two columns with two jobs: the words on the left (the name, one line, F PAY RESPECTS,
+   two facts at most, the short story at 65ch), the stone on the right with the share
+   links under it (the stone is what gets shared). Under both, one media row: the video
+   and the last homepage, two boxes of one size (half the row each, 16:9); one box alone
+   keeps its half, left. A phone and a narrow window: the stone, the words, then the
+   boxes stacked full width. Text and data screens only. Art screens (GRAVEYARD, the
+   WHATIF catalogue, FISHTANK) are their own layout; see kit.css Rule E. */
 @media (min-width: 1100px) {
   .gv-card.card-split { grid-template-columns: minmax(0, 640px) 320px; justify-content: center; max-width: 100%; gap: 48px; }
   .gv-card.card-split > .card-art { order: 2; }
+  .gv-card.card-split > .gv-media { order: 3; grid-column: 1 / -1; }
   .gv-card.card-split .card-media { align-items: flex-start; }
 }
-.gv-card-stone { width: 320px; max-width: 100%; }
+.gv-card-stone { width: 320px; max-width: 100%; display: flex; flex-direction: column; align-items: center; gap: 16px; }
 .gv-card-stone .gv-stone { width: 100%; }
 .gv-card-stone .gv-doodle { right: -9%; width: 40%; }
+/* The share links under the stone (and under NO SUCH TICKER's certificate): the kit's
+   link row, centred under the picture. */
+.gv-share { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 24px; margin: 0; font-size: 12px; letter-spacing: .06em; color: var(--dim); }
 .gv-card .card-fact dd.down { color: var(--down); }
 .gv-card .card-fact dd.up { color: var(--up); }
 .gv-f kbd { margin-right: 8px; background: transparent; color: var(--ink); border-color: var(--ink); }
 .gv-count { color: var(--text-2); font-size: 14px; }
-.gv-body { display: flex; flex-direction: column; gap: 16px; width: 100%; }
 .gv-story { max-width: 65ch; margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-2); text-align: left; }
-/* The media row: the video (16:9) and the homepage's monitor, both --gv-h tall (the
-   monitor: its 16:10 screen plus the frame, 25px tall and 20px wide; .gv-screen). */
-.gv-card-media { --gv-h: 240px; display: flex; align-items: flex-start; gap: 24px; width: 100%; }
-.gv-card-video { flex: 0 0 auto; width: calc(var(--gv-h) * 16 / 9); }
-.gv-card-video .gv-video img { width: 30%; }
-.gv-card-site { flex: 0 0 auto; width: calc((var(--gv-h) - 25px) * 1.6 + 20px); }
-.gv-card-site .gv-site { max-width: none; }
-.gv-player { display: block; width: 100%; max-width: 640px; aspect-ratio: 16 / 9; border: 1px solid var(--rule-strong); }
+.gv-media { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; width: 100%; }
+.gv-player { display: block; width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--rule-strong); }
 .gv-card .card-details .gv-tl { margin-bottom: 16px; }
 
 /* Candles at the stone's foot: small, drawn, a little flicker (none with reduced motion). */
@@ -206,12 +207,11 @@
 @media (prefers-reduced-motion: reduce) { .gv-flame, .gv-candle.is-new { animation: none; } }
 @media (max-width: 1099px) {
   .gv-card-stone { width: 200px; }
-  .gv-body { align-items: center; }
-  .gv-story { text-align: left; }
-  .gv-card-media { justify-content: center; }
+  .gv-card .card-media { align-items: center; }
+  .gv-card > .gv-media { max-width: var(--card-w); }
 }
 @media (max-width: 639px) {
-  .gv-card-media { flex-direction: column; align-items: center; }
-  .gv-card-video, .gv-card-site { width: 100%; }
-  .gv-card-site { max-width: 330px; }
+  .gv-media { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .gv-play { width: 56px; height: 56px; }
+  .gv-play::after { left: 21px; top: 15px; border-width: 12px 0 12px 19px; }
 }

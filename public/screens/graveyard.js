@@ -1,6 +1,6 @@
 // GRAVEYARD: the cemetery (the painting: the stones on its terraces by their signposts,
 // the LATEST line above it), the stone pages (candles at the stone's foot, the video and
-// the last homepage under the story), the table, ZOMBIES, F to pay respects, the
+// the last homepage under both columns), the table, ZOMBIES, F to pay respects, the
 // click-to-load video, and ON THIS DAY on HOME. The pure parts are ../nosuch.js; the
 // server is lib/graveyard.js and lib/og-nosuch.js.
 //
@@ -205,17 +205,17 @@ export function peakLineHtml(e) {
   return `<p class="gv-whatif">${esc(e.peakLine)}</p>`;
 }
 
-// The video: our own art (the company's doodle) and a play mark, with the channel. Nothing
-// is asked of YouTube or Google until the click; the click swaps in the
-// youtube-nocookie.com player (wireVideo).
-// channel: false leaves the channel off the label (the stone card lists it in + Details).
-export function videoHtml(e, { channel = true } = {}) {
+// The video: our own art (the company's doodle, large on a paper ground) and a big play
+// mark, its caption inside the box at the bottom (PLAY VIDEO · CBS). Nothing is asked of
+// YouTube or Google until the click; the click swaps in the youtube-nocookie.com player
+// (wireVideo). A real button: Enter on it plays it too.
+export function videoHtml(e) {
   if (!ytEmbed(e.video?.id)) return '';
   const label = `Play: ${e.video.title}${e.video.channel ? ` (${e.video.channel})` : ''}`;
   const doodle = e.art?.doodle;
-  return `<button type="button" class="gv-video" data-yt="${esc(e.video.id)}" aria-label="${esc(label)}" title="${esc(label)}">
+  return `<button type="button" class="gv-video gv-box" data-yt="${esc(e.video.id)}" aria-label="${esc(label)}" title="${esc(label)}">
       ${doodle ? `<img src="${esc(doodle)}" width="384" height="384" alt="">` : ''}<span class="gv-play" aria-hidden="true"></span>
-      <span class="gv-vlabel">PLAY VIDEO${channel && e.video.channel ? ` · ${esc(e.video.channel)}` : ''}</span>
+      <span class="gv-cap gv-vlabel">PLAY VIDEO${e.video.channel ? ` · ${esc(e.video.channel)}` : ''}</span>
     </button>`;
 }
 
@@ -236,15 +236,15 @@ export function wireVideo(el) {
   }
 }
 
-// LAST WEBSITE as a picture: the Internet Archive's copy of the homepage near the end, in
-// an old monitor, a link to the snapshot. Without a capture: nothing here (the Sources
-// line keeps the LAST WEBSITE text link).
+// LAST WEBSITE as a picture: the Internet Archive's copy of the homepage near the end,
+// cropped to its masthead, its caption inside the box; a link to the snapshot. Without a
+// capture: nothing here (the Sources line keeps the LAST WEBSITE text link).
 export function siteHtml(e) {
   if (!e.wayback || !e.art?.site) return '';
   const cap = siteCaption(e.wayback);
-  return `<a class="gv-site" href="${esc(e.wayback)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`${cap}: the last website`)}">
-      <span class="gv-screen"><img src="${esc(e.art.site)}" width="800" height="500" alt="" loading="lazy"></span>
-      <span class="gv-sitecap">${esc(cap)}</span>
+  return `<a class="gv-site gv-box" href="${esc(e.wayback)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`${cap}: the last website`)}">
+      <img src="${esc(e.art.site)}" width="800" height="500" alt="" loading="lazy">
+      <span class="gv-cap gv-sitecap">${esc(cap)}</span>
     </a>`;
 }
 
@@ -272,13 +272,14 @@ export function timelineHtml(e, { cliff = true } = {}) {
 
 // ---- One stone as a card page ---------------------------------------------------------------
 
-// kit.js cardPage, split: the words left, the stone (the one drawing) right; a phone shows
-// the stone first. For GRAVEYARD LEH and for a dead ticker typed on its own (NO SUCH
-// TICKER, screens/nosuch.js). Above + Details: GRAVEYARD · LEH, the name, what happened
-// and when, F PAY RESPECTS (the count only after the press), two facts at most, the share
-// links, the short story, and under it the video and the last homepage side by side, one
-// height (fitStone). + Details: the timeline, the cause, the RIP WHATIF line, the
-// comeback, the video's title, the keys and every source.
+// kit.js cardPage, split: the words left, the stone (the one drawing) right, and under
+// both one media row; a phone shows the stone, the words, then the media. For GRAVEYARD
+// LEH and for a dead ticker typed on its own (NO SUCH TICKER, screens/nosuch.js). The
+// words: GRAVEYARD · LEH, the name, what happened and when, F PAY RESPECTS (the count
+// only after the press), two facts at most and the short story. Under the stone: the
+// share links (the stone is what gets shared). The media row: the video and the last
+// homepage, two boxes of one size. + Details: the timeline, the cause, the RIP WHATIF
+// line, the comeback, the video's title, the keys and every source.
 const money = (v) => `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // Two facts at most, both from the data: the peak, and what $1,000 at the peak became.
@@ -294,17 +295,12 @@ export function stoneFacts(e) {
 // The short story: the sourced key facts, as one paragraph.
 export const storyText = (e) => (Array.isArray(e.keyFacts) ? e.keyFacts.join(' ') : '');
 
-// Under the story: the video (a click loads it) and the last homepage (the archive's copy,
-// a link to it), side by side at one height. Only what the stone has: one of them, or
-// nothing (no empty frame).
+// Under both columns: the video (a click loads it) and the last homepage (the archive's
+// copy, a link to it), two boxes of one size (half the row each, 16:9). Only what the
+// stone has: one box at half width, or nothing (no empty frame).
 export function stoneMediaHtml(e) {
-  const video = videoHtml(e, { channel: false });
-  const site = siteHtml(e);
-  if (!video && !site) return '';
-  return `<div class="gv-card-media${video ? ' has-video' : ''}${site ? ' has-site' : ''}">`
-    + (video ? `<div class="gv-card-video">${video}</div>` : '')
-    + (site ? `<div class="gv-card-site">${site}</div>` : '')
-    + '</div>';
+  const boxes = [videoHtml(e), siteHtml(e)].filter(Boolean);
+  return boxes.length ? `<div class="gv-media n${boxes.length}">${boxes.join('')}</div>` : '';
 }
 
 // The card's slots, so NO SUCH TICKER can put its own kicker and links in.
@@ -322,7 +318,10 @@ export function stoneSlots(e, n = 0) {
   const facts = stoneFacts(e);
   return {
     wide: true, split: true, cls: 'gv-card', label: `Graveyard: ${e.name}`,
-    art: raw(`<div class="gv-card-stone">${stoneHtml(e, { n })}</div>`),
+    art: raw(`<div class="gv-card-stone">${stoneHtml(e, { n })}`
+      + '<p class="gv-share">'
+      + `<a class="card-link" href="${esc(links.x)}" target="_blank" rel="noopener noreferrer" data-share="grave" data-via="x">SHARE ON X</a> `
+      + `<button type="button" class="card-link" data-copy="${esc(links.url)}" data-share="grave" data-via="link">COPY LINK</button></p></div>`),
     kicker: `Graveyard · ${e.ticker}`,
     hero: e.name, heroSize: 44,
     sub: `${e.what} ${dayText(e.date)}.`,
@@ -330,59 +329,18 @@ export function stoneSlots(e, n = 0) {
     // Nothing before the press: then "You and 12 others" (wireRespects).
     note: raw('<span class="gv-count" data-reveal hidden></span>'),
     facts: facts.length ? facts : null,
-    media: raw('<div class="gv-body">'
-      + '<p class="card-links gv-share">'
-      + `<a class="card-link" href="${esc(links.x)}" target="_blank" rel="noopener noreferrer" data-share="grave" data-via="x">SHARE ON X</a> `
-      + `<button type="button" class="card-link" data-copy="${esc(links.url)}" data-share="grave" data-via="link">COPY LINK</button></p>`
-      + (story ? `<p class="gv-story">${esc(story)}</p>` : '')
-      + stoneMediaHtml(e)
-      + '</div>'),
+    media: story ? raw(`<p class="gv-story">${esc(story)}</p>`) : '',
     links: [],
     details: raw(`${timelineHtml(e, { cliff: false })}${cardRows(rows)}`),
   };
 }
 
-export function stonePageHtml(e, n = 0) {
-  return cardPage(stoneSlots(e, n));
-}
-
-// Browser only: size the media row (the video and the last homepage) to the room left in
-// the first view, like kit.js fitToView does for the globe: one height for both frames
-// (--gv-h), between min and max px, and no wider than the words' column. The video is
-// 16:9; the homepage's monitor (a 16:10 screen in its frame, graveyard.css) is as tall,
-// its caption under it (its drawn height kept free, else caption px). Nothing is
-// cropped. A phone (under 640 px) stacks them and scrolls. Measured as if the page were
-// scrolled to the top, up to the dock; twice, as the caption may wrap at the new width.
-// Returns a cleanup.
-export const GV_ROW = { video: 16 / 9, site: 1.6, siteExtra: -20, gap: 24, caption: 32, min: 96, max: 480 };
-export function fitStone(el, { win = globalThis.window, doc = globalThis.document } = {}) {
-  const row = el?.querySelector?.('.gv-card-media');
-  if (!row || !win || !doc) return () => {};
-  const fit = () => {
-    if (!row.isConnected) return;
-    if (win.matchMedia?.('(max-width: 639px)').matches) { row.style.removeProperty('--gv-h'); return; }
-    const screen = doc.getElementById('screen');
-    const own = screen && /auto|scroll/.test(win.getComputedStyle(screen).overflowY);
-    const scrolled = own ? screen.scrollTop : (win.scrollY || 0);
-    const dock = doc.querySelector('.dock');
-    const bottom = Math.min(own ? screen.getBoundingClientRect().bottom : win.innerHeight, dock ? dock.getBoundingClientRect().top : win.innerHeight);
-    const top = row.getBoundingClientRect().top + scrolled;
-    const video = Boolean(row.querySelector('.gv-card-video'));
-    const site = Boolean(row.querySelector('.gv-card-site'));
-    const perPx = (video ? GV_ROW.video : 0) + (site ? GV_ROW.site : 0);
-    if (!perPx) return;
-    const fixed = (video && site ? GV_ROW.gap : 0) + (site ? GV_ROW.siteExtra : 0);
-    const byWidth = (row.parentElement.clientWidth - fixed) / perPx;
-    const cap = row.querySelector('.gv-sitecap');
-    const room = bottom - top - 8 - (site ? (cap?.offsetHeight ? cap.offsetHeight + 8 : GV_ROW.caption) : 0);
-    const h = Math.max(GV_ROW.min, Math.min(GV_ROW.max, Math.floor(Math.min(room, byWidth))));
-    row.style.setProperty('--gv-h', `${h}px`);
-  };
-  const twice = () => { fit(); fit(); };
-  twice();
-  doc.fonts?.ready?.then(twice); // the words above it settle once the fonts are in
-  win.addEventListener('resize', twice);
-  return () => win.removeEventListener('resize', twice);
+// The stone page: the card (slots: stoneSlots, or NO SUCH TICKER's own), and the media
+// row as the card's last child, under both columns.
+export function stonePageHtml(e, n = 0, slots = stoneSlots(e, n)) {
+  const html = cardPage(slots);
+  const media = stoneMediaHtml(e);
+  return media ? `${html.slice(0, -'</section>'.length)}${media}</section>` : html;
 }
 
 // A scene (a stone page, the cemetery, the table) takes its keys (F, T, arrows, Enter) only
@@ -775,7 +733,6 @@ export const STONE_HINT = 'Esc, then F pays respects · Esc back';
 
 function renderStone(el, e, ctx) {
   el.innerHTML = stonePageHtml(e, counts?.[e.ticker] || 0);
-  ctx.onCleanup(fitStone(el));
   wireShare(el, ctx.copy);
   wireVideo(el);
   loadRespects(ctx.signal).then((n) => { if (el.isConnected) showRespects(el, n[e.ticker] || 0); });

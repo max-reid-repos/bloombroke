@@ -152,7 +152,7 @@ test('RIP WHATIF: the sourced peak line, hidden when null', () => {
 test('video: our own art and a play mark; nothing from YouTube or Google before a click', () => {
   const e = withArt(LEH, { doodles: ['LEH'] });
   const html = videoHtml({ ...e, video: { ...e.video, channel: 'CBS' } });
-  assert.match(html, /<button type="button" class="gv-video" data-yt="AAAAAAAAAAA"/);
+  assert.match(html, /<button type="button" class="gv-video gv-box" data-yt="AAAAAAAAAAA"/, 'a real button: Enter on it plays it');
   assert.match(html, /src="\/img\/graveyard\/doodle-leh\.webp"/, 'our own drawing');
   assert.match(html, /<span class="gv-play" aria-hidden="true"><\/span>/);
   assert.match(html, /PLAY VIDEO · CBS/);
@@ -161,8 +161,11 @@ test('video: our own art and a play mark; nothing from YouTube or Google before 
     assert.doesNotMatch(h, /<iframe|<script/);
     assert.doesNotMatch(h, /ytimg|youtube|google|googlevideo|gstatic/i, 'no request to any Google or YouTube host before the click');
   }
-  assert.match(page, /<span class="gv-vlabel">PLAY VIDEO<\/span>/, 'the stone page: the label; the channel is in + Details');
-  assert.match(page, /class="gv-card-media has-video"/, 'the video under the story, in the card\'s media slot');
+  assert.match(page, /<span class="gv-cap gv-vlabel">PLAY VIDEO<\/span>/, 'no channel given: the label alone, inside the box');
+  assert.match(html, /<span class="gv-cap gv-vlabel">PLAY VIDEO · CBS<\/span>/, 'the caption inside the box');
+  assert.match(page, /<div class="gv-media n1"><button type="button" class="gv-video gv-box"/, 'the video in the media row');
+  // The poster is our own doodle, never a frame of the video: nothing is fetched before a click.
+  assert.doesNotMatch(html, /i\.ytimg|img\.youtube|\/vi\//);
   assert.equal(videoHtml(BBI), '', 'a bad id: no video');
   assert.equal(ytEmbed('AAAAAAAAAAA'), 'https://www.youtube-nocookie.com/embed/AAAAAAAAAAA?autoplay=1&rel=0');
   assert.equal(ytEmbed('<x>'), null);
@@ -466,14 +469,18 @@ test('stone page: the words left, the stone right; the video and the last homepa
   const leh = withArt(real.find((e) => e.ticker === 'LEH'), { stone: '/img/graveyard/stone.webp', doodles: ['LEH'], sites: ['LEH'] });
   assert.equal(siteCaption(leh.wayback), 'lehman.com, Sep 2008 · Internet Archive');
   const site = siteHtml(leh);
-  assert.match(site, /<a class="gv-site" href="https:\/\/web\.archive\.org\/web\/20080913111928\/http:\/\/www\.lehman\.com:80\/" target="_blank" rel="noopener noreferrer"/);
+  assert.match(site, /<a class="gv-site gv-box" href="https:\/\/web\.archive\.org\/web\/20080913111928\/http:\/\/www\.lehman\.com:80\/" target="_blank" rel="noopener noreferrer"/);
   assert.match(site, /src="\/img\/graveyard\/sites\/leh\.webp"/, 'our own copy, nothing from the archive before a click');
-  assert.match(site, /<span class="gv-sitecap">lehman\.com, Sep 2008 · Internet Archive<\/span>/);
+  assert.match(site, /<span class="gv-cap gv-sitecap">lehman\.com, Sep 2008 · Internet Archive<\/span>/, 'the caption inside the box');
+  assert.doesNotMatch(site, /gv-screen/, 'no monitor frame');
   const page = stonePageHtml(leh, 0);
   assert.match(page, /^<section class="card card-wide card-split gv-card" aria-label="Graveyard: Lehman Brothers"><div class="card-art"><div class="gv-card-stone"><figure class="gv-stone has-art"/);
   assert.equal((page.match(/<figure class="gv-stone/g) || []).length, 1, 'one stone');
-  // Under the story, side by side: the video, then the homepage. Pictures, not text links.
-  assert.match(page, /<p class="gv-story">[^<]*<\/p><div class="gv-card-media has-video has-site"><div class="gv-card-video"><button type="button" class="gv-video"[\s\S]*?<\/button><\/div><div class="gv-card-site"><a class="gv-site"[\s\S]*?<\/a><\/div><\/div><\/div>/);
+  // Under both columns, the card's last child: the video, then the homepage, two boxes of
+  // one size. Pictures, not text links. The share links under the stone.
+  assert.match(page, /<div class="card-media"><p class="gv-story">[^<]*<\/p><\/div>/);
+  assert.match(page, /<\/div><div class="gv-media n2"><button type="button" class="gv-video gv-box"[\s\S]*?<\/button><a class="gv-site gv-box"[\s\S]*?<\/a><\/div><\/section>$/);
+  assert.match(page, /<div class="gv-card-stone"><figure class="gv-stone[\s\S]*?<\/figure><p class="gv-share"><a class="card-link"[^>]*data-share="grave" data-via="x">SHARE ON X<\/a> <button[^>]*>COPY LINK<\/button><\/p><\/div>/, 'SHARE under the stone');
   assert.doesNotMatch(page, /gv-more|gv-watch|Watch the video|lehman\.com in 2008/, 'no line of text links');
   assert.doesNotMatch(page.split('<details')[0], /\d respects?/, 'no "0 respects"');
   const srcs = [...page.matchAll(/\b(?:src|srcset|data-src|poster)="([^"]*)"/g)].map((m) => m[1]);
@@ -482,7 +489,7 @@ test('stone page: the words left, the stone right; the video and the last homepa
   // No copy of the homepage: the video alone, and the text link under SOURCES.
   const bare = withArt(real.find((e) => e.ticker === 'LEH'), { doodles: [], sites: [] });
   assert.equal(siteHtml(bare), '');
-  assert.match(stonePageHtml(bare, 0), /<div class="gv-card-media has-video"><div class="gv-card-video"><button/);
+  assert.match(stonePageHtml(bare, 0), /<div class="gv-media n1"><button type="button" class="gv-video gv-box"/);
   assert.match(stonePageHtml(bare, 0), /LAST WEBSITE/, 'the text link under SOURCES');
   assert.doesNotMatch(sourcesHtml(leh, { linkSite: false }), /LAST WEBSITE/);
   // The real art on disk: a stone without a video shows the homepage alone, one without a
@@ -493,12 +500,15 @@ test('stone page: the words left, the stone right; the video and the last homepa
     const html = stonePageHtml(e, 0);
     const v = Boolean(ytEmbed(e.video?.id));
     const s = Boolean(e.wayback && e.art.site);
-    assert.equal(html.includes('class="gv-card-video"'), v, `${e.ticker}: video`);
-    assert.equal(html.includes('class="gv-card-site"'), s, `${e.ticker}: homepage`);
-    assert.equal(html.includes('gv-card-media'), v || s, `${e.ticker}: a media row only with media`);
+    assert.equal(html.includes('class="gv-video gv-box"'), v, `${e.ticker}: video`);
+    assert.equal(html.includes('class="gv-site gv-box"'), s, `${e.ticker}: homepage`);
+    assert.equal(html.includes('class="gv-media'), v || s, `${e.ticker}: a media row only with media`);
+    if (v || s) assert.ok(html.includes(`class="gv-media n${Number(v) + Number(s)}"`), `${e.ticker}: one box per thing it has`);
   }
-  for (const t of ['WBVN', 'SIX', 'DAL', 'TX']) assert.doesNotMatch(stonePageHtml(withArt([...data.stones, ...data.zombies].find((x) => x.ticker === t), art), 0), /gv-card-video/, `${t}: no video`);
-  for (const t of ['MRV', 'TX']) assert.doesNotMatch(stonePageHtml(withArt([...data.stones, ...data.zombies].find((x) => x.ticker === t), art), 0), /gv-card-site/, `${t}: no archived homepage`);
+  for (const t of ['WBVN', 'SIX', 'DAL', 'TX']) assert.doesNotMatch(stonePageHtml(withArt([...data.stones, ...data.zombies].find((x) => x.ticker === t), art), 0), /gv-video/, `${t}: no video`);
+  for (const t of ['MRV', 'TX']) assert.doesNotMatch(stonePageHtml(withArt([...data.stones, ...data.zombies].find((x) => x.ticker === t), art), 0), /gv-site/, `${t}: no archived homepage`);
+  for (const t of ['WBVN', 'CC', 'BBI', 'RAD', 'AMR']) assert.doesNotMatch(stonePageHtml(withArt([...data.stones, ...data.zombies].find((x) => x.ticker === t), art), 0), /gv-site/, `${t}: no site image`);
+  assert.doesNotMatch(stonePageHtml(withArt([...data.stones, ...data.zombies].find((x) => x.ticker === 'WBVN'), art), 0), /gv-media/, 'WBVN: neither, no row, no empty frame');
   // The timeline stays in + Details; the cliff from the RIP WHATIF line.
   assert.deepEqual(timelinePoints(leh).map((p) => `${p.label} ${p.when}`), ['FOUNDED 1850', 'PEAK 2 Feb 2007', 'FILED 15 Sep 2008', 'SHARES CANCELLED 6 Mar 2012']);
   assert.match(page.split('<details class="how card-more">')[1], /class="gv-tl"/);
@@ -514,8 +524,14 @@ test('stone page: the words left, the stone right; the video and the last homepa
   assert.match(css, /\.gv-card\.card-split > \.card-art \{ order: 2; \}/);
   assert.match(css, /@media \(max-width: 1099px\) \{\n  \.gv-card-stone \{ width: 200px; \}/, 'a phone: the stone first, about 280 px tall');
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.gv-flame, \.gv-candle\.is-new \{ animation: none; \} \}/, 'reduced motion: still candles');
-  assert.ok(css.includes('.gv-card-video { flex: 0 0 auto; width: calc(var(--gv-h) * 16 / 9); }'));
-  assert.ok(css.includes('.gv-card-site { flex: 0 0 auto; width: calc((var(--gv-h) - 25px) * 1.6 + 20px); }'), 'the monitor as tall as the video');
+  // Two boxes of one size: half the row each, 16:9, one border, the caption inside.
+  assert.ok(css.includes('.gv-media { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; width: 100%; }'), 'half the row each; one box alone keeps its half');
+  assert.match(css, /\.gv-box \{\n  position: relative; display: block; width: 100%; aspect-ratio: 16 \/ 9;[^}]*border: 1px solid var\(--rule-strong\);/);
+  assert.match(css, /\.gv-cap \{\n  position: absolute; left: 0; right: 0; bottom: 0;[^}]*font-size: 11px;[^}]*text-transform: uppercase;/);
+  assert.match(css, /\.gv-site img \{[^}]*object-fit: cover; object-position: top;/, 'the masthead, cropped');
+  assert.match(css, /\.gv-card\.card-split > \.gv-media \{ order: 3; grid-column: 1 \/ -1; \}/, 'under both columns');
+  assert.match(css, /@media \(max-width: 639px\) \{\n  \.gv-media \{ grid-template-columns: minmax\(0, 1fr\);/, 'a phone: stacked, full width');
+  assert.doesNotMatch(css, /gv-screen|gv-card-media|--gv-h[:;)]/, 'no monitor frame, no first-view sizing');
 });
 
 test('stone page: respects hidden at zero; F lights a candle and reveals the count', async () => {
