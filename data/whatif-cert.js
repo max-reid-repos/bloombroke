@@ -12,7 +12,7 @@ export const DOODLES = [
 ];
 
 // Bump when the certificate layout changes, so cached share images are redrawn.
-export const CERT_VERSION = 2; // 2: hindsight wording and the small print on the image
+export const CERT_VERSION = 3; // 2: hindsight wording and the small print on the image; 3: numbers kept 10 minutes, v= on the image link
 
 // ---- The command in ?c= --------------------------------------------------------
 
@@ -51,6 +51,14 @@ export function normalizeWhatif(c, catalog) {
 
 export function certKey(command) {
   return createHash('sha256').update(`cert-v${CERT_VERSION}\0${command}`).digest('hex').slice(0, 24);
+}
+
+// The version of one printed certificate: a hash of its words and numbers (and the layout
+// version). The share image link carries it (?v=), so a new number is a new image URL
+// and no cache (Cloudflare, X, a browser) keeps showing the old one.
+export function certVersion(model) {
+  const { v, stale, ...printed } = model;
+  return createHash('sha256').update(`cert-v${CERT_VERSION}\0${JSON.stringify(printed)}`).digest('hex').slice(0, 12);
 }
 
 // ---- Formatting ------------------------------------------------------------------
@@ -142,7 +150,7 @@ export function certModel(result, catalog, command) {
   const mult = multiple(t.multiple);
   const share = `${subject} would be ${big} in ${where} today.`;
   const lines = fit(spent.length > holding.length ? spent : holding, 34, 2.4, 0.6);
-  return {
+  const model = {
     command,
     ribbon,
     big,
@@ -158,4 +166,6 @@ export function certModel(result, catalog, command) {
     title: share,
     description: `Spent ${usd(t.paid)}. In the stock today: ${big}, ${multiple(t.multiple)}. WHATIF, in hindsight. Past returns do not predict future returns. Not a recommendation.`,
   };
+  model.v = certVersion(model);
+  return model;
 }

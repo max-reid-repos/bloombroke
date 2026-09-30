@@ -384,10 +384,11 @@ function sendPng(res, png, maxAge) {
 }
 app.get('/og/whatif.png', async (req, res) => {
   try {
-    // The result's own card on live prices: a week, as long as it is kept on disk, stable
-    // enough for a newsletter image. The site card or last-known prices: 5 minutes.
+    // The result's own card on live prices: 10 minutes, as long as its numbers are kept
+    // (lib/og.js CERT_TTL_MS); share links carry ?v= so a new number is a new URL. The site
+    // card or last-known prices: 5 minutes.
     const card = await whatifCard(str(req.query.c) || '', ogDeps, { ip: req.ip });
-    sendPng(res, card.png, card.real ? 604800 : 300);
+    sendPng(res, card.png, card.real ? 600 : 300);
   } catch (err) {
     console.error('[og]', err.message);
     try { sendPng(res, await defaultPng(), 300); } catch { res.status(503).end(); }

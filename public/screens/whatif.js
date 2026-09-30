@@ -728,7 +728,7 @@ export function shareLinks(m, origin) {
   return {
     url,
     x: `https://x.com/intent/post?${new URLSearchParams({ text: m.share, url })}`,
-    image: `/og/whatif.png?${new URLSearchParams({ c: m.command })}`,
+    image: `/og/whatif.png?${new URLSearchParams(m.v ? { c: m.command, v: m.v } : { c: m.command })}`, // v: these numbers' image
   };
 }
 

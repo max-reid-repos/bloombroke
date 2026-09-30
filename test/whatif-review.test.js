@@ -303,7 +303,7 @@ test('the share image and the download keep today\'s certificate (the engine and
   // /og/whatif.png draws from data/whatif-cert.js and lib/og.js; the page's phone rules are
   // CSS on .wi-cert only. The download is the same /og/whatif.png.
   const share = readFileSync('public/screens/whatif.js', 'utf8');
-  assert.match(share, /image: `\/og\/whatif\.png\?\$\{new URLSearchParams\(\{ c: m\.command \}\)\}`/);
+  assert.match(share, /image: `\/og\/whatif\.png\?\$\{new URLSearchParams\(m\.v \? \{ c: m\.command, v: m\.v \} : \{ c: m\.command \}\)\}`/);
   assert.match(share, /href="\$\{esc\(links\.image\)\}" download="bloombroke-whatif\.png"/);
 });
 
