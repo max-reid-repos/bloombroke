@@ -6,7 +6,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { whatifTokens, normalizeWhatif, certKey, certModel, certVersion, DOODLES, fit, span } from '../data/whatif-cert.js';
 import { getWhatif, catalog } from '../data/whatif-service.js';
-import { withMeta, certMeta, DEFAULT_META, getCert, rememberCert, whatifCard, renderPng, certificateTree, defaultTree, W, H, CERT_TTL_MS } from '../lib/og.js';
+import { withMeta, certMeta, DEFAULT_META, getCert, rememberCert, whatifCard, renderPng, certificateTree, defaultTree, W, H, CERT_TTL_MS, TTL_MS, keepFor } from '../lib/og.js';
 import { whatifItemMeta } from '../lib/whatif-seo.js';
 import { shareLinks, certHtml } from '../public/screens/whatif.js';
 
@@ -264,4 +264,10 @@ test('share images render at 1200x630', async () => {
     assert.equal(meta.width, W);
     assert.equal(meta.height, H);
   }
+});
+
+test('disk sweep: a certificate image goes after an hour, everything else after a week', () => {
+  assert.equal(keepFor('cert-0123456789ab.png'), 3600 * 1000);
+  assert.equal(keepFor('0123456789abcdef01234567.json'), TTL_MS, 'the certificate numbers file');
+  assert.equal(keepFor('quote-abc.png'), TTL_MS);
 });
