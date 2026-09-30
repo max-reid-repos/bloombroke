@@ -114,3 +114,21 @@ test('S2 the queue: with 16 renders waiting, a new card is the site card, busy',
   assert.equal(renderBusy(), false);
   assert.ok(!(await quoteCard('NVDA', deps, { ip: '4.4.4.4', allowNew: () => true })).busy, 'room again');
 });
+
+test('R1 makeRateLimit forgets an address within a minute after its window (the Privacy Policy)', () => {
+  let t = 1_000_000;
+  const allow = makeRateLimit({ renders: 5, windowMs: 10 * 60_000, addresses: 100 }, () => t);
+  allow('1.1.1.1');
+  allow('2.2.2.2');
+  assert.equal(allow.size(), 2);
+  t += 5 * 60_000;
+  allow('2.2.2.2'); // 2.2.2.2 renders again: its window starts over
+  t += 5 * 60_000 + 60_000; // 1.1.1.1's window ended a minute ago
+  allow('3.3.3.3'); // a call after a minute sweeps
+  assert.equal(allow.size(), 2, '1.1.1.1 is gone');
+  t += 10 * 60_000;
+  allow.sweep(t); // the timer's sweep
+  assert.equal(allow.size(), 0, 'every window over: nothing held');
+  const src = readFileSync('lib/og.js', 'utf8');
+  assert.match(src, /setInterval\(\(\) => sweep\(\), sweepEvery\)\.unref\?\.\(\)/, 'a timer sweeps even with no calls');
+});
