@@ -630,6 +630,7 @@ test('stone pages: seoTitle, a description from the facts, canonical, LAST WEBSI
   assert.equal(z.url, 'https://bloombroke.com/?c=GRAVEYARD+ZOMBIES', 'ZOMBIES has its own canonical');
   assert.match(z.title, /^Zombies: 1 companies/);
   assert.match(z.description, /Zombie Motors/);
+  assert.deepEqual(nosuchMeta('ZOMBIES', deps), z, 'typed ZOMBIES: the same page, the same canonical');
   assert.equal(nosuchMeta('GRAVEYARD TODAY', { ...deps, today: () => '2026-01-02' }), null);
   assert.match(sourcesHtml(LEH), /<a class="gv-last" href="https:\/\/web\.archive\.org\/web\/20080915000000\/http:\/\/www\.lehman\.com\/" target="_blank" rel="noopener noreferrer">LAST WEBSITE<\/a>/);
   const src = sourcesHtml(LEH);

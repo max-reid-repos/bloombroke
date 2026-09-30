@@ -29,6 +29,7 @@ export function ipoShape(raw) {
 // IPO IT <WORD> and GRAVEYARD [<TICKER>] for the router: { name, args, input, url } or null.
 // IPO alone is not a command here (the resolver sends it to IPOS); only IPO IT is.
 export function matchNoSuch(head, rest = []) {
+  if (head === 'ZOMBIES' && !rest.length) return matchNoSuch('GRAVEYARD', ['ZOMBIES']); // typed ZOMBIES = GRAVEYARD ZOMBIES
   if (head === 'GRAVEYARD') {
     const word = rest.length === 1 && /^[A-Z]{1,12}$/.test(rest[0]) ? rest[0] : null;
     const view = GRAVEYARD_VIEWS.includes(word) ? word : null;

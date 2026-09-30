@@ -106,6 +106,15 @@ test('GRAVEYARD and IPO IT: the router, never a pro-terminal code as a command',
   assert.equal(findCommand('IPOIT'), null, 'IPO IT is not listed');
 });
 
+test('ZOMBIES typed alone opens the GRAVEYARD zombies view, same as GRAVEYARD ZOMBIES', () => {
+  const want = parseCommand('GRAVEYARD ZOMBIES');
+  assert.deepEqual(parseCommand('zombies'), want);
+  assert.deepEqual(parseCommand('ZOMBIES'), { name: 'GRAVEYARD', args: { view: 'ZOMBIES' }, input: 'GRAVEYARD ZOMBIES', url: 'GRAVEYARD ZOMBIES' });
+  assert.deepEqual(matchNoSuch('ZOMBIES'), matchNoSuch('GRAVEYARD', ['ZOMBIES']));
+  assert.equal(matchNoSuch('ZOMBIES', ['LEH']), null, 'only the bare word');
+  assert.equal(findCommand('ZOMBIES'), null, 'not a listed command of its own');
+});
+
 test('IPO IT guard: A-Z, 1 to 5 letters, never a live ticker, a word the library flags or an extra listed word', () => {
   assert.equal(ipoShape('maxx'), 'MAXX');
   for (const bad of ['', 'TOOLNG', 'M4X', 'BRK.B', 'A B', '<b>', 'MAX$', 'ÅBC', 'AAPL', 'NVDA']) assert.equal(ipoShape(bad), null, bad);
