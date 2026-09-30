@@ -1,15 +1,16 @@
-// HELP and the MENU (Ctrl K). HELP: a search box on top, categories on the left (START
-// HERE first), one category on the right. START HERE opens with the key row, then five
-// commands, then the $ line. MENU: the same groups in columns, names only; the picked
-// command's line shows in the footer; a find lists its matches with their lines.
+// HELP and the MENU (Ctrl K). HELP: a numbered strip, a search box on top, categories
+// on the left (START HERE first), one category on the right in three columns. START HERE
+// opens with the key row, then five commands, the $ line, the screens and WHATIS. MENU:
+// the same groups in five fixed columns, names only; the picked command's line shows in
+// the footer; a find lists its matches with their lines.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { commandGroups, START_HERE, START_GROUP, CATEGORIES, findCommand, byCategory, categoriesInUse, LISTED, searchCommands } from '../public/registry.js';
-import { keyRow, startHere, categoryHtml, helpCategories, DOLLAR_LINE, HELP_GROUPS } from '../public/screens/help.js';
-import { menuGroupsHtml, menuFoundHtml, menuFootHtml, MENU_FOOT, menuItems } from '../public/menu.js';
-import { COMMANDS } from '../public/app.js';
+import { keyRow, startHere, categoryHtml, helpCategories, DOLLAR_LINE, HELP_GROUPS, helpStrip, commandRow, syntaxParts, COLUMN_HEADS } from '../public/screens/help.js';
+import { menuGroupsHtml, menuFoundHtml, menuFootHtml, MENU_FOOT, menuItems, MENU_COLUMNS } from '../public/menu.js';
+import { COMMANDS, FKEYS } from '../public/app.js';
 
 // [[group, [cmd, ...]], ...] from MENU HTML: data-group sections, data-cmd rows.
 function groupsOf(html, rowClass) {
@@ -40,7 +41,7 @@ test('HELP: START HERE is five commands, in order, then the $ line (not "$ + tic
   assert.match(html, /\$ before a ticker always means the stock, e\.g\. <a class="code"[^>]*>\$GOLD<\/a>\./);
   assert.ok(html.includes(DOLLAR_LINE));
   assert.doesNotMatch(html, /\$ \+ ticker|hs-row|hs-list/, 'the old 18-row grid is gone');
-  assert.ok(html.indexOf('hl-row') < html.indexOf('$ before'), 'the $ line comes last');
+  assert.ok(html.indexOf('hl-row') < html.indexOf('$ before'), 'the $ line comes after the five');
 });
 
 test('HELP: a search box on top, categories on the left, START HERE first and the default', () => {
@@ -73,7 +74,7 @@ test('HELP: every category and every command in the registry is in the left list
 
 test('HELP and MENU: the same groups, START HERE first', () => {
   const menu = groupsOf(menuGroupsHtml(), 'mn-item');
-  assert.deepEqual(menu.map(([g]) => g), helpCategories());
+  assert.deepEqual(menu.map(([g]) => g).sort(), [...helpCategories()].sort());
   assert.deepEqual(menu[0][1], START_HERE.map(([c]) => c));
   const inGroups = menu.slice(1).flatMap(([, cmds]) => cmds);
   assert.equal(inGroups.length, menuItems().length);
@@ -90,7 +91,7 @@ test('MENU groups: NEWS in News and info, BBRK in About, no Legal, MCP not first
   assert.notEqual(commandGroups()[0].items[0].name, 'MCP');
   assert.equal(commandGroups()[0].items[0].name, 'AAPL');
   assert.deepEqual(COMMANDS.slice(-2).map((c) => c.name), ['HELP', 'MENU'], 'HELP and MENU still come last in the bar');
-  assert.match(menuGroupsHtml(), /^<div class="mn-grid"><section class="mn-cat" data-group="Start here">/);
+  assert.match(menuGroupsHtml(), /^<div class="mn-grid"><div class="mn-col"><section class="mn-cat" data-group="Start here">/);
 });
 
 test('MENU columns: names only, each line waits for the footer', () => {
@@ -118,14 +119,97 @@ test('MENU find: the short list shows each line', () => {
   assert.doesNotMatch(html, /data-sum=/);
 });
 
-test('MENU fits one screen: 20px rows, 4 columns, 5 on a shorter screen, a fixed search bar', () => {
+test('MENU fits one screen: 20px rows in five fixed columns, a fixed search bar, less chrome on a short window', () => {
   const css = navCss();
   assert.match(css, /\.menu-search \{\s*flex: none;/, 'the search bar never shrinks');
+  assert.match(css, /\.menu-search \{[^}]*height: 48px/);
   assert.match(css, /\.menu-foot \{\s*flex: none;/);
-  assert.match(css, /\.mn-grid \{ columns: 4 150px;/);
-  assert.match(css, /@media \(min-width: 640px\) and \(max-height: 890px\) \{\s*\.mn-grid \{ columns: 5 150px;/);
+  assert.match(css, /\.mn-grid \{ display: grid; grid-template-columns: repeat\(5, minmax\(0, 1fr\)\);/, 'a grid of five columns');
+  assert.doesNotMatch(css, /\.mn-grid \{[^}]*columns: \d/, 'no multi-column flow (it split a category)');
   assert.match(css, /\.mn-grid \.mn-item \{[^}]*padding: 0 8px; line-height: 20px;/, '20px rows');
-  assert.match(css, /\.mn-h \{ break-after: avoid; \}/, 'a header keeps its first rows');
-  assert.doesNotMatch(css, /\.mn-cat \{[^}]*break-inside: avoid/, 'a long group may run on into the next column');
+  assert.match(css, /@media \(min-width: 640px\) and \(max-height: 760px\) \{\s*\.menu-overlay \{ padding-top: 8px;[^}]*\}\s*\.menu \{ max-height: calc\(100vh - 16px\); \}/, 'a short window: less room above');
+  assert.match(css, /@media \(min-width: 640px\) and \(max-height: 660px\) \{\s*\.mn-grid \.mn-item \{ line-height: 19px; \}/, 'shorter still: 19px rows');
+  assert.match(css, /@media \(max-width: 639px\) \{[\s\S]*?\.mn-grid \{ display: block; \}/, 'a phone: one scrolling column');
   assert.match(css, /\.mn-found \.mn-sum \{[^}]*white-space: normal/);
+});
+
+test('MENU: five fixed columns, each category whole in one column', () => {
+  assert.equal(MENU_COLUMNS.length, 5);
+  assert.deepEqual(MENU_COLUMNS, [
+    ['Start here', 'Markets', 'News and info'],
+    ['Stocks and companies', 'Charts', 'Money tools'],
+    ['Weird data'],
+    ['Your stuff', 'Rates, FX, crypto', 'Economy and calendars'],
+    ['Pro', 'About'],
+  ]);
+  assert.deepEqual(MENU_COLUMNS.flat().sort(), [...helpCategories()].sort(), 'every group in exactly one column');
+  const html = menuGroupsHtml();
+  const cols = html.split('<div class="mn-col">').slice(1);
+  assert.equal(cols.length, 5);
+  const heads = cols.map((c) => [...c.matchAll(/data-group="([^"]+)"/g)].map((m) => m[1].replace(/&#39;/g, "'")));
+  assert.deepEqual(heads, MENU_COLUMNS, 'each column holds its categories, in order');
+  // No split: every row of a group sits under its own header, in one column.
+  const groups = commandGroups();
+  for (const [i, names] of MENU_COLUMNS.entries()) {
+    for (const n of names) for (const it of groups.find((g) => g.name === n).items) assert.ok(cols[i].includes(`data-cmd="${it.cmd.replace(/&/g, '&amp;').replace(/'/g, '&#39;')}"`), `${it.name} in column ${i + 1}`);
+  }
+  const src = readFileSync('public/menu.js', 'utf8');
+  assert.match(src, /e\.key === 'ArrowLeft' \|\| e\.key === 'ArrowRight'/, 'Left and Right move across the columns');
+});
+
+test('HELP: 12 entries on the left, every listed command in exactly one category', () => {
+  assert.deepEqual(helpCategories(), ['Start here', 'Markets', 'News and info', 'Stocks and companies', 'Weird data', 'Charts', 'Money tools',
+    'Your stuff', 'Rates, FX, crypto', 'Economy and calendars', 'Pro', 'About']);
+  assert.equal(helpCategories().length, 12);
+  for (const cat of helpCategories().slice(1)) assert.ok(byCategory(cat).length > 2, `${cat} has more than 2 commands`);
+  for (const c of LISTED) assert.equal(helpCategories().slice(1).filter((cat) => byCategory(cat).includes(c)).length, 1, c.name);
+  assert.equal(findCommand('SCREEN').category, 'Stocks and companies');
+  assert.deepEqual(byCategory('Rates, FX, crypto').map((c) => c.name), ['RATES', 'CURVE', 'BONDS', 'FEDPATH', 'FX', 'FXMATRIX', 'CRYPTO', 'COMMODITIES']);
+});
+
+test('HELP: a numbered strip on top, its count the listed commands', () => {
+  const strip = helpStrip();
+  assert.match(strip, /^<header class="panel-head help-strip"><h2 class="panel-label">1\) HELP<\/h2><span class="panel-meta">(\d+) COMMANDS · Esc back<\/span><\/header>$/);
+  const n = Number(/(\d+) COMMANDS/.exec(strip)[1]);
+  assert.equal(n, LISTED.length);
+  assert.equal(n, helpCategories().slice(1).reduce((t, cat) => t + byCategory(cat).length, 0), 'the sum of the counts on the left');
+  const src = helpSrc();
+  assert.ok(src.indexOf('${helpStrip()}') < src.indexOf('<div class="help-search">'), 'the strip is above the search');
+  assert.match(src, /placeholder="\/ search: insider, yield, dividend"/);
+});
+
+test('HELP rows: three columns, COMMAND (name, words, options below), WHAT IT DOES, TRY runs the example', () => {
+  const row = commandRow(findCommand('FINANCIALS'), 0);
+  const cells = [...row.matchAll(/^\s*<span class="(hc-cmd|hc-sum|hc-ex)">/gm)].map((m) => m[1]);
+  assert.deepEqual(cells, ['hc-cmd', 'hc-sum', 'hc-ex'], 'three cells');
+  assert.match(row, /<a class="hc-name"[^>]*>FINANCIALS<\/a> <span class="hc-args">&lt;ticker&gt;<\/span><span class="hc-opts">\[BALANCE\|CASHFLOW\] \[QUARTERLY\]<\/span>/);
+  assert.match(row, /<span class="hc-ex"><a class="code" href="\?c=FINANCIALS\+AAPL" data-cmd="FINANCIALS AAPL">FINANCIALS AAPL<\/a><\/span>/, 'TRY runs the first example');
+  assert.doesNotMatch(row, /hc-syn/, 'the command is said once, not three times');
+  assert.deepEqual(syntaxParts(findCommand('HISTORY')), { args: '<ticker>', opts: '[<from> [<to>]]' }, 'nested options stay whole');
+  assert.deepEqual(syntaxParts(findCommand('PORTFOLIO')), { args: '', opts: '[ADD <ticker> <shares> @ <cost>|SELL <ticker> <shares>|REMOVE <ticker>]' }, 'an alias as the first word');
+  assert.deepEqual(syntaxParts(findCommand('<TICKER>')), { args: '', opts: '[<range>]' });
+  for (const cat of helpCategories().slice(1)) {
+    for (const c of byCategory(cat).filter((x) => !x.soon)) {
+      const r = commandRow(c, 0);
+      assert.ok(r.includes(`data-cmd="${c.examples[0].replace(/&/g, '&amp;').replace(/'/g, '&#39;')}"`), `${c.name}: TRY runs ${c.examples[0]}`);
+    }
+  }
+  const html = categoryHtml('Stocks and companies');
+  assert.match(html, /<div class="hc-cols" aria-hidden="true"><span>Command<\/span><span>What it does<\/span><span>Try<\/span><\/div><ol class="hc-list">/);
+  assert.deepEqual(COLUMN_HEADS, ['Command', 'What it does', 'Try']);
+  assert.match(navCss(), /\.hc-row, \.hc-cols \{\s*display: grid;\s*grid-template-columns: minmax\(0, 320px\) minmax\(0, 1fr\) minmax\(0, 208px\);/);
+});
+
+test('HELP START HERE: the screens on F1 to F10 from the key bar, then WHATIS', () => {
+  const html = startHere();
+  const screens = [...html.matchAll(/<li class="hf-row"><kbd>([^<]+)<\/kbd><a class="hf-name" href="[^"]*" data-cmd="([^"]+)">([^<]+)<\/a><span class="hl-sum">([^<]*)<\/span>/g)];
+  assert.deepEqual(screens.map((m) => m[1]), FKEYS.map((k) => k.key));
+  assert.deepEqual(screens.map((m) => m[1]), ['F1', 'F2', 'F3', 'F4', 'F6', 'F7', 'F8', 'F9', 'F10']);
+  assert.deepEqual(screens.map((m) => [m[2], m[3]]), FKEYS.map((k) => [k.cmd, k.label]));
+  for (const m of screens) assert.ok(m[4].length > 10, `${m[3]} says what it is`);
+  assert.match(html, /The screens<\/h3>/);
+  assert.match(html, /Don't know a word\? <a class="code" href="\?c=WHATIS\+yield" data-cmd="WHATIS yield">WHATIS yield<\/a>\.<\/p>\s*$/);
+  const order = ['help-keys', 'hl-row', '$ before', 'The screens', 'hf-row', 'WHATIS yield'].map((k) => html.indexOf(k));
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'keys, five, $, screens, WHATIS');
+  assert.doesNotMatch(helpSrc(), /'F1'|'HOME', 'DESK'/, 'the screens come from the key bar, not a copy');
 });

@@ -1,9 +1,10 @@
 // MENU (Ctrl+K): START HERE, then every command by category, in a quick overlay with a
-// find box. The same groups as HELP (registry.js commandGroups). Picking a command runs
-// its first example. The columns hold names only: the picked (or pointed at) command's
-// line shows in the footer. A find lists its matches with their lines.
+// find box. The same groups as HELP (registry.js commandGroups), in five fixed columns
+// (MENU_COLUMNS): a category never breaks across two. Picking a command runs its first
+// example. The columns hold names only: the picked (or pointed at) command's line shows
+// in the footer. A find lists its matches with their lines.
 
-import { LISTED, commandGroups, inGroups, searchCommands } from './registry.js';
+import { LISTED, commandGroups, inGroups, searchCommands, START_GROUP } from './registry.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const q = (c) => '?' + new URLSearchParams({ c }).toString();
@@ -20,9 +21,22 @@ function item(it, sum) {
     : `<li><a class="mn-item" href="${esc(q(cmd))}" data-cmd="${esc(cmd)}" data-sum="${esc(it.summary)}"><span class="mn-name">${esc(it.name)}</span></a></li>`;
 }
 
-// The menu's groups as HTML: START HERE first, then the categories. Names only.
+// The five columns, top to bottom. Whole categories only, so none is split. A category
+// not named here goes to the last column.
+export const MENU_COLUMNS = [
+  [START_GROUP, 'Markets', 'News and info'],
+  ['Stocks and companies', 'Charts', 'Money tools'],
+  ['Weird data'],
+  ['Your stuff', 'Rates, FX, crypto', 'Economy and calendars'],
+  ['Pro', 'About'],
+];
+
+// The menu's groups as HTML, column by column. Names only.
 export function menuGroupsHtml(groups = commandGroups()) {
-  return `<div class="mn-grid">${groups.map((g) => `<section class="mn-cat" data-group="${esc(g.name)}"><h3 class="mn-h">${esc(g.name)}</h3><ul class="mn-list">${g.items.map((it) => item(it, false)).join('')}</ul></section>`).join('')}</div>`;
+  const cols = MENU_COLUMNS.map((names) => names.map((n) => groups.find((g) => g.name === n)).filter(Boolean));
+  for (const g of groups) if (!MENU_COLUMNS.flat().includes(g.name)) cols[cols.length - 1].push(g);
+  const cat = (g) => `<section class="mn-cat" data-group="${esc(g.name)}"><h3 class="mn-h">${esc(g.name)}</h3><ul class="mn-list">${g.items.map((it) => item(it, false)).join('')}</ul></section>`;
+  return `<div class="mn-grid">${cols.map((c) => `<div class="mn-col">${c.map(cat).join('')}</div>`).join('')}</div>`;
 }
 
 // A find's matches, each with its line.
@@ -114,6 +128,18 @@ export function createMenu({ onClose } = {}) {
       e.preventDefault();
       if (!list.length) return;
       active = e.key === 'ArrowDown' ? (active + 1) % list.length : (active <= 0 ? list.length - 1 : active - 1);
+      mark();
+    } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && active >= 0 && !input.value.trim()) {
+      // Across the columns: the row nearest the same height in the next column over.
+      e.preventDefault();
+      const cols = [...body.querySelectorAll('.mn-col')];
+      const at = cols.findIndex((c) => c.contains(list[active]));
+      const to = cols[(at + (e.key === 'ArrowRight' ? 1 : cols.length - 1)) % cols.length];
+      const y = list[active].getBoundingClientRect().top;
+      const rows = [...to.querySelectorAll('.mn-item')];
+      if (!rows.length) return;
+      const near = rows.reduce((a, r) => (Math.abs(r.getBoundingClientRect().top - y) < Math.abs(a.getBoundingClientRect().top - y) ? r : a));
+      active = list.indexOf(near);
       mark();
     } else if (e.key === 'Enter' && e.target === input) {
       e.preventDefault();

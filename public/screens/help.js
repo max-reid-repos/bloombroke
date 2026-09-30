@@ -1,14 +1,17 @@
-// HELP: the command directory. Categories on the left (START HERE first), the commands of
-// one category on the right, a search box on top (/ focuses it). START HERE opens with
-// the key row, then the five commands to know. HELP <command> opens one command:
-// syntax, options, examples, source and delay. Everything comes from ../registry.js.
+// HELP: the command directory. A numbered strip on top (1) HELP, the count), the search
+// box (/ focuses it), categories on the left (START HERE first), the commands of one
+// category on the right in three columns: COMMAND, WHAT IT DOES, TRY. START HERE is a
+// page of its own: the key row, the five commands to know, the $ line, the screens on
+// F1 to F10 and WHATIS. HELP <command> opens one command: syntax, options, examples,
+// source and delay. Everything comes from ../registry.js (the F-keys from app.js).
 
 import { esc, q } from './markets.js';
 import { edgeFade } from '../kit.js';
 import {
-  CATEGORIES, findCommand, byCategory, categoriesInUse, searchCommands,
+  CATEGORIES, LISTED, findCommand, byCategory, categoriesInUse, searchCommands,
   START_HERE, START_GROUP, START_KEYS, FUNCTION_BAR, mergeDetail,
 } from '../registry.js';
+import { FKEYS } from '../app.js';
 import { DETAIL } from '../registry-detail.js';
 import { commandForWord } from '../resolve.js';
 import { LISTED_TICKERS, stockIdOf } from '../known-tickers.js';
@@ -52,20 +55,45 @@ export function resolveTopic(topic) {
 const code = (c) => `<a class="code" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a>`;
 const helpCmd = (c) => (c.pattern ? 'HELP AAPL' : `HELP ${c.name}`);
 
-// One command row: name, what it does, syntax, example.
+// A command's syntax in parts, for the COMMAND column: the words it needs (args) and the
+// optional ones in [ ] (opts, the second line). The command word itself is the name.
+export function syntaxParts(c) {
+  const toks = [];
+  let cur = '';
+  let depth = 0;
+  for (const ch of String(c.syntax || '')) {
+    if (ch === ' ' && !depth) { if (cur) toks.push(cur); cur = ''; continue; }
+    if (ch === '[') depth += 1;
+    else if (ch === ']') depth -= 1;
+    cur += ch;
+  }
+  if (cur) toks.push(cur);
+  const skip = c.pattern ? c.name.split(' ').length : (toks[0] === c.name || c.aliases?.includes(toks[0]) ? 1 : 0);
+  const rest = toks.slice(skip);
+  return { args: rest.filter((t) => !t.startsWith('[')).join(' '), opts: rest.filter((t) => t.startsWith('[')).join(' ') };
+}
+
+// One command row, three columns: COMMAND (name, the words it needs, the optional ones
+// under), WHAT IT DOES, TRY (runs the first example).
 export function commandRow(c, i, { showCategory = false } = {}) {
   const ex = c.soon ? '<span class="hc-soon">SOON</span>' : (c.examples[0] ? code(c.examples[0]) : '');
   const cat = showCategory ? `<span class="hc-cat">${esc(c.category)}</span>` : '';
+  const { args, opts } = syntaxParts(c);
   return `<li class="hc-row${c.soon ? ' is-soon' : ''}" data-i="${i}" data-ex="${esc(c.soon ? '' : c.examples[0] || '')}">
-    <a class="hc-name" href="${esc(q(helpCmd(c)))}" data-cmd="${esc(helpCmd(c))}" title="More about ${esc(c.name)}">${esc(c.name)}</a>
+    <span class="hc-cmd"><a class="hc-name" href="${esc(q(helpCmd(c)))}" data-cmd="${esc(helpCmd(c))}" title="More about ${esc(c.name)}">${esc(c.name)}</a>${args ? ` <span class="hc-args">${esc(args)}</span>` : ''}${opts ? `<span class="hc-opts">${esc(opts)}</span>` : ''}</span>
     <span class="hc-sum">${esc(c.summary)}${cat}</span>
-    <span class="hc-syn">${esc(c.syntax)}</span>
     <span class="hc-ex">${ex}</span>
   </li>`;
 }
 
+export const COLUMN_HEADS = ['Command', 'What it does', 'Try'];
 function rows(list, opts) {
-  return `<ol class="hc-list">${list.map((c, i) => commandRow(c, i, opts)).join('')}</ol>`;
+  return `<div class="hc-cols" aria-hidden="true">${COLUMN_HEADS.map((h) => `<span>${h}</span>`).join('')}</div><ol class="hc-list">${list.map((c, i) => commandRow(c, i, opts)).join('')}</ol>`;
+}
+
+// The numbered strip on top, like every other screen: 1) HELP, and how many commands.
+export function helpStrip() {
+  return `<header class="panel-head help-strip"><h2 class="panel-label">1) HELP</h2><span class="panel-meta">${LISTED.length} COMMANDS · Esc back</span></header>`;
 }
 
 // The key row: the keys of a keyboard product, first in START HERE.
@@ -77,12 +105,20 @@ export function keyRow() {
 
 export const DOLLAR_LINE = `$ before a ticker always means the stock, e.g. ${code('$GOLD')}.`;
 
-// Start here: the key row, the five commands to know (each row runs its command), then
-// the line about $.
+// The screens on the key bar, one line each: key, screen, what it is (the registry's line).
+export function screensHtml() {
+  const items = FKEYS.map((k) => `<li class="hf-row"><kbd>${esc(k.key)}</kbd><a class="hf-name" href="${esc(q(k.cmd))}" data-cmd="${esc(k.cmd)}">${esc(k.label)}</a><span class="hl-sum">${esc(findCommand(k.cmd)?.summary || '')}</span></li>`).join('');
+  return `<h3 class="hs-h help-sub">The screens</h3><ol class="hl-list hf-list">${items}</ol>`;
+}
+
+// Start here: the key row, the five commands to know (each row runs its command), the
+// line about $, the screens, then WHATIS for a word you don't know.
 export function startHere() {
   const items = START_HERE.map(([c, what]) => `<li class="hl-row"><a class="hl-name" href="${esc(q(c))}" data-cmd="${esc(c)}">${esc(c)}</a><span class="hl-sum">${esc(what)}</span></li>`).join('');
   return `${keyRow()}<ol class="hl-list">${items}</ol>
-    <p class="help-tip dim">${DOLLAR_LINE}</p>`;
+    <p class="help-tip dim">${DOLLAR_LINE}</p>
+    ${screensHtml()}
+    <p class="help-tip dim">Don't know a word? ${code('WHATIS yield')}.</p>`;
 }
 
 // The right side for one category of the left list.
@@ -144,14 +180,14 @@ export function render(el, cmd, ctx) {
   let active = -1;
 
   el.innerHTML = `<div class="help">
+    ${helpStrip()}
     <div class="help-search">
-      <span class="prompt" aria-hidden="true">/</span>
-      <input class="help-q" type="search" maxlength="60" spellcheck="false" autocomplete="off" aria-label="Search commands" placeholder="Search commands: insider, yield, dividend, earnings" value="${esc(query)}">
+      <input class="help-q" type="search" maxlength="60" spellcheck="false" autocomplete="off" aria-label="Search commands" placeholder="/ search: insider, yield, dividend" value="${esc(query)}">
       <span class="help-count dim" aria-live="polite"></span>
     </div>
     <div class="help-body">
       <nav class="help-cats" aria-label="Command categories">
-        ${cats.map((c) => `<button type="button" class="help-cat" data-cat="${esc(c)}">${esc(c)}<span class="help-n">${c === START_GROUP ? '' : byCategory(c).length}</span></button>`).join('')}
+        ${cats.map((c) => `<button type="button" class="help-cat" data-cat="${esc(c)}">${esc(c)}<span class="help-n">${c === START_GROUP ? START_HERE.length : byCategory(c).length}</span></button>`).join('')}
       </nav>
       <div class="help-main"></div>
     </div>

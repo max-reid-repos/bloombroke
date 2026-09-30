@@ -2,6 +2,7 @@
    uses it opens; the page's always-on styles are in the stylesheets public/index.html links. */
 
 .help-count { font-size: 12px; white-space: nowrap; }
+.help-count:empty { display: none; }
 .help-body { display: grid; grid-template-columns: 224px minmax(0, 1fr); gap: 32px; align-items: start; }
 .help-cats {
   position: sticky; top: calc(var(--cmd-h) + 8px);
@@ -23,7 +24,11 @@
 .help-h { margin: 0 0 12px; font-size: 16px; font-weight: 600; color: var(--text); }
 .help-tip { margin-top: 12px; font-size: 12px; }
 .hc-cat { display: block; font-size: 11px; color: var(--dim); }
-.hc-syn { font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
+/* COMMAND: the name (weight), the words it needs (dim), the optional ones on a line below. */
+.hc-cmd { min-width: 0; overflow-wrap: anywhere; }
+.hc-args { color: var(--dim); }
+.hc-opts { display: block; font-size: 12px; color: var(--dim); }
+.help-n { font-variant-numeric: tabular-nums; }
 .hc-ex { overflow-wrap: anywhere; }
 .hc-ex .code { white-space: normal; }
 .hc-soon { font-size: 11px; letter-spacing: .1em; color: var(--dim); }
@@ -47,6 +52,18 @@
 .hl-name { font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
 .hl-name:hover { color: var(--accent); text-decoration: none; }
 .hl-sum { color: var(--dim); }
+/* THE SCREENS: key, screen, what it is. */
+.help-sub { margin: 32px 0 8px; }
+.hf-list { max-width: 880px; }
+.hf-row {
+  display: grid; grid-template-columns: 48px 136px minmax(0, 1fr); gap: 16px; align-items: baseline;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--rule);
+}
+.hf-row:hover { background: var(--panel-3); }
+.hf-row kbd { justify-self: start; padding: 0 6px; font-size: 12px; line-height: 20px; color: var(--text); }
+.hf-name { font-weight: 600; color: var(--text); }
+.hf-name:hover { color: var(--accent); text-decoration: none; }
 
 .hd { max-width: 880px; }
 .hd-name { margin: 0; font-size: 24px; font-weight: 600; line-height: 1.2; color: var(--text); }
@@ -61,12 +78,12 @@
 .hd-cat:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 @media (max-width: 1100px) {
-  .hc-syn { display: none; }
   .help-body { grid-template-columns: 192px minmax(0, 1fr); gap: 24px; }
 }
 
 @media (max-width: 639px) {
   .help-body { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .help-search { padding: 0 12px; }
   .help-cats {
     position: static; flex-direction: row; overflow-x: auto; scrollbar-width: none;
     margin: 0 calc(var(--gutter) * -1); padding: 0 var(--gutter);
@@ -79,5 +96,7 @@
   .help-keys kbd { padding: 0 4px; font-size: 11px; line-height: 16px; }
   .hk-sep, .hk-desk { display: none; }
   .hl-row { grid-template-columns: 112px minmax(0, 1fr); gap: 12px; padding: 6px 8px; }
+  .hf-row { grid-template-columns: 112px minmax(0, 1fr); gap: 12px; padding: 6px 8px; }
+  .hf-row kbd { display: none; }
   .hd-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 }

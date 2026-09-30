@@ -29,11 +29,8 @@ export const CATEGORIES = [
   'Charts',
   'Money tools',
   'Your stuff',
-  'Rates and bonds',
-  'FX',
-  'Crypto and commodities',
+  'Rates, FX, crypto',
   'Economy and calendars',
-  'Screens and lists',
   'Pro',
   'About',
 ];
@@ -204,41 +201,39 @@ export const REGISTRY = [
   },
   // --- end GUESS ---
 
-  // --- Rates and bonds ----------------------------------------------------------------
+  // --- Rates, FX, crypto ---------------------------------------------------------------
   {
-    name: 'RATES', aliases: ['RATE'], category: 'Rates and bonds', summary: 'The interest rates that touch your money',
+    name: 'RATES', aliases: ['RATE'], category: 'Rates, FX, crypto', summary: 'The interest rates that touch your money',
     syntax: 'RATES', examples: ['RATES'], keywords: ['interest', 'mortgage', 'fed funds', 'treasury', 'yield'],
   },
   {
-    name: 'CURVE', category: 'Rates and bonds', summary: 'US Treasury yield curve: today, 1 month and 1 year ago',
+    name: 'CURVE', category: 'Rates, FX, crypto', summary: 'US Treasury yield curve: today, 1 month and 1 year ago',
     syntax: 'CURVE', examples: ['CURVE'], keywords: ['yield curve', 'treasury', 'inversion', 'yield', 'bonds'],
   },
   {
-    name: 'BONDS', category: 'Rates and bonds', summary: 'Government bond yields by country: 2Y to 30Y, spreads, curves',
+    name: 'BONDS', category: 'Rates, FX, crypto', summary: 'Government bond yields by country: 2Y to 30Y, spreads, curves',
     syntax: 'BONDS [SPREADS|CURVE]', examples: ['BONDS', 'BONDS SPREADS', 'BONDS CURVE'], keywords: ['yield', 'government', 'gilts', 'bunds', 'jgb', 'spreads'],
   },
   {
-    name: 'FEDPATH', category: 'Rates and bonds', summary: 'The Fed funds rate implied by futures, month by month',
+    name: 'FEDPATH', category: 'Rates, FX, crypto', summary: 'The Fed funds rate implied by futures, month by month',
     syntax: 'FEDPATH', examples: ['FEDPATH'], keywords: ['fed', 'rate cut', 'rate hike', 'fomc', 'futures', 'central bank'],
   },
 
-  // --- FX -------------------------------------------------------------------------------
-  {
-    name: 'FX', category: 'FX', summary: 'Convert money between currencies',
+    {
+    name: 'FX', category: 'Rates, FX, crypto', summary: 'Convert money between currencies',
     syntax: 'FX [<amount>] <from> <to>', examples: ['FX 500 USD THB', 'FX USD CAD'], keywords: ['currency', 'convert', 'exchange rate', 'forex', 'money'],
   },
   {
-    name: 'FXMATRIX', category: 'FX', summary: "Cross rates for nine currencies, or HEAT for today's moves",
+    name: 'FXMATRIX', category: 'Rates, FX, crypto', summary: "Cross rates for nine currencies, or HEAT for today's moves",
     syntax: 'FXMATRIX [HEAT]', examples: ['FXMATRIX', 'FXMATRIX HEAT'], keywords: ['cross rates', 'currency', 'forex', 'heat'],
   },
 
-  // --- Crypto and commodities -----------------------------------------------------------
-  {
-    name: 'CRYPTO', category: 'Crypto and commodities', summary: 'The top 20 coins, 24 hours and 7 days',
+    {
+    name: 'CRYPTO', category: 'Rates, FX, crypto', summary: 'The top 20 coins, 24 hours and 7 days',
     syntax: 'CRYPTO', examples: ['CRYPTO'], keywords: ['bitcoin', 'ethereum', 'coins', 'btc', 'eth'],
   },
   {
-    name: 'COMMODITIES', category: 'Crypto and commodities', summary: 'Oil, gold, wheat and more',
+    name: 'COMMODITIES', category: 'Rates, FX, crypto', summary: 'Oil, gold, wheat and more',
     syntax: 'COMMODITIES', examples: ['COMMODITIES'], keywords: ['oil', 'gold', 'silver', 'wheat', 'futures', 'metals', 'energy'],
   },
 
@@ -274,9 +269,9 @@ export const REGISTRY = [
   },
   // --- end HOLIDAYS ---
 
-  // --- Screens and lists ----------------------------------------------------------------
+  // --- SCREEN (Stocks and companies) ----------------------------------------------------
   {
-    name: 'SCREEN', aliases: ['SCREENER'], category: 'Screens and lists', summary: 'Find stocks by sector, size, price and move',
+    name: 'SCREEN', aliases: ['SCREENER'], category: 'Stocks and companies', summary: 'Find stocks by sector, size, price and move',
     syntax: 'SCREEN [<filters>]', examples: ['SCREEN', 'SCREEN GAINERS', 'SCREEN SECTOR TECH MCAP>10B'], keywords: ['screener', 'filter', 'find', 'search', 'stocks'],
   },
 
