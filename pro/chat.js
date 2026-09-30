@@ -218,24 +218,30 @@ export function secretIn(raw) {
   return false;
 }
 
-// A Pro key or a gift code in a CHAT message: secretIn's rules, except that words split by
-// spaces count only when each word is whole key groups of 4 characters ("7k2m abcd efgh
-// jkmn", "BB 7K2M ABCD EFGH JKMN"; a leading BB or GIFT does not count). Chat is
-// sentences, and secretIn's rule for commands would take ordinary words ("LATTE 3Y WAS
-// BRUTAL" joins into 16 key characters with a digit).
+// A Pro key or a gift code in a CHAT message. Chat is sentences, so this is stricter than
+// secretIn (the rule for commands): any character that is not a letter, a digit, a space,
+// a hyphen or a dot splits the text ("AAPL/MSFT/NVDA/TSLA", "AAPL,MSFT", "key=", "key:"),
+// and key groups join only across spaces, hyphens and dots. A run is a key or a code when
+// it is one word ("FZ4MWS6CAXXPHT5F"), or whole groups of 4 characters (a leading BB or
+// GIFT aside) that start with BB or GIFT or hold a digit ("7k2m abcd efgh jkmn"). And it
+// must have at least 6 different characters, so "4242 4242 4242 4242" or "hahahahahahahaha"
+// is not one.
+export const KEY_MIN_DISTINCT = 6;
 export function secretInText(raw) {
-  const s = String(raw ?? '').toUpperCase();
-  if (/[A-Z0-9]{4}(?:[^A-Z0-9\s][A-Z0-9]{4}){3}/.test(s)) return true;
-  const toks = s.split(/\s+/).filter(Boolean);
   const clean = (t) => t.replace(/[^A-Z0-9]/g, '');
-  for (let i = 0; i < toks.length; i++) {
-    for (let j = i + 1; j <= Math.min(toks.length, i + 9); j++) {
-      const part = toks.slice(i, j);
-      const joined = part.map(clean).join('');
-      if (!normalizeKey(joined) && !normalizeGiftCode(joined)) continue;
-      if (part.length === 1) return true;
-      const whole = part.every((t, k) => (k === 0 ? clean(t).replace(/^(BB|GIFT)/, '') : clean(t)).length % 4 === 0);
-      if (whole && (/^(BB|GIFT)/.test(clean(part[0])) || /\d/.test(joined))) return true;
+  const varied = (code) => new Set(code.replace(/^(BB|GIFT)-/, '').replace(/-/g, '')).size >= KEY_MIN_DISTINCT;
+  for (const piece of String(raw ?? '').toUpperCase().split(/[^A-Z0-9\s.-]+/)) {
+    const toks = piece.split(/[\s.-]+/).filter(Boolean);
+    for (let i = 0; i < toks.length; i++) {
+      for (let j = i + 1; j <= Math.min(toks.length, i + 9); j++) {
+        const part = toks.slice(i, j);
+        const joined = part.map(clean).join('');
+        const code = normalizeKey(joined) || normalizeGiftCode(joined);
+        if (!code || !varied(code)) continue;
+        if (part.length === 1) return true;
+        const whole = part.every((t, k) => (k === 0 ? t.replace(/^(BB|GIFT)/, '') : t).length % 4 === 0);
+        if (whole && (/^(BB|GIFT)/.test(part[0]) || /\d/.test(joined))) return true;
+      }
     }
   }
   return false;
