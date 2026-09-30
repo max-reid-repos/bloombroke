@@ -211,7 +211,7 @@ test('the page\'s result becomes the share numbers: getCert kept P0, /api/whatif
     await rememberCert(stalePage, { stale: true, cacheDir: dir });
     assert.equal((await getCert('WHATIF IPHONE6', deps)).v, pageCert.v, 'a stale page result leaves the kept numbers');
     const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
-    assert.match(server, /if \(data\.cert\) rememberCert\(data\.cert, \{ stale: data\.stale \}\)/, '/api/whatif keeps its result');
+    assert.match(server, /if \(data\.cert\) rememberCert\(data\.cert, \{ stale: data\.stale, ip: clientIp\(req\) \}\)/, '/api/whatif keeps its result, capped per address');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -266,8 +266,11 @@ test('share images render at 1200x630', async () => {
   }
 });
 
-test('disk sweep: a certificate image goes after an hour, everything else after a week', () => {
+test('disk sweep: certificate images, certificate numbers and ticker cards go after an hour, AFFORD cards after a week', () => {
   assert.equal(keepFor('cert-0123456789ab.png'), 3600 * 1000);
-  assert.equal(keepFor('0123456789abcdef01234567.json'), TTL_MS, 'the certificate numbers file');
-  assert.equal(keepFor('quote-abc.png'), TTL_MS);
+  assert.equal(keepFor('0123456789abcdef01234567.json'), 3600 * 1000, 'the certificate numbers file: read for 10 minutes only');
+  assert.equal(keepFor('quote-abc.png'), 3600 * 1000);
+  assert.equal(keepFor('quote-0123456789abcdef01234567.json'), 3600 * 1000);
+  assert.equal(keepFor('afford-0123456789abcdef01234567.png'), TTL_MS);
+  assert.equal(keepFor('0123456789abcdef0123456.json'), TTL_MS, 'only the 24-hex certificate name');
 });

@@ -338,6 +338,7 @@ test('WHATIF card: only the real card on live prices is "real" (kept 10 minutes)
   assert.equal(live.real, true);
   const refused = await whatifCard('WHATIF MY 5 A DAY AAPL SINCE 2018', { catalog, getWhatif: async () => ({ ...result(false), rows: [{ ...row, id: 'mine1', mine: { short: '$5 a day', plural: '$5 a day', family: 'MY-AAPL', doodle: 'box' } }] }) }, { allow: () => false });
   assert.equal(refused.real, false, 'over the MY limit: the site card');
+  assert.equal(refused.busy, true, 'kept a minute, not five');
   const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
-  assert.match(server, /sendPng\(res, card\.png, card\.real \? 600 : 300\)/);
+  assert.match(server, /sendPng\(res, card\.png, card\.busy \? 60 : card\.real \? 600 : 300\)/);
 });
