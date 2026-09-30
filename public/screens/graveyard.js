@@ -320,7 +320,7 @@ export function stoneSlots(e, n = 0) {
     wide: true, split: true, cls: 'gv-card', label: `Graveyard: ${e.name}`,
     art: raw(`<div class="gv-card-stone">${stoneHtml(e, { n })}`
       + '<p class="gv-share">'
-      + `<a class="card-link" href="${esc(links.x)}" target="_blank" rel="noopener noreferrer" data-share="grave" data-via="x">SHARE ON X</a> `
+      + `<a class="card-link" href="${esc(links.x)}" target="_blank" rel="noopener noreferrer" data-share="grave" data-via="x">SHARE ON X</a><span class="gv-sep" aria-hidden="true">·</span>`
       + `<button type="button" class="card-link" data-copy="${esc(links.url)}" data-share="grave" data-via="link">COPY LINK</button></p></div>`),
     kicker: `Graveyard · ${e.ticker}`,
     hero: e.name, heroSize: 44,

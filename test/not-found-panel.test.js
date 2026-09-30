@@ -202,6 +202,31 @@ test('UNKNOWN COMMAND: the numbered panel; TRY ONE from START HERE; CLOSEST only
   assert.match(m.html, /<h3 class="tag ns-h">Closest<\/h3><div class="ns-rows"><a class="ns-row" href="\?c=MARKETS" data-cmd="MARKETS" data-enter><span class="ns-cmd">MARKETS<\/span><span class="ns-what">world markets<\/span>/);
   assert.match(m.html, /<kbd class="ns-k">Enter<\/kbd>/);
   assert.equal(unknownHtml({ typed: 'x', rows: [] }).includes('class="ns-row"'), false);
+  // MARKETS once: CLOSEST, not again in TRY ONE; the other rows keep keys 1 to 4, in order.
+  assert.equal((m.html.match(/data-cmd="MARKETS"/g) || []).length, 1, 'MARKETS once');
+  const tries = [...m.html.matchAll(/data-cmd="([^"]+)" data-key="(\d)"/g)].map((x) => `${x[2]}:${x[1]}`);
+  assert.deepEqual(tries, START_HERE.slice(0, 5).map(([c]) => c).filter((c) => c !== 'MARKETS').map((c, i) => `${i + 1}:${c}`));
+});
+
+test('UNKNOWN COMMAND: plain words get the resolver\'s first guess as CLOSEST (Enter runs it)', async () => {
+  const unknown = async (typed) => {
+    const found = await resolveInput(typed, { search: async () => [], checkTicker: async () => false });
+    return page(typed, null, found, { grave: null, ipo: false });
+  };
+  for (const [typed, cmd] of [['stock screener', 'SCREEN'], ['whats the fed doing', 'FEDPATH'], ['egg prices', 'EGGPRICE'], ['MARKTS', 'MARKETS']]) {
+    const p = await unknown(typed);
+    assert.equal(p.kind, 'unknown', typed);
+    assert.equal(p.enter, true, typed);
+    assert.deepEqual(p.status, [`UNKNOWN COMMAND. ENTER OPENS ${cmd}, OR TRY ONE ABOVE`, 'note'], typed);
+    assert.match(p.html, new RegExp(`<h3 class="tag ns-h">Closest</h3><div class="ns-rows"><a class="ns-row" href="\\?c=${cmd}" data-cmd="${cmd}" data-enter>`), typed);
+    assert.equal((p.html.match(new RegExp(`data-cmd="${cmd}"`, 'g')) || []).length, 1, `${typed}: ${cmd} once`);
+  }
+  const s = await unknown('stock screener');
+  assert.match(s.html, /<span class="ns-cmd">SCREEN<\/span><span class="ns-what">find stocks by sector, size, price and move<\/span>/);
+  // No guess at all: no CLOSEST, nothing on Enter.
+  const none = await unknown('HIUHASBDAS');
+  assert.equal(none.enter, false);
+  assert.doesNotMatch(none.html, /Closest|data-enter/);
 });
 
 test('UNKNOWN COMMAND: the AAPL row shows its live price when it comes, nothing when it fails (never 0)', async () => {
@@ -255,6 +280,16 @@ test('the NOT FOUND styles: the status line colour 2, the panel as tall as its l
   for (const m of dym.matchAll(/font-size:\s*(\d+)px/g)) assert.ok(Number(m[1]) >= 12, m[0]);
   assert.match(dym, /\.ns-card > \.card-alert \{ font-size: 14px;/, 'the line at 14 px');
   for (const m of css.matchAll(/font-size:\s*max\((\d+)px/g)) assert.ok(Number(m[1]) >= 11, m[0]);
+  // The footer's two links look like links (link blue, like "Tell us."), no grey override.
+  assert.match(css, /\.ns-unk-foot a \{ color: var\(--accent\); \}/);
+  assert.doesNotMatch(css, /\.ns-unk-foot a:hover/);
+  // The stamp sits along the bottom, under the serial (the ticker, date and serial stay clear).
+  assert.match(css, /\.nsc-stamp \{\n\s*position: absolute; left: 54%; top: 84%; transform: translate\(-50%, -50%\) rotate\(-8deg\);/);
+});
+
+test('SHARE ON X · COPY LINK: a dot between the two, under the certificate', () => {
+  const html = page('XQZT', 'XQZT').html;
+  assert.match(html, /<p class="gv-share"><a class="card-link"[^>]*data-share="ipo" data-via="x">SHARE ON X<\/a><span class="gv-sep" aria-hidden="true">·<\/span><button type="button" class="card-link"[^>]*data-share="ipo" data-via="link">COPY LINK<\/button><\/p>/);
 });
 
 test('a dead ticker typed on its own keeps its stone card', () => {

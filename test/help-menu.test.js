@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { commandGroups, START_HERE, START_GROUP, CATEGORIES, findCommand, byCategory, categoriesInUse, LISTED, searchCommands } from '../public/registry.js';
-import { keyRow, startHere, categoryHtml, helpCategories, DOLLAR_LINE, HELP_GROUPS, helpStrip, commandRow, syntaxParts, COLUMN_HEADS } from '../public/screens/help.js';
+import { keyRow, startHere, categoryHtml, helpCategories, DOLLAR_LINE, HELP_GROUPS, helpStrip, helpPlaceholder, commandRow, syntaxParts, COLUMN_HEADS } from '../public/screens/help.js';
 import { menuGroupsHtml, menuFoundHtml, menuFootHtml, MENU_FOOT, menuItems, MENU_COLUMNS } from '../public/menu.js';
 import { COMMANDS, FKEYS } from '../public/app.js';
 
@@ -167,15 +167,50 @@ test('HELP: 12 entries on the left, every listed command in exactly one category
   assert.deepEqual(byCategory('Rates, FX, crypto').map((c) => c.name), ['RATES', 'CURVE', 'BONDS', 'FEDPATH', 'FX', 'FXMATRIX', 'CRYPTO', 'COMMODITIES']);
 });
 
-test('HELP: a numbered strip on top, its count the listed commands', () => {
+test('HELP: a numbered strip on top, its count the real commands (not the <TICKER> pattern rows)', () => {
   const strip = helpStrip();
   assert.match(strip, /^<header class="panel-head help-strip"><h2 class="panel-label">1\) HELP<\/h2><span class="panel-meta">(\d+) COMMANDS · Esc back<\/span><\/header>$/);
   const n = Number(/(\d+) COMMANDS/.exec(strip)[1]);
-  assert.equal(n, LISTED.length);
-  assert.equal(n, helpCategories().slice(1).reduce((t, cat) => t + byCategory(cat).length, 0), 'the sum of the counts on the left');
+  const patterns = LISTED.filter((c) => c.pattern);
+  assert.deepEqual(patterns.map((c) => c.name), ['<TICKER>', '<TICKER> <FUNCTION>']);
+  assert.equal(n, LISTED.length - 2);
+  assert.equal(n, helpCategories().slice(1).reduce((t, cat) => t + byCategory(cat).length, 0) - patterns.length, 'the sum of the counts on the left, less the two pattern rows');
   const src = helpSrc();
   assert.ok(src.indexOf('${helpStrip()}') < src.indexOf('<div class="help-search">'), 'the strip is above the search');
-  assert.match(src, /placeholder="\/ search: insider, yield, dividend"/);
+  // The hint: "/" and three words on a wide screen; a phone (under 640 px) has no "/" key and less room.
+  assert.equal(helpPlaceholder(false), '/ search: insider, yield, dividend');
+  assert.equal(helpPlaceholder(true), 'search: insider, yield');
+  assert.match(src, /placeholder="\$\{helpPlaceholder\(typeof matchMedia === 'function' && matchMedia\('\(max-width: 639px\)'\)\.matches\)\}"/);
+});
+
+test('search (HELP and Ctrl K): a command is found by its own words, never by its category', () => {
+  const names = (q, list) => searchCommands(q, list).map((c) => c.name);
+  for (const list of [undefined, menuItems()]) {
+    const crypto = names('crypto', list);
+    assert.equal(crypto[0], 'CRYPTO');
+    for (const c of ['RATES', 'CURVE', 'BONDS', 'FEDPATH', 'FX', 'FXMATRIX', 'COMMODITIES']) assert.ok(!crypto.includes(c), `crypto: not ${c}`);
+    const fx = names('fx', list);
+    assert.deepEqual(fx.slice(0, 2), ['FX', 'FXMATRIX']);
+    assert.ok(!fx.includes('CRYPTO') && !fx.includes('COMMODITIES'), fx.join(' '));
+    const rates = names('rates', list);
+    assert.equal(rates[0], 'RATES');
+    for (const c of ['CURVE', 'BONDS', 'FEDPATH', 'FXMATRIX']) assert.ok(rates.includes(c), `rates: ${c}`);
+    assert.ok(!rates.includes('CRYPTO') && !rates.includes('COMMODITIES'), rates.join(' '));
+  }
+  // The category words still find the commands that are about them.
+  const weird = names('weird');
+  assert.equal(weird[0], 'WEIRD');
+  for (const c of ['CANAL', 'PIZZA', 'EGGPRICE', 'GRAVEYARD', 'FISHTANK']) assert.ok(weird.includes(c), `weird: ${c}`);
+  assert.deepEqual(names('economy').slice(0, 2), ['ECONOMY', 'CALENDAR']);
+  for (const c of ['CALENDAR', 'EARNINGS', 'IPOS', 'SPLITS', 'EXDIV', 'HOLIDAYS']) assert.ok(names('calendars').includes(c), `calendars: ${c}`);
+  const pro = names('pro');
+  assert.equal(pro[0], 'PRO');
+  for (const c of ['GIFT', 'REDEEM', 'CHAT', 'LOGIN', 'LOGOUT']) assert.ok(pro.includes(c), `pro: ${c}`);
+  for (const c of ['CHART', 'GRID', 'COMPARE']) assert.ok(names('charts').includes(c), `charts: ${c}`);
+  for (const c of ['WHATIF', 'AFFORD', 'WAGE', 'LOAN', 'COMPOUND', 'CPI']) assert.ok(names('money').includes(c), `money: ${c}`);
+  const src = readFileSync(new URL('../public/registry.js', import.meta.url), 'utf8');
+  assert.match(src, /const text = `\$\{c\.summary\} \$\{c\.syntax\}`\.toLowerCase\(\);/, 'the matched text has no category');
+  assert.doesNotMatch(src, /\n {4}\{\n/, 'no stray indented entry');
 });
 
 test('HELP rows: three columns, COMMAND (name, words, options below), WHAT IT DOES, TRY runs the example', () => {

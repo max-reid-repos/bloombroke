@@ -175,7 +175,7 @@ export function tickerPageHtml({ typed, word, info = {}, top = null, graves = []
   // The share links under the certificate (the page's picture is what gets shared): the
   // IPO IT page, whose card (/og/ipo.png) shows the ticker typed.
   const share = '<p class="gv-share">'
-    + `<a class="card-link" href="${esc(links.x)}" target="_blank" rel="noopener noreferrer" data-share="ipo" data-via="x">SHARE ON X</a> `
+    + `<a class="card-link" href="${esc(links.x)}" target="_blank" rel="noopener noreferrer" data-share="ipo" data-via="x">SHARE ON X</a><span class="gv-sep" aria-hidden="true">·</span>`
     + `<button type="button" class="card-link" data-copy="${esc(links.url)}" data-share="ipo" data-via="link">COPY LINK</button></p>`;
   const art = canIpo ? raw(`<div class="ns-cert-col">${certHtml(w, { day })}${share}</div>`) : '';
   return cardPage({
@@ -208,15 +208,16 @@ const isStock = (cmd) => SP100_NAMES.some(([id]) => id === cmd);
 const row = (cmd, what, key, attrs = '') => `<a class="ns-row" href="${esc(q(cmd))}" data-cmd="${esc(cmd)}"${attrs}><span class="ns-cmd">${esc(cmd)}</span><span class="ns-what">${esc(what)}</span>${isStock(cmd) ? `<span class="ns-live num" data-live="${esc(cmd)}"></span>` : '<span class="ns-live"></span>'}<kbd class="ns-k">${esc(key)}</kbd></a>`;
 
 // UNKNOWN COMMAND: the kit's numbered panel. The closest command or name when one is close
-// (Enter), TRY ONE (1 to 5), Ctrl K and "Tell us what you wanted".
+// (Enter), TRY ONE (1 to 5, without the CLOSEST row), Ctrl K and "Tell us what you wanted".
 export function unknownHtml({ typed, top = null, rows = tryRows() }) {
   const words = String(typed || '').trim().replace(/\s+/g, ' ');
   const known = new Map(rows);
   const short = (c) => known.get(c.cmd) || lower(String(c.what || c.name).split(/[:.]/)[0]);
   const closest = top?.cmd ? row(top.cmd, top.kind === 'cmd' ? short(top) : top.kind === 'grave' ? `${top.name} · ${top.what}` : top.name, 'Enter', ' data-enter') : '';
+  const tries = rows.filter(([cmd]) => cmd !== top?.cmd);
   const body = '<p class="ns-unk-line">Not a command, a ticker or a company we know.</p>'
     + (closest ? `<h3 class="tag ns-h">Closest</h3><div class="ns-rows">${closest}</div>` : '')
-    + `<h3 class="tag ns-h">Try one</h3><div class="ns-rows">${rows.map(([cmd, what], i) => row(cmd, what, String(i + 1), ` data-key="${i + 1}"`)).join('')}</div>`
+    + `<h3 class="tag ns-h">Try one</h3><div class="ns-rows">${tries.map(([cmd, what], i) => row(cmd, what, String(i + 1), ` data-key="${i + 1}"`)).join('')}</div>`
     + `<p class="ns-unk-foot"><a href="${esc(q('MENU'))}" data-cmd="MENU"><kbd>Ctrl K</kbd> every command</a> · <a href="${esc(q('FEEDBACK'))}" data-cmd="FEEDBACK" data-prefill="${esc(FEEDBACK_PREFILL(words))}">Tell us what you wanted</a></p>`;
   return panel('1', `Unknown command: ${words}`, body, { meta: '<span class="ns-esc"><kbd>Esc</kbd> back</span>', cls: 'panel-solo ns-unk' });
 }
@@ -244,9 +245,13 @@ export function notFoundPage({ typed, word = null, found = {}, ticker = null, in
       status: [top ? `NOT FOUND. ENTER OPENS ${openName}, OR TYPE HELP` : info?.ipo ? 'NO SUCH TICKER. IPO IT, OR TYPE HELP' : 'NO SUCH TICKER. TYPE HELP', 'note'],
     };
   }
+  // Plain words (stock screener, whats the fed doing): nothing close by spelling, so the
+  // resolver's first guess by meaning is CLOSEST.
+  const g = found?.commands?.[0];
+  const pick = top || (g?.cmd ? { kind: 'cmd', id: '', name: g.name || g.cmd, cmd: g.cmd, what: g.summary || '' } : null);
   return {
-    kind: 'unknown', html: unknownHtml({ typed, top }), enter: Boolean(top),
-    status: [top ? `UNKNOWN COMMAND. ENTER OPENS ${top.kind === 'cmd' ? String(top.name).toUpperCase() : openName}, OR TRY ONE ABOVE` : 'UNKNOWN COMMAND. TRY ONE ABOVE', 'note'],
+    kind: 'unknown', html: unknownHtml({ typed, top: pick }), enter: Boolean(pick),
+    status: [pick ? `UNKNOWN COMMAND. ENTER OPENS ${pick.kind === 'cmd' ? String(pick.name).toUpperCase() : openName}, OR TRY ONE ABOVE` : 'UNKNOWN COMMAND. TRY ONE ABOVE', 'note'],
   };
 }
 

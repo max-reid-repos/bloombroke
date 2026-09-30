@@ -179,11 +179,11 @@ export const REGISTRY = [
   // --- Charts ---------------------------------------------------------------------------
   {
     name: 'CHART', category: 'Charts', summary: 'A price chart for any symbol and range', takesTicker: true, bar: 1,
-    syntax: 'CHART <symbol> [<range>]', examples: ['CHART AAPL 5Y', 'AAPL CHART YTD'], keywords: ['graph', 'price', 'history', 'plot'],
+    syntax: 'CHART <symbol> [<range>]', examples: ['CHART AAPL 5Y', 'AAPL CHART YTD'], keywords: ['graph', 'price', 'history', 'plot', 'charts'],
   },
   {
     name: 'COMPARE', category: 'Charts', summary: 'Race 2 to 5 tickers over a range', takesTicker: true,
-    syntax: 'COMPARE <tickers> [<range>]', examples: ['COMPARE AAPL MSFT NVDA', 'COMPARE KO PEP 5Y'], keywords: ['versus', 'vs', 'race', 'performance', 'relative'],
+    syntax: 'COMPARE <tickers> [<range>]', examples: ['COMPARE AAPL MSFT NVDA', 'COMPARE KO PEP 5Y'], keywords: ['versus', 'vs', 'race', 'performance', 'relative', 'chart'],
   },
   {
     name: 'GRID', category: 'Charts', summary: 'A board of up to 16 mini charts',
@@ -208,18 +208,18 @@ export const REGISTRY = [
   },
   {
     name: 'CURVE', category: 'Rates, FX, crypto', summary: 'US Treasury yield curve: today, 1 month and 1 year ago',
-    syntax: 'CURVE', examples: ['CURVE'], keywords: ['yield curve', 'treasury', 'inversion', 'yield', 'bonds'],
+    syntax: 'CURVE', examples: ['CURVE'], keywords: ['yield curve', 'treasury', 'inversion', 'yield', 'bonds', 'interest rates'],
   },
   {
     name: 'BONDS', category: 'Rates, FX, crypto', summary: 'Government bond yields by country: 2Y to 30Y, spreads, curves',
-    syntax: 'BONDS [SPREADS|CURVE]', examples: ['BONDS', 'BONDS SPREADS', 'BONDS CURVE'], keywords: ['yield', 'government', 'gilts', 'bunds', 'jgb', 'spreads'],
+    syntax: 'BONDS [SPREADS|CURVE]', examples: ['BONDS', 'BONDS SPREADS', 'BONDS CURVE'], keywords: ['yield', 'government', 'gilts', 'bunds', 'jgb', 'spreads', 'interest rates'],
   },
   {
     name: 'FEDPATH', category: 'Rates, FX, crypto', summary: 'The Fed funds rate implied by futures, month by month',
-    syntax: 'FEDPATH', examples: ['FEDPATH'], keywords: ['fed', 'rate cut', 'rate hike', 'fomc', 'futures', 'central bank'],
+    syntax: 'FEDPATH', examples: ['FEDPATH'], keywords: ['fed', 'rate cut', 'rate hike', 'fomc', 'futures', 'central bank', 'interest rates'],
   },
 
-    {
+  {
     name: 'FX', category: 'Rates, FX, crypto', summary: 'Convert money between currencies',
     syntax: 'FX [<amount>] <from> <to>', examples: ['FX 500 USD THB', 'FX USD CAD'], keywords: ['currency', 'convert', 'exchange rate', 'forex', 'money'],
   },
@@ -228,7 +228,7 @@ export const REGISTRY = [
     syntax: 'FXMATRIX [HEAT]', examples: ['FXMATRIX', 'FXMATRIX HEAT'], keywords: ['cross rates', 'currency', 'forex', 'heat'],
   },
 
-    {
+  {
     name: 'CRYPTO', category: 'Rates, FX, crypto', summary: 'The top 20 coins, 24 hours and 7 days',
     syntax: 'CRYPTO', examples: ['CRYPTO'], keywords: ['bitcoin', 'ethereum', 'coins', 'btc', 'eth'],
   },
@@ -244,28 +244,28 @@ export const REGISTRY = [
   },
   {
     name: 'CALENDAR', category: 'Economy and calendars', summary: "This week's economic events: jobs, inflation, central banks",
-    syntax: 'CALENDAR [US|ALL]', examples: ['CALENDAR', 'CALENDAR ALL'], keywords: ['events', 'releases', 'schedule', 'fomc', 'payrolls'],
+    syntax: 'CALENDAR [US|ALL]', examples: ['CALENDAR', 'CALENDAR ALL'], keywords: ['events', 'releases', 'schedule', 'fomc', 'payrolls', 'economy', 'calendars'],
   },
   {
     name: 'EARNINGS', category: 'Economy and calendars', summary: 'Who reports earnings today, or this week', tickerSoon: true,
-    syntax: 'EARNINGS [<day>|WEEK]', examples: ['EARNINGS', 'EARNINGS WEEK', 'EARNINGS TOMORROW'], keywords: ['reports', 'eps', 'results', 'quarterly'],
+    syntax: 'EARNINGS [<day>|WEEK]', examples: ['EARNINGS', 'EARNINGS WEEK', 'EARNINGS TOMORROW'], keywords: ['reports', 'eps', 'results', 'quarterly', 'calendar'],
   },
   {
     name: 'IPOS', category: 'Economy and calendars', summary: 'IPOs: upcoming, priced and filed',
-    syntax: 'IPOS', examples: ['IPOS'], keywords: ['ipo', 'listing', 'new issues', 'offering'],
+    syntax: 'IPOS', examples: ['IPOS'], keywords: ['ipo', 'listing', 'new issues', 'offering', 'calendar'],
   },
   {
     name: 'SPLITS', category: 'Economy and calendars', summary: 'Upcoming stock splits and reverse splits',
-    syntax: 'SPLITS', examples: ['SPLITS'], keywords: ['split', 'reverse split'],
+    syntax: 'SPLITS', examples: ['SPLITS'], keywords: ['split', 'reverse split', 'calendar'],
   },
   {
     name: 'EXDIV', category: 'Economy and calendars', summary: 'Ex-dividend dates for the next five weekdays',
-    syntax: 'EXDIV [<day>]', examples: ['EXDIV', 'EXDIV 2026-10-01'], keywords: ['ex-dividend', 'dividend', 'record date'],
+    syntax: 'EXDIV [<day>]', examples: ['EXDIV', 'EXDIV 2026-10-01'], keywords: ['ex-dividend', 'dividend', 'record date', 'calendar'],
   },
   // --- HOLIDAYS (screens/holidays.js; the dates are app.js NYSE_HOLIDAYS) ---
   {
     name: 'HOLIDAYS', category: 'Economy and calendars', summary: 'US stock market closures and early closes, the next 12 months, in your time zone',
-    syntax: 'HOLIDAYS', examples: ['HOLIDAYS'], keywords: ['holiday', 'holidays', 'market holidays', 'closed', 'closure', 'early close', 'half day', 'nyse', 'nasdaq'],
+    syntax: 'HOLIDAYS', examples: ['HOLIDAYS'], keywords: ['holiday', 'holidays', 'market holidays', 'closed', 'closure', 'early close', 'half day', 'nyse', 'nasdaq', 'calendar'],
   },
   // --- end HOLIDAYS ---
 
@@ -303,23 +303,23 @@ export const REGISTRY = [
   },
   {
     name: 'WHATIF', category: 'Money tools', summary: "In hindsight: the maker's stock instead of what you bought",
-    syntax: 'WHATIF [<item> ...] [MY <amount> <ticker> <date>]', examples: ['WHATIF', 'WHATIF IPHONE6 LATTE:3Y', 'WHATIF MY 1200 AAPL 2015', 'WHATIF MY 5 A DAY SBUX SINCE 2018'], keywords: ['regret', 'instead', 'what if', 'opportunity cost', 'my own purchase'],
+    syntax: 'WHATIF [<item> ...] [MY <amount> <ticker> <date>]', examples: ['WHATIF', 'WHATIF IPHONE6 LATTE:3Y', 'WHATIF MY 1200 AAPL 2015', 'WHATIF MY 5 A DAY SBUX SINCE 2018'], keywords: ['regret', 'instead', 'what if', 'opportunity cost', 'my own purchase', 'money'],
   },
   {
     name: 'AFFORD', category: 'Money tools', summary: 'Can I afford it? Cost per use of a thing you buy, and a verdict',
-    syntax: 'AFFORD <price> [<thing>] [<n> PER WEEK] [FOR <n>Y]', examples: ['AFFORD 1200', 'AFFORD 1200 BIKE 2 PER WEEK', 'AFFORD 90 3 TIMES A MONTH FOR 2Y'], keywords: ['buy', 'cost per use', 'purchase', 'worth it', 'spend'],
+    syntax: 'AFFORD <price> [<thing>] [<n> PER WEEK] [FOR <n>Y]', examples: ['AFFORD 1200', 'AFFORD 1200 BIKE 2 PER WEEK', 'AFFORD 90 3 TIMES A MONTH FOR 2Y'], keywords: ['buy', 'cost per use', 'purchase', 'worth it', 'spend', 'money'],
   },
   {
     name: 'WAGE', category: 'Money tools', summary: 'Save your hourly pay, then AFFORD shows hours of work',
-    syntax: 'WAGE <per hour>', examples: ['WAGE 35'], keywords: ['salary', 'pay', 'hourly', 'income'],
+    syntax: 'WAGE <per hour>', examples: ['WAGE 35'], keywords: ['salary', 'pay', 'hourly', 'income', 'money'],
   },
   {
     name: 'LOAN', category: 'Money tools', summary: "Monthly payment and total interest, at today's mortgage rate or yours",
-    syntax: 'LOAN <amount> [<years>] [<rate>%]', examples: ['LOAN 400000 30Y', 'LOAN 25000 5Y 7.9%'], keywords: ['mortgage', 'payment', 'interest', 'car loan', 'amortization'],
+    syntax: 'LOAN <amount> [<years>] [<rate>%]', examples: ['LOAN 400000 30Y', 'LOAN 25000 5Y 7.9%'], keywords: ['mortgage', 'payment', 'interest', 'car loan', 'amortization', 'money'],
   },
   {
     name: 'COMPOUND', category: 'Money tools', summary: 'What saving every month grows to, at a return you pick',
-    syntax: 'COMPOUND [<start>] [<monthly>/MO] <return>% <years>Y', examples: ['COMPOUND 500/MO 8% 30Y', 'COMPOUND 10000 7% 20Y'], keywords: ['savings', 'growth', 'interest', 'retirement', 'invest'],
+    syntax: 'COMPOUND [<start>] [<monthly>/MO] <return>% <years>Y', examples: ['COMPOUND 500/MO 8% 30Y', 'COMPOUND 10000 7% 20Y'], keywords: ['savings', 'growth', 'interest', 'retirement', 'invest', 'money'],
   },
 
   // --- Pro ------------------------------------------------------------------------------
@@ -409,7 +409,7 @@ export const REGISTRY = [
   {
     name: 'GRAVEYARD', category: 'Weird data', summary: 'Famous tickers that are gone: bankrupt, seized, bought out or taken private',
     syntax: 'GRAVEYARD [<ticker>|TABLE|MOURNED|ZOMBIES|TODAY]', examples: ['GRAVEYARD', 'GRAVEYARD LEH', 'GRAVEYARD ZOMBIES', 'GRAVEYARD MOURNED'],
-    keywords: ['dead', 'delisted', 'bankrupt', 'bankruptcy', 'defunct', 'gone', 'failed', 'collapse', 'rip'],
+    keywords: ['dead', 'delisted', 'bankrupt', 'bankruptcy', 'defunct', 'gone', 'failed', 'collapse', 'rip', 'weird'],
   },
   // --- end GRAVEYARD ---
   {
@@ -418,100 +418,100 @@ export const REGISTRY = [
   },
   {
     name: 'CANAL', aliases: ['SHIPS', 'CHOKEPOINTS'], category: 'Weird data', summary: 'Ships through Hormuz, Suez, Panama and other chokepoints',
-    syntax: 'CANAL [3M|1Y|5Y|10Y|MAX]', examples: ['CANAL', 'CANAL 5Y'], keywords: ['shipping', 'hormuz', 'suez', 'panama', 'tankers', 'strait', 'chokepoint'],
+    syntax: 'CANAL [3M|1Y|5Y|10Y|MAX]', examples: ['CANAL', 'CANAL 5Y'], keywords: ['shipping', 'hormuz', 'suez', 'panama', 'tankers', 'strait', 'chokepoint', 'weird'],
   },
   {
     name: 'PIZZA', aliases: ['PIZZINT'], category: 'Weird data', summary: 'Pentagon Pizza Index: pizza place traffic near the Pentagon',
-    syntax: 'PIZZA [3M|1Y|5Y|10Y|MAX]', examples: ['PIZZA', 'PIZZA MAX'], keywords: ['pentagon', 'pizza index', 'defcon', 'pizzint'],
+    syntax: 'PIZZA [3M|1Y|5Y|10Y|MAX]', examples: ['PIZZA', 'PIZZA MAX'], keywords: ['pentagon', 'pizza index', 'defcon', 'pizzint', 'weird'],
   },
   {
     name: 'DEGEN', category: 'Weird data', summary: 'App Store rank of Kalshi, Polymarket, Robinhood, Coinbase',
-    syntax: 'DEGEN [3M|1Y|5Y|10Y|MAX]', examples: ['DEGEN', 'DEGEN MAX'], keywords: ['app store', 'kalshi', 'polymarket', 'robinhood', 'coinbase', 'prediction markets', 'betting', 'trading apps'],
+    syntax: 'DEGEN [3M|1Y|5Y|10Y|MAX]', examples: ['DEGEN', 'DEGEN MAX'], keywords: ['app store', 'kalshi', 'polymarket', 'robinhood', 'coinbase', 'prediction markets', 'betting', 'trading apps', 'weird'],
   },
   {
     name: 'WAFFLE', aliases: ['WAFFLEHOUSE'], category: 'Weird data', summary: 'Waffle House stores inside active tropical storms',
-    syntax: 'WAFFLE [3M|1Y|5Y|10Y|MAX]', examples: ['WAFFLE', 'WAFFLE MAX'], keywords: ['waffle house index', 'hurricane', 'storm', 'fema', 'tropical'],
+    syntax: 'WAFFLE [3M|1Y|5Y|10Y|MAX]', examples: ['WAFFLE', 'WAFFLE MAX'], keywords: ['waffle house index', 'hurricane', 'storm', 'fema', 'tropical', 'weird'],
   },
   {
     name: 'PANIC', category: 'Weird data', summary: 'Wikipedia views of Recession, Stock market crash and more',
-    syntax: 'PANIC [3M|1Y|5Y|10Y|MAX]', examples: ['PANIC', 'PANIC 5Y'], keywords: ['wikipedia', 'recession', 'crash', 'stagflation', 'bank run', 'fear'],
+    syntax: 'PANIC [3M|1Y|5Y|10Y|MAX]', examples: ['PANIC', 'PANIC 5Y'], keywords: ['wikipedia', 'recession', 'crash', 'stagflation', 'bank run', 'fear', 'weird'],
   },
   {
     name: 'HIRING', category: 'Weird data', summary: 'Hacker News job seekers per job post, by month',
-    syntax: 'HIRING [3M|1Y|5Y|10Y|MAX]', examples: ['HIRING', 'HIRING 5Y'], keywords: ['hacker news', 'who is hiring', 'tech jobs', 'hn', 'job market'],
+    syntax: 'HIRING [3M|1Y|5Y|10Y|MAX]', examples: ['HIRING', 'HIRING 5Y'], keywords: ['hacker news', 'who is hiring', 'tech jobs', 'hn', 'job market', 'weird'],
   },
   {
     name: 'HOTDOG', aliases: ['HOTDOGS'], category: 'Weird data', summary: "Costco's $1.50 hot dog, adjusted for inflation",
-    syntax: 'HOTDOG [3M|1Y|5Y|10Y|MAX]', examples: ['HOTDOG', 'HOTDOG 5Y'], keywords: ['costco', 'hot dog', 'inflation', 'cpi'],
+    syntax: 'HOTDOG [3M|1Y|5Y|10Y|MAX]', examples: ['HOTDOG', 'HOTDOG 5Y'], keywords: ['costco', 'hot dog', 'inflation', 'cpi', 'weird'],
   },
   {
     name: 'OMENS', aliases: ['MOON'], category: 'Weird data', summary: 'Moon phase, New York sky and sunspots',
-    syntax: 'OMENS [3M|1Y|5Y|10Y|MAX]', examples: ['OMENS', 'OMENS 5Y'], keywords: ['moon', 'lunar', 'weather', 'sunshine', 'sunspots', 'solar'],
+    syntax: 'OMENS [3M|1Y|5Y|10Y|MAX]', examples: ['OMENS', 'OMENS 5Y'], keywords: ['moon', 'lunar', 'weather', 'sunshine', 'sunspots', 'solar', 'weird'],
   },
   {
     name: 'UNDIES', aliases: ['UNDERWEAR'], category: 'Weird data', summary: "Men's underwear price index, the Greenspan folklore gauge",
-    syntax: 'UNDIES [3M|1Y|5Y|10Y|MAX]', examples: ['UNDIES', 'UNDIES 5Y'], keywords: ['underwear', 'greenspan', 'cpi', 'prices', 'clothing'],
+    syntax: 'UNDIES [3M|1Y|5Y|10Y|MAX]', examples: ['UNDIES', 'UNDIES 5Y'], keywords: ['underwear', 'greenspan', 'cpi', 'prices', 'clothing', 'weird'],
   },
   {
     name: 'BIGMAC', aliases: ['BURGER'], category: 'Weird data', summary: 'Big Mac index: where a Big Mac costs more or less than in the US',
-    syntax: 'BIGMAC [3M|1Y|5Y|10Y|MAX]', examples: ['BIGMAC', 'BIGMAC 5Y'], keywords: ['big mac index', 'burger', 'currency', 'valuation', 'economist', 'ppp'],
+    syntax: 'BIGMAC [3M|1Y|5Y|10Y|MAX]', examples: ['BIGMAC', 'BIGMAC 5Y'], keywords: ['big mac index', 'burger', 'currency', 'valuation', 'economist', 'ppp', 'weird'],
   },
   {
     name: 'BILLIONS', aliases: ['BILLIONAIRES'], category: 'Weird data', summary: 'How much the richest people made or lost today',
-    syntax: 'BILLIONS [3M|1Y|5Y|10Y|MAX]', examples: ['BILLIONS', 'BILLIONS MAX'], keywords: ['billionaires', 'rich list', 'net worth', 'forbes', 'wealth'],
+    syntax: 'BILLIONS [3M|1Y|5Y|10Y|MAX]', examples: ['BILLIONS', 'BILLIONS MAX'], keywords: ['billionaires', 'rich list', 'net worth', 'forbes', 'wealth', 'weird'],
   },
   {
     name: 'WSB', aliases: ['WALLSTREETBETS'], category: 'Weird data', summary: 'Most-mentioned tickers on WallStreetBets, 24 hours',
-    syntax: 'WSB [3M|1Y|5Y|10Y|MAX]', examples: ['WSB', 'WSB MAX'], keywords: ['reddit', 'wallstreetbets', 'mentions', 'meme stocks', 'apewisdom'],
+    syntax: 'WSB [3M|1Y|5Y|10Y|MAX]', examples: ['WSB', 'WSB MAX'], keywords: ['reddit', 'wallstreetbets', 'mentions', 'meme stocks', 'apewisdom', 'weird'],
   },
   {
     name: 'CHANCES', category: 'Weird data', summary: 'Prediction-market odds of a US recession and the next Fed move',
-    syntax: 'CHANCES [3M|1Y|5Y|10Y|MAX]', examples: ['CHANCES', 'CHANCES MAX'], keywords: ['odds', 'prediction market', 'polymarket', 'recession', 'fed', 'fomc', 'probability'],
+    syntax: 'CHANCES [3M|1Y|5Y|10Y|MAX]', examples: ['CHANCES', 'CHANCES MAX'], keywords: ['odds', 'prediction market', 'polymarket', 'recession', 'fed', 'fomc', 'probability', 'weird'],
   },
   {
     name: 'BOXRATE', aliases: ['FREIGHTRATE'], category: 'Weird data', summary: 'Cost to ship one 40ft container, Drewry World Container Index',
-    syntax: 'BOXRATE [3M|1Y|5Y|10Y|MAX]', examples: ['BOXRATE', 'BOXRATE MAX'], keywords: ['container', 'shipping', 'freight rate', 'drewry', 'wci'],
+    syntax: 'BOXRATE [3M|1Y|5Y|10Y|MAX]', examples: ['BOXRATE', 'BOXRATE MAX'], keywords: ['container', 'shipping', 'freight rate', 'drewry', 'wci', 'weird'],
   },
   {
     name: 'EGGPRICE', aliases: ['EGGPRICES'], category: 'Weird data', summary: 'Average price of a dozen eggs in the US, and how far from the peak',
-    syntax: 'EGGPRICE [3M|1Y|5Y|10Y|MAX]', examples: ['EGGPRICE', 'EGGPRICE 5Y'], keywords: ['eggs', 'food prices', 'grocery', 'inflation', 'bird flu'],
+    syntax: 'EGGPRICE [3M|1Y|5Y|10Y|MAX]', examples: ['EGGPRICE', 'EGGPRICE 5Y'], keywords: ['eggs', 'food prices', 'grocery', 'inflation', 'bird flu', 'weird'],
   },
   {
     name: 'RIDES', aliases: ['QUEUES'], category: 'Weird data', summary: 'Average ride wait at Walt Disney World and Disneyland right now',
-    syntax: 'RIDES [3M|1Y|5Y|10Y|MAX]', examples: ['RIDES', 'RIDES MAX'], keywords: ['disney', 'theme park', 'wait times', 'queues', 'consumer'],
+    syntax: 'RIDES [3M|1Y|5Y|10Y|MAX]', examples: ['RIDES', 'RIDES MAX'], keywords: ['disney', 'theme park', 'wait times', 'queues', 'consumer', 'weird'],
   },
   {
     name: 'BUZZWORD', aliases: ['BUZZWORDS'], category: 'Weird data', summary: '10-Q filings that say AI, tariff or recession, by quarter',
-    syntax: 'BUZZWORD [3M|1Y|5Y|10Y|MAX]', examples: ['BUZZWORD', 'BUZZWORD 5Y'], keywords: ['buzz', 'sec', 'edgar', '10-q', 'artificial intelligence', 'tariffs', 'recession', 'filings'],
+    syntax: 'BUZZWORD [3M|1Y|5Y|10Y|MAX]', examples: ['BUZZWORD', 'BUZZWORD 5Y'], keywords: ['buzz', 'sec', 'edgar', '10-q', 'artificial intelligence', 'tariffs', 'recession', 'filings', 'weird'],
   },
   {
     name: 'BEIGE', aliases: ['BEIGEBOOK'], category: 'Weird data', summary: 'Word counts in the Fed Beige Book: uncertain, tariff, slow, recession, AI',
-    syntax: 'BEIGE [3M|1Y|5Y|10Y|MAX]', examples: ['BEIGE', 'BEIGE MAX'], keywords: ['beige book', 'federal reserve', 'fed', 'words', 'uncertainty'],
+    syntax: 'BEIGE [3M|1Y|5Y|10Y|MAX]', examples: ['BEIGE', 'BEIGE MAX'], keywords: ['beige book', 'federal reserve', 'fed', 'words', 'uncertainty', 'weird'],
   },
   {
     name: 'TRUCKS', aliases: ['FREIGHT'], category: 'Weird data', summary: 'Freight shipments, truck tonnage and rail carloads vs a year ago',
-    syntax: 'TRUCKS [3M|1Y|5Y|10Y|MAX]', examples: ['TRUCKS', 'TRUCKS 5Y'], keywords: ['freight', 'cass', 'trucking', 'rail', 'carloads', 'shipping'],
+    syntax: 'TRUCKS [3M|1Y|5Y|10Y|MAX]', examples: ['TRUCKS', 'TRUCKS 5Y'], keywords: ['freight', 'cass', 'trucking', 'rail', 'carloads', 'shipping', 'weird'],
   },
   {
     name: 'BOXES', aliases: ['CARDBOARD'], category: 'Weird data', summary: 'Cardboard box output and box prices vs a year ago',
-    syntax: 'BOXES [3M|1Y|5Y|10Y|MAX]', examples: ['BOXES', 'BOXES 5Y'], keywords: ['cardboard', 'corrugated', 'packaging', 'boxes', 'industrial production'],
+    syntax: 'BOXES [3M|1Y|5Y|10Y|MAX]', examples: ['BOXES', 'BOXES 5Y'], keywords: ['cardboard', 'corrugated', 'packaging', 'boxes', 'industrial production', 'weird'],
   },
   {
     name: 'LIPSTICK', category: 'Weird data', summary: 'Cosmetics price index vs a year ago, the lipstick folklore gauge',
-    syntax: 'LIPSTICK [3M|1Y|5Y|10Y|MAX]', examples: ['LIPSTICK', 'LIPSTICK 5Y'], keywords: ['lipstick index', 'cosmetics', 'cpi', 'prices', 'beauty'],
+    syntax: 'LIPSTICK [3M|1Y|5Y|10Y|MAX]', examples: ['LIPSTICK', 'LIPSTICK 5Y'], keywords: ['lipstick index', 'cosmetics', 'cpi', 'prices', 'beauty', 'weird'],
   },
   {
     name: 'SICK', aliases: ['WASTEWATER'], category: 'Weird data', summary: 'Wastewater virus level, national: COVID, flu A and RSV',
-    syntax: 'SICK [3M|1Y|5Y|10Y|MAX]', examples: ['SICK', 'SICK 1Y'], keywords: ['wastewater', 'covid', 'flu', 'rsv', 'cdc', 'virus'],
+    syntax: 'SICK [3M|1Y|5Y|10Y|MAX]', examples: ['SICK', 'SICK 1Y'], keywords: ['wastewater', 'covid', 'flu', 'rsv', 'cdc', 'virus', 'weird'],
   },
   {
     name: 'MACAU', category: 'Weird data', summary: 'Macau casino gaming revenue by month, vs a year ago',
-    syntax: 'MACAU [3M|1Y|5Y|10Y|MAX]', examples: ['MACAU', 'MACAU 5Y'], keywords: ['macau', 'casino', 'gaming revenue', 'china', 'dicj'],
+    syntax: 'MACAU [3M|1Y|5Y|10Y|MAX]', examples: ['MACAU', 'MACAU 5Y'], keywords: ['macau', 'casino', 'gaming revenue', 'china', 'dicj', 'weird'],
   },
   // --- FISHTANK (screens/fishtank.js) ---
   {
     name: 'FISHTANK', category: 'Weird data', summary: 'The market as fish',
-    syntax: 'FISHTANK [sector]', examples: ['FISHTANK', 'FISHTANK TECH'], keywords: ['aquarium', 'tank', 'easter egg', 'sea', 'swim', 's&p 100'],
+    syntax: 'FISHTANK [sector]', examples: ['FISHTANK', 'FISHTANK TECH'], keywords: ['aquarium', 'tank', 'easter egg', 'sea', 'swim', 's&p 100', 'weird'],
   },
   // --- end FISHTANK ---
 
@@ -549,7 +549,8 @@ export function categoriesInUse() {
   return CATEGORIES.filter((cat) => byCategory(cat).length);
 }
 
-// Search every listed command by name, alias, summary words and keywords.
+// Search every listed command by name, alias, summary words and keywords (never its
+// category: "crypto" is CRYPTO, not every command in Rates, FX, crypto).
 // Best first: exact name, name starts with, keyword, then summary words.
 export function searchCommands(query, list = LISTED) {
   const words = String(query ?? '').toLowerCase().split(/\s+/).filter(Boolean);
@@ -559,7 +560,7 @@ export function searchCommands(query, list = LISTED) {
     const name = c.name.toLowerCase();
     const names = [name, ...(c.aliases || []).map((a) => a.toLowerCase())];
     const keys = (c.keywords || []).map((k) => k.toLowerCase());
-    const text = `${c.summary} ${c.syntax} ${c.category}`.toLowerCase();
+    const text = `${c.summary} ${c.syntax}`.toLowerCase();
     let total = 0;
     let ok = true;
     for (const w of words) {

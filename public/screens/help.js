@@ -91,10 +91,14 @@ function rows(list, opts) {
   return `<div class="hc-cols" aria-hidden="true">${COLUMN_HEADS.map((h) => `<span>${h}</span>`).join('')}</div><ol class="hc-list">${list.map((c, i) => commandRow(c, i, opts)).join('')}</ol>`;
 }
 
-// The numbered strip on top, like every other screen: 1) HELP, and how many commands.
+// The numbered strip on top, like every other screen: 1) HELP, and how many commands
+// (the real ones: not the two <TICKER> pattern rows).
 export function helpStrip() {
-  return `<header class="panel-head help-strip"><h2 class="panel-label">1) HELP</h2><span class="panel-meta">${LISTED.length} COMMANDS · Esc back</span></header>`;
+  return `<header class="panel-head help-strip"><h2 class="panel-label">1) HELP</h2><span class="panel-meta">${LISTED.filter((c) => !c.pattern).length} COMMANDS · Esc back</span></header>`;
 }
+
+// The search field's hint: a phone (under 640 px) has no "/" key and less room.
+export const helpPlaceholder = (phone) => (phone ? 'search: insider, yield' : '/ search: insider, yield, dividend');
 
 // The key row: the keys of a keyboard product, first in START HERE.
 // A phone has no Ctrl or F-keys (its key bar has MENU and the screens): those two hide there.
@@ -182,7 +186,7 @@ export function render(el, cmd, ctx) {
   el.innerHTML = `<div class="help">
     ${helpStrip()}
     <div class="help-search">
-      <input class="help-q" type="search" maxlength="60" spellcheck="false" autocomplete="off" aria-label="Search commands" placeholder="/ search: insider, yield, dividend" value="${esc(query)}">
+      <input class="help-q" type="search" maxlength="60" spellcheck="false" autocomplete="off" aria-label="Search commands" placeholder="${helpPlaceholder(typeof matchMedia === 'function' && matchMedia('(max-width: 639px)').matches)}" value="${esc(query)}">
       <span class="help-count dim" aria-live="polite"></span>
     </div>
     <div class="help-body">

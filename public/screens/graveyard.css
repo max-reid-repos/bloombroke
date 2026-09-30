@@ -180,7 +180,8 @@
 .gv-card-stone .gv-doodle { right: -9%; width: 40%; }
 /* The share links under the stone (and under NO SUCH TICKER's certificate): the kit's
    link row, centred under the picture. */
-.gv-share { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 24px; margin: 0; font-size: 12px; letter-spacing: .06em; color: var(--dim); }
+.gv-share { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 12px; margin: 0; font-size: 12px; letter-spacing: .06em; color: var(--dim); }
+.gv-sep { color: var(--dim); }
 .gv-card .card-fact dd.down { color: var(--down); }
 .gv-card .card-fact dd.up { color: var(--up); }
 .gv-f kbd { margin-right: 8px; background: transparent; color: var(--ink); border-color: var(--ink); }

@@ -34,9 +34,10 @@
 .nsc-l1 { top: calc(71.3% - .62em); font-weight: 800; }
 .nsc-l2 { top: calc(76.9% - .62em); font-weight: 600; color: var(--paper-soft); }
 .nsc-seal { left: 82.5%; top: 68.4%; font-size: max(11px, 3cqw); font-weight: 800; transform: translate(-50%, -50%) rotate(-8deg); }
-/* The stamp across the lower left, clear of the date and the serial. */
+/* The stamp along the bottom, under the serial: clear of the ticker, the date and the
+   serial on a phone and a desktop alike (the lower left has no room for it). */
 .nsc-stamp {
-  position: absolute; left: 31%; top: 59%; transform: translate(-50%, -50%) rotate(-14deg); padding: .8cqw 2cqw; white-space: nowrap; pointer-events: none;
+  position: absolute; left: 54%; top: 84%; transform: translate(-50%, -50%) rotate(-8deg); padding: .8cqw 2cqw; white-space: nowrap; pointer-events: none;
   border: .7cqw solid var(--paper-red); border-radius: 1.2cqw; font-size: max(11px, 3.2cqw); font-weight: 800; letter-spacing: .3cqw; color: var(--paper-red); opacity: .85;
 }
 
@@ -83,8 +84,7 @@ html:not(.is-embed) .view > .panel.ns-unk { flex: 0 1 auto !important; min-heigh
 .ns-live .down { color: var(--down); }
 .ns-k { justify-self: end; font-size: 12px; }
 .ns-unk-foot { margin: 12px 0 0; font-size: 12px; color: var(--dim); }
-.ns-unk-foot a { color: var(--text-2); }
-.ns-unk-foot a:hover { color: var(--text); text-decoration: none; }
+.ns-unk-foot a { color: var(--accent); }
 .ns-esc { font-size: 12px; color: var(--dim); }
 @media (max-width: 639px) {
   .ns-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }

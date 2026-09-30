@@ -422,12 +422,18 @@ test('NO SUCH TICKER and a GRAVEYARD stone: card pages, 30 words; every stone in
     const words = cardWords(PICTURE_WORDS(html));
     assert.ok(words.length <= budget, `${name}: ${words.join(' ')}`);
   }
+  // CLOSEST (one row: a command and its own line) sits on top of the 45 words.
+  const closest = /<h3 class="tag ns-h">Closest<\/h3><div class="ns-rows">[\s\S]*?<\/div>/;
   for (const [name, html] of UNKNOWN) {
     assert.match(html, /^<section class="panel panel-solo ns-unk">/, `${name}: the numbered panel`);
-    const words = cardWords(html.replace(/<span class="ns-cmd">[^<]*<\/span>/g, ''));
+    const words = cardWords(html.replace(closest, '').replace(/<span class="ns-cmd">[^<]*<\/span>/g, ''));
     assert.ok(words.length <= 45, `${name}: ${words.length} words: ${words.join(' ')}`);
-    assert.doesNotMatch(html, /EGGPRICE|SPONSOR|Barrick/, `${name}: guesses by meaning alone are not listed`);
+    assert.doesNotMatch(html.replace(closest, ''), /EGGPRICE|SPONSOR|Barrick/, `${name}: guesses are never TRY ONE rows`);
   }
+  // Nothing close by spelling: the resolver's first guess alone is CLOSEST; the rest are not listed.
+  const guessed = UNKNOWN[1][1];
+  assert.match(guessed, /<h3 class="tag ns-h">Closest<\/h3><div class="ns-rows"><a class="ns-row" href="\?c=EGGPRICE" data-cmd="EGGPRICE" data-enter>/);
+  assert.doesNotMatch(guessed, /SPONSOR|Barrick/);
   const [ipo, word, lehm, grave, leh] = NOSUCH.map(([, html]) => html);
   // NO SUCH TICKER: the kicker, the ticker, "Be the first.", IPO IT, the certificate on the right.
   assert.match(ipo, /card-kicker">No such ticker\. Yet\.<\/p><h2 class="card-hero card-hero-96 num">\$QXZVW<\/h2><p class="card-sub">Nobody has listed it\. Be the first\.<\/p>/);
@@ -462,7 +468,7 @@ test('NO SUCH TICKER and a GRAVEYARD stone: card pages, 30 words; every stone in
   assert.doesNotMatch(top, /\d respects?|0 respects/);
   // The share links under the stone; the story in the words' column; under both columns
   // the video and the last homepage, two boxes, their captions inside.
-  assert.match(leh, /<\/figure><p class="gv-share"><a class="card-link" href="https:\/\/x\.com\/intent\/post[^"]*"[^>]*data-share="grave" data-via="x">SHARE ON X<\/a> <button type="button" class="card-link" data-copy="[^"]+" data-share="grave" data-via="link">COPY LINK<\/button><\/p><\/div><\/div><div class="card-col">/);
+  assert.match(leh, /<\/figure><p class="gv-share"><a class="card-link" href="https:\/\/x\.com\/intent\/post[^"]*"[^>]*data-share="grave" data-via="x">SHARE ON X<\/a><span class="gv-sep" aria-hidden="true">·<\/span><button type="button" class="card-link" data-copy="[^"]+" data-share="grave" data-via="link">COPY LINK<\/button><\/p><\/div><\/div><div class="card-col">/);
   assert.match(leh, /<div class="card-media"><p class="gv-story">Lehman Brothers was a 158-year-old[^<]*<\/p><\/div>/);
   assert.match(leh, /<div class="gv-media n2"><button type="button" class="gv-video gv-box"[\s\S]*?<span class="gv-cap gv-vlabel">PLAY VIDEO[^<]*<\/span>\s*<\/button><a class="gv-site gv-box"[\s\S]*?<span class="gv-cap gv-sitecap">lehman\.com, Sep 2008 · Internet Archive<\/span>\s*<\/a><\/div><\/section>$/);
   const more = leh.split('<details class="how card-more">')[1];

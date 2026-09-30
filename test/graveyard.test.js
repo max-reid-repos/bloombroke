@@ -480,7 +480,7 @@ test('stone page: the words left, the stone right; the video and the last homepa
   // one size. Pictures, not text links. The share links under the stone.
   assert.match(page, /<div class="card-media"><p class="gv-story">[^<]*<\/p><\/div>/);
   assert.match(page, /<\/div><div class="gv-media n2"><button type="button" class="gv-video gv-box"[\s\S]*?<\/button><a class="gv-site gv-box"[\s\S]*?<\/a><\/div><\/section>$/);
-  assert.match(page, /<div class="gv-card-stone"><figure class="gv-stone[\s\S]*?<\/figure><p class="gv-share"><a class="card-link"[^>]*data-share="grave" data-via="x">SHARE ON X<\/a> <button[^>]*>COPY LINK<\/button><\/p><\/div>/, 'SHARE under the stone');
+  assert.match(page, /<div class="gv-card-stone"><figure class="gv-stone[\s\S]*?<\/figure><p class="gv-share"><a class="card-link"[^>]*data-share="grave" data-via="x">SHARE ON X<\/a><span class="gv-sep" aria-hidden="true">·<\/span><button[^>]*>COPY LINK<\/button><\/p><\/div>/, 'SHARE under the stone');
   assert.doesNotMatch(page, /gv-more|gv-watch|Watch the video|lehman\.com in 2008/, 'no line of text links');
   assert.doesNotMatch(page.split('<details')[0], /\d respects?/, 'no "0 respects"');
   const srcs = [...page.matchAll(/\b(?:src|srcset|data-src|poster)="([^"]*)"/g)].map((m) => m[1]);
