@@ -19,6 +19,7 @@ import { revealKeyFrom } from './licence.js';
 import { createStripe, stripeEnv, DEFAULT_TERMS_VERSION } from './billing.js';
 import { mountPro, defaultLimits } from './routes.js';
 import { createFeedbackStore, mountFeedback } from './feedback.js';
+import { createWaitlistStore, mountWaitlist } from './waitlist.js'; // PRO WAITLIST: an email while checkout is closed
 import { mountChat } from './chat-routes.js'; // CHAT: private chat between Pro seats
 import { getQuote, getQuoteList } from '../data/quotes.js'; // CHAT: the price stamp on a $TICKER; PINGS: closed-tab ALERTS
 import { mountPush, pushConfig } from './push.js'; // PINGS: Web Push for CHAT and ALERTS
@@ -58,6 +59,8 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
     // FEEDBACK lives in the same database: POST /api/feedback, for everyone.
     const feedback = createFeedbackStore(db);
     mountFeedback(app, { store: feedback, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', log, onSaved: () => counters?.bump('feedback_sent') });
+    // PRO WAITLIST: POST /api/pro/waitlist, only with PRO_CHECKOUT=closed (404 otherwise).
+    mountWaitlist(app, { store: createWaitlistStore(db), checkoutClosed: checkoutClosed(env), publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', log });
     // PINGS: /api/push (pro/push.js). Off (404 push_off) without the VAPID keys.
     const push = mountPush(app, {
       db, store, guess: limits.guess, mode: se.mode, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', config: pushConfig(env, log), getQuoteList, log,
