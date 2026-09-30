@@ -99,6 +99,7 @@ export const UNKNOWN = [
   ['UNKNOWN COMMAND', noSuch('ZORBLATTER', {}, null, { grave: null, ipo: false })],
   ['UNKNOWN COMMAND with guesses (none close)', noSuch('FOO BAR BAZ', GUESSES, null, { grave: null, ipo: false })],
   ['UNKNOWN COMMAND, CLOSEST', noSuch('MARKTS', { commands: [{ name: 'MARKETS', cmd: 'MARKETS', summary: 'World markets' }] }, null, { grave: null, ipo: false })],
+  ['UNKNOWN COMMAND, a whole-word guess', noSuch('EGG PRICES', GUESSES, null, { grave: null, ipo: false })],
 ];
 
 // ---- Part B: result screens, TAPE, SPONSOR's terminal, the shell's own small cards -------
@@ -430,10 +431,13 @@ test('NO SUCH TICKER and a GRAVEYARD stone: card pages, 30 words; every stone in
     assert.ok(words.length <= 45, `${name}: ${words.length} words: ${words.join(' ')}`);
     assert.doesNotMatch(html.replace(closest, ''), /EGGPRICE|SPONSOR|Barrick/, `${name}: guesses are never TRY ONE rows`);
   }
-  // Nothing close by spelling: the resolver's first guess alone is CLOSEST; the rest are not listed.
-  const guessed = UNKNOWN[1][1];
+  // Nothing close by spelling: the resolver's first guess alone is CLOSEST when it matched on
+  // a whole word (EGG PRICES: EGGPRICES); the rest are not listed. From a fragment (FOO starts
+  // "food prices"): no CLOSEST, TRY ONE only.
+  const guessed = UNKNOWN[3][1];
   assert.match(guessed, /<h3 class="tag ns-h">Closest<\/h3><div class="ns-rows"><a class="ns-row" href="\?c=EGGPRICE" data-cmd="EGGPRICE" data-enter>/);
   assert.doesNotMatch(guessed, /SPONSOR|Barrick/);
+  assert.doesNotMatch(UNKNOWN[1][1], /Closest|data-enter|EGGPRICE|SPONSOR|Barrick/);
   const [ipo, word, lehm, grave, leh] = NOSUCH.map(([, html]) => html);
   // NO SUCH TICKER: the kicker, the ticker, "Be the first.", IPO IT, the certificate on the right.
   assert.match(ipo, /card-kicker">No such ticker\. Yet\.<\/p><h2 class="card-hero card-hero-96 num">\$QXZVW<\/h2><p class="card-sub">Nobody has listed it\. Be the first\.<\/p>/);

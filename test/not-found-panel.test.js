@@ -227,6 +227,16 @@ test('UNKNOWN COMMAND: plain words get the resolver\'s first guess as CLOSEST (E
   const none = await unknown('HIUHASBDAS');
   assert.equal(none.enter, false);
   assert.doesNotMatch(none.html, /Closest|data-enter/);
+  // A guess from a word fragment ("foo" starts "food prices") is no CLOSEST: TRY ONE only.
+  for (const typed of ['FOO BAR', 'foo prices']) {
+    const found = await resolveInput(typed, { search: async () => [], checkTicker: async () => false });
+    assert.equal(found.commands[0]?.name, 'EGGPRICE', `${typed}: the resolver guessed EGGPRICE`);
+    const p = await unknown(typed);
+    assert.equal(p.enter, false, typed);
+    assert.deepEqual(p.status, ['UNKNOWN COMMAND. TRY ONE ABOVE', 'note'], typed);
+    assert.doesNotMatch(p.html, /Closest|data-enter|EGGPRICE/, typed);
+    assert.match(p.html, /<h3 class="tag ns-h">Try one<\/h3>/, typed);
+  }
 });
 
 test('UNKNOWN COMMAND: the AAPL row shows its live price when it comes, nothing when it fails (never 0)', async () => {

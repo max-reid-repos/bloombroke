@@ -208,11 +208,13 @@ export function graveLinks(e, origin = SITE) {
 
 export const IPO_LINES = ['Shares outstanding: 1', 'Price: $0.00', 'Exchange: your imagination'];
 export const IPO_STAMP = 'NOT A REAL SECURITY';
+// Bump when the certificate's picture changes (a new CDN URL).
+export const IPO_CARD_VERSION = '2';
 
 export function ipoLinks(word, origin = SITE) {
   const url = `${origin}/?${new URLSearchParams({ c: `IPO IT ${word}` })}`;
   const text = `I listed $${word}. Shares outstanding: 1. Price: $0.00. Exchange: my imagination.`;
-  return { url, x: `https://x.com/intent/post?${new URLSearchParams({ text, url })}`, image: `/og/ipo.png?${new URLSearchParams({ t: word })}` };
+  return { url, x: `https://x.com/intent/post?${new URLSearchParams({ text, url })}`, image: `/og/ipo.png?${new URLSearchParams({ t: word, v: IPO_CARD_VERSION })}` };
 }
 
 // ---- Did you mean -----------------------------------------------------------------------

@@ -8,7 +8,7 @@ import sharp from 'sharp';
 import { parseCommand, urlFor } from '../public/app.js';
 import { didYouMeanHtml } from '../public/cards.js';
 import { findCommand } from '../public/registry.js';
-import { dymRows, graveBeatsQuote, pickGraves, ipoShape, matchNoSuch, findGrave, tombstoneLine, dayText, ipoLinks, graveLinks, FEEDBACK_PREFILL, MAX_ROWS } from '../public/nosuch.js';
+import { dymRows, graveBeatsQuote, pickGraves, ipoShape, matchNoSuch, findGrave, tombstoneLine, dayText, ipoLinks, graveLinks, FEEDBACK_PREFILL, MAX_ROWS, IPO_CARD_VERSION } from '../public/nosuch.js';
 import { noSuchExtra as extraSlots, graveyardTable, ipoHtml, tickerPageHtml, certHtml, certSerial, graveMatches, ripRowHtml, TITLE_YET } from '../public/screens/nosuch.js';
 import { stoneHtml } from '../public/screens/graveyard.js';
 import { setPrefill, takePrefill } from '../public/screens/feedback.js';
@@ -148,11 +148,14 @@ test('goals and share links', () => {
   assert.deepEqual(cleanProps('ipo_shared', { via: 'x' }), { via: 'x' });
   const l = ipoLinks('MAXX', 'https://bloombroke.com');
   assert.equal(l.url, 'https://bloombroke.com/?c=IPO+IT+MAXX');
-  assert.equal(l.image, '/og/ipo.png?t=MAXX');
+  // Versioned like og:image (lib/og-nosuch.js), so the CDN never serves an old certificate.
+  assert.equal(l.image, '/og/ipo.png?t=MAXX&v=2');
+  assert.equal(l.image, `/og/ipo.png?t=MAXX&v=${IPO_CARD_VERSION}`);
   assert.match(new URL(l.x).searchParams.get('text'), /I listed \$MAXX\. Shares outstanding: 1\. Price: \$0\.00\./);
   const g = graveLinks(findGrave(GRAVE, 'LEH'), 'https://bloombroke.com');
   assert.equal(g.url, 'https://bloombroke.com/?c=GRAVEYARD+LEH');
   const html = ipoHtml('MAXX', l);
+  assert.match(html, /<img src="\/og\/ipo\.png\?t=MAXX&amp;v=2"/, 'the IPO IT screen shows the versioned picture');
   assert.match(html, /SHARE ON X/);
   assert.match(html, /COPY LINK/);
   assert.match(html, /not a real security/i);

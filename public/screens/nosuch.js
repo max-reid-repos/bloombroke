@@ -18,7 +18,7 @@ import { esc, q, panel, fmtNum, fmtPct, dirOf } from './markets.js';
 import { goal } from '../goal.js';
 import { setPrefill } from './feedback.js';
 import { nyToday } from '../ranges.js';
-import { START_HERE } from '../registry.js';
+import { START_HERE, PHRASES, findCommand } from '../registry.js';
 import { didYouMeanHtml } from '../cards.js';
 import { tombstoneLine, ipoLinks, eventLabel, dayText, dymRows, IPO_STAMP, FEEDBACK_PREFILL, MAX_ROWS } from '../nosuch.js';
 import {
@@ -26,7 +26,7 @@ import {
 } from './graveyard.js';
 import { SP100_NAMES, OTHER_NAMES, nameKey } from '../known-tickers.js';
 import { INSTRUMENTS } from '../instruments.js';
-import { editDistance, fuzzyCommands } from '../resolve.js';
+import { editDistance, fuzzyCommands, cleanWord, FILLER } from '../resolve.js';
 import { cardPage, cardLink, cardRows, usageCard, raw } from '../kit.js';
 
 export { graveyardTable };
@@ -246,13 +246,27 @@ export function notFoundPage({ typed, word = null, found = {}, ticker = null, in
     };
   }
   // Plain words (stock screener, whats the fed doing): nothing close by spelling, so the
-  // resolver's first guess by meaning is CLOSEST.
+  // resolver's first guess by meaning is CLOSEST, when it matched on a whole word.
   const g = found?.commands?.[0];
-  const pick = top || (g?.cmd ? { kind: 'cmd', id: '', name: g.name || g.cmd, cmd: g.cmd, what: g.summary || '' } : null);
+  const pick = top || (g?.cmd && wholeWordGuess(typed, g.name || g.cmd) ? { kind: 'cmd', id: '', name: g.name || g.cmd, cmd: g.cmd, what: g.summary || '' } : null);
   return {
     kind: 'unknown', html: unknownHtml({ typed, top: pick }), enter: Boolean(pick),
     status: [pick ? `UNKNOWN COMMAND. ENTER OPENS ${pick.kind === 'cmd' ? String(pick.name).toUpperCase() : openName}, OR TRY ONE ABOVE` : 'UNKNOWN COMMAND. TRY ONE ABOVE', 'note'],
   };
+}
+
+// Does the command named match the words on a whole word? A typed word (not a filler word)
+// is its name, an alias, or a word of a keyword or phrase ("fed" of FEDPATH), or the words
+// run together are its name or an alias ("egg prices": EGGPRICES). Never a fragment: "foo"
+// is only the start of "food prices".
+export function wholeWordGuess(typed, name) {
+  const c = findCommand(name);
+  if (!c) return false;
+  const typedWords = String(typed || '').trim().split(/\s+/).map(cleanWord).filter(Boolean);
+  const names = [c.name, ...(c.aliases || [])].map((n) => n.toLowerCase());
+  const own = new Set([...names, ...[...(c.keywords || []), ...(PHRASES[c.name] || []).map((p) => (Array.isArray(p) ? p[0] : p))]
+    .flatMap((k) => String(k).toLowerCase().split(/\s+/))]);
+  return typedWords.some((w) => !FILLER.has(w) && own.has(w)) || names.includes(typedWords.join(''));
 }
 
 // A ticker row's last price and day change: from /api/quotes (the server keeps a quote
