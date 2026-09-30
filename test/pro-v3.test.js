@@ -247,7 +247,7 @@ test('note and test mode: one dim line on the page; Details keeps every term as 
   // The page shows the test bits only when the server says test mode, and never when
   // checkout is closed (PRO_CHECKOUT=closed shows "Pro opens soon." instead).
   const src = readFileSync('public/screens/pro.js', 'utf8');
-  assert.match(src, /if \(c\.closed\) \{ showSoon\(el\); return; \}\n\s+if \(c\.mode !== 'test'\) return;/);
+  assert.match(src, /if \(c\.closed\) \{ showSoon\(el, ctx\); return; \}\n\s+if \(c\.mode !== 'test'\) return;/);
 });
 
 // ---- few words -------------------------------------------------------------------------------

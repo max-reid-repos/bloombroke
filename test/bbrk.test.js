@@ -274,7 +274,7 @@ function fakeFetch() {
 }
 
 test('goal(): the twenty goals, each once in the code', () => {
-  assert.deepEqual(GOALS.slice().sort(), ['desk_opened', 'feedback_sent', 'graveyard_seen', 'guess_played', 'guess_shared', 'ipo_made', 'ipo_shared', 'mcp_screen_opened', 'news_why_opened', 'notfound_seen', 'pro_checkout_started', 'sponsor_click', 'weird_gauge_opened', 'welcome_chip', 'welcome_surprise', 'welcome_typed', 'whatif_embed', 'whatif_run', 'whatif_share', 'whatif_video']);
+  assert.deepEqual(GOALS.slice().sort(), ['desk_opened', 'feedback_sent', 'graveyard_seen', 'guess_played', 'guess_shared', 'ipo_made', 'ipo_shared', 'mcp_screen_opened', 'news_why_opened', 'notfound_seen', 'pro_checkout_started', 'sponsor_click', 'waitlist_joined', 'weird_gauge_opened', 'welcome_chip', 'welcome_surprise', 'welcome_typed', 'whatif_embed', 'whatif_run', 'whatif_share', 'whatif_video']);
   assert.deepEqual(CLIENT_COUNTED, CLIENT_COUNTS, 'the browser posts exactly the names the server allows');
   const wired = {
     'public/screens/whatif.js': ['whatif_run', 'whatif_video', 'whatif_share'],

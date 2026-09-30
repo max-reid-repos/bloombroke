@@ -36,6 +36,7 @@ export const GOALS = [
   'sponsor_click', // a paid sponsor line clicked (never our own AD lines)
   'notfound_seen', 'graveyard_seen', 'ipo_made', 'ipo_shared', // NO SUCH TICKER. YET.
   'welcome_chip', 'welcome_typed', 'welcome_surprise', // WELCOME: the first-visit card (consent.js)
+  'waitlist_joined', // PRO WAITLIST: someone joined; never the address
 ];
 
 // Counted on our server by the route itself (lib/counters.js SERVER_COUNTS), so not here:
@@ -118,6 +119,7 @@ export const GA_EVENTS = {
   welcome_chip: 'welcome_chip',
   welcome_typed: 'welcome_typed',
   welcome_surprise: 'welcome_surprise',
+  waitlist_joined: 'waitlist_joined',
 };
 export const GA_SHARE_GOALS = ['whatif_share', 'whatif_video', 'whatif_embed', 'guess_shared', 'ipo_shared'];
 
