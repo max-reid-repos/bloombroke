@@ -242,7 +242,7 @@ const FULL = {
 test('SPONSOR screen: one column: kicker, headline, how often the strip was shown and what that counts, the price, EMAIL, the rules, TRY YOUR LINE, the BBRK link; the rest in Details', () => {
   const page = sponsorHtml({ has: () => true, bbrk: FULL, cfg: { ...cleanSponsors({ house: house(3) }), price: 99 } });
   assert.equal(HERO, 'Your line on every screen.');
-  assert.match(page, /^<section class="card spon-card" aria-label="Sponsor"><div class="card-head"><p class="tag card-kicker">SPONSOR<\/p><h2 class="card-hero card-hero-44 num">Your line on every screen\.<\/h2>/);
+  assert.match(page, /^<section class="card spon-card" aria-label="Sponsor"><div class="card-head"><p class="tag card-kicker">SPONSOR<\/p><h2 class="card-hero card-hero-44 num">Your line <span class="nowrap">on every screen\.<\/span><\/h2>/);
   // The number and, right under it, what it counts.
   assert.match(page, /<p class="card-sub"><span id="spon-views">Shown 5,678 times this week\.<\/span><span class="spon-def">One showing = 4 seconds on a visible screen\.<\/span><\/p>/);
   assert.equal(SHOWN_DEF, 'One showing = 4 seconds on a visible screen.');
@@ -649,4 +649,16 @@ test('sponsor_click: sent for a paid line, never for an AD line', () => {
   const src = readFileSync('public/sponsor-strip.js', 'utf8');
   assert.match(src, /goal\('sponsor_click'\)/);
   assert.match(src, /closest\?\.\('a\.spon-item\[rel~="sponsored"\]'\)/);
+});
+
+test('SPONSOR hero: one line on a desktop, a phone breaks only before "on every screen." (kit.css Rule G)', () => {
+  const page = sponsorHtml({ has: () => true });
+  assert.match(page, /<h2 class="card-hero card-hero-44 num">Your line <span class="nowrap">on every screen\.<\/span><\/h2>/);
+  assert.doesNotMatch(page, /<br/);
+  const kit = readFileSync('public/kit.css', 'utf8');
+  assert.match(kit, /Rule G: A hero never ends a line on a preposition or an article \(on, of, for, the, a\)\.\s+Wrap the final phrase in nowrap and let the size do the rest\./);
+  assert.match(kit, /\n\.nowrap \{ white-space: nowrap; \}/);
+  const css = readFileSync('public/screens/sponsor.css', 'utf8');
+  assert.match(css, /\.spon-card \.card-hero \{ width: max-content; max-width: min\(720px, calc\(100vw - 32px\)\); \}/, 'the hero 720 px at most, wider than the column');
+  assert.match(css, /\.spon-card \{ max-width: min\(560px, 100%\); \}/, 'the column stays 560 px');
 });

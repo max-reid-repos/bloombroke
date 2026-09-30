@@ -21,6 +21,9 @@
    pointAtStrip), so at the bottom it covers nothing. */
 .spon-card { padding-bottom: 48px; }
 .spon-card { max-width: min(560px, 100%); }
+/* The hero on one line on a desktop (about 680 px at 44 px): wider than the 560 px column,
+   centred over it. A narrow window wraps it, only before "on every screen." (kit.css Rule G). */
+.spon-card .card-hero { width: max-content; max-width: min(720px, calc(100vw - 32px)); }
 /* A desktop: the column in the middle of the screen's height, not a void under it. */
 @media (min-width: 1100px) {
   .view > .spon-card { flex: 1 0 auto; justify-content: center; }

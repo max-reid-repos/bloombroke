@@ -23,6 +23,12 @@ export const CONTACT = 'hello@bloombroke.com';
 export const SUBJECT = 'Sponsor Bloombroke';
 export const MAILTO = `mailto:${CONTACT}?subject=${encodeURIComponent(SUBJECT)}`;
 export const HERO = 'Your line on every screen.';
+// Rule G (kit.css): the last phrase never breaks, so a phone reads "Your line" / "on every
+// screen." and a desktop one line.
+export const HERO_TAIL = 'on every screen.';
+export function heroHtml() {
+  return `${esc(HERO.slice(0, -HERO_TAIL.length).trim())} <span class="nowrap">${esc(HERO_TAIL)}</span>`;
+}
 export const POINT = '↓ this line, every screen';
 export const REFRESH_MS = 60_000;
 export const PHONE_MQ = '(max-width: 639px)'; // kit.css's phone layout
@@ -129,7 +135,7 @@ export function sponsorHtml({ has, bbrk = null, cfg = null } = {}) {
     label: 'Sponsor',
     cls: 'spon-card',
     kicker: 'SPONSOR',
-    hero: HERO,
+    hero: raw(heroHtml()),
     heroSize: 44,
     sub: raw(subHtml(bbrk)),
     act: raw(act),

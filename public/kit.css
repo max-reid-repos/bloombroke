@@ -16,6 +16,9 @@
 }
 .chip:hover { color: var(--text); background: var(--panel-3); text-decoration: none; }
 
+/* Words that stay on one line (Rule G: a hero's final phrase). */
+.nowrap { white-space: nowrap; }
+
 /* ---- What a fill means (rule C), site-wide -----------------------------------------
    - WHITE fill (--primary: the near-white text colour, ink text) = the ONE action on a
      page: SUBSCRIBE, START, SHARE, PLAY, RUN, GUESS, SEND. It is .btn-solid, so every
@@ -32,7 +35,9 @@
    Rule E: Art screens (GRAVEYARD, the WHATIF catalogue, FISHTANK) are their own layout.
    The picture is the screen. The two-layouts rule applies to text and data screens only.
    Rule F: Never reflow, crop or restructure a drawn scene without showing the plan first
-   and getting an OK. */
+   and getting an OK.
+   Rule G: A hero never ends a line on a preposition or an article (on, of, for, the, a).
+   Wrap the final phrase in nowrap and let the size do the rest. */
 .btn-solid, .btn.btn-solid, .chip.btn-solid { background: var(--primary); border-color: var(--primary); color: var(--ink); }
 .btn-solid:hover, .btn.btn-solid:hover, .chip.btn-solid:hover { background: var(--primary-hover); border-color: var(--primary-hover); color: var(--ink); text-decoration: none; }
 .btn-solid:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
