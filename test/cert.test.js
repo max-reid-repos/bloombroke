@@ -127,7 +127,9 @@ test('meta and share links for a result', async () => {
   const x = new URL(links.x);
   assert.equal(x.origin + x.pathname, 'https://x.com/intent/post');
   assert.equal(x.searchParams.get('text'), m.share);
-  assert.equal(x.searchParams.get('url'), meta.url);
+  assert.equal(x.searchParams.get('url'), `${meta.url}&v=${m.v}`, 'X gets a page URL per version (X caches the card per URL)');
+  assert.equal(new URL(x.searchParams.get('url')).searchParams.get('c'), 'WHATIF IPHONE6 LATTE:3Y', 'the page still reads c=');
+  assert.equal(new URL(shareLinks({ ...m, v: undefined }, 'https://bloombroke.com').x).searchParams.get('url'), meta.url);
   const html = certHtml({ ...m, ribbon: '<b>' }, links);
   assert.doesNotMatch(html, /<b>/);
 });
