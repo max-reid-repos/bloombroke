@@ -12,7 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { openDb } from '../pro/db.js';
 import { createLimiter } from '../pro/ratelimit.js';
-import { createWaitlistStore, mountWaitlist, normalizeEmail, maskEmail, WaitlistError, PER_IP, PER_DAY, MAX_EMAIL } from '../pro/waitlist.js';
+import { createWaitlistStore, mountWaitlist, normalizeEmail, WaitlistError, PER_IP, PER_DAY, MAX_EMAIL } from '../pro/waitlist.js';
 import { toCsv, csvField, parseArgs } from '../scripts/waitlist.js';
 
 const T0 = Date.UTC(2026, 8, 30, 23);
@@ -59,12 +59,6 @@ test('waitlist: an address is trimmed, lower-cased and checked', () => {
     'a\n@b.co', 'a@b.co‮', '=cmd@b.co', '+a@b.co', '-a@b.co', `${'a'.repeat(65)}@b.co`, `a@${'b'.repeat(250)}.co`,
     5, null, undefined, {}, ['a@b.co'],
   ]) assert.throws(() => normalizeEmail(bad), (e) => e instanceof WaitlistError && e.code === 'bad_email', JSON.stringify(bad));
-});
-
-test('waitlist: logs get a masked address only', () => {
-  assert.equal(maskEmail('ann@example.com'), 'a***@e***.com');
-  assert.equal(maskEmail('x@y.co.uk'), 'x***@y***.uk');
-  assert.equal(maskEmail('nope'), '***');
 });
 
 test('waitlist: joins once; a repeat gets the very same answer; no-store', async () => {
@@ -191,21 +185,24 @@ test('waitlist: same origin only', async () => {
   } finally { await s.close(); }
 });
 
-test('waitlist: the address is never in the logs in full', async () => {
+test('waitlist: a sign-up is never logged; the address is never in the logs', async () => {
   const s = await server({ max: 50 });
   try {
     await s.post({ email: 'secret.person@private-domain.example' });
     await s.post({ email: 'secret.person@private-domain.example' });
     await s.post({ email: 'nope' });
-    assert.ok(s.lines.length >= 1, 'a new sign-up is logged');
+    assert.deepEqual(s.lines, [], 'nothing logged for a sign-up, a repeat or a bad address');
+    s.store.add = () => { throw new Error('SQLITE_BUSY: database is locked'); }; // a database error: logged without the address
+    assert.equal((await s.post({ email: 'secret.person@private-domain.example' })).status, 503);
+    assert.equal(s.lines.length, 1);
     for (const l of s.lines) {
       assert.doesNotMatch(l, /secret\.person/);
       assert.doesNotMatch(l, /private-domain/);
     }
-    assert.ok(s.lines.some((l) => l.includes('s***@p***.example')));
   } finally { await s.close(); }
   const src = readFileSync('pro/waitlist.js', 'utf8');
-  assert.equal((src.match(/log\.(log|error|warn|info)\?*\.?\(/g) || []).length, 3, 'three log calls, reviewed: one masked, two error messages');
+  assert.equal((src.match(/log\.(log|error|warn|info)\?*\.?\(/g) || []).length, 2, 'two log calls, reviewed: error messages only');
+  assert.doesNotMatch(src, /log\.log/, 'no sign-up log line');
   assert.doesNotMatch(src, /log\.\w+\??\.?\([^)]*\bemail\b(?!\))/, 'no log call takes the address itself');
 });
 

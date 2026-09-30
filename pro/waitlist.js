@@ -10,7 +10,7 @@
 // field that people never see; a bot that fills it gets { ok: true } and nothing is
 // stored. An address already on the list gets the same { ok: true }, so the answer never
 // says who is on it. With checkout open the route is 404, as if it did not exist.
-// Logs never carry an address in full (maskEmail).
+// A sign-up is not logged; error logs carry the error only, never the address.
 
 import express from 'express';
 import { createLimiter, clientIp } from './ratelimit.js';
@@ -53,18 +53,6 @@ export function normalizeEmail(v) {
   const domain = e.slice(at + 1);
   if (local.length > 64 || domain.length > 253 || !LOCAL_RE.test(local) || !DOMAIN_RE.test(domain)) throw new WaitlistError('bad_email', BAD_EMAIL);
   return e;
-}
-
-// For logs: the first character of the name and of the domain, and the TLD.
-// ann@example.com -> a***@e***.com. Never the whole address.
-export function maskEmail(v) {
-  const e = String(v ?? '');
-  const at = e.lastIndexOf('@');
-  if (at < 1) return '***';
-  const domain = e.slice(at + 1);
-  const dot = domain.lastIndexOf('.');
-  const tld = dot > 0 ? domain.slice(dot) : '';
-  return `${e[0]}***@${domain[0] || ''}***${tld}`;
 }
 
 export function createWaitlistStore(db, { now = () => Date.now() } = {}) {
@@ -117,14 +105,12 @@ export function mountWaitlist(app, {
       res.set('Retry-After', String(d.retryAfter));
       return fail(res, 429, 'busy', 'The list is full for today. Try again tomorrow.');
     }
-    let added;
     try {
-      added = store.add(email);
+      store.add(email);
     } catch (err) {
       log.error('[waitlist]', err.message);
       return fail(res, 503, 'unavailable', 'Could not save that. Try again in a minute.');
     }
-    if (added) log.log?.(`[waitlist] joined ${maskEmail(email)}`);
     return ok(res);
   });
   app.use('/api/pro/waitlist', (err, req, res, next) => {
