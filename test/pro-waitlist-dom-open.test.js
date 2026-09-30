@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { render } from '../public/screens/pro.js';
 import { mount, flush } from './fixtures/tiny-dom.js';
 
-test('checkout open: no waitlist on show, SUBSCRIBE is there', async () => {
+test('checkout open: no waitlist on show, SUBSCRIBE and "Cancel any time." are there', async () => {
   const calls = [];
   globalThis.fetch = async (url) => {
     calls.push(String(url));
@@ -22,5 +22,8 @@ test('checkout open: no waitlist on show, SUBSCRIBE is there', async () => {
   assert.equal(el.querySelector('#pro-wait').hidden, true, 'the waitlist is hidden');
   assert.equal(el.querySelector('#pro-wait').children.length, 0, 'and empty: no form, no words');
   assert.equal(el.querySelector('#pro-wait-email'), null);
+  const note = el.querySelector('#pro-note');
+  assert.equal(note.hidden, false, 'the note stays');
+  assert.match(note.textContent, /^Cancel any time\./);
   assert.equal(calls.some((u) => u.includes('/api/pro/waitlist')), false);
 });

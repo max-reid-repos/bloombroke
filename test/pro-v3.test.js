@@ -221,10 +221,13 @@ test('yearly first: PRO and PRO YEARLY lead with yearly, PRO MONTHLY with monthl
 test('note and test mode: one dim line on the page; Details keeps every term as a short row, and the test card', () => {
   const html = mainHtml({ next: 43, has: all });
   // The visitor (PRO v5): "Cancel any time.", then the test-mode line, hidden until test mode.
-  assert.match(html, /<p class="card-note">Cancel any time\.<span id="pro-year-note" hidden> [^<]+<\/span><span id="pro-test" hidden>Test mode: no card is charged yet\.<\/span><\/p>/);
+  assert.match(html, /<p class="card-note" id="pro-note">Cancel any time\.<span id="pro-year-note" hidden> [^<]+<\/span><span id="pro-test" hidden>Test mode: no card is charged yet\.<\/span><\/p>/);
   // A key with Pro off keeps its note (the member views are unchanged).
   const off = mainHtml({ key: KEY, st: { status: 'canceled', seat: 7 }, has: all });
   assert.match(off, new RegExp(`<p class="card-note">${RENEW_NOTE} · REACTIVATE keeps[^<]*<span id="pro-test" hidden> · ${TEST_NOTE}</span>`));
+  // Only the visitor's note has id pro-note (hidden while checkout is closed); a key's note never does.
+  assert.doesNotMatch(off, /id="pro-note"/);
+  assert.doesNotMatch(mainHtml({ key: KEY, st: { status: 'active', seat: 7 }, has: all }), /id="pro-note"/);
   assert.equal(pageHtml(), '<div class="pro-page"><div id="pro-claim"></div><div id="pro-account"></div></div>');
   // + Details: WHATIF's toggle, closed.
   assert.match(html, /<details class="how card-more"><summary>Details<\/summary>/);

@@ -7,8 +7,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { render, WAIT_LABEL, WAIT_BUTTON, WAIT_NOTE, WAIT_DONE, WAIT_BAD } from '../public/screens/pro.js';
-import { mount, flush } from './fixtures/tiny-dom.js';
+import { render, mainHtml, WAIT_LABEL, WAIT_BUTTON, WAIT_NOTE, WAIT_DONE, WAIT_BAD } from '../public/screens/pro.js';
+import { cardWords } from '../public/kit.js';
+import { mount, flush, El, Text } from './fixtures/tiny-dom.js';
 
 const posts = [];
 let answer = { status: 200, body: { ok: true } };
@@ -43,7 +44,7 @@ test('copy: the words the owner asked for', () => {
   }
 });
 
-test('checkout closed: "Pro opens soon.", then the email box, TELL ME and one line', async () => {
+test('checkout closed: "Pro opens soon.", then the email box, TELL ME and one line; no "Cancel any time."', async () => {
   const { el } = await page();
   assert.equal(el.querySelector('#pro-sub'), null, 'no buy button');
   assert.equal(el.querySelector('#pro-soon').hidden, false);
@@ -64,6 +65,8 @@ test('checkout closed: "Pro opens soon.", then the email box, TELL ME and one li
   const hp = box.querySelector('#pro-wait-hp');
   assert.equal(hp.getAttribute('tabindex'), '-1');
   assert.equal(hp.getAttribute('aria-hidden'), 'true');
+  // Nothing to buy or cancel: the visitor's note ("Cancel any time.", the yearly line) is hidden.
+  assert.equal(el.querySelector('#pro-note').hidden, true);
   // The soon line comes first, the form under it, in the action row.
   const act = el.querySelector('.card-act');
   const ids = act.querySelectorAll('#pro-soon, #pro-wait').map((e) => e.id);
@@ -156,4 +159,31 @@ test('waitlist: nothing goes to analytics', () => {
   assert.match(wl, /goal\('waitlist_joined'\)/, 'one goal, no props');
   assert.doesNotMatch(wl, /goal\('waitlist_joined', /);
   assert.doesNotMatch(wl, /datafast|gtag|ahrefs/i);
+});
+
+// The words a visitor sees above + Details, read from the page as drawn: the rules of
+// kit.js cardWords (hidden parts, pictures with a label and aria-hidden parts do not count).
+function shownWords(root) {
+  const parts = [];
+  const walk = (n) => {
+    if (n instanceof Text) { parts.push(n.text); return; }
+    if (!(n instanceof El)) return;
+    if (n.tag === 'details' && n.classList.contains('card-more')) return;
+    if ('hidden' in n.attrs || n.attrs['aria-hidden'] === 'true' || (n.attrs.role === 'img' && n.attrs['aria-label'])) return;
+    for (const c of n.children) walk(c);
+    parts.push(' ');
+  };
+  walk(root);
+  return cardWords(parts.join(' '));
+}
+
+test('word budget: closed mode reads 43 words above Details (live mode: 35)', async () => {
+  const open = mount(mainHtml({ next: 4, has: () => true }));
+  assert.equal(shownWords(open).length, cardWords(mainHtml({ next: 4, has: () => true })).length, 'the same count as cardWords on the live page');
+  const { el } = await page();
+  const w = shownWords(el);
+  // 35 - SUBSCRIBE - "Cancel any time." + "Pro opens soon." + TELL ME + the one line.
+  assert.equal(w.length, 35 - 1 - 3 + 3 + 2 + 7, w.join(' '));
+  assert.ok(!w.includes('SUBSCRIBE'));
+  assert.ok(!w.join(' ').includes('Cancel any time.'));
 });

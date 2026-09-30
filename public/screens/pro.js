@@ -411,6 +411,7 @@ export function visitorHtml({ alert = '', alertWarn = false, plan = 'year', deta
     sub: raw(priceLineHtml(p)),
     act: raw(cardButton({ label: 'SUBSCRIBE', primary: true, id: 'pro-sub', attrs: `data-plan="${p}"` }) + soonHtml()),
     note: raw(visitorNote()),
+    noteId: 'pro-note', // hidden while checkout is closed (showSoon)
     details: raw(detailsHtml({ keyLine: keyLineHtml(exists), rule: HERO !== RULE })),
     detailsOpen,
   });
@@ -461,8 +462,9 @@ function page(el) {
 }
 
 // PRO_CHECKOUT=closed on the server: no checkout on this site. The buy button gives way to
-// one line and the waitlist under it, and the test-mode lines stay hidden. Keys already
-// out keep everything else.
+// one line and the waitlist under it, and the test-mode lines stay hidden. The visitor's
+// note ("Cancel any time.", the yearly line) goes too: there is nothing to buy or cancel.
+// Keys already out keep everything else, their own note included.
 export const SOON_LINE = 'Pro opens soon.';
 // The waitlist's box is empty and hidden until the server says closed (showWait fills it).
 const soonHtml = () => `<p class="card-sub" id="pro-soon" hidden>${esc(SOON_LINE)}</p><div class="pro-wait" id="pro-wait" hidden></div>`;
@@ -470,6 +472,8 @@ function showSoon(el, ctx) {
   el.querySelector('#pro-sub')?.remove();
   const p = el.querySelector('#pro-soon');
   if (p) p.hidden = false;
+  const note = el.querySelector('#pro-note');
+  if (note) note.hidden = true;
   showWait(el, ctx);
 }
 
