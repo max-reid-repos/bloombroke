@@ -9,7 +9,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  rememberCert, whatifCard, quoteCard, affordCard, defaultPng, makeRateLimit, limited, renderBusy,   OG_RENDER_RATE, CERT_WRITE_RATE, RENDER_WAIT_MAX, MINE_RATE,
+  rememberCert, getCert, whatifCard, quoteCard, affordCard, defaultPng, makeRateLimit, limited, renderBusy,   OG_RENDER_RATE, CERT_WRITE_RATE, RENDER_WAIT_MAX, MINE_RATE,
 } from '../lib/og.js';
 import { certModel } from '../data/whatif-cert.js';
 import { catalog } from '../data/whatif-service.js';
@@ -131,4 +131,22 @@ test('R1 makeRateLimit forgets an address within a minute after its window (the 
   assert.equal(allow.size(), 0, 'every window over: nothing held');
   const src = readFileSync('lib/og.js', 'utf8');
   assert.match(src, /setInterval\(\(\) => sweep\(\), sweepEvery\)\.unref\?\.\(\)/, 'a timer sweeps even with no calls');
+});
+
+test('R3 getCert (page meta, embed, /og/whatif.png): a new numbers file counts per address; over it the model still comes back', async (t) => {
+  const dir = tmp(t);
+  const deps = { catalog, getWhatif: async () => result(), cacheDir: dir };
+  const allowWrite = makeRateLimit({ renders: 1, windowMs: 60_000, addresses: 10 });
+  const a = await getCert('WHATIF IPHONE6', deps, { ip: '7.7.7.7', allowWrite });
+  const b = await getCert('WHATIF IPHONE6:1Y', deps, { ip: '7.7.7.7', allowWrite });
+  assert.ok(a && b, 'both answered');
+  assert.equal(readdirSync(dir).filter((f) => f.endsWith('.json')).length, 1, 'only the first is kept');
+  await getCert('WHATIF IPHONE6:3Y', deps, { ip: '8.8.8.8', allowWrite });
+  assert.equal(readdirSync(dir).filter((f) => f.endsWith('.json')).length, 2, 'another address');
+  const server = readFileSync('server.js', 'utf8');
+  assert.match(server, /withScreenHints\(await shareIndex\(c, clientIp\(req\)\), c\)/);
+  assert.match(server, /getCert\(c, ogDeps, \{ ip \}\)/);
+  assert.match(server, /getCert: \(c, req\) => getCert\(c, ogDeps, \{ ip: req \? clientIp\(req\) : null \}\)/);
+  assert.match(readFileSync('lib/embed-pages.js', 'utf8'), /getCert\(c, req\)/);
+  assert.match(readFileSync('lib/og.js', 'utf8'), /const model = await getCert\(c, deps, \{ ip \}\);/, 'whatifCard passes its address on');
 });

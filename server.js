@@ -446,7 +446,7 @@ const HOME = withCanonical(INDEX, `${SITE}/`);
 // /terms, /privacy, /disclaimer: plain server-rendered pages, text in legal/*.md.
 mountLegal(app, { build: BUILD });
 // /embed/*: the only pages other sites may frame (lib/embed-pages.js).
-mountEmbeds(app, { build: BUILD, getCert: (c) => getCert(c, ogDeps), catalog, onLoad: (req) => embedGate.allow(req, `embed:${req.originalUrl}`) && siteCounters.bump('embed_load') });
+mountEmbeds(app, { build: BUILD, getCert: (c, req) => getCert(c, ogDeps, { ip: req ? clientIp(req) : null }), catalog, onLoad: (req) => embedGate.allow(req, `embed:${req.originalUrl}`) && siteCounters.bump('embed_load') });
 function sendIndex(res, status = 200, html = INDEX) {
   res.status(status).set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }).send(html);
 }
@@ -482,7 +482,7 @@ const whyCards = mountWhyCards(app, { getWhy, parse: parseCommand });
 // A shared link gets its own title and image, so the card on X shows the result:
 // WHATIF (the certificate), AFFORD (cost per use and verdict) and a ticker (price and a
 // 1-month line). Anything else, or a slow answer, gets the site card.
-async function shareIndex(c) {
+async function shareIndex(c, ip = null) {
   if (/^\s*AFFORD\s+\S/i.test(c)) {
     const model = affordModel(c);
     return model ? withMeta(PAGE, affordMeta(model)) : INDEX;
@@ -504,7 +504,7 @@ async function shareIndex(c) {
   const timeout = new Promise((resolve) => { setTimeout(resolve, 2500, LATE).unref(); });
   try {
     if (whatif) {
-      const got = await Promise.race([getCert(c, ogDeps).catch(() => null), timeout]);
+      const got = await Promise.race([getCert(c, ogDeps, { ip }).catch(() => null), timeout]);
       const model = got && got !== LATE ? got : null;
       // One catalogue item: a plain title and description, numbers when they are in.
       const item = whatifItemMeta(c, model, { catalog });
@@ -546,7 +546,7 @@ function withScreenHints(html, c) {
 }
 app.get(['/', '/index.html'], async (req, res) => {
   const c = str(req.query.c) || '';
-  const html = withScreenHints(await shareIndex(c), c);
+  const html = withScreenHints(await shareIndex(c, clientIp(req)), c);
   sendIndex(res, 200, isEmbedQuery(req.query) ? embedHtml(html) : html);
 });
 
