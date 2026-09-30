@@ -107,5 +107,5 @@ export const DETAIL = {
   'LIPSTICK': { source: 'US Bureau of Labor Statistics (CPI, CUUR0000SEGB02)', delay: 'Monthly' },
   'SICK': { source: 'CDC NWSS wastewater data', delay: 'Weekly' },
   'MACAU': { source: 'DICJ Macau', delay: 'Monthly, early in the next month' },
-  'FISHTANK': { source: 'Market data provider, the S&P 100 batch HEATMAP uses', delay: 'May be delayed; refreshes every minute' },
+  'FISHTANK': { source: 'Market data provider', delay: 'May be delayed; refreshes every minute' },
 };

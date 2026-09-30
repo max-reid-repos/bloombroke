@@ -2,11 +2,19 @@
 
 **The $32,000 terminal. Now $420 a year.**
 
-Keyboard-first market info: live quotes, charts, SEC financials, screener, options, watchlist, portfolio, 50+ plain-English commands. Type HELP.
+Keyboard-first market info: live quotes, charts, SEC financials, screener, options, watchlist, portfolio, 101 plain-English commands. Type HELP.
 
 Live at **[bloombroke.com](https://bloombroke.com)**. Free to use, no account.
 
 ![The HOME screen: world markets, a 1-minute S&P 500 chart and market news in three numbered panels](docs/img/home.webp)
+
+## Judge it in 60 seconds
+
+1. [GRAVEYARD](https://bloombroke.com/?c=GRAVEYARD): a painted cemetery of famous tickers that are gone.
+2. [GRAVEYARD LEH](https://bloombroke.com/?c=GRAVEYARD+LEH): one stone page, Lehman Brothers, with its sources. Pay your respects.
+3. [FISHTANK](https://bloombroke.com/?c=FISHTANK): the S&P 100 as fish. Winners swim high, losers sink.
+4. [WHATIF IPHONE6](https://bloombroke.com/?c=WHATIF+IPHONE6): what the iPhone 6 money would be worth in Apple stock today.
+5. [GUESS](https://bloombroke.com/?c=GUESS): one mystery stock a day, from its chart alone.
 
 ## Try these
 
@@ -19,12 +27,15 @@ Open [bloombroke.com](https://bloombroke.com), type a command, press Enter. Ever
 | `AAPL 1Y WEEKLY` | A range and a bar period, typed |
 | `MARKETS` | World indexes, futures, commodities, FX and rates |
 | `NEWS SEC` | The latest 8-K filings from SEC EDGAR |
-| `WEIRD` | 23 odd live gauges on one screen |
+| `WEIRD` | Up to 23 odd live gauges on one screen |
 | `CANAL` | Ships through Hormuz, Suez, Panama and other chokepoints |
 | `FISHTANK` | The S&P 100 as fish |
 | `WORLDMAP` | Indexes, shipping chokepoints and active storms on a map |
 | `DESK WEIRD` | Your own screen, loaded with twelve weird gauges |
 | `WHATIF` | What the money would be worth in the maker's stock |
+| `GRAVEYARD` | Famous tickers that are gone, each with its own stone |
+| `GUESS` | One mystery stock a day, from its 1-year chart |
+| `GRID` | Your own board of up to 16 mini charts |
 | `AFFORD` | Cost per use of a thing you buy, and a verdict |
 | `ALERTS AAPL > 350` | A note when a price crosses your level |
 | `TRENDING` | The most opened tickers on Bloombroke |
@@ -43,7 +54,7 @@ Open [bloombroke.com](https://bloombroke.com), type a command, press Enter. Ever
 
 ## Charts
 
-![AAPL over one year with a click-drag measure: +15.47%, +42.24, 192 days](docs/img/chart-measure.webp)
+![AAPL over one year with a click-drag measure: +31.87%, +79.15, 174 days](docs/img/chart-measure.webp)
 
 - Down to 1-minute bars for the day, up to monthly bars over the full history.
 - Click and drag to measure: percent, price change and days between two points. Long press on touch.
@@ -57,15 +68,15 @@ The bar period grid sets the period and the range in one click:
 
 ## Weird data
 
-![The WEIRD screen: 23 gauges, each with its source and date](docs/img/weird.webp)
+![The WEIRD screen: one tile per gauge, each with its number and a short trend line](docs/img/weird.webp)
 
-`WEIRD` shows 23 live gauges from public sources, each with its source and its own date: ships through Hormuz, the Pentagon Pizza Index, the app-store rank of trading apps, Waffle Houses inside storms, encyclopedia page views of "Recession", Costco's hot dog in today's money, the Big Mac index, Disney ride waits, AI mentions in 10-Q filings, words in the Fed Beige Book, cardboard box output and more. Each gauge is also its own command (`CANAL`, `PIZZA`, `BIGMAC`, `RIDES`), and each can be an alert (`ALERTS CANAL < 5`). A source with nothing to report shows NO DATA, never a guess.
+`WEIRD` shows up to 23 live gauges from public sources, each with its source and its own date: ships through Hormuz, the app-store rank of trading apps, Waffle Houses inside storms, encyclopedia page views of "Recession", Costco's hot dog in today's money, the Big Mac index, Disney ride waits, AI mentions in 10-Q filings, words in the Fed Beige Book, cardboard box output and more. Each gauge is also its own command (`CANAL`, `HOTDOG`, `BIGMAC`, `RIDES`), and each can be an alert (`ALERTS CANAL < 5`). A source with nothing to report shows NO DATA, never a guess; on the WEIRD screen its tile hides until it reports again.
 
 Gauge sources: US government data (National Hurricane Center, NWS, NOAA SWPC, BLS, SEC EDGAR, Federal Reserve Beige Book, CDC NWSS) and public web data. Credits: stores © OpenStreetMap contributors, ODbL; Big Mac data: The Economist, CC BY 4.0; ride waits: Powered by Queue-Times.com.
 
 ## FISHTANK
 
-![FISHTANK: the S&P 100 as sea life, with MSFT hovered](docs/img/fishtank.webp)
+![FISHTANK: the S&P 100 as pixel sea life, the biggest companies named](docs/img/fishtank.webp)
 
 The S&P 100 as sea life. Each sector is a species, size is company size, depth is today's move. Winners swim high, losers sink. Hover a fish for its name, click it to open the stock.
 
@@ -83,11 +94,25 @@ Build your own screen: any commands side by side, on four desks. Drag a header t
 
 ## WHATIF
 
-![A WHATIF certificate: a $599 GTX 1080 in 2016 would be worth $117,488 in Nvidia stock](docs/img/whatif.webp)
+![A WHATIF certificate: a $599 GTX 1080 in 2016 would be worth $119,215 in Nvidia stock at the Sep 30 2026 close, 199x](docs/img/whatif.webp)
 
 In hindsight: what the money would be worth if you had bought the maker's stock instead of the product. A $599 GTX 1080 in May 2016 is a certificate for 522 shares of Nvidia. Habits work too: `WHATIF LATTE:3Y`. It shows the worst drop along the way, and every certificate has a share link and a downloadable image.
 
 `data/whatif-products.json` lists each product's US launch date, US launch price and a source link. Past closes are daily closes from a market data provider, cross-checked against a second provider; the build stops if they differ by more than 1%. Today's price is live. Price return only: dividends and spin-offs are left out.
+
+## GRAVEYARD
+
+A painted cemetery of famous tickers that are gone: bankrupt, seized, bought out or taken private. Each stone has its own page (`GRAVEYARD LEH`) with what happened, the dates, the sources, an old homepage and a PAY RESPECTS button. `ZOMBIES` lists the ones that died and came back.
+
+## GUESS, GRID and EMBED
+
+- `GUESS`: one mystery stock a day. Guess it from its 1-year chart in six tries; each guess gets hints.
+- `GRID`: your own board of up to 16 mini charts, with a share link and a share card.
+- `EMBED`: the code to put GUESS or a WHATIF result on your own site.
+
+## MCP
+
+Use Bloombroke from an AI assistant: `https://bloombroke.com/mcp` is an MCP server with SEC filings, company financials, CPI and the weird gauges as tools. Type `MCP` for the link and how to add it.
 
 ## News
 
@@ -106,7 +131,7 @@ Sources and credits: SEC EDGAR, BLS, US Treasury, Federal Reserve Board, NOAA Na
 
 ## Pro
 
-The terminal stays free. Pro is $42 a month or $420 a year (Stripe subscription, USD): your own ticker tape, sync of the watchlist, portfolio, tape and DESK layouts across devices, a seat number and no sponsor line. There are no accounts: checkout makes a licence key, and the server keeps only its hash. Cancel any time: type `PRO` and press MANAGE. If we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month or year.
+The terminal stays free. Pro is $42 a month or $420 a year (Stripe subscription, USD): CHAT with other Pro members by seat number or username, pings (chat messages and price alerts even with the tab closed), sync of the watchlist, portfolio, tape, DESK and GRID across devices, your own ticker tape, STATUS, a seat number, gift codes for friends and no sponsor line. There are no accounts: checkout makes a licence key, and the server keeps only its hash. Cancel any time: type `ME` (or `PRO`) and press CANCEL. If we ever shut Bloombroke down, we cancel all subscriptions and refund the unused part of the current month or year.
 
 Pro environment (see `.env.example`; `scripts/stripe-setup.js` writes the Stripe values):
 
@@ -128,7 +153,7 @@ Analytics and the Pro key: the key lives in the browser (localStorage), and any 
 - Hand-rolled SVG and canvas charts. No chart library.
 - `data/`: each source behind a small function, with a cache that serves the last good value when a source fails. `data/weird/` holds one module per gauge.
 - SQLite (better-sqlite3) for Pro licences and sync only.
-- 663 tests (`npm test`, Node's built-in test runner).
+- 1,802 tests (`npm test`, Node's built-in test runner).
 
 ## Run locally
 

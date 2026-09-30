@@ -45,7 +45,7 @@ test('presets use only existing commands and gauges', () => {
     }
   }
   const cmds = (n) => PRESETS[n].map((p) => p.cmd);
-  assert.deepEqual(cmds('WEIRD'), ['CANAL', 'PIZZA', 'DEGEN', 'WAFFLE', 'PANIC', 'BILLIONS', 'CHANCES', 'BOXRATE', 'EGGPRICE', 'HOTDOG', 'OMENS', 'WSB']);
+  assert.deepEqual(cmds('WEIRD'), ['CANAL', 'BIGMAC', 'DEGEN', 'WAFFLE', 'PANIC', 'BILLIONS', 'CHANCES', 'BOXRATE', 'EGGPRICE', 'HOTDOG', 'OMENS', 'WSB']);
   assert.ok(PRESETS.WEIRD.every((p) => p.card));
   for (const c of ['SPX 1Y', 'CURVE', 'FXMATRIX', 'CPI', 'NEWS MACRO', 'CHANCES', 'BEIGE', 'TRUCKS']) assert.ok(cmds('MACRO').includes(c), `MACRO has ${c}`);
   for (const c of ['BTC 1D', 'ETH 1D', 'CRYPTO', 'DEGEN', 'WSB', 'NEWS']) assert.ok(cmds('CRYPTO').includes(c), `CRYPTO has ${c}`);

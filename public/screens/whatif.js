@@ -727,8 +727,10 @@ export function shareLinks(m, origin) {
   const url = `${origin}/${q(m.command)}`;
   return {
     url,
-    x: `https://x.com/intent/post?${new URLSearchParams({ text: m.share, url })}`,
-    image: `/og/whatif.png?${new URLSearchParams({ c: m.command })}`,
+    // X keeps a card per page URL: v= (these numbers) makes a new number a new card. The
+    // page reads only c=, and the app puts the plain /?c= back in the address bar.
+    x: `https://x.com/intent/post?${new URLSearchParams({ text: m.share, url: m.v ? `${url}&v=${m.v}` : url })}`,
+    image: `/og/whatif.png?${new URLSearchParams(m.v ? { c: m.command, v: m.v } : { c: m.command })}`, // v: these numbers' image
   };
 }
 

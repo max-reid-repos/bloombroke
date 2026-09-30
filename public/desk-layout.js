@@ -39,7 +39,7 @@ const card = (cmd, x, y, w, h) => ({ cmd, x, y, w, h, card: true });
 const pane = (cmd, x, y, w, h, link = null) => ({ cmd, x, y, w, h, link });
 export const PRESETS = {
   WEIRD: [
-    card('CANAL', 0, 0, 4, 4), card('PIZZA', 4, 0, 4, 4), card('DEGEN', 8, 0, 4, 4),
+    card('CANAL', 0, 0, 4, 4), card('BIGMAC', 4, 0, 4, 4), card('DEGEN', 8, 0, 4, 4),
     card('WAFFLE', 0, 4, 4, 4), card('PANIC', 4, 4, 4, 4), card('BILLIONS', 8, 4, 4, 4),
     card('CHANCES', 0, 8, 4, 4), card('BOXRATE', 4, 8, 4, 4), card('EGGPRICE', 8, 8, 4, 4),
     card('HOTDOG', 0, 12, 4, 4), card('OMENS', 4, 12, 4, 4), card('WSB', 8, 12, 4, 4),

@@ -23,7 +23,7 @@ async function serve(fn) {
 
 test('site files: icons, manifest, robots and sitemap are 200 with their own types, kept a day', async () => {
   await serve(async (base) => {
-    const want = { ...SITE_FILES, '/apple-touch-icon-precomposed.png': 'image/png', '/sitemap.xml': 'application/xml' };
+    const want = { ...SITE_FILES, '/apple-touch-icon-precomposed.png': 'image/png', '/apple-touch-icon-120x120.png': 'image/png', '/apple-touch-icon-120x120-precomposed.png': 'image/png', '/sitemap.xml': 'application/xml' };
     for (const [p, type] of Object.entries(want)) {
       const res = await fetch(base + p);
       assert.equal(res.status, 200, p);

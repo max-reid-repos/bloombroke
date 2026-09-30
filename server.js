@@ -16,7 +16,7 @@ import { getCatalog, getWhatif, getFunding, catalog } from './data/whatif-servic
 import { WhatifError } from './data/whatif.js';
 import { whatifTokens, normalizeWhatif, certModel } from './data/whatif-cert.js';
 import {
-  getCert, whatifCard, defaultPng, withMeta, certMeta, DEFAULT_META,
+  getCert, rememberCert, whatifCard, defaultPng, withMeta, certMeta, DEFAULT_META,
   getQuoteCard, quotePng, quoteMeta, affordModel, affordPng, affordMeta,
   withCanonical, quoteTicker, SITE,
 } from './lib/og.js';
@@ -246,6 +246,8 @@ app.get('/api/whatif', async (req, res) => {
     // The certificate: the same words and numbers as the share image.
     const norm = data.rows ? normalizeWhatif(tokens.join(' '), catalog) : null;
     if (norm) data.cert = certModel(data, catalog, norm.command);
+    // The share card, meta and embed take these same numbers (lib/og.js getCert).
+    if (data.cert) rememberCert(data.cert, { stale: data.stale }).catch((e) => console.error('[og]', e.message));
     if (data.rows && countGate.allow(req, `whatif:${tokens.join(' ')}`)) siteCounters.bump('whatif_run'); // BBRK: a WHATIF result
     res.set('Cache-Control', 'public, max-age=60');
     res.json(data);
@@ -384,10 +386,11 @@ function sendPng(res, png, maxAge) {
 }
 app.get('/og/whatif.png', async (req, res) => {
   try {
-    // The result's own card on live prices: a week, as long as it is kept on disk, stable
-    // enough for a newsletter image. The site card or last-known prices: 5 minutes.
+    // The result's own card on live prices: 10 minutes, as long as its numbers are kept
+    // (lib/og.js CERT_TTL_MS); share links carry ?v= so a new number is a new URL. The site
+    // card or last-known prices: 5 minutes.
     const card = await whatifCard(str(req.query.c) || '', ogDeps, { ip: req.ip });
-    sendPng(res, card.png, card.real ? 604800 : 300);
+    sendPng(res, card.png, card.real ? 600 : 300);
   } catch (err) {
     console.error('[og]', err.message);
     try { sendPng(res, await defaultPng(), 300); } catch { res.status(503).end(); }

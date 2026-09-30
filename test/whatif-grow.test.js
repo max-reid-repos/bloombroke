@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import express from 'express';
 import { seoItem, seoWords, whatifItemMeta, whatifSitemapUrls, priceText, habitSpend } from '../lib/whatif-seo.js';
+import { certVersion } from '../data/whatif-cert.js';
 import { sitemapUrls, commandMeta } from '../lib/seo.js';
 import { securityHeaders } from '../lib/embed.js';
 import { mountEmbeds, EMBED_SOURCE, EMBED_NOT_ADVICE, embedSentence } from '../lib/embed-pages.js';
@@ -31,7 +32,8 @@ test('SEO: a gadget gets a plain "instead of" title and a description with the e
   assert.equal(meta.title, 'What if you bought Apple stock instead of the iPhone 6?');
   assert.equal(meta.description, 'An iPhone 6 cost $649 in Sep 2014. The same money in Apple stock is worth $8,770 today (13.5x). Price only, split-adjusted. Hindsight, not advice.');
   assert.equal(meta.url, 'https://bloombroke.com/?c=WHATIF+IPHONE6');
-  assert.equal(meta.image, 'https://bloombroke.com/og/whatif.png?c=WHATIF+IPHONE6');
+  assert.equal(meta.image, `https://bloombroke.com/og/whatif.png?c=WHATIF+IPHONE6&v=${certVersion(model('WHATIF IPHONE6'))}`, 'v: the numbers\' own image');
+  assert.equal(whatifItemMeta('WHATIF IPHONE6', null, { catalog, now: NOW }).image, 'https://bloombroke.com/og/whatif.png?c=WHATIF+IPHONE6', 'no numbers yet: no version');
   assert.match(meta.alt, /^A WHATIF certificate\. An iPhone 6 cost \$649 in Sep 2014\. In Apple stock the same money is worth \$8,770 today \(13\.5x\)\.$/);
   // Any case or spacing is the same page.
   assert.equal(whatifItemMeta('whatif   iphone6', null, { catalog, now: NOW }).url, meta.url);
@@ -316,7 +318,7 @@ test('GUESS card renders a 1200x630 PNG, and ?c=GUESS points og:image at it', as
 
 // ---- WHATIF card cache --------------------------------------------------------------
 
-test('WHATIF card: only the real card on live prices is "real" (kept a week); stale and site cards are not', async (t) => {
+test('WHATIF card: only the real card on live prices is "real" (kept 10 minutes); stale and site cards are not', async (t) => {
   const { whatifCard } = await import('../lib/og.js');
   const { mkdtempSync, rmSync, readdirSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
@@ -337,5 +339,5 @@ test('WHATIF card: only the real card on live prices is "real" (kept a week); st
   const refused = await whatifCard('WHATIF MY 5 A DAY AAPL SINCE 2018', { catalog, getWhatif: async () => ({ ...result(false), rows: [{ ...row, id: 'mine1', mine: { short: '$5 a day', plural: '$5 a day', family: 'MY-AAPL', doodle: 'box' } }] }) }, { allow: () => false });
   assert.equal(refused.real, false, 'over the MY limit: the site card');
   const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
-  assert.match(server, /sendPng\(res, card\.png, card\.real \? 604800 : 300\)/);
+  assert.match(server, /sendPng\(res, card\.png, card\.real \? 600 : 300\)/);
 });
