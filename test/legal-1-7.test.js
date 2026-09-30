@@ -3,6 +3,7 @@
 // has Google Signals and ad personalisation off, runs for free visitors only and is
 // skipped with GPC; it is in the sub-processor table and the ways to stop it. The version
 // goes up so everyone who accepted 1.6 is asked again.
+// (1.9 since, the Pro waitlist: test/legal-1-9.test.js.)
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,12 +15,14 @@ import { needsConsent, acceptRecord } from '../public/consent.js';
 const privacy = readFileSync('legal/privacy.md', 'utf8');
 const section = (md, n) => md.slice(md.indexOf(`## ${n}.`), md.indexOf(`## ${n + 1}.`));
 
-test('legal 1.7: the version is bumped, so everyone who accepted 1.6 is asked again', () => {
-  assert.equal(TERMS_VERSION, '1.7');
-  assert.equal(LEGAL_UPDATED, '29 September 2026');
+test('legal 1.7: the version was bumped, so everyone who accepted 1.6 is asked again', () => {
+  const [major, minor] = TERMS_VERSION.split('.').map(Number);
+  assert.ok(major > 1 || (major === 1 && minor >= 7), TERMS_VERSION);
+  assert.ok(LEGAL_UPDATED);
   assert.equal(needsConsent(acceptRecord('1.6')), true);
-  assert.equal(needsConsent(acceptRecord('1.7')), false);
-  assert.match(legalPage('privacy', privacy), /Version 1\.7\. Last updated 29 September 2026/);
+  assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
+  const v = TERMS_VERSION.replace('.', '\\.');
+  assert.match(legalPage('privacy', privacy), new RegExp(`Version ${v}\\. Last updated ${LEGAL_UPDATED}`));
 });
 
 test('privacy: Google Analytics in the short version, with the analytics, in the tables and the ways to stop it', () => {

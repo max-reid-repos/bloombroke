@@ -394,8 +394,8 @@ test('legal: version bumped, so everyone who accepted 1.0 is asked again', async
   const { LEGAL_UPDATED } = await import('../public/legal-version.js');
   const { needsConsent, acceptRecord } = await import('../public/consent.js');
   const { DEFAULT_TERMS_VERSION } = await import('../pro/billing.js');
-  assert.equal(TERMS_VERSION, '1.7', 'Google Analytics: first-party cookies, free visitors only, off with GPC');
-  assert.equal(LEGAL_UPDATED, '29 September 2026');
+  assert.equal(TERMS_VERSION, '1.9', 'the Pro waitlist (1.8 is kept for the google-login branch)');
+  assert.equal(LEGAL_UPDATED, '30 September 2026');
   assert.equal(needsConsent(acceptRecord('1.0')), true);
   assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
   assert.equal(DEFAULT_TERMS_VERSION, '2026-09-27', 'checkout records the new Terms');
@@ -417,7 +417,7 @@ test('legal: terms s9, disclaimer and privacy say what the code does', () => {
   const privacy = read('privacy');
   assert.ok(privacy.includes('We do not share it with advertisers or data brokers.'), 'privacy s6 stays');
   for (const must of ['We add no tracking code to the link', 'one-way hash of the code and its last four characters', 'your seat number', 'We keep feedback for up to 12 months', 'We do not store your IP address with it', 'your email address only to reply to you',
-    'the Pro routes and gift codes (a 10 or 15 minute window), the ticker counter, the site counters, the GUESS game and the pay respects button on GRAVEYARD stones (a one minute window), the feedback form (a one hour window) and the MCP endpoint (a one minute, a 10 minute and a 24 hour window)', 'forgets it within one minute after the window ends', 'one minute for the ticker counter, the site counters, GUESS and pay respects; 10 or 15 minutes for the Pro routes and gift codes; one hour for feedback and for moving a ping subscription; one minute, 10 minutes and 24 hours for the MCP endpoint', 'DESK layouts',
+    'the Pro routes and gift codes (a 10 or 15 minute window), the ticker counter, the site counters, the GUESS game and the pay respects button on GRAVEYARD stones (a one minute window), the feedback form and the Pro waitlist (a one hour window), and the MCP endpoint (a one minute, a 10 minute and a 24 hour window)', 'forgets it within one minute after the window ends', 'one minute for the ticker counter, the site counters, GUESS and pay respects; 10 or 15 minutes for the Pro routes and gift codes; one hour for feedback, the Pro waitlist and moving a ping subscription; one minute, 10 minutes and 24 hours for the MCP endpoint', 'DESK layouts',
     'sponsors get no data from us', 'DataFast, counts link clicks, including clicks on sponsor links',
     'kept while your licence exists and for 5 years after your subscription is cancelled', 'unpaid or overdue is kept until the subscription is cancelled', 'keeps only a count of the redeemed codes', '| Gift code records | Deleted 12 months after the code was used or expired.',
     'The licence record is kept for 5 years after the gift month ends']) {
@@ -481,12 +481,13 @@ test('privacy names every IP-keyed limiter in the code, with its window', () => 
     'lib/counters.js': [/windowMs: 60_000/], // BBRK site counters
     'lib/graveyard.js': [/max: 30, windowMs: 60_000/], // GRAVEYARD pay respects
     'pro/push.js': [/windowMs: 15 \* MIN/, /resub: createLimiter\(\{ max: 20, windowMs: 60 \* MIN/], // PINGS: the shared wrong-key limiter; moving a subscription
+    'pro/waitlist.js': [/limiter = createLimiter\(\{ max: PER_IP, windowMs: HOUR, now \}\)/], // PRO WAITLIST: 5 tries an hour
   };
   for (const [f, res] of Object.entries(windows)) for (const re of res) assert.match(readFileSync(f, 'utf8'), re, `${f} window changed: update the Privacy Policy`);
-  for (const name of ['Pro routes', 'gift codes', 'ticker counter', 'site counters', 'GUESS game', 'pay respects', 'feedback form', 'MCP endpoint', 'moving a ping subscription']) assert.ok(privacy.includes(name), name);
+  for (const name of ['Pro routes', 'gift codes', 'ticker counter', 'site counters', 'GUESS game', 'pay respects', 'feedback form', 'MCP endpoint', 'moving a ping subscription', 'Pro waitlist (a one hour window)']) assert.ok(privacy.includes(name), name);
   // No other file keys a limiter on the IP.
   const users = [];
   const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = `${d}/${e.name}`; if (e.isDirectory()) walk(p); else if (p.endsWith('.js') && readFileSync(p, 'utf8').includes('clientIp(')) users.push(p); } };
   for (const d of ['data', 'lib', 'pro', 'public']) walk(d);
-  assert.deepEqual(users.sort(), ['data/guess.js', 'data/trending.js', 'lib/counters.js', 'lib/graveyard.js', 'lib/mcp/server.js', 'pro/chat-routes.js', 'pro/feedback.js', 'pro/me-routes.js', 'pro/push.js', 'pro/ratelimit.js', 'pro/routes.js']);
+  assert.deepEqual(users.sort(), ['data/guess.js', 'data/trending.js', 'lib/counters.js', 'lib/graveyard.js', 'lib/mcp/server.js', 'pro/chat-routes.js', 'pro/feedback.js', 'pro/me-routes.js', 'pro/push.js', 'pro/ratelimit.js', 'pro/routes.js', 'pro/waitlist.js']);
 });

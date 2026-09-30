@@ -43,7 +43,7 @@ test('privacy s8: the retention table keeps the earlier promises, one row each',
   const s8 = section(privacy, 8);
   const rows = [...s8.matchAll(/^\| ([^|]+) \| ([^|]+) \|$/gm)].map((m) => m[1].trim()).filter((n) => !/^(Data|---)$/.test(n));
   assert.deepEqual(rows, ['IP addresses in our rate limiters', 'Ticker counter', 'Error logs on our server', 'Records kept by Cloudflare, DataFast, Ahrefs and Google', 'Pro licence record', 'Synced data',
-    'Encrypted copy of your key', 'Payment records', 'Gift licences', 'Gift code records', 'Feedback', 'Chat messages', 'Chat reports', 'Chat contacts and blocks',
+    'Encrypted copy of your key', 'Payment records', 'Gift licences', 'Gift code records', 'Feedback', 'Pro waitlist', 'Chat messages', 'Chat reports', 'Chat contacts and blocks',
     'Username, colour and avatar', 'A username you gave up', 'Ping subscriptions', 'Ping settings and server alerts', 'ME device settings', 'Emails', 'Our own counters', 'Your browser storage']);
   for (const kept of ['We aim to delete them within 14 days.', 'for 5 years after your subscription is cancelled', 'Deleted 30 days after your subscription ends, or sooner if you ask.',
     'at the latest 25 hours after checkout', 'normally five years, and are held mainly in Stripe', 'Up to 12 months, then deleted.', 'Until you clear it.']) assert.ok(s8.includes(kept), kept);
