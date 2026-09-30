@@ -729,7 +729,7 @@ export function zombiesHtml(list) {
   return `<div class="gv-zombies">${list.map((e) => `<a class="gv-plot is-flat" href="${esc(q(`GRAVEYARD ${e.ticker}`))}" data-cmd="${esc(`GRAVEYARD ${e.ticker}`)}" aria-label="${esc(tombstoneLine(e))}">${stoneHtml(e, { small: true })}<span class="gv-zname">${esc(e.name)}</span></a>`).join('')}</div>`;
 }
 
-export const STONE_HINT = 'Esc, then F pays respects · Esc back';
+export const STONE_HINT = 'Click PAY RESPECTS · Esc back';
 
 function renderStone(el, e, ctx) {
   el.innerHTML = stonePageHtml(e, counts?.[e.ticker] || 0);
