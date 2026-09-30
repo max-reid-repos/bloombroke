@@ -73,7 +73,7 @@ function paidSession(n = 1, extra = {}) {
   };
 }
 
-async function setup({ configured = true, loginDelayMs = 0, mode = 'live', termsVersion } = {}) {
+async function setup({ configured = true, loginDelayMs = 0, mode = 'live', termsVersion, checkoutClosed = false } = {}) {
   let t = T0;
   const now = () => t;
   const db = openDb(':memory:');
@@ -82,7 +82,7 @@ async function setup({ configured = true, loginDelayMs = 0, mode = 'live', terms
   const app = express();
   mountPro(app, {
     store, stripe, now, loginDelayMs, log: quiet,
-    config: configured ? { priceId: 'price_test_pro', webhookSecret: SECRET, proSecretSet: true, publicUrl: 'https://bloombroke.com', portalConfigId: 'bpc_test_1', mode, termsVersion } : {},
+    config: configured ? { priceId: 'price_test_pro', webhookSecret: SECRET, proSecretSet: true, publicUrl: 'https://bloombroke.com', portalConfigId: 'bpc_test_1', mode, termsVersion, checkoutClosed } : {},
   });
   const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -280,6 +280,30 @@ test('checkout: closed until Stripe and secrets are configured', async () => {
     assert.equal((await s.req('POST', '/api/pro/checkout')).status, 503);
     assert.equal((await s.req('POST', '/api/pro/claim', { body: { session_id: 'cs_test_session000001' } })).status, 503);
   } finally { await s.close(); }
+});
+
+test('checkout: PRO_CHECKOUT=closed refuses every new checkout and says so in config', async () => {
+  const { checkoutClosed } = await import('../pro/index.js');
+  assert.equal(checkoutClosed({ PRO_CHECKOUT: 'closed' }), true);
+  assert.equal(checkoutClosed({ PRO_CHECKOUT: ' Closed ' }), true);
+  assert.equal(checkoutClosed({}), false);
+  assert.equal(checkoutClosed({ PRO_CHECKOUT: 'open' }), false);
+  const s = await setup({ checkoutClosed: true, mode: 'test' });
+  try {
+    const c = await s.req('GET', '/api/pro/config');
+    assert.equal(c.body.closed, true);
+    assert.equal(c.body.open, false);
+    const r = await s.req('POST', '/api/pro/checkout', { body: { plan: 'year' } });
+    assert.equal(r.status, 503);
+    assert.equal(r.body.error, 'checkout_closed');
+    assert.equal(s.stripe.calls.filter((x) => x[0] === 'checkout.create').length, 0, 'no Stripe session');
+  } finally { await s.close(); }
+  const o = await setup();
+  try {
+    const c = await o.req('GET', '/api/pro/config');
+    assert.equal(c.body.closed, undefined, 'unset: config as before');
+    assert.equal((await o.req('POST', '/api/pro/checkout')).status, 200, 'unset: checkout as before');
+  } finally { await o.close(); }
 });
 
 // ---- webhook ---------------------------------------------------------------------------

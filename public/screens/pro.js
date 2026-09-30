@@ -348,7 +348,7 @@ export function mainHtml({ key = null, st = null, next = null, alert = '', alert
     heroLabel: seatLabel(h),
     heroSize: 96,
     sub: raw(priceHtml(plan)),
-    act: raw(buyButton(label, plan)),
+    act: raw(buyButton(label, plan) + soonHtml()),
     note: raw(noteHtml(`${RENEW_NOTE} · ${label} keeps this key, its seat and your synced lists.`)),
     // The key itself once SHOW KEY is pressed, in place.
     facts: reveal ? [{ value: raw(`<span class="pro-key" id="pro-key">${esc(reveal)}</span>`), label: YOUR_KEY }] : null,
@@ -409,7 +409,7 @@ export function visitorHtml({ alert = '', alertWarn = false, plan = 'year', deta
     hero: HERO,
     heroSize: 24,
     sub: raw(priceLineHtml(p)),
-    act: raw(cardButton({ label: 'SUBSCRIBE', primary: true, id: 'pro-sub', attrs: `data-plan="${p}"` })),
+    act: raw(cardButton({ label: 'SUBSCRIBE', primary: true, id: 'pro-sub', attrs: `data-plan="${p}"` }) + soonHtml()),
     note: raw(visitorNote()),
     details: raw(detailsHtml({ keyLine: keyLineHtml(exists), rule: HERO !== RULE })),
     detailsOpen,
@@ -460,22 +460,34 @@ function page(el) {
   v.reveal = null;
 }
 
+// PRO_CHECKOUT=closed on the server: no checkout on this site. The buy button gives way to
+// one line, and the test-mode lines stay hidden. Keys already out keep everything else.
+export const SOON_LINE = 'Pro opens soon.';
+const soonHtml = () => `<p class="card-sub" id="pro-soon" hidden>${esc(SOON_LINE)}</p>`;
+function showSoon(el) {
+  el.querySelector('#pro-sub')?.remove();
+  const p = el.querySelector('#pro-soon');
+  if (p) p.hidden = false;
+}
+
 // Test mode: say so in the note and, with the test card, in + Details.
 function showTest(el) {
   pro.getConfig().then((c) => {
-    if (c.mode !== 'test' || !el.isConnected) return;
+    if (!el.isConnected) return;
+    if (c.closed) { showSoon(el); return; }
+    if (c.mode !== 'test') return;
     for (const id of ['#pro-test', '#pro-demo']) { const b = el.querySelector(id); if (b) b.hidden = false; }
   });
 }
 
 // The plan switch: the price parts pick the plan the one button buys.
 function setPlan(host, plan) {
+  for (const p of host.querySelectorAll('.pro3-plan')) p.setAttribute('aria-pressed', String(p.dataset.plan === plan));
   const b = host.querySelector('#pro-sub');
-  if (!b) return;
+  if (!b) return; // checkout closed: the prices still pick, there is no button
   b.dataset.plan = plan;
   // The key view's button says its plan (REACTIVATE YEARLY); the visitor's is SUBSCRIBE.
   if (b.dataset.label) b.textContent = `${b.dataset.label} ${planButton(plan)}`;
-  for (const p of host.querySelectorAll('.pro3-plan')) p.setAttribute('aria-pressed', String(p.dataset.plan === plan));
 }
 
 // The visitor's key line in + Details: it gives way to LOGIN and REDEEM (their own handlers).

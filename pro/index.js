@@ -24,6 +24,9 @@ import { getQuote, getQuoteList } from '../data/quotes.js'; // CHAT: the price s
 import { mountPush, pushConfig } from './push.js'; // PINGS: Web Push for CHAT and ALERTS
 import { parseCommand, linkChanges, screenTitle } from '../public/app.js'; // CHAT: what a card may open, and its title
 
+// PRO_CHECKOUT=closed: no new checkouts on this site (pro/routes.js). Unset: as before.
+export const checkoutClosed = (env) => String(env.PRO_CHECKOUT || '').trim().toLowerCase() === 'closed';
+
 export function startPro(app, { dir, env = process.env, log = console, counters = null }) {
   try {
     const db = openDb(env.PRO_DB_PATH || path.join(dir, 'var', 'pro.db'));
@@ -49,6 +52,7 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
         publicUrl: env.PUBLIC_URL || 'https://bloombroke.com',
         proSecretSet: Boolean(aesKey),
         termsVersion: (env.TERMS_VERSION || '').trim() || DEFAULT_TERMS_VERSION,
+        checkoutClosed: checkoutClosed(env),
       },
     });
     // FEEDBACK lives in the same database: POST /api/feedback, for everyone.
@@ -103,7 +107,7 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
     };
     purge();
     setInterval(purge, 24 * 60 * 60 * 1000).unref();
-    log.log(`[pro] ${se.mode} mode, ${ready ? 'ready' : 'not configured: checkout is closed'}`);
+    log.log(`[pro] ${se.mode} mode, ${ready ? 'ready' : 'not configured: checkout is closed'}${checkoutClosed(env) ? ', PRO_CHECKOUT=closed: no new checkouts' : ''}`);
     return { db, store, feedback, chat, push, ready, mode: se.mode, proActive };
   } catch (err) {
     log.error('[pro] could not start:', err.message);

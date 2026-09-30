@@ -2,7 +2,7 @@
 // parser, because the webhook needs the raw body for its signature.
 //
 //   POST /api/stripe/webhook   Stripe events (signature checked)
-//   GET  /api/pro/config       -> { mode: live|test, open, yearly }
+//   GET  /api/pro/config       -> { mode: live|test, open, yearly } (+ closed: true when checkoutClosed)
 //   POST /api/pro/checkout     { plan?: month|year } -> { url } of a Stripe Checkout Session
 //   POST /api/pro/checkout     with X-Pro-Key: REACTIVATE on the same licence
 //   POST /api/pro/claim        { session_id } -> the new key, once paid, for 24 hours
@@ -93,6 +93,9 @@ export function mountPro(app, {
 }) {
   const {
     priceId, priceIdYearly = null, webhookSecret, publicUrl = 'https://bloombroke.com', portalConfigId, proSecretSet, mode = 'live', termsVersion = DEFAULT_TERMS_VERSION,
+    // PRO_CHECKOUT=closed: nobody can start a checkout (PRO shows "Pro opens soon.").
+    // Keys already out keep everything: status, sync, MANAGE PLAN, claim, the webhook.
+    checkoutClosed = false,
   } = config;
   const priceFor = { month: priceId, year: priceIdYearly };
   const ready = Boolean(stripe && priceId && webhookSecret && proSecretSet);
@@ -160,6 +163,7 @@ export function mountPro(app, {
 
   // ---- config: what the PRO screen needs to know (test mode shows a demo banner) ----
   pro.get('/config', (req, res) => {
+    if (checkoutClosed) return res.json({ mode, open: false, closed: true, price: PLANS.month.cents, currency: 'usd', yearly: Boolean(ready && priceIdYearly), yearPrice: PLANS.year.cents });
     res.json({ mode, open: ready, price: PLANS.month.cents, currency: 'usd', yearly: Boolean(ready && priceIdYearly), yearPrice: PLANS.year.cents });
   });
 
@@ -186,6 +190,7 @@ export function mountPro(app, {
   // plan: 'month' (the default, also with no body) or 'year'. Yearly needs its price id;
   // without it the answer says so instead of failing.
   pro.post('/checkout', express.json({ limit: '1kb' }), async (req, res) => {
+    if (checkoutClosed) return fail(res, 503, 'checkout_closed', 'Pro opens soon.');
     if (!ready) return fail(res, 503, 'not_open', 'Pro is not open yet. Try again soon.');
     const plan = req.body?.plan === undefined ? 'month' : req.body.plan;
     if (plan !== 'month' && plan !== 'year') return fail(res, 400, 'bad_plan', 'Pick monthly or yearly.');
