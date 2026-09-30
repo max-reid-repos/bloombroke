@@ -51,7 +51,7 @@ test('privacy s8: the retention table keeps the earlier promises, one row each',
 
 test('privacy: no AI training, GPC, feature events, Cloudflare counts, our counters, what we publish, MCP inputs, the sponsor strip', () => {
   for (const must of [
-    'We do not use your data to train AI models, we do not sell it, and we do not send marketing messages.',
+    'We do not use your data to train AI models, we do not sell it, and we send no marketing messages except the one email you ask for under "Pro opens soon." on the PRO screen.',
     'If your browser sends a Global Privacy Control (GPC) signal, we do not load DataFast on any page of bloombroke.com.',
     'we send DataFast an event with the feature\'s name and, for some features, a short fixed label, such as how a result was shared. The event itself carries no personal data, but DataFast links it to the same visitor and session cookies as your visits.',
     'Cloudflare, our network provider, adds its own count of page views and page load times.',

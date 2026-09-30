@@ -17,7 +17,7 @@ Our Data Protection Officer can be reached at {{CONTACT}}. Write to this address
 - Pro payments go through Stripe. We never see your full card number.
 - CHAT messages between Pro members are seen only by the people in that chat, unless a chat is reported, and are deleted after 30 days.
 - In ME you can download your data and delete your account yourself, at any time, as well as by writing to us.
-- We do not use your data to train AI models, we do not sell it, and we do not send marketing messages.
+- We do not use your data to train AI models, we do not sell it, and we send no marketing messages except the one email you ask for under "Pro opens soon." on the PRO screen.
 - If you leave your email address under "Pro opens soon." on the PRO screen, we send it one email when Pro opens, and nothing else.
 
 ## 3. What we collect and why
