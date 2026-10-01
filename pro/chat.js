@@ -39,6 +39,7 @@ export const CARD_RE = /^[A-Z0-9 .$&%<>=:/+-]{1,60}$/;
 // Screens a card may never point at: account, chat itself, feedback.
 export const CARD_DENY = ['HOME', 'CHAT', 'PRO', 'LOGIN', 'LOGOUT', 'REDEEM', 'GIFT', 'FEEDBACK', 'IDEA', 'ME'];
 export const NO_LINKS = 'No links. Attach a screen instead.';
+export const NO_KEYS = 'That looks like a Pro key or a gift code. Keys never go in CHAT.';
 
 export class ChatError extends Error {
   constructor(code, message, status = 400) {
@@ -107,6 +108,7 @@ export function checkText(raw, { hasCard = false } = {}) {
   if (!text && !hasCard) throw new ChatError('empty', 'Write something first.');
   if (text.length > MAX_TEXT) throw new ChatError('too_long', `Keep it under ${MAX_TEXT} characters.`);
   if (hasLink(text)) throw new ChatError('no_links', NO_LINKS);
+  if (secretInText(text)) throw new ChatError('no_keys', NO_KEYS);
   return text;
 }
 
@@ -211,6 +213,35 @@ export function secretIn(raw) {
       const joined = part.join('').replace(/[^A-Z0-9]/g, '');
       if (!normalizeKey(joined) && !normalizeGiftCode(joined)) continue;
       if (part.length === 1 || /^(BB|GIFT)/.test(part[0]) || /\d/.test(joined)) return true;
+    }
+  }
+  return false;
+}
+
+// A Pro key or a gift code in a CHAT message. Chat is sentences, so this is stricter than
+// secretIn (the rule for commands): any character that is not a letter, a digit, a space,
+// a hyphen or a dot splits the text ("AAPL/MSFT/NVDA/TSLA", "AAPL,MSFT", "key=", "key:"),
+// and key groups join only across spaces, hyphens and dots. A run is a key or a code when
+// it is one word ("FZ4MWS6CAXXPHT5F"), or whole groups of 4 characters (a leading BB or
+// GIFT aside) that start with BB or GIFT or hold a digit ("7k2m abcd efgh jkmn"). And it
+// must have at least 6 different characters, so "4242 4242 4242 4242" or "hahahahahahahaha"
+// is not one.
+export const KEY_MIN_DISTINCT = 6;
+export function secretInText(raw) {
+  const clean = (t) => t.replace(/[^A-Z0-9]/g, '');
+  const varied = (code) => new Set(code.replace(/^(BB|GIFT)-/, '').replace(/-/g, '')).size >= KEY_MIN_DISTINCT;
+  for (const piece of String(raw ?? '').toUpperCase().split(/[^A-Z0-9\s.-]+/)) {
+    const toks = piece.split(/[\s.-]+/).filter(Boolean);
+    for (let i = 0; i < toks.length; i++) {
+      for (let j = i + 1; j <= Math.min(toks.length, i + 9); j++) {
+        const part = toks.slice(i, j);
+        const joined = part.map(clean).join('');
+        const code = normalizeKey(joined) || normalizeGiftCode(joined);
+        if (!code || !varied(code)) continue;
+        if (part.length === 1) return true;
+        const whole = part.every((t, k) => (k === 0 ? t.replace(/^(BB|GIFT)/, '') : t).length % 4 === 0);
+        if (whole && (/^(BB|GIFT)/.test(part[0]) || /\d/.test(joined))) return true;
+      }
     }
   }
   return false;

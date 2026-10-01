@@ -123,3 +123,19 @@
   .pd-stage { height: 288px; }
   .pd-key { gap: 4px; padding: 0 8px 0 6px; }
 }
+
+/* ==== PRO WAITLIST: under "Pro opens soon." (checkout closed): one email box and TELL ME
+   (the kit's card-form), one small line under them; after it worked, one line. Each on
+   a line of its own in the action row, centred, left on the split desktop layout. ==== */
+#pro-soon, .pro-wait { flex: 0 0 100%; margin: 0; }
+.pro-wait { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.pro-wait[hidden] { display: none; }
+.pro-wait-form { position: relative; }
+.pro-wait-input { text-transform: none; }
+.pro-wait-hp { position: absolute; left: -10000px; width: 1px; height: 1px; opacity: 0; }
+.pro-wait-note { margin: 0; max-width: 60ch; font-size: 12px; color: var(--dim); }
+.pro-wait-note.warn { color: var(--down); }
+.pro-wait-done { margin: 0; max-width: 60ch; font-size: 14px; color: var(--text-2); }
+@media (min-width: 1100px) {
+  .card-split .pro-wait { align-items: flex-start; }
+}

@@ -17,14 +17,15 @@ Our Data Protection Officer can be reached at {{CONTACT}}. Write to this address
 - Pro payments go through Stripe. We never see your full card number.
 - CHAT messages between Pro members are seen only by the people in that chat, unless a chat is reported, and are deleted after 30 days.
 - In ME you can download your data and delete your account yourself, at any time, as well as by writing to us.
-- We do not use your data to train AI models, we do not sell it, and we do not send marketing messages.
+- We do not use your data to train AI models, we do not sell it, and we send no marketing messages except the one email you ask for under "Pro opens soon." on the PRO screen.
+- If you leave your email address under "Pro opens soon." on the PRO screen, we send it one email when Pro opens, and nothing else.
 
 ## 3. What we collect and why
 
 ### Using the free terminal
 
 - **Requests to our server.** When you open a screen, your browser asks our server for data, such as the symbols on your watchlist. Our server passes the symbols to the data source and sends back the result. We use these requests only to answer them. When you open a ticker screen, your browser sends its symbol and a random number made for that browser tab. To count each tab once and to stop abuse, our server keeps a coded copy of that number and of your IP address, with the tickers opened, in memory for one hour, then only the count per ticker for 24 hours. Nothing is written to disk. Apart from this count, we do not keep a record of which symbols a person asked for.
-- **Your IP address.** Every connection reveals your IP address. Our network provider, Cloudflare, uses it to deliver the site and block attacks. Our application does not write IP addresses to its logs. To stop abuse and the guessing of licence keys and gift codes, it limits how often each visitor can use the Pro routes and gift codes (a 10 or 15 minute window), the ticker counter, the site counters, the GUESS game and the pay respects button on GRAVEYARD stones (a one minute window), the feedback form (a one hour window) and the MCP endpoint (a one minute, a 10 minute and a 24 hour window). For this it holds your IP address in memory, or for the ticker counter a coded copy of it, for the length of the window, and forgets it within one minute after the window ends.
+- **Your IP address.** Every connection reveals your IP address. Our network provider, Cloudflare, uses it to deliver the site and block attacks. Our application does not write IP addresses to its logs. To stop abuse and the guessing of licence keys and gift codes, it limits how often each visitor can use the Pro routes and gift codes (a 10 or 15 minute window), the share images and the WHATIF results kept for them (a 10 minute window), the ticker counter, the site counters, the GUESS game and the pay respects button on GRAVEYARD stones (a one minute window), the feedback form and the Pro waitlist (a one hour window), and the MCP endpoint (a one minute, a 10 minute and a 24 hour window). For this it holds your IP address in memory, or for the ticker counter a coded copy of it, for the length of the window, and forgets it within one minute after the window ends.
 - **The MCP endpoint.** When an AI app such as Claude, ChatGPT, Grok or Cursor calls our MCP endpoint (bloombroke.com/mcp) for you, our server answers the request and counts it per tool. The count has no IP address and nothing of what was asked. We do not store the inputs a tool is called with: our logs keep only the tool name and whether the call worked. Your IP address is held only in its rate limiter, for the windows given under "Your IP address" above and in section 8. What you type into the AI app is covered by that app's own privacy policy.
 - **Pay respects.** On a GRAVEYARD stone, pay respects (the F key or its button) adds one to a total for that stone. The totals are aggregate counts per stone, with no IP address and nothing about who paid them. Your IP address is held only in the rate limiter, for the one minute window above. So that each stone gets at most one respect from you a day, our server also keeps a coded copy (a salted hash) of your IP address and the stone in memory until the end of that New York day, with a new salt each day, and never writes it to disk.
 - **Videos on GRAVEYARD stones.** A stone page shows our own drawing in place of a video, and nothing is loaded from YouTube or Google until you press play. When you press play on a GRAVEYARD video, the video is loaded from YouTube (Google) in its privacy-enhanced mode (youtube-nocookie.com), and Google receives your IP address and device data under its own privacy policy.
@@ -68,6 +69,10 @@ When sponsors run, sponsor lines rotate in the status line, and each is marked S
 
 If you send feedback with the FEEDBACK command, we store your message, your email address if you give one, the screen you were on before FEEDBACK, the time, and which version of our terms was current. We use it to improve the service, and your email address only to reply to you. We do not store your IP address with it. We keep feedback for up to 12 months, then delete it.
 
+### Pro waitlist
+
+While Pro is not open to new subscribers, the PRO screen shows "Pro opens soon." and lets you leave your email address. We store your email address and the time you gave it. We use it only to send you one email when Pro opens, and we send nothing else to it. We do not store your IP address with it, and our analytics tools get only a note that someone joined the list, never your email address. To be taken off the list, write to {{CONTACT}}. We delete the whole list once that email has been sent, and your address sooner if you ask.
+
 ### CHAT
 
 If you use CHAT, a Pro feature, we store your seat number, the username, colour and avatar you choose in ME, which seats you asked to chat with and who asked you, who you chat with and who you blocked, the groups you are in, and your messages with the time they were sent. When a message names a $TICKER, we also store that ticker's price at the moment you sent it, so the chat can show the move since. A message is shown only to the people in that chat. We do not read messages or use them for anything else: our server only checks each one for links, which are not allowed, and for $TICKERs. The exception is a report: when you or someone else reports a chat, we store a copy of the last 20 messages of that chat, who reported it, the seats in it and the reason given, and we read that copy to deal with the report. We keep messages for 30 days, then delete them. If you post a GUESS result to a chat, we store its score with the message, and the lines CHAT posts itself (who went live or ended live, last week's GUESS winner) are stored like messages; all of them are deleted after 30 days. With GO LIVE, the screens you open are shown live to the people who WATCH you: the server keeps only your current screen, in memory, while you are live, and stores none of them.
@@ -88,6 +93,7 @@ We use personal data only to:
 - run Pro: take payments, give access, sync your data, carry CHAT messages and handle cancellations and refunds;
 - deal with reports about CHAT messages;
 - send you the pings you turn on in ME;
+- send the one email when Pro opens to the people who asked for it on the PRO screen;
 - keep the service secure, prevent abuse and fraud, and enforce our [Terms of Use](/terms);
 - understand how the service is used, in totals, so we can improve it;
 - answer your messages and requests, and read your feedback;
@@ -126,7 +132,7 @@ Our server and several providers are outside Singapore, so your personal data is
 
 | Data | How long |
 |---|---|
-| IP addresses in our rate limiters | For the length of the limit window (one minute for the ticker counter, the site counters, GUESS and pay respects; 10 or 15 minutes for the Pro routes and gift codes; one hour for feedback and for moving a ping subscription; one minute, 10 minutes and 24 hours for the MCP endpoint), plus at most one minute. Held in memory, never on disk. The pay respects once-a-day check keeps a salted hash of your IP address and the stone until the end of that New York day, in memory, never on disk. |
+| IP addresses in our rate limiters | For the length of the limit window (one minute for the ticker counter, the site counters, GUESS and pay respects; 10 or 15 minutes for the Pro routes and gift codes; 10 minutes for share images; one hour for feedback, the Pro waitlist and moving a ping subscription; one minute, 10 minutes and 24 hours for the MCP endpoint), plus at most one minute. Held in memory, never on disk. The pay respects once-a-day check keeps a salted hash of your IP address and the stone until the end of that New York day, in memory, never on disk. |
 | Ticker counter | A coded copy of your browser tab's random number and of your IP address, with the tickers opened, for one hour; after that only the count per ticker, for 24 hours. All in memory, never on disk. |
 | Error logs on our server | We aim to delete them within 14 days. |
 | Records kept by Cloudflare, DataFast, Ahrefs and Google | For the periods in their own policies. |
@@ -137,6 +143,7 @@ Our server and several providers are outside Singapore, so your personal data is
 | Gift licences | The licence record is kept for 5 years after the gift month ends, and then deleted. Synced data is deleted 30 days after the gift month ends. |
 | Gift code records | Deleted 12 months after the code was used or expired. Your licence record keeps only a count of the redeemed codes that were deleted, so the limit of 3 still applies. |
 | Feedback | Up to 12 months, then deleted. |
+| Pro waitlist | Until the email that Pro is open has been sent, then the whole list is deleted. Your address sooner if you ask. |
 | Chat messages | Deleted 30 days after they were sent. Chat requests are deleted after 30 days too. |
 | Chat reports | Up to 12 months, then deleted. |
 | Chat contacts and blocks | Deleted 30 days after your Pro ends, at once when you delete your account in ME, or sooner if you ask. |

@@ -17,9 +17,10 @@ import { WhatifError } from './data/whatif.js';
 import { whatifTokens, normalizeWhatif, certModel } from './data/whatif-cert.js';
 import {
   getCert, rememberCert, whatifCard, defaultPng, withMeta, certMeta, DEFAULT_META,
-  getQuoteCard, quotePng, quoteMeta, affordModel, affordPng, affordMeta,
+  getQuoteCard, quoteCard, quoteMeta, affordModel, affordCard, affordMeta,
   withCanonical, quoteTicker, SITE,
 } from './lib/og.js';
+import { clientIp } from './pro/ratelimit.js'; // share cards: new renders and kept WHATIF numbers per address
 import { commandMeta, mountSiteFiles, noindexOtherHosts } from './lib/seo.js';
 import { whatifItemMeta } from './lib/whatif-seo.js'; // WHATIF item pages: plain title and description
 import { mountEmbeds } from './lib/embed-pages.js'; // /embed/whatif and /embed/guess
@@ -247,7 +248,8 @@ app.get('/api/whatif', async (req, res) => {
     const norm = data.rows ? normalizeWhatif(tokens.join(' '), catalog) : null;
     if (norm) data.cert = certModel(data, catalog, norm.command);
     // The share card, meta and embed take these same numbers (lib/og.js getCert).
-    if (data.cert) rememberCert(data.cert, { stale: data.stale }).catch((e) => console.error('[og]', e.message));
+    // At most CERT_WRITE_RATE new files per address; over it the answer is the same.
+    if (data.cert) rememberCert(data.cert, { stale: data.stale, ip: clientIp(req) }).catch((e) => console.error('[og]', e.message));
     if (data.rows && countGate.allow(req, `whatif:${tokens.join(' ')}`)) siteCounters.bump('whatif_run'); // BBRK: a WHATIF result
     res.set('Cache-Control', 'public, max-age=60');
     res.json(data);
@@ -388,18 +390,20 @@ app.get('/og/whatif.png', async (req, res) => {
   try {
     // The result's own card on live prices: 10 minutes, as long as its numbers are kept
     // (lib/og.js CERT_TTL_MS); share links carry ?v= so a new number is a new URL. The site
-    // card or last-known prices: 5 minutes.
-    const card = await whatifCard(str(req.query.c) || '', ogDeps, { ip: req.ip });
-    sendPng(res, card.png, card.real ? 600 : 300);
+    // card or last-known prices: 5 minutes. The site card for a limit hit (busy): a minute.
+    const card = await whatifCard(str(req.query.c) || '', ogDeps, { ip: clientIp(req) });
+    sendPng(res, card.png, card.busy ? 60 : card.real ? 600 : 300);
   } catch (err) {
     console.error('[og]', err.message);
     try { sendPng(res, await defaultPng(), 300); } catch { res.status(503).end(); }
   }
 });
-// A ticker card changes with the price: kept 10 minutes.
+// A ticker card changes with the price: kept 10 minutes. The site card for a limit hit
+// (busy: new renders per address, a full queue): a minute.
 app.get('/og/quote.png', async (req, res) => {
   try {
-    sendPng(res, await quotePng(str(req.query.c) || '', quoteDeps), 600);
+    const card = await quoteCard(str(req.query.c) || '', quoteDeps, { ip: clientIp(req) });
+    sendPng(res, card.png, card.busy ? 60 : 600);
   } catch (err) {
     console.error('[og]', err.message);
     try { sendPng(res, await defaultPng(), 300); } catch { res.status(503).end(); }
@@ -407,7 +411,8 @@ app.get('/og/quote.png', async (req, res) => {
 });
 app.get('/og/afford.png', async (req, res) => {
   try {
-    sendPng(res, await affordPng(str(req.query.c) || ''), 86400);
+    const card = await affordCard(str(req.query.c) || '', { ip: clientIp(req) });
+    sendPng(res, card.png, card.busy ? 60 : 86400);
   } catch (err) {
     console.error('[og]', err.message);
     try { sendPng(res, await defaultPng(), 300); } catch { res.status(503).end(); }
@@ -441,7 +446,7 @@ const HOME = withCanonical(INDEX, `${SITE}/`);
 // /terms, /privacy, /disclaimer: plain server-rendered pages, text in legal/*.md.
 mountLegal(app, { build: BUILD });
 // /embed/*: the only pages other sites may frame (lib/embed-pages.js).
-mountEmbeds(app, { build: BUILD, getCert: (c) => getCert(c, ogDeps), catalog, onLoad: (req) => embedGate.allow(req, `embed:${req.originalUrl}`) && siteCounters.bump('embed_load') });
+mountEmbeds(app, { build: BUILD, getCert: (c, req) => getCert(c, ogDeps, { ip: req ? clientIp(req) : null }), catalog, onLoad: (req) => embedGate.allow(req, `embed:${req.originalUrl}`) && siteCounters.bump('embed_load') });
 function sendIndex(res, status = 200, html = INDEX) {
   res.status(status).set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }).send(html);
 }
@@ -477,7 +482,7 @@ const whyCards = mountWhyCards(app, { getWhy, parse: parseCommand });
 // A shared link gets its own title and image, so the card on X shows the result:
 // WHATIF (the certificate), AFFORD (cost per use and verdict) and a ticker (price and a
 // 1-month line). Anything else, or a slow answer, gets the site card.
-async function shareIndex(c) {
+async function shareIndex(c, ip = null) {
   if (/^\s*AFFORD\s+\S/i.test(c)) {
     const model = affordModel(c);
     return model ? withMeta(PAGE, affordMeta(model)) : INDEX;
@@ -499,7 +504,7 @@ async function shareIndex(c) {
   const timeout = new Promise((resolve) => { setTimeout(resolve, 2500, LATE).unref(); });
   try {
     if (whatif) {
-      const got = await Promise.race([getCert(c, ogDeps).catch(() => null), timeout]);
+      const got = await Promise.race([getCert(c, ogDeps, { ip }).catch(() => null), timeout]);
       const model = got && got !== LATE ? got : null;
       // One catalogue item: a plain title and description, numbers when they are in.
       const item = whatifItemMeta(c, model, { catalog });
@@ -541,7 +546,7 @@ function withScreenHints(html, c) {
 }
 app.get(['/', '/index.html'], async (req, res) => {
   const c = str(req.query.c) || '';
-  const html = withScreenHints(await shareIndex(c), c);
+  const html = withScreenHints(await shareIndex(c, clientIp(req)), c);
   sendIndex(res, 200, isEmbedQuery(req.query) ? embedHtml(html) : html);
 });
 

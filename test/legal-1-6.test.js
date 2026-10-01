@@ -49,7 +49,7 @@ test('privacy: what pings store, who delivers them, encrypted end to end, messag
     'A subscription the push service says is gone, or that fails 5 times in a row, is deleted at once.',
     '| Ping settings and server alerts | Your ping settings are kept until you delete your account, or 30 days after your Pro ends. The copy of a device\'s price alert rules is kept only while alerts when the tab is closed are on for that device, is replaced each time you change the alerts there, and is deleted with that device\'s subscription. |',
   ]) assert.ok(s8.includes(row), row);
-  assert.ok(section(privacy, 8).includes('one hour for feedback and for moving a ping subscription'));
+  assert.ok(section(privacy, 8).includes('one hour for feedback, the Pro waitlist and moving a ping subscription'));
   // The numbers match the code.
   assert.equal(MAX_FAILS, 5);
   assert.equal(ENDED_KEEP_MS, 30 * DAY);

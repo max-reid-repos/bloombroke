@@ -85,7 +85,7 @@ test('visitor view: one split card, the words then the stage; the hero is the pr
   assert.match(css, /\.pro5-plan\[aria-pressed="true"\] \{ font-weight: 700; \}/);
   assert.match(readFileSync('public/screens/pro.css', 'utf8'), /\.pro3-plan\[aria-pressed="true"\] \{ color: var\(--text\);/, 'the picked one in the bright colour');
   // The note: "Cancel any time.", and the test-mode line, hidden until the server says test.
-  assert.match(html, new RegExp(`<p class="card-note">${CANCEL_NOTE.replace('.', '\\.')}<span id="pro-year-note" hidden>[^<]*</span><span id="pro-test" hidden>${TEST_LINE.replace('.', '\\.')}</span></p>`));
+  assert.match(html, new RegExp(`<p class="card-note" id="pro-note">${CANCEL_NOTE.replace('.', '\\.')}<span id="pro-year-note" hidden>[^<]*</span><span id="pro-test" hidden>${TEST_LINE.replace('.', '\\.')}</span></p>`));
   assert.equal(TEST_LINE, 'Test mode: no card is charged yet.');
   // No seat card, no gift tickets, no captions above Details any more.
   assert.doesNotMatch(html.split('<details')[0], /pd-seat|pd-ticket|figcaption|No ads|pro-keyq/);

@@ -13,7 +13,7 @@
 import { esc, q, LOADING } from './markets.js';
 import { cardPage, cardButton, cardLink, cardForm, cardFacts, cardRows, raw } from '../kit.js';
 import * as pro from '../pro.js';
-import { reloadAfterKey, takeShowKeyOnce } from '../goal.js';
+import { reloadAfterKey, takeShowKeyOnce, goal } from '../goal.js';
 import { findCommand } from '../registry.js';
 import { blank } from '../pixel-avatar.js';
 import { loadModule, loadCss, stylesOf } from '../lazy.js'; // the visitor's stage: screens/pro-demo.js, by name
@@ -411,6 +411,7 @@ export function visitorHtml({ alert = '', alertWarn = false, plan = 'year', deta
     sub: raw(priceLineHtml(p)),
     act: raw(cardButton({ label: 'SUBSCRIBE', primary: true, id: 'pro-sub', attrs: `data-plan="${p}"` }) + soonHtml()),
     note: raw(visitorNote()),
+    noteId: 'pro-note', // hidden while checkout is closed (showSoon)
     details: raw(detailsHtml({ keyLine: keyLineHtml(exists), rule: HERO !== RULE })),
     detailsOpen,
   });
@@ -461,20 +462,117 @@ function page(el) {
 }
 
 // PRO_CHECKOUT=closed on the server: no checkout on this site. The buy button gives way to
-// one line, and the test-mode lines stay hidden. Keys already out keep everything else.
+// one line and the waitlist under it, and the test-mode lines stay hidden. The visitor's
+// note ("Cancel any time.", the yearly line) goes too: there is nothing to buy or cancel.
+// Keys already out keep everything else, their own note included.
 export const SOON_LINE = 'Pro opens soon.';
-const soonHtml = () => `<p class="card-sub" id="pro-soon" hidden>${esc(SOON_LINE)}</p>`;
-function showSoon(el) {
+// The waitlist's box is empty and hidden until the server says closed (showWait fills it).
+const soonHtml = () => `<p class="card-sub" id="pro-soon" hidden>${esc(SOON_LINE)}</p><div class="pro-wait" id="pro-wait" hidden></div>`;
+function showSoon(el, ctx) {
   el.querySelector('#pro-sub')?.remove();
   const p = el.querySelector('#pro-soon');
   if (p) p.hidden = false;
+  const note = el.querySelector('#pro-note');
+  if (note) note.hidden = true;
+  showWait(el, ctx);
 }
 
+// ---- PRO WAITLIST ------------------------------------------------------------------------
+// Only while checkout is closed: one email box and TELL ME under "Pro opens soon.", one
+// line under them. POST /api/pro/waitlist (pro/waitlist.js). After it worked, the form
+// gives way to one line, for the rest of this page's life. Errors go to the status line
+// and, since a phone's status line cuts them, into the line under the form too (warn); the
+// next try puts that line back.
+// Enter sends (the form's own submit); Esc hands the keyboard back to the command bar.
+// Analytics get one goal, waitlist_joined, with nothing else: never the address.
+export const WAIT_LABEL = 'Your email';
+export const WAIT_BUTTON = 'TELL ME';
+export const WAIT_NOTE = 'One email when Pro opens. Nothing else.';
+export const WAIT_DONE = 'Done. We will email you once when Pro opens.';
+export const WAIT_BAD = 'That email address does not look right.';
+const WAIT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// What goes in the box (#pro-wait) once checkout is known to be closed.
+export function waitHtml() {
+  return '<form class="card-form pro-wait-form" id="pro-wait-form" novalidate>'
+    + `<input class="card-input pro-wait-input" id="pro-wait-email" name="email" type="email" inputmode="email" maxlength="254" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send" aria-label="${esc(WAIT_LABEL)}" placeholder="${esc(WAIT_LABEL)}">`
+    + '<input class="pro-wait-hp" id="pro-wait-hp" name="hp" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">'
+    + `<button type="submit" class="btn card-btn btn-solid" id="pro-wait-send">${esc(WAIT_BUTTON)}</button>`
+    + '</form>'
+    + `<p class="pro-wait-note" id="pro-wait-note" aria-live="polite">${esc(WAIT_NOTE)}</p>`;
+}
+const waitDoneHtml = () => `<p class="pro-wait-done" id="pro-wait-done" role="status">${esc(WAIT_DONE)}</p>`;
+
+async function joinWaitlist(email, hp) {
+  let res;
+  try {
+    res = await fetch('/api/pro/waitlist', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ email, hp }), cache: 'no-store', credentials: 'same-origin' });
+  } catch {
+    throw new Error('You look offline. Try again in a minute.');
+  }
+  let d = null;
+  try { d = await res.json(); } catch { /* none */ }
+  if (!res.ok || !d?.ok) throw new Error(d?.message || 'Could not save that. Try again in a minute.');
+  return d;
+}
+
+function showWait(el, ctx) {
+  const box = el.querySelector('#pro-wait');
+  if (!box) return;
+  box.hidden = false;
+  const v = viewOf(el);
+  if (v.waitDone) { box.innerHTML = waitDoneHtml(); return; }
+  if (box.querySelector('#pro-wait-form')) return; // filled and wired already
+  box.innerHTML = waitHtml();
+  const form = box.querySelector('#pro-wait-form');
+  const input = form.querySelector('#pro-wait-email');
+  const btn = form.querySelector('#pro-wait-send');
+  const note = box.querySelector('#pro-wait-note');
+  const say = (text, warn = false) => {
+    if (!note) return;
+    note.textContent = text;
+    note.classList.toggle('warn', warn);
+  };
+  const oops = (msg) => { ctx?.status?.(msg, 'warn'); say(msg, true); };
+  let busy = false;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (busy) return;
+    say(WAIT_NOTE); // the next try: the usual line back
+    const email = input.value.trim();
+    if (!WAIT_RE.test(email) || email.length > 254) {
+      oops(WAIT_BAD);
+      input.focus();
+      return;
+    }
+    busy = true;
+    btn.disabled = true;
+    ctx?.status?.('SENDING...');
+    try {
+      await joinWaitlist(email, form.querySelector('#pro-wait-hp')?.value || '');
+      v.waitDone = true;
+      if (!box.isConnected) return;
+      box.innerHTML = waitDoneHtml();
+      ctx?.status?.('ON THE LIST');
+      goal('waitlist_joined');
+    } catch (err) {
+      if (!box.isConnected) return;
+      oops(err.message);
+      btn.disabled = false;
+      busy = false;
+    }
+  });
+  form.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); globalThis.document?.getElementById('cmd')?.focus(); }
+  });
+}
+// ---- end PRO WAITLIST ----------------------------------------------------------------------
+
 // Test mode: say so in the note and, with the test card, in + Details.
-function showTest(el) {
+function showTest(el, ctx) {
   pro.getConfig().then((c) => {
     if (!el.isConnected) return;
-    if (c.closed) { showSoon(el); return; }
+    if (c.closed) { showSoon(el, ctx); return; }
     if (c.mode !== 'test') return;
     for (const id of ['#pro-test', '#pro-demo']) { const b = el.querySelector(id); if (b) b.hidden = false; }
   });
@@ -613,7 +711,7 @@ function renderAccount(el, ctx, alert = '', plan = null, { warn = false } = {}) 
   const key = v.reveal || pro.getKey();
   const detailsOpen = Boolean(host.querySelector('.card-more')?.open);
   host.innerHTML = mainHtml({ key, st: pro.getStatus(), next: v.next, alert, alertWarn: warn, plan: v.plan, reveal: v.reveal, detailsOpen });
-  showTest(el);
+  showTest(el, ctx);
   for (const p of host.querySelectorAll('.pro3-plan')) {
     p.addEventListener('click', () => { v.plan = p.dataset.plan; setPlan(host, v.plan); });
   }

@@ -312,17 +312,20 @@ test('MARKETS: a row not traded today (New York) shows its day after the name; t
 
 test('MARKETS widths: no name is cut at 1440x900 or 1536x730; a narrow panel drops Chg, then wraps', () => {
   const rows = marketsGroups(API);
+  // A fixed now on the fixture's own day (asOf 2026-09-29), so no row reads as stale and
+  // gains a day mark: the test does not depend on today's date.
+  const now = Date.parse('2026-09-29T10:06:00-04:00');
   const ch = 13 * 0.6; // the table's monospace character at 13px
   // One column: the widest name + its 20px padding + the 34px DLY mark + last 11ch + chg 9ch + % 9ch (style.css .mk-probe).
-  const colPx = (chg) => Math.ceil((nameChars(rows) + 11 + (chg ? 9 : 0) + 9) * ch + 20 + 34);
-  assert.equal(nameChars(rows), 'Nasdaq volatility (VXN)'.length);
+  const colPx = (chg) => Math.ceil((nameChars(rows, now) + 11 + (chg ? 9 : 0) + 9) * ch + 20 + 34);
+  assert.equal(nameChars(rows, now), 'Nasdaq volatility (VXN)'.length);
   // The panel body's inner width with real scrollbars at 1440 and 1536 (see the screenshots).
   for (const [w, body] of [[1440, 1384], [1536, 1408]]) {
     const fit = marketsFit(body, colPx);
     assert.deepEqual([fit.n, fit.chg, fit.wrap], [3, true, false], `${w}: three columns`);
     const colW = (body - (fit.n - 1)) / fit.n;
     const nameW = colW - (11 + 9 + 9) * ch - 20 - 34;
-    assert.ok(nameW >= nameChars(rows) * ch, `${w}: the name column holds the longest name`);
+    assert.ok(nameW >= nameChars(rows, now) * ch, `${w}: the name column holds the longest name`);
   }
   assert.equal(marketsFit(1000, colPx).n, 2);
   assert.deepEqual(marketsFit(400, colPx), { n: 1, chg: false, wrap: false });
