@@ -12,3 +12,5 @@ cfd7927aa39fcee210f805cceb31b9b4a97276ab:test/layout-rules.test.js:generic-api-k
 732573da8dd4a3a16bbb480c3c36412f65b0ac9e:test/chat-guess.test.js:generic-api-key:19
 0d21cbb3ffc2602a459d15dc5ebef5b77b98dd85:test/pro-v4.test.js:generic-api-key:352
 0d21cbb3ffc2602a459d15dc5ebef5b77b98dd85:test/pro-v4.test.js:generic-api-key:353
+5c0477ef18fdb38e2982ebe3e6c5c19caaa1535c:test/chat-keys.test.js:generic-api-key:27
+5c0477ef18fdb38e2982ebe3e6c5c19caaa1535c:test/chat-keys.test.js:generic-api-key:28
