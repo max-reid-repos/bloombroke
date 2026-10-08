@@ -11,7 +11,10 @@
 --     (a card is saved for it) or 'released' (kept for the record; the code puts a
 --     released seat back to open).
 --   hold_token: a random value per hold, so a late answer for an old hold never touches a
---     new one. mandate_ip: the IP address that started the checkout (Stripe's mandate
+--     new one. hold_key: the rate-limit bucket of the address that holds it (at most 2 live
+--     holds per address; cleared with the hold). terms_version: the Terms the founder
+--     agreed to (public/legal-version.js). livemode: 1 live, 0 test; a row of the other
+--     mode counts as open (pro/founders.js), so test seats never show on the live site. mandate_ip: the IP address that started the checkout (Stripe's mandate
 --     address when Stripe gives one); kept only for a committed seat, cleared when the
 --     hold ends. Card numbers are never here: Stripe holds the card.
 CREATE TABLE IF NOT EXISTS founders_seats (
@@ -20,6 +23,7 @@ CREATE TABLE IF NOT EXISTS founders_seats (
   status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'held', 'committed', 'released')),
   held_until INTEGER,
   hold_token TEXT,
+  hold_key TEXT,
   checkout_session_id TEXT,
   stripe_customer_id TEXT,
   setup_intent_id TEXT,
@@ -30,6 +34,7 @@ CREATE TABLE IF NOT EXISTS founders_seats (
   mandate_at INTEGER,
   mandate_ip TEXT,
   livemode INTEGER,
+  terms_version TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   CHECK ((seat <= 10 AND class = 'ten') OR (seat > 10 AND class = 'founder'))
@@ -45,11 +50,13 @@ INSERT OR IGNORE INTO founders_seats (seat, class, status, created_at, updated_a
   FROM n;
 
 -- founders_log: public lines, counts only ("Seat 12 released Nov 3."). Never a name, an
--- email address or a Stripe id.
+-- email address or a Stripe id. livemode: the mode of the seat it is about (shown only in
+-- that mode).
 CREATE TABLE IF NOT EXISTS founders_log (
   id INTEGER PRIMARY KEY,
   at INTEGER NOT NULL,
-  text TEXT NOT NULL CHECK (length(text) BETWEEN 1 AND 120)
+  text TEXT NOT NULL CHECK (length(text) BETWEEN 1 AND 120),
+  livemode INTEGER
 );
 
 -- tips: one row per paid tip (FUEL THE FEED). amount_cents comes from Stripe, never from

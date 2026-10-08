@@ -63,7 +63,10 @@ function fakeStripe() {
       async update(id, p, opts) { calls.push(['pm.update', id, p, opts]); return { id }; },
     },
     customers: {
-      async update(id, p, opts) { calls.push(['customer.update', id, p, opts]); return { id }; },
+      tags: {},
+      async update(id, p, opts) { calls.push(['customer.update', id, p, opts]); this.tags[id] = p.metadata; return { id }; },
+      async retrieve(id) { calls.push(['customer.retrieve', id]); return { id, metadata: this.tags[id] || {} }; },
+      async del(id, p, opts) { calls.push(['customer.del', id, opts]); return { id, deleted: true }; },
     },
   };
 }
@@ -91,7 +94,7 @@ async function setup({ env = { FOUNDERS: 'open' }, mode = 'test', start = T0, ti
   const store = createStore(db, { aesKey: AES, now });
   const stripe = fakeStripe();
   const founders = createFounders({ db, stripe, env, mode, webhookReady: true, now, log: quiet });
-  const tips = createTips({ db, stripe, env: tipsEnv, webhookReady: true, now, log: quiet });
+  const tips = createTips({ db, stripe, env: tipsEnv, mode, webhookReady: true, now, log: quiet });
   const app = express();
   mountPro(app, {
     store, stripe, now, loginDelayMs: 0, log: quiet,
@@ -120,7 +123,10 @@ async function setup({ env = { FOUNDERS: 'open' }, mode = 'test', start = T0, ti
     const sig = stripe.webhooks.generateTestHeaderString({ payload, secret: SECRET, timestamp: Math.floor(Date.now() / 1000) });
     return req('POST', '/api/stripe/webhook', { raw: payload, headers: { 'Content-Type': 'application/json', 'Stripe-Signature': sig } });
   };
-  const checkout = (body) => req('POST', '/api/founders/checkout', { body, headers: ORIGIN });
+  // Each checkout from its own address (CF-Connecting-IP behind the local proxy), unless
+  // one is given: at most 2 live holds per address.
+  let ipN = 0;
+  const checkout = (body, ip = `198.51.100.${++ipN}`) => req('POST', '/api/founders/checkout', { body, headers: { ...ORIGIN, 'CF-Connecting-IP': ip } });
   const close = () => new Promise((r) => server.close(r));
   return { db, store, stripe, founders, tips, req, sendEvent, checkout, close, advance(ms) { t += ms; }, now };
 }
@@ -191,13 +197,15 @@ test('holds: one seat, one hold; the lowest free seat of a class; a hold runs ou
   let t = T0;
   const db = openDb(':memory:');
   const s = createFoundersStore(db, { now: () => t });
-  const a = s.hold({ seat: 12, ip: '203.0.113.9' });
+  let k = 0;
+  const key = () => `k${++k}`;
+  const a = s.hold({ seat: 12, ip: '203.0.113.9', key: key() });
   assert.equal(a.seat, 12);
   assert.equal(a.cls, 'founder');
-  assert.throws(() => s.hold({ seat: 12 }), (e) => e instanceof FoundersError && e.code === 'taken');
-  assert.equal(s.hold({ cls: 'founder' }).seat, 11, 'the lowest open founder seat');
-  assert.equal(s.hold({ cls: 'founder' }).seat, 13, '12 is held');
-  assert.equal(s.hold({ cls: 'ten' }).seat, 1);
+  assert.throws(() => s.hold({ seat: 12, key: key() }), (e) => e instanceof FoundersError && e.code === 'taken');
+  assert.equal(s.hold({ cls: 'founder', key: key() }).seat, 11, 'the lowest open founder seat');
+  assert.equal(s.hold({ cls: 'founder', key: key() }).seat, 13, '12 is held');
+  assert.equal(s.hold({ cls: 'ten', key: key() }).seat, 1);
   assert.equal(s.seats().find((x) => x.seat === 12).status, 'held');
   assert.equal(HOLD_MS, SESSION_MS + 2 * MIN, 'held longer than the Stripe session can live');
   t += HOLD_MS - 1;
@@ -206,8 +214,8 @@ test('holds: one seat, one hold; the lowest free seat of a class; a hold runs ou
   const after = s.seats().find((x) => x.seat === 12);
   assert.equal(after.status, 'open', 'opened again on read');
   assert.equal(s.seat(12).mandate_ip, null, 'the address of an abandoned checkout is not kept');
-  for (let i = 1; i <= 10; i++) s.hold({ seat: i });
-  assert.throws(() => s.hold({ cls: 'ten' }), (e) => e.code === 'full');
+  for (let i = 1; i <= 10; i++) s.hold({ seat: i, key: key() });
+  assert.throws(() => s.hold({ cls: 'ten', key: key() }), (e) => e.code === 'full');
 });
 
 // ---- checkout -----------------------------------------------------------------------------
@@ -222,7 +230,7 @@ test('checkout: setup mode, server-side class and metadata, the handle field, th
     assert.equal(p.mode, 'setup');
     assert.deepEqual(p.payment_method_types, ['card']);
     assert.equal(p.customer_creation, 'always');
-    assert.deepEqual(p.metadata, { site: 'bloombroke', product: 'founders', seat: '7', class: 'ten' });
+    assert.deepEqual(p.metadata, { site: 'bloombroke', product: 'founders', seat: '7', class: 'ten', terms_version: '2.0' });
     assert.deepEqual(p.setup_intent_data.metadata, p.metadata);
     assert.equal(p.success_url, 'https://bloombroke.com/founders?seat=7&s={CHECKOUT_SESSION_ID}');
     assert.equal(p.cancel_url, 'https://bloombroke.com/founders');
@@ -256,9 +264,14 @@ test('checkout: Stripe down releases the hold; the per-IP limit holds', async ()
     assert.equal(r.status, 503);
     assert.equal(s.founders.store.seat(20).status, 'open', 'the hold is let go');
     s.stripe.failCreate(false);
+    const one = '203.0.113.50';
     let last;
-    for (let i = 0; i < 12; i++) last = await s.checkout({ class: 'founder' });
-    assert.equal(last.status, 429);
+    for (let i = 0; i < 12; i++) {
+      last = await s.checkout({ class: 'founder' }, one);
+      if (i < 2) assert.equal(last.status, 200, `hold ${i + 1}`);
+      else assert.equal(last.status, 429);
+    }
+    assert.equal(last.body.error, 'rate_limited', 'then the hourly limit');
   } finally { await s.close(); }
 });
 
@@ -322,11 +335,12 @@ test('webhook: a completed checkout commits the seat with the card, email, handl
     assert.equal(row.stripe_customer_id, 'cus_1');
     assert.equal(row.setup_intent_id, 'seti_1');
     assert.equal(row.mandate_at, T0, 'the event time when Stripe gives no mandate');
-    assert.equal(row.mandate_ip, '127.0.0.1', 'the address that started the checkout');
+    assert.equal(row.mandate_ip, '198.51.100.1', 'the address that started the checkout');
+    assert.equal(row.terms_version, '2.0', 'the Terms agreed to');
     assert.equal(row.livemode, 0);
     // Tagged at Stripe, with idempotency keys.
     const cu = s.stripe.calls.find((c) => c[0] === 'customer.update');
-    assert.deepEqual(cu[2].metadata, { site: 'bloombroke', product: 'founders', seat: '12', class: 'founder' });
+    assert.deepEqual(cu[2].metadata, { site: 'bloombroke', product: 'founders', seat: '12', class: 'founder', terms_version: '2.0' });
     assert.equal(cu[3].idempotencyKey, 'bb-founders-customer-cus_1-12');
     assert.equal(s.stripe.calls.find((c) => c[0] === 'pm.update')[3].idempotencyKey, 'bb-founders-pm-pm_1-12');
     // The same event again: nothing new.
@@ -343,7 +357,7 @@ test('webhook: a completed checkout commits the seat with the card, email, handl
     assert.equal(st.body.testMode, true);
     assert.deepEqual(st.body.seats.find((x) => x.seat === 12), { seat: 12, class: 'founder', status: 'committed', handle: 'ann_dev' });
     assert.deepEqual(Object.keys(st.body.seats[0]).sort(), ['class', 'handle', 'seat', 'status']);
-    for (const secret of ['ann@example.com', 'cus_1', 'pm_1', 'seti_1', 'fp_ann', 'cs_test_', '127.0.0.1']) assert.ok(!st.text.includes(secret), secret);
+    for (const secret of ['ann@example.com', 'cus_1', 'pm_1', 'seti_1', 'fp_ann', 'cs_test_', '198.51.100']) assert.ok(!st.text.includes(secret), secret);
   } finally { await s.close(); }
 });
 
@@ -389,7 +403,7 @@ test('webhook: a hold gone by the time the card is saved takes the lowest free s
   } finally { await s.close(); }
 });
 
-test('webhook: checkout.session.expired lets the hold go; setup_intent.succeeded only confirms; other events go on to Pro', async () => {
+test('webhook: checkout.session.expired lets the hold go; setup_intent.succeeded commits a late seat; other events go on to Pro', async () => {
   const s = await setup();
   try {
     await s.checkout({ seat: 25 });
@@ -401,11 +415,16 @@ test('webhook: checkout.session.expired lets the hold go; setup_intent.succeeded
     assert.equal(r.body.result, 'founders_expired', 'nothing held any more');
     await s.checkout({ seat: 26 });
     const done = complete(s.stripe, 'cs_test_founders000002', { n: 2 });
+    // The SetupIntent event first: it fetches the session again and commits the seat.
     r = await s.sendEvent(evt('setup_intent.succeeded', s.stripe.intents.seti_2));
-    assert.equal(r.body.result, 'founders_wait');
-    await s.sendEvent(evt('checkout.session.completed', done));
+    assert.equal(r.body.result, 'founders_committed');
+    assert.equal(s.founders.store.seat(26).status, 'committed');
+    assert.equal((await s.sendEvent(evt('checkout.session.completed', done))).body.result, 'founders_already');
     r = await s.sendEvent(evt('setup_intent.succeeded', s.stripe.intents.seti_2));
     assert.equal(r.body.result, 'founders_already');
+    // A SetupIntent for a seat nobody holds: nothing to do.
+    r = await s.sendEvent(evt('setup_intent.succeeded', { id: 'seti_x', status: 'succeeded', metadata: { site: 'bloombroke', product: 'founders', seat: '40' } }));
+    assert.equal(r.body.result, 'founders_wait');
     // Not ours: Pro's own handling (a Pro session that is not paid is ignored, as before).
     r = await s.sendEvent(evt('checkout.session.completed', { id: 'cs_test_pro0000000001', mode: 'subscription', status: 'open', metadata: { site: 'bloombroke', product: 'pro' } }));
     assert.equal(r.body.result, 'ignored');
@@ -492,7 +511,7 @@ test('page: back from checkout (?s=): "Seat N is yours.", committed from Stripe 
     await s.checkout({ seat: 10 });
     complete(s.stripe, 'cs_test_founders000002', { n: 2 });
     const f = await s.req('GET', '/founders?s=cs_test_founders000002');
-    assert.ok(f.text.includes('This checkout did not save a seat: one seat per person.'));
+    assert.ok(f.text.includes('You already have a seat. One seat per person. This card was not kept.'));
   } finally { await s.close(); }
 });
 
@@ -641,4 +660,165 @@ test('PRO: one founders line while seats are open, nothing otherwise', () => {
   assert.equal(foundersLine({ open: false, committedUsd: 8400, goalUsd: 17640 }), '');
   assert.equal(foundersLine(null), '');
   assert.equal(foundersLine({ open: true }), '');
+});
+
+// ---- reviewer fixes: modes, hold limits, retries, customers, the deadline ----------------
+
+test('modes: with a live key, test seats, handles, log lines and tips never count, show or block', async () => {
+  let t = T0;
+  const db = openDb(':memory:');
+  const test = createFoundersStore(db, { now: () => t, livemode: 0 });
+  const live = createFoundersStore(db, { now: () => t, livemode: 1 });
+  // A test-mode founder on seat 12, and a test release log line.
+  test.hold({ seat: 12, key: 'a' });
+  db.prepare("UPDATE founders_seats SET checkout_session_id = 'cs_test_a' WHERE seat = 12").run();
+  assert.deepEqual(test.commit({ sessionId: 'cs_test_a', cls: 'founder', email: 'ann@x.co', fingerprint: 'fp_a', handle: 'tester', livemode: false }), { seat: 12 });
+  db.prepare("INSERT INTO founders_log (at, text, livemode) VALUES (?, 'Seat 3 released Oct 9.', 0)").run(t);
+  assert.equal(test.totals().seatsTaken, 1);
+  assert.equal(test.logs().length, 1);
+  // The live site sees none of it.
+  assert.deepEqual(live.seats().find((x) => x.seat === 12), { seat: 12, class: 'founder', status: 'open', handle: null });
+  assert.deepEqual(live.totals(), { committedUsd: 0, seatsTaken: 0, held: 0 });
+  assert.deepEqual(live.logs(), []);
+  // A real buyer who tested with the same email and card is not a duplicate, and may take seat 12.
+  live.hold({ seat: 12, key: 'b' });
+  db.prepare("UPDATE founders_seats SET checkout_session_id = 'cs_live_b' WHERE seat = 12").run();
+  const row = live.seat(12);
+  assert.equal(row.email, null, 'the test fields are cleared when the live hold takes the row');
+  assert.equal(row.livemode, 1);
+  assert.deepEqual(live.commit({ sessionId: 'cs_live_b', cls: 'founder', email: 'ann@x.co', fingerprint: 'fp_a', livemode: true }), { seat: 12 });
+  assert.equal(live.totals().seatsTaken, 1);
+  assert.equal(test.totals().seatsTaken, 0, 'and the test site no longer counts the live seat');
+  // Tips: the same rule.
+  const tl = createTipsStore(db, { now: () => t, livemode: 1 });
+  const tt = createTipsStore(db, { now: () => t, livemode: 0 });
+  tt.add({ sessionId: 'cs_test_tip', amountCents: 2000, raw: 'Test', livemode: false });
+  tl.add({ sessionId: 'cs_live_tip', amountCents: 500, raw: 'Live', livemode: true });
+  assert.equal(tl.monthUsd(), 5);
+  assert.equal(tt.monthUsd(), 20);
+  assert.deepEqual(tl.fishtank(), [{ name: 'Fish #2', big: false }]);
+});
+
+test('scripts/founders.js reset-test: test seats open, test log and tips gone, live rows untouched; dry run first', () => {
+  const db = openDb(':memory:');
+  db.prepare("UPDATE founders_seats SET status = 'committed', email = 't@x.co', livemode = 0 WHERE seat IN (1, 11)").run();
+  db.prepare("UPDATE founders_seats SET status = 'committed', email = 'l@x.co', livemode = 1 WHERE seat = 12").run();
+  db.prepare("INSERT INTO founders_log (at, text, livemode) VALUES (1, 'Seat 3 released Oct 9.', 0)").run();
+  createTipsStore(db).add({ sessionId: 'cs_t', amountCents: 500, livemode: false });
+  const dry = foundersScript.resetTest({ db });
+  assert.match(dry.text, /^Dry run: 2 test seats would go back to open and 1 test tips would be deleted/);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM founders_seats WHERE status = 'committed'").get().n, 3);
+  assert.match(foundersScript.resetTest({ db, execute: true }).text, /2 test seats open, 1 test log lines and 1 test tips deleted/);
+  assert.deepEqual(db.prepare("SELECT seat FROM founders_seats WHERE status = 'committed'").all().map((r) => r.seat), [12]);
+  assert.equal(db.prepare('SELECT email FROM founders_seats WHERE seat = 1').get().email, null);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM tips').get().n, 0);
+  assert.deepEqual(foundersScript.parseArgs(['reset-test', '--execute']).cmd, 'reset-test');
+});
+
+test('page and status: a live site with test rows in the database shows only live numbers', async () => {
+  const s = await setup({ mode: 'live' });
+  try {
+    s.db.prepare("UPDATE founders_seats SET status = 'committed', handle = 'tester', livemode = 0 WHERE seat IN (1, 2, 11)").run();
+    const st = (await s.req('GET', '/api/founders/status')).body;
+    assert.equal(st.committedUsd, 0);
+    assert.equal(st.seatsTaken, 0);
+    assert.equal(st.testMode, false);
+    const page = (await s.req('GET', '/founders')).text;
+    assert.ok(!page.includes('@tester'));
+    assert.match(page, /<progress class="fd-bar" max="17640" value="0"/);
+    // And a live checkout may take a seat a test founder had.
+    assert.equal((await s.checkout({ seat: 1 })).status, 200);
+  } finally { await s.close(); }
+});
+
+test('holds: at most 2 live holds per address, at most 20 for the site, both counted from live holds', async () => {
+  const db = openDb(':memory:');
+  let t = T0;
+  const s = createFoundersStore(db, { now: () => t });
+  s.hold({ seat: 1, key: 'same' });
+  s.hold({ seat: 2, key: 'same' });
+  assert.throws(() => s.hold({ seat: 3, key: 'same' }), (e) => e.code === 'too_many' && e.status === 429);
+  for (let i = 0; i < 18; i++) s.hold({ cls: 'founder', key: `k${i}` });
+  assert.throws(() => s.hold({ cls: 'founder', key: 'new' }), (e) => e.code === 'busy');
+  t += HOLD_MS;
+  assert.equal(s.hold({ seat: 3, key: 'same' }).seat, 3, 'holds that ran out stop counting');
+  // Through the route: four addresses can no longer hold all ten ten-year seats.
+  const r = await setup();
+  try {
+    let held = 0;
+    for (const ip of ['192.0.2.1', '192.0.2.2', '192.0.2.3', '192.0.2.4']) {
+      for (let i = 0; i < 3; i++) if ((await r.checkout({ class: 'ten' }, ip)).status === 200) held += 1;
+    }
+    assert.equal(held, 8);
+    assert.equal((await r.checkout({ class: 'ten' }, '192.0.2.9')).status, 200, 'seats left for a real buyer');
+  } finally { await r.close(); }
+});
+
+test('webhook: a SetupIntent not done yet is retried (500, not marked processed); the retry commits', async () => {
+  const s = await setup();
+  try {
+    await s.checkout({ seat: 16 });
+    const done = complete(s.stripe, 'cs_test_founders000001', { n: 1 });
+    s.stripe.intents.seti_1.status = 'processing';
+    const e = evt('checkout.session.completed', done);
+    assert.equal((await s.sendEvent(e)).status, 500);
+    assert.equal(s.store.isEventProcessed(e.id), false);
+    assert.equal(s.founders.store.seat(16).status, 'held');
+    // The success page meanwhile: still saving.
+    assert.ok((await s.req('GET', '/founders?s=cs_test_founders000001')).text.includes(COPY.pending));
+    s.stripe.intents.seti_1.status = 'succeeded';
+    assert.equal((await s.sendEvent(e)).body.result, 'founders_committed');
+  } finally { await s.close(); }
+});
+
+test('customers: a duplicate\'s Stripe customer is deleted; a release deletes only a customer tagged as ours', async () => {
+  const s = await setup();
+  try {
+    await s.checkout({ seat: 12 });
+    await s.sendEvent(evt('checkout.session.completed', complete(s.stripe, 'cs_test_founders000001', { n: 1 })));
+    await s.checkout({ seat: 13 });
+    await s.sendEvent(evt('checkout.session.completed', complete(s.stripe, 'cs_test_founders000002', { n: 2 })));
+    const del = s.stripe.calls.filter((c) => c[0] === 'customer.del');
+    assert.deepEqual(del.map((c) => [c[1], c[2].idempotencyKey]), [['cus_2', 'bb-founders-delete-cus_2']]);
+    // Release seat 12: its customer was tagged at commit, so it goes.
+    const out = await foundersScript.release({ db: s.db, stripe: s.stripe, seat: 12, execute: true, now: s.now });
+    assert.equal(out.done, true);
+    assert.ok(s.stripe.calls.some((c) => c[0] === 'customer.del' && c[1] === 'cus_1'));
+  } finally { await s.close(); }
+  // Another site's customer, or an untagged one on release: never deleted.
+  const { removeCustomer } = await import('../pro/founders.js');
+  const fake = fakeStripe();
+  fake.customers.tags.cus_other = { site: 'nomorepurple' };
+  assert.equal(await removeCustomer(fake, 'cus_other'), 'not_ours');
+  assert.equal(await removeCustomer(fake, 'cus_plain', { requireTag: true }), 'not_ours');
+  assert.equal(await removeCustomer(fake, 'cus_plain'), 'deleted', 'a customer our own checkout just made');
+  assert.equal(fake.calls.filter((c) => c[0] === 'customer.del').length, 1);
+});
+
+test('deadline: a checkout that finishes after it commits nothing: card and customer gone, no public line, "Seats closed"', async () => {
+  const at = foundersEnv({}).deadlineAt;
+  const s = await setup({ start: at - 10 * MIN });
+  try {
+    await s.checkout({ seat: 14 });
+    s.advance(20 * MIN);
+    const done = complete(s.stripe, 'cs_test_founders000001', { n: 1 });
+    const e = { ...evt('checkout.session.completed', done), created: Math.floor((at + MIN) / 1000) };
+    assert.equal((await s.sendEvent(e)).body.result, 'founders_ended');
+    assert.equal(s.founders.store.seat(14).status, 'open');
+    assert.ok(s.stripe.calls.some((c) => c[0] === 'pm.detach' && c[1] === 'pm_1'));
+    assert.ok(s.stripe.calls.some((c) => c[0] === 'customer.del' && c[1] === 'cus_1'));
+    assert.deepEqual(s.founders.store.logs(), []);
+    const page = (await s.req('GET', '/founders?s=cs_test_founders000001')).text;
+    assert.ok(page.includes('Seats closed on Dec 15, 2026. This card was not kept.'));
+  } finally { await s.close(); }
+});
+
+test('page: the failed lines say why: class full, or one seat per person', () => {
+  const st = emptyState({});
+  assert.ok(foundersPage(st, { confirm: { failed: 'full', cls: 'ten' } }).includes('All ten-year seats are taken. This card was not kept.'));
+  assert.ok(foundersPage(st, { confirm: { failed: 'full', cls: 'founder' } }).includes('All founder seats are taken.'));
+  assert.ok(foundersPage(st, { confirm: { failed: 'duplicate', cls: 'founder' } }).includes('You already have a seat. One seat per person.'));
+  // Closed: both buttons outline (a disabled white fill looks pressable).
+  const closed = foundersPage({ ...st, committedUsd: 0, seatsTaken: 0, seats: Array.from({ length: 42 }, (_, i) => ({ seat: i + 1, class: i < 10 ? 'ten' : 'founder', status: 'open', handle: null })) });
+  assert.equal((closed.match(/btn-solid/g) || []).length, 0);
 });

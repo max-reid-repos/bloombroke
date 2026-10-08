@@ -398,7 +398,7 @@ test('legal: version bumped, so everyone who accepted 1.0 is asked again', async
   assert.equal(LEGAL_UPDATED, '8 October 2026');
   assert.equal(needsConsent(acceptRecord('1.0')), true);
   assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
-  assert.equal(DEFAULT_TERMS_VERSION, '2026-09-27', 'checkout records the new Terms');
+  assert.equal(DEFAULT_TERMS_VERSION, TERMS_VERSION, 'checkout records the Terms the legal pages show');
 });
 
 test('legal: terms s9, disclaimer and privacy say what the code does', () => {

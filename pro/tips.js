@@ -100,12 +100,16 @@ export function tipCheckoutParams({ usd, publicUrl }) {
   };
 }
 
-export function createTipsStore(db, { now = () => Date.now() } = {}) {
+// livemode: 1 with a live Stripe key, 0 with a test key. The month's sum and the FISHTANK
+// read only the tips of that mode, so test tips never show on the live site.
+export function createTipsStore(db, { now = () => Date.now(), livemode = 1 } = {}) {
+  const lm = livemode ? 1 : 0;
+  const MINE = '(livemode IS NULL OR livemode = @lm)';
   const q = {
     add: db.prepare(`INSERT INTO tips (checkout_session_id, amount_cents, currency, fish_name_raw, status, livemode, created_at, expires_at)
       VALUES (?, ?, ?, ?, 'pending', ?, ?, ?) ON CONFLICT(checkout_session_id) DO NOTHING`),
-    month: db.prepare("SELECT COALESCE(SUM(amount_cents), 0) AS c FROM tips WHERE currency = 'usd' AND created_at >= ?"),
-    live: db.prepare('SELECT id, amount_cents, fish_name, status FROM tips WHERE expires_at > ? ORDER BY created_at DESC, id DESC LIMIT ?'),
+    month: db.prepare(`SELECT COALESCE(SUM(amount_cents), 0) AS c FROM tips WHERE currency = 'usd' AND created_at >= @from AND ${MINE}`),
+    live: db.prepare(`SELECT id, amount_cents, fish_name, status FROM tips WHERE expires_at > @t AND ${MINE} ORDER BY created_at DESC, id DESC LIMIT @limit`),
     one: db.prepare('SELECT * FROM tips WHERE id = ?'),
     pending: db.prepare("SELECT * FROM tips WHERE status = 'pending' ORDER BY id"),
     all: db.prepare('SELECT * FROM tips ORDER BY id'),
@@ -119,11 +123,11 @@ export function createTipsStore(db, { now = () => Date.now() } = {}) {
     // Tips this calendar month (UTC), whole dollars.
     monthUsd(t = now()) {
       const d = new Date(t);
-      return Math.round(q.month.get(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).c / 100);
+      return Math.round(q.month.get({ from: Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1), lm }).c / 100);
     },
     // The FISHTANK's tip fish, newest first: [{ name, big }]. An approved name, else "Fish #<id>".
     fishtank(t = now(), limit = FISH_LIMIT) {
-      return q.live.all(t, limit).map((r) => ({ name: r.status === 'approved' && r.fish_name ? r.fish_name : `Fish #${r.id}`, big: r.amount_cents >= BIG_CENTS }));
+      return q.live.all({ t, limit, lm }).map((r) => ({ name: r.status === 'approved' && r.fish_name ? r.fish_name : `Fish #${r.id}`, big: r.amount_cents >= BIG_CENTS }));
     },
     one(id) { return q.one.get(id) || null; },
     pending() { return q.pending.all(); },
@@ -134,8 +138,8 @@ export function createTipsStore(db, { now = () => Date.now() } = {}) {
 }
 
 // The runtime object: the store, open or not, the webhook side.
-export function createTips({ db, stripe = null, env = process.env, webhookReady = false, now = () => Date.now(), log = console }) {
-  const store = createTipsStore(db, { now });
+export function createTips({ db, stripe = null, env = process.env, mode = 'live', webhookReady = false, now = () => Date.now(), log = console }) {
+  const store = createTipsStore(db, { now, livemode: mode === 'live' ? 1 : 0 });
   const ready = Boolean(stripe && webhookReady);
   const wanted = tipsOpen(env);
   if (wanted && !ready) log.error('[tips] TIPS=open but Stripe is not configured: tips stay closed');

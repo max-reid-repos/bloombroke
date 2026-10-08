@@ -47,7 +47,7 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
     // FOUNDERS SEATS and TIPS: their own tables, the same Stripe account and webhook.
     const webhookReady = Boolean(se.webhookSecret && aesKey);
     const founders = createFounders({ db, stripe, env, mode: se.mode, webhookReady, log });
-    const tips = createTips({ db, stripe, env, webhookReady, log });
+    const tips = createTips({ db, stripe, env, mode: se.mode, webhookReady, log });
     const { ready, proActive } = mountPro(app, {
       store,
       stripe,

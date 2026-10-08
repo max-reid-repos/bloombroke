@@ -67,7 +67,8 @@ test('privacy: founders seats, tips and the guide list; Stripe named; the retent
   const s3 = section(privacy, 3);
   const f = sub(s3, 'Founders seats');
   for (const must of ['Stripe collects your card details, email address and name, and holds your card.', 'We do not receive your full card number.',
-    'your email address, the X handle if you give one, your Stripe customer ID', "the card's fingerprint", 'the time you agreed to the charge terms and the IP address that started the checkout',
+    'your email address, the X handle if you give one, your Stripe customer ID', "the card's fingerprint", 'the time you agreed to the charge terms, which version of these terms you agreed to, and the IP address that started the checkout',
+    'to delete the card and your customer record at Stripe if the goal is missed, you give up the seat or the checkout did not give you a seat',
     'if the checkout is not finished, the address is deleted']) assert.ok(f.includes(must), must);
   assert.ok(HOLD_MS < 35 * 60 * 1000, 'the hold is "about 30 minutes"');
   const t = sub(s3, 'Tips');

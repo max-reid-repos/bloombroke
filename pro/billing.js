@@ -4,6 +4,7 @@
 
 import Stripe from 'stripe';
 import { isDeletedLicence } from './store.js';
+import { TERMS_VERSION } from '../public/legal-version.js';
 
 export const STRIPE_API_VERSION = '2026-08-26.dahlia';
 
@@ -11,7 +12,9 @@ export const STRIPE_API_VERSION = '2026-08-26.dahlia';
 // metadata, and events for anything else are ignored.
 export const PRO_METADATA = { site: 'bloombroke', product: 'pro' };
 
-export const DEFAULT_TERMS_VERSION = '2026-09-27';
+// The Terms a buyer accepts when TERMS_VERSION is not set in the environment: the same
+// version the legal pages show (public/legal-version.js), so it follows every legal bump.
+export const DEFAULT_TERMS_VERSION = TERMS_VERSION;
 
 // STRIPE_MODE=test|live (default live) picks the key set: STRIPE_SECRET_KEY,
 // STRIPE_PRICE_ID, STRIPE_PRICE_ID_YEARLY (optional), STRIPE_WEBHOOK_SECRET,

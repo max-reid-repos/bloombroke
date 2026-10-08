@@ -31,10 +31,10 @@ import { sameOrigin } from './feedback.js';
 import { tx } from './db.js';
 import { idOf, TERMS_MESSAGE } from './billing.js';
 import { cleanWords } from './tips.js';
+import { TERMS_VERSION } from '../public/legal-version.js';
 
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
-const DAY = 24 * HOUR;
 
 export const SITE = 'bloombroke';
 export const FOUNDERS_METADATA = { site: SITE, product: 'founders' };
@@ -53,9 +53,12 @@ export const CONTACT = 'hello@bloombroke.com';
 export const SESSION_MS = 31 * MIN;
 export const HOLD_MS = SESSION_MS + 2 * MIN;
 
-// Per client IP: 10 checkouts an hour. For the whole site: 300 a day.
+// Per client IP: 10 checkouts an hour, and at most 2 seats held at once. For the whole
+// site: at most 20 seats held at once (counted from the live holds, so nobody can use up
+// a day's quota by starting and dropping checkouts).
 export const PER_IP = 10;
-export const PER_DAY = 300;
+export const HOLDS_PER_IP = 2;
+export const MAX_HOLDS = 20;
 
 export const classOf = (seat) => (seat >= CLASSES.ten.first && seat <= CLASSES.ten.last ? 'ten' : 'founder');
 export const isSeat = (v) => Number.isInteger(v) && v >= 1 && v <= SEATS_TOTAL;
@@ -114,40 +117,57 @@ export class FoundersError extends Error {
   }
 }
 
-const FREE = `status = 'open', held_until = NULL, hold_token = NULL, checkout_session_id = NULL, stripe_customer_id = NULL,
+const FREE = `status = 'open', held_until = NULL, hold_token = NULL, hold_key = NULL, checkout_session_id = NULL, stripe_customer_id = NULL,
   setup_intent_id = NULL, payment_method_id = NULL, card_fingerprint = NULL, email = NULL, handle = NULL, mandate_at = NULL,
-  mandate_ip = NULL, livemode = NULL`;
+  mandate_ip = NULL, livemode = NULL, terms_version = NULL`;
+
+// The rows of this mode: livemode NULL (no mode recorded) or the same as ours. A row held
+// or committed in the other mode (test seats once live keys are in) counts as open here.
+const MINE = '(livemode IS NULL OR livemode = @lm)';
+const FREE_HERE = `(status IN ('open', 'released') OR NOT ${MINE})`;
 
 // The seats table. Every method is synchronous; holds that ran out go back to open on
-// every read (and on checkout.session.expired).
-export function createFoundersStore(db, { now = () => Date.now() } = {}) {
+// every read (and on checkout.session.expired). livemode: 1 with a live Stripe key, 0
+// with a test key; every read and write keeps to that mode.
+export function createFoundersStore(db, { now = () => Date.now(), livemode = 1, deadlineAt = foundersEnv({}).deadlineAt } = {}) {
+  const lm = livemode ? 1 : 0;
   const q = {
     expire: db.prepare(`UPDATE founders_seats SET ${FREE}, updated_at = ? WHERE status = 'held' AND held_until <= ?`),
-    all: db.prepare('SELECT seat, class, status, handle FROM founders_seats ORDER BY seat'),
+    all: db.prepare(`SELECT seat, class, status, handle, NOT ${MINE} AS other FROM founders_seats ORDER BY seat`),
     one: db.prepare('SELECT * FROM founders_seats WHERE seat = ?'),
-    firstOpen: db.prepare("SELECT seat FROM founders_seats WHERE class = ? AND status = 'open' ORDER BY seat LIMIT 1"),
-    hold: db.prepare("UPDATE founders_seats SET status = 'held', held_until = ?, hold_token = ?, mandate_ip = ?, checkout_session_id = NULL, updated_at = ? WHERE seat = ? AND status = 'open'"),
+    firstOpen: db.prepare(`SELECT seat FROM founders_seats WHERE class = @cls AND ${FREE_HERE} ORDER BY seat LIMIT 1`),
+    holdsOf: db.prepare(`SELECT COUNT(*) AS n FROM founders_seats WHERE status = 'held' AND hold_key = @key AND ${MINE}`),
+    holds: db.prepare(`SELECT COUNT(*) AS n FROM founders_seats WHERE status = 'held' AND ${MINE}`),
+    hold: db.prepare(`UPDATE founders_seats SET ${FREE}, status = 'held', held_until = @until, hold_token = @token, hold_key = @key, mandate_ip = @ip,
+      livemode = @lm, updated_at = @t WHERE seat = @seat AND ${FREE_HERE}`),
     attach: db.prepare("UPDATE founders_seats SET checkout_session_id = ?, updated_at = ? WHERE seat = ? AND hold_token = ? AND status = 'held'"),
     dropHold: db.prepare(`UPDATE founders_seats SET ${FREE}, updated_at = ? WHERE seat = ? AND hold_token = ? AND status = 'held'`),
     dropSession: db.prepare(`UPDATE founders_seats SET ${FREE}, updated_at = ? WHERE checkout_session_id = ? AND status = 'held'`),
     bySession: db.prepare('SELECT * FROM founders_seats WHERE checkout_session_id = ?'),
     bySetupIntent: db.prepare("SELECT seat FROM founders_seats WHERE setup_intent_id = ? AND status = 'committed'"),
-    dup: db.prepare("SELECT seat FROM founders_seats WHERE status = 'committed' AND (email = ? OR card_fingerprint = ?)"),
-    commit: db.prepare(`UPDATE founders_seats SET status = 'committed', held_until = NULL, hold_token = NULL, checkout_session_id = ?,
+    dup: db.prepare(`SELECT seat FROM founders_seats WHERE status = 'committed' AND ${MINE} AND (email = @email OR card_fingerprint = @fp)`),
+    commit: db.prepare(`UPDATE founders_seats SET status = 'committed', held_until = NULL, hold_token = NULL, hold_key = NULL, checkout_session_id = ?,
       stripe_customer_id = ?, setup_intent_id = ?, payment_method_id = ?, card_fingerprint = ?, email = ?, handle = ?, mandate_at = ?,
-      mandate_ip = COALESCE(?, mandate_ip), livemode = ?, updated_at = ? WHERE seat = ?`),
+      mandate_ip = COALESCE(?, mandate_ip), livemode = ?, terms_version = ?, updated_at = ? WHERE seat = ?`),
     release: db.prepare(`UPDATE founders_seats SET ${FREE}, updated_at = ? WHERE seat = ?`),
-    log: db.prepare('INSERT INTO founders_log (at, text) VALUES (?, ?)'),
-    logs: db.prepare('SELECT at, text FROM founders_log ORDER BY at DESC, id DESC LIMIT ?'),
+    log: db.prepare('INSERT INTO founders_log (at, text, livemode) VALUES (?, ?, ?)'),
+    logs: db.prepare(`SELECT at, text FROM founders_log WHERE ${MINE} ORDER BY at DESC, id DESC LIMIT @limit`),
     list: db.prepare('SELECT * FROM founders_seats ORDER BY seat'),
+    resetSeats: db.prepare(`UPDATE founders_seats SET ${FREE}, updated_at = ? WHERE livemode = 0`),
+    resetLog: db.prepare('DELETE FROM founders_log WHERE livemode = 0'),
+    resetTips: db.prepare('DELETE FROM tips WHERE livemode = 0'),
   };
   const expire = () => q.expire.run(now(), now()).changes;
   return {
-    expire,
-    // [{ seat, class, status, handle }]: the public view. A handle only on a committed seat.
+    expire, livemode: lm, deadlineAt,
+    // [{ seat, class, status, handle }]: the public view. A handle only on a committed seat
+    // of this mode; a seat of the other mode is open.
     seats() {
       expire();
-      return q.all.all().map((r) => ({ seat: r.seat, class: r.class, status: r.status === 'released' ? 'open' : r.status, handle: r.status === 'committed' ? r.handle : null }));
+      return q.all.all({ lm }).map((r) => {
+        const status = r.other || r.status === 'released' ? 'open' : r.status;
+        return { seat: r.seat, class: r.class, status, handle: status === 'committed' ? r.handle : null };
+      });
     },
     // { committedUsd, seatsTaken, held }: committed seats only count; a hold does not.
     totals(seats = this.seats()) {
@@ -156,18 +176,25 @@ export function createFoundersStore(db, { now = () => Date.now() } = {}) {
     },
     // Hold one seat for a checkout: { seat } or the lowest open seat of { cls }. Throws
     // FoundersError('taken' | 'full'). One transaction, so two buyers never hold one seat.
-    hold({ seat = null, cls = null, ip = null } = {}) {
+    // key: the rate-limit bucket of the address (at most HOLDS_PER_IP live holds each); the
+    // whole site holds at most MAX_HOLDS seats at once. ip: the address itself, for the
+    // mandate record.
+    hold({ seat = null, cls = null, ip = null, key = null } = {}) {
       return tx(db, () => {
         expire();
+        const k = key ?? ip ?? 'unknown';
+        if (q.holdsOf.get({ key: String(k).slice(0, 64), lm }).n >= HOLDS_PER_IP) throw new FoundersError('too_many', 'You have two checkouts open. Finish one, or try again in half an hour.', 429);
+        if (q.holds.get({ lm }).n >= MAX_HOLDS) throw new FoundersError('busy', 'Many checkouts are open right now. Try again in a few minutes.', 503);
         let n = seat;
         if (n === null) {
-          const r = q.firstOpen.get(cls);
+          const r = q.firstOpen.get({ cls, lm });
           if (!r) throw new FoundersError('full', cls === 'ten' ? 'Every ten-year seat is taken.' : 'Every founder seat is taken.');
           n = r.seat;
         }
         const token = randomBytes(12).toString('hex');
         const t = now();
-        if (!q.hold.run(t + HOLD_MS, token, ip ? String(ip).slice(0, 64) : null, t, n).changes) throw new FoundersError('taken', 'That seat is taken. Pick another.');
+        const done = q.hold.run({ until: t + HOLD_MS, token, key: String(k).slice(0, 64), ip: ip ? String(ip).slice(0, 64) : null, lm, t, seat: n }).changes;
+        if (!done) throw new FoundersError('taken', 'That seat is taken. Pick another.');
         return { seat: n, cls: classOf(n), token, heldUntil: t + HOLD_MS };
       });
     },
@@ -185,7 +212,7 @@ export function createFoundersStore(db, { now = () => Date.now() } = {}) {
       return tx(db, () => {
         const mine = q.bySession.get(c.sessionId);
         if (mine?.status === 'committed') return { already: mine.seat };
-        const dup = q.dup.get(c.email ?? null, c.fingerprint ?? null);
+        const dup = q.dup.get({ email: c.email ?? null, fp: c.fingerprint ?? null, lm });
         if (dup) {
           if (mine?.status === 'held') q.dropSession.run(now(), c.sessionId);
           return { dup: dup.seat };
@@ -193,11 +220,11 @@ export function createFoundersStore(db, { now = () => Date.now() } = {}) {
         let seat = mine?.status === 'held' ? mine.seat : null;
         if (seat === null) {
           expire();
-          seat = q.firstOpen.get(c.cls)?.seat ?? null;
+          seat = q.firstOpen.get({ cls: c.cls, lm })?.seat ?? null;
           if (seat === null) return { full: true };
         }
         q.commit.run(c.sessionId, c.customer ?? null, c.setupIntent ?? null, c.paymentMethod ?? null, c.fingerprint ?? null, c.email ?? null,
-          c.handle ?? null, c.mandateAt ?? now(), c.mandateIp ?? null, c.livemode === undefined || c.livemode === null ? null : c.livemode ? 1 : 0, now(), seat);
+          c.handle ?? null, c.mandateAt ?? now(), c.mandateIp ?? null, typeof c.livemode === 'boolean' ? (c.livemode ? 1 : 0) : lm, c.termsVersion ?? null, now(), seat);
         return { seat };
       });
     },
@@ -208,12 +235,17 @@ export function createFoundersStore(db, { now = () => Date.now() } = {}) {
         const r = q.one.get(seat);
         if (!r) return null;
         q.release.run(now(), seat);
-        if (r.status === 'committed') q.log.run(now(), `Seat ${seat} released ${fmtShort(now())}.`);
+        if (r.status === 'committed') q.log.run(now(), `Seat ${seat} released ${fmtShort(now())}.`, r.livemode);
         return r;
       });
     },
+    // scripts/founders.js reset-test: every test-mode seat back to open, its private fields
+    // cleared; test log lines and test tips deleted. Live rows are never touched.
+    resetTest() {
+      return tx(db, () => ({ seats: q.resetSeats.run(now()).changes, log: q.resetLog.run().changes, tips: q.resetTips.run().changes }));
+    },
     seat(n) { return q.one.get(n) || null; },
-    logs(limit = 20) { return q.logs.all(limit); },
+    logs(limit = 20) { return q.logs.all({ lm, limit }); },
     list() { expire(); return q.list.all(); },
   };
 }
@@ -227,7 +259,8 @@ export const HANDLE_LABEL = 'X handle (optional, shown on your seat)';
 export function foundersCheckoutParams({ seat, publicUrl, at, cfg }) {
   const base = publicUrl.replace(/\/+$/, '');
   const cls = classOf(seat);
-  const metadata = { ...FOUNDERS_METADATA, seat: String(seat), class: cls };
+  // terms_version: the Terms the founder agrees to at this checkout (public/legal-version.js).
+  const metadata = { ...FOUNDERS_METADATA, seat: String(seat), class: cls, terms_version: TERMS_VERSION };
   return {
     mode: 'setup',
     payment_method_types: ['card'],
@@ -266,20 +299,64 @@ async function detach(stripe, pm) {
   }
 }
 
+// The Stripe customer a founders checkout made: deleted, so its email and card are gone at
+// Stripe too (a duplicate, a full class, after the deadline, a released seat). Never a
+// customer of another site on the shared account: one whose metadata names another site
+// is left alone, and with requireTag (a released seat, tagged when it committed) only a
+// customer tagged site=bloombroke product=founders is deleted. Idempotent: an already
+// deleted or missing customer is fine.
+export async function removeCustomer(stripe, customerId, { requireTag = false } = {}) {
+  if (!customerId) return 'none';
+  let c;
+  try {
+    c = await stripe.customers.retrieve(customerId);
+  } catch (err) {
+    if (notThere(err)) return 'gone';
+    throw err;
+  }
+  if (c?.deleted) return 'gone';
+  const site = c?.metadata?.site;
+  if (site && site !== SITE) return 'not_ours';
+  if (requireTag && !(site === SITE && c?.metadata?.product === FOUNDERS_METADATA.product)) return 'not_ours';
+  try {
+    await stripe.customers.del(customerId, {}, { idempotencyKey: `bb-founders-delete-${customerId}` });
+  } catch (err) {
+    if (!notThere(err)) throw err;
+  }
+  return 'deleted';
+}
+
+// A SetupIntent that has not succeeded yet: thrown, so the webhook answers 500 and Stripe
+// sends the event again (and setup_intent.succeeded can land it).
+export class NotYet extends Error {}
+
 // A completed setup-mode session -> 'founders_committed' | 'founders_already' |
-// 'founders_duplicate' | 'founders_full' | 'founders_pending'. Used by the webhook and by
-// the success page, whichever runs first. Throws on a Stripe failure, so the webhook is
-// retried.
+// 'founders_duplicate' | 'founders_full' | 'founders_ended' | 'founders_pending'. Used by
+// the webhook and by the success page, whichever runs first. Throws on a Stripe failure,
+// and NotYet while the card is not saved yet, so the webhook is retried.
+// After the deadline nothing commits: the card and the customer go, the hold goes, and
+// nothing is written to the public log.
 export async function commitSession(session, { founders, stripe, log = console, at = Date.now() }) {
   if (!isFoundersSession(session) || session.status !== 'complete') return 'founders_pending';
   const known = founders.bySession(session.id);
   if (known?.status === 'committed') return 'founders_already';
   const siId = idOf(session.setup_intent);
-  if (!siId) return 'founders_pending';
+  if (!siId) throw new NotYet('the session has no SetupIntent yet');
   const si = await stripe.setupIntents.retrieve(siId, { expand: ['payment_method', 'mandate'] });
-  if (si.status !== 'succeeded') return 'founders_pending';
+  if (si.status !== 'succeeded') throw new NotYet(`SetupIntent ${si.status}`);
   const pm = typeof si.payment_method === 'object' && si.payment_method ? si.payment_method : null;
   const pmId = idOf(si.payment_method);
+  const customer = idOf(session.customer) || idOf(si.customer);
+  const giveBack = async (why) => {
+    founders.dropSession(session.id);
+    log.log(`[founders] ${why}: card detached, customer deleted, hold released`); // counts only: never the address or the card
+    await detach(stripe, pmId);
+    await removeCustomer(stripe, customer);
+  };
+  if (at > founders.deadlineAt) {
+    await giveBack('a checkout finished after the deadline');
+    return 'founders_ended';
+  }
   const mandate = typeof si.mandate === 'object' && si.mandate ? si.mandate : null;
   const accepted = mandate?.customer_acceptance;
   const email = String(session.customer_details?.email || pm?.billing_details?.email || '').trim().toLowerCase().slice(0, 254) || null;
@@ -288,7 +365,7 @@ export async function commitSession(session, { founders, stripe, log = console, 
   const out = founders.commit({
     sessionId: session.id,
     cls,
-    customer: idOf(session.customer) || idOf(si.customer),
+    customer,
     setupIntent: si.id,
     paymentMethod: pmId,
     fingerprint: pm?.card?.fingerprint || null,
@@ -297,22 +374,39 @@ export async function commitSession(session, { founders, stripe, log = console, 
     mandateAt: Number.isFinite(accepted?.accepted_at) ? accepted.accepted_at * 1000 : at,
     mandateIp: accepted?.online?.ip_address || null,
     livemode: typeof session.livemode === 'boolean' ? session.livemode : null,
+    termsVersion: String(session.metadata?.terms_version || TERMS_VERSION).slice(0, 16),
   });
   if (out.already) return 'founders_already';
   if (out.dup || out.full) {
-    // Counts only in the log: never the address or the card.
-    log.log(`[founders] ${out.dup ? 'a second seat for the same email or card' : 'no free seat in that class'}: card detached, hold released`);
-    await detach(stripe, pmId);
+    await giveBack(out.dup ? 'a second seat for the same email or card' : 'no free seat in that class');
     return out.dup ? 'founders_duplicate' : 'founders_full';
   }
   // Tag the customer and the card, so the shared account can tell them apart. Not fatal.
-  const metadata = { ...FOUNDERS_METADATA, seat: String(out.seat), class: classOf(out.seat) };
-  const customer = idOf(session.customer) || idOf(si.customer);
+  const metadata = { ...FOUNDERS_METADATA, seat: String(out.seat), class: classOf(out.seat), terms_version: String(session.metadata?.terms_version || TERMS_VERSION) };
   const tags = [];
   if (customer) tags.push(stripe.customers.update(customer, { metadata }, { idempotencyKey: `bb-founders-customer-${customer}-${out.seat}` }));
   if (pmId) tags.push(stripe.paymentMethods.update(pmId, { metadata }, { idempotencyKey: `bb-founders-pm-${pmId}-${out.seat}` }));
   for (const r of await Promise.allSettled(tags)) if (r.status === 'rejected') log.error('[founders] could not tag a Stripe object:', r.reason?.message);
   return 'founders_committed';
+}
+
+// setup_intent.succeeded: the session event normally commits (it has the email and the
+// handle). If the seat is not committed yet, the session is fetched again (the seat the
+// SetupIntent names, held by a checkout) and committed from it, so a late success lands.
+async function commitFromSetupIntent(si, { founders, stripe, log, at }) {
+  if (founders.bySetupIntent(si.id)) return 'founders_already';
+  const seat = Number(si.metadata?.seat);
+  const row = isSeat(seat) ? founders.seat(seat) : null;
+  if (!row || row.status !== 'held' || !row.checkout_session_id) return 'founders_wait';
+  let session;
+  try {
+    session = await stripe.checkout.sessions.retrieve(row.checkout_session_id);
+  } catch (err) {
+    if (notThere(err)) return 'founders_wait';
+    throw err;
+  }
+  if (!isFoundersSession(session) || session.status !== 'complete' || idOf(session.setup_intent) !== si.id) return 'founders_wait';
+  return commitSession(session, { founders, stripe, log, at });
 }
 
 // One verified webhook event -> a result string, or null when it is not a founders (or
@@ -329,10 +423,8 @@ export async function handleFoundersEvent(event, { founders, tips = null, stripe
       if (founders && isFoundersSession(obj)) return founders.dropSession(obj.id) ? 'founders_released' : 'founders_expired';
       if (tips?.isTipSession(obj)) return 'tip_expired';
       return null;
-    // Checkout's session event does the work (it has the email and the handle). This one
-    // only confirms: the seat is already committed, or the session event will do it.
     case 'setup_intent.succeeded':
-      if (founders && isFoundersObject(obj)) return founders.bySetupIntent(obj.id) ? 'founders_already' : 'founders_wait';
+      if (founders && isFoundersObject(obj)) return commitFromSetupIntent(obj, { founders, stripe, log, at });
       return null;
     default:
       return null;
@@ -348,7 +440,7 @@ export const FOUNDERS_WEBHOOK_EVENTS = ['checkout.session.completed', 'checkout.
 // and the success-page check. stripe: null when Stripe is not configured (closed).
 export function createFounders({ db, stripe = null, env = process.env, mode = 'live', webhookReady = false, now = () => Date.now(), log = console }) {
   const cfg = foundersEnv(env);
-  const store = createFoundersStore(db, { now });
+  const store = createFoundersStore(db, { now, livemode: mode === 'live' ? 1 : 0, deadlineAt: cfg.deadlineAt });
   const ready = Boolean(stripe && webhookReady);
   if (cfg.open && !ready) log.error('[founders] FOUNDERS=open but Stripe is not configured: seats stay closed');
   const confirmLimit = createLimiter({ max: 30, windowMs: 10 * MIN, now });
@@ -370,9 +462,9 @@ export function createFounders({ db, stripe = null, env = process.env, mode = 'l
       };
     },
     // The success page (?s=cs_...): { seat } when that checkout's seat is committed,
-    // { pending: true } while Stripe has not said so, { failed: true } when the checkout
-    // ended without a seat (one seat per person). Asks Stripe only while the seat is held
-    // by that session, at most 30 times per 10 minutes per IP.
+    // { pending: true } while Stripe has not said so, { failed: 'duplicate' | 'full' |
+    // 'ended', cls } when the checkout ended without a seat. Asks Stripe at most 30 times
+    // per 10 minutes per IP.
     async confirm(sessionId, ip = 'unknown') {
       if (!/^cs_(test|live)_[A-Za-z0-9]{10,250}$/.test(String(sessionId || ''))) return null;
       const row = store.bySession(sessionId);
@@ -389,15 +481,19 @@ export function createFounders({ db, stripe = null, env = process.env, mode = 'l
       }
       if (!isFoundersSession(session)) return null;
       if (session.status !== 'complete') return row ? { pending: true } : null;
+      const metaSeat = Number(session.metadata?.seat);
+      const cls = isSeat(metaSeat) ? classOf(metaSeat) : 'founder';
       try {
         const r = await commitSession(session, { founders: store, stripe, log, at: now() });
-        if (r === 'founders_duplicate' || r === 'founders_full') return { failed: true };
+        if (r === 'founders_duplicate') return { failed: 'duplicate', cls };
+        if (r === 'founders_full') return { failed: 'full', cls };
+        if (r === 'founders_ended') return { failed: 'ended', cls };
       } catch (err) {
-        log.error('[founders] confirm commit', err.message);
+        if (!(err instanceof NotYet)) log.error('[founders] confirm commit', err.message);
         return { pending: true };
       }
       const after = store.bySession(sessionId);
-      return after?.status === 'committed' ? { seat: after.seat } : { failed: true };
+      return after?.status === 'committed' ? { seat: after.seat } : { failed: 'duplicate', cls };
     },
   };
   return f;
@@ -406,7 +502,6 @@ export function createFounders({ db, stripe = null, env = process.env, mode = 'l
 export function mountFounders(app, {
   founders, publicUrl = 'https://bloombroke.com', now = () => Date.now(), log = console,
   limiter = createLimiter({ max: PER_IP, windowMs: HOUR, now }),
-  daily = createLimiter({ max: PER_DAY, windowMs: DAY, now, maxKeys: 1 }),
 }) {
   const fail = (res, status, error, message) => res.status(status).json({ error, message });
   const base = publicUrl.replace(/\/+$/, '');
@@ -440,14 +535,10 @@ export function mountFounders(app, {
       if (!isSeat(seat) || String(body.seat).trim() !== String(seat)) return fail(res, 400, 'bad_seat', 'Pick a seat from 1 to 42.');
     } else if (body.class === 'ten' || body.class === 'founder') cls = body.class;
     else return fail(res, 400, 'bad_request', 'Pick a seat.');
-    const d = daily.hit('all');
-    if (!d.ok) {
-      res.set('Retry-After', String(d.retryAfter));
-      return fail(res, 429, 'busy', 'Too many checkouts today. Try again tomorrow.');
-    }
     let held;
     try {
-      held = founders.store.hold({ seat, cls, ip: rawIp(req) });
+      // At most 2 live holds per address and 20 for the site, counted in the hold itself.
+      held = founders.store.hold({ seat, cls, ip: rawIp(req), key: clientIp(req) });
     } catch (err) {
       if (err instanceof FoundersError) return fail(res, err.status, err.code, err.message);
       log.error('[founders] hold', err.message);

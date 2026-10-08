@@ -79,19 +79,26 @@
 /* The buttons line up at the foot of their boxes, the box's width. */
 .fd-class .card-btn { align-self: stretch; margin-top: 8px; }
 .fd-msg { width: 100%; font-size: 13px; color: var(--text-2); }
+/* The line under the two kinds of seat runs the card's width (one line on a desktop). */
+.fd-seats .card-note { max-width: 100%; }
 .fd-msg:empty { display: none; }
 .fd-msg.warn { color: var(--down); }
 
-/* The 42 seats: six to a row (about 13 characters of handle; five on a phone). Taken:
+/* The 42 seats: six to a row, on a phone too (42 = 6 x 7). Taken:
    bright, with the handle. Open: dim. Held: dashed. The picked seat: the accent. */
-.fd-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; width: 100%; }
+.fd-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 6px; width: 100%; }
 .fd-seat {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-  min-width: 0; height: 48px; border: 1px solid var(--rule); color: var(--faint); font-size: 13px;
+  min-width: 0; min-height: 48px; padding: 4px 0; border: 1px solid var(--rule); color: var(--faint); font-size: 13px;
 }
 .fd-seat.is-committed { border-color: var(--rule-strong); background: var(--panel-2); color: var(--text); }
 .fd-seat.is-held { border-style: dashed; border-color: var(--rule-strong); color: var(--dim); }
-.fd-handle { max-width: 100%; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-2); }
+/* A handle takes up to two lines (cut only past that; the whole handle is in the seat's
+   title and aria-label). */
+.fd-handle {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  max-width: 100%; padding: 0 4px; overflow: hidden; overflow-wrap: anywhere; line-height: 1.25; font-size: 12px; color: var(--text-2);
+}
 .fd-pick {
   display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
   padding: 0; border: 0; background: none; color: var(--dim); font: inherit; cursor: pointer;
@@ -123,7 +130,9 @@
   .fd .card { padding: 24px 0; }
   .fd-class { padding: 16px; }
   .fd-classes { grid-template-columns: minmax(0, 1fr); }
-  .fd-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-  .fd-main .card-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .fd-main .card-fact:nth-child(3) { grid-column: 1 / -1; }
+  /* 42 = 6 x 7. */
+  .fd-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; }
+  .fd-handle { padding: 0; }
+  /* The three facts as a list, one under the other: no fact left alone on a row. */
+  .fd-main .card-facts { grid-template-columns: minmax(0, 1fr); gap: 16px; }
 }

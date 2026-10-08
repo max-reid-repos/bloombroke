@@ -15,6 +15,7 @@ import {
 import { checkoutParams, invoiceSubscriptionId, STRIPE_API_VERSION, WEBHOOK_EVENTS, stripeEnv, billingOf } from '../pro/billing.js';
 import { mountPro } from '../pro/routes.js';
 import { createLimiter, ipBucket } from '../pro/ratelimit.js';
+import { TERMS_VERSION } from '../public/legal-version.js';
 
 const SECRET = 'whsec_test_dummy_secret_for_unit_tests';
 const AES = revealKeyFrom('x'.repeat(40));
@@ -338,8 +339,8 @@ test('webhook: checkout.session.completed makes one licence, tags only the last 
     assert.equal(lic.terms_accepted_at, T0, 'terms time is the completion event time');
     const upd = s.stripe.calls.filter((c) => c[0] === 'sub.update');
     assert.equal(upd.length, 1);
-    assert.deepEqual(upd[0][2].metadata, { site: 'bloombroke', product: 'pro', licence_last4: lic.last4, terms_accepted_at: new Date(T0).toISOString(), terms_version: '2026-09-27' });
-    assert.equal(lic.terms_version, '2026-09-27');
+    assert.deepEqual(upd[0][2].metadata, { site: 'bloombroke', product: 'pro', licence_last4: lic.last4, terms_accepted_at: new Date(T0).toISOString(), terms_version: TERMS_VERSION });
+    assert.equal(lic.terms_version, TERMS_VERSION, 'the default: the version the legal pages show');
     assert.equal(lic.last4.length, 4);
     const r2 = await s.sendEvent(e);
     assert.equal(r2.body.result, 'duplicate');
