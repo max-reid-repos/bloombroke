@@ -214,6 +214,7 @@ const cssFiles = () => {
 const HERE = /is-active|is-on|aria-(pressed|selected|expanded)="true"|aria-current|panel-label|stage-label|desk-label/;
 const NOT_BUTTONS = new Set([
   '.ft-sr:focus-within a:focus', // FISHTANK: the search result the keys are on (where you are)
+  '.fd-bar::-webkit-progress-value', '.fd-bar::-moz-progress-bar', // /founders: the goal meter's fill, not a button
   '.fresh-dot', '.cursor', '.boot-cursor', // the data dot and the command bar's cursor
   '.cl-n', '.news-new', '.chat-badge', '.al-state.is-fired', // counts and states, not buttons
   '.news-since::after', // the "Before your last visit" rule

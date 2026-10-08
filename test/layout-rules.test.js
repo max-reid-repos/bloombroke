@@ -44,6 +44,8 @@ import { optionsUsage } from '../public/screens/options.js';
 import { fxUsage } from '../public/screens/fx.js';
 import { financialsUsage } from '../public/screens/financials.js';
 import { withArt } from '../lib/graveyard.js';
+import { mainCardHtml, seatsCardHtml, tipsCardHtml, guideCardHtml } from '../lib/founders-page.js'; // /founders, /guide
+import { feedHtml } from '../public/screens/sponsor.js';
 import { buyHtml, buyMaths, affordShare, wageHtml } from '../public/screens/buy.js';
 import { cpiResultHtml } from '../public/screens/cpi.js';
 import { loanResultHtml } from '../public/screens/loan.js';
@@ -149,6 +151,25 @@ export const WHATIF = [
   ['WHATIF IPHONE6 RTX3080 LATTE:3Y (the list in + Details)', (await whatifPage(['IPHONE6', 'RTX3080', 'LATTE:3Y'])).replace(WI_LIST, '')],
 ];
 
+// /founders and /guide (lib/founders-page.js): standalone pages from the kit, one card per
+// part. Open, in test mode, 20 seats taken (handles on some), one release in the log.
+const FD_SEATS = Array.from({ length: 42 }, (_, i) => ({ seat: i + 1, class: i < 10 ? 'ten' : 'founder', status: i < 20 ? 'committed' : i === 20 ? 'held' : 'open', handle: i < 20 && i % 3 === 0 ? 'Abcdefghijklmno' : null }));
+const FD = { open: true, testMode: true, ended: false, goalUsd: 17640, committedUsd: 8400, seatsTaken: 20, seatsTotal: 42, deadline: '2026-12-15', seats: FD_SEATS, log: [{ text: 'Seat 12 released Nov 3.' }] };
+// The grid and the release log are the media (seat numbers and handles, a list), so they
+// are left out of the count, like TAPE's list.
+const FD_MEDIA = /<div class="card-media">[\s\S]*?<\/ul>(?:<ul class="fd-log"[\s\S]*?<\/ul>)?<\/div>/;
+export const FOUNDERS = [
+  // The kicker and TEST MODE (3), the h1 (2), the sub (13), the three fact labels (5): 23.
+  ['FOUNDERS, the bar (test mode)', mainCardHtml(FD), 25],
+  ['FOUNDERS, the bar, after checkout', mainCardHtml({ ...FD, testMode: false }, { alert: 'Seat 7 is yours. Nobody pays until the goal is reached.' }), 32], // + the line on top (9)
+  // The two kinds of seat (name, price word, one line, the button: 13 and 18), the one
+  // line under them (11) and the team line (13): 55. The owner's copy, word for word.
+  ['FOUNDERS, the seats', seatsCardHtml(FD).replace(FD_MEDIA, ''), 60],
+  ['FOUNDERS, the seats, closed', seatsCardHtml({ ...FD, open: false, testMode: false }).replace(FD_MEDIA, ''), 60],
+  ['FOUNDERS, tips', tipsCardHtml({ monthUsd: 85 }), 25],
+  ['GUIDE', guideCardHtml(), 25],
+];
+
 // [page, html, budget]: the words above + Details, numbers, keys and codes not counted.
 export const PAGES = [
   // PRO v5 (Sep 29, "one stage, four keys"): the kicker (1), the promise as the hero (19),
@@ -192,6 +213,7 @@ export const PAGES = [
   // WHATIF: 12. No sentence (the certificate says it): SHARE (1), the legal note that stays
   // in view (8: "Hindsight. Past returns do not predict future ones."), REPLAY CHANGE PICKS (3).
   ...WHATIF.map(([name, html]) => [name, html, WHATIF_WORDS]),
+  ...FOUNDERS,
 ];
 
 // The usage card (kit.js usageCard) wherever a command is typed wrong: 15 words at most.
@@ -301,6 +323,7 @@ function cardCss() {
     ['pro-demo.css (the minis on PRO)', readFileSync('public/screens/pro-demo.css', 'utf8')],
     ['style.css FEEDBACK', style.slice(style.indexOf('/* FEEDBACK: a card page'), style.indexOf('.fb-hp'))],
     ['me.css', readFileSync('public/screens/me.css', 'utf8')],
+    ['founders.css (/founders, /guide)', (() => { const f = readFileSync('public/founders.css', 'utf8'); return f.slice(f.indexOf('/* ---- Founders cards')); })()],
     ['graveyard.css stone card', (() => { const g = readFileSync('public/screens/graveyard.css', 'utf8'); return g.slice(g.indexOf('/* ---- One stone as a card page')); })()],
     ['nosuch.css NO SUCH card', (() => { const n = readFileSync('public/screens/nosuch.css', 'utf8'); return n.slice(n.indexOf('/* The NO SUCH card')); })()],
     ['whatif.css result card', (() => { const w = readFileSync('public/screens/whatif.css', 'utf8'); return w.slice(w.indexOf('/* ---- WHATIF result: a split card page'), w.indexOf('/* Title strip parts')); })()],
@@ -353,7 +376,8 @@ test('copy rules on the card pages: no em dash, no emoji, no brand word, no ambe
     assert.doesNotMatch(html, /DataFast|Yahoo|Polygon|Finnhub|Alpha Vantage|Twelve Data|Nasdaq Data/i, `${name}: a data vendor on screen`);
   }
   for (const f of ['public/kit.js', 'public/kit.css', 'public/screens/bbrk.css', 'public/screens/sponsor.css', 'public/screens/pro.css', 'public/screens/feedback.js', 'public/screens/welcome.css', 'public/screens/me.js', 'public/screens/me.css', 'public/pixel-avatar.js',
-    'public/cards.js', 'public/kit-core.js', 'public/screens/buy.js', 'public/screens/cpi.js', 'public/screens/loan.js', 'public/screens/mcp.js', 'public/screens/tape.js', 'public/screens/sponsor.js', 'public/drive.js']) {
+    'public/cards.js', 'public/kit-core.js', 'public/screens/buy.js', 'public/screens/cpi.js', 'public/screens/loan.js', 'public/screens/mcp.js', 'public/screens/tape.js', 'public/screens/sponsor.js', 'public/drive.js',
+    'lib/founders-page.js', 'public/founders.js', 'public/founders.css', 'pro/founders.js', 'pro/tips.js']) {
     const src = readFileSync(f, 'utf8');
     assert.doesNotMatch(src, /—/, `${f}: em dash`);
     assert.doesNotMatch(src, brand, `${f}: brand word`);
@@ -687,4 +711,27 @@ test('WHATIF: every result keeps to its budget (12 words), the certificate is th
     const w = cardWords((await whatifPage(tokens)).replace(WI_LIST, ''));
     assert.ok(w.length <= WHATIF_WORDS, `WHATIF ${tokens.join(' ')}: ${w.length} words: ${w.join(' ')}`);
   }
+});
+
+test('SPONSOR, FEED SPONSOR: a second offer under + Details, 30 words at most, no button, no checkout', () => {
+  const html = feedHtml();
+  const w = cardWords(html);
+  assert.ok(w.length <= 30, `${w.length} words: ${w.join(' ')}`);
+  assert.doesNotMatch(html, /btn|<form|style="|—/);
+  assert.match(html, /\$2,000 a month/);
+  assert.match(html, /Non-financial companies only\. Starts when licensed prices go live\./);
+  assert.match(html, /href="mailto:hello@bloombroke\.com\?subject=Feed%20sponsor"/);
+  const page = sponsorHtml({ has: all, bbrk: BBRK, cfg: { lines: [], house: [], price: 99 } });
+  assert.ok(page.indexOf('class="spon-feed"') > page.indexOf('<details class="how card-more"'), 'under + Details');
+  assert.ok(page.endsWith('</div></section>'), 'inside the card, at its end');
+});
+
+test('FOUNDERS and GUIDE: an h1, one solid button, never "lifetime"', () => {
+  for (const [name, html] of FOUNDERS) {
+    assert.doesNotMatch(html, /lifetime/i, name);
+  }
+  assert.match(mainCardHtml(FD), /<h1 class="card-hero card-hero-44 num">Founders seats<\/h1>/);
+  assert.match(guideCardHtml(), /<h1 class="card-hero card-hero-44 num">How Bloombroke was built<\/h1>/);
+  assert.equal((seatsCardHtml(FD).match(/btn-solid/g) || []).length, 1, 'Save a founder seat is the one solid button');
+  assert.equal((tipsCardHtml({ monthUsd: 0 }).match(/btn-solid/g) || []).length, 0, 'the tip button is an outline: the page keeps one solid button');
 });

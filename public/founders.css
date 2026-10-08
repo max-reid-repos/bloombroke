@@ -1,0 +1,127 @@
+/* /founders and /guide (lib/founders-page.js): standalone pages, like the legal pages.
+   They load fonts.css, legal.css (the top bar, the footer), kit.css (the card pages) and
+   this sheet, never style.css: so the tokens and the few base rules the kit leans on are
+   set here, with the same values as style.css. */
+
+.fd-body {
+  --bg: hsl(213, 43%, 3%);
+  --panel: hsl(213, 36%, 6%);
+  --panel-2: hsl(212, 32%, 9%);
+  --panel-3: hsl(211, 30%, 12%);
+  --rule: hsl(211, 28%, 12%);
+  --rule-strong: hsl(210, 24%, 22%);
+  --text: hsl(206, 100%, 91%);
+  --text-2: hsl(206, 45%, 76%);
+  --dim: hsl(208, 24%, 58%);
+  --faint: hsl(210, 18%, 36%);
+  --accent: hsl(201, 100%, 71%);
+  --accent-tint: hsla(201, 100%, 71%, .1);
+  --ink: hsl(213, 60%, 3%);
+  --primary: var(--text);
+  --primary-hover: hsl(0, 0%, 100%);
+  --up: hsl(147, 70%, 55%);
+  --down: hsl(0, 100%, 68%);
+  --card-w: 640px;
+  --card-w-wide: 880px;
+  --font: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  overflow-x: hidden;
+}
+.fd-body h1, .fd-body h2, .fd-body p, .fd-body ul, .fd-body ol, .fd-body dl { margin: 0; }
+.fd-body ul { padding: 0; list-style: none; }
+.fd-body .num { font-variant-numeric: tabular-nums; }
+.fd-body .btn {
+  border: 1px solid var(--accent); background: transparent; color: var(--accent);
+  font-family: var(--font); font-weight: 600; cursor: pointer;
+}
+.fd-body .btn:hover { background: var(--accent-tint); color: var(--accent); text-decoration: none; }
+.fd-body .btn.btn-solid:hover { background: var(--primary-hover); color: var(--ink); }
+.fd-body .btn:disabled, .fd-body .btn:disabled:hover { opacity: .5; cursor: default; background: transparent; color: var(--accent); }
+.fd-body .btn.btn-solid:disabled, .fd-body .btn.btn-solid:disabled:hover { background: var(--primary); color: var(--ink); }
+.fd-body .how { align-self: stretch; border-top: 1px solid var(--rule); padding-top: 8px; }
+.fd-body .how summary { cursor: pointer; color: var(--accent); font-size: 12px; list-style: none; }
+.fd-body .how summary::-webkit-details-marker { display: none; }
+.fd-body .how summary::before { content: '+ '; }
+.fd-body .how[open] summary::before { content: '- '; }
+
+/* ---- Founders cards (kit.css "Card pages" rules: type and spacing scales, px only,
+   colours from the tokens) ---------------------------------------------------------- */
+.fd { display: flex; flex-direction: column; align-items: center; padding: 0 16px 32px; }
+.fd .card { padding: 32px 0; }
+.fd .card + .card { border-top: 1px solid var(--rule); }
+.fd .card-hero { color: var(--text); }
+.fd-badge {
+  display: inline-block; margin-left: 8px; padding: 0 6px;
+  border: 1px solid var(--accent); color: var(--accent); letter-spacing: .12em;
+}
+/* The bar: a native progress element, flat, no animation. */
+.fd-bar {
+  display: block; width: 100%; height: 12px; margin: 0;
+  border: 1px solid var(--rule-strong); border-radius: 0; background: var(--panel);
+  -webkit-appearance: none; appearance: none; color: var(--accent);
+}
+.fd-bar::-webkit-progress-bar { background: var(--panel); }
+.fd-bar::-webkit-progress-value { background: var(--accent); }
+.fd-bar::-moz-progress-bar { background: var(--accent); }
+.fd-main .card-chart { max-width: 480px; }
+
+/* The two kinds of seat, side by side; one under the other on a phone. */
+.fd-classes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; width: 100%; }
+.fd-class {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 24px 16px; border: 1px solid var(--rule-strong); background: var(--panel);
+}
+.fd-price { font-size: 24px; color: var(--text); }
+.fd-price .num { font-weight: 700; }
+.fd-class-line { flex: 1 0 auto; max-width: 60ch; font-size: 13px; color: var(--text-2); }
+/* The buttons line up at the foot of their boxes, the box's width. */
+.fd-class .card-btn { align-self: stretch; margin-top: 8px; }
+.fd-msg { width: 100%; font-size: 13px; color: var(--text-2); }
+.fd-msg:empty { display: none; }
+.fd-msg.warn { color: var(--down); }
+
+/* The 42 seats: seven to a row (six on a phone). Taken: bright, with the handle. Open:
+   dim. Held: dashed. The picked seat: the accent. */
+.fd-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; width: 100%; }
+.fd-seat {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-width: 0; height: 48px; border: 1px solid var(--rule); color: var(--faint); font-size: 13px;
+}
+.fd-seat.is-committed { border-color: var(--rule-strong); background: var(--panel-2); color: var(--text); }
+.fd-seat.is-held { border-style: dashed; border-color: var(--rule-strong); color: var(--dim); }
+.fd-handle { max-width: 100%; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-2); }
+.fd-pick {
+  display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
+  padding: 0; border: 0; background: none; color: var(--dim); font: inherit; cursor: pointer;
+}
+.fd-pick:hover { background: var(--accent-tint); color: var(--text); }
+.fd-pick[aria-pressed="true"] { background: var(--accent); color: var(--ink); }
+.fd-log { display: flex; flex-direction: column; gap: 4px; width: 100%; margin-top: 16px; font-size: 12px; color: var(--dim); }
+.fd-team { white-space: normal; letter-spacing: 0; }
+.fd-team a { color: var(--accent); }
+.fd-how { display: grid; gap: 8px; margin: 0; padding-left: 24px; font-size: 13px; color: var(--text-2); }
+
+/* Tips: three amounts, an other amount, one outline button. */
+.fd-tip-form { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
+.fd-amounts { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
+.fd-amt { height: 40px; padding: 0 16px; font-size: 14px; cursor: pointer; }
+.fd-amt[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--ink); }
+.fd-amt-other { flex: 0 0 auto; width: 96px; text-transform: none; }
+
+/* The guide: the email box like PRO's waitlist. */
+.fd-guide .card-input { text-transform: none; }
+.fd-guide-form { position: relative; }
+.fd-hp { position: absolute; left: -10000px; width: 1px; height: 1px; opacity: 0; }
+.fd-guide .card-note.warn { color: var(--down); }
+
+/* The footer: the column's width, centred like the cards. */
+.fd-foot { max-width: var(--card-w); text-align: center; }
+
+@media (max-width: 639px) {
+  .fd .card { padding: 24px 0; }
+  .fd-class { padding: 16px; }
+  .fd-classes { grid-template-columns: minmax(0, 1fr); }
+  .fd-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .fd-main .card-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fd-main .card-fact:nth-child(3) { grid-column: 1 / -1; }
+}

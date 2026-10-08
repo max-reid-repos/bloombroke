@@ -1,4 +1,5 @@
-// TERMS, PRIVACY, DISCLAIMER: open the server-rendered legal pages.
+// TERMS, PRIVACY, DISCLAIMER: open the server-rendered legal pages. FOUNDERS: the
+// server-rendered founders seats page (lib/founders-page.js), the same way.
 
 import { esc, panel } from './markets.js';
 
@@ -6,6 +7,7 @@ export const LEGAL_COMMANDS = {
   TERMS: { path: '/terms', title: 'Terms of Use' },
   PRIVACY: { path: '/privacy', title: 'Privacy Policy' },
   DISCLAIMER: { path: '/disclaimer', title: 'Disclaimer' },
+  FOUNDERS: { path: '/founders', title: 'Founders seats' },
 };
 
 export function legalTarget(name) {

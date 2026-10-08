@@ -467,7 +467,8 @@ function page(el) {
 // Keys already out keep everything else, their own note included.
 export const SOON_LINE = 'Pro opens soon.';
 // The waitlist's box is empty and hidden until the server says closed (showWait fills it).
-const soonHtml = () => `<p class="card-sub" id="pro-soon" hidden>${esc(SOON_LINE)}</p><div class="pro-wait" id="pro-wait" hidden></div>`;
+// FOUNDERS SEATS: one line under it, only while founders seats are open (showFounders).
+const soonHtml = () => `<p class="card-sub" id="pro-soon" hidden>${esc(SOON_LINE)}</p><div class="pro-wait" id="pro-wait" hidden></div><p class="pro-founders" id="pro-founders" hidden></p>`;
 function showSoon(el, ctx) {
   el.querySelector('#pro-sub')?.remove();
   const p = el.querySelector('#pro-soon');
@@ -475,6 +476,25 @@ function showSoon(el, ctx) {
   const note = el.querySelector('#pro-note');
   if (note) note.hidden = true;
   showWait(el, ctx);
+  showFounders(el, ctx);
+}
+
+// FOUNDERS SEATS (pro/founders.js): "Founders: $8,400 of $17,640 committed. Type FOUNDERS."
+// The numbers from /api/founders/status; nothing at all unless seats can be saved now.
+const dollars = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
+export function foundersLine(d) {
+  if (!d?.open || !Number.isFinite(d.committedUsd) || !Number.isFinite(d.goalUsd)) return '';
+  return `Founders: ${esc(dollars(d.committedUsd))} of ${esc(dollars(d.goalUsd))} committed. Type <a href="${esc(q('FOUNDERS'))}" data-cmd="FOUNDERS">FOUNDERS</a>.`;
+}
+function showFounders(el, ctx) {
+  const line = el.querySelector('#pro-founders');
+  if (!line || !ctx?.fetchJSON) return;
+  ctx.fetchJSON('/api/founders/status', { signal: ctx.signal }).then((d) => {
+    const html = foundersLine(d);
+    if (!html || !line.isConnected) return;
+    line.innerHTML = html;
+    line.hidden = false;
+  }).catch(() => {});
 }
 
 // ---- PRO WAITLIST ------------------------------------------------------------------------

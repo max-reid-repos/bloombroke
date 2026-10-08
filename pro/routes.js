@@ -88,8 +88,10 @@ function canGift(lic, access) {
 // reads the database at most once a minute.
 export const SEAT_CACHE_MS = 60 * 1000;
 
+// onEvent: FOUNDERS SEATS and TIPS (pro/founders.js handleFoundersEvent) on the same
+// webhook endpoint; asked first by handleEvent, null for an event that is not theirs.
 export function mountPro(app, {
-  store, stripe = null, config = {}, now = () => Date.now(), loginDelayMs = 300, limits = defaultLimits(now), log = console,
+  store, stripe = null, config = {}, now = () => Date.now(), loginDelayMs = 300, limits = defaultLimits(now), log = console, onEvent = null,
 }) {
   const {
     priceId, priceIdYearly = null, webhookSecret, publicUrl = 'https://bloombroke.com', portalConfigId, proSecretSet, mode = 'live', termsVersion = DEFAULT_TERMS_VERSION,
@@ -117,7 +119,7 @@ export function mountPro(app, {
       return fail(res, 400, 'bad_signature', 'Signature check failed.');
     }
     try {
-      const result = await handleEvent(event, { store, stripe, log, termsVersion });
+      const result = await handleEvent(event, { store, stripe, log, termsVersion, onEvent });
       res.json({ received: true, result });
     } catch (err) {
       log.error('[stripe webhook]', event.type, event.id, err.message);

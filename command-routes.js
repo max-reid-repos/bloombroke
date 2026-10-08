@@ -55,11 +55,18 @@ function route(app, path, maxAge, load) {
   });
 }
 
-export function mountCommandRoutes(app) {
+// tipFish: FISHTANK's tip fish (pro/tips.js), [{ name, big }] or null. Added to the
+// answer only when there are some, so with none the tank is as it was.
+export function mountCommandRoutes(app, { tipFish = () => null } = {}) {
   route(app, '/api/world', 30, () => getWorld());
   route(app, '/api/movers', 30, () => getMovers());
   route(app, '/api/heatmap', 30, () => getHeatmap());
-  route(app, '/api/fishtank', 30, () => getFishtank()); // FISHTANK: every member, cap or not
+  route(app, '/api/fishtank', 30, async () => { // FISHTANK: every member, cap or not
+    const d = await getFishtank();
+    let tips = null;
+    try { tips = tipFish(); } catch { /* the tank without them */ }
+    return tips?.length ? { ...d, tips } : d;
+  });
   route(app, '/api/sectors', 60, (req) => getSectors({ period: str(req.query.p) })); // ?p=1D 1W 1M YTD 1Y
   route(app, '/api/compare', 60, (req) => getCompare({ symbols: str(req.query.s), range: str(req.query.r) || '1Y' }));
   // Today's yields: the same 15 s quote batch as /api/rates, so the same short max-age.

@@ -3,7 +3,7 @@
 // when it changes. Raise TERMS_VERSION whenever the Terms or the Privacy Policy change
 // in a way people should agree to again, and LEGAL_UPDATED whenever any legal text changes.
 
-export const TERMS_VERSION = '1.9';
-export const LEGAL_UPDATED = '30 September 2026';
+export const TERMS_VERSION = '2.0';
+export const LEGAL_UPDATED = '8 October 2026';
 export const OPERATOR = 'Bloombroke';
 export const CONTACT = 'hello@bloombroke.com';

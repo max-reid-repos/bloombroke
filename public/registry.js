@@ -327,6 +327,10 @@ export const REGISTRY = [
     name: 'PRO', category: 'Pro', summary: 'What is free and what is Pro: sync, DESK, tape, seat. $42 a month or $420 a year',
     syntax: 'PRO [YEARLY|MONTHLY]', examples: ['PRO', 'PRO MONTHLY'], keywords: ['subscribe', 'upgrade', 'paid', 'account', 'sync', 'yearly', 'annual', 'seat'],
   },
+  {
+    name: 'FOUNDERS', category: 'Pro', summary: 'Founders seats for Pro: save a card now, nobody pays until the goal is reached',
+    syntax: 'FOUNDERS', examples: ['FOUNDERS'], keywords: ['founders', 'founder seat', 'ten-year seat', 'pre-order', 'early', 'goal'],
+  },
   // --- Pro structure: GIFT, REDEEM, CHAT, SPONSOR ---
   {
     name: 'GIFT', category: 'Pro', summary: 'Give a friend a free month of Pro: up to 3 gift codes',

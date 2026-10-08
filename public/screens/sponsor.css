@@ -38,6 +38,14 @@
 .spon-card > .card-media[hidden] { display: none; }
 .spon-try { display: flex; flex-direction: column; align-items: stretch; gap: 8px; width: 100%; text-align: left; }
 .spon-try .spon-try-input { flex: 0 0 auto; width: 100%; font-size: 14px; text-transform: none; }
+/* FEED SPONSOR (sponsor.js feedHtml): a second offer, a block of its own at the end of the
+   card (under + Details), a rule above it: the label, one line, the price, one small line
+   with the email link. */
+.spon-feed { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; padding-top: 24px; border-top: 1px solid var(--rule); }
+.spon-feed-line { max-width: 60ch; font-size: 14px; color: var(--text-2); }
+.spon-feed-price { font-size: 18px; color: var(--text); }
+.spon-feed-note { max-width: 60ch; font-size: 12px; color: var(--dim); }
+.spon-feed-note a { color: var(--accent); }
 .spon-numbers { white-space: nowrap; }
 .spon-numbers .card-link { color: var(--accent); }
 /* The typed line in the real strip (sponsor.js tryLine): the strip's own line hidden, the

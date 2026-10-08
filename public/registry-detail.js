@@ -74,6 +74,7 @@ export const DETAIL = {
   'LOGIN': { options: [['<key>', 'Your Pro key, BB-XXXX-XXXX-XXXX-XXXX. It never goes in the address bar']], source: 'Built in', delay: 'None' },
   'LOGOUT': { source: 'Built in', delay: 'None' },
   'ALERTS': { options: [['<symbol> > <level>', 'When it goes above the level'], ['<symbol> < <level>', 'When it goes below'], ['CLEAR', 'Remove them all (asks first)']], source: 'Saved in this browser, up to 20; prices live', delay: 'Checked every 60 seconds while Bloombroke is open in a tab' },
+  'FOUNDERS': { source: 'Built in; seat counts from our server', delay: 'None' },
   'TERMS': { source: 'Built in', delay: 'None' },
   'PRIVACY': { source: 'Built in', delay: 'None' },
   'DISCLAIMER': { source: 'Built in', delay: 'None' },

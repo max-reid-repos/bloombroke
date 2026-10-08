@@ -31,6 +31,7 @@ import { buildId, buildAssets, hashIndex, serveAssets, preloadTags } from './lib
 import { readFileSync } from 'node:fs';
 import { mountCommandRoutes } from './command-routes.js';
 import { mountLegal } from './lib/legal.js';
+import { mountFoundersPages } from './lib/founders-page.js'; // FOUNDERS SEATS: /founders and /guide
 import { securityHeaders, isEmbedQuery, embedHtml } from './lib/embed.js';
 import { startPro } from './pro/index.js';
 import { mountSponsors } from './lib/sponsors.js';
@@ -319,7 +320,8 @@ app.get('/api/weird/:name', async (req, res) => {
   res.json(data);
 });
 
-mountCommandRoutes(app);
+// FISHTANK's tip fish (pro/tips.js) come from the Pro database, opened further down.
+mountCommandRoutes(app, { tipFish: () => pro?.tips?.fish() || null });
 
 // --- TRENDING (data/trending.js): anonymous counts of opened tickers, in memory only ---
 import { mountTrending } from './data/trending.js';
@@ -445,6 +447,8 @@ const INDEX = withMeta(PAGE, DEFAULT_META);
 const HOME = withCanonical(INDEX, `${SITE}/`);
 // /terms, /privacy, /disclaimer: plain server-rendered pages, text in legal/*.md.
 mountLegal(app, { build: BUILD });
+// /founders and /guide: plain server-rendered pages from the card kit (lib/founders-page.js).
+mountFoundersPages(app, { build: BUILD, founders: pro?.founders || null, tips: pro?.tips || null });
 // /embed/*: the only pages other sites may frame (lib/embed-pages.js).
 mountEmbeds(app, { build: BUILD, getCert: (c, req) => getCert(c, ogDeps, { ip: req ? clientIp(req) : null }), catalog, onLoad: (req) => embedGate.allow(req, `embed:${req.originalUrl}`) && siteCounters.bump('embed_load') });
 function sendIndex(res, status = 200, html = INDEX) {

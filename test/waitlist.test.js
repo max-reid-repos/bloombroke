@@ -232,7 +232,9 @@ test('migration 019: on a fresh database, and on one that already has 001 to 016
     assert.equal(old.prepare("SELECT 1 FROM sqlite_master WHERE name = 'waitlist'").get(), undefined);
     old.close();
     const db = openDb(file, { migrationsDir: all, log: { error() {} } });
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, had + 1);
+    // 019 and every later file in migrations/ (020_founders.sql rebuilds this table).
+    const later = readdirSync('migrations').filter((x) => x.endsWith('.sql') && x >= '017').length;
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, had + later);
     assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'waitlist'").get());
     db.prepare('INSERT INTO waitlist (email, created_at) VALUES (?, ?)').run('a@b.co', 1);
     db.close();
@@ -267,7 +269,9 @@ test('scripts/waitlist.js: email,created_at as CSV, oldest first, read-only, wit
     assert.equal(toCsv(new Database(':memory:')), 'email,created_at\n', 'no table yet: the header only');
     assert.equal(csvField('a,b'), '"a,b"');
     assert.equal(csvField('a"b'), '"a""b"');
-    assert.deepEqual(parseArgs(['--db', '/x/pro.db']), { db: '/x/pro.db' });
+    assert.deepEqual(parseArgs(['--db', '/x/pro.db']), { db: '/x/pro.db', source: 'pro-soon' });
+    assert.deepEqual(parseArgs(['--source', 'guide']), { db: null, source: 'guide' });
+    assert.ok(parseArgs(['--source', 'all']).error);
     assert.ok(parseArgs(['--db']).error);
     assert.ok(parseArgs(['--delete']).error);
     const src = readFileSync('scripts/waitlist.js', 'utf8');

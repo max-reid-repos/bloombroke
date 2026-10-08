@@ -287,11 +287,20 @@ async function refreshStatus(subId, { store, stripe }, { deleted = false } = {})
 
 // Handle one verified event. Throws on a transient failure so Stripe retries; the event
 // is only recorded as processed after it succeeded.
+// deps.onEvent (FOUNDERS SEATS and TIPS, pro/founders.js handleFoundersEvent): asked
+// first; a result means the event was theirs, null means it goes on to Pro's own cases.
 export async function handleEvent(event, deps) {
   const { store } = deps;
   if (store.isEventProcessed(event.id)) return 'duplicate';
   const obj = event.data?.object;
   let result = 'ignored';
+  if (deps.onEvent) {
+    const theirs = await deps.onEvent(event);
+    if (theirs) {
+      store.markEventProcessed(event.id, event.type);
+      return theirs;
+    }
+  }
   switch (event.type) {
     case 'checkout.session.completed':
     case 'checkout.session.async_payment_succeeded':

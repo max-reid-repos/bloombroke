@@ -394,8 +394,8 @@ test('legal: version bumped, so everyone who accepted 1.0 is asked again', async
   const { LEGAL_UPDATED } = await import('../public/legal-version.js');
   const { needsConsent, acceptRecord } = await import('../public/consent.js');
   const { DEFAULT_TERMS_VERSION } = await import('../pro/billing.js');
-  assert.equal(TERMS_VERSION, '1.9', 'the Pro waitlist (1.8 is kept for the google-login branch)');
-  assert.equal(LEGAL_UPDATED, '30 September 2026');
+  assert.equal(TERMS_VERSION, '2.0', 'founders seats, tips and the build guide list (1.8 is kept for the google-login branch; after 1.9 comes 2.0)');
+  assert.equal(LEGAL_UPDATED, '8 October 2026');
   assert.equal(needsConsent(acceptRecord('1.0')), true);
   assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
   assert.equal(DEFAULT_TERMS_VERSION, '2026-09-27', 'checkout records the new Terms');
@@ -482,13 +482,15 @@ test('privacy names every IP-keyed limiter in the code, with its window', () => 
     'lib/graveyard.js': [/max: 30, windowMs: 60_000/], // GRAVEYARD pay respects
     'pro/push.js': [/windowMs: 15 \* MIN/, /resub: createLimiter\(\{ max: 20, windowMs: 60 \* MIN/], // PINGS: the shared wrong-key limiter; moving a subscription
     'pro/waitlist.js': [/limiter = createLimiter\(\{ max: PER_IP, windowMs: HOUR, now \}\)/], // PRO WAITLIST: 5 tries an hour
+    'pro/founders.js': [/limiter = createLimiter\(\{ max: PER_IP, windowMs: HOUR, now \}\)/, /confirmLimit = createLimiter\(\{ max: 30, windowMs: 10 \* MIN, now \}\)/], // FOUNDERS SEATS: checkout an hour, the success page's check 10 minutes
+    'pro/tips.js': [/limiter = createLimiter\(\{ max: PER_IP, windowMs: HOUR, now \}\)/], // TIPS: checkout, an hour
     'lib/og.js': [/MINE_RATE = \{ renders: 20, windowMs: 10 \* 60_000/, /OG_RENDER_RATE = \{ renders: 120, windowMs: 10 \* 60_000/, /CERT_WRITE_RATE = \{ renders: 30, windowMs: 10 \* 60_000/], // share images, keyed by clientIp in server.js
   };
   for (const [f, res] of Object.entries(windows)) for (const re of res) assert.match(readFileSync(f, 'utf8'), re, `${f} window changed: update the Privacy Policy`);
-  for (const name of ['Pro routes', 'gift codes', 'ticker counter', 'site counters', 'GUESS game', 'pay respects', 'feedback form', 'MCP endpoint', 'moving a ping subscription', 'Pro waitlist (a one hour window)', 'share images and the WHATIF results kept for them (a 10 minute window)']) assert.ok(privacy.includes(name), name);
+  for (const name of ['Pro routes', 'gift codes', 'ticker counter', 'site counters', 'GUESS game', 'pay respects', 'feedback form', 'MCP endpoint', 'moving a ping subscription', 'Pro waitlist (a one hour window)', 'founders seats and tips checkouts the same way (a one hour window)', "founders page's check of a finished checkout (a 10 minute window)", 'share images and the WHATIF results kept for them (a 10 minute window)']) assert.ok(privacy.includes(name), name);
   // No other file keys a limiter on the IP.
   const users = [];
   const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = `${d}/${e.name}`; if (e.isDirectory()) walk(p); else if (p.endsWith('.js') && readFileSync(p, 'utf8').includes('clientIp(')) users.push(p); } };
   for (const d of ['data', 'lib', 'pro', 'public']) walk(d);
-  assert.deepEqual(users.sort(), ['data/guess.js', 'data/trending.js', 'lib/counters.js', 'lib/graveyard.js', 'lib/mcp/server.js', 'pro/chat-routes.js', 'pro/feedback.js', 'pro/me-routes.js', 'pro/push.js', 'pro/ratelimit.js', 'pro/routes.js', 'pro/waitlist.js']);
+  assert.deepEqual(users.sort(), ['data/guess.js', 'data/trending.js', 'lib/counters.js', 'lib/founders-page.js', 'lib/graveyard.js', 'lib/mcp/server.js', 'pro/chat-routes.js', 'pro/feedback.js', 'pro/founders.js', 'pro/me-routes.js', 'pro/push.js', 'pro/ratelimit.js', 'pro/routes.js', 'pro/tips.js', 'pro/waitlist.js']);
 });

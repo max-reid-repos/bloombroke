@@ -11,6 +11,8 @@
 //   PRO_DB_PATH               default var/pro.db
 //   PUBLIC_URL                default https://bloombroke.com
 //   VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT   PINGS (pro/push.js); without the keys pings are off
+//   FOUNDERS, FOUNDERS_GOAL_USD, FOUNDERS_DEADLINE   FOUNDERS SEATS (pro/founders.js); closed unless FOUNDERS=open
+//   TIPS                      TIPS (pro/tips.js); closed unless TIPS=open
 
 import path from 'node:path';
 import { openDb } from './db.js';
@@ -24,6 +26,8 @@ import { mountChat } from './chat-routes.js'; // CHAT: private chat between Pro 
 import { getQuote, getQuoteList } from '../data/quotes.js'; // CHAT: the price stamp on a $TICKER; PINGS: closed-tab ALERTS
 import { mountPush, pushConfig } from './push.js'; // PINGS: Web Push for CHAT and ALERTS
 import { parseCommand, linkChanges, screenTitle } from '../public/app.js'; // CHAT: what a card may open, and its title
+import { createFounders, mountFounders, handleFoundersEvent } from './founders.js'; // FOUNDERS SEATS: /founders, /api/founders
+import { createTips, mountTips } from './tips.js'; // TIPS: fuel the feed, a named fish
 
 // PRO_CHECKOUT=closed: no new checkouts on this site (pro/routes.js). Unset: as before.
 export const checkoutClosed = (env) => String(env.PRO_CHECKOUT || '').trim().toLowerCase() === 'closed';
@@ -40,10 +44,15 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
     const stripe = se.secretKey ? createStripe(se.secretKey) : null;
     // One wrong-key limiter for Pro and CHAT, so CHAT is no second place to guess keys.
     const limits = defaultLimits(() => Date.now());
+    // FOUNDERS SEATS and TIPS: their own tables, the same Stripe account and webhook.
+    const webhookReady = Boolean(se.webhookSecret && aesKey);
+    const founders = createFounders({ db, stripe, env, mode: se.mode, webhookReady, log });
+    const tips = createTips({ db, stripe, env, webhookReady, log });
     const { ready, proActive } = mountPro(app, {
       store,
       stripe,
       limits,
+      onEvent: (event) => handleFoundersEvent(event, { founders: founders.store, tips, stripe, log }),
       config: {
         mode: se.mode,
         priceId: se.priceId,
@@ -59,6 +68,10 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
     // FEEDBACK lives in the same database: POST /api/feedback, for everyone.
     const feedback = createFeedbackStore(db);
     mountFeedback(app, { store: feedback, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', log, onSaved: () => counters?.bump('feedback_sent') });
+    // FOUNDERS SEATS: GET /api/founders/status, POST /api/founders/checkout. TIPS: POST
+    // /api/tips/checkout (404 unless TIPS=open). The pages are lib/founders-page.js.
+    mountFounders(app, { founders, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', log });
+    mountTips(app, { tips, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', log });
     // PRO WAITLIST: POST /api/pro/waitlist, only with PRO_CHECKOUT=closed (404 otherwise).
     mountWaitlist(app, { store: createWaitlistStore(db), checkoutClosed: checkoutClosed(env), publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', log });
     // PINGS: /api/push (pro/push.js). Off (404 push_off) without the VAPID keys.
@@ -111,7 +124,9 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
     purge();
     setInterval(purge, 24 * 60 * 60 * 1000).unref();
     log.log(`[pro] ${se.mode} mode, ${ready ? 'ready' : 'not configured: checkout is closed'}${checkoutClosed(env) ? ', PRO_CHECKOUT=closed: no new checkouts' : ''}`);
-    return { db, store, feedback, chat, push, ready, mode: se.mode, proActive };
+    if (founders.isOpen()) log.log(`[founders] open${founders.testMode() ? ' (test mode)' : ''}, until ${founders.cfg.deadline}`);
+    if (tips.isOpen()) log.log('[tips] open');
+    return { db, store, feedback, chat, push, ready, mode: se.mode, proActive, founders, tips };
   } catch (err) {
     log.error('[pro] could not start:', err.message);
     return null;

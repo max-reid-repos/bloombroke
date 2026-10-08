@@ -643,6 +643,7 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprCh
   let pointer = null; // { x, y } over the canvas
   let hover = null;
   let focusF = null; // the fish with the keyboard focus ring (Tab, the arrows)
+  let tipFish = []; // TIPS (pro/tips.js): small ice-blue fish, named on hover or tap only
   const textW = new Map(); // label widths, measured once per text
   const runner = makeRunner((now) => frame(now), { onStart: () => { last = 0; } });
   runner.hold('data'); // nothing to draw until the first batch
@@ -807,7 +808,7 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprCh
     labels = alwaysNamed(stocks);
     applySize(lim, maxCap);
     if (born) settle();
-    if (hover && byTicker.get(hover.s.ticker) !== hover) setHover(null);
+    if (hover && !hover.tip && byTicker.get(hover.s.ticker) !== hover) setHover(null);
     if (focusF) setFocus(byTicker.get(focusF.s.ticker) || null);
     runner.hold('data', false);
     if (!runner.running) frame(performance.now(), true);
@@ -822,6 +823,56 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprCh
       f.dw = (sp.w * f.px) / dpr; f.dh = (sp.h * f.px) / dpr;
       f.x = f.x01 * W;
       if (f.y == null || reduced()) f.y = targetY(f);
+    }
+  }
+
+  // ---- TIPS: a tip names a small fish (pro/tips.js; /api/fishtank's tips, newest 100).
+  // They are no stock: ice blue, the smallest size (half again for $20 and up), at a
+  // depth of their own, swimming wall to wall. Hover or tap names one; nothing opens.
+  // No tips: the list is empty and the tank is as it was.
+  const TIP_PAL = { key: 'tip', body: 'hsl(201, 70%, 70%)', shade: 'hsl(201, 55%, 50%)', eye: EYE };
+  function setTips(list) {
+    const was = new Map(tipFish.map((f) => [f.key, f]));
+    tipFish = (Array.isArray(list) ? list : []).slice(0, 100).filter((t) => t && typeof t.name === 'string').map((t, i) => {
+      const key = `${t.name}#${i}`;
+      let f = was.get(key);
+      if (!f) {
+        const dir = seeded(key, 7) < 0.5 ? -1 : 1;
+        const speed = 8 + seeded(key, 3) * 10;
+        const x01 = 0.04 + seeded(key) * 0.92;
+        f = { tip: true, key, kind: 'fish', pal: TIP_PAL, x01, x: x01 * (W || 800), vx: dir * speed, face: dir, y: null, a: 1, ph: seeded(key, 5) * 6.28, rate: rateOf('fish', speed), depth: 0.12 + seeded(key, 9) * 0.76 };
+      }
+      f.name = t.name.slice(0, 16);
+      f.big = Boolean(t.big);
+      return f;
+    });
+    if (hover?.tip && !tipFish.includes(hover)) setHover(null);
+    sizeTips();
+    if (!runner.running && W) frame(performance.now(), true);
+  }
+  function tipY(f) {
+    const { top, bot } = band();
+    const pad = f.dh / 2;
+    return clamp(top + f.depth * (bot - top), top + pad, bot - pad);
+  }
+  function sizeTips(lim = sizeLimits(W || 800, H || 500)) {
+    const sp = spriteOf('fish');
+    for (const f of tipFish) {
+      f.len = lim.min * (f.big ? 1.5 : 1);
+      f.px = spriteScale(f.len, sp.w, dpr, FIT.fish);
+      f.dw = (sp.w * f.px) / dpr; f.dh = (sp.h * f.px) / dpr;
+      if (W) f.x = f.x01 * W;
+      if (f.y == null || reduced()) f.y = tipY(f);
+    }
+  }
+  function stepTips(dt) {
+    for (const f of tipFish) {
+      if (f === hover) continue;
+      f.x += f.vx * dt;
+      if (f.x < f.dw / 2) { f.x = f.dw / 2; f.vx = Math.abs(f.vx); }
+      if (f.x > W - f.dw / 2) { f.x = W - f.dw / 2; f.vx = -Math.abs(f.vx); }
+      f.face = f.vx < 0 ? -1 : 1;
+      f.x01 = f.x / W;
     }
   }
 
@@ -845,6 +896,8 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprCh
     makeBubbles();
     applySize();
     for (const f of fish) f.y = targetY(f);
+    sizeTips();
+    for (const f of tipFish) f.y = tipY(f);
     frame(performance.now(), true);
   }
 
@@ -977,7 +1030,8 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprCh
     return dx * dx + ddy * ddy <= 1;
   };
   function hitTest(px, py) {
-    if (hover && fish.includes(hover) && inside(hover, px, py, 1.4)) return hover;
+    if (hover && (fish.includes(hover) || tipFish.includes(hover)) && inside(hover, px, py, 1.4)) return hover;
+    for (let i = tipFish.length - 1; i >= 0; i -= 1) if (inside(tipFish[i], px, py)) return tipFish[i]; // drawn in front
     for (let i = fish.length - 1; i >= 0; i -= 1) if (inside(fish[i], px, py)) return fish[i];
     return null;
   }
@@ -993,6 +1047,13 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprCh
   }
   // The readout for one fish: its name, sector and move.
   function showTip(f) {
+    if (f.tip) {
+      tip.innerHTML = `<b>${esc(f.name)}</b> <span class="ft-tip-sec">· a tip</span>`;
+      tip.hidden = false;
+      tipW = tip.offsetWidth; tipH = tip.offsetHeight;
+      tipFor = f;
+      return;
+    }
     const s = f.s;
     const dir = s.changePct > 0 ? 'up' : s.changePct < 0 ? 'down' : 'flat';
     const sec = f.sector ? sectorName(f.sector) : '';
@@ -1032,7 +1093,16 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprCh
       const want = sectorAlpha(f.sector, active);
       f.a = dt ? f.a + (want - f.a) * Math.min(1, dt * 8) : want;
     }
+    if (tipFish.length) {
+      if (dt) stepTips(dt);
+      const want = sectorAlpha(null, active);
+      for (const f of tipFish) {
+        f.bobY = f.y + (calm ? 0 : Math.sin(t * 0.9 + f.ph) * 2);
+        f.a = dt ? f.a + (want - f.a) * Math.min(1, dt * 8) : want;
+      }
+    }
     for (const f of fish) drawFish(f, t, f === hover || f === focusF, calm);
+    for (const f of tipFish) drawFish(f, t, f === hover, calm);
     if (focusF) drawRing(focusF);
     drawBubbles(t, dt);
     for (const f of fish) if (f.kind === 'crab') drawTick(f);
@@ -1119,11 +1189,14 @@ function makeTank(host, canvas, tip, { onOpen, reduced, sectorName, onDpr: dprCh
   });
   canvas.addEventListener('click', (e) => {
     const f = hitTest(e.offsetX, e.offsetY);
+    // A tip fish opens nothing: a tap names it (a phone has no hover).
+    if (f?.tip) { setHover(f); if (!runner.running) frame(performance.now(), true); return; }
     if (f) onOpen(f.s.ticker);
   });
 
   return {
     setStocks,
+    setTips,
     setActive,
     resize,
     // NAMES: every fish named, or only the always-named few.
@@ -1273,6 +1346,7 @@ export function render(el, cmd, ctx) {
         .map((s) => `<li><a href="${esc(q(s.ticker))}" data-cmd="${esc(s.ticker)}">${esc(`${s.ticker} ${s.name}${SPECIES[s.sector] ? ` ${SPECIES[s.sector].short}` : ''} ${fmtPct(s.changePct)}`)}</a></li>`).join('');
       if (!tank.size.W) fit();
       tank.setStocks(stocks);
+      tank.setTips(d.tips || null); // TIPS: named fish, only when there are some
       tank.setActive(active);
       ctx.updated(d.updated, d.stale);
     } catch (err) {

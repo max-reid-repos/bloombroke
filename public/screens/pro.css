@@ -136,6 +136,10 @@
 .pro-wait-note { margin: 0; max-width: 60ch; font-size: 12px; color: var(--dim); }
 .pro-wait-note.warn { color: var(--down); }
 .pro-wait-done { margin: 0; max-width: 60ch; font-size: 14px; color: var(--text-2); }
+/* FOUNDERS SEATS: one small line under the waitlist while founders seats are open. */
+.pro-founders { flex: 0 0 100%; margin: 0; max-width: 60ch; font-size: 12px; color: var(--dim); }
+.pro-founders[hidden] { display: none; }
+.pro-founders a { color: var(--accent); }
 @media (min-width: 1100px) {
   .card-split .pro-wait { align-items: flex-start; }
 }

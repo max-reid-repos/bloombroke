@@ -17,15 +17,16 @@ Our Data Protection Officer can be reached at {{CONTACT}}. Write to this address
 - Pro payments go through Stripe. We never see your full card number.
 - CHAT messages between Pro members are seen only by the people in that chat, unless a chat is reported, and are deleted after 30 days.
 - In ME you can download your data and delete your account yourself, at any time, as well as by writing to us.
-- We do not use your data to train AI models, we do not sell it, and we send no marketing messages except the one email you ask for under "Pro opens soon." on the PRO screen.
+- We do not use your data to train AI models, we do not sell it, and we send no marketing messages except the one email you ask for under "Pro opens soon." on the PRO screen, and the one email you ask for on the build guide page.
 - If you leave your email address under "Pro opens soon." on the PRO screen, we send it one email when Pro opens, and nothing else.
+- If you save a card for a founders seat, Stripe holds the card. We keep your email address, your seat and the facts we need to charge it only when the goal is reached, or to delete it.
 
 ## 3. What we collect and why
 
 ### Using the free terminal
 
 - **Requests to our server.** When you open a screen, your browser asks our server for data, such as the symbols on your watchlist. Our server passes the symbols to the data source and sends back the result. We use these requests only to answer them. When you open a ticker screen, your browser sends its symbol and a random number made for that browser tab. To count each tab once and to stop abuse, our server keeps a coded copy of that number and of your IP address, with the tickers opened, in memory for one hour, then only the count per ticker for 24 hours. Nothing is written to disk. Apart from this count, we do not keep a record of which symbols a person asked for.
-- **Your IP address.** Every connection reveals your IP address. Our network provider, Cloudflare, uses it to deliver the site and block attacks. Our application does not write IP addresses to its logs. To stop abuse and the guessing of licence keys and gift codes, it limits how often each visitor can use the Pro routes and gift codes (a 10 or 15 minute window), the share images and the WHATIF results kept for them (a 10 minute window), the ticker counter, the site counters, the GUESS game and the pay respects button on GRAVEYARD stones (a one minute window), the feedback form and the Pro waitlist (a one hour window), and the MCP endpoint (a one minute, a 10 minute and a 24 hour window). For this it holds your IP address in memory, or for the ticker counter a coded copy of it, for the length of the window, and forgets it within one minute after the window ends.
+- **Your IP address.** Every connection reveals your IP address. Our network provider, Cloudflare, uses it to deliver the site and block attacks. Our application does not write IP addresses to its logs. To stop abuse and the guessing of licence keys and gift codes, it limits how often each visitor can use the Pro routes and gift codes (a 10 or 15 minute window), the share images and the WHATIF results kept for them (a 10 minute window), the ticker counter, the site counters, the GUESS game and the pay respects button on GRAVEYARD stones (a one minute window), the feedback form and the Pro waitlist (a one hour window), and the MCP endpoint (a one minute, a 10 minute and a 24 hour window). It limits the founders seats and tips checkouts the same way (a one hour window), and the founders page's check of a finished checkout (a 10 minute window). For this it holds your IP address in memory, or for the ticker counter a coded copy of it, for the length of the window, and forgets it within one minute after the window ends. The one place we store an IP address is a founders seat: the address that started its checkout, kept with that seat as "Founders seats" below says.
 - **The MCP endpoint.** When an AI app such as Claude, ChatGPT, Grok or Cursor calls our MCP endpoint (bloombroke.com/mcp) for you, our server answers the request and counts it per tool. The count has no IP address and nothing of what was asked. We do not store the inputs a tool is called with: our logs keep only the tool name and whether the call worked. Your IP address is held only in its rate limiter, for the windows given under "Your IP address" above and in section 8. What you type into the AI app is covered by that app's own privacy policy.
 - **Pay respects.** On a GRAVEYARD stone, pay respects (the F key or its button) adds one to a total for that stone. The totals are aggregate counts per stone, with no IP address and nothing about who paid them. Your IP address is held only in the rate limiter, for the one minute window above. So that each stone gets at most one respect from you a day, our server also keeps a coded copy (a salted hash) of your IP address and the stone in memory until the end of that New York day, with a new salt each day, and never writes it to disk.
 - **Videos on GRAVEYARD stones.** A stone page shows our own drawing in place of a video, and nothing is loaded from YouTube or Google until you press play. When you press play on a GRAVEYARD video, the video is loaded from YouTube (Google) in its privacy-enhanced mode (youtube-nocookie.com), and Google receives your IP address and device data under its own privacy policy.
@@ -73,6 +74,18 @@ If you send feedback with the FEEDBACK command, we store your message, your emai
 
 While Pro is not open to new subscribers, the PRO screen shows "Pro opens soon." and lets you leave your email address. We store your email address and the time you gave it. We use it only to send you one email when Pro opens, and we send nothing else to it. We do not store your IP address with it, and our analytics tools get only a note that someone joined the list, never your email address. To be taken off the list, write to {{CONTACT}}. We delete the whole list once that email has been sent, and your address sooner if you ask.
 
+### Founders seats
+
+If you save a card for a founders seat on the founders page, Stripe collects your card details, email address and name, and holds your card. We do not receive your full card number. We store your seat number and class, your email address, the X handle if you give one, your Stripe customer ID, the IDs of the saved card and of its setup, the card's fingerprint (a code Stripe gives each card number; it is not the card number), the time you agreed to the charge terms and the IP address that started the checkout. We use them to keep to one seat per person, to charge the seat when the goal is reached, to delete the card if the goal is missed or you give up the seat, and to answer you. While a checkout is open we hold the seat for about 30 minutes with that IP address; if the checkout is not finished, the address is deleted. The founders page shows each taken seat's number and, if you gave one, your handle, and a line with no name when a seat is released. Nothing else about you is shown.
+
+### Tips
+
+If you tip on the founders page, Stripe processes the payment and collects your card details, email address and name. We store the amount, the fish name you typed, whether it was approved, and the time. We do not store your email address or name with it. The FISHTANK shows the approved fish name for 365 days, never who gave the tip.
+
+### Build guide list
+
+If you leave your email address on the build guide page (bloombroke.com/guide), we store it and the time you gave it, on a list kept apart from the Pro waitlist. We use it only to send you one email when the guide is ready, and we send nothing else to it. We do not store your IP address with it. To be taken off the list, write to {{CONTACT}}. We delete the whole list once that email has been sent, and your address sooner if you ask.
+
 ### CHAT
 
 If you use CHAT, a Pro feature, we store your seat number, the username, colour and avatar you choose in ME, which seats you asked to chat with and who asked you, who you chat with and who you blocked, the groups you are in, and your messages with the time they were sent. When a message names a $TICKER, we also store that ticker's price at the moment you sent it, so the chat can show the move since. A message is shown only to the people in that chat. We do not read messages or use them for anything else: our server only checks each one for links, which are not allowed, and for $TICKERs. The exception is a report: when you or someone else reports a chat, we store a copy of the last 20 messages of that chat, who reported it, the seats in it and the reason given, and we read that copy to deal with the report. We keep messages for 30 days, then delete them. If you post a GUESS result to a chat, we store its score with the message, and the lines CHAT posts itself (who went live or ended live, last week's GUESS winner) are stored like messages; all of them are deleted after 30 days. With GO LIVE, the screens you open are shown live to the people who WATCH you: the server keeps only your current screen, in memory, while you are live, and stores none of them.
@@ -94,6 +107,8 @@ We use personal data only to:
 - deal with reports about CHAT messages;
 - send you the pings you turn on in ME;
 - send the one email when Pro opens to the people who asked for it on the PRO screen;
+- run founders seats: hold the saved cards, charge them when the goal is reached, or delete them; and take tips and show tip fish;
+- send the one email when the build guide is ready to the people who asked for it on the build guide page;
 - keep the service secure, prevent abuse and fraud, and enforce our [Terms of Use](/terms);
 - understand how the service is used, in totals, so we can improve it;
 - answer your messages and requests, and read your feedback;
@@ -111,7 +126,7 @@ We share personal data only with these service providers, which help us run Bloo
 
 | Provider | What it does for us | Where |
 |---|---|---|
-| Stripe | Pro payments and billing | United States and Ireland, among other places |
+| Stripe | Pro payments and billing, founders seats (saved cards) and tips | United States and Ireland, among other places |
 | Cloudflare | Network, security and delivery for every visit, DNS, page-view counts (Cloudflare Web Analytics), and routing of email sent to {{CONTACT}} | A global network, based in the United States |
 | DataFast | Visit analytics, as described in section 3 (not loaded when your browser sends GPC) | Mostly outside the EU, including the United States, as its data processing terms state |
 | Ahrefs | Page-view analytics (Ahrefs Web Analytics), as described in section 3: no cookies, not loaded when your browser sends GPC, never loaded for Pro users | Based in Singapore; its servers may be in other countries, as its own terms state |
@@ -144,6 +159,9 @@ Our server and several providers are outside Singapore, so your personal data is
 | Gift code records | Deleted 12 months after the code was used or expired. Your licence record keeps only a count of the redeemed codes that were deleted, so the limit of 3 still applies. |
 | Feedback | Up to 12 months, then deleted. |
 | Pro waitlist | Until the email that Pro is open has been sent, then the whole list is deleted. Your address sooner if you ask. |
+| Founders seats | If the goal is missed, or you give up your seat, we delete the card at Stripe and clear the seat's email address, handle, Stripe IDs, card fingerprint and IP address. A charged seat is kept like a Pro licence record: for 5 years after the seat ends, then deleted. |
+| Tips | The tip record (amount, fish name, time) is kept as a payment record, normally five years. The fish is shown for 365 days. |
+| Build guide list | Until the email that the guide is ready has been sent, then the whole list is deleted. Your address sooner if you ask. |
 | Chat messages | Deleted 30 days after they were sent. Chat requests are deleted after 30 days too. |
 | Chat reports | Up to 12 months, then deleted. |
 | Chat contacts and blocks | Deleted 30 days after your Pro ends, at once when you delete your account in ME, or sooner if you ask. |

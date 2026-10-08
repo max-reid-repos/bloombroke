@@ -48,6 +48,7 @@ export const EXTRA = [
   { name: 'TERMS', screen: lazy('screens/legal.js') },
   { name: 'PRIVACY', screen: lazy('screens/legal.js') },
   { name: 'DISCLAIMER', screen: lazy('screens/legal.js') },
+  { name: 'FOUNDERS', screen: lazy('screens/legal.js') }, // the /founders page (lib/founders-page.js)
   // ALERTS: changes the saved alerts, so a link only ever opens the list.
   { name: 'ALERTS', screen: lazy('screens/alerts.js'), parse: parseAlertArgs, takesArgs: true, url: 'ALERTS' },
   { name: 'GUESS', screen: lazy('screens/guess.js') }, // GUESS: one mystery stock a day

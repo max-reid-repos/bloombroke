@@ -5,6 +5,9 @@
 // memory for up to an hour, then forgets it.
 //
 //   POST /api/pro/waitlist   same origin only, JSON { email, hp } -> { ok: true }
+//   POST /api/pro/waitlist?source=guide   the same, for the BUILD GUIDE list (/guide):
+//                            one email when the guide is ready. Open whatever PRO_CHECKOUT
+//                            says; the same limits, honeypot and same-origin rule.
 //
 // email: trimmed, lower-cased, at most 254 characters, a plain address. hp: a honeypot
 // field that people never see; a bot that fills it gets { ok: true } and nothing is
@@ -18,6 +21,10 @@ import { sameOrigin } from './feedback.js';
 
 export const MAX_EMAIL = 254;
 export const SOURCE = 'pro-soon';
+// The lists: 'pro-soon' (PRO's "Pro opens soon.") and 'guide' (the /guide page). One
+// address may be on both; scripts/waitlist.js prints one list at a time (--source).
+export const GUIDE = 'guide';
+export const SOURCES = [SOURCE, GUIDE];
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 // Per client IP: 5 tries an hour, right or wrong. For the whole site: 500 new
@@ -59,12 +66,12 @@ export function createWaitlistStore(db, { now = () => Date.now() } = {}) {
   // A new address is added. One that is on the list stays as it was. One taken off
   // (deleted_at set) and given again is back on, as a new sign-up.
   const add = db.prepare(`INSERT INTO waitlist (email, created_at, source) VALUES (?, ?, ?)
-    ON CONFLICT(email) DO UPDATE SET created_at = excluded.created_at, deleted_at = NULL, notified_at = NULL
+    ON CONFLICT(email, source) DO UPDATE SET created_at = excluded.created_at, deleted_at = NULL, notified_at = NULL
     WHERE waitlist.deleted_at IS NOT NULL`);
   return {
-    // -> true when the address is new on the list.
-    add(email) { return add.run(email, now(), SOURCE).changes > 0; },
-    count() { return db.prepare('SELECT COUNT(*) AS n FROM waitlist WHERE deleted_at IS NULL').get().n; },
+    // -> true when the address is new on that list (source: 'pro-soon' or 'guide').
+    add(email, source = SOURCE) { return add.run(email, now(), SOURCES.includes(source) ? source : SOURCE).changes > 0; },
+    count(source = SOURCE) { return db.prepare('SELECT COUNT(*) AS n FROM waitlist WHERE deleted_at IS NULL AND source = ?').get(source).n; },
   };
 }
 
@@ -76,10 +83,14 @@ export function mountWaitlist(app, {
 }) {
   const fail = (res, status, error, message) => res.status(status).json({ error, message });
   const ok = (res) => res.json({ ok: true });
+  // ?source=guide: the BUILD GUIDE list. Anything else in source: 404.
+  const sourceOf = (req) => (req.query?.source === undefined ? SOURCE : req.query.source === GUIDE ? GUIDE : null);
   app.post('/api/pro/waitlist', (req, res, next) => {
     res.set('Cache-Control', 'no-store');
-    // Checkout open: there is no list to join. Before the body is even read.
-    if (!checkoutClosed) return fail(res, 404, 'not_found', 'No such endpoint.');
+    // Checkout open: there is no Pro list to join (the guide list stays open). Before the
+    // body is even read.
+    const source = sourceOf(req);
+    if (!source || (source === SOURCE && !checkoutClosed)) return fail(res, 404, 'not_found', 'No such endpoint.');
     next();
   }, express.json({ limit: '1kb' }), (req, res) => {
     if (!sameOrigin(req, publicUrl)) return fail(res, 403, 'cross_origin', 'Join from bloombroke.com.');
@@ -106,7 +117,7 @@ export function mountWaitlist(app, {
       return fail(res, 429, 'busy', 'The list is full for today. Try again tomorrow.');
     }
     try {
-      store.add(email);
+      store.add(email, sourceOf(req));
     } catch (err) {
       log.error('[waitlist]', err.message);
       return fail(res, 503, 'unavailable', 'Could not save that. Try again in a minute.');

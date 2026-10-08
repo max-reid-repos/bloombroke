@@ -205,7 +205,7 @@ test('search (HELP and Ctrl K): a command is found by its own words, never by it
   for (const c of ['CALENDAR', 'EARNINGS', 'IPOS', 'SPLITS', 'EXDIV', 'HOLIDAYS']) assert.ok(names('calendars').includes(c), `calendars: ${c}`);
   const pro = names('pro');
   assert.equal(pro[0], 'PRO');
-  for (const c of ['GIFT', 'REDEEM', 'CHAT', 'LOGIN', 'LOGOUT']) assert.ok(pro.includes(c), `pro: ${c}`);
+  for (const c of ['GIFT', 'REDEEM', 'CHAT', 'LOGIN', 'LOGOUT', 'FOUNDERS']) assert.ok(pro.includes(c), `pro: ${c}`);
   for (const c of ['CHART', 'GRID', 'COMPARE']) assert.ok(names('charts').includes(c), `charts: ${c}`);
   for (const c of ['WHATIF', 'AFFORD', 'WAGE', 'LOAN', 'COMPOUND', 'CPI']) assert.ok(names('money').includes(c), `money: ${c}`);
   const src = readFileSync(new URL('../public/registry.js', import.meta.url), 'utf8');

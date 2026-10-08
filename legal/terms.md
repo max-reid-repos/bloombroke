@@ -78,6 +78,29 @@ The service, its software, design, text, the Bloombroke name and logo, and the s
 - **Deleting your account.** You can delete your account yourself in ME once no subscription on it will renew: cancel first. Deleting it removes your username, avatar, settings, synced data and chats and makes your key stop working. It does not refund anything, and we keep the licence record as the Privacy Policy says.
 - **Pings and closed-tab alerts.** Pings (notifications about CHAT messages and your price alerts while the tab is closed) are best effort. They depend on your browser, your device and its maker's push service, and they can be late or missed. Do not rely on them for anything that matters, such as a trade.
 
+### Founders seats
+
+- **What a seat is.** Before Pro opens to new subscribers, you can save a card for one of 42 founders seats on the founders page (bloombroke.com/founders). Seats 1 to 10 are ten-year seats: USD 1,420 once, for ten years of Pro. Seats 11 to 42 are founder seats: USD 420 a year, renewed every year at USD 420.
+- **Your card.** Stripe saves your card. We never see or store your full card number. Saving a card is not a payment.
+- **When we charge.** We charge every committed seat on the same day, and only when the committed seats reach the goal shown on the founders page (USD 17,640), no later than the deadline shown there (15 December 2026). Each seat is charged the price of its class shown when the card was saved.
+- **If the goal is not reached.** If the committed seats do not reach the goal by the deadline, we delete every saved card at Stripe and nobody is charged.
+- **When Pro goes live.** Pro goes live for the charged seats within 30 days of the charge. If it is not live within 45 days of the charge, we refund every charged seat in full.
+- **Founder seat price.** A founder seat renews every year at USD 420 for as long as you keep the seat, even if the Pro price goes up. You can cancel the renewal as this section describes for Pro; the seat and its price then end at the end of the paid year.
+- **Ten-year seat.** A ten-year seat gives ten years of Pro from the day Pro goes live, and does not renew. If we discontinue the service before the ten years end, we refund the unused part, pro rata, as the refund rule above says for a discontinued service.
+- **One seat per person.** Each person may hold one seat, with one email address and one card. A second seat saved with the same email address or the same card is released and its card removed. Seats cannot be transferred, sold or passed on.
+- **Giving up a seat.** You can give up your seat at any time before the charge by writing to {{CONTACT}}. We then remove your card and you pay nothing. The founders page then shows a line such as "Seat 12 released Nov 3.", with no name.
+- **Your handle.** At checkout you can add an X handle. It is optional and is shown as plain text on your seat on the founders page. It must not pretend to be anyone else or be offensive, and we may remove one that is.
+- **If the data cost rises.** If the cost of licensed live prices rises so that the goal no longer covers it, we may cancel the founders seats before the charge. We then delete every saved card and nobody pays.
+
+### Tips
+
+- **A gift.** A tip ("Fuel the feed" on the founders page) is a gift to Bloombroke. It is not a seat, a subscription or a purchase, and it gives no access to Pro. Tips are not refunded, except where the law says otherwise. Tips are processed by Stripe.
+- **Your fish.** A tip names one fish in the FISHTANK for 365 days. We review each fish name before it is shown, and until then the fish shows as "Fish" and a number. We may change or remove a name that is offensive, misleading or breaks section 6, without a refund.
+
+### Build guide list
+
+- On the build guide page (bloombroke.com/guide) you can leave your email address to get one email when the guide is ready. Joining the list is free and is not a purchase or an order.
+
 Nothing in this section limits any right you have under the law that cannot be limited, including under the Consumer Protection (Fair Trading) Act 2003.
 
 ## 10. Messages

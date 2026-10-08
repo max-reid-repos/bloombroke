@@ -44,6 +44,21 @@ export const TRY_LABEL = 'TRY YOUR LINE';
 export const TRY_MAX = 100; // lib/sponsors.js TEXT_MAX: the longest line text we run
 export const TRY_HOLDER = 'Acme: plain words about Acme';
 export const NOT_FOR = 'No investment products, brokers, exchanges, crypto, funds or tips.';
+// FEED SPONSOR: one sponsor for the live price feed, by email only (no checkout).
+export const FEED_SUBJECT = 'Feed sponsor';
+export const FEED = {
+  title: 'Feed sponsor',
+  line: 'Sponsor the live price feed. One line in the status bar and on share cards.',
+  price: '$2,000 a month',
+  note: 'Non-financial companies only. Starts when licensed prices go live.',
+};
+export function feedHtml() {
+  const mail = `mailto:${CONTACT}?subject=${encodeURIComponent(FEED_SUBJECT)}`;
+  return `<div class="spon-feed" id="spon-feed"><h3 class="tag spon-feed-title">${esc(FEED.title)}</h3>`
+    + `<p class="spon-feed-line">${esc(FEED.line)}</p>`
+    + `<p class="spon-feed-price">${esc(FEED.price)}</p>`
+    + `<p class="spon-feed-note">${esc(FEED.note)} <a href="${esc(mail)}">Email ${esc(CONTACT)}</a>.</p></div>`;
+}
 
 const fin = (v) => typeof v === 'number' && Number.isFinite(v);
 const count = (v) => Math.round(v).toLocaleString('en-US');
@@ -143,7 +158,7 @@ export function sponsorHtml({ has, bbrk = null, cfg = null } = {}) {
     media: raw(tryHtml()),
     links: exists('BBRK') ? [`<span class="spon-numbers">Numbers: ${cardLink({ label: 'BBRK', cmd: 'BBRK' })}</span>`] : [],
     details: raw(`<div id="spon-details">${detailsHtml(exists, bbrk)}</div>`),
-  });
+  }).replace(/<\/section>$/, `${feedHtml()}</section>`); // FEED SPONSOR: a second offer, under + Details
 }
 
 // A WEIRD gauge's title strip: SPONSORED BY <name>, or '' when the gauge has no sponsor.

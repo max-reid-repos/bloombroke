@@ -25,7 +25,7 @@ test('MENU lists every registry command, except the few named in HIDDEN', () => 
   const missing = REGISTRY.filter((c) => !listed.has(c.name) && !(c.name in HIDDEN)).map((c) => c.name);
   assert.deepEqual(missing, [], `add these to the menu (or to HIDDEN with a reason): ${missing.join(', ')}`);
   for (const name of Object.keys(HIDDEN)) assert.ok(REGISTRY.some((c) => c.name === name), `${name} is still a registry entry`);
-  for (const name of ['BBRK', 'SPONSOR', 'CHANGES', 'DATA', 'STATUS', 'CHAT', 'ME', 'GIFT', 'REDEEM', 'FEEDBACK', 'GRAVEYARD', 'GRID', 'WEIRD', 'WORLDMAP', 'FISHTANK', 'TRENDING', 'GUESS', 'WHATIF', 'LOGIN', 'LOGOUT']) {
+  for (const name of ['FOUNDERS', 'BBRK', 'SPONSOR', 'CHANGES', 'DATA', 'STATUS', 'CHAT', 'ME', 'GIFT', 'REDEEM', 'FEEDBACK', 'GRAVEYARD', 'GRID', 'WEIRD', 'WORLDMAP', 'FISHTANK', 'TRENDING', 'GUESS', 'WHATIF', 'LOGIN', 'LOGOUT']) {
     assert.ok(listed.has(name), `${name} is in the menu`);
   }
 });
