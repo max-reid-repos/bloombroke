@@ -53,13 +53,18 @@ function fakeStripe() {
           return sessions[id];
         },
         async retrieve(id) { calls.push(['checkout.retrieve', id]); if (!sessions[id]) throw missing(); return sessions[id]; },
+        async expire(id, p, opts) { calls.push(['checkout.expire', id, opts]); sessions[id].status = 'expired'; return sessions[id]; },
       },
     },
     setupIntents: {
       async retrieve(id, p) { calls.push(['si.retrieve', id, p]); if (!intents[id]) throw missing(); return intents[id]; },
     },
     paymentMethods: {
-      async detach(id, p, opts) { calls.push(['pm.detach', id, opts]); return { id }; },
+      async detach(id, p, opts) {
+        calls.push(['pm.detach', id, opts]);
+        for (const si of Object.values(intents)) if (si.payment_method?.id === id) si.payment_method.customer = null;
+        return { id };
+      },
       async update(id, p, opts) { calls.push(['pm.update', id, p, opts]); return { id }; },
     },
     customers: {
@@ -81,7 +86,7 @@ function complete(stripe, sessionId, { email = 'ann@example.com', fingerprint = 
   });
   stripe.intents[`seti_${n}`] = {
     id: `seti_${n}`, status: 'succeeded', customer: `cus_${n}`, metadata: s.metadata,
-    payment_method: { id: `pm_${n}`, card: { fingerprint }, billing_details: { email } },
+    payment_method: { id: `pm_${n}`, customer: `cus_${n}`, card: { fingerprint }, billing_details: { email } },
     mandate: null,
   };
   return s;
@@ -233,7 +238,7 @@ test('checkout: setup mode, server-side class and metadata, the handle field, th
     assert.deepEqual(p.metadata, { site: 'bloombroke', product: 'founders', seat: '7', class: 'ten', terms_version: '2.0' });
     assert.deepEqual(p.setup_intent_data.metadata, p.metadata);
     assert.equal(p.success_url, 'https://bloombroke.com/founders?seat=7&s={CHECKOUT_SESSION_ID}');
-    assert.equal(p.cancel_url, 'https://bloombroke.com/founders');
+    assert.match(p.cancel_url, /^https:\/\/bloombroke\.com\/founders\?release=7\.[0-9a-f]{24}$/, 'the hold token, so a cancel frees the seat');
     assert.equal(p.expires_at, Math.floor((T0 + SESSION_MS) / 1000));
     assert.deepEqual(p.custom_fields[0].label, { type: 'custom', custom: 'X handle (optional, shown on your seat)' });
     assert.equal(p.custom_fields[0].optional, true);
@@ -821,4 +826,103 @@ test('page: the failed lines say why: class full, or one seat per person', () =>
   // Closed: both buttons outline (a disabled white fill looks pressable).
   const closed = foundersPage({ ...st, committedUsd: 0, seatsTaken: 0, seats: Array.from({ length: 42 }, (_, i) => ({ seat: i + 1, class: i < 10 ? 'ten' : 'founder', status: 'open', handle: null })) });
   assert.equal((closed.match(/btn-solid/g) || []).length, 0);
+});
+
+// ---- last round: give-backs stay given back, the deadline time, the cancel link ----------
+
+test('given back stays given back: a buyer who finished before the deadline and loads the page after it is not given back; the webhook commits', async () => {
+  const at = foundersEnv({}).deadlineAt;
+  const s = await setup({ start: at - 10 * MIN });
+  try {
+    await s.checkout({ seat: 14 });
+    const done = complete(s.stripe, 'cs_test_founders000001', { n: 1 });
+    s.advance(20 * MIN); // the page loads after the deadline
+    const page = (await s.req('GET', '/founders?s=cs_test_founders000001')).text;
+    assert.ok(page.includes(COPY.pending), 'the page waits: it has no time the buyer agreed');
+    assert.ok(!s.stripe.calls.some((c) => c[0] === 'pm.detach' || c[0] === 'customer.del'), 'nothing given back');
+    assert.equal(s.founders.store.givenBack('cs_test_founders000001'), null);
+    // The webhook, with the event time before the deadline: the seat is the buyer's.
+    const e = { ...evt('checkout.session.completed', done), created: Math.floor((at - 5 * MIN) / 1000) };
+    assert.equal((await s.sendEvent(e)).body.result, 'founders_committed');
+    assert.ok((await s.req('GET', '/founders?s=cs_test_founders000001')).text.includes('Seat 14 is yours.'));
+  } finally { await s.close(); }
+});
+
+test('given back stays given back: a mandate time after the deadline gives back on the page; a later webhook never commits', async () => {
+  const at = foundersEnv({}).deadlineAt;
+  const s = await setup({ start: at - 10 * MIN });
+  try {
+    await s.checkout({ seat: 15 });
+    const done = complete(s.stripe, 'cs_test_founders000001', { n: 1 });
+    s.stripe.intents.seti_1.mandate = { customer_acceptance: { accepted_at: Math.floor((at + MIN) / 1000), online: { ip_address: '203.0.113.7' } } };
+    s.advance(20 * MIN);
+    assert.ok((await s.req('GET', '/founders?s=cs_test_founders000001')).text.includes('Seats closed on Dec 15, 2026.'));
+    assert.equal(s.founders.store.givenBack('cs_test_founders000001').reason, 'ended');
+    // A webhook with an earlier event time still cannot commit it.
+    const e = { ...evt('checkout.session.completed', done), created: Math.floor((at - 5 * MIN) / 1000) };
+    assert.equal((await s.sendEvent(e)).body.result, 'founders_ended');
+    assert.equal(s.founders.store.seat(15).status, 'open');
+  } finally { await s.close(); }
+});
+
+test('given back stays given back: a full class whose customer delete failed is retried, and never takes a seat that frees up', async () => {
+  const s = await setup();
+  try {
+    s.db.prepare("UPDATE founders_seats SET status = 'committed', email = 'x' || seat || '@x.co', livemode = 0 WHERE class = 'ten' AND seat > 1").run();
+    await s.checkout({ seat: 1 });
+    s.db.prepare("UPDATE founders_seats SET status = 'committed', email = 'one@x.co', checkout_session_id = NULL WHERE seat = 1").run();
+    const done = complete(s.stripe, 'cs_test_founders000001', { email: 'new@x.co', fingerprint: 'fp_new', n: 1 });
+    const keep = s.stripe.customers.del;
+    s.stripe.customers.del = async () => { throw new Error('network down'); };
+    const e = evt('checkout.session.completed', done);
+    assert.equal((await s.sendEvent(e)).status, 500, 'the delete failed: retried');
+    assert.equal(s.founders.store.givenBack('cs_test_founders000001').reason, 'full');
+    // Meanwhile a ten-year seat frees up.
+    s.db.prepare("UPDATE founders_seats SET status = 'open', email = NULL WHERE seat = 5").run();
+    s.stripe.customers.del = keep;
+    assert.equal((await s.sendEvent(e)).body.result, 'founders_full');
+    assert.equal(s.founders.store.seat(5).status, 'open', 'not taken by the given-back checkout');
+    const gb = s.founders.store.givenBack('cs_test_founders000001');
+    assert.equal(gb.payment_method_id, null, 'ids forgotten once Stripe has removed them');
+    assert.equal(gb.stripe_customer_id, null);
+    assert.ok((await s.req('GET', '/founders?s=cs_test_founders000001')).text.includes('All ten-year seats are taken.'));
+  } finally { await s.close(); }
+});
+
+test('given back stays given back: a card already taken off its customer gives no seat, whatever the record says', async () => {
+  const s = await setup();
+  try {
+    await s.checkout({ seat: 20 });
+    const done = complete(s.stripe, 'cs_test_founders000001', { n: 1 });
+    s.stripe.intents.seti_1.payment_method.customer = null;
+    assert.equal((await s.sendEvent(evt('checkout.session.completed', done))).body.result, 'founders_gone');
+    assert.equal(s.founders.store.seat(20).status, 'open');
+    assert.equal(s.founders.store.givenBack('cs_test_founders000001').reason, 'gone');
+  } finally { await s.close(); }
+});
+
+test('cancel link: back from Stripe without a card, the session is expired and the seat opens at once; only its own hold', async () => {
+  const s = await setup();
+  try {
+    await s.checkout({ seat: 30 });
+    const [, p] = s.stripe.calls.find((c) => c[0] === 'checkout.create');
+    const release = new URL(p.cancel_url).searchParams.get('release');
+    // A wrong token, another seat: nothing.
+    assert.ok(!(await s.req('GET', `/founders?release=30.${'0'.repeat(24)}`)).text.includes(COPY.released));
+    assert.ok(!(await s.req('GET', `/founders?release=31.${release.split('.')[1]}`)).text.includes(COPY.released));
+    assert.equal(s.founders.store.seat(30).status, 'held');
+    const r = await s.req('GET', `/founders?release=${release}`);
+    assert.ok(r.text.includes(COPY.released));
+    assert.ok(!r.text.includes('/goal.js'), 'no analytics with the token in the address');
+    const ex = s.stripe.calls.find((c) => c[0] === 'checkout.expire');
+    assert.deepEqual([ex[1], ex[2].idempotencyKey], ['cs_test_founders000001', 'bb-founders-expire-cs_test_founders000001']);
+    assert.equal(s.founders.store.seat(30).status, 'open');
+    // A checkout that was finished is never expired by its old cancel link.
+    await s.checkout({ seat: 31 });
+    const p2 = s.stripe.calls.filter((c) => c[0] === 'checkout.create')[1][1];
+    complete(s.stripe, 'cs_test_founders000002', { n: 2 });
+    await s.req('GET', `/founders?${new URL(p2.cancel_url).searchParams}`);
+    assert.equal(s.stripe.calls.filter((c) => c[0] === 'checkout.expire').length, 1);
+    assert.equal(s.founders.store.seat(31).status, 'held');
+  } finally { await s.close(); }
 });

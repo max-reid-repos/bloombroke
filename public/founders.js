@@ -67,8 +67,8 @@ function founders() {
       }
     });
   }
-  // After checkout: the session id leaves the address bar (the page already used it).
-  if (/[?&]s=/.test(window.location.search)) {
+  // After checkout or a cancel: the session id or hold token leaves the address bar (the page already used it).
+  if (/[?&](s|release)=/.test(window.location.search)) {
     try { window.history.replaceState(null, '', '/founders'); } catch { /* keep it */ }
   }
 }

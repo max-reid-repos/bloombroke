@@ -156,6 +156,17 @@ export function createFoundersStore(db, { now = () => Date.now(), livemode = 1, 
     resetSeats: db.prepare(`UPDATE founders_seats SET ${FREE}, updated_at = ? WHERE livemode = 0`),
     resetLog: db.prepare('DELETE FROM founders_log WHERE livemode = 0'),
     resetTips: db.prepare('DELETE FROM tips WHERE livemode = 0'),
+    // migrations/021: checkouts given back, never committed later.
+    givenBack: db.prepare('SELECT * FROM founders_given_back WHERE checkout_session_id = ?'),
+    giveBack: db.prepare(`INSERT OR IGNORE INTO founders_given_back (checkout_session_id, reason, class, payment_method_id, stripe_customer_id, livemode, at)
+      VALUES (@id, @reason, @cls, @pm, @customer, @lm, @t)`),
+    cleaned: db.prepare('UPDATE founders_given_back SET payment_method_id = NULL, stripe_customer_id = NULL WHERE checkout_session_id = ?'),
+  };
+  // Record a give-back and let the session's hold go, in the caller's transaction.
+  const markGiven = (id, reason, { cls = null, pm = null, customer = null } = {}) => {
+    q.giveBack.run({ id, reason, cls, pm, customer, lm, t: now() });
+    q.dropSession.run(now(), id);
+    return q.givenBack.get(id);
   };
   const expire = () => q.expire.run(now(), now()).changes;
   return {
@@ -204,24 +215,32 @@ export function createFoundersStore(db, { now = () => Date.now(), livemode = 1, 
     dropSession(sessionId) { return q.dropSession.run(now(), sessionId).changes > 0; },
     bySession(sessionId) { return sessionId ? q.bySession.get(sessionId) || null : null; },
     bySetupIntent(id) { return id ? q.bySetupIntent.get(id)?.seat ?? null : null; },
+    givenBack(sessionId) { return sessionId ? q.givenBack.get(sessionId) || null : null; },
+    // A finished checkout that gets no seat (after the deadline, a card already taken off):
+    // recorded and its hold let go, in one transaction. -> the given-back row.
+    giveBack(sessionId, reason, ids = {}) { return tx(db, () => q.givenBack.get(sessionId) || markGiven(sessionId, reason, ids)); },
+    // The card and the customer of a give-back are gone at Stripe: forget their ids.
+    cleaned(sessionId) { q.cleaned.run(sessionId); },
     // A saved card for a session -> { seat } | { already: seat } | { dup: seat } | { full: true }.
     // One committed seat per email and per card. The session's own held seat, or (if that
     // hold is gone, which the grace minutes should prevent) the lowest open seat of the
     // same class. A duplicate or a full class releases the session's hold.
+    // A session given back before ({ given }) is never committed. A duplicate or a full
+    // class is recorded as given back in the same transaction.
     commit(c) {
       return tx(db, () => {
         const mine = q.bySession.get(c.sessionId);
         if (mine?.status === 'committed') return { already: mine.seat };
+        const before = q.givenBack.get(c.sessionId);
+        if (before) return { given: before };
+        const ids = { cls: c.cls, pm: c.paymentMethod ?? null, customer: c.customer ?? null };
         const dup = q.dup.get({ email: c.email ?? null, fp: c.fingerprint ?? null, lm });
-        if (dup) {
-          if (mine?.status === 'held') q.dropSession.run(now(), c.sessionId);
-          return { dup: dup.seat };
-        }
+        if (dup) return { dup: dup.seat, given: markGiven(c.sessionId, 'duplicate', ids) };
         let seat = mine?.status === 'held' ? mine.seat : null;
         if (seat === null) {
           expire();
           seat = q.firstOpen.get({ cls: c.cls, lm })?.seat ?? null;
-          if (seat === null) return { full: true };
+          if (seat === null) return { full: true, given: markGiven(c.sessionId, 'full', ids) };
         }
         q.commit.run(c.sessionId, c.customer ?? null, c.setupIntent ?? null, c.paymentMethod ?? null, c.fingerprint ?? null, c.email ?? null,
           c.handle ?? null, c.mandateAt ?? now(), c.mandateIp ?? null, typeof c.livemode === 'boolean' ? (c.livemode ? 1 : 0) : lm, c.termsVersion ?? null, now(), seat);
@@ -256,7 +275,8 @@ export const HANDLE_FIELD = 'xhandle';
 export const HANDLE_LABEL = 'X handle (optional, shown on your seat)';
 
 // The Checkout Session for one held seat. Setup mode: a card is saved, nothing is charged.
-export function foundersCheckoutParams({ seat, publicUrl, at, cfg }) {
+// token: the hold's token, in the cancel URL only (pro/founders.js cancel).
+export function foundersCheckoutParams({ seat, publicUrl, at, cfg, token = '' }) {
   const base = publicUrl.replace(/\/+$/, '');
   const cls = classOf(seat);
   // terms_version: the Terms the founder agrees to at this checkout (public/legal-version.js).
@@ -266,7 +286,7 @@ export function foundersCheckoutParams({ seat, publicUrl, at, cfg }) {
     payment_method_types: ['card'],
     customer_creation: 'always',
     success_url: `${base}/founders?seat=${seat}&s={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${base}/founders`,
+    cancel_url: token ? `${base}/founders?release=${seat}.${token}` : `${base}/founders`,
     expires_at: Math.floor((at + SESSION_MS) / 1000),
     metadata,
     setup_intent_data: { metadata: { ...metadata }, description: `Bloombroke founders seat ${seat} (${CLASSES[cls].name})` },
@@ -330,16 +350,34 @@ export async function removeCustomer(stripe, customerId, { requireTag = false } 
 // sends the event again (and setup_intent.succeeded can land it).
 export class NotYet extends Error {}
 
+const GIVEN = { duplicate: 'founders_duplicate', full: 'founders_full', ended: 'founders_ended', gone: 'founders_gone' };
+
+// A give-back at Stripe: the card detached and the customer deleted (both idempotent),
+// then its ids forgotten. Run again on every retry until both calls went through.
+async function finishGiveBack(given, { founders, stripe, log }) {
+  if (given.payment_method_id || given.stripe_customer_id) {
+    await detach(stripe, given.payment_method_id);
+    await removeCustomer(stripe, given.stripe_customer_id);
+    founders.cleaned(given.checkout_session_id);
+    log.log(`[founders] a checkout given back (${given.reason}): card detached, customer deleted`); // counts only
+  }
+  return GIVEN[given.reason] || 'founders_gone';
+}
+
 // A completed setup-mode session -> 'founders_committed' | 'founders_already' |
-// 'founders_duplicate' | 'founders_full' | 'founders_ended' | 'founders_pending'. Used by
-// the webhook and by the success page, whichever runs first. Throws on a Stripe failure,
-// and NotYet while the card is not saved yet, so the webhook is retried.
-// After the deadline nothing commits: the card and the customer go, the hold goes, and
-// nothing is written to the public log.
-export async function commitSession(session, { founders, stripe, log = console, at = Date.now() }) {
+// 'founders_duplicate' | 'founders_full' | 'founders_ended' | 'founders_gone' |
+// 'founders_pending'. Used by the webhook and by the success page, whichever runs first.
+// Throws on a Stripe failure, and NotYet while it cannot decide yet, so the webhook is
+// retried. A session given back once (migrations/021) is never committed.
+// The deadline is checked against when the buyer agreed: Stripe's mandate time, else the
+// webhook event's time (at). The success page has neither (at: null): after the deadline
+// it waits for the webhook instead of deciding.
+export async function commitSession(session, { founders, stripe, log = console, at = Date.now(), now = Date.now }) {
   if (!isFoundersSession(session) || session.status !== 'complete') return 'founders_pending';
   const known = founders.bySession(session.id);
   if (known?.status === 'committed') return 'founders_already';
+  const before = founders.givenBack(session.id);
+  if (before) return finishGiveBack(before, { founders, stripe, log });
   const siId = idOf(session.setup_intent);
   if (!siId) throw new NotYet('the session has no SetupIntent yet');
   const si = await stripe.setupIntents.retrieve(siId, { expand: ['payment_method', 'mandate'] });
@@ -347,21 +385,20 @@ export async function commitSession(session, { founders, stripe, log = console, 
   const pm = typeof si.payment_method === 'object' && si.payment_method ? si.payment_method : null;
   const pmId = idOf(si.payment_method);
   const customer = idOf(session.customer) || idOf(si.customer);
-  const giveBack = async (why) => {
-    founders.dropSession(session.id);
-    log.log(`[founders] ${why}: card detached, customer deleted, hold released`); // counts only: never the address or the card
-    await detach(stripe, pmId);
-    await removeCustomer(stripe, customer);
-  };
-  if (at > founders.deadlineAt) {
-    await giveBack('a checkout finished after the deadline');
-    return 'founders_ended';
-  }
-  const mandate = typeof si.mandate === 'object' && si.mandate ? si.mandate : null;
-  const accepted = mandate?.customer_acceptance;
-  const email = String(session.customer_details?.email || pm?.billing_details?.email || '').trim().toLowerCase().slice(0, 254) || null;
   const metaSeat = Number(session.metadata?.seat);
   const cls = isSeat(metaSeat) ? classOf(metaSeat) : (session.metadata?.class === 'ten' ? 'ten' : 'founder');
+  const ids = { cls, pm: pmId, customer };
+  // The card is no longer on a customer (taken off by an earlier give-back): no seat.
+  if (pm && 'customer' in pm && !pm.customer) return finishGiveBack(founders.giveBack(session.id, 'gone', ids), { founders, stripe, log });
+  const mandate = typeof si.mandate === 'object' && si.mandate ? si.mandate : null;
+  const accepted = mandate?.customer_acceptance;
+  const agreedAt = Number.isFinite(accepted?.accepted_at) ? accepted.accepted_at * 1000 : at;
+  if (agreedAt === null || agreedAt === undefined) {
+    if (now() > founders.deadlineAt) throw new NotYet('after the deadline: the webhook decides');
+  } else if (agreedAt > founders.deadlineAt) {
+    return finishGiveBack(founders.giveBack(session.id, 'ended', ids), { founders, stripe, log });
+  }
+  const email = String(session.customer_details?.email || pm?.billing_details?.email || '').trim().toLowerCase().slice(0, 254) || null;
   const out = founders.commit({
     sessionId: session.id,
     cls,
@@ -371,16 +408,13 @@ export async function commitSession(session, { founders, stripe, log = console, 
     fingerprint: pm?.card?.fingerprint || null,
     email,
     handle: cleanHandle(customField(session, HANDLE_FIELD)),
-    mandateAt: Number.isFinite(accepted?.accepted_at) ? accepted.accepted_at * 1000 : at,
+    mandateAt: agreedAt ?? now(),
     mandateIp: accepted?.online?.ip_address || null,
     livemode: typeof session.livemode === 'boolean' ? session.livemode : null,
     termsVersion: String(session.metadata?.terms_version || TERMS_VERSION).slice(0, 16),
   });
   if (out.already) return 'founders_already';
-  if (out.dup || out.full) {
-    await giveBack(out.dup ? 'a second seat for the same email or card' : 'no free seat in that class');
-    return out.dup ? 'founders_duplicate' : 'founders_full';
-  }
+  if (out.given) return finishGiveBack(out.given, { founders, stripe, log });
   // Tag the customer and the card, so the shared account can tell them apart. Not fatal.
   const metadata = { ...FOUNDERS_METADATA, seat: String(out.seat), class: classOf(out.seat), terms_version: String(session.metadata?.terms_version || TERMS_VERSION) };
   const tags = [];
@@ -469,6 +503,8 @@ export function createFounders({ db, stripe = null, env = process.env, mode = 'l
       if (!/^cs_(test|live)_[A-Za-z0-9]{10,250}$/.test(String(sessionId || ''))) return null;
       const row = store.bySession(sessionId);
       if (row?.status === 'committed') return { seat: row.seat };
+      const given = store.givenBack(sessionId);
+      if (given && !given.payment_method_id && !given.stripe_customer_id) return { failed: given.reason, cls: given.class || 'founder' };
       if (!stripe) return row ? { pending: true } : null;
       if (!confirmLimit.hit(ip).ok) return { pending: true };
       let session;
@@ -484,16 +520,37 @@ export function createFounders({ db, stripe = null, env = process.env, mode = 'l
       const metaSeat = Number(session.metadata?.seat);
       const cls = isSeat(metaSeat) ? classOf(metaSeat) : 'founder';
       try {
-        const r = await commitSession(session, { founders: store, stripe, log, at: now() });
-        if (r === 'founders_duplicate') return { failed: 'duplicate', cls };
-        if (r === 'founders_full') return { failed: 'full', cls };
-        if (r === 'founders_ended') return { failed: 'ended', cls };
+        // at: null: the page has no event time; the mandate time or the webhook decides.
+        const r = await commitSession(session, { founders: store, stripe, log, at: null, now });
+        const reason = Object.entries(GIVEN).find(([, v]) => v === r)?.[0];
+        if (reason) return { failed: reason, cls };
       } catch (err) {
         if (!(err instanceof NotYet)) log.error('[founders] confirm commit', err.message);
         return { pending: true };
       }
       const after = store.bySession(sessionId);
-      return after?.status === 'committed' ? { seat: after.seat } : { failed: 'duplicate', cls };
+      return after?.status === 'committed' ? { seat: after.seat } : { pending: true };
+    },
+    // The cancel link (?release=<seat>.<hold token>, only in that checkout's cancel URL):
+    // the buyer came back from Stripe without saving a card. If that hold is still theirs
+    // and its Checkout Session is still open, the session is expired at Stripe and the seat
+    // opens at once, instead of after 33 minutes. -> true when it was let go.
+    async cancel(raw, ip = 'unknown') {
+      const m = /^([1-9]\d?)\.([0-9a-f]{24})$/.exec(String(raw || ''));
+      if (!m || !stripe) return false;
+      const seat = Number(m[1]);
+      const row = store.seat(seat);
+      if (!row || row.status !== 'held' || row.hold_token !== m[2] || !row.checkout_session_id) return false;
+      if (!confirmLimit.hit(ip).ok) return false;
+      try {
+        const session = await stripe.checkout.sessions.retrieve(row.checkout_session_id);
+        if (!isFoundersSession(session) || session.status !== 'open') return false;
+        await stripe.checkout.sessions.expire(session.id, {}, { idempotencyKey: `bb-founders-expire-${session.id}` });
+      } catch (err) {
+        log.error('[founders] cancel', err.message);
+        return false;
+      }
+      return store.dropHold(seat, m[2]);
     },
   };
   return f;
@@ -546,7 +603,7 @@ export function mountFounders(app, {
     }
     try {
       const session = await founders.stripe.checkout.sessions.create(
-        foundersCheckoutParams({ seat: held.seat, publicUrl: base, at: t, cfg: founders.cfg }),
+        foundersCheckoutParams({ seat: held.seat, publicUrl: base, at: t, cfg: founders.cfg, token: held.token }),
         { idempotencyKey: `bb-founders-checkout-${held.seat}-${held.token}` },
       );
       founders.store.attachSession(held.seat, held.token, session.id);
