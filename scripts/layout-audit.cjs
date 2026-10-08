@@ -80,7 +80,8 @@ const FIX = {
   '/api/live': { here: 3 },
 };
 
-// [name, command, { key, type, sel, ls, link }]: type: typed into the command bar (a link
+// [name, command, { key, type, sel, ls, link, url }]: url: a standalone page (/founders,
+// /guide), audited at that path, its cards outside the terminal's #screen. type: typed into the command bar (a link
 // never runs LOGIN); sel: what to audit (default the card page, .card); ls: localStorage to
 // set first (an empty watchlist); link: a command that changes a saved list, put in the
 // address bar and run with Enter in the empty bar (how the link-confirm card shows).
@@ -97,6 +98,10 @@ const PAGES = [
   // WHATIF: a split card page. One thing, three things, a VICES habit; after the race.
   ...[['whatif', 'WHATIF IPHONE6'], ['whatif-three', 'WHATIF IPHONE6 RTX3080 LATTE:3Y'], ['whatif-vices', 'WHATIF BEER:10Y']]
     .map(([n, c]) => [n, c, { wait: 14000, fold: ['.card-art', '#wi-share-btn'], sizes: [[1440, 900], [1536, 730], [390, 844]] }]),
+  // /founders and /guide (lib/founders-page.js): standalone card-kit pages, live numbers
+  // from the server under test.
+  ['founders', null, { url: '/founders', sel: '.fd-seats' }], ['founders-top', null, { url: '/founders', sel: '.fd-main' }],
+  ['guide', null, { url: '/guide', sel: '.fd-guide' }],
   // MARKETS: every name whole (live /api/markets from the server under test).
   ['markets', 'MARKETS', { sel: '.mk-full', names: true, wait: 3000, sizes: [[1440, 900], [1536, 730], [390, 844]] }],
 ].filter(([n]) => !ONLY || ONLY.split(',').includes(n));
@@ -112,13 +117,13 @@ async function liveData() {
 }
 
 // Runs in the page: every check, for the card on screen.
-function inPage(scale, firstView, sel, fold, names) {
+function inPage(scale, firstView, sel, fold, names, standalone) {
   const out = { overflow: [], crop: [], font: [], measure: [], primary: [], fold: [], cut: [], small: [] };
   const de = document.documentElement;
   const screen = document.getElementById('screen');
   if (de.scrollWidth > de.clientWidth + 1) out.overflow.push(`page ${de.scrollWidth}>${de.clientWidth}`);
   if (screen && screen.scrollWidth > screen.clientWidth + 1) out.overflow.push(`screen ${screen.scrollWidth}>${screen.clientWidth}`);
-  const card = document.querySelector(`#screen ${sel}`);
+  const card = document.querySelector(standalone ? sel : `#screen ${sel}`);
   if (!card) { out.crop.push(`no ${sel} on screen`); return out; }
   // MARKETS: a name cell whose text is wider than the cell, or whose text runs past the
   // cell's right edge into the numbers, is cut.
@@ -242,9 +247,9 @@ async function main() {
           else if (/datafa\.st|ahrefs\.com|cloudflareinsights/.test(u.host)) req.abort();
           else req.continue();
         });
-        await page.goto(`${BASE}/?c=${encodeURIComponent(opts.type ? 'PRO' : cmd)}`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+        await page.goto(opts.url ? `${BASE}${opts.url}` : `${BASE}/?c=${encodeURIComponent(opts.type ? 'PRO' : cmd)}`, { waitUntil: 'domcontentloaded', timeout: 45000 });
         const sel = opts.sel || '.card';
-        await page.waitForSelector(`#screen ${sel}`, { timeout: 15000 }).catch(() => {});
+        await page.waitForSelector(opts.url ? sel : `#screen ${sel}`, { timeout: 15000 }).catch(() => {});
         if (opts.link) {
           await page.evaluate((c) => { history.replaceState(history.state, '', `?c=${encodeURIComponent(c)}`); }, opts.link);
           await page.click('#cmd');
@@ -259,11 +264,11 @@ async function main() {
         }
         await new Promise((r) => { setTimeout(r, opts.wait || 2000); });
         if (OPEN) {
-          await page.evaluate((s) => { const d = document.querySelector(`#screen ${s} .card-more`); if (d) { d.open = true; d.scrollIntoView({ block: 'start' }); } }, sel);
+          await page.evaluate((s) => { const d = document.querySelector(`${s} .card-more`); if (d) { d.open = true; d.scrollIntoView({ block: 'start' }); } }, opts.url ? sel : `#screen ${sel}`);
           await new Promise((r) => { setTimeout(r, 300); });
         }
         const firstView = !OPEN && w >= 1100 && ['bbrk', 'sponsor', 'graveyard-leh'].includes(name);
-        const res = await page.evaluate(inPage, TYPE, firstView, sel, OPEN ? [] : opts.fold || [], Boolean(opts.names));
+        const res = await page.evaluate(inPage, TYPE, firstView, sel, OPEN ? [] : opts.fold || [], Boolean(opts.names), Boolean(opts.url));
         const bad = Object.entries(res).filter(([k, v]) => v.length && k !== 'small');
         if (bad.length) failed++;
         const notes = [...bad, ...(res.small.length ? [['small (not failing yet)', res.small]] : [])];

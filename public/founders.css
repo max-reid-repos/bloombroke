@@ -35,7 +35,9 @@
   font-family: var(--font); font-weight: 600; cursor: pointer;
 }
 .fd-body .btn:hover { background: var(--accent-tint); color: var(--accent); text-decoration: none; }
-.fd-body .btn.btn-solid:hover { background: var(--primary-hover); color: var(--ink); }
+/* The page's one action: the white fill (kit.css rule C), kept over the outline above. */
+.fd-body .btn.btn-solid { background: var(--primary); border-color: var(--primary); color: var(--ink); }
+.fd-body .btn.btn-solid:hover { background: var(--primary-hover); border-color: var(--primary-hover); color: var(--ink); }
 .fd-body .btn:disabled, .fd-body .btn:disabled:hover { opacity: .5; cursor: default; background: transparent; color: var(--accent); }
 .fd-body .btn.btn-solid:disabled, .fd-body .btn.btn-solid:disabled:hover { background: var(--primary); color: var(--ink); }
 .fd-body .how { align-self: stretch; border-top: 1px solid var(--rule); padding-top: 8px; }
@@ -80,9 +82,9 @@
 .fd-msg:empty { display: none; }
 .fd-msg.warn { color: var(--down); }
 
-/* The 42 seats: seven to a row (six on a phone). Taken: bright, with the handle. Open:
-   dim. Held: dashed. The picked seat: the accent. */
-.fd-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; width: 100%; }
+/* The 42 seats: six to a row (about 13 characters of handle; five on a phone). Taken:
+   bright, with the handle. Open: dim. Held: dashed. The picked seat: the accent. */
+.fd-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; width: 100%; }
 .fd-seat {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   min-width: 0; height: 48px; border: 1px solid var(--rule); color: var(--faint); font-size: 13px;
@@ -96,8 +98,8 @@
 }
 .fd-pick:hover { background: var(--accent-tint); color: var(--text); }
 .fd-pick[aria-pressed="true"] { background: var(--accent); color: var(--ink); }
-.fd-log { display: flex; flex-direction: column; gap: 4px; width: 100%; margin-top: 16px; font-size: 12px; color: var(--dim); }
-.fd-team { white-space: normal; letter-spacing: 0; }
+.fd-body .fd-log { display: flex; flex-direction: column; gap: 4px; width: 100%; margin-top: 16px; font-size: 12px; color: var(--dim); }
+.fd-team { max-width: 60ch; white-space: normal; letter-spacing: 0; text-wrap: balance; }
 .fd-team a { color: var(--accent); }
 .fd-how { display: grid; gap: 8px; margin: 0; padding-left: 24px; font-size: 13px; color: var(--text-2); }
 
@@ -121,7 +123,7 @@
   .fd .card { padding: 24px 0; }
   .fd-class { padding: 16px; }
   .fd-classes { grid-template-columns: minmax(0, 1fr); }
-  .fd-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .fd-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .fd-main .card-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fd-main .card-fact:nth-child(3) { grid-column: 1 / -1; }
 }

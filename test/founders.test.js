@@ -295,6 +295,7 @@ test('after the deadline: final numbers, "Seats closed", no new seats', async ()
     const page = (await s.req('GET', '/founders')).text;
     assert.ok(page.includes('Seats closed on Dec 15, 2026.'));
     assert.match(page, /<dt class="tag">Closed<\/dt>/);
+    assert.ok(!page.includes('Save a founder seat') && !page.includes('class="fd-pick"'), 'nothing to press');
   } finally { await s.close(); }
   const at = foundersEnv({}).deadlineAt;
   const s2 = await setup({ start: at });
