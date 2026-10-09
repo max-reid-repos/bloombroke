@@ -95,6 +95,7 @@ The service, its software, design, text, the Bloombroke name and logo, and the s
 - **Giving up a seat.** You can give up your seat at any time before the charge by writing to {{CONTACT}}. We then remove your card and you pay nothing. The founders page then shows a line such as "Seat 12 released Nov 3.", with no name.
 - **Your handle.** If you give us an X handle for your seat, it is shown as plain text on your seat on the founders page. It is optional. It must not pretend to be anyone else or be offensive, and we may remove one that is.
 - **If the data cost rises.** If the cost of licensed live prices rises so that the goal no longer covers it, we may cancel the founders seats before the charge. We then delete every saved card and nobody pays.
+- **Email list.** On the founders page you can leave your email address without saving a card. Leaving it is free, holds no seat and is not a purchase or an order. We may email you about the founders seats.
 
 ### Tips
 

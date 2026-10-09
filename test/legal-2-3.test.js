@@ -6,7 +6,8 @@
 // configured FOUNDERS_DEADLINE: the policy names no date, like the Terms' "the deadline
 // shown there"). The Privacy Policy names it in the short
 // version, its own part of section 3, the purposes, the rate limits and the retention
-// table. The Terms do not change. After 2.2 comes 2.3, so everyone who accepted 2.2 is
+// table. The Terms' founders seats rules get one line, like the build guide list's:
+// leaving an email is free, holds no seat, is not a purchase, and we may email you. After 2.2 comes 2.3, so everyone who accepted 2.2 is
 // asked again.
 
 import { test } from 'node:test';
@@ -19,6 +20,7 @@ import { LIST_KEEP_MS } from '../pro/founders.js';
 import { COPY } from '../lib/founders-page.js';
 
 const privacy = readFileSync('legal/privacy.md', 'utf8');
+const terms = readFileSync('legal/terms.md', 'utf8');
 const section = (md, n) => md.slice(md.indexOf(`## ${n}.`), md.indexOf(`## ${n + 1}.`));
 const sub = (md, name) => { const i = md.indexOf(`### ${name}`); return md.slice(i, md.indexOf('\n#', i + 4)); };
 
@@ -58,6 +60,15 @@ test('privacy: the founders email list, what we keep, why, who sends, and when i
   const page = legalPage('privacy', privacy);
   assert.ok(page.includes(`writing to <a href="mailto:${CONTACT}">${CONTACT}</a>`));
   assert.doesNotMatch(p, /—/);
+});
+
+test('terms: the founders seats rules name the email list, like the build guide list', () => {
+  const f = sub(section(terms, 9), 'Founders seats');
+  assert.ok(f.includes('- **Email list.** On the founders page you can leave your email address without saving a card. Leaving it is free, holds no seat and is not a purchase or an order. We may email you about the founders seats.'));
+  // The build guide list's line, the pattern it follows, is still there.
+  assert.ok(sub(section(terms, 9), 'Build guide list').includes('Joining the list is free and is not a purchase or an order.'));
+  assert.match(legalPage('terms', terms), /Version 2\.3\. Last updated 9 October 2026/);
+  assert.doesNotMatch(f, /—/);
 });
 
 test('privacy and code agree: 30 days after the deadline, the page line, no seat held', () => {

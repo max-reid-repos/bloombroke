@@ -501,7 +501,7 @@ test('page: open in test mode, with seats committed: the badge, the bar, the gri
     assert.match(html, /<h1 class="card-hero card-hero-44 num">Pro needs 42 founders\.<\/h1>/);
     assert.ok(html.includes('42 founders at $420 cover a year of licensed live prices. Nobody pays until founders commit $17,640.'));
     // What Pro is: three plain lines under the facts, before the seats card.
-    const pro = '<ul class="fd-pro" aria-label="What Pro is"><li>Pro adds live licensed US stock and ETF prices to the terminal.</li>'
+    const pro = '<ul class="fd-pro" aria-label="What Pro is"><li>With 42 founders, Pro adds live licensed US stock and ETF prices.</li>'
       + '<li>Pro today: your watchlist and portfolio on every device, plus alerts when the tab is closed.</li><li>Built by Max Reid.</li></ul>';
     assert.ok(html.includes(pro));
     assert.ok(html.indexOf(pro) > html.indexOf('id="fd-facts"') && html.indexOf(pro) < html.indexOf('id="fd-seats"'));

@@ -177,6 +177,7 @@ const FD_MEDIA = /<ul class="fd-grid"[\s\S]*?<\/ul>(?:<ul class="fd-log"[\s\S]*?
 export const FOUNDERS = [
   // The kicker and TEST MODE (3), the h1 (3), the sub (15), the three fact labels and the
   // day's month (6), What Pro is, three lines (11, 15, 4): 57. The owner's copy (Oct 9).
+  // Line one: "With 42 founders, Pro adds ..." (the prices are not live yet).
   ['FOUNDERS, the bar (test mode)', mainCardHtml(FD), 60],
   ['FOUNDERS, the bar, after checkout', mainCardHtml({ ...FD, testMode: false }, { alert: 'Seat 7 is yours. Nobody pays until the goal is reached.' }), 66], // + the line on top (9), no TEST MODE
   // The two kinds of seat (name, price word, one line, the button: 13 and 18), the one
