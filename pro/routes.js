@@ -61,7 +61,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // What the client may see about a licence.
 // mode: the site's Stripe mode. A licence from a test (demo) checkout gives no Pro on
 // the live site; live licences keep working in test mode (they were paid for).
-export function publicStatus(lic, now, mode = 'live') {
+// classOf: (licenceId, livemode) -> 'ten' | 'founder' | null (store.foundersClassOf), so
+// a founders seat says which kind it is before go-live (screens/pro.js foundersText).
+export function publicStatus(lic, now, mode = 'live', { classOf = null } = {}) {
   if (lic && mode === 'live' && lic.livemode === 0) return { active: false, status: 'demo', last4: lic.last4 };
   const a = proAccess(lic, now);
   const out = { active: a.active, status: a.status, last4: a.last4 };
@@ -82,7 +84,12 @@ export function publicStatus(lic, now, mode = 'live') {
     out.cancelAt = out.termUntil;
   }
   // A founders licence has no plan of its own to manage (pro/founders.js).
-  if (isFoundersLicence(lic)) out.founders = true;
+  if (isFoundersLicence(lic)) {
+    out.founders = true;
+    let cls = null;
+    try { cls = classOf ? classOf(lic.id, lic.livemode) : null; } catch { cls = null; }
+    if (cls === 'ten' || cls === 'founder') out.foundersClass = cls;
+  }
   return out;
 }
 
@@ -110,6 +117,8 @@ export function mountPro(app, {
   const priceFor = { month: priceId, year: priceIdYearly };
   const ready = Boolean(stripe && priceId && webhookSecret && proSecretSet);
   const base = publicUrl.replace(/\/+$/, '');
+  const classOf = store.foundersClassOf ? (id, lm) => store.foundersClassOf(id, lm) : null;
+  const statusOf = (lic) => publicStatus(lic, now(), mode, { classOf });
 
   const fail = (res, status, error, message, extra = {}) => res.status(status).json({ error, message, ...extra });
   const limited = (res, r) => { res.set('Retry-After', String(r.retryAfter)); return fail(res, 429, 'rate_limited', 'Too many tries. Wait a few minutes and try again.'); };
@@ -149,7 +158,7 @@ export function mountPro(app, {
       limits.guess.hit(ip);
       return { bad: true };
     }
-    return { lic, status: publicStatus(lic, now(), mode) };
+    return { lic, status: statusOf(lic) };
   }
 
   // X-Pro-Key -> { lic, access } or sends the error and returns null.
@@ -263,18 +272,18 @@ export function mountPro(app, {
       return fail(res, 503, 'unavailable', 'Payments are taking a break. Reload in a minute.');
     }
     // REACTIVATE: the browser already has the key; only the status changes.
-    if (made?.reactivated) return res.json({ reactivated: true, ...publicStatus(made.licence, now(), mode) });
+    if (made?.reactivated) return res.json({ reactivated: true, ...statusOf(made.licence) });
     const out = store.reveal(sessionId);
     if (!out) {
       // A reload after REACTIVATE: the licence was made by an earlier checkout.
       const lic = made?.licence || store.findBySubscription(idOf(session.subscription));
-      if (lic) return res.json({ reactivated: true, ...publicStatus(lic, now(), mode) });
+      if (lic) return res.json({ reactivated: true, ...statusOf(lic) });
       return fail(res, 404, 'not_found', 'No key found for that checkout.');
     }
     if (out.expired) {
-      return fail(res, 410, 'expired', 'This key is no longer shown here. Use LOGIN with the key you saved.', { status: publicStatus(out.licence, now(), mode) });
+      return fail(res, 410, 'expired', 'This key is no longer shown here. Use LOGIN with the key you saved.', { status: statusOf(out.licence) });
     }
-    res.json({ key: out.key, ...publicStatus(out.licence, now(), mode) });
+    res.json({ key: out.key, ...statusOf(out.licence) });
   });
 
   // The browser saved the key: the server forgets its copy now instead of in 24 hours.
@@ -307,7 +316,7 @@ export function mountPro(app, {
       limits.guess.hit(ip);
       return fail(res, 401, 'bad_key', 'That key is not valid. Check it and try again.');
     }
-    res.json({ ok: true, ...publicStatus(lic, now(), mode) });
+    res.json({ ok: true, ...statusOf(lic) });
   });
 
   pro.get('/status', (req, res) => {
@@ -370,7 +379,7 @@ export function mountPro(app, {
     const r = limits.rotate.hit(`lic:${a.lic.id}`);
     if (!r.ok) return limited(res, r);
     const out = store.rotateKey(a.lic.id);
-    res.json({ key: out.key, ...publicStatus(out.licence, now(), mode) });
+    res.json({ key: out.key, ...statusOf(out.licence) });
   });
 
   // ---- gifts ---------------------------------------------------------------------------
@@ -412,7 +421,7 @@ export function mountPro(app, {
     }
     try {
       const out = store.redeemGift(code);
-      res.json({ key: out.key, ...publicStatus(out.licence, now(), mode) });
+      res.json({ key: out.key, ...statusOf(out.licence) });
     } catch (err) {
       if (!(err instanceof GiftError)) throw err;
       if (err.code === 'bad_code') limits.guess.hit(ip);

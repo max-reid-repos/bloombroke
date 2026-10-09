@@ -140,6 +140,8 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
       VALUES (?, '----', ?, 'active', ?, ?, ?, ?, ?, ?, ${NEXT_SEAT})`),
     founderSub: db.prepare(`UPDATE licences SET stripe_subscription_id = ?, status = ?,
       past_due_since = CASE WHEN ? = 'past_due' THEN ? ELSE NULL END, updated_at = ? WHERE id = ? AND stripe_subscription_id IS NULL`),
+    // A founders licence's seat class (PRO's status line before go-live), same mode only.
+    foundersClass: db.prepare(`SELECT class FROM founders_seats WHERE licence_id = ? AND livemode IS ? AND status = 'committed' AND charge_state = 'charged' LIMIT 1`),
     termEnd: db.prepare('UPDATE licences SET term_ends_at = ?, updated_at = ? WHERE id = ? AND stripe_subscription_id IS NULL AND gift_expires_at IS NULL'),
     // Daily: a term licence whose term is over ends ('canceled', ended at the term end),
     // so the purge and record rules apply. Only a licence still without a subscription.
@@ -365,6 +367,12 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
     attachFounderSubscription(id, subscriptionId, status) {
       const t = now();
       return Number(q.founderSub.run(subscriptionId, status, status, t, t, id).changes) > 0;
+    },
+    // A charged founders seat's class for this licence: 'ten' | 'founder' | null.
+    foundersClassOf(licenceId, livemode) {
+      const live = livemode === null || livemode === undefined ? null : livemode ? 1 : 0;
+      const c = q.foundersClass.get(licenceId, live)?.class;
+      return c === 'ten' || c === 'founder' ? c : null;
     },
     // Go-live, a five-year seat: when its Pro ends. -> true when it was set.
     setTermEnd(id, at) { return Number(q.termEnd.run(at, now(), id).changes) > 0; },

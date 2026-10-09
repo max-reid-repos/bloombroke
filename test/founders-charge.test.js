@@ -737,6 +737,53 @@ test('term licences: a five-year seat is Pro before go-live, during the term, an
   } finally { await h.close(); }
 });
 
+test('publicStatus foundersClass: a charged founder seat says founder, a five-year seat says ten (also over GET /api/pro/status)', async () => {
+  const h = await harness();
+  try {
+    commitSeat(h.db, 1);
+    commitSeat(h.db, 11);
+    await h.run('charge');
+    const classOf = h.licences.foundersClassOf;
+    const ten = h.licences.findById(h.store.seat(1).licence_id);
+    const founder = h.licences.findById(h.store.seat(11).licence_id);
+    assert.equal(publicStatus(founder, T0, 'live', { classOf }).foundersClass, 'founder');
+    assert.equal(publicStatus(ten, T0, 'live', { classOf }).foundersClass, 'ten');
+    assert.equal(publicStatus(ten, T0).foundersClass, undefined, 'no lookup given: no field');
+    // Through the route: the claimed key's status carries it.
+    const mail = h.mails().find((m) => m.kind === 'charge' && m.seat === 11);
+    const claim = await h.post('/api/founders/claim', { token: h.token(mail, 'claim') });
+    const st = await h.req('GET', '/api/pro/status', { headers: { 'X-Pro-Key': claim.body.key } });
+    assert.equal(st.status, 200);
+    assert.equal(st.body.founders, true);
+    assert.equal(st.body.foundersClass, 'founder');
+  } finally { await h.close(); }
+});
+
+test('publicStatus foundersClass: a Pro licence has no field', () => {
+  const db = openDb(':memory:');
+  const licences = createStore(db, { aesKey: AES, now: () => T0 });
+  const pro = { id: 1, status: 'active', stripe_subscription_id: 'sub_1', checkout_session_id: 'cs_1', livemode: 1, last4: 'ABCD' };
+  let asked = 0;
+  const st = publicStatus(pro, T0, 'live', { classOf: (...a) => { asked++; return licences.foundersClassOf(...a); } });
+  assert.equal(st.founders, undefined);
+  assert.equal(st.foundersClass, undefined);
+  assert.equal(asked, 0, 'only founders licences are looked up');
+});
+
+test('publicStatus foundersClass: a seat of the other livemode is not matched', async () => {
+  const h = await harness({ goalUsd: 420 });
+  try {
+    commitSeat(h.db, 11);
+    await h.run('charge');
+    const id = h.store.seat(11).licence_id;
+    assert.equal(h.licences.foundersClassOf(id, 1), 'founder');
+    assert.equal(h.licences.foundersClassOf(id, 0), null, 'the test-mode lookup does not see a live seat');
+    assert.equal(h.licences.foundersClassOf(id, null), null);
+    const lic = h.licences.findById(id);
+    assert.equal(publicStatus({ ...lic, livemode: 0 }, T0, 'test', { classOf: h.licences.foundersClassOf }).foundersClass, undefined);
+  } finally { await h.close(); }
+});
+
 test('renewal webhooks reach the founder licence through its subscription; the portal refuses a licence without one', async () => {
   const h = await harness();
   try {
