@@ -87,12 +87,13 @@ export function foundersEnv(env = process.env) {
 }
 
 // What the buyer reads above Stripe's button: the mandate, with the amount of the class.
-// Stripe takes up to 1,200 characters; this is about 330.
+// Stripe takes up to 1,200 characters; this is about 340.
 export function mandateText(cls, { goalUsd = DEFAULT_GOAL_USD, deadlineAt } = {}) {
   const at = deadlineAt ?? foundersEnv({}).deadlineAt;
   const charge = cls === 'ten' ? `${usd(CLASSES.ten.usd)} once for this five-year seat` : `${usd(CLASSES.founder.usd)} a year for this founder seat`;
   return `You are saving a card. We charge ${charge}, only when founders reach ${usd(goalUsd)}, and no later than ${fmtDay(at)}. `
-    + `If the goal is not reached by then, we delete the card and you pay nothing. You can give up your seat before the charge by emailing ${CONTACT}.`;
+    + `If the goal is not reached by then, we delete the card and you pay nothing. If the card fails, you get 3 days to pay by link. `
+    + `You can give up your seat before the charge by emailing ${CONTACT}.`;
 }
 
 // An X handle as typed -> the handle to show, or null. A leading @ is dropped; 1 to 15

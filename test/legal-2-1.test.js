@@ -3,6 +3,7 @@
 // custom fields in setup mode). The Terms say five years everywhere in the Founders
 // seats rules, never ten, and the handle line no longer promises a checkout field.
 // After 2.0 comes 2.1, so everyone who accepted 2.0 is asked again.
+// 2.2 added the charge-day rules: test/legal-2-2.test.js holds that wording.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,12 +19,12 @@ const privacy = readFileSync('legal/privacy.md', 'utf8');
 const section = (md, n) => md.slice(md.indexOf(`## ${n}.`), md.indexOf(`## ${n + 1}.`));
 const sub = (md, name) => { const i = md.indexOf(`### ${name}`); return md.slice(i, md.indexOf('\n#', i + 4)); };
 
-test('legal 2.1: the version is 2.1, so everyone who accepted 2.0 is asked again', () => {
-  assert.equal(TERMS_VERSION, '2.1');
-  assert.equal(LEGAL_UPDATED, '9 October 2026');
+test('legal 2.1: the version is 2.1 or later, so everyone who accepted 2.0 is asked again', () => {
+  const [major, minor] = TERMS_VERSION.split('.').map(Number);
+  assert.ok(major > 2 || (major === 2 && minor >= 1), TERMS_VERSION);
   assert.equal(needsConsent(acceptRecord('2.0')), true);
   assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
-  for (const page of [legalPage('terms', terms), legalPage('privacy', privacy)]) assert.match(page, /Version 2\.1\. Last updated 9 October 2026/);
+  for (const page of [legalPage('terms', terms), legalPage('privacy', privacy)]) assert.match(page, new RegExp(`Version ${TERMS_VERSION.replace('.', '\\.')}\\. Last updated ${LEGAL_UPDATED}`));
 });
 
 test('terms: the founders seats rules say five years for seats 1 to 10, never ten', () => {

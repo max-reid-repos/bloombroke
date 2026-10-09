@@ -12,6 +12,7 @@ import { createStore } from '../pro/store.js';
 import { revealKeyFrom } from '../pro/licence.js';
 import { STRIPE_API_VERSION, WEBHOOK_EVENTS } from '../pro/billing.js';
 import { mountPro } from '../pro/routes.js';
+import { TERMS_VERSION } from '../public/legal-version.js';
 import {
   createFounders, createFoundersStore, mountFounders, handleFoundersEvent, foundersEnv, mandateText, cleanHandle, classOf,
   HOLD_MS, SESSION_MS, CLASSES, FOUNDERS_WEBHOOK_EVENTS, FoundersError,
@@ -172,7 +173,7 @@ test('seat classes and the goal math: five-year 1 to 10 at $1,420, founder 11 to
 test('the mandate: the class amount, the goal, the deadline, the way out; inside Stripe\'s limit', () => {
   const at = foundersEnv({}).deadlineAt;
   const f = mandateText('founder', { goalUsd: 17640, deadlineAt: at });
-  assert.equal(f, 'You are saving a card. We charge $420 a year for this founder seat, only when founders reach $17,640, and no later than Dec 15, 2026. If the goal is not reached by then, we delete the card and you pay nothing. You can give up your seat before the charge by emailing hello@bloombroke.com.');
+  assert.equal(f, 'You are saving a card. We charge $420 a year for this founder seat, only when founders reach $17,640, and no later than Dec 15, 2026. If the goal is not reached by then, we delete the card and you pay nothing. If the card fails, you get 3 days to pay by link. You can give up your seat before the charge by emailing hello@bloombroke.com.');
   const t = mandateText('ten', { goalUsd: 17640, deadlineAt: at });
   assert.match(t, /We charge \$1,420 once for this five-year seat, only when founders reach \$17,640/);
   for (const s of [f, t]) {
@@ -235,7 +236,7 @@ test('checkout: setup mode, server-side class and metadata, no custom fields, th
     assert.equal(p.mode, 'setup');
     assert.deepEqual(p.payment_method_types, ['card']);
     assert.equal(p.customer_creation, 'always');
-    assert.deepEqual(p.metadata, { site: 'bloombroke', product: 'founders', seat: '7', class: 'ten', terms_version: '2.1' });
+    assert.deepEqual(p.metadata, { site: 'bloombroke', product: 'founders', seat: '7', class: 'ten', terms_version: TERMS_VERSION });
     assert.deepEqual(p.setup_intent_data.metadata, p.metadata);
     assert.equal(p.success_url, 'https://bloombroke.com/founders?seat=7&s={CHECKOUT_SESSION_ID}');
     assert.match(p.cancel_url, /^https:\/\/bloombroke\.com\/founders\?release=7\.[0-9a-f]{24}$/, 'the hold token, so a cancel frees the seat');
@@ -341,11 +342,11 @@ test('webhook: a completed checkout commits the seat with the card, email, handl
     assert.equal(row.setup_intent_id, 'seti_1');
     assert.equal(row.mandate_at, T0, 'the event time when Stripe gives no mandate');
     assert.equal(row.mandate_ip, '198.51.100.1', 'the address that started the checkout');
-    assert.equal(row.terms_version, '2.1', 'the Terms agreed to');
+    assert.equal(row.terms_version, TERMS_VERSION, 'the Terms agreed to');
     assert.equal(row.livemode, 0);
     // Tagged at Stripe, with idempotency keys.
     const cu = s.stripe.calls.find((c) => c[0] === 'customer.update');
-    assert.deepEqual(cu[2].metadata, { site: 'bloombroke', product: 'founders', seat: '12', class: 'founder', terms_version: '2.1' });
+    assert.deepEqual(cu[2].metadata, { site: 'bloombroke', product: 'founders', seat: '12', class: 'founder', terms_version: TERMS_VERSION });
     assert.equal(cu[3].idempotencyKey, 'bb-founders-customer-cus_1-12');
     assert.equal(s.stripe.calls.find((c) => c[0] === 'pm.update')[3].idempotencyKey, 'bb-founders-pm-pm_1-12');
     // The same event again: nothing new.
