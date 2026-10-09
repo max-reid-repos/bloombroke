@@ -26,7 +26,9 @@
 
 import express from 'express';
 import { createHash, randomBytes } from 'node:crypto';
-import { accessSync, chmodSync, constants as fsConstants, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  accessSync, chmodSync, closeSync, constants as fsConstants, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createLimiter, clientIp } from './ratelimit.js';
@@ -293,10 +295,12 @@ export function createFoundersStore(db, { now = () => Date.now(), livemode = 1, 
     },
     // scripts/founders.js: a committed seat given up before the charge. Back to open, every
     // private field cleared, one public log line ("Seat 12 released Nov 3.").
-    release(seat) {
+    // inside(row): more writes for the same transaction (a charged seat's licence ends).
+    release(seat, { inside = null } = {}) {
       return tx(db, () => {
         const r = q.one.get(seat);
         if (!r) return null;
+        if (inside) inside(r);
         q.release.run(now(), seat);
         if (r.status === 'committed') q.log.run(now(), `Seat ${seat} released ${fmtShort(now())}.`, r.livemode);
         return r;
@@ -619,6 +623,11 @@ export async function checkFoundersPrice(stripe, priceId, livemode) {
 export const DEFAULT_OUTBOX_DIR = '/root/bb-outbox';
 export const EMAIL_KINDS = ['charge', 'failed', 'key', 'golive'];
 export const OUTBOX_FILE_RE = /^founders-\d{8}-[a-z]+\.json$/;
+// A file taken for sending (scripts/founders.js outbox --take): renamed so no writer
+// adds to it again; the next email starts a new file.
+export const TAKEN_PREFIX = '.sending-';
+const LOCK_STALE_MS = 30 * 1000;
+const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const ymd = (ms) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, '');
 
@@ -626,6 +635,22 @@ export function createOutbox({ dir = null, source = 'app', now = () => Date.now(
   const folder = path.resolve(dir || DEFAULT_OUTBOX_DIR);
   if (!/^[a-z]+$/.test(source)) throw new Error('outbox: bad source name');
   const inside = (a, b) => a === b || a.startsWith(b + path.sep);
+  // One writer at a time across processes (the app's pay webhook, the scripts, a take):
+  // a lock file made with O_EXCL. A lock older than 30 seconds is from a dead process.
+  // Synchronous; waits up to about half a second, then throws (the caller retries).
+  const locked = (fn) => {
+    const lock = path.join(folder, '.lock');
+    let fd = null;
+    for (let i = 0; i < 50 && fd === null; i++) {
+      try { fd = openSync(lock, 'wx', 0o600); } catch (err) {
+        if (err?.code !== 'EEXIST') throw err;
+        try { if (Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS) unlinkSync(lock); } catch { /* gone meanwhile */ }
+        pause(10);
+      }
+    }
+    if (fd === null) throw new Error('outbox: busy, try again');
+    try { return fn(); } finally { closeSync(fd); try { unlinkSync(lock); } catch { /* already gone */ } }
+  };
   return {
     dir: folder,
     file() { return path.join(folder, `founders-${ymd(now())}-${source}.json`); },
@@ -645,16 +670,32 @@ export function createOutbox({ dir = null, source = 'app', now = () => Date.now(
         || typeof e.subject !== 'string' || !e.subject || typeof e.text !== 'string' || !e.text) throw new Error('outbox: bad email');
       mkdirSync(folder, { recursive: true, mode: 0o700 });
       const f = this.file();
-      let list = [];
-      // A parse error would quote the file (tokens): a fixed message instead.
-      if (existsSync(f)) { try { list = JSON.parse(readFileSync(f, 'utf8')); } catch { throw new Error('outbox: the file cannot be read as JSON'); } }
-      if (!Array.isArray(list)) throw new Error('outbox: the file is not a list');
-      list.push(e);
-      const tmp = `${f}.tmp-${process.pid}-${randomBytes(4).toString('hex')}`;
-      writeFileSync(tmp, `${JSON.stringify(list, null, 2)}\n`, { mode: 0o600 });
-      renameSync(tmp, f);
-      chmodSync(f, 0o600);
-      return f;
+      return locked(() => {
+        let list = [];
+        // A parse error would quote the file (tokens): a fixed message instead.
+        if (existsSync(f)) { try { list = JSON.parse(readFileSync(f, 'utf8')); } catch { throw new Error('outbox: the file cannot be read as JSON'); } }
+        if (!Array.isArray(list)) throw new Error('outbox: the file is not a list');
+        list.push(e);
+        const tmp = `${f}.tmp-${process.pid}-${randomBytes(4).toString('hex')}`;
+        writeFileSync(tmp, `${JSON.stringify(list, null, 2)}\n`, { mode: 0o600 });
+        renameSync(tmp, f);
+        chmodSync(f, 0o600);
+        return f;
+      });
+    },
+    // Take one waiting file for sending: renamed to .sending-<name> under the lock, so a
+    // writer never adds to it (or brings it back) while it is sent. -> the new path.
+    take(name) {
+      if (!OUTBOX_FILE_RE.test(String(name || ''))) throw new Error('outbox: name a waiting file, like founders-20261201-charge.json');
+      const from = path.join(folder, name);
+      const to = path.join(folder, `${TAKEN_PREFIX}${name}`);
+      return locked(() => {
+        if (!existsSync(from)) throw new Error(`outbox: no file ${name}`);
+        if (existsSync(to)) throw new Error(`outbox: ${TAKEN_PREFIX}${name} is already being sent; finish that first`);
+        renameSync(from, to);
+        chmodSync(to, 0o600);
+        return to;
+      });
     },
   };
 }
@@ -884,13 +925,13 @@ export function payDecision(session, row, lm) {
 }
 
 // A late or mismatched pay-link payment back in full. Idempotent (the key names the
-// PaymentIntent; one already refunded is fine).
+// PaymentIntent and the reason; one already refunded is fine).
 export async function refundPayment(stripe, paymentIntentId, { seat = null, why = '' } = {}) {
   if (!paymentIntentId) throw new Error('no PaymentIntent to refund');
   try {
     await stripe.refunds.create(
       { payment_intent: paymentIntentId, metadata: { ...FOUNDERS_METADATA, kind: 'pay_refund', seat: String(seat ?? ''), why: String(why).slice(0, 40) } },
-      { idempotencyKey: `bb-founders-refund-${paymentIntentId}` },
+      { idempotencyKey: `bb-founders-refund-${paymentIntentId}-${String(why).replace(/[^a-z_]/g, '')}` },
     );
     return 'refunded';
   } catch (err) {
@@ -912,6 +953,18 @@ export async function applyPaySession(session, ctx) {
   const key = isSeat(seat) ? seat : 0;
   if (ctx.busy.has(key)) throw new NotYet('this seat is being applied');
   ctx.busy.add(key);
+  // A refund that fails is logged loudly and thrown: the webhook answers 500 and Stripe
+  // sends the event again (for up to 3 days), so it is never dropped silently.
+  const refund = async (piId, why) => {
+    try {
+      await refundPayment(stripe, piId, { seat, why });
+    } catch (err) {
+      log.error(`[founders] REFUND FAILED seat ${isSeat(seat) ? seat : '?'} (${why}): ${err?.type || ''} ${err?.code || err?.message || ''}. Stripe will retry; refund it by hand if this repeats.`);
+      throw err;
+    }
+    log.log(`[founders] a pay-link payment was refunded in full (${why}), seat ${isSeat(seat) ? seat : '?'}`);
+    return 'founders_pay_refunded';
+  };
   try {
     const row = isSeat(seat) ? store.seat(seat) : null;
     const d = payDecision(session, row, lm);
@@ -922,27 +975,17 @@ export async function applyPaySession(session, ctx) {
       return 'founders_pay_wrong_mode';
     }
     const piId = idOf(session.payment_intent);
-    if (d.action === 'refund') {
-      await refundPayment(stripe, piId, { seat, why: d.why });
-      log.log(`[founders] a pay-link payment was refunded in full (${d.why}), seat ${isSeat(seat) ? seat : '?'}`);
-      return 'founders_pay_refunded';
-    }
+    if (d.action === 'refund') return refund(piId, d.why);
     const pi = await stripe.paymentIntents.retrieve(piId, { expand: ['payment_method'] });
     if (pi.status !== 'succeeded') throw new NotYet(`PaymentIntent ${pi.status}`);
-    if (pi.amount_received !== seatCents(seat) || pi.currency !== 'usd') {
-      await refundPayment(stripe, piId, { seat, why: 'amount' });
-      log.log(`[founders] a pay-link payment was refunded in full (amount), seat ${seat}`);
-      return 'founders_pay_refunded';
-    }
+    if (pi.amount_received !== seatCents(seat) || pi.currency !== 'usd') return refund(piId, 'amount');
     const pmId = idOf(pi.payment_method);
     const fingerprint = typeof pi.payment_method === 'object' ? pi.payment_method?.card?.fingerprint || null : null;
     const out = markCharged(ctx, { seat, from: 'failed', paymentIntentId: piId, paySessionId: session.id, paymentMethodId: pmId, fingerprint });
     if (out.already) return 'founders_pay_already';
     if (out.conflict) {
       // The seat changed since the checks (given back a moment ago): the money goes back.
-      await refundPayment(stripe, piId, { seat, why: 'state' });
-      log.log(`[founders] a pay-link payment was refunded in full (state), seat ${seat}`);
-      return 'founders_pay_refunded';
+      return refund(piId, 'state');
     }
     // The card that failed on charge day comes off; the new one stays for the renewal.
     if (row.payment_method_id && row.payment_method_id !== pmId) {
@@ -974,6 +1017,12 @@ export function createFounders({ db, stripe = null, env = process.env, mode = 'l
     db, stripe, licences, store, now, log, publicUrl: env.PUBLIC_URL || 'https://bloombroke.com', priceId: foundersPriceId(env, mode),
     outbox: createOutbox({ dir: env.FOUNDERS_OUTBOX_DIR || null, source: 'pay', now }),
   }) : null;
+  // The pay webhook writes key emails to the outbox: say so loudly at start if it cannot.
+  if (charge) {
+    try { charge.outbox.check(); } catch (err) {
+      log.error(`[founders] OUTBOX NOT WRITABLE (${charge.outbox.dir}): ${err.message}. Pay-link payments will fail and be retried until this is fixed (FOUNDERS_OUTBOX_DIR).`);
+    }
+  }
   const f = {
     cfg, store, stripe, mode, charge,
     // Seats can be saved right now: open, before the deadline, and not frozen for the
@@ -1168,9 +1217,14 @@ export function mountFounders(app, {
         if (open?.status === 'complete') return fail(res, 409, 'paid', 'Payment received. Your key is on its way by email.');
         if (open?.status === 'open' && open.expires_at * 1000 > t + MIN) return res.json({ ...info, url: open.url });
       }
+      // The key names the minute and the params use the start of that minute, so a retry
+      // within it gets the same session and a later one a new key (never the same key with
+      // other params). A stray session is harmless: only the stored one is ever applied,
+      // and a payment on any other is refunded.
+      const minute = Math.floor(t / MIN) * MIN;
       const session = await founders.stripe.checkout.sessions.create(
-        payCheckoutParams({ row, publicUrl: base, at: t }),
-        { idempotencyKey: `bb-founders-pay-${lm}-${row.seat}-${row.pay_hash.slice(0, 16)}-${row.pay_session_id || 'first'}` },
+        payCheckoutParams({ row, publicUrl: base, at: minute }),
+        { idempotencyKey: `bb-founders-pay-${lm}-${row.seat}-${row.pay_hash.slice(0, 16)}-${row.pay_session_id || 'first'}-${minute / MIN}` },
       );
       if (!founders.store.setPaySession(row.seat, row.pay_hash, session.id)) return fail(res, 409, 'changed', LOST);
       res.json({ ...info, url: session.url });

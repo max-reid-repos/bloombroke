@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import Stripe from 'stripe';
-import { mkdtempSync, rmSync, readdirSync, readFileSync, statSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, readdirSync, readFileSync, statSync, writeFileSync, mkdirSync, copyFileSync, utimesSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -40,7 +40,10 @@ const DAY = 24 * HOUR;
 const quiet = { log() {}, error() {} };
 const ORIGIN = { Origin: 'https://bloombroke.com' };
 const PRICE = 'price_founders_yearly';
-const GOLIVE = Date.UTC(2027, 0, 5);
+// Go-live is today or a past day (Stripe's anchor rule): the day after charge day here.
+const GOLIVE = Date.UTC(2026, 11, 2);
+const GOLIVE_DAY = '2026-12-02';
+const AFTER_GOLIVE = GOLIVE + 12 * HOUR;
 
 // ---- the fake Stripe ------------------------------------------------------------------------
 
@@ -61,11 +64,17 @@ function fakeStripe({ live = true, now = () => Date.now() } = {}) {
   const missing = () => Object.assign(new Error('No such object'), { statusCode: 404, code: 'resource_missing' });
   const copy = (o) => JSON.parse(JSON.stringify(o));
   const gen = (rows) => (async function* () { for (const r of rows) yield copy(r); })();
-  const once = (opts, make) => {
+  // Like Stripe: the same key with other params is an error, never a second object.
+  const once = (opts, p, make) => {
     const k = opts?.idempotencyKey;
-    if (k && idem.has(k)) return copy(idem.get(k));
+    const params = JSON.stringify(p);
+    if (k && idem.has(k)) {
+      const seen = idem.get(k);
+      if (seen.params !== params) throw new Stripe.errors.StripeIdempotencyError({ message: 'Keys for idempotent requests can only be used with the same parameters', type: 'idempotency_error' });
+      return copy(seen.o);
+    }
     const o = make();
-    if (k) idem.set(k, o);
+    if (k) idem.set(k, { params, o });
     return copy(o);
   };
   const hooks = {};
@@ -76,7 +85,7 @@ function fakeStripe({ live = true, now = () => Date.now() } = {}) {
       async create(p, opts) {
         calls.push(['pi.create', p, opts]);
         if (hooks.piCreate) hooks.piCreate(p);
-        return once(opts, () => {
+        return once(opts, p, () => {
           const o = { id: id('pi'), object: 'payment_intent', status: 'requires_confirmation', amount: p.amount, currency: p.currency, customer: p.customer,
             payment_method: p.payment_method, metadata: p.metadata, livemode: live, receipt_email: p.receipt_email, description: p.description };
           pis[o.id] = o;
@@ -85,6 +94,7 @@ function fakeStripe({ live = true, now = () => Date.now() } = {}) {
       },
       async retrieve(pid, p) {
         calls.push(['pi.retrieve', pid, p]);
+        if (hooks.piRetrieve) await hooks.piRetrieve(pid);
         if (!pis[pid]) throw missing();
         const o = copy(pis[pid]);
         if (p?.expand?.includes('latest_charge')) o.latest_charge = { refunded: Boolean(pis[pid].refunded) };
@@ -95,6 +105,9 @@ function fakeStripe({ live = true, now = () => Date.now() } = {}) {
         calls.push(['pi.confirm', pid, p, opts]);
         if (hooks.confirm) hooks.confirm(pid);
         const pi = pis[pid];
+        if (pi.status !== 'requires_confirmation') {
+          throw new Stripe.errors.StripeInvalidRequestError({ message: 'unexpected state', type: 'invalid_request_error', code: 'payment_intent_unexpected_state', payment_intent: copy(pi) });
+        }
         const how = cards[pi.payment_method] || 'ok';
         if (how === 'network') throw new Stripe.errors.StripeConnectionError({ message: 'socket hang up' });
         if (how === 'apierror') throw new Stripe.errors.StripeAPIError({ message: 'something broke', type: 'api_error' });
@@ -108,6 +121,15 @@ function fakeStripe({ live = true, now = () => Date.now() } = {}) {
         throw new Stripe.errors.StripeCardError({ message: 'Your card was declined.', type: 'card_error', code, decline_code: decline, payment_intent: copy(pi) });
       },
       list({ customer }) { calls.push(['pi.list', customer]); return gen(Object.values(pis).filter((p) => p.customer === customer)); },
+      async cancel(pid, p, opts) {
+        calls.push(['pi.cancel', pid, opts]);
+        const pi = pis[pid];
+        if (!['requires_confirmation', 'requires_payment_method', 'requires_action'].includes(pi.status)) {
+          throw new Stripe.errors.StripeInvalidRequestError({ message: 'unexpected state', type: 'invalid_request_error', code: 'payment_intent_unexpected_state', payment_intent: copy(pi) });
+        }
+        pi.status = 'canceled';
+        return copy(pi);
+      },
     },
     paymentMethods: {
       async retrieve(pm) { calls.push(['pm.retrieve', pm]); return { id: pm, card: pm === 'pm_old' ? { brand: 'visa', last4: '0002', exp_month: 1, exp_year: 2025 } : { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 } }; },
@@ -123,7 +145,7 @@ function fakeStripe({ live = true, now = () => Date.now() } = {}) {
       sessions: {
         async create(p, opts) {
           calls.push(['checkout.create', p, opts]);
-          return once(opts, () => {
+          return once(opts, p, () => {
             const sid = `cs_${live ? 'live' : 'test'}_pay${String(++n).padStart(12, '0')}`;
             const o = { id: sid, object: 'checkout.session', mode: p.mode, status: 'open', metadata: p.metadata, url: `https://checkout.stripe.com/c/pay/${sid}`,
               expires_at: p.expires_at, customer: p.customer, livemode: live, created: Math.floor(now() / 1000), currency: 'usd', amount_total: p.line_items?.[0]?.price_data?.unit_amount ?? null };
@@ -140,7 +162,7 @@ function fakeStripe({ live = true, now = () => Date.now() } = {}) {
       list({ customer }) { calls.push(['sub.list', customer]); return gen(Object.values(subs).filter((s) => s.customer === customer)); },
       async create(p, opts) {
         calls.push(['sub.create', p, opts]);
-        return once(opts, () => {
+        return once(opts, p, () => {
           const o = { id: id('sub'), object: 'subscription', status: 'active', customer: p.customer, metadata: p.metadata, cancel_at_period_end: false, cancel_at: null, livemode: live,
             items: { data: [{ price: { id: p.items[0].price, recurring: { interval: 'year', interval_count: 1 } }, current_period_end: p.billing_cycle_anchor }] } };
           subs[o.id] = o;
@@ -185,8 +207,10 @@ async function harness({ live = true, goalUsd = 1840, start = T0, http = true } 
   const ctx = createChargeContext({ db, stripe, licences, livemode: lm, now, log: quiet, priceId: PRICE, outbox: createOutbox({ dir: outDir, source: 'charge', now }), deadlineAt: DEADLINE });
   const lines = [];
   const print = (l) => lines.push(l);
+  const logs = [];
+  const log = { log: (...a) => logs.push(a.join(' ')), error: (...a) => logs.push(a.join(' ')) };
   const env = { FOUNDERS: 'open', FOUNDERS_OUTBOX_DIR: outDir, STRIPE_FOUNDERS_PRICE_ID: PRICE, STRIPE_FOUNDERS_PRICE_ID_TEST: PRICE };
-  const founders = createFounders({ db, stripe, env, mode: live ? 'live' : 'test', webhookReady: true, now, log: quiet, licences });
+  const founders = createFounders({ db, stripe, env, mode: live ? 'live' : 'test', webhookReady: true, now, log, licences });
   let server = null;
   let base = '';
   if (http) {
@@ -228,12 +252,12 @@ async function harness({ live = true, goalUsd = 1840, start = T0, http = true } 
   const token = (mail, kind) => new RegExp(`#${kind}=([A-Za-z0-9_-]{43})`).exec(mail.text)?.[1];
   const close = async () => { if (server) await new Promise((r) => server.close(r)); rmSync(dir, { recursive: true, force: true }); };
   return {
-    db, stripe, licences, ctx, cfg, lines, print, founders, store: ctx.store, req, post, sendEvent, mails, token, outDir, dir, close, now,
+    db, stripe, licences, ctx, cfg, lines, print, logs, founders, store: ctx.store, req, post, sendEvent, mails, token, outDir, dir, close, now,
     advance(ms) { t += ms; }, set(ms) { t = ms; },
     run: (cmd, extra = {}) => ({
       charge: () => script.charge({ ctx, cfg, print, execute: true, ...extra }),
       dry: () => script.charge({ ctx, cfg, print, execute: false, ...extra }),
-      golive: () => script.golive({ ctx, print, execute: true, date: '2027-01-05', ...extra }),
+      golive: () => script.golive({ ctx, print, execute: true, date: GOLIVE_DAY, ...extra }),
       reconcile: () => script.reconcile({ ctx, print, execute: true, ...extra }),
       expire: () => script.expireUnpaid({ ctx, print, execute: true, ...extra }),
     })[cmd](),
@@ -309,8 +333,12 @@ test('charge: dry run prints totals, masked emails, cards and the checklist; cha
     assert.ok(!text.includes('ann@example.com'), 'emails are masked');
     assert.match(text, /visa 4242, exp 12\/2030/);
     assert.match(text, /visa 0002, exp 01\/2025 {2}WARNING: EXPIRED/);
-    assert.match(text, /cancel at period end ON; switching plans OFF; changing quantity OFF/);
+    assert.match(text, /Customer portal \(default\): cancel only, at period end; switching plans OFF; changing quantity OFF/);
     assert.match(text, /"Successful payments" ON/);
+    assert.match(text, /Refunds \(write\) and Billing Portal \/ Customer portal \(write\)/);
+    assert.match(text, /The app can write FOUNDERS_OUTBOX_DIR/);
+    assert.match(text, /writes STRIPE_FOUNDERS_PRICE_ID, restart the app/);
+    assert.match(text, /Never run two charge runs at once/);
     assert.match(text, /Would charge 2 seats/);
     assert.equal(h.stripe.calls.filter((c) => !c[0].endsWith('retrieve')).length, 0, 'only reads');
     assert.equal(h.store.frozen(), false);
@@ -412,6 +440,10 @@ test('charge: a decline and authentication_required mark the seat failed with a 
     assert.match(mails[0].text, /until Dec 4, 2026, 12:00 UTC/);
     assert.match(mails[0].text, /\$1,420 for founders seat 1 \(five-year seat\)/);
     assert.equal(h.founders.status().committedUsd, 1420 + 840, 'failed seats still count until given back');
+    // Item 7: each failed PaymentIntent is cancelled, so it can never charge.
+    for (const r of codes) assert.equal(h.stripe.pis[r.payment_intent_id].status, 'canceled');
+    assert.deepEqual(h.stripe.calls.filter((c) => c[0] === 'pi.cancel').map((c) => c[2].idempotencyKey), codes.map((r) => `bb-founders-cancel-${r.payment_intent_id}`));
+    assert.match(h.lines.join('\n'), /seat 1: failed \(generic_decline; PaymentIntent cancelled\)/);
   } finally { await h.close(); }
 });
 
@@ -518,18 +550,35 @@ test('charge: refused below the goal, after the deadline, and for a seat of the 
     assert.equal((await h.run('charge')).code, 1);
     assert.match(h.lines.join('\n'), /After the deadline: nothing is being charged/);
     assert.equal(h.stripe.calls.length, 0);
-    // Seat 1 was started before the deadline and stopped: after it, only seat 1 is finished.
+    // Before the deadline: seat 1's run stopped before its confirm; seat 11 was confirmed
+    // at Stripe but the run died before saving it; seat 13 never started.
+    commitSeat(h.db, 13);
     h.set(T0);
     h.stripe.cards.pm_1 = 'network';
     assert.equal((await h.run('charge')).code, 2);
     assert.equal(h.store.seat(1).charge_state, 'charging');
+    const pi1 = h.store.seat(1).payment_intent_id;
+    const pi11 = await h.stripe.paymentIntents.create(script.chargeParams(h.store.seat(11)), {});
+    h.store.startCharging(11, pi11.id);
+    Object.assign(h.stripe.pis[pi11.id], { status: 'succeeded', amount_received: 42000 });
+    // After the deadline (item 5): seat 11 is recorded as paid; seat 1 is never confirmed:
+    // its PaymentIntent is cancelled and the seat given back; seat 13 is never started.
     h.set(DEADLINE + HOUR);
     h.stripe.cards.pm_1 = 'ok';
+    h.stripe.calls.length = 0;
     assert.equal((await h.run('charge')).code, 0, h.lines.join('\n'));
-    assert.equal(h.store.seat(1).charge_state, 'charged');
-    assert.equal(h.store.seat(11).charge_state, null, 'never started after the deadline');
+    assert.equal(h.stripe.calls.filter((c) => c[0] === 'pi.confirm').length, 0, 'nothing confirmed after the deadline');
+    assert.equal(h.stripe.pis[pi1].status, 'canceled');
+    assert.ok(h.stripe.calls.some((c) => c[0] === 'pi.cancel' && c[1] === pi1 && c[2].idempotencyKey === `bb-founders-cancel-${pi1}`));
+    assert.equal(h.store.seat(1).status, 'open', 'given back');
+    assert.equal(h.store.seat(1).payment_intent_id, null);
+    assert.ok(h.stripe.calls.some((c) => c[0] === 'customer.del' && c[1] === 'cus_1'), 'card deleted with the customer');
+    assert.match(h.lines.join('\n'), /seat 1: released \(after the deadline: not charged, PaymentIntent cancelled, customer deleted\)/);
+    assert.equal(h.store.seat(11).charge_state, 'charged');
+    assert.equal(h.store.seat(13).charge_state, null, 'never started after the deadline');
     assert.equal(h.store.seat(12).charge_state, null, 'the other mode is never charged');
     assert.match(h.lines.join('\n'), /1 seats were never started and the deadline has passed/);
+    assert.match(h.lines.join('\n'), /1 given back \(after the deadline, not charged\)/);
   } finally { await h.close(); }
 });
 
@@ -572,10 +621,11 @@ test('golive: founder seats get one anchored renewal (reused on a re-run), five-
     commitSeat(h.db, 11, { email: 'bob@example.com' });
     await h.run('charge');
     // Dry run: nothing saved.
+    h.set(AFTER_GOLIVE);
     assert.equal((await h.run('golive', { execute: false })).code, 0);
     assert.equal(h.store.state().golive_at, null);
-    assert.match(h.lines.join('\n'), /renewal \$420 on Jan 5, 2028/);
-    assert.match(h.lines.join('\n'), /Pro until Jan 5, 2032/);
+    assert.match(h.lines.join('\n'), /renewal \$420 on Dec 2, 2027/);
+    assert.match(h.lines.join('\n'), /Pro until Dec 2, 2031/);
     const out = await h.run('golive');
     assert.equal(out.code, 0, h.lines.join('\n'));
     assert.equal(h.store.state().golive_at, GOLIVE);
@@ -584,7 +634,7 @@ test('golive: founder seats get one anchored renewal (reused on a re-run), five-
     const [p, opts] = creates[0].slice(1);
     assert.deepEqual(p, {
       customer: 'cus_11', items: [{ price: PRICE, quantity: 1 }], default_payment_method: 'pm_11', payment_settings: { payment_method_types: ['card'] },
-      billing_cycle_anchor: Date.UTC(2028, 0, 5) / 1000, proration_behavior: 'none', description: 'Bloombroke founders seat 11 (founder seat, yearly renewal)',
+      billing_cycle_anchor: Date.UTC(2027, 11, 2) / 1000, proration_behavior: 'none', description: 'Bloombroke founders seat 11 (founder seat, yearly renewal)',
       metadata: { site: 'bloombroke', product: 'founders', kind: 'renewal', seat: '11', class: 'founder', terms_version: '2.2' },
     });
     assert.equal(opts.idempotencyKey, `bb-founders-sub-1-11-${GOLIVE}`);
@@ -593,25 +643,25 @@ test('golive: founder seats get one anchored renewal (reused on a re-run), five-
     assert.equal(r11.subscription_id, sub.id);
     const lic11 = h.licences.findById(r11.licence_id);
     assert.equal(lic11.stripe_subscription_id, sub.id);
-    assert.equal(lic11.current_period_end, Date.UTC(2028, 0, 5), 'Renews Jan 5, 2028');
+    assert.equal(lic11.current_period_end, Date.UTC(2027, 11, 2), 'Renews Dec 2, 2027');
     assert.equal(lic11.billing_interval, 'year');
     assert.equal(lic11.cancel_at_period_end, 0);
     assert.equal(willRenew(lic11), true);
-    assert.equal(publicStatus(lic11, T0).currentPeriodEnd, '2028-01-05T00:00:00.000Z');
+    assert.equal(publicStatus(lic11, T0).currentPeriodEnd, '2027-12-02T00:00:00.000Z');
     const lic1 = h.licences.findById(h.store.seat(1).licence_id);
-    assert.equal(lic1.term_ends_at, Date.UTC(2032, 0, 5));
+    assert.equal(lic1.term_ends_at, Date.UTC(2031, 11, 2));
     assert.equal(willRenew(lic1), false);
     // P5: one go-live email per seat.
     const gl = h.mails().filter((m) => m.kind === 'golive');
     assert.deepEqual(gl.map((m) => m.seat), [1, 11]);
-    assert.match(gl[1].text, /renews on Jan 5, 2028 at \$420/);
-    assert.match(gl[0].text, /Pro until Jan 5, 2032\. It does not renew/);
+    assert.match(gl[1].text, /renews on Dec 2, 2027 at \$420/);
+    assert.match(gl[0].text, /Pro until Dec 2, 2031\. It does not renew/);
     // Re-run: nothing new, no second email.
     assert.equal((await h.run('golive')).code, 0);
     assert.equal(h.stripe.calls.filter((c) => c[0] === 'sub.create').length, 1);
     assert.equal(h.mails().filter((m) => m.kind === 'golive').length, 2);
     // Another day is refused.
-    assert.equal((await h.run('golive', { date: '2027-02-01' })).code, 1);
+    assert.equal((await h.run('golive', { date: '2026-11-30' })).code, 1);
   } finally { await h.close(); }
 });
 
@@ -622,6 +672,7 @@ test('golive: a subscription made before a crash is reused; a wrong or missing p
     commitSeat(h.db, 11);
     commitSeat(h.db, 12);
     await h.run('charge');
+    h.set(AFTER_GOLIVE);
     h.stripe.priceData[PRICE].unit_amount = 4200;
     assert.equal((await h.run('golive')).code, 1);
     assert.match(h.lines.at(-1), /not \$420 USD/);
@@ -632,7 +683,7 @@ test('golive: a subscription made before a crash is reused; a wrong or missing p
     h.stripe.priceData[PRICE].metadata = { site: 'bloombroke', product: 'founders' };
     assert.equal(h.store.state().golive_at, null, 'refused before saving the day');
     // Seat 11's renewal exists at Stripe already (the earlier run died before saving it).
-    const made = await h.stripe.subscriptions.create({ customer: 'cus_11', items: [{ price: PRICE }], billing_cycle_anchor: Date.UTC(2028, 0, 5) / 1000,
+    const made = await h.stripe.subscriptions.create({ customer: 'cus_11', items: [{ price: PRICE }], billing_cycle_anchor: Date.UTC(2027, 11, 2) / 1000,
       metadata: { site: 'bloombroke', product: 'founders', kind: 'renewal', seat: '11', class: 'founder' } }, {});
     // Seat 12 deleted the account (DELETE MY ACCOUNT) before go-live.
     h.licences.closeAccount(h.store.seat(12).licence_id);
@@ -657,12 +708,13 @@ test('term licences: a five-year seat is Pro before go-live, during the term, an
     assert.equal(st0.founders, true);
     assert.equal(st0.canGift, false, 'no gift codes without a subscription');
     assert.equal(st0.cancelAt, undefined);
+    h.set(AFTER_GOLIVE);
     await h.run('golive');
     lic = h.licences.findById(id);
-    const end = Date.UTC(2032, 0, 5);
+    const end = Date.UTC(2031, 11, 2);
     assert.equal(proAccess(lic, end - 1).active, true);
     const st = publicStatus(lic, T0);
-    assert.equal(st.termUntil, '2032-01-05T00:00:00.000Z');
+    assert.equal(st.termUntil, '2031-12-02T00:00:00.000Z');
     assert.equal(st.cancelAt, st.termUntil, 'reads "ends, no renewal": no CANCEL');
     assert.equal(proAccess(lic, end).active, false, 'off at the end even before the sweep');
     // The sweep: before the end nothing, after it 'canceled' at the term end.
@@ -694,6 +746,7 @@ test('renewal webhooks reach the founder licence through its subscription; the p
     const portal = await h.req('POST', '/api/pro/portal', { headers: { 'X-Pro-Key': claim.body.key } });
     assert.equal(portal.status, 409);
     assert.equal(portal.body.error, 'no_subscription');
+    h.set(AFTER_GOLIVE);
     await h.run('golive');
     const sub = Object.values(h.stripe.subs)[0];
     sub.status = 'past_due';
@@ -765,7 +818,7 @@ test('pay link: peek, a card-only Checkout bound to the link, reused while open,
     assert.ok(p.expires_at * 1000 <= T0 + PAY_WINDOW_MS, 'never past the pay link');
     assert.ok(p.expires_at * 1000 >= T0 + 30 * MIN, 'Stripe\'s least');
     assert.ok(p.expires_at * 1000 <= T0 + 24 * HOUR, 'Stripe\'s most');
-    assert.match(opts.idempotencyKey, /^bb-founders-pay-1-11-[0-9a-f]{16}-first$/);
+    assert.match(opts.idempotencyKey, new RegExp(`^bb-founders-pay-1-11-[0-9a-f]{16}-first-${T0 / MIN}$`));
     const sid = h.store.seat(11).pay_session_id;
     assert.equal(a.body.url, h.stripe.sessions[sid].url);
     // Open: the same session again.
@@ -867,7 +920,7 @@ test('pay webhook guards: wrong amount, currency, session or state is refunded i
     // Seat 14 was given back before the payment landed.
     h.store.markUnpaid(14);
     assert.equal((await send(cases[3].session)).body.result, 'founders_pay_refunded');
-    assert.deepEqual(h.stripe.refundLog.map((r) => [r.p.payment_intent, r.opts.idempotencyKey]), cases.map((c) => [c.pi, `bb-founders-refund-${c.pi}`]));
+    assert.deepEqual(h.stripe.refundLog.map((r) => [r.p.payment_intent, r.opts.idempotencyKey]), cases.map((c, i) => [c.pi, `bb-founders-refund-${c.pi}-${['amount', 'currency', 'session', 'state'][i]}`]));
     assert.deepEqual(h.stripe.refundLog.map((r) => r.p.metadata.why), ['amount', 'currency', 'session', 'state']);
     assert.ok(h.stripe.refundLog.every((r) => r.p.amount === undefined), 'in full');
     for (const s of [11, 12, 13, 14]) assert.notEqual(h.store.seat(s).charge_state, 'charged');
@@ -943,21 +996,22 @@ test('pay after go-live: a five-year seat gets its end at once, a founder seat i
     commitSeat(h.db, 12);
     Object.assign(h.stripe.cards, { pm_bad1: 'decline', pm_bad11: 'decline' });
     await h.run('charge');
+    h.set(AFTER_GOLIVE);
     await h.run('golive');
     for (const s of [1, 11]) {
       const { session } = await paidPaySession(h, s);
       assert.equal((await h.sendEvent('checkout.session.completed', session)).body.result, 'founders_paid');
     }
     const lic1 = h.licences.findById(h.store.seat(1).licence_id);
-    assert.equal(lic1.term_ends_at, Date.UTC(2032, 0, 5), 'P10: go-live + 5 years');
+    assert.equal(lic1.term_ends_at, Date.UTC(2031, 11, 2), 'P10: go-live + 5 years');
     const r11 = h.store.seat(11);
     assert.ok(r11.subscription_id);
     const sub = h.stripe.calls.filter((c) => c[0] === 'sub.create').find((c) => c[1].metadata.seat === '11')[1];
-    assert.equal(sub.billing_cycle_anchor, Date.UTC(2028, 0, 5) / 1000, 'P10: go-live + 1 year');
+    assert.equal(sub.billing_cycle_anchor, Date.UTC(2027, 11, 2) / 1000, 'P10: go-live + 1 year');
     assert.equal(sub.default_payment_method, 'pm_new11', 'the card just used');
     const keys = h.mails().filter((m) => m.kind === 'key');
-    assert.match(keys[0].text, /Pro goes live on Jan 5, 2027\. Your five-year seat gives you Pro until Jan 5, 2032/);
-    assert.match(keys[1].text, /Your seat renews on Jan 5, 2028 at \$420/);
+    assert.match(keys[0].text, /Pro goes live on Dec 2, 2026\. Your five-year seat gives you Pro until Dec 2, 2031/);
+    assert.match(keys[1].text, /Your seat renews on Dec 2, 2027 at \$420/);
   } finally { await h.close(); }
 });
 
@@ -1007,7 +1061,7 @@ test('emails: plain, short, no em dash, the right facts per kind', () => {
   assert.match(all[0].text, /renews one year after that day, at \$420 a year/);
   assert.match(all[1].text, /five years from that day\. It does not renew/);
   assert.match(all[2].text, /If it is not paid by then, the seat is given back and we delete your saved card/);
-  assert.match(all[4].subject, /goes live on Jan 5, 2027/);
+  assert.match(all[4].subject, /goes live on Dec 2, 2026/);
   assert.doesNotMatch(all[4].text, /receipt/i, 'P9: renewals are never described as sending receipts');
   assert.equal(addYears(Date.UTC(2028, 1, 29), 1), Date.UTC(2029, 2, 1), 'Feb 29 + 1 year is Mar 1');
 });
@@ -1015,7 +1069,7 @@ test('emails: plain, short, no em dash, the right facts per kind', () => {
 test('scripts/send-outbox.cjs: dry run counts; --send posts each to Cloudflare, takes it out of the file, stops on a failure, never logs bodies', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'bb-send-'));
   try {
-    const file = path.join(dir, 'founders-20261201-charge.json');
+    const file = path.join(dir, '.sending-founders-20261201-charge.json');
     const tok = 'C'.repeat(43);
     const list = [
       chargeEmail({ seat: 11, to: 'ann@example.com', token: tok, publicUrl: 'https://bloombroke.com' }),
@@ -1088,14 +1142,237 @@ test('stripe setup: the founders product and its $420 yearly price, made once, w
   assert.ok(!b.report.join(' ').includes('price_'), 'no ids in the report');
 });
 
-test('release: refuses a seat being charged; warns for a charged one', async () => {
+test('release: refuses a seat being charged; a charged seat says to refund by hand and its licence ends in the same step', async () => {
+  const h = await harness({ goalUsd: 420, http: false });
+  try {
+    commitSeat(h.db, 12);
+    h.db.prepare("UPDATE founders_seats SET charge_state = 'charging', payment_intent_id = 'pi_x' WHERE seat = 12").run();
+    const r = await script.release({ db: h.db, stripe: null, seat: 12, execute: true, now: h.now });
+    assert.equal(r.done, false);
+    assert.match(r.text, /being charged right now/);
+    h.db.prepare("UPDATE founders_seats SET charge_state = NULL, payment_intent_id = NULL WHERE seat = 12").run();
+    await h.run('charge');
+    const licId = h.store.seat(12).licence_id;
+    assert.match((await script.release({ db: h.db, seat: 12, now: h.now })).text, /was charged: release does NOT refund\. Refund the payment in the Stripe dashboard/);
+    assert.equal(h.licences.findById(licId).status, 'active', 'dry run');
+    h.advance(HOUR);
+    const out = await script.release({ db: h.db, stripe: h.stripe, seat: 12, execute: true, now: h.now });
+    assert.equal(out.done, true, out.text);
+    assert.match(out.text, /release does NOT refund/);
+    const lic = h.licences.findById(licId);
+    assert.equal(lic.status, 'canceled');
+    assert.equal(lic.ended_at, h.now());
+    assert.equal(proAccess(lic, h.now()).active, false);
+    assert.equal(h.store.seat(12).status, 'open');
+    assert.equal(h.stripe.refundLog.length, 0, 'never refunds by itself');
+    assert.equal(hashKey('x').length, 64);
+  } finally { await h.close(); }
+});
+
+// ---- reviewer fixes ---------------------------------------------------------------------------
+
+test('fake Stripe idempotency: the same key with other params is refused; the pay link key is the same within a minute and new after it', async () => {
+  const stripe = fakeStripe();
+  await stripe.paymentIntents.create({ amount: 1 }, { idempotencyKey: 'k1' });
+  await assert.rejects(stripe.paymentIntents.create({ amount: 2 }, { idempotencyKey: 'k1' }), (e) => e.type === 'StripeIdempotencyError');
+  const h = await harness({ goalUsd: 420 });
+  try {
+    commitSeat(h.db, 11, { pm: 'pm_bad' });
+    h.stripe.cards.pm_bad = 'decline';
+    await h.run('charge');
+    const tok = h.token(h.mails()[0], 'pay');
+    // The first try dies after Stripe made the session, before it was saved.
+    const real = h.founders.store.setPaySession;
+    h.founders.store.setPaySession = () => false;
+    h.advance(20 * 1000);
+    assert.equal((await h.post('/api/founders/pay', { token: tok })).status, 409);
+    h.founders.store.setPaySession = real;
+    // A retry 20 seconds later: same key, same params, the same session (no error).
+    h.advance(20 * 1000);
+    const again = await h.post('/api/founders/pay', { token: tok });
+    assert.equal(again.status, 200, again.text);
+    assert.equal(Object.keys(h.stripe.sessions).length, 1);
+    // A minute later (the session expired): a new key, a new session, no idempotency error.
+    h.stripe.sessions[h.store.seat(11).pay_session_id].status = 'expired';
+    h.advance(MIN);
+    assert.equal((await h.post('/api/founders/pay', { token: tok })).status, 200);
+    assert.equal(Object.keys(h.stripe.sessions).length, 2);
+  } finally { await h.close(); }
+});
+
+test('pay webhook: a refund that fails is logged as REFUND FAILED and answered 500, so Stripe retries; it goes through once fixed', async () => {
+  const h = await harness({ goalUsd: 420 });
+  try {
+    commitSeat(h.db, 11, { pm: 'pm_bad' });
+    h.stripe.cards.pm_bad = 'decline';
+    await h.run('charge');
+    const { session } = await paidPaySession(h, 11);
+    const bad = { ...session, amount_total: 100 };
+    const realRefund = h.stripe.refunds.create;
+    h.stripe.refunds.create = async () => { throw new Stripe.errors.StripePermissionError({ message: 'no access', code: 'permission_denied' }); };
+    const r = await h.sendEvent('checkout.session.completed', bad);
+    assert.equal(r.status, 500);
+    assert.ok(h.logs.some((l) => /REFUND FAILED seat 11 \(amount\): StripePermissionError permission_denied/.test(l)), h.logs.join('\n'));
+    assert.equal(h.store.seat(11).charge_state, 'failed', 'nothing applied');
+    h.stripe.refunds.create = realRefund;
+    const again = await h.sendEvent('checkout.session.completed', bad);
+    assert.equal(again.body.result, 'founders_pay_refunded');
+  } finally { await h.close(); }
+});
+
+test('pay: the webhook and the success page at the same time: one applies, the other waits (NotYet, 500), then finds it done', async () => {
+  const h = await harness({ goalUsd: 420 });
+  try {
+    commitSeat(h.db, 11, { pm: 'pm_bad' });
+    h.stripe.cards.pm_bad = 'decline';
+    await h.run('charge');
+    const { session, pi } = await paidPaySession(h, 11);
+    let open;
+    let hit;
+    const reached = new Promise((r) => { hit = r; });
+    const gate = new Promise((r) => { open = r; });
+    h.stripe.hooks.piRetrieve = async (pid) => { if (pid === pi) { hit(); await gate; } };
+    const page = h.post('/api/founders/paid', { s: session.id, seat: 11 });
+    await reached;
+    const hook = await h.sendEvent('checkout.session.completed', session);
+    assert.equal(hook.status, 500, 'busy: Stripe will send it again');
+    h.stripe.hooks.piRetrieve = null;
+    open();
+    const shown = await page;
+    assert.equal(shown.status, 200, shown.text);
+    assert.ok(h.licences.findByKey(shown.body.key));
+    assert.equal((await h.sendEvent('checkout.session.completed', session)).body.result, 'founders_pay_already');
+    assert.equal(h.mails().filter((m) => m.kind === 'key').length, 1);
+    assert.equal(h.stripe.refundLog.length, 0);
+  } finally { await h.close(); }
+});
+
+test('charge: two runs at once on one database charge every seat once, one PaymentIntent and one email each', async () => {
+  const h = await harness({ goalUsd: 1840, http: false });
+  try {
+    for (const s of [1, 11, 12, 13]) commitSeat(h.db, s);
+    const ctx2 = createChargeContext({ db: h.db, stripe: h.stripe, licences: h.licences, livemode: 1, now: h.now, log: quiet, priceId: PRICE,
+      outbox: createOutbox({ dir: h.outDir, source: 'charge', now: h.now }), deadlineAt: DEADLINE });
+    const lines2 = [];
+    const [a, b] = await Promise.all([
+      script.charge({ ctx: h.ctx, cfg: h.cfg, print: h.print, execute: true }),
+      script.charge({ ctx: ctx2, cfg: h.cfg, print: (l) => lines2.push(l), execute: true }),
+    ]);
+    assert.ok([a.code, b.code].includes(0) || [a.code, b.code].every((c) => c === 2), `${a.code} ${b.code}`);
+    // Whatever stopped, a re-run finishes; every seat is charged exactly once.
+    await h.run('charge');
+    for (const s of [1, 11, 12, 13]) {
+      assert.equal(h.store.seat(s).charge_state, 'charged', `seat ${s}`);
+      const mine = Object.values(h.stripe.pis).filter((p) => p.metadata.seat === String(s));
+      assert.equal(mine.length, 1, `seat ${s}: one PaymentIntent`);
+      assert.equal(mine[0].status, 'succeeded');
+    }
+    assert.deepEqual(h.mails().map((m) => m.seat).sort((x, y) => x - y), [1, 11, 12, 13], 'one email each');
+  } finally { await h.close(); }
+});
+
+test('golive: a future day is refused (Stripe\'s anchor rule); nothing is saved', async () => {
+  const h = await harness({ goalUsd: 420, http: false });
+  try {
+    commitSeat(h.db, 11);
+    await h.run('charge');
+    const out = await h.run('golive', { date: '2026-12-05' });
+    assert.equal(out.code, 1);
+    assert.match(h.lines.at(-1), /Go-live cannot be a future day: run golive on Dec 5, 2026 or later/);
+    assert.equal(h.store.state().golive_at, null);
+    assert.equal(h.stripe.calls.filter((c) => c[0] === 'sub.create').length, 0);
+    // Today is fine.
+    assert.equal((await h.run('golive', { date: '2026-12-01' })).code, 0, h.lines.join('\n'));
+  } finally { await h.close(); }
+});
+
+test('golive: a seat paid by link while golive runs is read after the day is saved, so it gets its step and email', async () => {
+  const h = await harness({ goalUsd: 420, http: false });
+  try {
+    commitSeat(h.db, 11);
+    commitSeat(h.db, 12, { pm: 'pm_bad' });
+    h.stripe.cards.pm_bad = 'decline';
+    await h.run('charge');
+    h.set(AFTER_GOLIVE);
+    // Seat 12 is applied by the pay link right when the day is being saved.
+    const real = h.store.setGolive.bind(h.store);
+    h.store.setGolive = (at) => {
+      const ok = real(at);
+      h.db.prepare("UPDATE founders_seats SET charge_state = 'charged', licence_id = ?, charged_at = ? WHERE seat = 12")
+        .run(h.licences.insertFounderLicence({ customerId: 'cus_12', livemode: 1 }).id, h.now());
+      return ok;
+    };
+    assert.equal((await h.run('golive')).code, 0, h.lines.join('\n'));
+    assert.ok(h.store.seat(12).subscription_id, 'seat 12 got its renewal');
+    assert.deepEqual(h.mails().filter((m) => m.kind === 'golive').map((m) => m.seat), [11, 12]);
+  } finally { await h.close(); }
+});
+
+test('expire-unpaid: refused while the charge run is not finished (a seat not started or still charging)', async () => {
+  const h = await harness({ goalUsd: 420, http: false });
+  try {
+    commitSeat(h.db, 11, { pm: 'pm_bad' });
+    commitSeat(h.db, 12);
+    h.stripe.cards.pm_bad = 'decline';
+    h.stripe.cards.pm_12 = 'network';
+    await h.run('charge');
+    assert.equal(h.store.seat(12).charge_state, 'charging');
+    h.set(T0 + PAY_WINDOW_MS + 1);
+    const out = await h.run('expire');
+    assert.equal(out.code, 1);
+    assert.match(h.lines.at(-1), /Refused: the charge run is not finished \(seat 12 not charged yet\)/);
+    assert.equal(h.store.seat(11).charge_state, 'failed', 'nothing given back');
+    h.stripe.cards.pm_12 = 'ok';
+    h.set(T0 + HOUR);
+    await h.run('charge');
+    h.set(T0 + PAY_WINDOW_MS + 1);
+    assert.equal((await h.run('expire')).code, 0);
+    assert.equal(h.store.seat(11).status, 'open');
+  } finally { await h.close(); }
+});
+
+test('outbox: take renames a file for sending under the lock; new emails start a new file; the sender only takes taken files and stops on a permanent bounce', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'bb-take-'));
+  try {
+    const o = path.join(dir, 'o');
+    const ob = createOutbox({ dir: o, source: 'pay', now: () => T0 });
+    const tok = 'D'.repeat(43);
+    ob.append(keyEmail({ seat: 11, to: 'ann@example.com', token: tok, publicUrl: 'https://bloombroke.com' }));
+    const taken = script.takeOutboxFile(o, 'founders-20261201-pay.json');
+    assert.equal(path.basename(taken), '.sending-founders-20261201-pay.json');
+    assert.equal(statSync(taken).mode & 0o777, 0o600);
+    assert.throws(() => script.takeOutboxFile(o, 'founders-20261201-pay.json'), /no file/);
+    assert.throws(() => script.takeOutboxFile(o, '../x.json'), /name a waiting file/);
+    ob.append(keyEmail({ seat: 12, to: 'bob@example.com', token: tok, publicUrl: 'https://bloombroke.com' }));
+    assert.equal(JSON.parse(readFileSync(path.join(o, 'founders-20261201-pay.json'), 'utf8')).length, 1, 'a new file, the taken one untouched');
+    assert.equal(JSON.parse(readFileSync(taken, 'utf8')).length, 1);
+    assert.throws(() => script.takeOutboxFile(o, 'founders-20261201-pay.json'), /already being sent/);
+    const preview = script.outboxPreview(o);
+    assert.match(preview, /\.sending-founders-20261201-pay\.json: 1 email \(taken: being sent\)/);
+    assert.ok(!preview.includes(tok));
+    assert.equal(script.parseArgs(['outbox', '--take', 'founders-20261201-pay.json']).take, 'founders-20261201-pay.json');
+    assert.ok(script.parseArgs(['charge', '--take', 'x']).error);
+    // A lock left by a dead process is cleared after 30 seconds; a fresh one makes writers wait.
+    writeFileSync(path.join(o, '.lock'), '');
+    assert.throws(() => ob.append(keyEmail({ seat: 13, to: 'c@example.com', token: tok, publicUrl: 'https://bloombroke.com' })), /busy/);
+    const old = (Date.now() - 60 * 1000) / 1000;
+    utimesSync(path.join(o, '.lock'), old, old);
+    ob.append(keyEmail({ seat: 13, to: 'c@example.com', token: tok, publicUrl: 'https://bloombroke.com' }));
+    // The sender: an untaken name is refused; a permanent bounce stops and keeps that email.
+    const account = 'b'.repeat(32);
+    const fetchFn = async () => ({ ok: true, status: 200, json: async () => ({ success: true, result: { delivered: [], permanent_bounces: ['ann@example.com'], queued: [] } }) });
+    await assert.rejects(sender.sendOutbox({ file: path.join(o, 'founders-20261201-pay.json'), token: 't', accountId: account, send: true, fetchFn, log: () => {} }), /take the file first/);
+    const logs = [];
+    const r = await sender.sendOutbox({ file: taken, token: 't', accountId: account, send: true, fetchFn, log: (l) => logs.push(l) });
+    assert.deepEqual([r.sent, r.left, r.error], [0, 1, 'bounced']);
+    assert.equal(JSON.parse(readFileSync(taken, 'utf8')).length, 1, 'the bounced email stays');
+    assert.match(logs.join('\n'), /bounced for good \(a\*\*@example\.com\)/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('app start: an outbox the app cannot write is logged loudly', () => {
   const db = openDb(':memory:');
-  commitSeat(db, 12);
-  db.prepare("UPDATE founders_seats SET charge_state = 'charging', payment_intent_id = 'pi_x' WHERE seat = 12").run();
-  const r = await script.release({ db, stripe: null, seat: 12, execute: true });
-  assert.equal(r.done, false);
-  assert.match(r.text, /being charged right now/);
-  db.prepare("UPDATE founders_seats SET charge_state = 'charged' WHERE seat = 12").run();
-  assert.match((await script.release({ db, seat: 12 })).text, /was charged: refund it in the Stripe dashboard first/);
-  assert.equal(hashKey('x').length, 64);
+  const errors = [];
+  createFounders({ db, stripe: null, env: { FOUNDERS_OUTBOX_DIR: path.resolve('var', 'outbox-inside') }, log: { log() {}, error: (m) => errors.push(m) }, licences: createStore(db) });
+  assert.ok(errors.some((m) => /OUTBOX NOT WRITABLE/.test(m) && /inside the repo/.test(m)), errors.join('\n'));
 });

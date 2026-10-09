@@ -11,7 +11,7 @@
 //   node scripts/founders.js golive --date YYYY-MM-DD [--execute] [--live] [--env path] [--db path] [--outbox dir]
 //   node scripts/founders.js reconcile [--execute] [--live] [--env path] [--db path] [--outbox dir]
 //   node scripts/founders.js expire-unpaid [--execute] [--live] [--env path] [--db path] [--outbox dir]
-//   node scripts/founders.js outbox [--env path] [--outbox dir]
+//   node scripts/founders.js outbox [--take <file>] [--env path] [--outbox dir]
 //
 // release: a founder gave up the seat before the charge (by email). Dry run by default:
 // it says what it would do. With --execute it takes the saved card off (detach, so it can
@@ -32,7 +32,9 @@
 // off-session. Paid: a Pro licence and a claim link (email in the outbox). Card failed: a
 // 3-day pay link (email in the outbox). Anything else stops the whole run with nothing
 // changed for that seat; run it again: a seat with a PaymentIntent is finished from it,
-// never charged twice. After the deadline a run only finishes seats already 'charging'.
+// never charged twice. After the deadline a run only finishes seats already 'charging':
+// a PaymentIntent already paid or failed is recorded; one not yet confirmed is cancelled
+// and its seat given back (Terms: no charge later than the deadline).
 // golive: the day Pro goes live. Founder seats get their $420 yearly renewal, first billed
 // one calendar year after that day; five-year seats end five years after it. One go-live
 // email per seat goes into the outbox. Run again: done seats are skipped.
@@ -42,7 +44,9 @@
 // customer deleted, seat given back.
 // outbox: the emails waiting to be sent, with every link token hidden. The outbox folder
 // is --outbox, else FOUNDERS_OUTBOX_DIR in the .env, else /root/bb-outbox: outside the
-// repo and outside the backups. scripts/send-outbox.cjs sends a file; then delete it.
+// repo and outside the backups. --take <file> takes one file for sending (renamed to
+// .sending-<file>, so nothing more is added to it); scripts/send-outbox.cjs sends that
+// file; then delete it.
 //
 // The database is --db, else PRO_DB_PATH (from the environment or the .env next to
 // server.js), else var/pro.db. The Stripe keys come from --env, else that .env.
@@ -59,8 +63,9 @@ import { createStore } from '../pro/store.js';
 import {
   createFoundersStore, removeCustomer, CLASSES, isSeat, fmtUsd, fmtDay, fmtTime, foundersEnv, createChargeContext, createOutbox,
   markCharged, markFailed, goliveSeat, checkFoundersPrice, foundersPriceId, applyPaySession, payDecision, isFoundersPaySession,
-  chargeDescription, seatCents, addYears, parseDay, redactTokens, OUTBOX_FILE_RE, DEFAULT_OUTBOX_DIR, FOUNDERS_METADATA, SITE, NotYet,
+  chargeDescription, seatCents, addYears, parseDay, redactTokens, OUTBOX_FILE_RE, TAKEN_PREFIX, DEFAULT_OUTBOX_DIR, FOUNDERS_METADATA, SITE, NotYet,
 } from '../pro/founders.js';
+import { randomBytes } from 'node:crypto';
 import { csvField } from './waitlist.js';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -75,7 +80,7 @@ export function parseArgs(argv) {
     const a = argv[i];
     if (a === '--execute') out.execute = true;
     else if (a === '--live') out.live = true;
-    else if (a === '--db' || a === '--env' || a === '--outbox' || a === '--date') {
+    else if (a === '--db' || a === '--env' || a === '--outbox' || a === '--date' || a === '--take') {
       const v = argv[++i];
       if (!v) return { error: `${a} takes a ${a === '--date' ? 'day' : 'path'}` };
       out[a.slice(2)] = v;
@@ -91,6 +96,7 @@ export function parseArgs(argv) {
   if (out.cmd === 'release' && out.seat === null) return { error: 'release takes a seat number from 1 to 42' };
   if (out.cmd === 'golive' && parseDay(out.date) === null) return { error: 'golive takes --date YYYY-MM-DD' };
   if (out.date !== undefined && out.cmd !== 'golive') return { error: '--date is for golive only' };
+  if (out.take !== undefined && out.cmd !== 'outbox') return { error: '--take is for outbox only' };
   return out;
 }
 
@@ -125,8 +131,9 @@ export async function release({ db, stripe = null, seat, execute = false, now = 
   if (r.status !== 'committed') return { done: false, text: `Seat ${seat} is ${r.status}: nothing to release.` };
   // A PaymentIntent is in flight: finish it first (charge), never drop it half way.
   if (r.charge_state === 'charging') return { done: false, text: `Seat ${seat} is being charged right now: run charge again to finish it first. Nothing changed.` };
+  if (r.charge_state === 'charged' && execute && !stripe) return { done: false, text: 'No Stripe key: cannot remove the card. Nothing changed.' };
   const paid = r.charge_state === 'charged'
-    ? ` Seat ${seat} was charged: refund it in the Stripe dashboard first. Its Pro licence stays as it is.` : '';
+    ? ` Seat ${seat} was charged: release does NOT refund. Refund the payment in the Stripe dashboard. Its Pro licence ${execute ? 'is' : 'would be'} ended now.` : '';
   if (!execute) return { done: false, text: `Dry run: seat ${seat} (${r.class}) would be released, its card ${r.payment_method_id ? 'detached' : '(none on file)'} and its Stripe customer ${r.stripe_customer_id ? 'deleted' : '(none on file)'}, and the log would say it. Add --execute.${paid}` };
   let customer = 'none';
   if (r.payment_method_id || r.stripe_customer_id) {
@@ -138,7 +145,9 @@ export async function release({ db, stripe = null, seat, execute = false, now = 
       return { done: false, text: `Stripe said: ${err.message}. Nothing changed here; run it again.` };
     }
   }
-  store.release(seat);
+  // A charged seat's Pro licence ends in the same transaction ('canceled', ended now).
+  const licences = r.licence_id ? createStore(db, { now }) : null;
+  store.release(seat, { inside: (row) => { if (licences && row.licence_id && licences.findById(row.licence_id)) licences.setStatus(row.licence_id, 'canceled'); } });
   const note = customer === 'not_ours' ? ' The Stripe customer was not tagged as ours, so it was left: check it by hand.' : '';
   return { done: true, text: `Seat ${seat} released: card detached, customer ${customer === 'deleted' || customer === 'gone' ? 'deleted' : 'kept'}, seat open, log written.${note}${paid}` };
 }
@@ -216,10 +225,33 @@ async function findSeatIntent(ctx, row) {
   return found[0] || null;
 }
 
+// A seat given back: card detached, Stripe customer deleted (only one tagged as ours),
+// seat open with every private field cleared, one public log line. -> the customer result.
+async function giveBack(ctx, row) {
+  await detachCard(ctx.stripe, row.payment_method_id);
+  const customer = await removeCustomer(ctx.stripe, row.stripe_customer_id, { requireTag: true });
+  ctx.store.release(row.seat);
+  return customer === 'not_ours' ? 'customer NOT deleted (not tagged as ours): delete it by hand' : 'customer deleted';
+}
+
+// A PaymentIntent that must never charge (a failed card, or after the deadline): cancelled
+// at Stripe. Idempotent; one already cancelled is fine. Throws on other errors.
+async function cancelIntent(stripe, piId) {
+  try {
+    await stripe.paymentIntents.cancel(piId, {}, { idempotencyKey: `bb-founders-cancel-${piId}` });
+  } catch (err) {
+    if (err?.code === 'payment_intent_unexpected_state' && err?.payment_intent?.status === 'canceled') return;
+    throw err;
+  }
+}
+
 // One seat, from where it is: NULL -> make the PaymentIntent, save it ('charging'), confirm;
 // 'charging' -> read the stored one, confirm it if it still needs it. Then charged, failed,
-// or a stop. -> { result: 'charged' | 'failed', note? }.
-export async function chargeSeat(ctx, row) {
+// or a stop. After the deadline (afterDeadline) a PaymentIntent not confirmed yet is never
+// confirmed: it is cancelled and the seat given back. runId: this run's own part of the
+// confirm idempotency key (a replayed Stripe error must not block the seat for 24 hours).
+// -> { result: 'charged' | 'failed' | 'released', note? }.
+export async function chargeSeat(ctx, row, { afterDeadline = false, runId = randomBytes(6).toString('hex') } = {}) {
   const { stripe, store, lm } = ctx;
   const seat = row.seat;
   if (!row.stripe_customer_id || !row.payment_method_id || !row.email || !row.setup_intent_id) throw stop(seat, 'no customer, card, email or SetupIntent on file');
@@ -236,12 +268,23 @@ export async function chargeSeat(ctx, row) {
     throw stop(seat, `Stripe said ${errText(err)}`);
   }
   checkIntent(pi, row, lm);
+  // Terms: no charge later than the deadline. A PaymentIntent still waiting for its
+  // confirm is cancelled, and the seat given back with its card deleted.
+  if (afterDeadline && row.charge_state === 'charging' && (pi.status === 'requires_confirmation' || pi.status === 'canceled')) {
+    try {
+      if (pi.status !== 'canceled') await cancelIntent(stripe, pi.id);
+      return { result: 'released', note: ` (after the deadline: not charged, PaymentIntent cancelled, ${await giveBack(ctx, row)})` };
+    } catch (err) {
+      throw stop(seat, `after the deadline, cancelling it failed: Stripe said ${errText(err)}. Nothing was charged; run charge again`);
+    }
+  }
+  if (afterDeadline && row.charge_state === null) throw stop(seat, 'after the deadline a seat is never started');
   // Step 1 done: the id is in the database before anything can charge.
   if (row.charge_state === null && !store.startCharging(seat, pi.id)) throw stop(seat, 'the seat changed during the run');
   let failCode = null;
   if (pi.status === 'requires_confirmation') {
     try {
-      pi = await stripe.paymentIntents.confirm(pi.id, { off_session: true }, { idempotencyKey: `bb-founders-confirm-${pi.id}` });
+      pi = await stripe.paymentIntents.confirm(pi.id, { off_session: true }, { idempotencyKey: `bb-founders-confirm-${pi.id}-${runId}` });
     } catch (err) {
       const p = err?.payment_intent;
       if (!isCardError(err) || !p || p.id !== pi.id) throw stop(seat, `Stripe said ${errText(err)}. The seat stays 'charging': run charge again`);
@@ -264,7 +307,10 @@ export async function chargeSeat(ctx, row) {
   if (pi.status === 'requires_payment_method' || pi.status === 'requires_action') {
     const code = failCode || pi.last_payment_error?.decline_code || pi.last_payment_error?.code || pi.status;
     if (!save(() => markFailed(ctx, { seat, paymentIntentId: pi.id, failCode: code }))) throw stop(seat, 'the card failed, but the seat changed in the database: check it by hand');
-    return { result: 'failed', note: ` (${String(code).replace(/[^A-Za-z0-9_]/g, '')})` };
+    // That PaymentIntent can never charge now: the pay link makes its own.
+    let cancelled = 'PaymentIntent cancelled';
+    try { await cancelIntent(stripe, pi.id); } catch (err) { cancelled = `PaymentIntent NOT cancelled (${errText(err)}): cancel it in the dashboard`; }
+    return { result: 'failed', note: ` (${String(code).replace(/[^A-Za-z0-9_]/g, '')}; ${cancelled})` };
   }
   throw stop(seat, `the payment is ${pi.status}. The seat stays 'charging': run charge again later`);
 }
@@ -285,9 +331,13 @@ async function cardText(stripe, pmId, t) {
 }
 
 export const CHECKLIST = [
-  'Before --execute, in the Stripe dashboard (live):',
-  '  1. Settings, Billing, Customer portal (default): cancel at period end ON; switching plans OFF; changing quantity OFF.',
-  '  2. Settings, Customer emails: "Successful payments" ON (Stripe sends the receipts).',
+  'Before --execute (live):',
+  '  1. Stripe, Settings, Billing, Customer portal (default): cancel only, at period end; switching plans OFF; changing quantity OFF.',
+  '  2. Stripe, Settings, Customer emails: "Successful payments" ON (Stripe sends the receipts).',
+  '  3. The restricted live key has Refunds (write) and Billing Portal / Customer portal (write), on top of what it has.',
+  '  4. The app can write FOUNDERS_OUTBOX_DIR (default /root/bb-outbox); its start log has no "OUTBOX NOT WRITABLE".',
+  '  5. After scripts/stripe-setup.js writes STRIPE_FOUNDERS_PRICE_ID, restart the app so it reads it.',
+  '  6. Never run two charge runs at once.',
 ];
 
 // charge (see the top of this file). -> { code: 0 done | 1 refused | 2 stopped }.
@@ -332,10 +382,11 @@ export async function charge({ ctx, cfg, execute = false, print = console.log })
     return { code: 1 };
   }
   store.chargeStarted(t);
-  const counts = { charged: 0, failed: 0 };
+  const counts = { charged: 0, failed: 0, released: 0 };
+  const runId = randomBytes(6).toString('hex');
   for (const r of work) {
     try {
-      const out = await chargeSeat(ctx, store.seat(r.seat));
+      const out = await chargeSeat(ctx, store.seat(r.seat), { afterDeadline: now() > cfg.deadlineAt, runId });
       counts[out.result] += 1;
       print(`seat ${r.seat}: ${out.result}${out.note || ''}`);
     } catch (err) {
@@ -346,7 +397,7 @@ export async function charge({ ctx, cfg, execute = false, print = console.log })
     }
   }
   if (after && toStart.length) print(`${toStart.length} seats were never started and the deadline has passed: they are not charged.`);
-  print(`Done: ${counts.charged} charged, ${counts.failed} failed. Emails are in ${ctx.outbox.dir}: read them with "founders.js outbox".`);
+  print(`Done: ${counts.charged} charged, ${counts.failed} failed${counts.released ? `, ${counts.released} given back (after the deadline, not charged)` : ''}. Emails are in ${ctx.outbox.dir}: read them with "founders.js outbox".`);
   return { code: 0 };
 }
 
@@ -358,6 +409,10 @@ export async function golive({ ctx, date, execute = false, print = console.log }
   const st = store.state();
   if (Number.isFinite(st.golive_at) && st.golive_at !== at) { print(`Go-live is already ${fmtDay(st.golive_at)}. Nothing changed.`); return { code: 1 }; }
   if (addYears(at, 1) <= now()) { print('That day is over a year ago: the renewal date would be past. Nothing changed.'); return { code: 1 }; }
+  // Stripe refuses a renewal anchor later than the natural next billing date (a year from
+  // the day the subscription is made), so go-live is today or a day already past.
+  const today = parseDay(new Date(now()).toISOString().slice(0, 10));
+  if (at > today) { print(`Go-live cannot be a future day: run golive on ${fmtDay(at)} or later. Nothing changed.`); return { code: 1 }; }
   const rows = store.committedHere().filter((r) => r.charge_state === 'charged');
   const needSubs = rows.some((r) => r.class === 'founder' && !r.subscription_id);
   print(`Founders go-live ${fmtDay(at)}, ${modeName(lm)} mode${execute ? '' : ' (dry run)'}: ${rows.length} charged seats.`);
@@ -381,7 +436,8 @@ export async function golive({ ctx, date, execute = false, print = console.log }
   }
   try { ctx.outbox.check(); } catch (err) { print(`The outbox does not work: ${err.message}. Nothing changed.`); return { code: 1 }; }
   if (!store.setGolive(at)) { print('Go-live was set to another day meanwhile. Nothing changed.'); return { code: 1 }; }
-  for (const r of rows) {
+  // Read again after saving the day: a seat paid by link meanwhile gets its step too.
+  for (const r of store.committedHere().filter((x) => x.charge_state === 'charged')) {
     let out;
     try {
       out = await goliveSeat(ctx, r.seat, { email: true });
@@ -428,6 +484,15 @@ export async function reconcile({ ctx, execute = false, print = console.log }) {
 export async function expireUnpaid({ ctx, execute = false, print = console.log }) {
   const { store, stripe, now } = ctx;
   if (!stripe) { print('No Stripe key. Nothing changed.'); return { code: 1 }; }
+  // The charge run must be finished first: no seat of this mode may still be waiting
+  // (NULL) or 'charging'.
+  if (Number.isFinite(store.state().charge_started_at)) {
+    const open = store.committedHere().filter((r) => r.charge_state === null || r.charge_state === 'charging').map((r) => r.seat);
+    if (open.length) {
+      print(`Refused: the charge run is not finished (seat${open.length === 1 ? '' : 's'} ${open.join(', ')} not charged yet). Run charge --execute again first, or release ${open.length === 1 ? 'that seat' : 'those seats'}. Nothing changed.`);
+      return { code: 1 };
+    }
+  }
   try {
     const r = await reconcile({ ctx, execute, print });
     if (r.code) return r;
@@ -452,10 +517,7 @@ export async function expireUnpaid({ ctx, execute = false, print = console.log }
       if (!execute) { print(`seat ${r.seat}: pay link ran out ${iso(r.pay_expires_at)}: card off, customer deleted, seat given back.`); continue; }
       // 'unpaid' first: from here a late pay-link payment is refunded, never applied.
       if (r.charge_state === 'failed' && !store.markUnpaid(r.seat)) { print(`seat ${r.seat}: changed meanwhile, left alone.`); continue; }
-      await detachCard(stripe, r.payment_method_id);
-      const customer = await removeCustomer(stripe, r.stripe_customer_id, { requireTag: true });
-      store.release(r.seat);
-      print(`seat ${r.seat}: given back, card off, customer ${customer === 'not_ours' ? 'NOT deleted (not tagged as ours): delete it by hand' : 'deleted'}.`);
+      print(`seat ${r.seat}: given back, card off, ${await giveBack(ctx, r)}.`);
     } catch (err) {
       if (err instanceof NotYet) { print(`seat ${r.seat}: busy, run again.`); continue; }
       print(`STOP. seat ${r.seat}: Stripe said ${errText(err)}. Run expire-unpaid again.`);
@@ -466,17 +528,21 @@ export async function expireUnpaid({ ctx, execute = false, print = console.log }
   return { code: 0 };
 }
 
-// outbox: the waiting emails, every link token hidden. Never the file itself.
+// outbox --take <file>: renamed to .sending-<file> under the outbox lock, so the app and
+// the scripts start a new file and nothing is added to the one being sent. -> its path.
+export const takeOutboxFile = (dir, name) => createOutbox({ dir, source: 'take' }).take(name);
+
+// outbox: the waiting emails (and any taken for sending), every link token hidden.
 export function outboxPreview(dir) {
   if (!existsSync(dir)) return `No outbox at ${dir}.\n`;
-  const files = readdirSync(dir).filter((f) => OUTBOX_FILE_RE.test(f)).sort();
+  const files = readdirSync(dir).filter((f) => OUTBOX_FILE_RE.test(f) || (f.startsWith(TAKEN_PREFIX) && OUTBOX_FILE_RE.test(f.slice(TAKEN_PREFIX.length)))).sort();
   if (!files.length) return `The outbox at ${dir} is empty.\n`;
   const out = [];
   for (const f of files) {
     let list;
     try { list = JSON.parse(readFileSync(path.join(dir, f), 'utf8')); } catch { out.push(`${f}: cannot be read`); continue; }
     if (!Array.isArray(list)) { out.push(`${f}: not a list`); continue; }
-    out.push(`${path.join(dir, f)}: ${list.length} email${list.length === 1 ? '' : 's'}`);
+    out.push(`${path.join(dir, f)}: ${list.length} email${list.length === 1 ? '' : 's'}${f.startsWith(TAKEN_PREFIX) ? ' (taken: being sent)' : ''}`);
     for (const e of list) out.push(`\n--- ${e.kind}, seat ${e.seat}, to ${e.to}\nSubject: ${e.subject}\n\n${redactTokens(e.text)}\n`);
   }
   return `${out.join('\n')}\n`;
@@ -493,7 +559,7 @@ const USAGE = `Usage: node scripts/founders.js list|export [--db path]
        node scripts/founders.js charge [--execute] [--live] [--env path] [--db path] [--outbox dir]
        node scripts/founders.js golive --date YYYY-MM-DD [--execute] [--live] [--env path] [--db path] [--outbox dir]
        node scripts/founders.js reconcile|expire-unpaid [--execute] [--live] [--env path] [--db path] [--outbox dir]
-       node scripts/founders.js outbox [--env path] [--outbox dir]`;
+       node scripts/founders.js outbox [--take <file>] [--env path] [--outbox dir]`;
 
 async function main(argv) {
   const args = parseArgs(argv);
@@ -504,7 +570,12 @@ async function main(argv) {
   }
   if (args.cmd === 'outbox') {
     const env = readEnv(args.env);
-    process.stdout.write(outboxPreview(path.resolve(args.outbox || env.FOUNDERS_OUTBOX_DIR || DEFAULT_OUTBOX_DIR)));
+    const dir = path.resolve(args.outbox || env.FOUNDERS_OUTBOX_DIR || DEFAULT_OUTBOX_DIR);
+    if (args.take) {
+      try { console.log(`Taken: ${takeOutboxFile(dir, args.take)}. Send that file with scripts/send-outbox.cjs, then delete it here.`); } catch (err) { console.error(err.message); return 1; }
+      return 0;
+    }
+    process.stdout.write(outboxPreview(dir));
     return 0;
   }
   const file = dbPath(args.db);

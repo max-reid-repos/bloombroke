@@ -2,15 +2,18 @@
 // ADMIN ONLY. Sends one founders outbox file (pro/founders.js createOutbox) through
 // Cloudflare Email Sending, from Max Reid <hello@bloombroke.com>. Run where the file was
 // copied to (not on the server), after the owner read it with "founders.js outbox".
+// Only a file taken for sending ("founders.js outbox --take <file>" renames it to
+// .sending-<file>, so the server stops adding to it) is sent.
 //
-//   node scripts/send-outbox.cjs <founders-YYYYMMDD-source.json> --token-file <path> [--account-id <id>] [--send]
+//   node scripts/send-outbox.cjs <.sending-founders-YYYYMMDD-source.json> --token-file <path> [--account-id <id>] [--send]
 //
 // Without --send it only counts the emails. With --send it posts them one by one; each
 // one sent is taken out of the file at once (so a run that stops can be run again without
 // sending anything twice), and the file is deleted when it is empty. The Cloudflare API
 // token is read from --token-file (mode 600, never printed); the account id is
 // --account-id, else CF_ACCOUNT_ID. Email bodies, subjects and link tokens are never
-// printed: only the kind, the seat and a masked address.
+// printed: only the kind, the seat and a masked address. Cloudflare's permanent bounces
+// count as a failure: that email stays in the file and the run stops.
 
 'use strict';
 
@@ -21,6 +24,7 @@ const crypto = require('node:crypto');
 const FROM = 'Max Reid <hello@bloombroke.com>';
 const REPLY_TO = 'hello@bloombroke.com';
 const KINDS = ['charge', 'failed', 'key', 'golive'];
+const TAKEN_RE = /^\.sending-founders-\d{8}-[a-z]+\.json$/;
 const API = (account) => `https://api.cloudflare.com/client/v4/accounts/${account}/email/sending/send`;
 
 function parseArgs(argv) {
@@ -87,6 +91,7 @@ function cfErrors(body) {
 // -> { sent, left, error? }. fetchFn: the global fetch, or a fake in tests.
 async function sendOutbox({ file, token, accountId, send = false, fetchFn = globalThis.fetch, log = console.log }) {
   if (!/^[0-9a-f]{32}$/.test(String(accountId || ''))) throw new Error('the Cloudflare account id is not 32 hex characters');
+  if (!TAKEN_RE.test(path.basename(file))) throw new Error('take the file first on the server: node scripts/founders.js outbox --take <file> (it becomes .sending-<file>)');
   let list = readList(file);
   log(`${path.basename(file)}: ${list.length} email${list.length === 1 ? '' : 's'}.`);
   if (!send) {
@@ -115,6 +120,11 @@ async function sendOutbox({ file, token, accountId, send = false, fetchFn = glob
       log(`STOP at ${sent + 1}/${total} (${e.kind}, seat ${e.seat}): Cloudflare said ${res.status}: ${cfErrors(body)}. ${list.length} left in the file; run again.`);
       return { sent, left: list.length, error: String(res.status) };
     }
+    const bounced = body?.result?.permanent_bounces;
+    if (Array.isArray(bounced) && bounced.length) {
+      log(`STOP at ${sent + 1}/${total} (${e.kind}, seat ${e.seat}): the address bounced for good (${mask(e.to)}). It stays in the file: fix the address with the owner, or take it out by hand. ${list.length} left in the file.`);
+      return { sent, left: list.length, error: 'bounced' };
+    }
     list = list.slice(1);
     writeRest(file, list);
     sent += 1;
@@ -128,7 +138,7 @@ async function main(argv) {
   const args = parseArgs(argv);
   if (args.error) {
     console.error(args.error);
-    console.error('Usage: node scripts/send-outbox.cjs <founders-YYYYMMDD-source.json> --token-file <path> [--account-id <id>] [--send]');
+    console.error('Usage: node scripts/send-outbox.cjs <.sending-founders-YYYYMMDD-source.json> --token-file <path> [--account-id <id>] [--send]');
     return 1;
   }
   try {
@@ -141,7 +151,7 @@ async function main(argv) {
   }
 }
 
-module.exports = { sendOutbox, parseArgs, readToken, readList, mask, FROM, REPLY_TO, API };
+module.exports = { sendOutbox, parseArgs, readToken, readList, mask, FROM, REPLY_TO, API, TAKEN_RE };
 
 if (require.main === module) {
   main(process.argv.slice(2)).then((code) => { process.exitCode = code; });
