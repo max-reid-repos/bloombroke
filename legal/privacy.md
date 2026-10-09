@@ -128,7 +128,7 @@ We share personal data only with these service providers, which help us run Bloo
 | Provider | What it does for us | Where |
 |---|---|---|
 | Stripe | Pro payments and billing, founders seats (saved cards) and tips | United States and Ireland, among other places |
-| Cloudflare | Network, security and delivery for every visit, DNS, page-view counts (Cloudflare Web Analytics), and routing of email sent to {{CONTACT}} | A global network, based in the United States |
+| Cloudflare | Network, security and delivery for every visit, DNS, page-view counts (Cloudflare Web Analytics), routing of email sent to {{CONTACT}}, and sending the founders seat emails from {{CONTACT}} (Cloudflare Email Sending) | A global network, based in the United States |
 | DataFast | Visit analytics, as described in section 3 (not loaded when your browser sends GPC) | Mostly outside the EU, including the United States, as its data processing terms state |
 | Ahrefs | Page-view analytics (Ahrefs Web Analytics), as described in section 3: no cookies, not loaded when your browser sends GPC, never loaded for Pro users | Based in Singapore; its servers may be in other countries, as its own terms state |
 | Google (Google Analytics) | Visit analytics, as described in section 3: first-party cookies, Google Signals and ad personalisation off, not loaded when your browser sends GPC, never loaded for Pro users | United States, among other places |
