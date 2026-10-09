@@ -651,7 +651,10 @@ test('scripts/founders.js: release is a dry run unless --execute; it detaches th
   assert.equal(foundersScript.exportCsv([{ seat: 3, class: 'ten', status: 'committed', email: 'a,b@x.co', handle: null, stripe_customer_id: 'cus_1', mandate_at: T0, mandate_ip: null, livemode: 0 }]), `seat,class,email,handle,stripe_customer_id,committed_at,mandate_ip,livemode\n3,ten,"a,b@x.co",,cus_1,${new Date(T0).toISOString()},,0\n`);
   assert.deepEqual(foundersScript.parseArgs(['release', '7', '--execute']), { cmd: 'release', seat: 7, execute: true, live: false, db: null, env: null });
   assert.ok(foundersScript.parseArgs(['release', '43']).error);
-  assert.ok(foundersScript.parseArgs(['charge']).error, 'the charge is not this script');
+  // Charge day lives here now (test/founders-charge.test.js); golive needs its day.
+  assert.equal(foundersScript.parseArgs(['charge']).cmd, 'charge');
+  assert.ok(foundersScript.parseArgs(['golive']).error, 'golive takes --date');
+  assert.ok(foundersScript.parseArgs(['charge', '--date', '2027-01-05']).error, '--date is for golive only');
   // The log is public: the status shows it, counts only.
   const f = createFounders({ db, stripe: null, env: {}, log: quiet, now: () => t });
   assert.deepEqual(f.status().log.map((l) => l.text), ['Seat 12 released Nov 3.']);

@@ -12,6 +12,8 @@
 //   PUBLIC_URL                default https://bloombroke.com
 //   VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT   PINGS (pro/push.js); without the keys pings are off
 //   FOUNDERS, FOUNDERS_GOAL_USD, FOUNDERS_DEADLINE   FOUNDERS SEATS (pro/founders.js); closed unless FOUNDERS=open
+//   FOUNDERS_OUTBOX_DIR       founders emails waiting to be sent (default /root/bb-outbox); outside the repo
+//   STRIPE_FOUNDERS_PRICE_ID  the founder seat's $420 yearly renewal price (scripts/stripe-setup.js)
 //   TIPS                      TIPS (pro/tips.js); closed unless TIPS=open
 
 import path from 'node:path';
@@ -46,13 +48,13 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
     const limits = defaultLimits(() => Date.now());
     // FOUNDERS SEATS and TIPS: their own tables, the same Stripe account and webhook.
     const webhookReady = Boolean(se.webhookSecret && aesKey);
-    const founders = createFounders({ db, stripe, env, mode: se.mode, webhookReady, log });
+    const founders = createFounders({ db, stripe, env, mode: se.mode, webhookReady, log, licences: store });
     const tips = createTips({ db, stripe, env, mode: se.mode, webhookReady, log });
     const { ready, proActive } = mountPro(app, {
       store,
       stripe,
       limits,
-      onEvent: (event) => handleFoundersEvent(event, { founders: founders.store, tips, stripe, log }),
+      onEvent: (event) => handleFoundersEvent(event, { founders: founders.store, tips, stripe, log, charge: founders.charge }),
       config: {
         mode: se.mode,
         priceId: se.priceId,
@@ -94,6 +96,12 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
     setInterval(clean, 60 * 60 * 1000).unref();
     // Privacy Policy: synced data of subscriptions that ended over 30 days ago is deleted.
     const purge = () => {
+      // FOUNDERS SEATS: a five-year seat whose term is over ends first ('canceled' at the
+      // term end), so the rules below apply to it like any ended licence.
+      try {
+        const n = store.sweepTerms();
+        if (n) log.log(`[pro] ${n} founders terms ended`);
+      } catch (err) { log.error('[pro] term sweep', err.message); }
       try {
         const n = store.purgeEnded();
         log.log(`[pro] purge: ${n.docs} synced documents, ${n.reveals} reveal copies`);

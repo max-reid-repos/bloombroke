@@ -73,9 +73,18 @@ export function last4(key) {
   return key.slice(-4);
 }
 
+// A founders licence (pro/founders.js): no subscription of its own and no gift month.
+// A five-year seat gets term_ends_at at go-live; a founder seat gets its renewal
+// subscription at go-live (then it is a normal subscription licence).
+export const isFoundersLicence = (lic) => Boolean(lic) && !lic.stripe_subscription_id && !Number.isFinite(lic.gift_expires_at) && !lic.checkout_session_id;
+// A term licence: a founders licence with an end set (term_ends_at).
+export const isTermLicence = (lic) => isFoundersLicence(lic) && Number.isFinite(lic.term_ends_at);
+
 // Pro access from a stored licence row. past_due keeps access for 7 days from when it
 // started; canceled, unpaid, incomplete and anything else means no Pro. A gift licence
-// is Pro until its 30 days end.
+// is Pro until its 30 days end. A term licence (a five-year founders seat) is Pro while
+// it is 'active' and before term_ends_at; a founders licence with no end set yet is Pro
+// while it is 'active'.
 export function proAccess(lic, now = Date.now()) {
   if (!lic) return { active: false, status: null };
   const base = { status: lic.status, last4: lic.last4 };
@@ -83,6 +92,9 @@ export function proAccess(lic, now = Date.now()) {
   if (isGiftLicence(lic)) {
     const on = now < lic.gift_expires_at;
     return { ...base, status: on ? 'gift' : 'gift_ended', active: on, giftUntil: lic.gift_expires_at };
+  }
+  if (isTermLicence(lic) && lic.status === 'active') {
+    return { ...base, active: now < lic.term_ends_at, termUntil: lic.term_ends_at };
   }
   if (ACTIVE_STATUSES.has(lic.status)) return { ...base, active: true };
   if (lic.status === 'past_due') {

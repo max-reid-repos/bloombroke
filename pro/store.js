@@ -36,6 +36,10 @@ export function giftState(g, t) {
 // hex characters: no key can match it, and the licence is never a target again.
 export const DELETED_PREFIX = 'deleted:';
 export const isDeletedLicence = (lic) => Boolean(lic) && String(lic.key_hash || '').startsWith(DELETED_PREFIX);
+// A founders licence (pro/founders.js) is made with this prefix and 64 random hex
+// characters as its key hash: no key matches it until the founder uses the claim link,
+// which makes a fresh key (rotateKey). A founders key is never stored, readable or not.
+export const UNCLAIMED_PREFIX = 'unclaimed:';
 
 export class GiftError extends Error {
   constructor(code, message) {
@@ -129,6 +133,19 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
     closeDocs: db.prepare('DELETE FROM sync_docs WHERE licence_id = ?'),
     closeGifts: db.prepare('DELETE FROM gift_codes WHERE giver_licence_id = ? AND redeemed_at IS NULL'),
     closeKey: db.prepare("UPDATE licences SET key_hash = ?, last4 = '----', reveal_ciphertext = NULL, updated_at = ? WHERE id = ?"),
+    // FOUNDERS SEATS (pro/founders.js): a licence with no checkout and no subscription;
+    // its seat (member number) is the next one, like every licence.
+    insertFounder: db.prepare(`INSERT INTO licences
+      (key_hash, last4, stripe_customer_id, status, created_at, updated_at, terms_accepted_at, terms_version, livemode, term_ends_at, seat)
+      VALUES (?, '----', ?, 'active', ?, ?, ?, ?, ?, ?, ${NEXT_SEAT})`),
+    founderSub: db.prepare(`UPDATE licences SET stripe_subscription_id = ?, status = ?,
+      past_due_since = CASE WHEN ? = 'past_due' THEN ? ELSE NULL END, updated_at = ? WHERE id = ? AND stripe_subscription_id IS NULL`),
+    termEnd: db.prepare('UPDATE licences SET term_ends_at = ?, updated_at = ? WHERE id = ? AND stripe_subscription_id IS NULL AND gift_expires_at IS NULL'),
+    // Daily: a term licence whose term is over ends ('canceled', ended at the term end),
+    // so the purge and record rules apply. Only a licence still without a subscription.
+    sweepTerms: db.prepare(`UPDATE licences SET status = 'canceled', ended_at = term_ends_at, updated_at = ?
+      WHERE term_ends_at IS NOT NULL AND term_ends_at <= ? AND status = 'active'
+        AND stripe_subscription_id IS NULL AND gift_expires_at IS NULL AND checkout_session_id IS NULL`),
     docPut: db.prepare(`INSERT INTO sync_docs (licence_id, name, data, updated_at) VALUES (?, ?, ?, ?)
       ON CONFLICT (licence_id, name) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`),
   };
@@ -328,6 +345,31 @@ export function createStore(db, { aesKey = null, now = () => Date.now(), rand } 
       q.closeKey.run(`${DELETED_PREFIX}${randomBytes(32).toString('hex')}`, now(), licenceId);
       return { docs, gifts };
     },
+
+    // ---- FOUNDERS SEATS (pro/founders.js) ---------------------------------------------
+    // No transaction of their own: pro/founders.js runs them inside the one that marks
+    // the seat charged, so a licence never exists without its seat (and the reverse).
+
+    // A founders licence: status 'active', no key anyone knows (UNCLAIMED_PREFIX), no
+    // checkout and no subscription. termEndsAt: set for a five-year seat paid after
+    // go-live. Returns the licence row.
+    insertFounderLicence({ customerId = null, termsAcceptedAt = null, termsVersion = null, livemode = null, termEndsAt = null }) {
+      const t = now();
+      const live = livemode === null || livemode === undefined ? null : livemode ? 1 : 0;
+      const r = q.insertFounder.run(`${UNCLAIMED_PREFIX}${randomBytes(32).toString('hex')}`, customerId, t, t,
+        termsAcceptedAt, termsAcceptedAt ? termsVersion : null, live, Number.isFinite(termEndsAt) ? termEndsAt : null);
+      return q.byId.get(r.lastInsertRowid);
+    },
+    // Go-live, a founder seat: its renewal subscription moves onto the licence. Only a
+    // licence without one. -> true when it was set.
+    attachFounderSubscription(id, subscriptionId, status) {
+      const t = now();
+      return Number(q.founderSub.run(subscriptionId, status, status, t, t, id).changes) > 0;
+    },
+    // Go-live, a five-year seat: when its Pro ends. -> true when it was set.
+    setTermEnd(id, at) { return Number(q.termEnd.run(at, now(), id).changes) > 0; },
+    // Daily (pro/index.js): term licences past their end -> 'canceled'. Returns a count.
+    sweepTerms() { const t = now(); return Number(q.sweepTerms.run(t, t).changes); },
 
     isEventProcessed(id) { return Boolean(q.eventSeen.get(id)); },
     markEventProcessed(id, type) {

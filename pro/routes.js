@@ -24,7 +24,7 @@
 // credential: every route that needs a licence takes the key.
 
 import express from 'express';
-import { normalizeKey, normalizeGiftCode, proAccess, isGiftLicence, ACTIVE_STATUSES } from './licence.js';
+import { normalizeKey, normalizeGiftCode, proAccess, isGiftLicence, isFoundersLicence, ACTIVE_STATUSES } from './licence.js';
 import { MAX_SYNC_BYTES, SyncError, GiftError } from './store.js';
 import {
   checkoutParams, handleEvent, isProSession, isPaidSession, licenceFromSession, idOf, PRO_METADATA, DEFAULT_TERMS_VERSION, PLANS,
@@ -75,6 +75,14 @@ export function publicStatus(lic, now, mode = 'live') {
   if (lic?.cancel_at_period_end !== null && lic?.cancel_at_period_end !== undefined) out.cancelAtPeriodEnd = Boolean(lic.cancel_at_period_end);
   if (Number.isFinite(lic?.current_period_end)) out.currentPeriodEnd = new Date(lic.current_period_end).toISOString();
   if (Number.isFinite(lic?.cancel_at)) out.cancelAt = new Date(lic.cancel_at).toISOString();
+  // A five-year founders seat (no subscription, a set end): it ends then and never renews,
+  // so it reads like a plan set to end (no CANCEL, "ENDS, NO RENEWAL").
+  if (a.termUntil) {
+    out.termUntil = new Date(a.termUntil).toISOString();
+    out.cancelAt = out.termUntil;
+  }
+  // A founders licence has no plan of its own to manage (pro/founders.js).
+  if (isFoundersLicence(lic)) out.founders = true;
   return out;
 }
 
@@ -315,6 +323,9 @@ export function mountPro(app, {
     const r = limits.portal.hit(clientIp(req));
     if (!r.ok) return limited(res, r);
     if (!a.lic.stripe_customer_id) return fail(res, 409, 'no_customer', 'No billing account on this key.');
+    // A founders seat without a renewal subscription (before go-live, or a five-year
+    // seat): there is nothing to manage or cancel at Stripe.
+    if (!a.lic.stripe_subscription_id) return fail(res, 409, 'no_subscription', 'This key has no plan to manage. Questions: hello@bloombroke.com.');
     try {
       const params = { customer: a.lic.stripe_customer_id, return_url: `${base}/?c=PRO` };
       if (portalConfigId) params.configuration = portalConfigId;

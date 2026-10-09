@@ -13,8 +13,11 @@
 //     subscribers at the old amount.
 //   - a Billing Portal configuration (card, invoices, cancel; no plan switching)
 //   - the webhook endpoint <PUBLIC_URL>/api/stripe/webhook with the four Pro events
+//   - FOUNDERS SEATS: the product "Bloombroke Pro founder seat" and its $420 USD yearly
+//     price (lookup key bb_founders_seat_yearly), both tagged site=bloombroke,
+//     product=founders: the founder seat's renewal from go-live (scripts/founders.js golive)
 // and writes STRIPE_PRICE_ID, STRIPE_PRICE_ID_YEARLY, STRIPE_PORTAL_CONFIG_ID, STRIPE_WEBHOOK_SECRET (only when the
-// endpoint is created, the one time Stripe shows it) and PRO_SECRET (if missing) into the
+// endpoint is created, the one time Stripe shows it), STRIPE_FOUNDERS_PRICE_ID and PRO_SECRET (if missing) into the
 // .env. It never prints a secret or the values it writes. A live key needs --live.
 
 import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
@@ -23,6 +26,7 @@ import { parseEnv } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStripe, stripeEnv, PRO_METADATA, WEBHOOK_EVENTS } from '../pro/billing.js';
+import { FOUNDERS_METADATA, FOUNDERS_PRICE, foundersPriceName, isFoundersObject } from '../pro/founders.js';
 
 export const PRODUCT = {
   name: 'Bloombroke Pro',
@@ -154,6 +158,37 @@ export async function setup({ stripe, env = {}, publicUrl = 'https://bloombroke.
   return { values, report };
 }
 
+// FOUNDERS SEATS: the founder seat's renewal product and price, found (by metadata
+// site=bloombroke, product=founders and the amount) or made. Prices cannot change, so a
+// different amount would be a new price; this one is fixed by the Terms ($420 a year).
+// Returns { values: { STRIPE_FOUNDERS_PRICE_ID }, report }.
+export const FOUNDERS_PRODUCT = {
+  name: 'Bloombroke Pro founder seat',
+  description: 'Bloombroke Pro founder seat: renews yearly at $420 from one year after Pro goes live.',
+};
+
+export async function setupFounders({ stripe }) {
+  const report = [];
+  let product = (await all(stripe.products.list({ active: true, limit: 100 }))).find(isFoundersObject);
+  if (product) report.push('founders product: found');
+  else {
+    product = await stripe.products.create({ ...FOUNDERS_PRODUCT, metadata: { ...FOUNDERS_METADATA } });
+    report.push('founders product: created');
+  }
+  const prices = await all(stripe.prices.list({ product: product.id, active: true, type: 'recurring', limit: 100 }));
+  let price = prices.find((p) => isFoundersObject(p) && p.unit_amount === FOUNDERS_PRICE.unit_amount && p.currency === FOUNDERS_PRICE.currency
+    && p.recurring?.interval === FOUNDERS_PRICE.interval && (p.recurring?.interval_count ?? 1) === 1);
+  if (price) report.push('founders yearly price: found');
+  else {
+    price = await stripe.prices.create({
+      product: product.id, unit_amount: FOUNDERS_PRICE.unit_amount, currency: FOUNDERS_PRICE.currency,
+      recurring: { interval: FOUNDERS_PRICE.interval, interval_count: 1 }, lookup_key: FOUNDERS_PRICE.lookup_key, metadata: { ...FOUNDERS_METADATA },
+    });
+    report.push('founders yearly price: created');
+  }
+  return { values: { STRIPE_FOUNDERS_PRICE_ID: price.id }, report };
+}
+
 // Replace or append NAME=value lines, keeping everything else as it was.
 export function upsertEnv(content, updates) {
   const lines = content.length ? content.replace(/\n$/, '').split('\n') : [];
@@ -189,8 +224,13 @@ async function main(argv) {
     env: { STRIPE_WEBHOOK_SECRET: se.webhookSecret, PRO_SECRET: env.PRO_SECRET },
     publicUrl: env.PUBLIC_URL || 'https://bloombroke.com',
   });
-  const { report } = out;
-  const rename = { STRIPE_PRICE_ID: se.names.priceId, STRIPE_PRICE_ID_YEARLY: se.names.priceIdYearly, STRIPE_WEBHOOK_SECRET: se.names.webhookSecret, STRIPE_PORTAL_CONFIG_ID: se.names.portalConfigId };
+  const founders = await setupFounders({ stripe: createStripe(se.secretKey) });
+  const report = [...out.report, ...founders.report];
+  out.values = { ...out.values, ...founders.values };
+  const rename = {
+    STRIPE_PRICE_ID: se.names.priceId, STRIPE_PRICE_ID_YEARLY: se.names.priceIdYearly, STRIPE_WEBHOOK_SECRET: se.names.webhookSecret,
+    STRIPE_PORTAL_CONFIG_ID: se.names.portalConfigId, STRIPE_FOUNDERS_PRICE_ID: foundersPriceName(mode),
+  };
   const values = Object.fromEntries(Object.entries(out.values).map(([k, v]) => [rename[k] || k, v]));
   const tmp = `${envPath}.tmp-${process.pid}`;
   writeFileSync(tmp, upsertEnv(content, values), { mode: 0o600 });
