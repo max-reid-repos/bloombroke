@@ -225,6 +225,8 @@ async function findSeatIntent(ctx, row) {
   return found[0] || null;
 }
 
+const releaseCmd = (seat) => `node scripts/founders.js release ${seat} --execute --live`;
+
 // A seat given back: card detached, Stripe customer deleted (only one tagged as ours),
 // seat open with every private field cleared, one public log line. -> the customer result.
 async function giveBack(ctx, row) {
@@ -255,6 +257,8 @@ export async function chargeSeat(ctx, row, { afterDeadline = false, runId = rand
   const { stripe, store, lm } = ctx;
   const seat = row.seat;
   if (!row.stripe_customer_id || !row.payment_method_id || !row.email || !row.setup_intent_id) throw stop(seat, 'no customer, card, email or SetupIntent on file');
+  // Before any Stripe call, so no PaymentIntent is ever made after the deadline.
+  if (afterDeadline && row.charge_state === null) throw stop(seat, `after the deadline a seat is never started or charged: release it by hand (${releaseCmd(seat)})`);
   let pi;
   try {
     if (row.charge_state === null) {
@@ -271,14 +275,22 @@ export async function chargeSeat(ctx, row, { afterDeadline = false, runId = rand
   // Terms: no charge later than the deadline. A PaymentIntent still waiting for its
   // confirm is cancelled, and the seat given back with its card deleted.
   if (afterDeadline && row.charge_state === 'charging' && (pi.status === 'requires_confirmation' || pi.status === 'canceled')) {
-    try {
-      if (pi.status !== 'canceled') await cancelIntent(stripe, pi.id);
-      return { result: 'released', note: ` (after the deadline: not charged, PaymentIntent cancelled, ${await giveBack(ctx, row)})` };
-    } catch (err) {
-      throw stop(seat, `after the deadline, cancelling it failed: Stripe said ${errText(err)}. Nothing was charged; run charge again`);
+    if (pi.status !== 'canceled') {
+      try {
+        await cancelIntent(stripe, pi.id);
+      } catch (err) {
+        // Not cancelled (it may have been paid meanwhile): nothing is given back.
+        throw stop(seat, `after the deadline, cancelling its PaymentIntent failed: Stripe said ${errText(err)}. The seat stays 'charging' and is not given back; check the PaymentIntent in the dashboard, then run charge again`);
+      }
     }
+    let given;
+    try {
+      given = await giveBack(ctx, row);
+    } catch (err) {
+      throw stop(seat, `after the deadline its PaymentIntent is cancelled (nothing charged), but giving the seat back failed: Stripe said ${errText(err)}. Run charge again to finish giving it back`);
+    }
+    return { result: 'released', note: ` (after the deadline: not charged, PaymentIntent cancelled, ${given})` };
   }
-  if (afterDeadline && row.charge_state === null) throw stop(seat, 'after the deadline a seat is never started');
   // Step 1 done: the id is in the database before anything can charge.
   if (row.charge_state === null && !store.startCharging(seat, pi.id)) throw stop(seat, 'the seat changed during the run');
   let failCode = null;
@@ -330,6 +342,9 @@ async function cardText(stripe, pmId, t) {
   }
 }
 
+// After the deadline: the seats never started, by number, and what to do with them.
+const neverStarted = (rows) => `After the deadline these seats are never charged: ${rows.map((r) => r.seat).join(', ')}. Release them by hand: ${rows.map((r) => releaseCmd(r.seat)).join('; ')}`;
+
 export const CHECKLIST = [
   'Before --execute (live):',
   '  1. Stripe, Settings, Billing, Customer portal (default): cancel only, at period end; switching plans OFF; changing quantity OFF.',
@@ -362,13 +377,14 @@ export async function charge({ ctx, cfg, execute = false, print = console.log })
       const card = r.charge_state === null || r.charge_state === 'charging' ? `  ${await cardText(stripe, r.payment_method_id, t)}` : '';
       print(`seat ${String(r.seat).padStart(2)}  ${CLASSES[r.class].name.padEnd(14)} ${fmtUsd(CLASSES[r.class].usd).padStart(6)}  ${maskEmail(r.email)}  ${r.charge_state || 'to charge'}${card}`);
     }
-    if (!canStart && toStart.length) print(after ? 'After the deadline: no new seat would be charged.' : 'Below the goal: no seat would be charged.');
+    if (!canStart && toStart.length) print(after ? neverStarted(toStart) : 'Below the goal: no seat would be charged.');
     print(`Would charge ${work.length} seats.`);
     for (const line of CHECKLIST) print(line);
     print('Add --execute to charge.');
     return { code: 0 };
   }
   if (!work.length) {
+    if (after && toStart.length) print(neverStarted(toStart));
     print(after ? 'After the deadline: nothing is being charged, so nothing to finish. Nothing changed.'
       : below ? 'Below the goal: nothing is charged. Nothing changed.' : 'Nothing to charge. Nothing changed.');
     return { code: toStart.length || below || after ? 1 : 0 };
@@ -391,12 +407,12 @@ export async function charge({ ctx, cfg, execute = false, print = console.log })
       print(`seat ${r.seat}: ${out.result}${out.note || ''}`);
     } catch (err) {
       if (!(err instanceof ChargeStop)) throw err;
-      print(`STOP. ${err.message}. Nothing more was charged in this run. Fix it, then run charge --execute again.`);
+      print(`STOP. ${err.message}. Nothing more was charged in this run.${now() > cfg.deadlineAt ? '' : ' Fix it, then run charge --execute again.'}`);
       print(`This run: ${counts.charged} charged, ${counts.failed} failed. The emails so far are in the outbox.`);
       return { code: 2 };
     }
   }
-  if (after && toStart.length) print(`${toStart.length} seats were never started and the deadline has passed: they are not charged.`);
+  if (after && toStart.length) print(neverStarted(toStart));
   print(`Done: ${counts.charged} charged, ${counts.failed} failed${counts.released ? `, ${counts.released} given back (after the deadline, not charged)` : ''}. Emails are in ${ctx.outbox.dir}: read them with "founders.js outbox".`);
   return { code: 0 };
 }
@@ -489,7 +505,10 @@ export async function expireUnpaid({ ctx, execute = false, print = console.log }
   if (Number.isFinite(store.state().charge_started_at)) {
     const open = store.committedHere().filter((r) => r.charge_state === null || r.charge_state === 'charging').map((r) => r.seat);
     if (open.length) {
-      print(`Refused: the charge run is not finished (seat${open.length === 1 ? '' : 's'} ${open.join(', ')} not charged yet). Run charge --execute again first, or release ${open.length === 1 ? 'that seat' : 'those seats'}. Nothing changed.`);
+      const what = now() > ctx.store.deadlineAt
+        ? `After the deadline ${open.length === 1 ? 'it is' : 'they are'} never charged: run charge --execute once to finish any 'charging' seat, and release the rest by hand (${open.map(releaseCmd).join('; ')})`
+        : `Run charge --execute again first, or release ${open.length === 1 ? 'that seat' : 'those seats'}`;
+      print(`Refused: the charge run is not finished (seat${open.length === 1 ? '' : 's'} ${open.join(', ')} not charged yet). ${what}. Nothing changed.`);
       return { code: 1 };
     }
   }

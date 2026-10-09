@@ -975,17 +975,17 @@ export async function applyPaySession(session, ctx) {
       return 'founders_pay_wrong_mode';
     }
     const piId = idOf(session.payment_intent);
-    if (d.action === 'refund') return refund(piId, d.why);
+    if (d.action === 'refund') return await refund(piId, d.why);
     const pi = await stripe.paymentIntents.retrieve(piId, { expand: ['payment_method'] });
     if (pi.status !== 'succeeded') throw new NotYet(`PaymentIntent ${pi.status}`);
-    if (pi.amount_received !== seatCents(seat) || pi.currency !== 'usd') return refund(piId, 'amount');
+    if (pi.amount_received !== seatCents(seat) || pi.currency !== 'usd') return await refund(piId, 'amount');
     const pmId = idOf(pi.payment_method);
     const fingerprint = typeof pi.payment_method === 'object' ? pi.payment_method?.card?.fingerprint || null : null;
     const out = markCharged(ctx, { seat, from: 'failed', paymentIntentId: piId, paySessionId: session.id, paymentMethodId: pmId, fingerprint });
     if (out.already) return 'founders_pay_already';
     if (out.conflict) {
       // The seat changed since the checks (given back a moment ago): the money goes back.
-      return refund(piId, 'state');
+      return await refund(piId, 'state');
     }
     // The card that failed on charge day comes off; the new one stays for the renewal.
     if (row.payment_method_id && row.payment_method_id !== pmId) {
@@ -1245,7 +1245,17 @@ export function mountFounders(app, {
     const seat = Number(req.body?.seat);
     if (!/^cs_(test|live)_[A-Za-z0-9]{10,250}$/.test(s) || !isSeat(seat)) return fail(res, 400, 'bad_request', LOST);
     let row = founders.store.seat(seat);
-    if (!row || row.pay_session_id !== s || row.livemode !== lm || row.status !== 'committed') return fail(res, 404, 'not_found', LOST);
+    if (row && row.pay_session_id !== s) {
+      // A paid session that is not the stored one (a stray second checkout, or paid after
+      // the seat was charged or given back): the webhook refunds it in full. Say so.
+      let other = null;
+      try { other = await founders.stripe.checkout.sessions.retrieve(s); } catch { other = null; }
+      if (isFoundersPaySession(other) && Number(other.metadata?.seat) === seat && payDecision(other, row, lm).action === 'refund') {
+        return fail(res, 409, 'refunding', 'This payment was not needed and is being refunded in full. Check your email for the right link.');
+      }
+      return fail(res, 404, 'not_found', LOST);
+    }
+    if (!row || row.livemode !== lm || row.status !== 'committed') return fail(res, 404, 'not_found', LOST);
     if (row.charge_state === 'failed') {
       try {
         const session = await founders.stripe.checkout.sessions.retrieve(s);

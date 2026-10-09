@@ -123,6 +123,7 @@ function fakeStripe({ live = true, now = () => Date.now() } = {}) {
       list({ customer }) { calls.push(['pi.list', customer]); return gen(Object.values(pis).filter((p) => p.customer === customer)); },
       async cancel(pid, p, opts) {
         calls.push(['pi.cancel', pid, opts]);
+        if (hooks.cancel) hooks.cancel(pid);
         const pi = pis[pid];
         if (!['requires_confirmation', 'requires_payment_method', 'requires_action'].includes(pi.status)) {
           throw new Stripe.errors.StripeInvalidRequestError({ message: 'unexpected state', type: 'invalid_request_error', code: 'payment_intent_unexpected_state', payment_intent: copy(pi) });
@@ -577,7 +578,8 @@ test('charge: refused below the goal, after the deadline, and for a seat of the 
     assert.equal(h.store.seat(11).charge_state, 'charged');
     assert.equal(h.store.seat(13).charge_state, null, 'never started after the deadline');
     assert.equal(h.store.seat(12).charge_state, null, 'the other mode is never charged');
-    assert.match(h.lines.join('\n'), /1 seats were never started and the deadline has passed/);
+    assert.match(h.lines.join('\n'), /After the deadline these seats are never charged: 13\. Release them by hand: node scripts\/founders\.js release 13 --execute --live/);
+    assert.ok(!h.stripe.calls.some((c) => c[0] === 'pi.create' || c[0] === 'pi.list'), 'no PaymentIntent is made after the deadline');
     assert.match(h.lines.join('\n'), /1 given back \(after the deadline, not charged\)/);
   } finally { await h.close(); }
 });
@@ -1375,4 +1377,84 @@ test('app start: an outbox the app cannot write is logged loudly', () => {
   const errors = [];
   createFounders({ db, stripe: null, env: { FOUNDERS_OUTBOX_DIR: path.resolve('var', 'outbox-inside') }, log: { log() {}, error: (m) => errors.push(m) }, licences: createStore(db) });
   assert.ok(errors.some((m) => /OUTBOX NOT WRITABLE/.test(m) && /inside the repo/.test(m)), errors.join('\n'));
+});
+
+test('after the deadline: a processing PaymentIntent is not cancelled or given back; a cancel that loses to a payment stops without giving back', async () => {
+  const h = await harness({ goalUsd: 420, http: false });
+  try {
+    commitSeat(h.db, 11);
+    commitSeat(h.db, 12);
+    for (const s of [11, 12]) {
+      const pi = await h.stripe.paymentIntents.create(script.chargeParams(h.store.seat(s)), {});
+      h.store.startCharging(s, pi.id);
+    }
+    const pi11 = h.store.seat(11).payment_intent_id;
+    const pi12 = h.store.seat(12).payment_intent_id;
+    h.stripe.pis[pi11].status = 'processing';
+    h.set(DEADLINE + HOUR);
+    assert.equal((await h.run('charge')).code, 2);
+    assert.match(h.lines.join('\n'), /seat 11: the payment is processing/);
+    assert.ok(!h.lines.join('\n').includes('run charge --execute again'), 'no "run again" after the deadline');
+    assert.ok(!h.stripe.calls.some((c) => c[0] === 'pi.cancel'));
+    assert.equal(h.store.seat(11).charge_state, 'charging');
+    // Seat 11 settles as paid; seat 12 is paid at Stripe just as the cancel goes out.
+    Object.assign(h.stripe.pis[pi11], { status: 'succeeded', amount_received: 42000 });
+    h.stripe.hooks.cancel = (pid) => { if (pid === pi12) Object.assign(h.stripe.pis[pi12], { status: 'succeeded', amount_received: 42000 }); };
+    h.lines.length = 0;
+    assert.equal((await h.run('charge')).code, 2);
+    assert.equal(h.store.seat(11).charge_state, 'charged');
+    assert.match(h.lines.join('\n'), /seat 12: after the deadline, cancelling its PaymentIntent failed: Stripe said StripeInvalidRequestError payment_intent_unexpected_state\. The seat stays 'charging' and is not given back/);
+    assert.equal(h.store.seat(12).charge_state, 'charging');
+    assert.ok(!h.stripe.calls.some((c) => c[0] === 'customer.del'), 'nothing given back');
+    // The next run records the payment.
+    h.stripe.hooks.cancel = null;
+    assert.equal((await h.run('charge')).code, 0, h.lines.join('\n'));
+    assert.equal(h.store.seat(12).charge_state, 'charged');
+  } finally { await h.close(); }
+});
+
+test('after the deadline: cancel worked but giving back failed has its own message; a failed card whose cancel fails says NOT cancelled', async () => {
+  const h = await harness({ goalUsd: 420, http: false });
+  try {
+    commitSeat(h.db, 11, { pm: 'pm_bad' });
+    commitSeat(h.db, 12);
+    h.stripe.cards.pm_bad = 'decline';
+    h.stripe.cards.pm_12 = 'network';
+    const realCancel = h.stripe.paymentIntents.cancel;
+    h.stripe.paymentIntents.cancel = async () => { throw new Stripe.errors.StripePermissionError({ message: 'no access', code: 'permission_denied' }); };
+    await h.run('charge');
+    assert.match(h.lines.join('\n'), /seat 11: failed \(generic_decline; PaymentIntent NOT cancelled \(StripePermissionError permission_denied\): cancel it in the dashboard\)/);
+    assert.equal(h.store.seat(11).charge_state, 'failed', 'still marked failed');
+    h.stripe.paymentIntents.cancel = realCancel;
+    h.set(DEADLINE + HOUR);
+    const realDel = h.stripe.customers.del;
+    h.stripe.customers.del = async () => { throw new Stripe.errors.StripeAPIError({ message: 'down', type: 'api_error' }); };
+    h.lines.length = 0;
+    assert.equal((await h.run('charge')).code, 2);
+    assert.match(h.lines.join('\n'), /seat 12: after the deadline its PaymentIntent is cancelled \(nothing charged\), but giving the seat back failed/);
+    assert.equal(h.stripe.pis[h.store.seat(12).payment_intent_id].status, 'canceled');
+    h.stripe.customers.del = realDel;
+    assert.equal((await h.run('charge')).code, 0, h.lines.join('\n'));
+    assert.equal(h.store.seat(12).status, 'open');
+  } finally { await h.close(); }
+});
+
+test('pay success page: a paid session that is not the stored one says it is being refunded; an unknown one stays "does not work"', async () => {
+  const h = await harness({ goalUsd: 420 });
+  try {
+    commitSeat(h.db, 11, { pm: 'pm_bad' });
+    h.stripe.cards.pm_bad = 'decline';
+    await h.run('charge');
+    const { session } = await paidPaySession(h, 11);
+    const stray = { ...session, id: 'cs_live_straypaysession01' };
+    h.stripe.sessions[stray.id] = stray;
+    const r = await h.post('/api/founders/paid', { s: stray.id, seat: 11 });
+    assert.equal(r.status, 409);
+    assert.equal(r.body.message, 'This payment was not needed and is being refunded in full. Check your email for the right link.');
+    const unknown = await h.post('/api/founders/paid', { s: 'cs_live_nosuchsession0001', seat: 11 });
+    assert.equal(unknown.status, 404);
+    assert.match(unknown.body.message, /This link does not work/);
+    h.stripe.sessions[stray.id] = { ...stray, payment_status: 'unpaid', status: 'open' };
+    assert.equal((await h.post('/api/founders/paid', { s: stray.id, seat: 11 })).status, 404, 'not paid: no refund message');
+  } finally { await h.close(); }
 });
