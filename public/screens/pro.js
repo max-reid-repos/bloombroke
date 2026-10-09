@@ -291,7 +291,8 @@ export function keyFacts(st, now = Date.now()) {
   if (st?.status === 'gift' && st.giftUntil && pro.statusActive(st, now)) facts.push({ value: day(st.giftUntil), label: 'GIFT MONTH UNTIL' });
   else if (st?.status === 'active' || st?.status === 'trialing') {
     const end = st.cancelAt || (st.cancelAtPeriodEnd ? st.currentPeriodEnd : null);
-    const when = st.interval === 'year' ? dayYear : day;
+    // A year away or more (a yearly plan, a five-year seat's end): the date with its year.
+    const when = st.interval === 'year' || st.termUntil ? dayYear : day;
     if (end) facts.push({ value: when(end), label: 'ENDS, NO RENEWAL' });
     else if (st.currentPeriodEnd) facts.push({ value: when(st.currentPeriodEnd), label: st.interval === 'year' ? 'RENEWS YEARLY' : 'RENEWS MONTHLY' });
   }

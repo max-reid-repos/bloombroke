@@ -190,7 +190,7 @@ export function createFoundersStore(db, { now = () => Date.now(), livemode = 1, 
       WHERE seat = @seat AND status = 'committed' AND charge_state = 'charging' AND payment_intent_id = @pi`),
     charged: db.prepare(`UPDATE founders_seats SET charge_state = 'charged', charged_at = @t, licence_id = @lic, claim_hash = @hash, claim_expires_at = @until,
       payment_intent_id = @pi, payment_method_id = COALESCE(@pm, payment_method_id), card_fingerprint = COALESCE(@fp, card_fingerprint),
-      pay_hash = NULL, pay_expires_at = NULL, updated_at = @t WHERE seat = @seat AND status = 'committed'`),
+      pay_expires_at = NULL, updated_at = @t WHERE seat = @seat AND status = 'committed'`),
     byClaim: db.prepare('SELECT * FROM founders_seats WHERE claim_hash = ?'),
     byPay: db.prepare('SELECT * FROM founders_seats WHERE pay_hash = ?'),
     setPaySession: db.prepare("UPDATE founders_seats SET pay_session_id = ?, updated_at = ? WHERE seat = ? AND charge_state = 'failed' AND pay_hash = ?"),
@@ -371,7 +371,8 @@ export function foundersCheckoutParams({ seat, publicUrl, at, cfg, token = '' })
   };
 }
 
-export const FROZEN_MESSAGE = 'Seats are closed. Charge day is under way.';
+// Seats closed for the charge, for good: true from charge day on, for weeks after it too.
+export const FROZEN_MESSAGE = 'Seats are closed. Founders reached the goal.';
 
 export const isFoundersObject = (o) => o?.metadata?.site === SITE && o?.metadata?.product === FOUNDERS_METADATA.product;
 export const isFoundersSession = (s) => Boolean(s && s.mode === 'setup' && isFoundersObject(s));
@@ -1179,6 +1180,7 @@ export function mountFounders(app, {
   };
   const LOST = `This link does not work. Email ${CONTACT}.`;
   const ENDED_LINK = `This link has run out. Email ${CONTACT}.`;
+  const SEAT_PAID = 'This seat is paid. Check your email for the link to your key.';
 
   // POST /api/founders/claim { token } -> { key, seat }: a new Pro key for a charged seat,
   // each time (the old key stops). The link works CLAIM_MS from when it was made.
@@ -1204,17 +1206,20 @@ export function mountFounders(app, {
     const token = typeof req.body?.token === 'string' ? req.body.token : '';
     if (!TOKEN_RE.test(token)) return fail(res, 400, 'bad_token', LOST);
     const row = founders.store.byPayHash(tokenHash(token));
+    // A charged seat keeps its pay hash (markCharged), so its pay link says it is paid.
+    if (row && row.status === 'committed' && row.charge_state === 'charged' && row.livemode === lm) return fail(res, 409, 'paid', SEAT_PAID);
     if (!row || row.status !== 'committed' || row.charge_state !== 'failed' || row.livemode !== lm) return fail(res, 404, 'not_found', LOST);
     const t = now();
     if (!(row.pay_expires_at - t >= PAY_SESSION_MIN_MS)) return fail(res, 410, 'expired', ENDED_LINK);
-    const info = { seat: row.seat, class: row.class, usd: CLASSES[row.class].usd, payUntil: new Date(row.pay_expires_at).toISOString() };
+    // payUntil: the last moment this route still opens a checkout (the page shows it).
+    const info = { seat: row.seat, class: row.class, usd: CLASSES[row.class].usd, payUntil: new Date(row.pay_expires_at - PAY_SESSION_MIN_MS).toISOString() };
     if (req.body?.peek === true) return res.json(info);
     if (paying.has(row.seat)) return fail(res, 409, 'busy', 'Opening checkout. Try again in a moment.');
     paying.add(row.seat);
     try {
       if (row.pay_session_id) {
         const open = await founders.stripe.checkout.sessions.retrieve(row.pay_session_id);
-        if (open?.status === 'complete') return fail(res, 409, 'paid', 'Payment received. Your key is on its way by email.');
+        if (open?.status === 'complete') return fail(res, 409, 'paid', SEAT_PAID);
         if (open?.status === 'open' && open.expires_at * 1000 > t + MIN) return res.json({ ...info, url: open.url });
       }
       // The key names the minute and the params use the start of that minute, so a retry

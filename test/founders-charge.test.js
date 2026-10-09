@@ -22,7 +22,7 @@ import { willRenew } from '../pro/me-routes.js';
 import {
   createFounders, createFoundersStore, mountFounders, handleFoundersEvent, createChargeContext, createOutbox, tokenHash,
   CLAIM_MS, PAY_WINDOW_MS, EMAIL_KINDS, addYears, redactTokens, payCheckoutParams, FOUNDERS_PRICE,
-  chargeEmail, failedEmail, keyEmail, goliveEmail, HOLD_MS,
+  chargeEmail, failedEmail, keyEmail, goliveEmail, HOLD_MS, PAY_SESSION_MIN_MS,
 } from '../pro/founders.js';
 import * as script from '../scripts/founders.js';
 import { setupFounders } from '../scripts/stripe-setup.js';
@@ -602,7 +602,7 @@ test('freeze: blocks checkout, new holds and late commits (given back as ended);
     const r = await h.post('/api/founders/checkout', { class: 'founder' });
     assert.equal(r.status, 410);
     assert.equal(r.body.error, 'frozen');
-    assert.throws(() => h.founders.store.hold({ seat: 21, key: 'k2' }), /Charge day is under way/);
+    assert.throws(() => h.founders.store.hold({ seat: 21, key: 'k2' }), /Seats are closed\. Founders reached the goal\./);
     // A late commit is given back.
     const late = h.founders.store.commit({ sessionId: 'cs_live_latecommit01', cls: 'founder', customer: 'cus_l', paymentMethod: 'pm_l', email: 'late@example.com', livemode: true });
     assert.equal(late.given?.reason, 'ended');
@@ -849,7 +849,7 @@ test('pay link: peek, a card-only Checkout bound to the link, reused while open,
     await h.run('charge');
     const tok = h.token(h.mails()[0], 'pay');
     const peek = await h.post('/api/founders/pay', { token: tok, peek: true });
-    assert.deepEqual(peek.body, { seat: 11, class: 'founder', usd: 420, payUntil: new Date(T0 + PAY_WINDOW_MS).toISOString() });
+    assert.deepEqual(peek.body, { seat: 11, class: 'founder', usd: 420, payUntil: new Date(T0 + PAY_WINDOW_MS - PAY_SESSION_MIN_MS).toISOString() }, 'the last moment the route still opens a checkout');
     assert.equal(h.stripe.calls.filter((c) => c[0] === 'checkout.create').length, 0);
     const a = await h.post('/api/founders/pay', { token: tok });
     assert.equal(a.status, 200);
@@ -908,7 +908,13 @@ test('pay webhook: a good payment charges the seat with the new card (old one of
     assert.equal(row.payment_intent_id, pi);
     assert.equal(row.payment_method_id, 'pm_new11');
     assert.equal(row.card_fingerprint, 'fp_pm_new11');
-    assert.equal(row.pay_hash, null, 'the pay link stops working');
+    assert.ok(row.pay_hash, 'the pay hash stays, so the pay link can say the seat is paid');
+    const payTok = h.token(h.mails().find((m) => m.kind === 'failed' && m.seat === 11), 'pay');
+    for (const body of [{ token: payTok, peek: true }, { token: payTok }]) {
+      const again = await h.post('/api/founders/pay', body);
+      assert.equal(again.status, 409, JSON.stringify(body));
+      assert.deepEqual(again.body, { error: 'paid', message: 'This seat is paid. Check your email for the link to your key.' });
+    }
     assert.ok(h.stripe.calls.some((c) => c[0] === 'pm.detach' && c[1] === 'pm_bad'), 'the failed card comes off');
     // P6: the key email from the app process, its own outbox file.
     const key = h.mails().find((m) => m.kind === 'key');

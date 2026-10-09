@@ -227,12 +227,13 @@ async function copyText(text) {
   return ok;
 }
 
-// The page becomes one card: a template's copy.
+// The page becomes one card: a template's copy. The templates stay (a second link
+// opened in this tab swaps again).
 function swapIn(id, title) {
   const tpl = document.getElementById(id);
   const main = $('#fd');
   if (!tpl || !main) return false;
-  main.replaceChildren(tpl.content.cloneNode(true));
+  main.replaceChildren(tpl.content.cloneNode(true), ...main.querySelectorAll('template'));
   if (title) document.title = title;
   return true;
 }
@@ -315,7 +316,7 @@ async function pay(token) {
   let d;
   try {
     d = await post('/api/founders/pay', { token, peek: true });
-  } catch (err) { fail(err.message); return; }
+  } catch (err) { fail(err.message, err.code !== 'paid'); return; } // paid: a plain line, not a warning
   $('#fd-pay-hero').textContent = payHero(d);
   say(sub, PAY_SUB);
   note.textContent = payNote(d);
@@ -367,9 +368,19 @@ async function paidPage({ seat, s }) {
 
 const page = typeof document !== 'undefined' ? document.body?.dataset?.page : null;
 if (page === 'founders') {
-  // A claim or pay link opened in a tab already on /founders changes only the fragment:
-  // load again, so the top of this script takes the token out of the address.
-  window.addEventListener('hashchange', () => { if (readFragment(window.location.hash)) window.location.reload(); });
+  // A claim or pay link opened in a tab already on /founders changes only the fragment
+  // (no new load). The fragment leaves the address first, then the link is used in place.
+  // Left over, as on a first load: the browser may have written the address with the
+  // token into its own history before this runs. It never reaches our server or analytics.
+  window.addEventListener('hashchange', () => {
+    const hash = window.location.hash;
+    if (/^#(claim|pay)=/.test(hash)) {
+      try { window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`); } catch { /* keep it */ }
+    }
+    const f = readFragment(hash);
+    if (f?.kind === 'claim') claim(f.token);
+    else if (f?.kind === 'pay') pay(f.token);
+  });
   if (SECRETS.paid && $('#fd-key-card')) paidPage(SECRETS.paid);
   else if (SECRETS.frag?.kind === 'claim') claim(SECRETS.frag.token);
   else if (SECRETS.frag?.kind === 'pay') pay(SECRETS.frag.token);

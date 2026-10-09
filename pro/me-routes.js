@@ -52,6 +52,9 @@ export function mountMe(app, {
   now = () => Date.now(), log = console, limits = meLimits(now), db, onDelete = () => {}, pingsOf = null,
 }) {
   const fail = (res, status, error, message) => res.status(status).json({ error, message });
+  // The plan as PRO sees it, a founders seat's class too (store.foundersClassOf).
+  const classOf = store.foundersClassOf ? (id, lm) => store.foundersClassOf(id, lm) : null;
+  const statusOf = (lic) => publicStatus(lic, now(), mode, { classOf });
   const limited = (res, r, message = 'Too many tries. Wait a few minutes and try again.') => {
     res.set('Retry-After', String(r.retryAfter));
     return fail(res, 429, 'rate_limited', message);
@@ -89,7 +92,7 @@ export function mountMe(app, {
     if (!lic) return;
     const hit = limits.read.hit(`lic:${lic.id}`);
     if (!hit.ok) return limited(res, hit);
-    res.json({ ...meOf(lic), status: planOf(publicStatus(lic, now(), mode)) });
+    res.json({ ...meOf(lic), status: planOf(statusOf(lic)) });
   });
 
   r.put('/profile', body, (req, res) => {
@@ -119,7 +122,7 @@ export function mountMe(app, {
     if (!lic) return;
     const hit = limits.export.hit(`lic:${lic.id}`);
     if (!hit.ok) return limited(res, hit, 'That is a lot of downloads for one day. Try again tomorrow.');
-    const status = planOf(publicStatus(lic, now(), mode));
+    const status = planOf(statusOf(lic));
     const docs = store.getDocs(lic.id);
     const gifts = store.listGifts(lic.id).gifts.map((g) => ({ state: g.state, made: iso(g.createdAt), expires: iso(g.expiresAt), used: iso(g.redeemedAt) }));
     const me = meOf(lic);

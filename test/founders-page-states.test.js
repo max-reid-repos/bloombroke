@@ -13,7 +13,7 @@ import {
   readFragment, readPaid, cleanUrl, askPaid, untilText, payHero, payNote, TOKEN_RE as CLIENT_TOKEN_RE, LOST, PAID_WAITS, STILL,
 } from '../public/founders.js';
 import { TOKEN_RE, FROZEN_MESSAGE, CONTACT } from '../pro/founders.js';
-import { statusText, foundersText, mainHtml } from '../public/screens/pro.js';
+import { statusText, foundersText, mainHtml, keyFacts } from '../public/screens/pro.js';
 import { renewing, planFacts, meHtml } from '../public/screens/me.js';
 
 const TOKEN = 'A'.repeat(20) + '_-' + 'b9'.repeat(10) + 'z'; // 43 characters, the shape only
@@ -59,6 +59,23 @@ test('founders.js: the address is cleaned at the top, before any other code; goa
   const g = html.indexOf('goal.js"></script>');
   assert.ok(f > 0 && g > f, 'founders.js before goal.js');
   assert.match(html, /<script type="module" src="\/founders\.js"><\/script>/, 'a module script (runs in order, not async)');
+});
+
+test('a link opened in a tab already on /founders: the fragment leaves the address first, then the link is used in place', () => {
+  const src = readFileSync('public/founders.js', 'utf8');
+  const h = src.slice(src.indexOf("window.addEventListener('hashchange'"));
+  const body = h.slice(0, h.indexOf('\n  });'));
+  const clear = body.indexOf('window.history.replaceState');
+  assert.ok(clear > 0);
+  for (const later of ['readFragment(', 'claim(', 'pay(']) assert.ok(body.indexOf(later) > clear, `${later} after the fragment is cleared`);
+  assert.doesNotMatch(body, /reload\(/, 'no reload: the token is never put back in the address');
+  assert.match(src, /main\.replaceChildren\(tpl\.content\.cloneNode\(true\), \.\.\.main\.querySelectorAll\('template'\)\)/, 'the templates stay for a second link');
+});
+
+test('ME answers with the same founders class as PRO (pro/me-routes.js passes the lookup)', () => {
+  const src = readFileSync('pro/me-routes.js', 'utf8');
+  assert.match(src, /const statusOf = \(lic\) => publicStatus\(lic, now\(\), mode, \{ classOf \}\);/);
+  assert.equal((src.match(/planOf\(statusOf\(lic\)\)/g) || []).length, 2, 'GET /api/me and DOWNLOAD MY DATA');
 });
 
 test('the API\'s line for a link that cannot work is the one the page shows without asking', () => {
@@ -153,11 +170,12 @@ test('GET /founders: Referrer-Policy no-referrer in every state; ?paid= is the k
   } finally { await s.close(); }
 });
 
-test('GET /founders, frozen: "Seats are closed. Charge day is under way." with the closed look', async () => {
+test('GET /founders, frozen: "Seats are closed. Founders reached the goal." with the closed look', async () => {
   const s = await serve(fakeFounders({ frozen: true }));
   try {
     const html = await (await s.get('/founders')).text();
     assert.equal(COPY.frozen, FROZEN_MESSAGE);
+    assert.equal(FROZEN_MESSAGE, 'Seats are closed. Founders reached the goal.');
     assert.ok(html.includes(`<p class="card-note">${FROZEN_MESSAGE}</p>`));
     assert.ok(!html.includes(COPY.soon) && !html.includes(COPY.open));
     assert.ok(!html.includes('class="fd-pick"'), 'no seat can be picked');
@@ -195,6 +213,9 @@ test('status text: a five-year seat ends (or starts on go-live day), a founder s
   assert.equal(statusText({ status: 'active' }), 'ACTIVE');
   assert.equal(statusText({ ...TEN_AFTER, status: 'canceled', active: false }), 'CANCELED');
   for (const st of [TEN_AFTER, TEN_BEFORE, FOUNDER_BEFORE]) assert.doesNotMatch(statusText(st), /—|cancel/i);
+  // The key's facts: a five-year seat's end five years out carries its year.
+  assert.deepEqual(keyFacts(TEN_AFTER).at(-1), { value: 'Dec 2, 2031', label: 'ENDS, NO RENEWAL' });
+  assert.equal(keyFacts(TEN_BEFORE).length, 1, 'before go-live: the seat only');
 });
 
 test('PRO key view: a founders seat has no MANAGE PLAN or CANCEL; the line under the key says what it is', () => {

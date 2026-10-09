@@ -769,6 +769,6 @@ test('FOUNDERS and GUIDE: an h1, one solid button, never "lifetime"', () => {
   }
   for (const html of [FD_KEY('claim'), FD_KEY('paid'), FD_PAY]) assert.equal((html.match(/btn-solid/g) || []).length, 1, 'filled: one solid button');
   assert.ok(seatsCardHtml({ ...FD, open: false, frozen: true }).includes(`<p class="card-note">${FD_COPY.frozen}</p>`));
-  assert.equal(FD_COPY.frozen, 'Seats are closed. Charge day is under way.');
+  assert.equal(FD_COPY.frozen, 'Seats are closed. Founders reached the goal.');
   assert.equal((seatsCardHtml({ ...FD, open: false, frozen: true }).match(/btn-solid/g) || []).length, 0, 'frozen: the closed look, outlines only');
 });
