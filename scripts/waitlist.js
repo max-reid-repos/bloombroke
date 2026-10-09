@@ -2,10 +2,11 @@
 // ADMIN ONLY. Print the PRO WAITLIST (pro/waitlist.js) as CSV: email,created_at, oldest
 // first. Read-only: the database is opened read-only and nothing is changed.
 //
-//   node scripts/waitlist.js [--db path] [--source pro-soon|guide]
+//   node scripts/waitlist.js [--db path] [--source pro-soon|guide|founders]
 //
-// --source picks the list: pro-soon (the default, PRO's "Pro opens soon.") or guide (the
-// BUILD GUIDE page, /guide). One list per run, never the two mixed.
+// --source picks the list: pro-soon (the default, PRO's "Pro opens soon."), guide (the
+// BUILD GUIDE page, /guide) or founders (the founders page's "Not ready to save a card?",
+// POST /api/founders/reserve). One list per run, never two mixed.
 //
 // The database is --db, else PRO_DB_PATH (from the environment or the .env next to
 // server.js), else var/pro.db. Addresses taken off the list (deleted_at) are left out.
@@ -29,7 +30,7 @@ export function parseArgs(argv) {
       out.db = v;
     } else if (a === '--source') {
       const v = argv[++i];
-      if (!SOURCES.includes(v)) return { error: `--source takes ${SOURCES.join(' or ')}` };
+      if (!SOURCES.includes(v)) return { error: `--source takes ${SOURCES.slice(0, -1).join(', ')} or ${SOURCES.at(-1)}` };
       out.source = v;
     } else return { error: `unknown option ${a}` };
   }
@@ -58,7 +59,7 @@ function main(argv) {
   const args = parseArgs(argv);
   if (args.error) {
     console.error(args.error);
-    console.error('Usage: node scripts/waitlist.js [--db path] [--source pro-soon|guide]');
+    console.error(`Usage: node scripts/waitlist.js [--db path] [--source ${SOURCES.join('|')}]`);
     return 1;
   }
   const file = dbPath(args.db);

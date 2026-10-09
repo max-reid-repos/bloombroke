@@ -171,15 +171,20 @@ const FD_PAY = payCardHtml()
 const FD_SEATS = Array.from({ length: 42 }, (_, i) => ({ seat: i + 1, class: i < 10 ? 'ten' : 'founder', status: i < 20 ? 'committed' : i === 20 ? 'held' : 'open', handle: i < 20 && i % 3 === 0 ? 'Abcdefghijklmno' : null }));
 const FD = { open: true, testMode: true, ended: false, goalUsd: 17640, committedUsd: 8400, seatsTaken: 20, seatsTotal: 42, deadline: '2026-12-15', seats: FD_SEATS, log: [{ text: 'Seat 12 released Nov 3.' }] };
 // The grid and the release log are the media (seat numbers and handles, a list), so they
-// are left out of the count, like TAPE's list.
-const FD_MEDIA = /<div class="card-media">[\s\S]*?<\/ul>(?:<ul class="fd-log"[\s\S]*?<\/ul>)?<\/div>/;
+// are left out of the count, like TAPE's list. The founders email list above the grid
+// (same media slot) is words, and counts.
+const FD_MEDIA = /<ul class="fd-grid"[\s\S]*?<\/ul>(?:<ul class="fd-log"[\s\S]*?<\/ul>)?/;
 export const FOUNDERS = [
-  // The kicker and TEST MODE (3), the h1 (2), the sub (13), the three fact labels (5): 23.
-  ['FOUNDERS, the bar (test mode)', mainCardHtml(FD), 25],
-  ['FOUNDERS, the bar, after checkout', mainCardHtml({ ...FD, testMode: false }, { alert: 'Seat 7 is yours. Nobody pays until the goal is reached.' }), 32], // + the line on top (9)
+  // The kicker and TEST MODE (3), the h1 (3), the sub (15), the three fact labels and the
+  // day's month (6), What Pro is, three lines (11, 15, 4): 57. The owner's copy (Oct 9).
+  ['FOUNDERS, the bar (test mode)', mainCardHtml(FD), 60],
+  ['FOUNDERS, the bar, after checkout', mainCardHtml({ ...FD, testMode: false }, { alert: 'Seat 7 is yours. Nobody pays until the goal is reached.' }), 66], // + the line on top (9), no TEST MODE
   // The two kinds of seat (name, price word, one line, the button: 13 and 18), the one
-  // line under them (11) and the team line (13): 55. The owner's copy, word for word.
-  ['FOUNDERS, the seats', seatsCardHtml(FD).replace(FD_MEDIA, ''), 60],
+  // line under them (14), the founders email list (its line 13, Email me 2) and the team
+  // line (13): 72 in this fixture; "3 waiting." adds 1. The owner's copy, word for word. Closed or frozen:
+  // no email list, 60 as before.
+  ['FOUNDERS, the seats', seatsCardHtml(FD).replace(FD_MEDIA, ''), 75],
+  ['FOUNDERS, the seats, 3 waiting', seatsCardHtml({ ...FD, waiting: 3 }).replace(FD_MEDIA, ''), 75],
   ['FOUNDERS, the seats, closed', seatsCardHtml({ ...FD, open: false, testMode: false }).replace(FD_MEDIA, ''), 60],
   ['FOUNDERS, the seats, frozen (charge day)', seatsCardHtml({ ...FD, open: false, testMode: false, frozen: true }).replace(FD_MEDIA, ''), 60],
   ['FOUNDERS, tips', tipsCardHtml({ monthUsd: 85 }), 25],
@@ -755,9 +760,12 @@ test('FOUNDERS and GUIDE: an h1, one solid button, never "lifetime"', () => {
   for (const [name, html] of FOUNDERS) {
     assert.doesNotMatch(html, /lifetime/i, name);
   }
-  assert.match(mainCardHtml(FD), /<h1 class="card-hero card-hero-44 num">Founders seats<\/h1>/);
+  assert.match(mainCardHtml(FD), /<h1 class="card-hero card-hero-44 num">Pro needs 42 founders\.<\/h1>/);
   assert.match(guideCardHtml(), /<h1 class="card-hero card-hero-44 num">How Bloombroke was built<\/h1>/);
   assert.equal((seatsCardHtml(FD).match(/btn-solid/g) || []).length, 1, 'Save a founder seat is the one solid button');
+  // The founders email list: an outline button, so the founder seat keeps the one solid one.
+  assert.match(seatsCardHtml({ ...FD, waiting: 3 }), /<button type="submit" class="btn card-btn" id="fd-reserve-send">Email me<\/button>/);
+  assert.equal((seatsCardHtml({ ...FD, waiting: 3 }).match(/btn-solid/g) || []).length, 1, 'with the email list: still one solid button');
   assert.equal((tipsCardHtml({ monthUsd: 0 }).match(/btn-solid/g) || []).length, 0, 'the tip button is an outline: the page keeps one solid button');
   // Charge day: an h1 each; while waiting every button is a disabled outline, once filled
   // exactly one is solid.

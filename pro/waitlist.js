@@ -8,6 +8,9 @@
 //   POST /api/pro/waitlist?source=guide   the same, for the BUILD GUIDE list (/guide):
 //                            one email when the guide is ready. Open whatever PRO_CHECKOUT
 //                            says; the same limits, honeypot and same-origin rule.
+//   The FOUNDERS list (source 'founders') has its own route, POST /api/founders/reserve
+//   (pro/founders.js), open while founders seats can be saved, whatever PRO_CHECKOUT says.
+//   It runs the same sign-up (signUp below): the same checks, limits and answers.
 //
 // email: trimmed, lower-cased, at most 254 characters, a plain address. hp: a honeypot
 // field that people never see; a bot that fills it gets { ok: true } and nothing is
@@ -21,10 +24,12 @@ import { sameOrigin } from './feedback.js';
 
 export const MAX_EMAIL = 254;
 export const SOURCE = 'pro-soon';
-// The lists: 'pro-soon' (PRO's "Pro opens soon.") and 'guide' (the /guide page). One
-// address may be on both; scripts/waitlist.js prints one list at a time (--source).
+// The lists: 'pro-soon' (PRO's "Pro opens soon."), 'guide' (the /guide page) and
+// 'founders' (the founders page: "Not ready to save a card?", migrations/023). One
+// address may be on each; scripts/waitlist.js prints one list at a time (--source).
 export const GUIDE = 'guide';
-export const SOURCES = [SOURCE, GUIDE];
+export const FOUNDERS_LIST = 'founders';
+export const SOURCES = [SOURCE, GUIDE, FOUNDERS_LIST];
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 // Per client IP: 5 tries an hour, right or wrong. For the whole site: 500 new
@@ -69,31 +74,20 @@ export function createWaitlistStore(db, { now = () => Date.now() } = {}) {
     ON CONFLICT(email, source) DO UPDATE SET created_at = excluded.created_at, deleted_at = NULL, notified_at = NULL
     WHERE waitlist.deleted_at IS NOT NULL`);
   return {
-    // -> true when the address is new on that list (source: 'pro-soon' or 'guide').
+    // -> true when the address is new on that list (source: one of SOURCES).
     add(email, source = SOURCE) { return add.run(email, now(), SOURCES.includes(source) ? source : SOURCE).changes > 0; },
     count(source = SOURCE) { return db.prepare('SELECT COUNT(*) AS n FROM waitlist WHERE deleted_at IS NULL AND source = ?').get(source).n; },
   };
 }
 
-export function mountWaitlist(app, {
-  store, checkoutClosed = false, publicUrl = 'https://bloombroke.com', now = () => Date.now(),
-  limiter = createLimiter({ max: PER_IP, windowMs: HOUR, now }),
-  daily = createLimiter({ max: PER_DAY, windowMs: DAY, now, maxKeys: 1 }),
-  log = console,
-}) {
+// The sign-up itself, after express.json: same origin, the limits, the address, the
+// honeypot, then the store. sourceOf(req): the list to add to. Shared by the Pro and
+// guide lists here and the founders list (pro/founders.js POST /api/founders/reserve).
+export function signUp({ store, sourceOf, publicUrl, limiter, daily, log = console, crossOrigin = 'Join from bloombroke.com.' }) {
   const fail = (res, status, error, message) => res.status(status).json({ error, message });
   const ok = (res) => res.json({ ok: true });
-  // ?source=guide: the BUILD GUIDE list. Anything else in source: 404.
-  const sourceOf = (req) => (req.query?.source === undefined ? SOURCE : req.query.source === GUIDE ? GUIDE : null);
-  app.post('/api/pro/waitlist', (req, res, next) => {
-    res.set('Cache-Control', 'no-store');
-    // Checkout open: there is no Pro list to join (the guide list stays open). Before the
-    // body is even read.
-    const source = sourceOf(req);
-    if (!source || (source === SOURCE && !checkoutClosed)) return fail(res, 404, 'not_found', 'No such endpoint.');
-    next();
-  }, express.json({ limit: '1kb' }), (req, res) => {
-    if (!sameOrigin(req, publicUrl)) return fail(res, 403, 'cross_origin', 'Join from bloombroke.com.');
+  return (req, res) => {
+    if (!sameOrigin(req, publicUrl)) return fail(res, 403, 'cross_origin', crossOrigin);
     // Every try counts, right or wrong.
     const r = limiter.hit(clientIp(req));
     if (!r.ok) {
@@ -123,7 +117,26 @@ export function mountWaitlist(app, {
       return fail(res, 503, 'unavailable', 'Could not save that. Try again in a minute.');
     }
     return ok(res);
-  });
+  };
+}
+
+export function mountWaitlist(app, {
+  store, checkoutClosed = false, publicUrl = 'https://bloombroke.com', now = () => Date.now(),
+  limiter = createLimiter({ max: PER_IP, windowMs: HOUR, now }),
+  daily = createLimiter({ max: PER_DAY, windowMs: DAY, now, maxKeys: 1 }),
+  log = console,
+}) {
+  const fail = (res, status, error, message) => res.status(status).json({ error, message });
+  // ?source=guide: the BUILD GUIDE list. Anything else in source: 404.
+  const sourceOf = (req) => (req.query?.source === undefined ? SOURCE : req.query.source === GUIDE ? GUIDE : null);
+  app.post('/api/pro/waitlist', (req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    // Checkout open: there is no Pro list to join (the guide list stays open). Before the
+    // body is even read.
+    const source = sourceOf(req);
+    if (!source || (source === SOURCE && !checkoutClosed)) return fail(res, 404, 'not_found', 'No such endpoint.');
+    next();
+  }, express.json({ limit: '1kb' }), signUp({ store, sourceOf, publicUrl, limiter, daily, log }));
   app.use('/api/pro/waitlist', (err, req, res, next) => {
     if (res.headersSent) return next(err);
     if (err?.type === 'entity.too.large') return fail(res, 413, 'too_large', 'That request is too large.');

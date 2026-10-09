@@ -4,6 +4,7 @@
 //   - a class button: POST /api/founders/checkout ({ seat } or { class }), then Stripe;
 //   - tips: an amount, POST /api/tips/checkout ({ usd }), then Stripe;
 //   - the guide list: POST /api/pro/waitlist?source=guide ({ email, hp });
+//   - the founders email list: POST /api/founders/reserve ({ email, hp });
 //   - charge day: #claim=<token> (the key, once), #pay=<token> (pay for a seat whose card
 //     failed) and ?paid=<seat>&s=<session> (the key after that payment).
 // The server checks everything again: the seat, the class, the amount and the address.
@@ -162,6 +163,35 @@ function tips() {
       send.disabled = false;
     }
   });
+}
+
+// ---- /founders: the founders email list ("Not ready to save a card?") ----
+export const RESERVE_DONE = 'Thanks. We will email you about the seats.';
+function reserve() {
+  const form = $('#fd-reserve-form');
+  if (!form) return;
+  const input = $('#fd-reserve-email');
+  const msg = $('#fd-reserve-msg');
+  const btn = $('#fd-reserve-send');
+  let busy = false;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (busy) return;
+    const email = input.value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { say(msg, 'That email address does not look right.', true); return; }
+    busy = true;
+    btn.disabled = true;
+    try {
+      await post('/api/founders/reserve', { email, hp: $('#fd-reserve-hp')?.value || '' });
+      form.remove();
+      say(msg, RESERVE_DONE);
+    } catch (err) {
+      say(msg, err.message, true);
+      busy = false;
+      btn.disabled = false;
+    }
+  });
+  input.addEventListener('input', () => { if (!busy && msg.classList.contains('warn')) say(msg, ''); });
 }
 
 // ---- /guide ----
@@ -384,6 +414,6 @@ if (page === 'founders') {
   if (SECRETS.paid && $('#fd-key-card')) paidPage(SECRETS.paid);
   else if (SECRETS.frag?.kind === 'claim') claim(SECRETS.frag.token);
   else if (SECRETS.frag?.kind === 'pay') pay(SECRETS.frag.token);
-  else { founders(); tips(); }
+  else { founders(); reserve(); tips(); }
 }
 if (page === 'guide') guide();

@@ -1,12 +1,16 @@
 // FOUNDERS SEATS (pro/founders.js, lib/founders-page.js) and TIPS (pro/tips.js): holds,
 // checkout, the webhook (commit, duplicates, handles, expiry), the public status, the goal
-// math, the deadline, the closed state, the pages, the guide list and the admin scripts.
+// math, the deadline, the closed state, the pages, the guide list, the founders email list
+// and the admin scripts.
 // Stripe is a fake with real webhook signing, like test/pro.test.js.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import Stripe from 'stripe';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { openDb } from '../pro/db.js';
 import { createStore } from '../pro/store.js';
 import { revealKeyFrom } from '../pro/licence.js';
@@ -23,6 +27,8 @@ import { mountFoundersPages, foundersPage, emptyState, COPY } from '../lib/found
 import { foundersLine } from '../public/screens/pro.js';
 import * as foundersScript from '../scripts/founders.js';
 import * as fishScript from '../scripts/fish-review.js';
+import { toCsv } from '../scripts/waitlist.js';
+import { RESERVE_DONE } from '../public/founders.js';
 
 const SECRET = 'whsec_test_dummy_secret_for_unit_tests';
 const AES = revealKeyFrom('x'.repeat(40));
@@ -492,8 +498,16 @@ test('page: open in test mode, with seats committed: the badge, the bar, the gri
     const html = r.text;
     assert.match(html, /<title>Founders seats \| Bloombroke<\/title>/);
     assert.match(html, /<link rel="canonical" href="https:\/\/bloombroke\.com\/founders">/);
-    assert.match(html, /<h1 class="card-hero card-hero-44 num">Founders seats<\/h1>/);
-    assert.ok(html.includes('Licensed live prices cost $15,300 a year. When founders commit $17,640, Pro goes live.'));
+    assert.match(html, /<h1 class="card-hero card-hero-44 num">Pro needs 42 founders\.<\/h1>/);
+    assert.ok(html.includes('42 founders at $420 cover a year of licensed live prices. Nobody pays until founders commit $17,640.'));
+    // What Pro is: three plain lines under the facts, before the seats card.
+    const pro = '<ul class="fd-pro" aria-label="What Pro is"><li>Pro adds live licensed US stock and ETF prices to the terminal.</li>'
+      + '<li>Pro today: your watchlist and portfolio on every device, plus alerts when the tab is closed.</li><li>Built by Max Reid.</li></ul>';
+    assert.ok(html.includes(pro));
+    assert.ok(html.indexOf(pro) > html.indexOf('id="fd-facts"') && html.indexOf(pro) < html.indexOf('id="fd-seats"'));
+    assert.doesNotMatch(html, /open source|github|repo\b/i);
+    // The missed-goal rule stays in view, in the line under the seat buttons.
+    assert.equal(COPY.open, 'You save a card today. If the goal is missed, we delete every card.');
     assert.ok(html.includes('<span class="fd-badge">TEST MODE</span>'));
     assert.match(html, /<progress class="fd-bar" max="17640" value="1840"/);
     assert.ok(html.includes('<dd class="num">$1,840</dd>') && html.includes('of $17,640 committed'));
@@ -681,6 +695,98 @@ test('guide list: POST ?source=guide works with Pro checkout open, its own list;
     assert.ok(g.text.includes('One email when it is ready. Nothing else.'));
     assert.match(g.text, /<link rel="canonical" href="https:\/\/bloombroke\.com\/guide">/);
   } finally { await s.close(); }
+});
+
+test('founders email list: POST /api/founders/reserve, its own list, whatever PRO_CHECKOUT says; the count, never an address', async () => {
+  const s = await setup(); // the Pro waitlist is mounted with checkout open (its own route 404)
+  try {
+    const join = (body, headers = ORIGIN) => s.req('POST', '/api/founders/reserve', { body, headers: { 'CF-Connecting-IP': '203.0.113.7', ...headers } });
+    // None yet: no counter on the page, the form is there, its button an outline.
+    let page = (await s.req('GET', '/founders')).text;
+    assert.ok(page.includes('<p class="fd-reserve-line">Not ready to save a card? Leave your email. It holds no seat.</p>'));
+    assert.match(page, /<button type="submit" class="btn card-btn" id="fd-reserve-send">Email me<\/button>/);
+    assert.doesNotMatch(page, /waiting\./, 'no zero counter');
+    assert.equal((page.match(/btn-solid/g) || []).length, 1, 'the founder seat keeps the one solid button');
+    assert.ok(page.indexOf('id="fd-reserve"') > page.indexOf('class="fd-classes"') && page.indexOf('id="fd-reserve"') < page.indexOf('id="fd-grid"'), 'under the two kinds of seat, above the grid');
+    assert.equal((await s.req('GET', '/api/founders/status')).body.waiting, 0);
+    // The script says the page's own words on success, and posts to this route.
+    const client = readFileSync('public/founders.js', 'utf8');
+    assert.equal(RESERVE_DONE, COPY.reserveDone);
+    assert.equal(RESERVE_DONE, 'Thanks. We will email you about the seats.');
+    assert.ok(client.includes("post('/api/founders/reserve', { email, hp: $('#fd-reserve-hp')?.value || '' })"));
+
+    const ok = await join({ email: ' Ann@Example.com ', hp: '' });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(ok.body, { ok: true });
+    assert.equal(ok.headers.get('cache-control'), 'no-store');
+    assert.equal((await join({ email: 'ann@example.com' })).status, 200, 'again: the same answer');
+    assert.equal((await join({ email: 'bot@example.com', hp: 'x' })).status, 200, 'the honeypot: done, nothing kept');
+    const bad = await join({ email: 'not an address' });
+    assert.equal(bad.status, 400);
+    assert.equal(bad.body.message, 'That email address does not look right.');
+    assert.equal((await join({ email: 'b@example.com' }, { Origin: 'https://evil.example' })).status, 403);
+    const rows = s.db.prepare('SELECT email, source FROM waitlist ORDER BY id').all();
+    assert.deepEqual(rows.map((r) => ({ ...r })), [{ email: 'ann@example.com', source: 'founders' }]);
+    // The Pro waitlist's limit: 5 tries an hour per address, right or wrong (four used; a
+    // cross-origin try is refused before it counts).
+    assert.equal((await join({ email: 'x' })).status, 400);
+    const sixth = await join({ email: 'c@example.com' });
+    assert.equal(sixth.status, 429);
+    assert.equal(sixth.body.message, 'Too many tries. Wait an hour and try again.');
+
+    // Three on the list: the status and the page say 3, never who.
+    s.db.prepare("INSERT INTO waitlist (email, created_at, source) VALUES ('d@example.com', 1, 'founders'), ('e@example.com', 1, 'founders'), ('f@example.com', 1, 'guide')").run();
+    const st = await s.req('GET', '/api/founders/status');
+    assert.equal(st.body.waiting, 3);
+    assert.doesNotMatch(st.text, /@example\.com/);
+    page = (await s.req('GET', '/founders')).text;
+    assert.ok(page.includes('<p class="fd-waiting" id="fd-waiting">3 waiting.</p>'));
+    assert.doesNotMatch(page, /@example\.com/);
+    // scripts/waitlist.js --source founders lists them.
+    assert.equal(toCsv(s.db, 'founders').split('\n').filter(Boolean).length, 4, 'the header and 3 addresses');
+
+    // Frozen for the charge: no form, and the route says closed.
+    s.founders.store.freeze();
+    page = (await s.req('GET', '/founders')).text;
+    assert.doesNotMatch(page, /fd-reserve|waiting\./);
+    const shut = await join({ email: 'g@example.com' }, { 'CF-Connecting-IP': '203.0.113.8', ...ORIGIN });
+    assert.equal(shut.status, 409);
+    assert.equal(shut.body.message, 'Seats are closed.');
+  } finally { await s.close(); }
+  // Closed (FOUNDERS not open) and after the deadline: no form, the route says closed.
+  for (const opts of [{ env: {} }, { start: Date.UTC(2026, 11, 16, 1) }]) {
+    const c = await setup(opts);
+    try {
+      assert.doesNotMatch((await c.req('GET', '/founders')).text, /fd-reserve/);
+      assert.equal((await c.req('POST', '/api/founders/reserve', { body: { email: 'h@example.com' }, headers: ORIGIN })).status, 409);
+      assert.equal(c.db.prepare("SELECT COUNT(*) AS n FROM waitlist WHERE source = 'founders'").get().n, 0);
+    } finally { await c.close(); }
+  }
+});
+
+test('migration 023: the waitlist takes the founders list, every row and the one-row-per-list rule kept', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'bb-founders-023-'));
+  try {
+    const before = path.join(dir, 'before');
+    mkdirSync(before);
+    for (const f of readdirSync('migrations').filter((x) => x.endsWith('.sql') && x < '023')) copyFileSync(path.join('migrations', f), path.join(before, f));
+    const file = path.join(dir, 'pro.db');
+    const old = openDb(file, { migrationsDir: before, log: quiet });
+    old.prepare("INSERT INTO waitlist (email, created_at, source, notified_at) VALUES ('a@x.co', 5, 'pro-soon', 9), ('a@x.co', 6, 'guide', NULL)").run();
+    assert.throws(() => old.prepare("INSERT INTO waitlist (email, created_at, source) VALUES ('a@x.co', 7, 'founders')").run(), /CHECK/);
+    old.close();
+    const db = openDb(file, { log: quiet });
+    assert.ok(db.prepare("SELECT 1 FROM schema_migrations WHERE name = '023_founders_reserve.sql'").get());
+    assert.deepEqual(db.prepare('SELECT email, created_at, source, notified_at FROM waitlist ORDER BY id').all().map((r) => ({ ...r })),
+      [{ email: 'a@x.co', created_at: 5, source: 'pro-soon', notified_at: 9 }, { email: 'a@x.co', created_at: 6, source: 'guide', notified_at: null }]);
+    db.prepare("INSERT INTO waitlist (email, created_at, source) VALUES ('a@x.co', 7, 'founders')").run();
+    assert.throws(() => db.prepare("INSERT INTO waitlist (email, created_at, source) VALUES ('a@x.co', 8, 'founders')").run(), /UNIQUE/);
+    assert.throws(() => db.prepare("INSERT INTO waitlist (email, created_at, source) VALUES ('b@x.co', 8, 'other')").run(), /CHECK/);
+    assert.deepEqual(db.prepare('PRAGMA table_info(waitlist)').all().map((c) => c.name), ['id', 'email', 'created_at', 'source', 'notified_at', 'deleted_at']);
+    db.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('PRO: one founders line while seats are open, nothing otherwise', () => {

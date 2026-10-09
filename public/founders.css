@@ -114,6 +114,17 @@
 .fd-amt[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--ink); }
 .fd-amt-other { flex: 0 0 auto; width: 96px; text-transform: none; }
 
+/* What Pro is: three plain lines under the facts. */
+.fd-body .fd-pro { display: grid; gap: 8px; max-width: 60ch; font-size: 14px; color: var(--text-2); text-wrap: balance; }
+
+/* The founders email list: under the two kinds of seat, above the grid. The email box
+   like the guide's; its button an outline (the founder seat keeps the solid one). */
+.fd-reserve { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; margin-bottom: 24px; }
+.fd-reserve-line { max-width: 60ch; font-size: 14px; color: var(--text-2); text-wrap: balance; }
+.fd-reserve .card-input { text-transform: none; }
+.fd-reserve-form { position: relative; }
+.fd-waiting { font-size: 13px; color: var(--dim); }
+
 /* The guide: the email box like PRO's waitlist. */
 .fd-guide .card-input { text-transform: none; }
 .fd-guide-form { position: relative; }

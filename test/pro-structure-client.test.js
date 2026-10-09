@@ -394,7 +394,7 @@ test('legal: version bumped, so everyone who accepted 1.0 is asked again', async
   const { LEGAL_UPDATED } = await import('../public/legal-version.js');
   const { needsConsent, acceptRecord } = await import('../public/consent.js');
   const { DEFAULT_TERMS_VERSION } = await import('../pro/billing.js');
-  assert.equal(TERMS_VERSION, '2.2', 'the founders charge-day rules (2.1 was the five-year founders seat, 2.0 founders seats, tips and the build guide list; 2.3 is kept for the google-login and pro-contact branches)');
+  assert.equal(TERMS_VERSION, '2.3', 'the founders email list (2.2 was the founders charge-day rules, 2.1 the five-year founders seat, 2.0 founders seats, tips and the build guide list; 2.4 is kept for the google-login and pro-contact branches)');
   assert.equal(LEGAL_UPDATED, '9 October 2026');
   assert.equal(needsConsent(acceptRecord('1.0')), true);
   assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
@@ -417,7 +417,7 @@ test('legal: terms s9, disclaimer and privacy say what the code does', () => {
   const privacy = read('privacy');
   assert.ok(privacy.includes('We do not share it with advertisers or data brokers.'), 'privacy s6 stays');
   for (const must of ['We add no tracking code to the link', 'one-way hash of the code and its last four characters', 'your seat number', 'We keep feedback for up to 12 months', 'We do not store your IP address with it', 'your email address only to reply to you',
-    'the Pro routes and gift codes (a 10 or 15 minute window), the share images and the WHATIF results kept for them (a 10 minute window), the ticker counter, the site counters, the GUESS game and the pay respects button on GRAVEYARD stones (a one minute window), the feedback form and the Pro waitlist (a one hour window), and the MCP endpoint (a one minute, a 10 minute and a 24 hour window)', 'forgets it within one minute after the window ends', 'one minute for the ticker counter, the site counters, GUESS and pay respects; 10 or 15 minutes for the Pro routes and gift codes; 10 minutes for share images; one hour for feedback, the Pro waitlist and moving a ping subscription; one minute, 10 minutes and 24 hours for the MCP endpoint', 'DESK layouts',
+    'the Pro routes and gift codes (a 10 or 15 minute window), the share images and the WHATIF results kept for them (a 10 minute window), the ticker counter, the site counters, the GUESS game and the pay respects button on GRAVEYARD stones (a one minute window), the feedback form, the Pro waitlist and the founders email list (a one hour window), and the MCP endpoint (a one minute, a 10 minute and a 24 hour window)', 'forgets it within one minute after the window ends', 'one minute for the ticker counter, the site counters, GUESS and pay respects; 10 or 15 minutes for the Pro routes and gift codes; 10 minutes for share images; one hour for feedback, the Pro waitlist, the founders email list and moving a ping subscription; one minute, 10 minutes and 24 hours for the MCP endpoint', 'DESK layouts',
     'sponsors get no data from us', 'DataFast, counts link clicks, including clicks on sponsor links',
     'kept while your licence exists and for 5 years after your subscription is cancelled', 'unpaid or overdue is kept until the subscription is cancelled', 'keeps only a count of the redeemed codes', '| Gift code records | Deleted 12 months after the code was used or expired.',
     'The licence record is kept for 5 years after the gift month ends']) {
@@ -482,12 +482,12 @@ test('privacy names every IP-keyed limiter in the code, with its window', () => 
     'lib/graveyard.js': [/max: 30, windowMs: 60_000/], // GRAVEYARD pay respects
     'pro/push.js': [/windowMs: 15 \* MIN/, /resub: createLimiter\(\{ max: 20, windowMs: 60 \* MIN/], // PINGS: the shared wrong-key limiter; moving a subscription
     'pro/waitlist.js': [/limiter = createLimiter\(\{ max: PER_IP, windowMs: HOUR, now \}\)/], // PRO WAITLIST: 5 tries an hour
-    'pro/founders.js': [/limiter = createLimiter\(\{ max: PER_IP, windowMs: HOUR, now \}\)/, /confirmLimit = createLimiter\(\{ max: 30, windowMs: 10 \* MIN, now \}\)/], // FOUNDERS SEATS: checkout an hour, the success page's check 10 minutes
+    'pro/founders.js': [/limiter = createLimiter\(\{ max: PER_IP, windowMs: HOUR, now \}\)/, /confirmLimit = createLimiter\(\{ max: 30, windowMs: 10 \* MIN, now \}\)/, /listLimiter = createLimiter\(\{ max: LIST_PER_IP, windowMs: HOUR, now \}\)/], // FOUNDERS SEATS: checkout an hour, the success page's check 10 minutes, the founders email list an hour
     'pro/tips.js': [/limiter = createLimiter\(\{ max: PER_IP, windowMs: HOUR, now \}\)/], // TIPS: checkout, an hour
     'lib/og.js': [/MINE_RATE = \{ renders: 20, windowMs: 10 \* 60_000/, /OG_RENDER_RATE = \{ renders: 120, windowMs: 10 \* 60_000/, /CERT_WRITE_RATE = \{ renders: 30, windowMs: 10 \* 60_000/], // share images, keyed by clientIp in server.js
   };
   for (const [f, res] of Object.entries(windows)) for (const re of res) assert.match(readFileSync(f, 'utf8'), re, `${f} window changed: update the Privacy Policy`);
-  for (const name of ['Pro routes', 'gift codes', 'ticker counter', 'site counters', 'GUESS game', 'pay respects', 'feedback form', 'MCP endpoint', 'moving a ping subscription', 'Pro waitlist (a one hour window)', 'founders seats and tips checkouts the same way (a one hour window)', "founders page's check of a finished checkout (a 10 minute window)", 'share images and the WHATIF results kept for them (a 10 minute window)']) assert.ok(privacy.includes(name), name);
+  for (const name of ['Pro routes', 'gift codes', 'ticker counter', 'site counters', 'GUESS game', 'pay respects', 'feedback form', 'MCP endpoint', 'moving a ping subscription', 'Pro waitlist and the founders email list (a one hour window)', 'founders seats and tips checkouts the same way (a one hour window)', "founders page's check of a finished checkout (a 10 minute window)", 'share images and the WHATIF results kept for them (a 10 minute window)']) assert.ok(privacy.includes(name), name);
   // No other file keys a limiter on the IP.
   const users = [];
   const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = `${d}/${e.name}`; if (e.isDirectory()) walk(p); else if (p.endsWith('.js') && readFileSync(p, 'utf8').includes('clientIp(')) users.push(p); } };

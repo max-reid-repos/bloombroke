@@ -9,6 +9,12 @@
 //                                 email, a Stripe id or a card fingerprint.
 //   POST /api/founders/checkout   same origin, JSON { seat } or { class: ten|founder } ->
 //                                 { url } of a Stripe Checkout Session (setup mode)
+//   POST /api/founders/reserve    same origin, JSON { email, hp } -> { ok: true }: an email
+//                                 address on the founders list (the waitlist table, source
+//                                 'founders', migrations/023). It holds no seat. Open only
+//                                 while seats can be saved, whatever PRO_CHECKOUT says; the
+//                                 Pro waitlist's checks, limits and answers (pro/waitlist.js).
+//                                 The status says how many are on it (waiting), never who.
 //
 // Seats 1 to 10 are five-year seats ($1,420 once, 5 years of Pro); 11 to 42 founder seats
 // ($420 a year, the price kept while the seat is kept). The bar counts dollars.
@@ -37,6 +43,7 @@ import { tx } from './db.js';
 import { idOf, billingOf, TERMS_MESSAGE } from './billing.js';
 import { isDeletedLicence } from './store.js';
 import { cleanWords } from './tips.js';
+import { createWaitlistStore, signUp, FOUNDERS_LIST, PER_IP as LIST_PER_IP, PER_DAY as LIST_PER_DAY } from './waitlist.js';
 import { TERMS_VERSION } from '../public/legal-version.js';
 
 const MIN = 60 * 1000;
@@ -1026,19 +1033,22 @@ export function createFounders({ db, stripe = null, env = process.env, mode = 'l
   }
   const f = {
     cfg, store, stripe, mode, charge,
+    // The founders email list ("Not ready to save a card?"): the waitlist table, source 'founders'.
+    waitlist: createWaitlistStore(db, { now }),
     // Seats can be saved right now: open, before the deadline, and not frozen for the
     // charge (migrations/022, read from the database every time).
     isOpen: (t = now()) => cfg.open && ready && t <= cfg.deadlineAt && !store.frozen(),
     ended: (t = now()) => t > cfg.deadlineAt,
     testMode: () => cfg.open && mode === 'test',
-    // The public state. Nothing private: numbers, classes, statuses, handles, the log.
+    // The public state. Nothing private: numbers, classes, statuses, handles, the log,
+    // and how many addresses are on the founders email list (waiting; never an address).
     status(t = now()) {
       const seats = store.seats();
       const tot = store.totals(seats);
       return {
         open: f.isOpen(t), testMode: f.testMode(), ended: f.ended(t),
         goalUsd: cfg.goalUsd, committedUsd: tot.committedUsd, seatsTaken: tot.seatsTaken, seatsTotal: SEATS_TOTAL,
-        deadline: cfg.deadline, seats,
+        deadline: cfg.deadline, seats, waiting: f.waitlist.count(FOUNDERS_LIST),
         log: store.logs(20).map((r) => ({ at: new Date(r.at).toISOString(), text: r.text })),
       };
     },
@@ -1106,9 +1116,25 @@ export function createFounders({ db, stripe = null, env = process.env, mode = 'l
 export function mountFounders(app, {
   founders, publicUrl = 'https://bloombroke.com', now = () => Date.now(), log = console,
   limiter = createLimiter({ max: PER_IP, windowMs: HOUR, now }),
+  // The founders email list: the Pro waitlist's limits (pro/waitlist.js), its own counters.
+  listLimiter = createLimiter({ max: LIST_PER_IP, windowMs: HOUR, now }),
+  listDaily = createLimiter({ max: LIST_PER_DAY, windowMs: DAY, now, maxKeys: 1 }),
 }) {
   const fail = (res, status, error, message) => res.status(status).json({ error, message });
   const base = publicUrl.replace(/\/+$/, '');
+
+  // "Not ready to save a card? Leave your email." Only while seats can be saved (the page
+  // hides the form otherwise): closed, after the deadline or frozen for the charge, 409,
+  // before the body is read.
+  app.post('/api/founders/reserve', (req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    let open = false;
+    try { open = founders.isOpen(now()); } catch (err) { log.error('[founders] reserve', err.message); }
+    if (!open) return fail(res, 409, 'closed', 'Seats are closed.');
+    next();
+  }, express.json({ limit: '1kb' }), signUp({
+    store: founders.waitlist, sourceOf: () => FOUNDERS_LIST, publicUrl, limiter: listLimiter, daily: listDaily, log,
+  }));
 
   app.get('/api/founders/status', (req, res) => {
     let body;

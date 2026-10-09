@@ -36,7 +36,7 @@ test('privacy: the Pro waitlist in the short version, section 3, the purposes, t
     'To be taken off the list, write to {{CONTACT}}.',
     'We delete the whole list once that email has been sent, and your address sooner if you ask.',
   ]) assert.ok(w.includes(must), must);
-  assert.ok(s3.includes('the feedback form and the Pro waitlist (a one hour window)'));
+  assert.ok(s3.includes('the feedback form, the Pro waitlist and the founders email list (a one hour window)'));
   assert.ok(section(privacy, 4).includes('- send the one email when Pro opens to the people who asked for it on the PRO screen;'));
   assert.ok(section(privacy, 8).includes('| Pro waitlist | Until the email that Pro is open has been sent, then the whole list is deleted. Your address sooner if you ask. |'));
   assert.match(legalPage('privacy', privacy), new RegExp(`To be taken off the list, write to <a href="mailto:${CONTACT.replace('.', '\\.')}">`));
