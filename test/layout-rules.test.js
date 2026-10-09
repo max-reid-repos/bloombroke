@@ -44,7 +44,8 @@ import { optionsUsage } from '../public/screens/options.js';
 import { fxUsage } from '../public/screens/fx.js';
 import { financialsUsage } from '../public/screens/financials.js';
 import { withArt } from '../lib/graveyard.js';
-import { mainCardHtml, seatsCardHtml, tipsCardHtml, guideCardHtml } from '../lib/founders-page.js'; // /founders, /guide
+import { mainCardHtml, seatsCardHtml, tipsCardHtml, guideCardHtml, keyCardHtml, payCardHtml, COPY as FD_COPY } from '../lib/founders-page.js'; // /founders, /guide
+import { PAY_SUB, payHero, untilText, DONE as FD_DONE, STILL as FD_STILL } from '../public/founders.js'; // charge day, as the script fills it
 import { feedHtml } from '../public/screens/sponsor.js';
 import { buyHtml, buyMaths, affordShare, wageHtml } from '../public/screens/buy.js';
 import { cpiResultHtml } from '../public/screens/cpi.js';
@@ -151,6 +152,20 @@ export const WHATIF = [
   ['WHATIF IPHONE6 RTX3080 LATTE:3Y (the list in + Details)', (await whatifPage(['IPHONE6', 'RTX3080', 'LATTE:3Y'])).replace(WI_LIST, '')],
 ];
 
+// Charge day: the key card and the pay card as public/founders.js fills them (the server
+// draws them with the waiting lines; the script swaps in the key, the seat, the end).
+const FD_KEY = (kind) => keyCardHtml(kind)
+  .replace(/(<span class="pro-key) is-wait(" id="fd-key">)[^<]*/, '$1$2BB-7KQ2-M9XD-HT4P-WZ3C')
+  .replace(/<span id="fd-key-sub"([^>]*)>[^<]*<\/span>/, '<span id="fd-key-sub"$1>Save it now. It is your login on any device.</span>')
+  .replace('class="btn card-btn" id="fd-copy" disabled', 'class="btn card-btn btn-solid" id="fd-copy"')
+  .replace('id="fd-saved" disabled', 'id="fd-saved"');
+const FD_PAY_INFO = { seat: 17, class: 'founder', usd: 420, payUntil: '2026-12-18T14:05:00.000Z' };
+const FD_PAY = payCardHtml()
+  .replace(/(<span id="fd-pay-hero">)[^<]*/, `$1${payHero(FD_PAY_INFO)}`)
+  .replace(/(<span id="fd-pay-sub"[^>]*>)[^<]*/, `$1${PAY_SUB}`)
+  .replace('class="btn card-btn" id="fd-pay" disabled>Pay<', 'class="btn card-btn btn-solid" id="fd-pay">Pay $420<')
+  .replace('<span id="fd-pay-note"></span>', `<span id="fd-pay-note">This link works until ${untilText(FD_PAY_INFO.payUntil, 'en-US', 'UTC')}.</span>`);
+
 // /founders and /guide (lib/founders-page.js): standalone pages from the kit, one card per
 // part. Open, in test mode, 20 seats taken (handles on some), one release in the log.
 const FD_SEATS = Array.from({ length: 42 }, (_, i) => ({ seat: i + 1, class: i < 10 ? 'ten' : 'founder', status: i < 20 ? 'committed' : i === 20 ? 'held' : 'open', handle: i < 20 && i % 3 === 0 ? 'Abcdefghijklmno' : null }));
@@ -166,7 +181,17 @@ export const FOUNDERS = [
   // line under them (11) and the team line (13): 55. The owner's copy, word for word.
   ['FOUNDERS, the seats', seatsCardHtml(FD).replace(FD_MEDIA, ''), 60],
   ['FOUNDERS, the seats, closed', seatsCardHtml({ ...FD, open: false, testMode: false }).replace(FD_MEDIA, ''), 60],
+  ['FOUNDERS, the seats, frozen (charge day)', seatsCardHtml({ ...FD, open: false, testMode: false, frozen: true }).replace(FD_MEDIA, ''), 60],
   ['FOUNDERS, tips', tipsCardHtml({ monthUsd: 85 }), 25],
+  // Charge day, as public/founders.js fills the cards: the claim link and the pay-link
+  // return (kicker 3, the line under the key 10, the two buttons 5, the one plain line
+  // about a new key 12 or 13 = 31), and done (I SAVED IT: the key masked, Log in).
+  ['FOUNDERS, the key (claim link)', FD_KEY('claim'), 32],
+  ['FOUNDERS, the key (pay-link return)', FD_KEY('paid'), 32],
+  ['FOUNDERS, the key, saved', FD_KEY('claim').replace(/<span id="fd-key-sub"([^>]*)>[^<]*<\/span>/, `<span id="fd-key-sub"$1>${FD_DONE}</span>`).replace(/<div class="card-act">[\s\S]*?<\/div>/, '<div class="card-act"><a class="btn card-btn btn-solid" href="/?c=LOGIN">Log in</a></div>'), 32],
+  ['FOUNDERS, the key, still processing', FD_KEY('paid').replace(/<p class="tag card-kicker">[^<]*<\/p>/, '').replace(/<span class="pro-key" id="fd-key">[^<]*/, '<span id="fd-key">Your Pro key').replace(/<div class="card-cta">[\s\S]*$/, '</div></section>').replace(/<span id="fd-key-sub"([^>]*)>[^<]*<\/span>/, `<span id="fd-key-sub"$1>${FD_STILL}</span>`), 15],
+  // The pay card: the seat (2), what happened (15), Pay (1), the link's end (6) = 24.
+  ['FOUNDERS, the pay link', FD_PAY, 26],
   ['GUIDE', guideCardHtml(), 25],
 ];
 
@@ -734,4 +759,16 @@ test('FOUNDERS and GUIDE: an h1, one solid button, never "lifetime"', () => {
   assert.match(guideCardHtml(), /<h1 class="card-hero card-hero-44 num">How Bloombroke was built<\/h1>/);
   assert.equal((seatsCardHtml(FD).match(/btn-solid/g) || []).length, 1, 'Save a founder seat is the one solid button');
   assert.equal((tipsCardHtml({ monthUsd: 0 }).match(/btn-solid/g) || []).length, 0, 'the tip button is an outline: the page keeps one solid button');
+  // Charge day: an h1 each; while waiting every button is a disabled outline, once filled
+  // exactly one is solid.
+  assert.match(keyCardHtml('claim'), /<h1 class="card-hero card-hero-32 num"><span class="pro-key is-wait" id="fd-key">BB-XXXX-XXXX-XXXX-XXXX<\/span><\/h1>/);
+  assert.match(payCardHtml(), /<h1 class="card-hero card-hero-32 num"><span id="fd-pay-hero">Your seat<\/span><\/h1>/);
+  for (const html of [keyCardHtml('claim'), keyCardHtml('paid'), payCardHtml()]) {
+    assert.equal((html.match(/btn-solid/g) || []).length, 0, 'waiting: no solid button');
+    assert.equal((html.match(/<button [^>]*disabled/g) || []).length, (html.match(/<button /g) || []).length, 'waiting: every button disabled');
+  }
+  for (const html of [FD_KEY('claim'), FD_KEY('paid'), FD_PAY]) assert.equal((html.match(/btn-solid/g) || []).length, 1, 'filled: one solid button');
+  assert.ok(seatsCardHtml({ ...FD, open: false, frozen: true }).includes(`<p class="card-note">${FD_COPY.frozen}</p>`));
+  assert.equal(FD_COPY.frozen, 'Seats are closed. Charge day is under way.');
+  assert.equal((seatsCardHtml({ ...FD, open: false, frozen: true }).match(/btn-solid/g) || []).length, 0, 'frozen: the closed look, outlines only');
 });

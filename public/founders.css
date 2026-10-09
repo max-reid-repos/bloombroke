@@ -120,6 +120,13 @@
 .fd-hp { position: absolute; left: -10000px; width: 1px; height: 1px; opacity: 0; }
 .fd-guide .card-note.warn { color: var(--down); }
 
+/* Charge day: the key card (claim link, pay-link return) and the pay card. The key like
+   PRO's key view (screens/pro.css .pro-key): the accent, broken anywhere, one tap selects
+   it all. Dim while it is still the mask. */
+.fd-key-card .pro-key { color: var(--accent); overflow-wrap: anywhere; user-select: all; }
+.fd-key-card .pro-key.is-wait { color: var(--faint); user-select: none; }
+.fd-offscreen { position: fixed; left: -10000px; top: 0; width: 1px; height: 1px; opacity: 0; }
+
 /* The footer: the column's width, centred like the cards. */
 .fd-foot { max-width: var(--card-w); text-align: center; }
 

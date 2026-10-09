@@ -63,12 +63,19 @@ const when = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'short'
 // Would the server refuse DELETE (pro/me-routes.js willRenew)? The cached status says.
 export function renewing(st) {
   if (!st || ['gift', 'gift_ended', 'demo', 'canceled'].includes(st.status)) return false;
+  // A founders seat has no plan that renews (no subscription): willRenew says false too.
+  if (st.founders) return false;
   if (st.cancelAtPeriodEnd || st.cancelAt) return false;
   return ['active', 'trialing', 'past_due', 'unpaid', 'incomplete'].includes(st.status);
 }
 
 // PLAN as facts: the plan, and when it renews or ends.
 export function planFacts(st) {
+  // A founders seat: which kind, and a five-year seat's end once go-live set it.
+  if (st?.founders) {
+    const kind = st.termUntil || st.foundersClass === 'ten' ? 'Five-year' : st.foundersClass === 'founder' ? 'Founder' : 'Founders';
+    return [{ value: kind, label: 'PLAN' }, st.termUntil ? { value: when(st.termUntil), label: 'ENDS' } : null].filter(Boolean);
+  }
   if (st?.status === 'gift') return [{ value: 'Gift', label: 'PLAN' }, st.giftUntil ? { value: when(st.giftUntil), label: 'ENDS' } : null].filter(Boolean);
   const facts = [{ value: st?.interval === 'year' ? 'Yearly' : st?.interval === 'month' ? 'Monthly' : 'Pro', label: 'PLAN' }];
   const end = st?.cancelAt || (st?.cancelAtPeriodEnd ? st?.currentPeriodEnd : null);
@@ -183,7 +190,7 @@ export function meHtml(o = {}) {
   const open = detailsOpen || Boolean(confirm);
   if (!on) {
     const links = key
-      ? [gift ? '' : cardLink({ label: MANAGE, id: 'me-manage' })]
+      ? [gift || st?.founders ? '' : cardLink({ label: MANAGE, id: 'me-manage' })]
       : [cardLink({ label: 'LOGIN', cmd: 'LOGIN' }), cardLink({ label: 'REDEEM', cmd: 'REDEEM' })];
     return cardPage({
       label: 'ME', id: 'me-card', cls: 'me-card', alert, alertWarn,
@@ -200,8 +207,9 @@ export function meHtml(o = {}) {
   const shown = person.name || `SEAT ${pad(seat)}`;
   const ending = Boolean(st?.cancelAt || st?.cancelAtPeriodEnd);
   const links = [
-    gift ? '' : cardLink({ label: MANAGE, id: 'me-manage' }),
-    gift || ending ? '' : cardLink({ label: CANCEL, id: 'me-cancel' }),
+    // A founders seat has no plan to manage or cancel.
+    gift || st?.founders ? '' : cardLink({ label: MANAGE, id: 'me-manage' }),
+    gift || ending || st?.founders ? '' : cardLink({ label: CANCEL, id: 'me-cancel' }),
     st?.canGift && exists('GIFT') ? cardLink({ label: 'GIFT', cmd: 'GIFT' }) : '',
   ];
   return cardPage({

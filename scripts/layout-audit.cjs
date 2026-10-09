@@ -79,6 +79,13 @@ const FIX = {
   '/api/me': { seat: 3, username: 'Abcdefghijklmno', color: 2, avatar: null, status: { active: true, status: 'active', seat: 3, interval: 'year', currentPeriodEnd: YEAR, cancelAtPeriodEnd: false, canGift: true } },
   '/api/live': { here: 3 },
 };
+// Charge day (POST): the key card and the pay card filled from made-up answers (the
+// token and session id in the addresses below are made up too; nothing reaches the API).
+const FIX_POST = {
+  '/api/founders/claim': { key: KEY, seat: 17, class: 'founder' },
+  '/api/founders/paid': { key: KEY, seat: 17 },
+  '/api/founders/pay': { seat: 17, class: 'founder', usd: 420, payUntil: new Date(Date.now() + 3 * 864e5).toISOString() },
+};
 
 // [name, command, { key, type, sel, ls, link, url }]: url: a standalone page (/founders,
 // /guide), audited at that path, its cards outside the terminal's #screen. type: typed into the command bar (a link
@@ -102,6 +109,10 @@ const PAGES = [
   // from the server under test.
   ['founders', null, { url: '/founders', sel: '.fd-seats' }], ['founders-top', null, { url: '/founders', sel: '.fd-main' }],
   ['guide', null, { url: '/guide', sel: '.fd-guide' }],
+  // Charge day: the claim link, the pay link, the pay-link return (FIX_POST answers).
+  ['founders-claim', null, { url: `/founders#claim=${'Q'.repeat(43)}`, sel: '.fd-key-card' }],
+  ['founders-pay', null, { url: `/founders#pay=${'Q'.repeat(43)}`, sel: '.fd-pay-card' }],
+  ['founders-paid', null, { url: `/founders?paid=17&s=cs_test_${'Q'.repeat(24)}`, sel: '.fd-key-card' }],
   // MARKETS: every name whole (live /api/markets from the server under test).
   ['markets', 'MARKETS', { sel: '.mk-full', names: true, wait: 3000, sizes: [[1440, 900], [1536, 730], [390, 844]] }],
 ].filter(([n]) => !ONLY || ONLY.split(',').includes(n));
@@ -242,7 +253,8 @@ async function main() {
         await page.setRequestInterception(true);
         page.on('request', (req) => {
           const u = new URL(req.url());
-          const fix = u.origin === new URL(BASE).origin && req.method() === 'GET' ? FIX[u.pathname] : null;
+          const same = u.origin === new URL(BASE).origin;
+          const fix = same && req.method() === 'GET' ? FIX[u.pathname] : same && req.method() === 'POST' ? FIX_POST[u.pathname] : null;
           if (fix && !((u.pathname === '/api/pro/status' || u.pathname === '/api/me') && !opts.key)) req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(fix) });
           else if (/datafa\.st|ahrefs\.com|cloudflareinsights/.test(u.host)) req.abort();
           else req.continue();

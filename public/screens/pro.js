@@ -89,8 +89,22 @@ export function keyFileText(key) {
 const day = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 const dayYear = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
+// A founders seat (pro/routes.js publicStatus: founders: true): paid on charge day, no
+// plan of its own until go-live, so nothing to manage or cancel. A five-year seat gets
+// its end (termUntil) on go-live day; a founder seat gets a yearly plan then, and from
+// that day reads like any yearly plan (founders is no longer set). foundersClass ('ten' or
+// 'founder') tells the two apart before go-live, when the server sends it.
+export function foundersText(st) {
+  if (!st?.founders) return '';
+  if (st.termUntil) return `Five-year seat, ends ${dayYear(st.termUntil)}`;
+  if (st.foundersClass === 'ten') return 'Five-year seat, starts on go-live day';
+  if (st.foundersClass === 'founder') return 'Founder seat, renews one year after go-live';
+  return 'Founders seat, dates start on go-live day';
+}
+
 export function statusText(st, now = Date.now()) {
   if (!st) return 'NOT LOGGED IN';
+  if (st.founders && st.status === 'active') return foundersText(st);
   if (st.status === 'gift') return st.giftUntil && pro.statusActive(st, now) ? `Gift month, until ${day(st.giftUntil)}` : 'Gift month ended';
   if (st.status === 'gift_ended') return 'Gift month ended';
   if (st.status === 'active' || st.status === 'trialing') {
@@ -284,8 +298,10 @@ export function keyFacts(st, now = Date.now()) {
   return facts;
 }
 
-// A line under YOUR KEY only when something needs saying: a failed payment, a demo key.
+// A line under YOUR KEY only when something needs saying: a failed payment, a demo key,
+// a founders seat (what it is and its dates).
 function keySub(st) {
+  if (st?.founders && st.status === 'active') return foundersText(st);
   if (st?.status === 'past_due' || st?.status === 'demo') return raw(`<span class="${st.status === 'past_due' ? 'down' : ''}">${esc(statusText(st))}</span>`);
   return '';
 }
@@ -308,8 +324,10 @@ export function mainHtml({ key = null, st = null, next = null, alert = '', alert
     const ending = Boolean(st?.cancelAt || st?.cancelAtPeriodEnd);
     const links = [];
     if (on && !gift && st?.canGift && exists('GIFT')) links.push(cardLink({ label: GIFT_ACTION, cmd: 'GIFT' }));
-    if (!gift && billing) links.push(cardLink({ label: MANAGE, id: 'pro-manage' }));
-    if (on && !gift && !ending && billing) links.push(cardLink({ label: CANCEL, id: 'pro-cancel' }));
+    // A founders seat has no plan to manage or cancel (the portal would say so).
+    const plan = !gift && !st?.founders;
+    if (plan && billing) links.push(cardLink({ label: MANAGE, id: 'pro-manage' }));
+    if (on && plan && !ending && billing) links.push(cardLink({ label: CANCEL, id: 'pro-cancel' }));
     if (!reveal) links.push(cardLink({ label: 'SHOW KEY', id: 'pro-show' }));
     links.push(cardLink({ label: 'LOGOUT', cmd: 'LOGOUT' }));
     // ME: your username, avatar and settings, and CANCEL there too.
@@ -336,7 +354,7 @@ export function mainHtml({ key = null, st = null, next = null, alert = '', alert
   // A key whose Pro is off: something to buy, its own seat big.
   const h = heroSeat({ key, st, next });
   const label = key ? (gift ? 'SUBSCRIBE' : 'REACTIVATE') : 'SUBSCRIBE';
-  const links = [gift ? '' : cardLink({ label: MANAGE, id: 'pro-manage' }), reveal ? '' : cardLink({ label: 'SHOW KEY', id: 'pro-show' }), cardLink({ label: 'LOGOUT', cmd: 'LOGOUT' })];
+  const links = [gift || st?.founders ? '' : cardLink({ label: MANAGE, id: 'pro-manage' }), reveal ? '' : cardLink({ label: 'SHOW KEY', id: 'pro-show' }), cardLink({ label: 'LOGOUT', cmd: 'LOGOUT' })];
   return cardPage({
     label: 'Bloombroke Pro',
     cls: 'pro-card',

@@ -377,6 +377,7 @@ function saveStatus(d) {
     active: Boolean(d.active), status: d.status, last4: d.last4, graceUntil: d.graceUntil || null,
     cancelAtPeriodEnd: Boolean(d.cancelAtPeriodEnd), currentPeriodEnd: d.currentPeriodEnd || null, cancelAt: d.cancelAt || null,
     seat: Number.isInteger(d.seat) ? d.seat : null, interval: d.interval || null, giftUntil: d.giftUntil || null, canGift: Boolean(d.canGift),
+    founders: Boolean(d.founders), termUntil: d.termUntil || null, foundersClass: d.foundersClass || null, // screens/pro.js foundersText
     checked: Date.now(),
   };
   storage.set(LS.status, st);
