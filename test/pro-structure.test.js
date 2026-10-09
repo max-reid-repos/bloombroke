@@ -152,10 +152,11 @@ test('migration 007: existing licences get seats in created order, nothing else 
     assert.deepEqual(Object.fromEntries(rows.map((r) => [r.id, r.seat])), { 1: 4, 2: 1, 4: 2, 5: 3 }, 'created_at, then id');
     // No data loss: every old column is as it was; the new ones are empty.
     for (const [i, r] of rows.entries()) {
-      const { seat, billing_interval: bi, gift_expires_at: ge, gifts_redeemed_purged: gp, ...old } = r;
+      const { seat, billing_interval: bi, gift_expires_at: ge, gifts_redeemed_purged: gp, term_ends_at: te, ...old } = r;
       assert.deepEqual(old, before[i]);
       assert.equal(bi, null);
       assert.equal(ge, null);
+      assert.equal(te, null);
       assert.ok(Number.isInteger(seat));
     }
     assert.deepEqual(after.prepare('SELECT * FROM sync_docs').all(), docsBefore);
