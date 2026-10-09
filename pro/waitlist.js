@@ -77,6 +77,8 @@ export function createWaitlistStore(db, { now = () => Date.now() } = {}) {
     // -> true when the address is new on that list (source: one of SOURCES).
     add(email, source = SOURCE) { return add.run(email, now(), SOURCES.includes(source) ? source : SOURCE).changes > 0; },
     count(source = SOURCE) { return db.prepare('SELECT COUNT(*) AS n FROM waitlist WHERE deleted_at IS NULL AND source = ?').get(source).n; },
+    // The whole of one list, deleted (rows taken off included). -> how many rows went.
+    clear(source) { return SOURCES.includes(source) ? Number(db.prepare('DELETE FROM waitlist WHERE source = ?').run(source).changes) : 0; },
   };
 }
 

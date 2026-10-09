@@ -89,7 +89,7 @@ If you leave your email address on the build guide page (bloombroke.com/guide), 
 
 ### Founders email list
 
-If you leave your email address on the founders page (bloombroke.com/founders) without saving a card, we store it and the time you gave it, on a list kept apart from the Pro waitlist and the build guide list. It holds no seat. We keep it to write to you about the founders seats, a few emails at most. We send them from {{CONTACT}} through Cloudflare (Cloudflare Email Sending). We do not store your IP address with it. The founders page shows how many addresses are on the list, never the addresses. You can ask us to delete your address at any time by writing to {{CONTACT}}. We delete the whole list 30 days after the founders deadline (15 December 2026), and your address sooner if you ask.
+If you leave your email address on the founders page (bloombroke.com/founders) without saving a card, we store it and the time you gave it, on a list kept apart from the Pro waitlist and the build guide list. It holds no seat. We keep it to write to you about the founders seats, a few emails at most. We send them from {{CONTACT}} through Cloudflare (Cloudflare Email Sending). We do not store your IP address with it. The founders page shows how many addresses are on the list, never the addresses. You can ask us to delete your address at any time by writing to {{CONTACT}}. We delete the whole list 30 days after the founders deadline shown on the founders page, and your address sooner if you ask.
 
 ### CHAT
 
@@ -169,7 +169,7 @@ Our server and several providers are outside Singapore, so your personal data is
 | Founders seats | If the goal is missed, you give up your seat, or you do not pay within 3 days after a failed charge, we delete the card and your customer record at Stripe and clear the seat's email address, handle, Stripe IDs, card fingerprint and IP address. A charged seat is kept like a Pro licence record: for 5 years after the seat ends, then deleted. The email we prepare for you about the charge is deleted once it is sent. |
 | Tips | The tip record (amount, fish name, time) is kept as a payment record, normally five years. The fish is shown for 365 days. |
 | Build guide list | Until the email that the guide is ready has been sent, then the whole list is deleted. Your address sooner if you ask. |
-| Founders email list | Until 30 days after the founders deadline (15 December 2026), then the whole list is deleted. Your address sooner if you ask. |
+| Founders email list | Until 30 days after the founders deadline shown on the founders page, then the whole list is deleted. Your address sooner if you ask. |
 | Chat messages | Deleted 30 days after they were sent. Chat requests are deleted after 30 days too. |
 | Chat reports | Up to 12 months, then deleted. |
 | Chat contacts and blocks | Deleted 30 days after your Pro ends, at once when you delete your account in ME, or sooner if you ask. |

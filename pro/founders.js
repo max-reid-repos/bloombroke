@@ -1009,6 +1009,9 @@ export async function applyPaySession(session, ctx) {
   }
 }
 
+// The founders email list is kept this long after the deadline (Privacy Policy).
+export const LIST_KEEP_MS = 30 * DAY;
+
 // ---- the runtime object and the routes ------------------------------------------------
 
 // The founders seats as the server uses them: the store, the config, the public status
@@ -1035,6 +1038,10 @@ export function createFounders({ db, stripe = null, env = process.env, mode = 'l
     cfg, store, stripe, mode, charge,
     // The founders email list ("Not ready to save a card?"): the waitlist table, source 'founders'.
     waitlist: createWaitlistStore(db, { now }),
+    // Privacy Policy: the whole list is deleted 30 days after the founders deadline (the
+    // configured FOUNDERS_DEADLINE, end of that day UTC). Run by the daily purge
+    // (pro/index.js). -> how many addresses went (0 before then).
+    purgeList(t = now()) { return t > cfg.deadlineAt + LIST_KEEP_MS ? f.waitlist.clear(FOUNDERS_LIST) : 0; },
     // Seats can be saved right now: open, before the deadline, and not frozen for the
     // charge (migrations/022, read from the database every time).
     isOpen: (t = now()) => cfg.open && ready && t <= cfg.deadlineAt && !store.frozen(),

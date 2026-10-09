@@ -128,6 +128,10 @@ export function startPro(app, { dir, env = process.env, log = console, counters 
         const p = push.purge();
         log.log(`[pro] purge: pings ${p.subs} devices, ${p.prefs} settings, ${p.alerts} alerts`);
       } catch (err) { log.error('[pro] push purge', err.message); }
+      // Privacy Policy: the founders email list goes 30 days after the founders deadline.
+      try {
+        log.log(`[pro] purge: ${founders.purgeList()} founders email list addresses (30 days after the founders deadline)`);
+      } catch (err) { log.error('[pro] founders list purge', err.message); }
     };
     purge();
     setInterval(purge, 24 * 60 * 60 * 1000).unref();

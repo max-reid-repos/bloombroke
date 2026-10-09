@@ -764,6 +764,50 @@ test('founders email list: POST /api/founders/reserve, its own list, whatever PR
   }
 });
 
+test('founders email list: deleted 30 days after the configured deadline (end of that day UTC), only that list', async () => {
+  const db = openDb(':memory:');
+  let t = Date.UTC(2027, 0, 1);
+  const f = createFounders({ db, stripe: null, env: { FOUNDERS_DEADLINE: '2026-12-01' }, now: () => t, log: quiet });
+  db.prepare("INSERT INTO waitlist (email, created_at, source) VALUES ('a@x.co', 1, 'founders'), ('b@x.co', 1, 'founders'), ('a@x.co', 1, 'guide'), ('a@x.co', 1, 'pro-soon')").run();
+  db.prepare("INSERT INTO waitlist (email, created_at, source, deleted_at) VALUES ('c@x.co', 1, 'founders', 2)").run();
+  const end = Date.UTC(2026, 11, 1, 23, 59, 59, 999) + 30 * 24 * 60 * MIN; // Dec 31, end of day
+  t = end;
+  assert.equal(f.purgeList(), 0, 'on the 30th day: kept');
+  assert.equal(f.status().waiting, 2);
+  t = end + 1;
+  assert.equal(f.purgeList(), 3, 'after it: the whole list, rows taken off included');
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM waitlist WHERE source = 'founders'").get().n, 0);
+  assert.deepEqual(db.prepare('SELECT source FROM waitlist ORDER BY source').all().map((r) => r.source), ['guide', 'pro-soon'], 'the other lists stay');
+  assert.equal(f.purgeList(), 0, 'nothing left');
+  // The default deadline (Dec 15, 2026): kept until Jan 14, 2027 ends.
+  const g = createFounders({ db, stripe: null, env: {}, now: () => Date.UTC(2027, 0, 14, 23, 59), log: quiet });
+  db.prepare("INSERT INTO waitlist (email, created_at, source) VALUES ('d@x.co', 1, 'founders')").run();
+  assert.equal(g.purgeList(), 0);
+  assert.equal(g.purgeList(Date.UTC(2027, 0, 15)), 1);
+});
+
+test('startPro: the daily purge deletes the founders email list after the deadline and logs the count', async () => {
+  const { startPro } = await import('../pro/index.js');
+  for (const [deadline, gone] of [['2026-01-01', 2], ['2099-01-01', 0]]) {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'bb-founders-purge-'));
+    try {
+      const file = path.join(dir, 'pro.db');
+      const seed = openDb(file, { log: quiet });
+      seed.prepare("INSERT INTO waitlist (email, created_at, source) VALUES ('a@x.co', 1, 'founders'), ('b@x.co', 1, 'founders'), ('a@x.co', 1, 'guide')").run();
+      seed.close();
+      const lines = [];
+      const pro = startPro(express(), { dir, env: { PRO_DB_PATH: file, FOUNDERS_DEADLINE: deadline }, log: { log: (m) => lines.push(m), error() {}, warn() {} } });
+      assert.ok(pro, 'Pro started');
+      assert.ok(lines.includes(`[pro] purge: ${gone} founders email list addresses (30 days after the founders deadline)`), lines.join('\n'));
+      assert.equal(pro.db.prepare("SELECT COUNT(*) AS n FROM waitlist WHERE source = 'founders'").get().n, 2 - gone);
+      assert.equal(pro.db.prepare("SELECT COUNT(*) AS n FROM waitlist WHERE source = 'guide'").get().n, 1);
+      pro.db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
 test('migration 023: the waitlist takes the founders list, every row and the one-row-per-list rule kept', () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'bb-founders-023-'));
   try {
