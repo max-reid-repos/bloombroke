@@ -394,8 +394,8 @@ test('legal: version bumped, so everyone who accepted 1.0 is asked again', async
   const { LEGAL_UPDATED } = await import('../public/legal-version.js');
   const { needsConsent, acceptRecord } = await import('../public/consent.js');
   const { DEFAULT_TERMS_VERSION } = await import('../pro/billing.js');
-  assert.equal(TERMS_VERSION, '2.0', 'founders seats, tips and the build guide list (1.8 is kept for the google-login branch; after 1.9 comes 2.0)');
-  assert.equal(LEGAL_UPDATED, '8 October 2026');
+  assert.equal(TERMS_VERSION, '2.1', 'the five-year founders seat (2.0 was founders seats, tips and the build guide list; 1.8 is kept for the google-login branch)');
+  assert.equal(LEGAL_UPDATED, '9 October 2026');
   assert.equal(needsConsent(acceptRecord('1.0')), true);
   assert.equal(needsConsent(acceptRecord(TERMS_VERSION)), false);
   assert.equal(DEFAULT_TERMS_VERSION, TERMS_VERSION, 'checkout records the Terms the legal pages show');

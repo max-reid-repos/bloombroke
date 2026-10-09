@@ -80,16 +80,16 @@ The service, its software, design, text, the Bloombroke name and logo, and the s
 
 ### Founders seats
 
-- **What a seat is.** Before Pro opens to new subscribers, you can save a card for one of 42 founders seats on the founders page (bloombroke.com/founders). Seats 1 to 10 are ten-year seats: USD 1,420 once, for ten years of Pro. Seats 11 to 42 are founder seats: USD 420 a year, renewed every year at USD 420.
+- **What a seat is.** Before Pro opens to new subscribers, you can save a card for one of 42 founders seats on the founders page (bloombroke.com/founders). Seats 1 to 10 are five-year seats: USD 1,420 once, for five years of Pro. Seats 11 to 42 are founder seats: USD 420 a year, renewed every year at USD 420.
 - **Your card.** Stripe saves your card. We never see or store your full card number. Saving a card is not a payment.
 - **When we charge.** We charge every committed seat on the same day, and only when the committed seats reach the goal shown on the founders page (USD 17,640), no later than the deadline shown there (15 December 2026). Each seat is charged the price of its class shown when the card was saved.
 - **If the goal is not reached.** If the committed seats do not reach the goal by the deadline, we delete every saved card at Stripe and nobody is charged.
 - **When Pro goes live.** Pro goes live for the charged seats within 30 days of the charge. If it is not live within 45 days of the charge, we refund every charged seat in full.
 - **Founder seat price.** A founder seat renews every year at USD 420 for as long as you keep the seat, even if the Pro price goes up. You can cancel the renewal as this section describes for Pro; the seat and its price then end at the end of the paid year.
-- **Ten-year seat.** A ten-year seat gives ten years of Pro from the day Pro goes live, and does not renew. If we discontinue the service before the ten years end, we refund the unused part, pro rata, as the refund rule above says for a discontinued service.
+- **Five-year seat.** A five-year seat gives five years of Pro from the day Pro goes live, and does not renew. If we discontinue the service before the five years end, we refund the unused part, pro rata, as the refund rule above says for a discontinued service.
 - **One seat per person.** Each person may hold one seat, with one email address and one card. A second seat saved with the same email address or the same card is released and its card removed. Seats cannot be transferred, sold or passed on.
 - **Giving up a seat.** You can give up your seat at any time before the charge by writing to {{CONTACT}}. We then remove your card and you pay nothing. The founders page then shows a line such as "Seat 12 released Nov 3.", with no name.
-- **Your handle.** At checkout you can add an X handle. It is optional and is shown as plain text on your seat on the founders page. It must not pretend to be anyone else or be offensive, and we may remove one that is.
+- **Your handle.** If you give us an X handle for your seat, it is shown as plain text on your seat on the founders page. It is optional. It must not pretend to be anyone else or be offensive, and we may remove one that is.
 - **If the data cost rises.** If the cost of licensed live prices rises so that the goal no longer covers it, we may cancel the founders seats before the charge. We then delete every saved card and nobody pays.
 
 ### Tips

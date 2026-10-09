@@ -153,7 +153,7 @@ test('config: FOUNDERS=open, the goal and the deadline, with safe defaults', () 
   for (const bad of ['2026-02-30', '15-12-2026', 'soon']) assert.equal(foundersEnv({ FOUNDERS_DEADLINE: bad }).deadline, '2026-12-15', bad);
 });
 
-test('seat classes and the goal math: ten-year 1 to 10 at $1,420, founder 11 to 42 at $420', () => {
+test('seat classes and the goal math: five-year 1 to 10 at $1,420, founder 11 to 42 at $420', () => {
   assert.equal(classOf(1), 'ten');
   assert.equal(classOf(10), 'ten');
   assert.equal(classOf(11), 'founder');
@@ -174,7 +174,7 @@ test('the mandate: the class amount, the goal, the deadline, the way out; inside
   const f = mandateText('founder', { goalUsd: 17640, deadlineAt: at });
   assert.equal(f, 'You are saving a card. We charge $420 a year for this founder seat, only when founders reach $17,640, and no later than Dec 15, 2026. If the goal is not reached by then, we delete the card and you pay nothing. You can give up your seat before the charge by emailing hello@bloombroke.com.');
   const t = mandateText('ten', { goalUsd: 17640, deadlineAt: at });
-  assert.match(t, /We charge \$1,420 once for this ten-year seat, only when founders reach \$17,640/);
+  assert.match(t, /We charge \$1,420 once for this five-year seat, only when founders reach \$17,640/);
   for (const s of [f, t]) {
     assert.ok(s.length <= 1200);
     assert.doesNotMatch(s, /—|lifetime/i);
@@ -225,7 +225,7 @@ test('holds: one seat, one hold; the lowest free seat of a class; a hold runs ou
 
 // ---- checkout -----------------------------------------------------------------------------
 
-test('checkout: setup mode, server-side class and metadata, the handle field, the mandate, an idempotency key', async () => {
+test('checkout: setup mode, server-side class and metadata, no custom fields, the mandate, an idempotency key', async () => {
   const s = await setup();
   try {
     const r = await s.checkout({ seat: 7 });
@@ -235,14 +235,14 @@ test('checkout: setup mode, server-side class and metadata, the handle field, th
     assert.equal(p.mode, 'setup');
     assert.deepEqual(p.payment_method_types, ['card']);
     assert.equal(p.customer_creation, 'always');
-    assert.deepEqual(p.metadata, { site: 'bloombroke', product: 'founders', seat: '7', class: 'ten', terms_version: '2.0' });
+    assert.deepEqual(p.metadata, { site: 'bloombroke', product: 'founders', seat: '7', class: 'ten', terms_version: '2.1' });
     assert.deepEqual(p.setup_intent_data.metadata, p.metadata);
     assert.equal(p.success_url, 'https://bloombroke.com/founders?seat=7&s={CHECKOUT_SESSION_ID}');
     assert.match(p.cancel_url, /^https:\/\/bloombroke\.com\/founders\?release=7\.[0-9a-f]{24}$/, 'the hold token, so a cancel frees the seat');
     assert.equal(p.expires_at, Math.floor((T0 + SESSION_MS) / 1000));
-    assert.deepEqual(p.custom_fields[0].label, { type: 'custom', custom: 'X handle (optional, shown on your seat)' });
-    assert.equal(p.custom_fields[0].optional, true);
-    assert.match(p.custom_text.submit.message, /^You are saving a card\. We charge \$1,420 once for this ten-year seat/);
+    assert.ok(!('custom_fields' in p), 'Stripe allows no custom_fields in setup mode');
+    assert.equal(p.setup_intent_data.description, 'Bloombroke founders seat 7 (five-year seat)');
+    assert.match(p.custom_text.submit.message, /^You are saving a card\. We charge \$1,420 once for this five-year seat/);
     assert.equal(p.consent_collection.terms_of_service, 'required');
     assert.ok(!('line_items' in p) && !JSON.stringify(p).includes('unit_amount'), 'nothing is charged at checkout');
     assert.match(opts.idempotencyKey, /^bb-founders-checkout-7-[0-9a-f]{24}$/);
@@ -341,11 +341,11 @@ test('webhook: a completed checkout commits the seat with the card, email, handl
     assert.equal(row.setup_intent_id, 'seti_1');
     assert.equal(row.mandate_at, T0, 'the event time when Stripe gives no mandate');
     assert.equal(row.mandate_ip, '198.51.100.1', 'the address that started the checkout');
-    assert.equal(row.terms_version, '2.0', 'the Terms agreed to');
+    assert.equal(row.terms_version, '2.1', 'the Terms agreed to');
     assert.equal(row.livemode, 0);
     // Tagged at Stripe, with idempotency keys.
     const cu = s.stripe.calls.find((c) => c[0] === 'customer.update');
-    assert.deepEqual(cu[2].metadata, { site: 'bloombroke', product: 'founders', seat: '12', class: 'founder', terms_version: '2.0' });
+    assert.deepEqual(cu[2].metadata, { site: 'bloombroke', product: 'founders', seat: '12', class: 'founder', terms_version: '2.1' });
     assert.equal(cu[3].idempotencyKey, 'bb-founders-customer-cus_1-12');
     assert.equal(s.stripe.calls.find((c) => c[0] === 'pm.update')[3].idempotencyKey, 'bb-founders-pm-pm_1-12');
     // The same event again: nothing new.
@@ -364,6 +364,25 @@ test('webhook: a completed checkout commits the seat with the card, email, handl
     assert.deepEqual(Object.keys(st.body.seats[0]).sort(), ['class', 'handle', 'seat', 'status']);
     for (const secret of ['ann@example.com', 'cus_1', 'pm_1', 'seti_1', 'fp_ann', 'cs_test_', '198.51.100']) assert.ok(!st.text.includes(secret), secret);
   } finally { await s.close(); }
+});
+
+test('webhook: a completed checkout with no custom_fields (setup mode has none) commits with no handle', async () => {
+  for (const fields of [undefined, []]) {
+    const s = await setup();
+    try {
+      await s.checkout({ seat: 3 });
+      const session = complete(s.stripe, 'cs_test_founders000001');
+      if (fields === undefined) delete session.custom_fields;
+      else session.custom_fields = fields;
+      const r = await s.sendEvent(evt('checkout.session.completed', session));
+      assert.equal(r.body.result, 'founders_committed', String(fields));
+      const row = s.founders.store.seat(3);
+      assert.equal(row.status, 'committed');
+      assert.equal(row.handle, null);
+      const st = await s.req('GET', '/api/founders/status');
+      assert.deepEqual(st.body.seats.find((x) => x.seat === 3), { seat: 3, class: 'ten', status: 'committed', handle: null });
+    } finally { await s.close(); }
+  }
 });
 
 test('webhook: one seat per email and per card; the second card is detached and its seat opens again', async () => {
@@ -397,7 +416,7 @@ test('webhook: a hold gone by the time the card is saved takes the lowest free s
     const r = await s.sendEvent(evt('checkout.session.completed', complete(s.stripe, 'cs_test_founders000001', { n: 1 })));
     assert.equal(r.body.result, 'founders_committed');
     assert.equal(s.founders.store.seat(11).status, 'committed', 'the lowest open founder seat');
-    // Every ten-year seat taken: a ten-year checkout that finishes gets none.
+    // Every five-year seat taken: a five-year checkout that finishes gets none.
     await s.checkout({ seat: 1 });
     s.db.prepare("UPDATE founders_seats SET status = 'committed', email = 'x' || seat || '@x.co' WHERE class = 'ten' AND checkout_session_id IS NOT 'cs_test_founders000002'").run();
     s.db.prepare("UPDATE founders_seats SET status = 'committed', email = 'z@x.co' WHERE seat = 1").run();
@@ -747,7 +766,7 @@ test('holds: at most 2 live holds per address, at most 20 for the site, both cou
   assert.throws(() => s.hold({ cls: 'founder', key: 'new' }), (e) => e.code === 'busy');
   t += HOLD_MS;
   assert.equal(s.hold({ seat: 3, key: 'same' }).seat, 3, 'holds that ran out stop counting');
-  // Through the route: four addresses can no longer hold all ten ten-year seats.
+  // Through the route: four addresses can no longer hold all ten five-year seats.
   const r = await setup();
   try {
     let held = 0;
@@ -820,7 +839,7 @@ test('deadline: a checkout that finishes after it commits nothing: card and cust
 
 test('page: the failed lines say why: class full, or one seat per person', () => {
   const st = emptyState({});
-  assert.ok(foundersPage(st, { confirm: { failed: 'full', cls: 'ten' } }).includes('All ten-year seats are taken. This card was not kept.'));
+  assert.ok(foundersPage(st, { confirm: { failed: 'full', cls: 'ten' } }).includes('All five-year seats are taken. This card was not kept.'));
   assert.ok(foundersPage(st, { confirm: { failed: 'full', cls: 'founder' } }).includes('All founder seats are taken.'));
   assert.ok(foundersPage(st, { confirm: { failed: 'duplicate', cls: 'founder' } }).includes('You already have a seat. One seat per person.'));
   // Closed: both buttons outline (a disabled white fill looks pressable).
@@ -877,7 +896,7 @@ test('given back stays given back: a full class whose customer delete failed is 
     const e = evt('checkout.session.completed', done);
     assert.equal((await s.sendEvent(e)).status, 500, 'the delete failed: retried');
     assert.equal(s.founders.store.givenBack('cs_test_founders000001').reason, 'full');
-    // Meanwhile a ten-year seat frees up.
+    // Meanwhile a five-year seat frees up.
     s.db.prepare("UPDATE founders_seats SET status = 'open', email = NULL WHERE seat = 5").run();
     s.stripe.customers.del = keep;
     assert.equal((await s.sendEvent(e)).body.result, 'founders_full');
@@ -885,7 +904,7 @@ test('given back stays given back: a full class whose customer delete failed is 
     const gb = s.founders.store.givenBack('cs_test_founders000001');
     assert.equal(gb.payment_method_id, null, 'ids forgotten once Stripe has removed them');
     assert.equal(gb.stripe_customer_id, null);
-    assert.ok((await s.req('GET', '/founders?s=cs_test_founders000001')).text.includes('All ten-year seats are taken.'));
+    assert.ok((await s.req('GET', '/founders?s=cs_test_founders000001')).text.includes('All five-year seats are taken.'));
   } finally { await s.close(); }
 });
 

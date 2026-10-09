@@ -329,7 +329,7 @@ export const REGISTRY = [
   },
   {
     name: 'FOUNDERS', category: 'Pro', summary: 'Founders seats for Pro: save a card now, nobody pays until the goal is reached',
-    syntax: 'FOUNDERS', examples: ['FOUNDERS'], keywords: ['founders', 'founder seat', 'ten-year seat', 'pre-order', 'early', 'goal'],
+    syntax: 'FOUNDERS', examples: ['FOUNDERS'], keywords: ['founders', 'founder seat', 'five-year seat', 'pre-order', 'early', 'goal'],
   },
   // --- Pro structure: GIFT, REDEEM, CHAT, SPONSOR ---
   {

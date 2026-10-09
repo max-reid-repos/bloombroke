@@ -10,7 +10,7 @@
 //   POST /api/founders/checkout   same origin, JSON { seat } or { class: ten|founder } ->
 //                                 { url } of a Stripe Checkout Session (setup mode)
 //
-// Seats 1 to 10 are ten-year seats ($1,420 once, 10 years of Pro); 11 to 42 founder seats
+// Seats 1 to 10 are five-year seats ($1,420 once, 5 years of Pro); 11 to 42 founder seats
 // ($420 a year, the price kept while the seat is kept). The bar counts dollars.
 //
 // Environment (.env.example):
@@ -39,8 +39,10 @@ const HOUR = 60 * MIN;
 export const SITE = 'bloombroke';
 export const FOUNDERS_METADATA = { site: SITE, product: 'founders' };
 export const SEATS_TOTAL = 42;
+// 'ten' is the internal key of the five-year seat (it was a ten-year seat; the key stays,
+// migrations/020 checks class IN ('ten','founder')). People only ever see the name.
 export const CLASSES = {
-  ten: { usd: 1420, first: 1, last: 10, name: 'ten-year seat' },
+  ten: { usd: 1420, first: 1, last: 10, name: 'five-year seat' },
   founder: { usd: 420, first: 11, last: 42, name: 'founder seat' },
 };
 export const DATA_COST_USD = 15300;
@@ -88,7 +90,7 @@ export function foundersEnv(env = process.env) {
 // Stripe takes up to 1,200 characters; this is about 330.
 export function mandateText(cls, { goalUsd = DEFAULT_GOAL_USD, deadlineAt } = {}) {
   const at = deadlineAt ?? foundersEnv({}).deadlineAt;
-  const charge = cls === 'ten' ? `${usd(CLASSES.ten.usd)} once for this ten-year seat` : `${usd(CLASSES.founder.usd)} a year for this founder seat`;
+  const charge = cls === 'ten' ? `${usd(CLASSES.ten.usd)} once for this five-year seat` : `${usd(CLASSES.founder.usd)} a year for this founder seat`;
   return `You are saving a card. We charge ${charge}, only when founders reach ${usd(goalUsd)}, and no later than ${fmtDay(at)}. `
     + `If the goal is not reached by then, we delete the card and you pay nothing. You can give up your seat before the charge by emailing ${CONTACT}.`;
 }
@@ -199,7 +201,7 @@ export function createFoundersStore(db, { now = () => Date.now(), livemode = 1, 
         let n = seat;
         if (n === null) {
           const r = q.firstOpen.get({ cls, lm });
-          if (!r) throw new FoundersError('full', cls === 'ten' ? 'Every ten-year seat is taken.' : 'Every founder seat is taken.');
+          if (!r) throw new FoundersError('full', cls === 'ten' ? 'Every five-year seat is taken.' : 'Every founder seat is taken.');
           n = r.seat;
         }
         const token = randomBytes(12).toString('hex');
@@ -271,8 +273,9 @@ export function createFoundersStore(db, { now = () => Date.now(), livemode = 1, 
 
 // ---- Stripe ---------------------------------------------------------------------------
 
+// The handle's custom field key. Stripe allows no custom_fields in setup mode, so
+// Checkout does not ask for it now; a session without one commits with no handle.
 export const HANDLE_FIELD = 'xhandle';
-export const HANDLE_LABEL = 'X handle (optional, shown on your seat)';
 
 // The Checkout Session for one held seat. Setup mode: a card is saved, nothing is charged.
 // token: the hold's token, in the cancel URL only (pro/founders.js cancel).
@@ -290,11 +293,6 @@ export function foundersCheckoutParams({ seat, publicUrl, at, cfg, token = '' })
     expires_at: Math.floor((at + SESSION_MS) / 1000),
     metadata,
     setup_intent_data: { metadata: { ...metadata }, description: `Bloombroke founders seat ${seat} (${CLASSES[cls].name})` },
-    custom_fields: [{
-      key: HANDLE_FIELD, type: 'text', optional: true,
-      label: { type: 'custom', custom: HANDLE_LABEL },
-      text: { maximum_length: 16 },
-    }],
     consent_collection: { terms_of_service: 'required' },
     custom_text: {
       terms_of_service_acceptance: { message: TERMS_MESSAGE },
