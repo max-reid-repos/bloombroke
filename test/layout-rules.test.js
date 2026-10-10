@@ -749,8 +749,8 @@ test('SPONSOR, FEED SPONSOR: a second offer under + Details, 30 words at most, n
   const w = cardWords(html);
   assert.ok(w.length <= 30, `${w.length} words: ${w.join(' ')}`);
   assert.doesNotMatch(html, /btn|<form|style="|—/);
-  assert.match(html, /\$2,000 a month/);
-  assert.match(html, /Non-financial companies only\. Starts when licensed prices go live\./);
+  assert.doesNotMatch(html, /\$|2,000|a month/, 'no public sponsor price');
+  assert.match(html, /Non-financial companies only\. Starts when licensed prices go live\. Price by email: <a href="mailto:[^"]+">hello@bloombroke\.com<\/a>\./);
   assert.match(html, /href="mailto:hello@bloombroke\.com\?subject=Feed%20sponsor"/);
   const page = sponsorHtml({ has: all, bbrk: BBRK, cfg: { lines: [], house: [], price: 99 } });
   assert.ok(page.indexOf('class="spon-feed"') > page.indexOf('<details class="how card-more"'), 'under + Details');

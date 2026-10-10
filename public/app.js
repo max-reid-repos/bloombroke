@@ -18,7 +18,7 @@ import { PRESETS, parseRangeArgs, rangeWords } from './ranges.js';
 import { updatedTitle } from './freshness.js';
 import { dotTitle, popoverHtml } from './provenance.js'; // Provenance: the dot's tooltip and list
 import { EXTRA_SCREENS, EXTRA_TAKES_ARGS, matchExtra, urlCommand, isSecret } from './commands.js';
-import { getTape, loadTapeRows, bareKey, looksLikeKey, bareGift, getSeat, isPro, getMe, getStatus, getPrefs, startCommand, clockFace, chatBeep } from './pro.js';
+import { getTape, loadTapeRows, bareKey, looksLikeKey, bareGift, getSeat, isPro, getMe, getStatus, getPrefs, clockFace, chatBeep } from './pro.js';
 import { avatarSvg, nameHtml } from './pixel-avatar.js'; // ME: your avatar and username by the name
 // --- Pro structure: GIFT, REDEEM, CHAT, SPONSOR, FEEDBACK ---
 import { stripItems, mountStrip, loadSponsors, stripHidden } from './sponsor-strip.js';
@@ -1944,9 +1944,8 @@ function boot() {
   }, true);
 
   // --- first render ---------------------------------------------------------
-  // ME's START SCREEN: a visit with no ?c= opens on it (a link's own screen always wins).
-  const start = embed ? null : startCommand(location.search, getPrefs());
-  const plan = embed ? { url: urlFor(fromQuery(location.search)).url, ask: null } : linkPlan(start || fromQuery(location.search));
+  // A visit with no ?c= always opens HOME (fromQuery's default); a link's own screen wins.
+  const plan = embed ? { url: urlFor(fromQuery(location.search)).url, ask: null } : linkPlan(fromQuery(location.search));
   if (!plan.show) plan.show = plan.url;
   const initial = plan.url; // a link never runs LOGIN or TAPE ADD
   const openLink = () => {

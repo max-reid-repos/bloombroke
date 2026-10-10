@@ -348,7 +348,7 @@ export const REGISTRY = [
   // --- ME (screens/me.js): profile and settings ---
   {
     name: 'ME', aliases: ['SETTINGS', 'ACCOUNT'], category: 'Pro', summary: 'You: username, colour, pixel avatar, your plan and cancel, this device, your key and data',
-    syntax: 'ME', examples: ['ME'], keywords: ['profile', 'settings', 'account', 'username', 'avatar', 'colour', 'color', 'cancel', 'subscription', 'start screen', 'clock', 'delete', 'export'],
+    syntax: 'ME', examples: ['ME'], keywords: ['profile', 'settings', 'account', 'username', 'avatar', 'colour', 'color', 'cancel', 'subscription', 'clock', 'delete', 'export'],
   },
   {
     name: 'LOGIN', category: 'Pro', summary: 'Use your Pro key on this device',

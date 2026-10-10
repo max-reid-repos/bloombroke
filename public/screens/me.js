@@ -5,7 +5,7 @@
 // (SHOW KEY, NEW KEY, LOG OUT, DOWNLOAD MY DATA, DELETE MY ACCOUNT). Without Pro: ME, one
 // line, PRO, and this device's settings.
 //
-// This device (bb.prefs, pro.js): START SCREEN (a visit with no ?c= opens on it), CLOCK
+// This device (bb.prefs, pro.js): CLOCK
 // (the top bar only: New York or local), CHAT SOUND (Pro), TAPE (Pro, the TAPE ON/OFF
 // setting) and PINGS (Pro, when the site has pings: notifications with the tab closed,
 // public/push.js). What to ping about (CHAT MESSAGES, ALERTS WHEN THE TAB IS CLOSED,
@@ -34,7 +34,6 @@ export const DELETE_ASK = 'Type DELETE to delete your account.';
 export const RENEWING = 'Cancel first: press CANCEL. Then delete.';
 export const DELETED = 'Your account is deleted. This browser is logged out.';
 export const NEW_KEY_DONE = 'New key made. Your old key stops working everywhere.';
-export const START_NAMES = pro.START_SCREENS;
 
 // PINGS: the lines for a browser that cannot have them yet (public/push.js).
 export const PING_HINTS = { ios: push.IOS_HINT, denied: push.DENIED_HINT, no: push.UNSUPPORTED_HINT };
@@ -131,7 +130,6 @@ export function deviceHtml({ prefs = pro.DEFAULT_PREFS, pro: isPro = false, tape
   const p = pro.cleanPrefs(prefs);
   const set = (label, pref, value, pressed = null) => `<div class="me-set"><span class="tag">${esc(label)}</span><button type="button" class="chip me-pref" data-pref="${pref}"${pressed === null ? '' : ` aria-pressed="${pressed}"`}>${esc(value)}</button></div>`;
   return '<div class="me-device" role="group" aria-label="This device"><p class="tag me-dev-k">THIS DEVICE</p>'
-    + set('START', 'start', p.start)
     + set('CLOCK', 'clock', p.clock === 'local' ? 'LOCAL' : 'NEW YORK')
     + (isPro ? set('CHAT SOUND', 'sound', p.sound ? 'ON' : 'OFF', p.sound) + set('TAPE', 'tape', tape ? 'ON' : 'OFF', tape) : '')
     + (isPro && pings ? set('PINGS', 'pings', pings.device ? 'ON' : 'OFF', Boolean(pings.device)) : '')
@@ -443,15 +441,10 @@ export function render(el, cmd, ctx) {
     } catch (err) { ctx.status(String(err.message).toUpperCase(), 'warn'); }
   });
 
-  function setPref(pref, back = false) {
+  function setPref(pref) {
     if (pref === 'pings') { pingsDevice(); return; }
     const p = pro.getPrefs();
-    if (pref === 'start') {
-      const i = START_NAMES.indexOf(p.start);
-      const next = START_NAMES[(i + (back ? START_NAMES.length - 1 : 1)) % START_NAMES.length];
-      pro.setPrefs({ start: next });
-      ctx.status(`START SCREEN: ${next}. IT OPENS THERE NEXT TIME`);
-    } else if (pref === 'clock') {
+    if (pref === 'clock') {
       const next = p.clock === 'local' ? 'ny' : 'local';
       pro.setPrefs({ clock: next });
       ctx.status(`CLOCK: ${next === 'local' ? 'LOCAL TIME' : 'NEW YORK'}`);
@@ -610,11 +603,6 @@ export function render(el, cmd, ctx) {
       const i = (Number(t.dataset.color) + (arrows[e.key] > 0 ? 1 : COLORS - 1)) % COLORS;
       setColor(i);
       $(`.me-sw[data-color="${i}"]`)?.focus();
-      return;
-    }
-    if (t.dataset?.pref === 'start' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-      e.preventDefault();
-      setPref('start', e.key === 'ArrowLeft');
       return;
     }
     if (e.key === ' ' && t.tagName === 'BUTTON' && el.contains(t)) {

@@ -1,7 +1,7 @@
 // Pro in the browser: the licence key, status, checkout, the key reveal, sync across
 // devices, your own ticker tape, the seat number, gift codes and REDEEM. ME: your profile
-// (username, colour, avatar), this device's preferences (bb.prefs: start screen, clock,
-// chat sound), NEW KEY, DOWNLOAD MY DATA and DELETE MY ACCOUNT. Pure helpers are exported
+// (username, colour, avatar), this device's preferences (bb.prefs: clock, chat
+// sound), NEW KEY, DOWNLOAD MY DATA and DELETE MY ACCOUNT. Pure helpers are exported
 // for node:test; the parts that touch the network or storage only run in a browser.
 
 import { INSTRUMENTS, resolveInstrument } from './instruments.js';
@@ -29,25 +29,17 @@ export const PREFS_KEY = 'bb.prefs';
 export const SYNC_DOCS = { watch: WATCH_KEY, pf: PF_KEY, tape: 'bb.tape', desk: DESK_KEY, grid: GRID_LAST_KEY, prefs: PREFS_KEY };
 
 // ---- ME: this device's preferences ---------------------------------------------------------
-// start: the screen a visit opens on when the link names none (?c= wins). clock: the top
-// bar's clock, New York or local time (every data time on screen stays New York). sound:
-// a soft beep for new chat messages (Pro). Stored in bb.prefs; Pro syncs it.
-export const START_SCREENS = ['HOME', 'DESK', 'GRID', 'WATCH', 'MARKETS', 'NEWS'];
-export const DEFAULT_PREFS = { start: 'HOME', clock: 'ny', sound: false };
+// clock: the top bar's clock, New York or local time (every data time on screen stays New
+// York). sound: a soft beep for new chat messages (Pro). Stored in bb.prefs; Pro syncs it.
+// A visit with no ?c= always opens HOME: there is no start screen setting (an old stored
+// start value is dropped here).
+export const DEFAULT_PREFS = { clock: 'ny', sound: false };
 export function cleanPrefs(v) {
   const p = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
   return {
-    start: START_SCREENS.includes(p.start) ? p.start : DEFAULT_PREFS.start,
     clock: p.clock === 'local' ? 'local' : 'ny',
     sound: p.sound === true,
   };
-}
-// The command a visit opens on: the link's own (?c=), else the start screen.
-export function startCommand(search, prefs = DEFAULT_PREFS) {
-  const c = new URLSearchParams(search || '').get('c');
-  if (c && c.trim()) return null;
-  const start = cleanPrefs(prefs).start;
-  return start === 'HOME' ? null : start;
 }
 // The top bar clock: { label, time } for New York or this device's own time.
 export function clockFace(date, prefs = DEFAULT_PREFS, nyClock = null) {

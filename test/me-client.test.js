@@ -16,9 +16,9 @@ import {
   encode, decode, draw, initials, initialsOf, initialsBits, bitsOf, colorOf, avatarSvg, nameHtml, pathOf, flat, blank, FONT, COLORS,
 } from '../public/pixel-avatar.js';
 import {
-  cleanPrefs, startCommand, clockFace, DEFAULT_PREFS, START_SCREENS, SYNC_DOCS, PREFS_KEY,
+  cleanPrefs, clockFace, DEFAULT_PREFS, SYNC_DOCS, PREFS_KEY,
 } from '../public/pro.js';
-import { parseCommand, linkPlan, seatHtml, badgeCount, nyClock } from '../public/app.js';
+import { parseCommand, linkPlan, fromQuery, seatHtml, badgeCount, nyClock } from '../public/app.js';
 import { findCommand } from '../public/registry.js';
 import { DETAIL } from '../public/registry-detail.js';
 import { USERNAME_RE as SERVER_RE } from '../pro/chat.js';
@@ -37,7 +37,7 @@ test('ME without Pro: ME, one line, PRO, this device (START and CLOCK only), LOG
   assert.match(html, /<h2 class="card-hero card-hero-60 num">ME<\/h2>/);
   assert.ok(html.includes(`<p class="card-sub">${NOT_PRO_LINE}</p>`));
   assert.match(html, /<a class="btn card-btn btn-solid" href="\?c=PRO" data-cmd="PRO">PRO<\/a>/);
-  assert.match(html, /data-pref="start">HOME</);
+  assert.doesNotMatch(html, /data-pref="start"/, 'no start screen setting');
   assert.match(html, /data-pref="clock">NEW YORK</);
   assert.doesNotMatch(html, /data-pref="sound"|data-pref="tape"|me-form|card-more/, 'no Pro parts, no key and data without a key');
   assert.match(html, /data-cmd="LOGIN">LOGIN<.*data-cmd="REDEEM">REDEEM</s);
@@ -65,7 +65,7 @@ test('ME with Pro: the avatar and username in its colour, #00002, the editor, th
   assert.match(html, /<button type="submit" class="btn card-btn btn-solid" id="me-save">SAVE<\/button>/);
   assert.match(html, /<dt class="tag">PLAN<\/dt><dd class="num">Yearly<\/dd>/);
   assert.match(html, /<dt class="tag">RENEWS<\/dt><dd class="num">Sep 27, 2027<\/dd>/);
-  assert.match(html, /data-pref="start">DESK</);
+  assert.doesNotMatch(html, /data-pref="start"/, 'an old stored start screen shows nothing');
   assert.match(html, /data-pref="clock">LOCAL</);
   assert.match(html, /data-pref="sound" aria-pressed="true">ON</);
   assert.match(html, /data-pref="tape" aria-pressed="true">ON</);
@@ -260,17 +260,15 @@ test('name colours: 8 in style.css, none amber, none equal to --up, --down or --
 
 // ---- this device -------------------------------------------------------------------------------
 
-test('prefs: cleaned, START SCREEN applies only without ?c=, CLOCK changes the top bar only', () => {
+test('prefs: cleaned, the bare root always opens HOME, CLOCK changes the top bar only', () => {
   assert.deepEqual(cleanPrefs(null), DEFAULT_PREFS);
-  assert.deepEqual(cleanPrefs({ start: 'GRID', clock: 'local', sound: true, extra: 1 }), { start: 'GRID', clock: 'local', sound: true });
-  assert.deepEqual(cleanPrefs({ start: 'LOGOUT', clock: 'mars', sound: 'yes' }), DEFAULT_PREFS, 'only the listed screens, only true');
-  assert.deepEqual(START_SCREENS, ['HOME', 'DESK', 'GRID', 'WATCH', 'MARKETS', 'NEWS']);
-  for (const s of START_SCREENS) assert.ok(!['UNKNOWN', 'SOON'].includes(parseCommand(s).name), s);
-  assert.equal(startCommand('', { start: 'DESK' }), 'DESK');
-  assert.equal(startCommand('?c=AAPL', { start: 'DESK' }), null, 'a link\'s own screen wins');
-  assert.equal(startCommand('?embed=1', { start: 'GRID' }), 'GRID');
-  assert.equal(startCommand('', { start: 'HOME' }), null);
-  assert.equal(startCommand('', null), null);
+  assert.deepEqual(cleanPrefs({ start: 'GRID', clock: 'local', sound: true, extra: 1 }), { clock: 'local', sound: true }, 'an old start screen is dropped');
+  assert.deepEqual(cleanPrefs({ clock: 'mars', sound: 'yes' }), DEFAULT_PREFS, 'only true');
+  // No ?c=: HOME, whatever was saved. A link's own screen still wins.
+  assert.equal(fromQuery(''), 'HOME');
+  assert.equal(linkPlan(fromQuery('')).url, 'HOME');
+  assert.equal(fromQuery('?c=DESK'), 'DESK');
+  assert.equal(linkPlan(fromQuery('?c=DESK')).url, 'DESK');
   const d = new Date(2026, 8, 29, 7, 5, 9);
   assert.deepEqual(clockFace(d, { clock: 'local' }), { label: 'LOCAL', time: '07:05:09' });
   assert.deepEqual(clockFace(d, { clock: 'ny' }, nyClock), { label: 'NEW YORK', time: nyClock(d) });
@@ -278,12 +276,12 @@ test('prefs: cleaned, START SCREEN applies only without ?c=, CLOCK changes the t
   assert.equal(SYNC_DOCS.prefs, PREFS_KEY);
   // The app reads them: the first screen and the clock.
   const app = readFileSync('public/app.js', 'utf8');
-  assert.match(app, /const start = embed \? null : startCommand\(location\.search, getPrefs\(\)\);/);
-  assert.match(app, /linkPlan\(start \|\| fromQuery\(location\.search\)\)/);
+  assert.match(app, /: linkPlan\(fromQuery\(location\.search\)\);/, 'the first screen comes from the link only');
+  assert.doesNotMatch(app, /startCommand|bb\.last|lastScreen/, 'no saved screen opens on a visit');
   assert.match(app, /const face = clockFace\(now, clockPrefs, nyClock\);/);
   // Data times stay New York: nothing else reads the clock preference.
   for (const f of ['public/kit.js', 'public/freshness.js', 'public/provenance.js']) assert.doesNotMatch(readFileSync(f, 'utf8'), /getPrefs|clockFace/, f);
-  assert.match(deviceHtml({ prefs: { start: 'NEWS' } }), /data-pref="start">NEWS</);
+  assert.doesNotMatch(deviceHtml({ prefs: { start: 'NEWS' } }), /data-pref="start"/);
 });
 
 // ---- the command, the seat, CHAT @name -------------------------------------------------------------
